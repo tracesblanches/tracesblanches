@@ -1,0 +1,13 @@
+[package]
+name = "skimap-meteo"
+description = "Client des API Météo-France : BERA par massif et météo horaire AROME (pipeline)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+skimap-common = { workspace = true, features = ["download"] }
+
+[lints]
+workspace = true

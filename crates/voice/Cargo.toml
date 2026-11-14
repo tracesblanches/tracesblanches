@@ -1,0 +1,13 @@
+[package]
+name = "skimap-voice"
+description = "Voix : banque de phrases françaises et clips pré-générés pour les packs."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+skimap-common = { workspace = true }
+
+[lints]
+workspace = true

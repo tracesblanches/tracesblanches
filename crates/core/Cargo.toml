@@ -1,0 +1,13 @@
+[package]
+name = "skimap-core"
+description = "Noyau d'algorithmes partagé serveur / téléphone : routage, rattachement, hors piste, temps estimé, demi-tour, zones, batterie."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+skimap-common = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,49 @@
+[package]
+name = "skimap-deps"
+description = "Résout et compile toutes les dépendances du workspace pour que Cargo.lock les contienne déjà."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+# Every external entry of [workspace.dependencies] is listed here, so that:
+# - Cargo.lock already pins all of them: an agent adding `geo.workspace = true` to its crate
+#   only touches its own package entry in Cargo.lock (no conflicting lock hunks);
+# - CI proves that every version and feature set compiles with the pinned toolchain.
+# Owned by the orchestrator. Keep in sync with the root Cargo.toml.
+[dependencies]
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+quick-xml.workspace = true
+csv.workspace = true
+flate2.workspace = true
+zip.workspace = true
+sevenz-rust2.workspace = true
+rusqlite.workspace = true
+tiff.workspace = true
+pmtiles.workspace = true
+geo.workspace = true
+geo-types.workspace = true
+geojson.workspace = true
+rstar.workspace = true
+proj4rs.workspace = true
+petgraph.workspace = true
+chrono.workspace = true
+httpdate.workspace = true
+rayon.workspace = true
+reqwest.workspace = true
+rustls.workspace = true
+webpki-roots.workspace = true
+sha2.workspace = true
+hex.workspace = true
+clap.workspace = true
+approx.workspace = true
+tempfile.workspace = true
+tiny_http.workspace = true
+
+[lints]
+workspace = true

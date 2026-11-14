@@ -5,3 +5,6 @@ research/transcripts/
 
 # Rust
 target/
+
+# Données téléchargées et produites par le pipeline (cache, sorties) : locales uniquement
+data/

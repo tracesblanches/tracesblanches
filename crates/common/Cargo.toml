@@ -1,0 +1,39 @@
+[package]
+name = "skimap-common"
+description = "Socle commun : sites, géométrie, grilles, projections, arborescence des données, configuration, erreurs, téléchargeur."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[features]
+default = []
+# Shared downloader (P1, #14). Pipeline crates enable it; crates that run on the phone
+# (core, assist, voice, pack reader) do not, so they never link an HTTP stack.
+download = ["dep:reqwest", "dep:rustls", "dep:webpki-roots", "dep:sha2", "dep:hex", "dep:httpdate"]
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+proj4rs.workspace = true
+geo-types.workspace = true
+reqwest = { workspace = true, optional = true }
+rustls = { workspace = true, optional = true }
+webpki-roots = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+hex = { workspace = true, optional = true }
+httpdate = { workspace = true, optional = true }
+
+[dev-dependencies]
+approx.workspace = true
+tempfile.workspace = true
+tiny_http.workspace = true
+
+[[test]]
+name = "download"
+required-features = ["download"]
+
+[lints]
+workspace = true

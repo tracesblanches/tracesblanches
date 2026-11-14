@@ -1,0 +1,7 @@
+# Pinned toolchain: CI and local builds use the same rustc, rustfmt and clippy.
+# The Android target is listed so that `cargo ndk` works right after a clone (F4, #4).
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+targets = ["aarch64-linux-android"]
+profile = "minimal"

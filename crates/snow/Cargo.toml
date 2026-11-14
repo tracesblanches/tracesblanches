@@ -1,0 +1,13 @@
+[package]
+name = "skimap-snow"
+description = "Carte d'enneigement estimée et sa validation contre les stations (pipeline)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+skimap-common = { workspace = true, features = ["download"] }
+
+[lints]
+workspace = true

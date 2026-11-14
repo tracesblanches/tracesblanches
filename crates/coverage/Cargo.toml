@@ -1,0 +1,13 @@
+[package]
+name = "skimap-coverage"
+description = "Zones sans aucun réseau mobile, même pour le 112 (ARCEP, pipeline)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+skimap-common = { workspace = true, features = ["download"] }
+
+[lints]
+workspace = true

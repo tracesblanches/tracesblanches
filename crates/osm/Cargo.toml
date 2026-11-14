@@ -1,0 +1,13 @@
+[package]
+name = "skimap-osm"
+description = "Extraction des pistes nordiques OSM et recensement des domaines de fond (pipeline)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+skimap-common = { workspace = true, features = ["download"] }
+
+[lints]
+workspace = true
