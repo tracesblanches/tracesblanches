@@ -8,3 +8,6 @@ target/
 
 # Données téléchargées et produites par le pipeline (cache, sorties) : locales uniquement
 data/
+
+# Worktrees des agents
+.claude/worktrees/
