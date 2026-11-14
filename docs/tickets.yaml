@@ -320,6 +320,20 @@ tickets:
     Couche des emprises + liste des tronçons de pistes et d'itinéraires qui les traversent, croisée avec le BERA Queyras pour l'alerte. Le Jura n'a ni CLPA ni BERA.
     Critère : longueurs recalculées et cohérentes avec le rapport 07.
 
+- key: P21
+  title: Export des couches pour Locus Map et OsmAnd
+  milestone: M1 Preuve Rust
+  labels: [pipeline, carte]
+  deps: [P14]
+  body: |
+    Rendre la preuve de concept utile dès l'hiver 2026-27, avant le client Kotlin : exporter les couches d'un pack dans des formats que Locus Map et OsmAnd lisent hors ligne sur le Pixel.
+
+    - Vecteurs (pistes avec couleur et nom, refuges, zones protégées avec règles en description, zones sans réseau, tronçons exposés aux avalanches historiques, itinéraires) en GPX / KML ;
+    - rasters (pentes, neige estimée) en MBTiles ou SQLiteDB lisibles en surcouche ;
+    - un dossier par site, avec un mode d'emploi court (comment l'importer dans Locus et dans OsmAnd).
+
+    Critère : import réussi dans Locus et OsmAnd sur le Pixel, captures d'écran ou constat écrit ; tailles mesurées.
+
 # ---------- M1 Preuve Rust : algorithmes du noyau ----------
 - key: C1
   title: Graphe de pistes et routage sur pistes
