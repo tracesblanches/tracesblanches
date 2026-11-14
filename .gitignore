@@ -1,0 +1,7 @@
+# Données brutes des recherches (~2 Go, dont archives ARCEP) : locales uniquement
+research/raw/
+# Transcripts internes des agents de recherche : locaux uniquement
+research/transcripts/
+
+# Rust
+target/

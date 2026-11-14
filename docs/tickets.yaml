@@ -1,0 +1,748 @@
+# Tickets skimap — source pour la création des issues GitHub.
+# key : identifiant local stable ; deps : clés des tickets qui bloquent celui-ci.
+# Références : research/etat-des-lieux.md (doc), research/features.md (n° de fonction F#), research/reports/.
+
+milestones:
+  - M0 Fondations
+  - M1 Preuve Rust
+  - M2 Terrain hiver 2026-27
+  - M3 Client v1
+  - M4 v2
+  - M5 v3
+
+labels:
+  type: [recherche, juridique, preuve, pipeline, algo, terrain, client, serveur, décision, infra]
+  thème: [carte, sécurité, planifier, pendant, collaboratif, sport]
+  version: [v1, v2, v3]
+
+tickets:
+
+# ---------- M0 Fondations ----------
+- key: F1
+  title: Workspace Rust du dépôt et CI
+  milestone: M0 Fondations
+  labels: [infra]
+  deps: []
+  body: |
+    Workspace cargo avec crates `pipeline` (traitement des données), `core` (algorithmes partagés serveur / téléphone), `tools` (visualisation, bancs d'essai).
+    CI GitHub Actions : fmt, clippy -D warnings, tests.
+    Critère : `cargo test` et la CI passent sur une PR de démonstration.
+
+- key: F2
+  title: Choisir la licence du dépôt
+  milestone: M0 Fondations
+  labels: [décision]
+  deps: [L3]
+  body: |
+    Le dépôt deviendra probablement public. Choisir la licence du code et celle des données dérivées (contraintes ODbL d'OSM, CC BY-SA de refuges.info et Camptocamp).
+    Critère : fichier LICENSE et section licence des données dans le README.
+
+- key: F3
+  title: Inventaire du Pixel 8 Pro par adb
+  milestone: M0 Fondations
+  labels: [preuve, pendant]
+  deps: []
+  body: |
+    Lecture seule par adb : capteurs (baromètre, magnétomètre, fréquence max de l'accéléromètre et du gyroscope), capacités GNSS (bi-fréquence L5 ?), voix TTS française hors ligne installée, reconnaissance vocale hors ligne disponible, état batterie.
+    Critère : rapport `research/reports/08-inventaire-pixel.md` avec les sorties de commandes. Lève les « à tester » correspondants du doc.
+
+- key: F4
+  title: Chaîne de compilation Rust pour Android
+  milestone: M0 Fondations
+  labels: [infra]
+  deps: [F1]
+  body: |
+    Installer la cible `aarch64-linux-android` et `cargo-ndk` (NDK 28.2 déjà présent). Compiler un binaire de démonstration et l'exécuter sur le Pixel par `adb shell`.
+    Critère : sortie du binaire exécuté sur le Pixel collée dans le ticket.
+
+- key: R1
+  title: Rapport recensement des domaines et zones avalanche (rapport 07)
+  milestone: M0 Fondations
+  labels: [recherche, carte, sécurité]
+  deps: []
+  body: |
+    Recherche en cours : sources et nombre de domaines de fond (France, monde, OpenSkiMap), définition ATES classe 0, auto-ATES / Flow-Py, LiDAR HD, CLPA / EPA, formulation juridique.
+    Critère : `research/reports/07-recensement-et-avalanche.md` versé et résumé dans le doc.
+
+# ---------- Juridique ----------
+- key: L1
+  title: Licence de l'API Snowmap de l'Espace Nordique Jurassien
+  milestone: M0 Fondations
+  labels: [juridique, carte]
+  deps: []
+  body: |
+    L'API Geotrek ENJ (ouvert / fermé par piste dans le champ `route`, GPX) n'affiche aucune licence. Demander par écrit à l'ENJ l'autorisation de réutilisation et ses conditions.
+    Critère : réponse écrite archivée.
+
+- key: L2
+  title: Conditions IGN pour le hors ligne (Plan IGN v2, carte des pentes)
+  milestone: M0 Fondations
+  labels: [juridique, carte]
+  deps: []
+  body: |
+    Confirmer que le préchargement et la redistribution en pack hors ligne du Plan IGN v2 vectoriel et de la couche `SLOPES.MOUNTAIN` sont permis (Etalab 2.0 ?), et la mention d'attribution exigée.
+    Critère : texte ou réponse IGN citant la règle applicable.
+
+- key: L3
+  title: Compatibilité des licences de données (ODbL, CC BY-SA, Licence Ouverte)
+  milestone: M0 Fondations
+  labels: [juridique]
+  deps: []
+  body: |
+    OSM (ODbL), refuges.info et Camptocamp (CC BY-SA), DATAtourisme et Météo-France (Licence Ouverte). Définir comment les combiner sans créer d'œuvre dérivée incompatible (couches séparées, attributions).
+    Critère : note de décision dans `docs/licences-donnees.md`.
+
+- key: L4
+  title: Convention avec Nordic France pour l'état des pistes
+  milestone: M2 Terrain hiver 2026-27
+  labels: [juridique, carte]
+  deps: []
+  body: |
+    Le bulletin Nordic France (ouvert / fermé par piste, dernier damage) n'a pas d'API publique. Demander un accès ou une convention, d'abord pour Cervières.
+    Critère : réponse écrite ; si refus, l'app affiche un lien vers le bulletin.
+
+- key: L5
+  title: Strava — OAuth et import d'historique
+  milestone: M0 Fondations
+  labels: [juridique, sport]
+  deps: []
+  body: |
+    Vérifier si l'OAuth Strava impose un secret client côté serveur (pas de PKCE ?). Valider l'interprétation : import par l'utilisateur de son export Strava (politique 6.6) au lieu de l'API (interdictions 5.3, 5.4, 5.5, 6.2).
+    Critère : note avec citations des clauses en vigueur.
+
+- key: L6
+  title: Licences des sources de zones et de neige (Biodiv'sports, GPU, Theia)
+  milestone: M0 Fondations
+  labels: [juridique, sécurité]
+  deps: []
+  body: |
+    Confirmer les licences de Biodiv'sports, des servitudes du Géoportail de l'urbanisme, des produits Theia Neige.
+    Critère : tableau des licences dans `docs/licences-donnees.md`.
+
+- key: L7
+  title: Licences des topos SRN (skirandonneenordique.com, GTJ, Skitour)
+  milestone: M4 v2
+  labels: [juridique, planifier]
+  deps: []
+  body: |
+    skirandonneenordique.com n'a ni API ni licence affichée ; Skitour est en CC BY-SA avec clé ; GTJ à vérifier (gtj.asso.fr en 403). Demander les autorisations.
+    Critère : réponses archivées.
+
+- key: L8
+  title: Accord éventuel avec Skitourenguru
+  milestone: M4 v2
+  labels: [juridique, sécurité]
+  deps: [R1]
+  body: |
+    Aucune licence ouverte. Évaluer l'intérêt d'un accord (157 itinéraires autour de Cervières, aucun dans le Jura) face au calcul maison.
+    Critère : décision documentée.
+
+# ---------- M1 Preuve Rust : pipeline ----------
+- key: P1
+  title: Téléchargeur commun des sources (cache, ETag, quotas)
+  milestone: M1 Preuve Rust
+  labels: [pipeline]
+  deps: [F1]
+  body: |
+    Module de téléchargement réutilisable : cache disque, ETag / If-Modified-Since, limites de débit par source (Overpass, Biodiv'sports, DATAtourisme 1000 req/h, Skitour 1000 req/jour), User-Agent générique.
+    Critère : tests avec un serveur local ; aucune requête répétée inutile.
+
+- key: P2
+  title: Extraction des pistes nordiques OSM
+  milestone: M1 Preuve Rust
+  labels: [pipeline, carte]
+  deps: [P1]
+  body: |
+    Depuis `planet_pistes.osm.gz` d'OpenSnowMap : ways et relations `piste:type=nordic` (et `hike`), nom et couleur depuis les relations (la difficulté des ways est incohérente), `piste:grooming`, `piste:oneway`.
+    Critère : GeoJSON et graphe pour Cervières et Chapelle-des-Bois ; comptes comparés au rapport 02 (Chapelle : 13 pistes sur 13 présentes).
+
+- key: P3
+  title: Recensement et délimitation des domaines de fond
+  milestone: M1 Preuve Rust
+  labels: [pipeline, carte]
+  deps: [P2, R1]
+  body: |
+    Regrouper les pistes en domaines (méthode OpenSkiMap ou équivalente), rapprocher des domaines Nordic France / SkiRadar pour les noms. France d'abord.
+    Critère : liste des domaines France avec géométrie, nom, km ; taux de rapprochement mesuré.
+
+- key: P4
+  title: Fond de carte par site (Plan IGN v2 + PMTiles OSM)
+  milestone: M1 Preuve Rust
+  labels: [pipeline, carte]
+  deps: [P1, L2]
+  body: |
+    Extraire un PMTiles Protomaps par site et le style Plan IGN v2 vectoriel. Taille par site mesurée.
+    Critère : affichage dans le visualiseur (P15) hors ligne.
+
+- key: P5
+  title: Relief IGN par zone et pentes
+  milestone: M1 Preuve Rust
+  labels: [pipeline, sécurité]
+  deps: [P1]
+  body: |
+    Télécharger le relief IGN (RGE ALTI 5 m ou LiDAR HD) sur les deux zones ; calculer pente et orientation ; comparer à la couche `SLOPES.MOUNTAIN`.
+    Critère : écart mesuré entre pente calculée et couche IGN.
+
+- key: P6
+  title: Carte d'enneigement estimée (simulation Météo-France projetée sur le relief)
+  milestone: M1 Preuve Rust
+  labels: [pipeline, carte]
+  deps: [P1, P5]
+  body: |
+    Pour chaque pixel : massif, altitude, orientation, pente → hauteur interpolée depuis la simulation nivologique J-1 (massifs 17 Queyras, 55/56 Haut-Doubs / Haut-Jura). Trois classes par pratique + fourchette.
+    Critère : couche quotidienne pour les deux sites ; massif SAFRAN de Chapelle-des-Bois confirmé.
+
+- key: P7
+  title: Valider la carte de neige contre les stations
+  milestone: M1 Preuve Rust
+  labels: [preuve, carte]
+  deps: [P6]
+  body: |
+    Comparer l'estimation aux stations Météo-France (Cervières 1614 m, Arvieux, Mouthe, La Boissaude) sur une saison passée.
+    Critère : biais et erreur moyenne par site publiés dans un rapport.
+
+- key: P8
+  title: BERA par massif
+  milestone: M1 Preuve Rust
+  labels: [pipeline, sécurité]
+  deps: [P1]
+  body: |
+    Client API Météo-France (compte gratuit), lecture du XML, extraction du massif Queyras. Jura : messages d'avertissement Météo-France et lien SLF.
+    Critère : BERA du jour stocké en fichier statique.
+
+- key: P9
+  title: Zones protégées et périodes
+  milestone: M1 Preuve Rust
+  labels: [pipeline, sécurité]
+  deps: [P1, L6]
+  body: |
+    INPN WFS (`patrinat_*`), servitudes GPU (sites inscrits / classés, SPR, monuments, captages), Biodiv'sports avec `period` (sinon seulement le mois courant). Suisse : districts francs (geo.admin).
+    Critère : couche unique avec périodes ; APPB Haut-Jura et Haut-Doubs présents.
+
+- key: P10
+  title: Règles de bivouac et d'accès saisies depuis les arrêtés
+  milestone: M1 Preuve Rust
+  labels: [pipeline, sécurité]
+  deps: [P9]
+  body: |
+    Schéma de règles (période, interdiction de sortir des itinéraires, bivouac, feu, accès de nuit, zones cœur) et saisie pour les deux sites depuis les textes primaires (APPB, arrêtés communaux, R111-33).
+    Critère : fichier de règles sourcé, chaque règle avec son URL.
+
+- key: P11
+  title: Refuges et abris (refuges.info, OSM, Camptocamp)
+  milestone: M1 Preuve Rust
+  labels: [pipeline, carte]
+  deps: [P1, L3]
+  body: |
+    Fusion par `ref:refuges.info`, capacité hors gardiennage depuis Camptocamp, dernier commentaire daté ; couches séparées selon la licence.
+    Critère : couche par site avec attributions.
+
+- key: P12
+  title: Zones sans aucun réseau (ARCEP)
+  milestone: M1 Preuve Rust
+  labels: [pipeline, sécurité]
+  deps: [P1]
+  body: |
+    Union des couvertures voix des 4 opérateurs, différence avec la zone : polygones « aucun réseau, même 112 ». Recalcul trimestriel.
+    Critère : chiffres cohérents avec le rapport 06 (Cervières 51 km², Chapelle 18 km²).
+
+- key: P13
+  title: Instantané de l'état des pistes ENJ
+  milestone: M1 Preuve Rust
+  labels: [pipeline, carte]
+  deps: [P1, L1]
+  body: |
+    Interrogation planifiée de l'API ENJ (champ `route` : 1 Fermé, 2 Ouvert ; `labels`), une fois pour tous les utilisateurs.
+    Critère : historique d'une semaine en saison et fréquence de mise à jour observée.
+
+- key: P14
+  title: Format de pack par site
+  milestone: M1 Preuve Rust
+  labels: [pipeline]
+  deps: [P2, P4, P5, P6, P9, P11, P12, P13]
+  body: |
+    Pack versionné : PMTiles, GeoJSON des couches, métadonnées (dates, sources, attributions). Lecture par le noyau Rust.
+    Critère : pack Cervières et Chapelle-des-Bois générés ; taille mesurée.
+
+- key: P15
+  title: Visualiseur web des packs
+  milestone: M1 Preuve Rust
+  labels: [pipeline]
+  deps: [P14]
+  body: |
+    Page MapLibre GL JS locale qui affiche toutes les couches d'un pack, pour juger les résultats à l'œil.
+    Critère : les deux sites visibles avec toutes les couches.
+
+- key: P16
+  title: Exposition aux avalanches — référence auto-ATES sur Cervières
+  milestone: M1 Preuve Rust
+  labels: [preuve, sécurité]
+  deps: [P5, R1]
+  body: |
+    Faire tourner l'implémentation de référence (auto-ATES, GPL) sur la zone de Cervières comme oracle : zones de départ, zones d'arrivée, classe terrain non avalancheux.
+    Critère : couche de référence et temps de calcul mesuré.
+
+- key: P17
+  title: Exposition aux avalanches en Rust
+  milestone: M1 Preuve Rust
+  labels: [algo, sécurité]
+  deps: [P16]
+  body: |
+    Réimplémentation en Rust (zones de départ, écoulement, forêt), comparée à l'oracle P16.
+    Critère : accord mesuré avec P16 ; temps de calcul sur la zone ; jamais formulé « sans danger ».
+
+- key: P18
+  title: Valider l'exposition aux avalanches contre CLPA / EPA
+  milestone: M1 Preuve Rust
+  labels: [preuve, sécurité]
+  deps: [P17]
+  body: |
+    Comparer les zones calculées aux avalanches connues (CLPA, EPA) sur le Queyras.
+    Critère : taux d'avalanches connues tombant en terrain classé non avalancheux (objectif : aucune).
+
+- key: P19
+  title: Météo heure par heure par site (AROME)
+  milestone: M1 Preuve Rust
+  labels: [pipeline, planifier]
+  deps: [P1]
+  body: |
+    Vent, température ressentie, visibilité / brouillard, isotherme 0 °C, chutes de neige prévues, depuis l'API Météo-France.
+    Critère : fichier statique par site mis à jour à chaque run.
+
+# ---------- M1 Preuve Rust : algorithmes du noyau ----------
+- key: C1
+  title: Graphe de pistes et routage sur pistes
+  milestone: M1 Preuve Rust
+  labels: [algo, planifier]
+  deps: [P2]
+  body: |
+    Graphe orienté (sens unique), coût selon pente et style, itinéraire entre deux points.
+    Critère : itinéraires plausibles sur les deux sites, vérifiés dans le visualiseur.
+
+- key: C2
+  title: Rattachement aux pistes et détection d'écart
+  milestone: M1 Preuve Rust
+  labels: [algo, pendant]
+  deps: [C1]
+  body: |
+    Map matching (HMM) sur le réseau ; couloir autour d'une trace prévue pour le hors piste ; seuil et délai contre les fausses alertes.
+    Critère : tests sur traces synthétiques bruitées.
+
+- key: C3
+  title: Routage hors piste sur grille de coût
+  milestone: M1 Preuve Rust
+  labels: [algo, planifier]
+  deps: [P5, P6, P9]
+  body: |
+    A* sur grille du relief (5 m) : évite pentes > 30°, refuse les zones interdites à la date, pondéré par la neige estimée.
+    Critère : itinéraires Cervières plausibles ; aucun ne traverse une zone interdite.
+
+- key: C4
+  title: Banc d'essai du routage hors piste sur Pixel 8
+  milestone: M1 Preuve Rust
+  labels: [preuve, planifier]
+  deps: [C3, F4]
+  body: |
+    Exécuter C3 en binaire Rust sur le Pixel (zone réelle Cervières, 10 × 10 km à 5 m) : temps, mémoire, énergie.
+    Critère : chiffres mesurés ; alimente la décision K0.
+
+- key: C5
+  title: Modèle de temps estimé (formule)
+  milestone: M1 Preuve Rust
+  labels: [algo, planifier]
+  deps: [C1]
+  body: |
+    Modèle physique : puissance, pente, friction selon la neige, facteur classique / skating (Bolger 2015). Comparaison à Munter / Tobler.
+    Critère : erreur mesurée sur les traces réelles quand T1 est disponible.
+
+- key: C6
+  title: Calibration personnelle du temps estimé
+  milestone: M4 v2
+  labels: [algo, planifier]
+  deps: [C5, T1]
+  body: |
+    Ajustement bayésien de quelques paramètres sur les sorties enregistrées par l'utilisateur.
+    Critère : erreur réduite par rapport à C5 sur des sorties non vues.
+
+- key: C7
+  title: Heure de demi-tour avant la nuit
+  milestone: M1 Preuve Rust
+  labels: [algo, sécurité]
+  deps: [C5]
+  body: |
+    Éphémérides (coucher du soleil, crépuscule) + temps restant estimé → heure limite de demi-tour.
+    Critère : tests sur dates et lieux connus.
+
+- key: C8
+  title: Évaluation des zones et règles à une position et une date
+  milestone: M1 Preuve Rust
+  labels: [algo, sécurité]
+  deps: [P9, P10]
+  body: |
+    Fonction : position + date → zones actives, règles applicables (bivouac, sortie d'itinéraire, feu).
+    Critère : tests sur points du Risoux en février et en août.
+
+- key: C9
+  title: Modèle de prévision de batterie
+  milestone: M2 Terrain hiver 2026-27
+  labels: [algo, sécurité]
+  deps: [T2]
+  body: |
+    Consommation par mode (GPS, écran, voix) et effet du froid, depuis les mesures T2.
+    Critère : erreur de prévision mesurée sur une sortie non vue.
+
+- key: C10
+  title: Valider rattachement et écart sur traces réelles sous forêt
+  milestone: M2 Terrain hiver 2026-27
+  labels: [preuve, pendant]
+  deps: [C2, T1]
+  body: |
+    Rejouer les traces GPX réelles : taux de bon rattachement, fausses alertes d'écart, notamment dans le Risoux.
+    Critère : chiffres publiés ; seuils réglés.
+
+# ---------- M2 Terrain hiver 2026-27 ----------
+- key: T1
+  title: Collecte terrain Cervières (janvier 2027)
+  milestone: M2 Terrain hiver 2026-27
+  labels: [terrain]
+  deps: [F3]
+  body: |
+    Avec des apps existantes : trace GPX de chaque sortie, enregistrement des capteurs (accéléromètre, gyroscope, baromètre), étiquetage de la technique (classique, skating, SRN), notes de neige.
+    Critère : protocole écrit avant le départ ; données versées dans `research/raw/terrain/`.
+
+- key: T2
+  title: Mesures de batterie par grand froid
+  milestone: M2 Terrain hiver 2026-27
+  labels: [terrain, sécurité]
+  deps: [F3]
+  body: |
+    Protocole : sorties de 3 à 5 h, téléphone en poche, GPS actif ; relever niveau de batterie et température régulièrement.
+    Critère : courbes de décharge par sortie.
+
+- key: T3
+  title: Collecte terrain Chapelle-des-Bois (février-mars 2027)
+  milestone: M2 Terrain hiver 2026-27
+  labels: [terrain]
+  deps: [T1]
+  body: |
+    Même protocole que T1, plus le SRN sur la GTJ et le Risoux (itinéraires autorisés uniquement en période APPB).
+    Critère : données versées.
+
+- key: T4
+  title: Vérifier sur le terrain la complétude d'OSM et corriger
+  milestone: M2 Terrain hiver 2026-27
+  labels: [terrain, carte]
+  deps: [P2]
+  body: |
+    Secteur des Fonts (Cervières), pistes absentes à Chapelle (Chez Michel, La Morberande, Tour du village, piste éclairée). Corriger OSM.
+    Critère : modifications OSM publiées avec leurs numéros de changeset.
+
+- key: T5
+  title: Observations de neige pour valider la carte d'enneigement
+  milestone: M2 Terrain hiver 2026-27
+  labels: [terrain, carte]
+  deps: [P6]
+  body: |
+    Relever hauteur et qualité de neige en quelques points géolocalisés par sortie.
+    Critère : observations comparées à P6.
+
+- key: D1
+  title: Jeu de données étiqueté de technique de ski
+  milestone: M2 Terrain hiver 2026-27
+  labels: [preuve, sport]
+  deps: [T1, T3]
+  body: |
+    Nettoyer et découper les enregistrements capteurs en cycles étiquetés (classique, skating, sous-techniques si possible).
+    Critère : jeu de données documenté.
+
+# ---------- M3 Client v1 (Kotlin) ----------
+- key: K0
+  title: Décision de répartition Rust / Kotlin et intégration UniFFI
+  milestone: M3 Client v1
+  labels: [décision, client]
+  deps: [C4]
+  body: |
+    Sur la base de C4 : noyau Rust via UniFFI ou client 100 % Kotlin. Si UniFFI : bibliothèque Android du noyau appelée depuis Kotlin.
+    Critère : décision écrite ; appel du noyau depuis une app de test.
+
+- key: S0
+  title: Hébergement des fichiers statiques et planification du pipeline
+  milestone: M3 Client v1
+  labels: [serveur, infra]
+  deps: [P14, P8, P19]
+  body: |
+    Stockage objet + exécution planifiée du pipeline (packs, neige du jour, BERA, état des pistes, météo). Coût mesuré.
+    Critère : URLs stables des fichiers ; coût mensuel estimé.
+
+- key: K1
+  title: Squelette de l'app Android (Compose, MapLibre, lecture de pack)
+  milestone: M3 Client v1
+  labels: [client, carte]
+  deps: [K0, P14]
+  body: |
+    App Kotlin Jetpack Compose, carte MapLibre Native, lecture d'un pack local.
+    Critère : pack Cervières affiché hors ligne sur le Pixel.
+
+- key: K2
+  title: Téléchargement et mise à jour des packs hors ligne
+  milestone: M3 Client v1
+  labels: [client, carte]
+  deps: [K1, S0]
+  body: |
+    Liste des sites, téléchargement, mise à jour différentielle des couches quotidiennes.
+    Critère : mode avion sans perte de fonction.
+
+- key: K3
+  title: Affichage des couches (pistes, état, pentes, neige, zones, refuges, réseau, BERA, météo)
+  milestone: M3 Client v1
+  labels: [client, carte]
+  deps: [K1, P8, P19]
+  body: |
+    F2, F3, F5, F6, F8, F9, F10, F12, F13 du fichier features. Âge et source affichés pour chaque info.
+    Critère : toutes les couches visibles et datées.
+
+- key: K4
+  title: Service de localisation, trace et « ramène-moi »
+  milestone: M3 Client v1
+  labels: [client, pendant]
+  deps: [K1]
+  body: |
+    Service de premier plan, écran éteint, enregistrement de trace, retour guidé sur la trace d'aller (F21).
+    Critère : sortie réelle de 2 h enregistrée écran éteint.
+
+- key: K5
+  title: Guidage vocal hors ligne
+  milestone: M3 Client v1
+  labels: [client, pendant]
+  deps: [K4, C1, F3]
+  body: |
+    Annonces de direction, temps restant, alertes (F22), voix française hors ligne.
+    Critère : itinéraire complet guidé sans regarder l'écran.
+
+- key: K6
+  title: Alertes, sons et vibrations
+  milestone: M3 Client v1
+  labels: [client, sécurité]
+  deps: [K4, C2, C7, C8]
+  body: |
+    Écart d'itinéraire, pente > 30°, zone protégée, demi-tour, entrée en zone sans réseau ; sons gauche / droite / hors piste, signal de rassurance (F23–F25).
+    Critère : chaque alerte déclenchée sur un rejeu de trace.
+
+- key: K7
+  title: Navigation au cap par brouillard
+  milestone: M3 Client v1
+  labels: [client, pendant]
+  deps: [K4]
+  body: |
+    Cap et distance vers un point, annonces vocales (F26).
+    Critère : test boussole calibrée sur le Pixel.
+
+- key: K8
+  title: Économie de batterie et prévision
+  milestone: M3 Client v1
+  labels: [client, sécurité]
+  deps: [K4, C9]
+  body: |
+    GPS adaptatif, arrêt détecté par l'accéléromètre, altitude au baromètre ; prévision affichée avec réserve d'urgence (F20, F27).
+    Critère : gain mesuré sur sortie réelle par rapport à un enregistrement standard.
+
+- key: K9
+  title: Planification sur pistes avec temps estimé et demi-tour
+  milestone: M3 Client v1
+  labels: [client, planifier]
+  deps: [K1, C1, C5, C7]
+  body: |
+    Choix d'un itinéraire, temps estimé, heure de demi-tour (F15, F17, F18).
+    Critère : plan créé et suivi sur le terrain.
+
+- key: S2
+  title: Service d'alerte en cas de non-retour
+  milestone: M3 Client v1
+  labels: [serveur, sécurité]
+  deps: [S0]
+  body: |
+    Minuterie côté serveur ; canal à décider (notification, e-mail, SMS) et son coût. L'alerte part même si le téléphone est mort.
+    Critère : décision du canal ; alerte de test reçue par un contact.
+
+- key: K10
+  title: Plan de sortie partagé
+  milestone: M3 Client v1
+  labels: [client, sécurité]
+  deps: [K9, S2]
+  body: |
+    Itinéraire, heure de retour, contact ; confirmation de retour (F19).
+    Critère : scénario de non-retour testé de bout en bout.
+
+- key: S1
+  title: Service OAuth Strava
+  milestone: M3 Client v1
+  labels: [serveur, sport]
+  deps: [L5, S0]
+  body: |
+    Échange de jeton sans secret dans l'app, si Strava l'exige (L5).
+    Critère : connexion Strava depuis l'app de test.
+
+- key: K11
+  title: Envoi vers Strava et Health Connect
+  milestone: M3 Client v1
+  labels: [client, sport]
+  deps: [S1, K4]
+  body: |
+    Upload GPX / FIT en `NordicSki` ou `BackcountrySki`, conditions dans la description ; export Health Connect (`SKIING` + `ExerciseRoute`) (F35).
+    Critère : sortie réelle visible sur Strava et dans Health Connect.
+
+# ---------- M4 v2 ----------
+- key: V1
+  title: Routage SRN hors piste dans l'app
+  milestone: M4 v2
+  labels: [client, planifier]
+  deps: [K9, C3, K0]
+  body: |
+    F16 du fichier features. Critère : itinéraire SRN calculé sur le Pixel dans le budget mesuré par C4.
+
+- key: V2
+  title: Temps estimé personnalisé dans l'app
+  milestone: M4 v2
+  labels: [client, planifier]
+  deps: [C6, K9]
+  body: |
+    F17 personnalisé. Critère : calibration visible après 3 sorties.
+
+- key: V3
+  title: Commandes vocales hors ligne
+  milestone: M4 v2
+  labels: [client, pendant]
+  deps: [K5, F3]
+  body: |
+    F28. Critère : « Où suis-je ? », « Temps restant ? », « Signale : trace faite » reconnus hors réseau.
+
+- key: V4
+  title: App montre Wear OS (optionnelle)
+  milestone: M4 v2
+  labels: [client, pendant]
+  deps: [K4]
+  body: |
+    F29 : Health Services `CROSS_COUNTRY_SKIING` (vérifier `getCapabilities`, repli `SKIING`), cap, temps restant, vibrations, carte locale (MapLibre ou Mapsforge à prototyper). Tout reste utilisable sans montre.
+    Critère : sortie enregistrée sur la Pixel Watch 2 sans téléphone.
+
+- key: V5
+  title: Topos SRN agrégés
+  milestone: M4 v2
+  labels: [client, planifier]
+  deps: [L7, K3]
+  body: |
+    F14. Critère : topos des deux sites affichés avec source et licence.
+
+- key: V6
+  title: Règles de bivouac dans l'app
+  milestone: M4 v2
+  labels: [client, sécurité]
+  deps: [P10, C8, K3]
+  body: |
+    F11. Critère : un appui sur la carte affiche les règles du lieu à la date, avec la source.
+
+- key: V7
+  title: Zones peu exposées aux avalanches dans l'app
+  milestone: M4 v2
+  labels: [client, sécurité]
+  deps: [P18, K3]
+  body: |
+    F7. Critère : couche affichée avec avertissement validé juridiquement ; jamais « sans danger ».
+
+- key: V8
+  title: Serveur collaboratif
+  milestone: M4 v2
+  labels: [serveur, collaboratif]
+  deps: [S0]
+  body: |
+    Comptes, signalements, photos (métadonnées retirées, taille limitée, effacées à l'expiration), modération, RGPD. Critère : coût par utilisateur chiffré avant ouverture.
+
+- key: V9
+  title: Signalements en un geste
+  milestone: M4 v2
+  labels: [client, collaboratif]
+  deps: [V8, K1]
+  body: |
+    F30. Critère : signalement créé avec des gants, hors réseau.
+
+- key: V10
+  title: Confirmation, expiration et réputation des signalements
+  milestone: M4 v2
+  labels: [collaboratif]
+  deps: [V9]
+  body: |
+    F31. Critère : un signalement neige expire après sa durée de vie sauf confirmation.
+
+- key: V11
+  title: File d'attente hors réseau des signalements
+  milestone: M4 v2
+  labels: [client, collaboratif]
+  deps: [V9]
+  body: |
+    F32. Critère : signalement fait hors réseau envoyé au retour du réseau avec l'heure réelle du constat.
+
+- key: V12
+  title: Corrections OSM depuis l'app
+  milestone: M4 v2
+  labels: [client, collaboratif]
+  deps: [V9]
+  body: |
+    F34. Critère : note OSM créée depuis l'app.
+
+- key: V13
+  title: Défis (GTJ, domaine complet)
+  milestone: M4 v2
+  labels: [client, sport]
+  deps: [K11]
+  body: |
+    F39. Critère : progression GTJ calculée depuis les traces.
+
+- key: V14
+  title: Suivi de groupe en SRN
+  milestone: M4 v2
+  labels: [client, sport]
+  deps: [V8, K4]
+  body: |
+    F40. Critère : positions du groupe et écarts affichés quand le réseau le permet.
+
+- key: V15
+  title: Import de l'historique par l'export Strava
+  milestone: M4 v2
+  labels: [client, sport]
+  deps: [L5, C6]
+  body: |
+    F36. Critère : archive d'export importée et utilisée pour la calibration, sans appel à l'API Strava.
+
+# ---------- M5 v3 ----------
+- key: D2
+  title: Classifieur de technique de ski
+  milestone: M5 v3
+  labels: [algo, sport]
+  deps: [D1]
+  body: |
+    Référence : Rindal et al. 2017 (93,9 % sur les sous-techniques du classique, IMU bras + poitrine). Mesurer avec le téléphone seul, puis téléphone + montre. Inférence sur l'appareil.
+    Critère : précision mesurée sur des sorties non vues.
+
+- key: W1
+  title: Mesure passive de la glisse et des traces ouvertes
+  milestone: M5 v3
+  labels: [algo, collaboratif]
+  deps: [V8]
+  body: |
+    F33. Critère : indice de glisse corrélé aux observations de terrain.
+
+- key: W2
+  title: Détection de la technique dans l'app
+  milestone: M5 v3
+  labels: [client, sport]
+  deps: [D2, K4]
+  body: |
+    F37. Critère : technique affichée par tronçon après la sortie.
+
+- key: W3
+  title: Classements classique / skating corrigés par la glisse
+  milestone: M5 v3
+  labels: [client, sport]
+  deps: [W1, W2]
+  body: |
+    F38. Critère : deux sorties sur neiges différentes comparées après correction.
