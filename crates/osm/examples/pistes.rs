@@ -57,7 +57,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             t.elapsed().as_secs_f64(),
             serde_json::to_string_pretty(&out.stats)?
         );
-        let s = &out.set;
+        // The research reports count the ways with a vertex in the box: the outside
+        // ways kept to close the network are left out.
+        let s = &out.set.in_bbox(&site.bbox);
+        for r in &out.reentries {
+            println!(
+                "outside path kept: {} -> {}, {:.0} m, ways {:?}",
+                r.from_osm_node, r.to_osm_node, r.length_m, r.osm_way_ids
+            );
+        }
         if site.id == "cervieres" {
             // Report 04 (~25 km): ways tagged exactly `piste:type=nordic` (its Overpass
             // query did not match `nordic;hike`), no relation-only member, whole box.

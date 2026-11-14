@@ -23,7 +23,7 @@ use skimap_common::layout::DataLayout;
 use skimap_common::site::Site;
 
 use crate::error::Result;
-use crate::graph::{EdgeKind, Graph};
+use crate::graph::{EdgeKind, Graph, M_PER_DEG_LAT};
 use crate::parse::{Aoi, OsmData, read_file};
 use crate::pistes::{Oneway, Piste, PisteSet, Use, classify};
 use skimap_common::meta::{FileMeta, LayerMeta, SourceRef};
@@ -44,6 +44,9 @@ pub const ATTRIBUTION: &str =
 pub const CONNECTOR_MAX_M: f64 = 10.0;
 /// Layer name.
 pub const LAYER: &str = "pistes";
+/// Longest outside path kept to bring the site network back into the site box
+/// ([`Graph::reentry_paths`]), metres.
+pub const REENTRY_MAX_M: f64 = 10_000.0;
 
 /// Metropolitan France with a margin (Switzerland, Italy, Spain borders included), plus
 /// the two sites: the area kept from the planet file.
@@ -99,10 +102,13 @@ pub fn load_planet(dl: &Downloader) -> Result<Planet> {
     })
 }
 
-/// Key figures of the pistes layer of a site.
+/// Key figures of the pistes layer of a site. Way, length and relation figures count the
+/// ways with a vertex in the site box only (the research reports count those); the
+/// outside paths kept by [`site_pistes`] have their own figures, and the graph figures
+/// cover the whole layer.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct PistesStats {
-    /// Ways in the layer.
+    /// Ways with a vertex in the site box.
     pub ways: usize,
     /// Ways carrying their own kept `piste:type`.
     pub ways_tagged: usize,
@@ -128,6 +134,10 @@ pub struct PistesStats {
     pub ways_with_grooming: usize,
     /// Ways tagged one-way.
     pub ways_oneway: usize,
+    /// Ways outside the box kept to bring the network back into it ([`site_pistes`]).
+    pub ways_outside_box: usize,
+    /// Length of those ways, km.
+    pub km_outside_box: f64,
     /// Graph nodes.
     pub graph_nodes: usize,
     /// Graph edges (including connectors).
@@ -136,6 +146,11 @@ pub struct PistesStats {
     pub graph_connectors: usize,
     /// Connected components of the graph.
     pub graph_components: usize,
+    /// OSM nodes where every edge is one-way and all point in (sink) or all point out
+    /// (source): `piste:oneway` contradictions to fix in OSM ([`Graph::oneway_traps`]).
+    pub oneway_sinks: Vec<i64>,
+    /// See [`PistesStats::oneway_sinks`].
+    pub oneway_sources: Vec<i64>,
 }
 
 /// Result of [`build`] for one site.
@@ -147,6 +162,8 @@ pub struct PistesOutput {
     pub set: PisteSet,
     /// Key figures.
     pub stats: PistesStats,
+    /// Outside paths kept in the layer.
+    pub reentries: Vec<KeptReentry>,
 }
 
 /// Builds the pistes layer of `site` (downloads the extract through `dl` if needed).
@@ -159,7 +176,7 @@ fn uses_json(p: &Piste) -> Value {
     json!(p.uses.iter().collect::<Vec<&Use>>())
 }
 
-fn piste_properties(set: &PisteSet, p: &Piste) -> serde_json::Map<String, Value> {
+fn piste_properties(set: &PisteSet, p: &Piste, bbox: &BBox) -> serde_json::Map<String, Value> {
     let relations: Vec<Value> = p
         .relations
         .iter()
@@ -199,6 +216,7 @@ fn piste_properties(set: &PisteSet, p: &Piste) -> serde_json::Map<String, Value>
     m.insert("oneway_tag".into(), json!(p.oneway));
     m.insert("lit".into(), json!(p.lit));
     m.insert("length_m".into(), json!((p.length_m * 10.0).round() / 10.0));
+    m.insert("in_box".into(), json!(p.touches(bbox)));
     m
 }
 
@@ -224,14 +242,100 @@ fn piste_properties_doc() -> Value {
         "oneway": "sens unique ; la géométrie est alors dans le sens de circulation",
         "oneway_tag": "piste:oneway : forward, backward (géométrie inversée), no, unknown (absent, double sens)",
         "lit": "éclairée (piste:lit ou lit), null si inconnu",
-        "length_m": "longueur, m (haversine)"
+        "length_m": "longueur, m (haversine)",
+        "in_box": "au moins un sommet dans l'emprise du site ; false : way hors de l'emprise gardé pour que le réseau y revienne (sens uniques qui sortent de l'emprise)"
     })
+}
+
+/// An outside path kept in a site layer (see [`site_pistes`]).
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct KeptReentry {
+    /// OSM node where the path leaves the site network.
+    pub from_osm_node: i64,
+    /// OSM node where it comes back.
+    pub to_osm_node: i64,
+    /// Length of the outside part, metres.
+    pub length_m: f64,
+    /// OSM ways of the outside part, in path order.
+    pub osm_way_ids: Vec<i64>,
+}
+
+/// Pistes of a site: every piste with a vertex in `bbox`, plus the outside pistes that the
+/// network needs to come back into the box.
+///
+/// Cutting the network at the box turns a one-way trail that leaves the box and returns
+/// outside it into a dead end that nothing leaves (Chapelle-des-Bois: « Voie du tram »,
+/// « Le Gy Large » and « Le Chocolat » west of 6.02° E). The full network around the box
+/// (pistes within [`REENTRY_MAX_M`] of the site pistes) is built, and the outside paths
+/// of [`Graph::reentry_paths`] are added to the site.
+pub fn site_pistes(all: &PisteSet, bbox: &BBox) -> (PisteSet, Vec<KeptReentry>) {
+    let inside: Vec<usize> = (0..all.pistes.len())
+        .filter(|&i| all.pistes[i].touches(bbox))
+        .collect();
+    // Box of the site pistes (they overhang the site box), widened by the search radius.
+    let mut b = BBox::new(f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+    for (_, p) in inside.iter().flat_map(|&i| &all.pistes[i].points) {
+        b.south = b.south.min(p.lat);
+        b.north = b.north.max(p.lat);
+        b.west = b.west.min(p.lon);
+        b.east = b.east.max(p.lon);
+    }
+    if inside.is_empty() {
+        return (all.subset(Vec::new()), Vec::new());
+    }
+    let dlat = REENTRY_MAX_M / M_PER_DEG_LAT;
+    let dlon = dlat
+        / b.south
+            .abs()
+            .max(b.north.abs())
+            .to_radians()
+            .cos()
+            .max(0.05);
+    let region_box = BBox::new(b.south - dlat, b.west - dlon, b.north + dlat, b.east + dlon);
+    let region: Vec<usize> = (0..all.pistes.len())
+        .filter(|&i| all.pistes[i].touches(&region_box))
+        .collect();
+    let region_set = all.subset(region.iter().map(|&i| all.pistes[i].clone()).collect());
+    let is_inside: Vec<bool> = region
+        .iter()
+        .map(|i| inside.binary_search(i).is_ok())
+        .collect();
+    let g = Graph::build(&region_set, CONNECTOR_MAX_M);
+    let paths = g.reentry_paths(&is_inside, REENTRY_MAX_M);
+    let mut keep: Vec<usize> = inside;
+    keep.extend(
+        paths
+            .iter()
+            .flat_map(|r| r.pistes.iter().map(|&j| region[j])),
+    );
+    keep.sort_unstable();
+    keep.dedup();
+    let kept = paths
+        .iter()
+        .map(|r| KeptReentry {
+            from_osm_node: g.nodes[r.from].osm_id,
+            to_osm_node: g.nodes[r.to].osm_id,
+            length_m: (r.length_m * 10.0).round() / 10.0,
+            osm_way_ids: r
+                .pistes
+                .iter()
+                .map(|&j| region_set.pistes[j].way_id)
+                .collect(),
+        })
+        .collect();
+    (
+        all.subset(keep.iter().map(|&i| all.pistes[i].clone()).collect()),
+        kept,
+    )
 }
 
 /// Builds the pistes layer of `site` from an already loaded extract.
 pub fn build_from(site: &Site, layout: &DataLayout, planet: &Planet) -> Result<PistesOutput> {
     let dir = layout.layer_dir(site, LAYER)?;
-    let set = planet.set.in_bbox(&site.bbox);
+    let (set, reentries) = site_pistes(&planet.set, &site.bbox);
+    for r in &reentries {
+        tracing::info!(site = site.id, ?r, "outside path kept");
+    }
     let graph = Graph::build(&set, CONNECTOR_MAX_M);
 
     let mut features = Vec::with_capacity(set.pistes.len());
@@ -242,7 +346,7 @@ pub fn build_from(site: &Site, layout: &DataLayout, planet: &Planet) -> Result<P
         }
         features.push(feature(
             line_string(pts),
-            Value::Object(piste_properties(&set, p)),
+            Value::Object(piste_properties(&set, p, &site.bbox)),
         ));
     }
     write_geojson(&dir.join("pistes.geojson"), &features)?;
@@ -252,7 +356,7 @@ pub fn build_from(site: &Site, layout: &DataLayout, planet: &Planet) -> Result<P
     for (i, e) in graph.edges.iter().enumerate() {
         let mut props = match e.kind {
             EdgeKind::Piste { piste } => {
-                let mut m = piste_properties(&set, &set.pistes[piste]);
+                let mut m = piste_properties(&set, &set.pistes[piste], &site.bbox);
                 m.remove("length_m");
                 m.insert("kind".into(), json!("piste"));
                 m
@@ -297,18 +401,27 @@ pub fn build_from(site: &Site, layout: &DataLayout, planet: &Planet) -> Result<P
         .collect();
     write_geojson(&dir.join("graph_nodes.geojson"), &node_features)?;
 
-    let km = |f: &dyn Fn(&Piste) -> bool| (set.km(f) * 100.0).round() / 100.0;
-    let count = |f: &dyn Fn(&Piste) -> bool| set.pistes.iter().filter(|p| f(p)).count();
+    let in_box = set.in_bbox(&site.bbox);
+    let km = |f: &dyn Fn(&Piste) -> bool| (in_box.km(f) * 100.0).round() / 100.0;
+    let count = |f: &dyn Fn(&Piste) -> bool| in_box.pistes.iter().filter(|p| f(p)).count();
+    let traps = graph.oneway_traps();
+    let trap_ids = |sink: bool| -> Vec<i64> {
+        traps
+            .iter()
+            .filter(|t| t.sink == sink)
+            .map(|t| graph.nodes[t.node].osm_id)
+            .collect()
+    };
     use crate::pistes::DifficultySource as D;
     let stats = PistesStats {
-        ways: set.pistes.len(),
+        ways: in_box.pistes.len(),
         ways_tagged: count(&|p| p.tagged),
         ways_relation_only: count(&|p| !p.tagged),
         km_total: km(&|_| true),
         km_nordic: km(&|p| p.is_nordic()),
         km_hike_only: km(&|p| !p.is_nordic()),
         km_nordic_tagged: km(&|p| p.is_nordic() && p.tagged),
-        relations: set.relations.len(),
+        relations: in_box.relations.len(),
         ways_difficulty_from_colour: count(&|p| p.difficulty_source == Some(D::RelationColour)),
         ways_difficulty_from_relation_tag: count(&|p| {
             p.difficulty_source == Some(D::RelationDifficulty)
@@ -316,6 +429,8 @@ pub fn build_from(site: &Site, layout: &DataLayout, planet: &Planet) -> Result<P
         ways_difficulty_from_way: count(&|p| p.difficulty_source == Some(D::Way)),
         ways_with_grooming: count(&|p| p.grooming.raw.is_some()),
         ways_oneway: count(&|p| matches!(p.oneway, Oneway::Forward | Oneway::Backward)),
+        ways_outside_box: set.pistes.len() - in_box.pistes.len(),
+        km_outside_box: ((set.km(|_| true) - in_box.km(|_| true)) * 100.0).round() / 100.0,
         graph_nodes: graph.nodes.len(),
         graph_edges: graph.edges.len(),
         graph_connectors: graph
@@ -324,14 +439,16 @@ pub fn build_from(site: &Site, layout: &DataLayout, planet: &Planet) -> Result<P
             .filter(|e| e.kind == EdgeKind::Connector)
             .count(),
         graph_components: n_comp,
+        oneway_sinks: trap_ids(true),
+        oneway_sources: trap_ids(false),
     };
 
-    let relations: BTreeMap<i64, Value> = set
+    let relations: BTreeMap<i64, Value> = in_box
         .relations
         .iter()
         .enumerate()
         .map(|(i, r)| {
-            let km: f64 = set
+            let km: f64 = in_box
                 .pistes
                 .iter()
                 .filter(|p| p.relations.contains(&i))
@@ -382,7 +499,7 @@ pub fn build_from(site: &Site, layout: &DataLayout, planet: &Planet) -> Result<P
         crs: Some("EPSG:4326 (WGS84, longitude, latitude)".to_owned()),
         sources: vec![planet.source.clone()],
         files: vec![
-            FileMeta::new("pistes.geojson", "ways OSM de ski nordique, raquettes et randonnée hivernale ayant au moins un sommet dans l'emprise du site")
+            FileMeta::new("pistes.geojson", format!("ways OSM de ski nordique, raquettes et randonnée hivernale ayant au moins un sommet dans l'emprise du site, plus les ways hors de l'emprise qui ramènent le réseau dans l'emprise (chemin hors emprise le plus court, {} km au plus, propriété in_box = false)", REENTRY_MAX_M / 1000.0))
                 .licence(LICENCE)
                 .count(features.len())
                 .properties_json(&piste_properties_doc()),
@@ -404,10 +521,83 @@ pub fn build_from(site: &Site, layout: &DataLayout, planet: &Planet) -> Result<P
             "bbox_south_west_north_east": [site.bbox.south, site.bbox.west, site.bbox.north, site.bbox.east],
             "selection": "ways dont piste:type contient nordic, hike ou snowshoe, ou membres d'une relation de piste de ces types (ou route=ski) ; area=yes exclus ; au moins un sommet dans l'emprise",
             "connector_max_m": CONNECTOR_MAX_M,
+            "reentry_max_m": REENTRY_MAX_M,
+            "oneway": "piste:oneway du way seulement : ni oneway=* (sens des voitures sur les routes), ni oneway=yes ni rôles forward / backward des relations (une relation aller-retour comme « Fabrice Guy » parcourt les mêmes ways dans les deux sens)",
         }),
-        stats: json!({ "summary": stats, "relations": relations }),
+        stats: json!({ "summary": stats, "relations": relations, "reentries": reentries }),
         ..LayerMeta::new(LAYER, site.id)
     };
     write_json(&dir.join(format!("{LAYER}.meta.json")), &meta)?;
-    Ok(PistesOutput { dir, set, stats })
+    Ok(PistesOutput {
+        dir,
+        set,
+        stats,
+        reentries,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parse::{Tags, Way};
+    use skimap_common::geom::LonLat;
+
+    fn way(id: i64, nodes: &[i64]) -> Way {
+        Way {
+            id,
+            nodes: nodes.to_vec(),
+            tags: Tags(vec![
+                ("piste:type".to_owned(), "nordic".to_owned()),
+                ("piste:oneway".to_owned(), "yes".to_owned()),
+            ]),
+        }
+    }
+
+    /// A one-way loop crossing the west edge of a box at 6.0° E: ways 1 and 3 have a vertex
+    /// in the box, way 2 runs 1 km west of it; way 4 is a one-way trail 50 km away.
+    #[test]
+    fn site_keeps_the_outside_part_of_a_loop() {
+        let lat = 46.6;
+        let nodes = [
+            (1, LonLat::new(6.01, lat)),
+            (2, LonLat::new(5.99, lat + 0.005)),
+            (3, LonLat::new(5.98, lat)),
+            (4, LonLat::new(5.99, lat - 0.005)),
+            (5, LonLat::new(6.6, lat)),
+            (6, LonLat::new(6.61, lat)),
+        ];
+        let data = OsmData::from_elements(
+            nodes,
+            vec![
+                way(1, &[1, 2]),
+                way(2, &[2, 3, 4]),
+                way(3, &[4, 1]),
+                way(4, &[5, 6]),
+            ],
+            vec![],
+        );
+        let all = classify(&data);
+        let bbox = BBox::new(46.5, 6.0, 46.7, 6.2);
+        assert_eq!(all.in_bbox(&bbox).pistes.len(), 2);
+        // Cut at the box, the loop has a dead end at 2 and a start at 4.
+        let cut = Graph::build(&all.in_bbox(&bbox), CONNECTOR_MAX_M);
+        assert_eq!(cut.components().1, 1);
+        let (set, kept) = site_pistes(&all, &bbox);
+        let ids: Vec<i64> = set.pistes.iter().map(|p| p.way_id).collect();
+        assert_eq!(ids, vec![1, 2, 3]);
+        assert_eq!(kept.len(), 1);
+        assert_eq!(
+            (kept[0].from_osm_node, kept[0].to_osm_node),
+            (2, 4),
+            "{kept:?}"
+        );
+        assert_eq!(kept[0].osm_way_ids, vec![2]);
+        // The site graph is now one loop, every node reachable from every other.
+        let g = Graph::build(&set, CONNECTOR_MAX_M);
+        assert!(g.oneway_traps().is_empty());
+        assert_eq!(g.components().1, 1);
+        assert!(g.edges.iter().all(|e| e.oneway));
+        let out = g.out_adjacency();
+        assert!(out.iter().all(|o| o.len() == 1));
+    }
 }

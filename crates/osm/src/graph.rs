@@ -66,6 +66,31 @@ pub struct Graph {
     pub edges: Vec<Edge>,
 }
 
+/// A path over pistes outside a site that leads from one node of the site network to
+/// another one that the site network alone cannot reach from it (see
+/// [`Graph::reentry_paths`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Reentry {
+    /// Graph node where the path leaves the site network.
+    pub from: usize,
+    /// Graph node where it comes back.
+    pub to: usize,
+    /// Length of the outside part, metres.
+    pub length_m: f64,
+    /// Pistes of the outside part, in path order (indices into the [`PisteSet`]).
+    pub pistes: Vec<usize>,
+}
+
+/// One-way trap of a graph: a node joined to the network by one-way edges only, all
+/// pointing in (nothing can leave it) or all pointing out (nothing can reach it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OnewayTrap {
+    /// Graph node.
+    pub node: usize,
+    /// `true`: every edge points in (sink); `false`: every edge points out (source).
+    pub sink: bool,
+}
+
 type Vertex = GeomWithData<[f64; 2], (usize, usize)>;
 
 /// Degree box around `p` covering `radius_m` (with margin).
@@ -207,6 +232,166 @@ impl Graph {
             }
         }
         adj
+    }
+
+    /// Directed adjacency lists: for each node, `(edge index, node reached)` for every
+    /// edge that may be travelled from it.
+    pub fn out_adjacency(&self) -> Vec<Vec<(usize, usize)>> {
+        let mut out = vec![Vec::new(); self.nodes.len()];
+        for (e, edge) in self.edges.iter().enumerate() {
+            out[edge.from].push((e, edge.to));
+            if !edge.oneway && edge.to != edge.from {
+                out[edge.to].push((e, edge.from));
+            }
+        }
+        out
+    }
+
+    /// Paths over the pistes not in the site (`inside[piste] == false`) that are needed to
+    /// travel between nodes of the site network.
+    ///
+    /// The site network is cut where its pistes leave the site box. A one-way trail that
+    /// leaves the box and comes back outside it then ends in a node that nothing leaves
+    /// (or that nothing reaches): every route through it fails, although the trail is
+    /// skiable. For every node of the site network with an edge to the outside, a
+    /// Dijkstra over outside edges only (one-way respected, at most `max_m` metres) looks
+    /// for the site nodes it reaches; each one that the site network (plus the paths kept
+    /// so far) cannot reach from that node gives a path to keep. Paths never run through
+    /// the site network: each is an outside piece between two site nodes.
+    ///
+    /// Connectors count as inside when both ends are site nodes.
+    pub fn reentry_paths(&self, inside: &[bool], max_m: f64) -> Vec<Reentry> {
+        use std::cmp::Reverse;
+        use std::collections::BinaryHeap;
+
+        let n = self.nodes.len();
+        let mut inside_node = vec![false; n];
+        let mut kept = vec![false; self.edges.len()];
+        for edge in &self.edges {
+            if let EdgeKind::Piste { piste } = edge.kind
+                && inside[piste]
+            {
+                inside_node[edge.from] = true;
+                inside_node[edge.to] = true;
+            }
+        }
+        let is_inside_edge = |e: &Edge| match e.kind {
+            EdgeKind::Piste { piste } => inside[piste],
+            EdgeKind::Connector => inside_node[e.from] && inside_node[e.to],
+        };
+        for (e, edge) in self.edges.iter().enumerate() {
+            kept[e] = is_inside_edge(edge);
+        }
+        let inside_edge = kept.clone();
+        let out = self.out_adjacency();
+        let adj = self.adjacency();
+
+        // Marks in `reach` every node reachable from `s` over kept edges.
+        let spread = |s: usize, reach: &mut Vec<bool>, kept: &[bool]| {
+            let mut stack = vec![s];
+            reach[s] = true;
+            while let Some(u) = stack.pop() {
+                for &(e, v) in &out[u] {
+                    if kept[e] && !reach[v] {
+                        reach[v] = true;
+                        stack.push(v);
+                    }
+                }
+            }
+        };
+
+        let mut found = Vec::new();
+        for x in 0..n {
+            if !inside_node[x] || adj[x].iter().all(|&(e, _)| inside_edge[e]) {
+                continue;
+            }
+            let mut reach = vec![false; n];
+            spread(x, &mut reach, &kept);
+            let mut dist = vec![f64::INFINITY; n];
+            let mut pred = vec![usize::MAX; n];
+            let mut heap = BinaryHeap::new();
+            dist[x] = 0.0;
+            // Distances are non-negative: their bit patterns sort like the values.
+            heap.push(Reverse((0f64.to_bits(), x)));
+            while let Some(Reverse((bits, u))) = heap.pop() {
+                let d = f64::from_bits(bits);
+                if d > dist[u] {
+                    continue;
+                }
+                if u != x && inside_node[u] {
+                    if !reach[u] {
+                        let mut edges = Vec::new();
+                        let mut v = u;
+                        while v != x {
+                            let e = pred[v];
+                            edges.push(e);
+                            let edge = &self.edges[e];
+                            v = if edge.to == v { edge.from } else { edge.to };
+                        }
+                        edges.reverse();
+                        let mut pistes: Vec<usize> = Vec::new();
+                        for &e in &edges {
+                            kept[e] = true;
+                            if let EdgeKind::Piste { piste } = self.edges[e].kind
+                                && pistes.last() != Some(&piste)
+                            {
+                                pistes.push(piste);
+                            }
+                        }
+                        // Everything reachable from `u` is now reachable from `x`.
+                        spread(u, &mut reach, &kept);
+                        found.push(Reentry {
+                            from: x,
+                            to: u,
+                            length_m: d,
+                            pistes,
+                        });
+                    }
+                    continue;
+                }
+                for &(e, v) in &out[u] {
+                    if inside_edge[e] {
+                        continue;
+                    }
+                    let nd = d + self.edges[e].length_m;
+                    if nd <= max_m && nd < dist[v] {
+                        dist[v] = nd;
+                        pred[v] = e;
+                        heap.push(Reverse((nd.to_bits(), v)));
+                    }
+                }
+            }
+        }
+        found
+    }
+
+    /// Nodes of degree two or more whose edges are all one-way and all point in, or all
+    /// point out. On a trail network this is a tagging contradiction (one `piste:oneway`
+    /// against the others), never a real place: it is reported, not repaired.
+    pub fn oneway_traps(&self) -> Vec<OnewayTrap> {
+        let adj = self.adjacency();
+        let mut traps = Vec::new();
+        for (u, inc) in adj.iter().enumerate() {
+            if inc.len() < 2 {
+                continue;
+            }
+            let edges: Vec<&Edge> = inc.iter().map(|&(e, _)| &self.edges[e]).collect();
+            if edges.iter().any(|e| !e.oneway || e.from == e.to) {
+                continue;
+            }
+            if edges.iter().all(|e| e.to == u) {
+                traps.push(OnewayTrap {
+                    node: u,
+                    sink: true,
+                });
+            } else if edges.iter().all(|e| e.from == u) {
+                traps.push(OnewayTrap {
+                    node: u,
+                    sink: false,
+                });
+            }
+        }
+        traps
     }
 
     /// Connected component of every node (undirected), and the number of components.
@@ -366,6 +551,94 @@ mod tests {
         );
         assert_eq!(g.components().1, 2);
         assert_eq!(Graph::build(&set, 0.0).components().1, 3);
+    }
+
+    fn way_ids(set: &PisteSet, ids: &[usize]) -> Vec<i64> {
+        ids.iter().map(|&i| set.pistes[i].way_id).collect()
+    }
+
+    #[test]
+    fn reentry_closes_a_one_way_loop_cut_by_the_box() {
+        // One-way loop 1 -> 3 -> 5 -> 1: ways 1 (1-2-3) and 3 (5-1) are in the site, way 2
+        // (3-4-5) is outside. Way 4 (3-6) is an outside two-way spur, way 5 (7-8) an
+        // unrelated outside piste.
+        let d = data(vec![
+            way(1, &[1, 2, 3], Some("yes")),
+            way(2, &[3, 4, 5], Some("yes")),
+            way(3, &[5, 1], Some("yes")),
+            way(4, &[3, 6], None),
+            way(5, &[7, 8], None),
+        ]);
+        let set = classify(&d);
+        let g = Graph::build(&set, 0.0);
+        let inside = [true, false, true, false, false];
+        let r = g.reentry_paths(&inside, 10_000.0);
+        assert_eq!(r.len(), 1, "{r:?}");
+        assert_eq!((g.nodes[r[0].from].osm_id, g.nodes[r[0].to].osm_id), (3, 5));
+        assert_eq!(way_ids(&set, &r[0].pistes), vec![2]);
+        assert!(
+            (r[0].length_m - 2.0 * 76.5).abs() < 1.0,
+            "{}",
+            r[0].length_m
+        );
+        // Too far: nothing kept.
+        assert!(g.reentry_paths(&inside, 100.0).is_empty());
+        // Cut at the box, the loop ends at 3 (nothing leaves) and starts at 5 (nothing
+        // reaches it); these are dead ends, not tag contradictions.
+        let cut = Graph::build(
+            &set.subset(vec![set.pistes[0].clone(), set.pistes[2].clone()]),
+            0.0,
+        );
+        let traps: Vec<(i64, bool)> = cut
+            .oneway_traps()
+            .iter()
+            .map(|t| (cut.nodes[t.node].osm_id, t.sink))
+            .collect();
+        assert!(traps.is_empty(), "degree-1 ends are not traps: {traps:?}");
+    }
+
+    #[test]
+    fn reentry_ignores_paths_the_site_already_has() {
+        // Inside two-way way 1-2-3 and an outside two-way way 1-9-3 beside it: the site
+        // already links 1 and 3 both ways.
+        let d = data(vec![way(1, &[1, 2, 3], None), way(2, &[1, 9, 3], None)]);
+        let set = classify(&d);
+        let g = Graph::build(&set, 0.0);
+        assert!(g.reentry_paths(&[true, false], 10_000.0).is_empty());
+        // The same outside way joining two separate site pieces is kept.
+        let d = data(vec![
+            way(1, &[1, 2], None),
+            way(2, &[2, 9, 3], None),
+            way(3, &[3, 4], None),
+        ]);
+        let set = classify(&d);
+        let g = Graph::build(&set, 0.0);
+        let r = g.reentry_paths(&[true, false, true], 10_000.0);
+        // One path: once kept, it is travelled both ways.
+        assert_eq!(r.len(), 1, "{r:?}");
+        assert!(r.iter().all(|x| way_ids(&set, &x.pistes) == vec![2]));
+    }
+
+    #[test]
+    fn oneway_traps_find_contradicting_tags() {
+        // 1 -> 2 <- 3: node 2 is a sink; 5 <- 4 -> 6: node 4 is a source; 7 -> 8 -> ...
+        // through two-way way 6 is fine.
+        let d = data(vec![
+            way(1, &[1, 2], Some("yes")),
+            way(2, &[2, 3], Some("-1")),
+            way(3, &[4, 5], Some("yes")),
+            way(4, &[4, 6], Some("yes")),
+            way(5, &[7, 8], Some("yes")),
+            way(6, &[8, 1], None),
+        ]);
+        let set = classify(&d);
+        let g = Graph::build(&set, 0.0);
+        let traps: Vec<(i64, bool)> = g
+            .oneway_traps()
+            .iter()
+            .map(|t| (g.nodes[t.node].osm_id, t.sink))
+            .collect();
+        assert_eq!(traps, vec![(2, true), (4, false)]);
     }
 
     #[test]
