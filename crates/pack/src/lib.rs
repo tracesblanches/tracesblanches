@@ -20,6 +20,8 @@ pub mod tiles;
 #[cfg(feature = "pipeline")]
 pub mod build;
 #[cfg(feature = "pipeline")]
+pub mod export;
+#[cfg(feature = "pipeline")]
 pub mod serve;
 
 pub use error::{Error, Result};

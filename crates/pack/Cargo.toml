@@ -48,11 +48,19 @@ name = "build_pack"
 required-features = ["pipeline"]
 
 [[example]]
+name = "export_pack"
+required-features = ["pipeline"]
+
+[[example]]
 name = "serve"
 required-features = ["pipeline"]
 
 [[example]]
 name = "basemap_sizes"
+required-features = ["pipeline"]
+
+[[test]]
+name = "synthetic_pack"
 required-features = ["pipeline"]
 
 [[test]]
