@@ -34,7 +34,9 @@ use tracing::info;
 
 pub use dem::Extent;
 pub use error::{Error, Result};
-use skimap_common::geotiff;
+/// Float32 GeoTIFF reader / writer, moved to `skimap_common::geotiff`; re-exported for the
+/// callers written before the move (`skimap-core` example `offpiste_bench`).
+pub use skimap_common::geotiff;
 use skimap_common::meta::{FileMeta, LayerMeta, SourceRef};
 
 /// Layer name (output directory).
