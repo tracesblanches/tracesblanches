@@ -1,18 +1,286 @@
 //! IGN elevation per site: slope and aspect.
 //!
-//! Owned tickets:
-//! - P5 (#18): download RGE ALTI 5 m or LiDAR HD over both sites, compute slope and aspect on
-//!   a `skimap_common::grid::Grid`, compare with the IGN `SLOPES.MOUNTAIN` layer.
+//! Owned ticket P5 (#18): download the IGN LiDAR HD terrain model at 5 m over both sites,
+//! compute slope and aspect, compare with the IGN `SLOPES.MOUNTAIN` layer.
 //!
-//! Pipeline side: may use `skimap_common::download`.
+//! - [`dem`] — LiDAR HD tiles from the Géoplateforme WMS-R, mosaic, crop, block mean.
+//! - [`slope`] — Horn slope and aspect.
+//! - [`ign_slopes`] — comparison with the IGN slope map (WMTS).
+//! - [`geotiff`] — Float32 GeoTIFF reader / writer; [`png`] — PNG decoder for WMTS tiles.
+//! - [`meta`] — `<layer>.meta.json`.
+//!
+//! [`build`] writes `data/out/<site>/terrain/`:
+//! `dem_5m.tif`, `slope_5m.tif`, `aspect_5m.tif` (GeoTIFF Float32, Lambert-93
+//! EPSG:2154, 5 m, `NaN` no-data), `slope_ign_comparison.json`, `terrain.meta.json`.
+//!
+//! Pipeline side: uses `skimap_common::download`.
 
-/// Name of this crate, checked by the crate smoke test.
-pub const CRATE: &str = env!("CARGO_PKG_NAME");
+pub mod dem;
+pub mod error;
+pub mod geotiff;
+pub mod ign_slopes;
+pub mod meta;
+pub mod png;
+pub mod slope;
+
+use std::path::PathBuf;
+use std::time::Instant;
+
+use serde::{Deserialize, Serialize};
+use skimap_common::download::Downloader;
+use skimap_common::layout::DataLayout;
+use skimap_common::site::Site;
+use tracing::info;
+
+pub use dem::Extent;
+pub use error::{Error, Result};
+use meta::{FileMeta, LayerMeta, SourceMeta};
+
+/// Layer name (output directory).
+pub const LAYER: &str = "terrain";
+/// WMTS zoom used for the comparison with the IGN slope map (≈ 3.4 m pixels at 45° N).
+pub const COMPARISON_ZOOM: u8 = 15;
+
+/// Steep-terrain share (≥ 30°) published by research report 07 and the Lambert-93 extent
+/// of the tile mosaic it was computed on (5 m LiDAR HD, `numpy.gradient` central
+/// differences, missing tiles excluded): Cervières tiles 0992–1001 × 6421–6428 (78 of 80),
+/// Chapelle-des-Bois 0933–0941 × 6613–6621 (65 of 81). Used as a cross-check.
+pub fn report07_reference(site: &Site) -> Option<(Extent, f64)> {
+    let mosaic = |kx0: i64, kx1: i64, ky0: i64, ky1: i64| Extent {
+        min_x: kx0 as f64 * 1000.0 - dem::TILE_SHIFT,
+        min_y: (ky0 - 1) as f64 * 1000.0 + dem::TILE_SHIFT,
+        max_x: (kx1 + 1) as f64 * 1000.0 - dem::TILE_SHIFT,
+        max_y: ky1 as f64 * 1000.0 + dem::TILE_SHIFT,
+    };
+    match site.id {
+        "cervieres" => Some((mosaic(992, 1001, 6421, 6428), 0.381)),
+        "chapelle-des-bois" => Some((mosaic(933, 941, 6613, 6621), 0.023)),
+        _ => None,
+    }
+}
+
+/// Cross-check against report 07.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Report07Check {
+    /// Lambert-93 extent of the report's tile mosaic.
+    pub area: Extent,
+    /// Share ≥ 30° published by the report.
+    pub report: f64,
+    /// Share ≥ 30° of our slope over the same extent (all tiles, Horn operator).
+    pub ours: f64,
+}
+
+/// Summary of a terrain build.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TerrainBuild {
+    /// Site identifier.
+    pub site: String,
+    /// Lambert-93 extent of the site box.
+    pub extent: Extent,
+    /// LiDAR HD tiles used.
+    pub tiles: usize,
+    /// Terrain model size, cells.
+    pub size_cells: [usize; 2],
+    /// Share of cells with an elevation (LiDAR HD covers France only).
+    pub valid_fraction: f64,
+    /// Elevation range, metres.
+    pub elevation_range_m: [f32; 2],
+    /// Share of valid slope cells ≥ 30° over the whole site box.
+    pub steep30_fraction: f64,
+    /// Comparison with IGN `SLOPES.MOUNTAIN`.
+    pub ign_comparison: ign_slopes::SlopeComparison,
+    /// Cross-check against research report 07.
+    pub report07: Option<Report07Check>,
+    /// Files written.
+    pub files: Vec<PathBuf>,
+    /// Seconds spent: terrain model (download or cache), slope, writing, comparison.
+    pub seconds: Timings,
+}
+
+/// Wall-clock timings of a build, seconds.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Timings {
+    /// Fetching (or reading from cache) and mosaicking the tiles.
+    pub dem: f64,
+    /// Slope and aspect.
+    pub slope: f64,
+    /// Writing the GeoTIFFs.
+    pub write: f64,
+    /// Comparison with the IGN slope map.
+    pub comparison: f64,
+}
+
+/// Sources of the terrain layer.
+pub fn sources() -> Vec<SourceMeta> {
+    vec![
+        SourceMeta {
+            name: "MNT LiDAR HD (5 m, rééchantillonné par le WMS)".into(),
+            producer: "IGN".into(),
+            url: format!("{}?LAYERS={}", dem::WMS_URL, dem::LAYER),
+            licence: "Licence Ouverte 2.0 (Etalab)".into(),
+            attribution: "IGN – MNT LiDAR HD".into(),
+            edition: Some(
+                "Cervières : vol août 2021, édition 15/03/2025 ; Chapelle-des-Bois : vol oct.-nov. 2022, édition 21/07/2025 (rapport 07)"
+                    .into(),
+            ),
+        },
+        SourceMeta {
+            name: "Carte des pentes (SLOPES.MOUNTAIN), comparaison seulement".into(),
+            producer: "IGN".into(),
+            url: format!("https://data.geopf.fr/wmts?LAYER={}", ign_slopes::LAYER),
+            licence: "Géoplateforme IGN, sans clé ; licence d'un usage hors ligne non confirmée (features.md n° 5) : la couche n'est utilisée que pour la comparaison, rien n'en est redistribué".into(),
+            attribution: "IGN – Carte des pentes".into(),
+            edition: None,
+        },
+    ]
+}
+
+fn file_meta(
+    path: &std::path::Path,
+    description: &str,
+    unit: &str,
+    g: &skimap_common::grid::Grid<f32>,
+    bytes: u64,
+) -> FileMeta {
+    FileMeta {
+        name: path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+        description: description.into(),
+        unit: unit.into(),
+        format: "GeoTIFF Float32, Deflate".into(),
+        crs: format!("EPSG:{}", g.crs().epsg()),
+        cell_size: Some(g.transform().pixel_width),
+        size_cells: Some([g.width(), g.height()]),
+        nodata: Some("NaN".into()),
+        bytes,
+    }
+}
+
+/// Builds the terrain layer of a site: terrain model, slope, aspect, IGN comparison.
+pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<TerrainBuild> {
+    let dir = layout.layer_dir(site, LAYER)?;
+    DataLayout::ensure(&dir)?;
+    let extent = Extent::from_bbox(site.bbox)?;
+    let mut t = Timings::default();
+
+    let t0 = Instant::now();
+    let tiles = dem::tiles_for(&extent).len();
+    let dem = dem::fetch_dem(&extent, dl)?;
+    t.dem = t0.elapsed().as_secs_f64();
+    info!(
+        site = site.id,
+        tiles,
+        w = dem.width(),
+        h = dem.height(),
+        s = t.dem,
+        "terrain model ready"
+    );
+
+    let t0 = Instant::now();
+    let sa = slope::horn(&dem);
+    t.slope = t0.elapsed().as_secs_f64();
+
+    let t0 = Instant::now();
+    let mut files = Vec::new();
+    let mut fmeta = Vec::new();
+    for (name, grid, desc, unit) in [
+        (
+            "dem_5m.tif",
+            &dem,
+            "Altitude du terrain (MNT LiDAR HD), IGN69",
+            "m",
+        ),
+        ("slope_5m.tif", &sa.slope, "Pente (Horn 3×3)", "degré"),
+        (
+            "aspect_5m.tif",
+            &sa.aspect,
+            "Orientation : direction vers laquelle la pente descend, degrés depuis le nord dans le sens horaire ; -1 = plat",
+            "degré",
+        ),
+    ] {
+        let path = dir.join(name);
+        let bytes = geotiff::write_f32(&path, grid)?;
+        fmeta.push(file_meta(&path, desc, unit, grid, bytes));
+        files.push(path);
+    }
+    t.write = t0.elapsed().as_secs_f64();
+
+    let valid = dem.data().iter().filter(|v| v.is_finite()).count();
+    let (lo, hi) = dem
+        .data()
+        .iter()
+        .filter(|v| v.is_finite())
+        .fold((f32::INFINITY, f32::NEG_INFINITY), |(a, b), v| {
+            (a.min(*v), b.max(*v))
+        });
+    let all = (extent.min_x, extent.min_y, extent.max_x, extent.max_y);
+    let (steep, _) = slope::fraction_at_least(&sa.slope, 30.0, all);
+    let report07 = match report07_reference(site) {
+        Some((area, report)) => {
+            let e = (area.min_x, area.min_y, area.max_x, area.max_y);
+            let (ours, _) = slope::fraction_at_least(&sa.slope, 30.0, e);
+            Some(Report07Check { area, report, ours })
+        }
+        None => None,
+    };
+
+    let t0 = Instant::now();
+    let cmp = ign_slopes::compare(site.bbox, &sa.slope, dl, COMPARISON_ZOOM)?;
+    t.comparison = t0.elapsed().as_secs_f64();
+    let cmp_path = dir.join("slope_ign_comparison.json");
+    std::fs::write(&cmp_path, serde_json::to_vec_pretty(&cmp)?)
+        .map_err(|e| Error::io(&cmp_path, e))?;
+    files.push(cmp_path);
+
+    let meta = LayerMeta {
+        layer: LAYER.into(),
+        site: site.id.into(),
+        generated_at: meta::now_rfc3339(),
+        valid_for: "relief permanent (date des levés LiDAR HD, voir sources)".into(),
+        sources: sources(),
+        files: fmeta,
+        notes: vec![
+            "Grille Lambert-93 de 5 m dont l'origine est décalée de 0,25 m (grille des dalles LiDAR HD).".into(),
+            "Le WMS rééchantillonne les dalles de 50 cm à 5 m (écart moyen de 0,11 m à la moyenne par blocs de 10 × 10 sur la dalle 0998-6426).".into(),
+            "Hors de France (Italie, Suisse) et dans les zones masquées (ZICAD), pas de donnée : NaN.".into(),
+            "Pente et orientation : opérateur de Horn sur 3 × 3 cellules ; bordures et voisins NaN donnent NaN.".into(),
+            format!(
+                "Comparaison à la carte des pentes IGN (zoom {COMPARISON_ZOOM}) dans slope_ign_comparison.json : la carte IGN vient du RGE ALTI 5 m, la nôtre du LiDAR HD."
+            ),
+        ],
+    };
+    files.push(meta.write(&dir)?);
+
+    Ok(TerrainBuild {
+        site: site.id.into(),
+        extent,
+        tiles,
+        size_cells: [dem.width(), dem.height()],
+        valid_fraction: valid as f64 / dem.data().len() as f64,
+        elevation_range_m: [lo, hi],
+        steep30_fraction: steep,
+        ign_comparison: cmp,
+        report07,
+        files,
+        seconds: t,
+    })
+}
 
 #[cfg(test)]
 mod tests {
+    use skimap_common::site::SITES;
+
     #[test]
-    fn crate_name() {
-        assert!(super::CRATE.starts_with("skimap-"));
+    fn report07_areas_are_inside_sites() {
+        for s in SITES {
+            let (a, f) = super::report07_reference(s).unwrap();
+            let e = super::Extent::from_bbox(s.bbox).unwrap();
+            assert!(
+                a.min_x > e.min_x && a.max_x < e.max_x && a.min_y > e.min_y && a.max_y < e.max_y
+            );
+            assert!(f > 0.0 && f < 1.0);
+        }
     }
 }

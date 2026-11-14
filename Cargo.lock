@@ -2303,7 +2303,17 @@ dependencies = [
 name = "skimap-snow"
 version = "0.1.0"
 dependencies = [
+ "approx",
+ "chrono",
+ "flate2",
+ "rayon",
+ "serde",
+ "serde_json",
  "skimap-common",
+ "skimap-terrain",
+ "thiserror",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -2323,7 +2333,17 @@ dependencies = [
 name = "skimap-terrain"
 version = "0.1.0"
 dependencies = [
+ "approx",
+ "chrono",
+ "flate2",
+ "rayon",
+ "serde",
+ "serde_json",
  "skimap-common",
+ "thiserror",
+ "tiff",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
