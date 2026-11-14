@@ -2192,7 +2192,19 @@ dependencies = [
 name = "skimap-coverage"
 version = "0.1.0"
 dependencies = [
+ "geo",
+ "geojson",
+ "rayon",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sevenz-rust2",
  "skimap-common",
+ "skimap-zones",
+ "tempfile",
+ "thiserror",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
