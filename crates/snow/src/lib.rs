@@ -10,11 +10,13 @@
 //! - [`sim`] — yearly simulation files, per-pixel interpolation and range.
 //! - [`map`] — 25 m terrain (from the 5 m LiDAR HD of `skimap-terrain`) and projection.
 //! - [`classes`] — three classes per practice.
+//! - [`stations`], [`validate`] — station data and validation.
 //!
 //! [`build`] writes `data/out/<site>/snow/` (GeoTIFF Float32, Lambert-93 EPSG:2154, 25 m,
 //! `NaN` no-data): `snow_depth.tif`, `snow_depth_low.tif`, `snow_depth_high.tif` (cm),
 //! `class_groomed.tif`, `class_srn.tif` (0 insuffisant, 1 limite, 2 suffisant),
-//! `massif.tif` (massif number) and `snow.meta.json`.
+//! `massif.tif` (massif number) and `snow.meta.json`. [`validate::validate`] writes
+//! `validation.json`.
 //!
 //! Not modelled (stated in the metadata): wind redistribution, forest interception and
 //! shading, grooming compaction, artificial snow; the simulation is per massif and
@@ -25,6 +27,8 @@ pub mod error;
 pub mod map;
 pub mod massifs;
 pub mod sim;
+pub mod stations;
+pub mod validate;
 
 use std::path::PathBuf;
 use std::time::Instant;

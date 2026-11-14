@@ -89,3 +89,55 @@ Temps de la chaîne complète **par site et par jour** (`total` de `build`, 20 c
 | Calcul seul, hors réseau (`SKIMAP_OFFLINE=1`) | 0,55 s | 0,25 s |
 
 Hors réseau, l'écriture des GeoTIFF (0,25 s) puis la lecture du MNT en cache (0,14 s) et le décodage de la simulation (0,14 s) dominent ; la projection elle-même prend 0,014 s. En production, c'est le réseau qui domine : le téléchargement quotidien du fichier de simulation, et une fois pour toutes celui du MNT.
+
+## Validation contre les stations (P7)
+
+`skimap_snow::validate::validate(site, &layout, &downloader, 2020, 2025)` compare l'estimation aux hauteurs de neige mesurées à 06 h UTC, du 1er novembre au 31 mai des hivers 2020-2021 à 2025-2026, et écrit `data/out/<site>/snow/validation.json`.
+
+```sh
+cargo run --release -p skimap-snow --example snow_validate [2020 2025] [cervieres|chapelle-des-bois]
+```
+
+- **Stations** (BDClim horaire, data.gouv, Licence Ouverte) : Cervières 05027001 (1 614 m) et Arvieux 05007003 (1 825 m) pour Cervières ; Mouthe 25413001 (940 m) et La Boissaude Rochejean 25494001 (1 222 m), à quelques kilomètres au nord-est de l'emprise de Chapelle-des-Bois, dans le même massif (55 Haut-Doubs). Fichiers `H_<dép>_previous-2020-2024` et `H_<dép>_latest-2025-2026`.
+- **Unité de `NEIGETOT` : le centimètre** (« hauteur de neige totale au sol (en cm) », `H_descriptif_champs.csv` officiel ; « cm, entier » dans le descriptif PDF du 03/06/2026). Heures en UTC pour la métropole (description du jeu sur data.gouv). Les valeurs de qualité 2 (« douteuse ») sont écartées.
+- Deux estimations : **produit** = le pixel de 25 m qui contient la station, exactement comme sur la carte (calculé sur un carré de ± 500 m autour de la station, même grille) ; **plat** = la simulation sur le plat à l'altitude officielle de la station, qui isole la simulation et l'interpolation en altitude de la projection sur le relief.
+- Biais = estimation − observation. Couverture = part des jours où l'observation tombe dans la fourchette [basse, haute].
+
+### Résultats par site (stations regroupées)
+
+| Site | Jours | Biais | MAE | RMSE | Moyenne observée | Plat : biais / MAE |
+|---|---|---|---|---|---|---|
+| Cervières (Cervières + Arvieux) | 1 951 | −2,5 cm | 6,9 cm | 10,2 cm | 21,1 cm | −1,9 / 7,2 cm |
+| Chapelle-des-Bois (Mouthe + La Boissaude) | 2 304 | +4,1 cm | 6,7 cm | 13,8 cm | 6,8 cm | +3,7 / 6,3 cm |
+
+### Par mois (produit ; biais / MAE en cm, moyenne observée entre parenthèses)
+
+| Mois | Cervières | Chapelle-des-Bois |
+|---|---|---|
+| novembre | −0,5 / 1,7 (3,1) | −0,5 / 0,8 (2,1) |
+| décembre | −5,2 / 7,4 (22,2) | +0,2 / 5,5 (12,6) |
+| janvier | −7,5 / 9,2 (38,0) | +2,5 / 8,5 (16,8) |
+| février | −9,7 / 12,2 (47,6) | +12,8 / 14,4 (7,5) |
+| mars | +0,9 / 12,0 (34,4) | +9,5 / 10,6 (3,1) |
+| avril | +4,1 / 6,3 (3,9) | +2,2 / 2,7 (1,3) |
+| mai | −0,1 / 0,2 (0,2) | +0,4 / 0,5 (0,1) |
+
+### Par station
+
+| Station | Pixel 25 m (alt., pente, orient.) | Période | Jours | Biais | MAE | RMSE | Plat : biais / MAE | Couverture (largeur moy.) | Neige ≥ 5 cm d'accord | Classes justes : damée / SRN |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Cervières | 1 616 m, 8,4°, 296° | 11/2020–05/2026 | 1 104 | −2,6 | 6,7 | 10,3 | −4,5 / 7,1 | 76 % (17,7 cm) | 91 % | 74 % / 85 % |
+| Arvieux | 1 823 m, 7,6°, 165° | 11/2022–05/2026 | 847 | −2,4 | 7,2 | 10,1 | +1,5 / 7,3 | 61 % (18,6 cm) | 90 % | 78 % / 80 % |
+| Mouthe | 943 m, 5,4°, 300° | 11/2020–04/2026 | 1 057 | +1,0 | 4,1 | 7,6 | +0,3 / 3,6 | 83 % (14,4 cm) | 84 % | 89 % / 95 % |
+| La Boissaude Rochejean | 1 223 m, 1,7°, 285° | 11/2020–05/2026 | 1 247 | +6,8 | 8,9 | 17,4 | +6,5 / 8,6 | 70 % (21,3 cm) | 84 % | 78 % / 85 % |
+
+Par saison (produit, biais / MAE en cm) : Cervières −3,8 / 5,0 (2020-21), −1,8 / 3,5, +0,2 / 4,4, +7,4 / 8,4, −4,7 / 7,6, −10,1 / 10,2 (2025-26) ; Arvieux −4,1 / 8,7 (2022-23), +2,2 / 6,7, −8,1 / 8,5, +0,3 / 5,0 ; Mouthe +4,7 / 8,0, +2,7 / 8,1, −1,6 / 2,0, +0,1 / 0,5, −0,7 / 2,4, +0,4 / 3,1 ; La Boissaude +19,2 / 19,4, +20,6 / 21,0, −2,0 / 2,7, −1,7 / 2,2, +1,8 / 3,2, +3,1 / 4,7.
+
+### Lecture
+
+- **Alpes** : la simulation sous-estime le cœur de l'hiver d'environ 20 % (−5 à −10 cm de décembre à février pour 22 à 48 cm mesurés) et fond un peu tard (+4 cm en avril).
+- **Jura** : bon de novembre à janvier (biais ≤ 2,5 cm), mais la neige simulée dure trop en février-mars (+10 à +13 cm alors que les stations de 940 à 1 222 m sont déjà déneigées). L'écart vient surtout de La Boissaude en 2020-21 et 2021-22 : la station a fondu début février 2021 (62 cm le 15/01, 0 cm le 23/02) alors que la simulation gardait de la neige ; les quatre autres saisons, |biais| ≤ 3,1 cm.
+- Le produit et le calcul « plat » diffèrent peu : les stations sont sur des pentes faibles (1,7 à 8,4°). **La projection sur les pentes n'est donc pas validée par ces stations** ; il faut des relevés en pente (T5, #47).
+- La fourchette (sensibilité au relief) ne contient que 61 à 83 % des observations : ce n'est pas un intervalle de confiance. Une marge d'erreur par mois tirée de ce tableau serait à calibrer sur d'autres stations que celles qui servent à la mesurer.
+- Vérification indépendante : un oracle Python recalcule, depuis les fichiers bruts du cache, les jours retenus, le biais, la MAE et la RMSE des quatre stations, produit et plat : mêmes valeurs à 10⁻³ cm près. Les valeurs du pixel des stations de Cervières et d'Arvieux sont celles de la carte du site (altitude, pente et orientation recalculées depuis `dem_5m.tif` : mêmes valeurs à 10⁻³ près).
+- Temps de la validation depuis le cache : 1,6 s (Cervières) et 1,5 s (Chapelle-des-Bois) pour six saisons ; le premier passage télécharge les fichiers horaires du département (51 Mo pour les Hautes-Alpes, 33 Mo pour le Doubs) et sept fichiers annuels de simulation (77 Mo, communs aux deux sites).
