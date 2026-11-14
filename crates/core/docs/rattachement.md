@@ -15,6 +15,6 @@ Traces synthétiques tirées d'itinéraires réels (paires de preuve dans les de
 | Fausses alertes, itinéraire / couloir | 0,08 / h ; 0 | 0,17 / h ; 0 |
 | Mauvais embranchement : détectés, délai médian (max) | 8 / 8, 54 s (64 s) | 11 / 12 (1 alerte avant l'embranchement), 34 s (40 s) |
 | Sortie du couloir : détectées, délai médian (max) | 10 / 10, 28 s (81 s) | 12 / 12, 23 s (37 s) |
-| Temps par fix (rattachement + suivi) | moyenne 1,1 µs, p99 3,0 µs | moyenne 0,7 µs, p99 2,0 µs |
+| Temps par fix (rattachement + suivi), poste | moyenne 1,1 à 1,9 µs, p99 3 à 4 µs (selon les exécutions) | moyenne 0,7 à 1,1 µs, p99 2,0 à 2,8 µs, max 11 µs |
 
 Le balayage du seuil (sortie de l'exemple) a fixé 40 m / 15 s : 20 m / 10 s donne 1,29 fausse alerte par heure, 50 m / 20 s aucune mais 41 à 77 s de délai médian.
