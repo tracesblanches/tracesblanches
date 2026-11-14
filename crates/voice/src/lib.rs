@@ -7,7 +7,26 @@
 //! - VO3 (#85): pre-generated Ogg/Opus clips per pack (Pocket TTS on the workstation, outside
 //!   the phone) for fixed phrases, numbers, distances, durations and all names of a pack.
 //!
-//! Runs on the phone (phrase bank): no networking.
+//! Phone side (no networking, no subprocess): [`bank`] (events → announcements),
+//! [`clips`], [`manifest`], [`names`], [`numbers`], [`quantity`]; [`tokenizer`] and
+//! [`gguf`] give exact Pocket TTS token counts.
+//!
+//! An announcement is a list of clips, each a complete spoken unit. The phone plays the
+//! clips of the pack in order with the pauses of the announcement; if one clip is missing
+//! (a text the pack did not foresee), it speaks [`bank::Announcement::text`] with the
+//! Android voice instead.
+
+pub mod bank;
+pub mod clips;
+pub mod gguf;
+pub mod manifest;
+pub mod names;
+pub mod numbers;
+pub mod quantity;
+pub mod tokenizer;
+
+pub use bank::{Announcement, Event};
+pub use manifest::{Manifest, PackNames, manifest};
 
 /// Name of this crate, checked by the crate smoke test.
 pub const CRATE: &str = env!("CARGO_PKG_NAME");

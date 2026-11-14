@@ -2350,7 +2350,9 @@ dependencies = [
 name = "skimap-voice"
 version = "0.1.0"
 dependencies = [
+ "serde",
  "skimap-common",
+ "thiserror",
 ]
 
 [[package]]
