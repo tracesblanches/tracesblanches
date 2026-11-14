@@ -12,11 +12,26 @@ path = "src/main.rs"
 
 [dependencies]
 skimap-common = { workspace = true, features = ["download"] }
+skimap-osm.workspace = true
+skimap-terrain.workspace = true
+skimap-snow.workspace = true
+skimap-meteo.workspace = true
+skimap-zones = { workspace = true, features = ["pipeline"] }
+skimap-coverage.workspace = true
+skimap-refuges.workspace = true
+skimap-status.workspace = true
+skimap-avalanche.workspace = true
+skimap-core.workspace = true
 anyhow.workspace = true
+chrono.workspace = true
 clap.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true

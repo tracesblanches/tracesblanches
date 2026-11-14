@@ -1,8 +1,10 @@
 //! `skimap`: command-line entry point of the pipeline and of the core algorithms.
 //!
 //! Owned tickets: F1 (#1) skeleton, F4 (#4) Android arm64 build. Owned by the
-//! orchestrator: each placeholder is wired to the public function exposed by the crate of
-//! the ticket named in its help text.
+//! orchestrator: each subcommand calls the public builder of the crate of its ticket; the
+//! remaining placeholders name the ticket that will provide it.
+
+mod build;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -59,6 +61,83 @@ enum Command {
         #[arg(long)]
         print: bool,
     },
+    /// Nordic trails and routing graph of a site from OpenSnowMap (P2, #15).
+    Pistes(SiteArg),
+    /// Census of the French cross-country ski areas, `data/out/france/domaines/`, and the
+    /// domain layer of the given sites (all by default) (P3, #16).
+    Domaines {
+        /// Sites whose domain layer is written (default: all).
+        sites: Vec<String>,
+    },
+    /// IGN LiDAR HD terrain model, slope and aspect of a site (P5, #18).
+    Terrain(SiteArg),
+    /// Estimated snow cover of a site (P6, #19); needs the terrain tiles.
+    Snow {
+        /// Site identifier.
+        site: String,
+        /// Simulation date YYYY-MM-DD (default: latest date of the current year, J-1).
+        #[arg(long)]
+        date: Option<String>,
+    },
+    /// Validation of the snow estimate against the Météo-France stations (P7, #20).
+    SnowValidate {
+        /// Site identifier.
+        site: String,
+        /// First and last season (start years), e.g. `2020 2025`.
+        #[arg(long, num_args = 2, value_names = ["FIRST", "LAST"], default_values_t = [2020, 2025])]
+        seasons: Vec<i32>,
+    },
+    /// Huts and shelters of a site: refuges.info, OSM, Camptocamp (P11, #24).
+    Refuges(SiteArg),
+    /// Protected areas and their periods, with the rule file (P9 #22, P10 #23).
+    Zones(SiteArg),
+    /// Areas without any mobile network, even for 112 (P12, #25).
+    Coverage {
+        /// Site identifier.
+        site: String,
+        /// ARCEP release `YYYY_TQ` (default: latest known).
+        #[arg(long)]
+        release: Option<String>,
+        /// Directory holding already downloaded ARCEP archives (`.7z`).
+        #[arg(long)]
+        archives: Option<PathBuf>,
+    },
+    /// Avalanche bulletin (BERA) of the massif of a site (P8, #21).
+    Bera {
+        /// Site identifier.
+        site: String,
+        /// Bulletin date YYYY-MM-DD (default: today, UTC).
+        #[arg(long)]
+        date: Option<String>,
+    },
+    /// Hourly weather of a site (P19, #32); personal use only (`SKIMAP_PERSONAL_SOURCES`).
+    Meteo(SiteArg),
+    /// One poll of the trail status sources of a site (P13, #26); personal use only.
+    StatusPoll(SiteArg),
+    /// Historic avalanche footprints (CLPA) and the piste sections crossing them (P20, #99);
+    /// needs the `pistes` layer of the site.
+    AvalancheHistoric {
+        /// Site identifier.
+        site: String,
+        /// Read the pistes from a saved Overpass extract instead (report 07).
+        #[arg(long)]
+        dump: Option<PathBuf>,
+    },
+    /// Zones and rules active at a position and a date (C8, #40); needs the `zones` layer.
+    ZonesAt {
+        /// Site identifier.
+        site: String,
+        /// Latitude, WGS84 degrees.
+        #[arg(allow_hyphen_values = true)]
+        lat: f64,
+        /// Longitude, WGS84 degrees.
+        #[arg(allow_hyphen_values = true)]
+        lon: f64,
+        /// `YYYY-MM-DD` (noon), `YYYY-MM-DDTHH:MM` in French legal time, or RFC 3339.
+        date: String,
+    },
+    /// Every available builder of a site, in dependency order, timed.
+    BuildAll(SiteArg),
     /// Fetch every source of a site (P2, P5, P6, P8, P9, P11, P12, P13, P19).
     Fetch(Placeholder),
     /// Build the offline pack of a site (P14, #27).
@@ -67,12 +146,17 @@ enum Command {
     Route(Placeholder),
     /// Estimated time of a route (C5, #37).
     Eta(Placeholder),
-    /// Zones and rules active at a position and a date (C8, #40).
-    ZonesAt(Placeholder),
     /// Export the layers of a site for the viewer (P15, #28).
     Export(Placeholder),
     /// Daily briefing of a site (A1, #88).
     Briefing(Placeholder),
+}
+
+/// A site identifier.
+#[derive(clap::Args, Debug)]
+struct SiteArg {
+    /// Site identifier (`skimap sites`).
+    site: String,
 }
 
 /// Arguments of a subcommand not implemented yet.
@@ -196,11 +280,21 @@ fn not_implemented(name: &str, tickets: &str) -> Result<()> {
     anyhow::bail!("`{name}` n'est pas encore implémenté (ticket(s) {tickets})")
 }
 
+fn site(id: &str) -> Result<&'static Site> {
+    Ok(skimap_common::site::site(id)?)
+}
+
+fn print_json<T: serde::Serialize>(v: &T) -> Result<()> {
+    println!("{}", serde_json::to_string_pretty(v)?);
+    Ok(())
+}
+
 fn run(cli: Cli) -> Result<()> {
     let mut cfg = Config::from_env()?;
     if let Some(d) = cli.data_dir {
         cfg.data_dir = d;
     }
+    let ctx = || build::Ctx::new(&cfg);
     match cli.command {
         Command::Sites { json } => print_sites(json),
         Command::FetchUrl {
@@ -210,6 +304,103 @@ fn run(cli: Cli) -> Result<()> {
             max_age,
             print,
         } => fetch_url(&cfg, &url, &source, cache, max_age, print),
+        Command::Pistes(a) => {
+            let s = site(&a.site)?;
+            print_json(&ctx()?.pistes(s, None)?.stats)
+        }
+        Command::Domaines { sites } => {
+            let sites: Vec<&Site> = if sites.is_empty() {
+                SITES.iter().collect()
+            } else {
+                sites.iter().map(|s| site(s)).collect::<Result<_>>()?
+            };
+            let c = ctx()?;
+            let planet = skimap_osm::extract::load_planet(&c.dl)?;
+            let census = c.census(&planet)?;
+            for s in sites {
+                c.domaines_site(s, &planet, &census)?;
+            }
+            print_json(&census.stats)
+        }
+        Command::Terrain(a) => {
+            let s = site(&a.site)?;
+            print_json(&ctx()?.terrain(s)?)
+        }
+        Command::Snow { site: s, date } => {
+            let (s, date) = (
+                site(&s)?,
+                date.as_deref().map(build::parse_date).transpose()?,
+            );
+            print_json(&ctx()?.snow(s, date)?)
+        }
+        Command::SnowValidate { site: s, seasons } => {
+            let s = site(&s)?;
+            let v = skimap_snow::validate::validate(
+                s,
+                &cfg.layout(),
+                &Downloader::from_config(&cfg)?,
+                seasons[0],
+                seasons[1],
+            )?;
+            print_json(&v)
+        }
+        Command::Refuges(a) => {
+            let s = site(&a.site)?;
+            print_json(&ctx()?.refuges(s)?.stats)
+        }
+        Command::Zones(a) => {
+            let s = site(&a.site)?;
+            print_json(&ctx()?.zones(s)?)
+        }
+        Command::Coverage {
+            site: s,
+            release,
+            archives,
+        } => {
+            let s = site(&s)?;
+            let mut opts = skimap_coverage::CoverageOptions {
+                archive_dir: archives,
+                ..Default::default()
+            };
+            if let Some(r) = release {
+                opts.release = build::parse_release(&r)?;
+            }
+            print_json(&ctx()?.coverage(s, &opts)?)
+        }
+        Command::Bera { site: s, date } => {
+            let (s, date) = (
+                site(&s)?,
+                date.as_deref().map(build::parse_date).transpose()?,
+            );
+            print_json(&ctx()?.bera(s, date)?)
+        }
+        Command::Meteo(a) => {
+            let s = site(&a.site)?;
+            print_json(&ctx()?.meteo(s)?)
+        }
+        Command::StatusPoll(a) => {
+            let s = site(&a.site)?;
+            print_json(&ctx()?.status_poll(s)?)
+        }
+        Command::AvalancheHistoric { site: s, dump } => {
+            let s = site(&s)?;
+            print_json(&ctx()?.avalanche_historic(s, dump.as_deref())?)
+        }
+        Command::ZonesAt {
+            site: s,
+            lat,
+            lon,
+            date,
+        } => {
+            let (s, at) = (site(&s)?, build::parse_instant(&date)?);
+            let e = build::zones_at(&cfg.layout(), s, lat, lon, at)?;
+            print!("{}", e.describe_fr());
+            Ok(())
+        }
+        Command::BuildAll(a) => {
+            let s = site(&a.site)?;
+            ctx()?.build_all(s)
+        }
         Command::Fetch(_) => not_implemented(
             "fetch",
             "P2 #15, P5 #18, P6 #19, P8 #21, P9 #22, P11 #24, P12 #25, P13 #26, P19 #32",
@@ -217,7 +408,6 @@ fn run(cli: Cli) -> Result<()> {
         Command::BuildPack(_) => not_implemented("build-pack", "P14 #27"),
         Command::Route(_) => not_implemented("route", "C1 #33, C3 #35"),
         Command::Eta(_) => not_implemented("eta", "C5 #37"),
-        Command::ZonesAt(_) => not_implemented("zones-at", "C8 #40"),
         Command::Export(_) => not_implemented("export", "P15 #28"),
         Command::Briefing(_) => not_implemented("briefing", "A1 #88"),
     }
@@ -254,9 +444,55 @@ mod tests {
     }
 
     #[test]
+    fn builder_subcommands_parse() {
+        let cli = Cli::try_parse_from([
+            "skimap",
+            "zones-at",
+            "cervieres",
+            "44.85",
+            "6.77",
+            "2027-01-10",
+        ])
+        .unwrap();
+        assert!(
+            matches!(cli.command, Command::ZonesAt { lat, lon, .. } if lat == 44.85 && lon == 6.77)
+        );
+        let cli = Cli::try_parse_from(["skimap", "snow-validate", "cervieres"]).unwrap();
+        assert!(
+            matches!(cli.command, Command::SnowValidate { seasons, .. } if seasons == [2020, 2025])
+        );
+        let cli = Cli::try_parse_from(["skimap", "coverage", "cervieres", "--release", "2026_T2"])
+            .unwrap();
+        assert!(
+            matches!(cli.command, Command::Coverage { release: Some(r), .. } if r == "2026_T2")
+        );
+        for cmd in [
+            "pistes",
+            "terrain",
+            "refuges",
+            "zones",
+            "bera",
+            "meteo",
+            "status-poll",
+            "avalanche-historic",
+            "build-all",
+        ] {
+            Cli::try_parse_from(["skimap", cmd, "cervieres"]).unwrap();
+        }
+        Cli::try_parse_from(["skimap", "domaines"]).unwrap();
+    }
+
+    #[test]
     fn sites_json_has_lambert93_bbox() {
         let v = site_json(&SITES[0]).unwrap();
         assert_eq!(v["id"], "cervieres");
         assert!(v["bbox_lambert93"]["min_x"].as_f64().unwrap() > 980_000.0);
+    }
+
+    #[test]
+    fn unknown_site_is_an_error() {
+        let cli = Cli::try_parse_from(["skimap", "pistes", "mouthe"]).unwrap();
+        let e = run(cli).unwrap_err().to_string();
+        assert!(e.contains("mouthe"), "{e}");
     }
 }

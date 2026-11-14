@@ -2151,9 +2151,22 @@ name = "skimap-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "clap",
+ "serde",
  "serde_json",
+ "skimap-avalanche",
  "skimap-common",
+ "skimap-core",
+ "skimap-coverage",
+ "skimap-meteo",
+ "skimap-osm",
+ "skimap-refuges",
+ "skimap-snow",
+ "skimap-status",
+ "skimap-terrain",
+ "skimap-zones",
+ "tempfile",
  "tracing",
  "tracing-subscriber",
 ]
