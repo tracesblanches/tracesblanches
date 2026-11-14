@@ -2312,6 +2312,8 @@ dependencies = [
  "serde_json",
  "skimap-common",
  "thiserror",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

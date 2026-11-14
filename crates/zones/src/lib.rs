@@ -2,15 +2,28 @@
 //!
 //! Owned tickets:
 //! - P9 (#22): INPN WFS, GPU easements, Biodiv'sports with `period`, Swiss hunting reserves;
-//!   a single layer with periods ([`layer`]).
+//!   a single layer with periods ([`layer`], built by `build`).
 //! - P10 (#23): rule schema (period, stay on routes, bivouac, fire with stoves, night access,
 //!   core zones, parcel exceptions) and sourced rules for both sites ([`rules`],
 //!   `rules/rules.json`).
+//!
+//! Without features the crate only holds the layer and rule schema, used on the phone by
+//! `skimap_core::zone_eval` (C8). The `pipeline` feature adds the sources and
+//! `build(site, &DataLayout, &Downloader)`, which writes `data/out/<site>/zones/`.
 
 pub mod error;
+pub mod geom;
 pub mod layer;
+pub mod meta;
 pub mod rules;
 
+#[cfg(feature = "pipeline")]
+mod build;
+#[cfg(feature = "pipeline")]
+pub mod sources;
+
+#[cfg(feature = "pipeline")]
+pub use build::{LAYER, RuleResolution, ZonesReport, build};
 pub use error::{Error, Result};
 pub use layer::{Months, Zone, ZoneKind, ZoneLayer, ZoneProps};
 pub use rules::{Effect, Period, Rule, RuleSet, Topic};

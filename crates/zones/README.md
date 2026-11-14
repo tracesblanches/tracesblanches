@@ -1,3 +1,62 @@
 # skimap-zones
 
-Zones protégées et leurs périodes, règles de bivouac et d'accès (pipeline). Tickets : P9 (#22), P10 (#23).
+Zones protégées et leurs périodes, règles de bivouac et d'accès. Tickets : P9 (#22), P10 (#23).
+
+## Deux usages
+
+- **Sans fonctionnalité** : le schéma de la couche (`layer`) et des règles (`rules`), sans pile HTTP. `skimap-core` (C8, `zone_eval`) en dépend sur le téléphone.
+- **Fonctionnalité `pipeline`** : les sources et `build(site, &DataLayout, &Downloader)`, qui écrit `data/out/<site>/zones/`.
+
+```sh
+cargo run --release -p skimap-zones --features pipeline --example build_zones            # les deux sites
+cargo test -p skimap-zones --features pipeline --test real_sites -- --ignored              # contrôles sur les couches produites
+```
+
+## Sorties (`data/out/<site>/zones/`)
+
+| Fichier | Contenu |
+|---|---|
+| `zones.geojson` | toutes les zones découpées à l'emprise du site, WGS84, coordonnées arrondies à 1e-6° |
+| `rules.json` | les règles saisies à la main, copiées telles quelles |
+| `zones.meta.json` | sources, licences, date de génération, validité, propriétés, nombre de zones par type, zones de chaque règle, surfaces |
+| `build_report.json` | résumé de la construction |
+
+Propriétés d'une zone : `id` (`inpn:FR3800988`, `gpu:<idass>`, `biodiv:1183`, `ch-jbg:980`, `country:fr`, `dept:25`, `canton:vd`, `commune:05027`, `commune:ch-5872`), `kind`, `name`, `source`, `url`, `months` (mois sensibles Biodiv'sports, sinon null), `practices`, `designated`, `area_ha` (surface géodésique dans l'emprise), `clipped`, `note`.
+
+## Sources (P9)
+
+| Source | Accès | Contenu gardé |
+|---|---|---|
+| INPN (PatriNat) | WFS `data.geopf.fr`, couches `patrinat_apb:apb`, `rnn`, `rnr`, `pnr`, `parc_national`, `sc`, `sic`, `zps`, `rb` ; sortie demandée en CRS:84 (EPSG:3857 par défaut, reprojeté s'il revient) | tout |
+| GPU, servitudes | WFS `wfs_sup:assiette_sup_s` | AC1 (monuments et abords), AC2 (sites inscrits et classés), AC4 (SPR), AS1 (captages), A7 (forêts de protection) |
+| Biodiv'sports | `api/v2/sensitivearea/?in_bbox=…&period=ignore` (sans `period`, seulement le mois courant) | toutes les zones, avec leurs mois et pratiques |
+| geo.admin.ch | `identify` et `find` | districts francs fédéraux (parties à protection intégrale ou partielle), cantons, communes citées par les règles |
+| geo.api.gouv.fr | contours des communes par département | France, départements, communes citées par les règles ; départements trouvés par une grille de 11 × 11 points |
+
+Sites inscrits : une servitude AC2 qui recouvre à plus de 50 % un site classé INPN est ce site classé (elle est fusionnée dans la zone INPN) ; les autres sont des sites inscrits, sauf si leur nom dit « Site Classé ».
+
+Géométries : les parties multiples qui se chevauchent (Biodiv'sports publie des multipolygones invalides) sont fusionnées avant découpage ; les surfaces sont calculées anneau par anneau, indépendamment du sens des anneaux.
+
+## Règles (P10)
+
+Fichier `rules/rules.json`, validé à la compilation des tests (`RuleSet::validate`). Chaque règle a :
+
+- `topic` : `bivouac`, `leave_routes`, `fire`, `access` ;
+- `effect` : `forbidden`, `tolerated`, `consent_required`, `avoid_recommended`, `allowed` ;
+- `applies_to` : zones par identifiant ou par type (`kind`), éventuellement par pratique Biodiv'sports ;
+- `period` : `all_year`, `yearly` (`from`/`to` en `MM-JJ`, passage d'année possible), `night` (du coucher au lever du soleil au lieu de référence), `zone_months` (mois sensibles de la zone) ;
+- `in_force` : dates de vigueur du texte ;
+- `stoves` (feu) : réchauds compris ou non, `null` si le texte ne dit rien ;
+- `only_where` : la règle ne vise qu'une partie de la zone sans contour (200 m des bois, terrains privés traversés par les pistes) ;
+- `exceptions` : sans contour (parcelles B 771 et B 775 de Foncine-le-Haut, renumérotées depuis 1986) ;
+- `verification` : ce qui a été lu et ce qui ne l'a pas été ;
+- `sources` : la première est la source principale ; `kind` dit si c'est une loi, un acte signé, un projet, une synthèse, une plaquette, une page officielle, une page tierce ou un service de données.
+
+Textes non lus et donc marqués comme tels : arrêtés signés des APPB Haut-Jura (27/05/2019) et Haut-Doubs (31/12/2025) — règles lues dans les projets, la synthèse et la plaquette ; arrêté de Cervières sur le feu (08/07/2022) — connu par la page du PNR du Queyras.
+
+## Limites
+
+- Hors de l'emprise du site, rien n'est évalué. Italie : aucune zone ni règle.
+- Aucune couche forêt : les règles « à moins de 200 m des bois » (L131-1) et « en forêt et à moins de 10 m des lisières » (Vaud) donnent « interdit par endroits ».
+- Zones cœur de l'APPB Haut-Doubs : contour Biodiv'sports n° 686, hors des deux emprises actuelles.
+- Licences GPU, Biodiv'sports et geo.api.gouv.fr non vérifiées (F5, #11).

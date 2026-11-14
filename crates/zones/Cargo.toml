@@ -6,14 +6,33 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
+[features]
+default = []
+# Pipeline side (P9 build): fetches the sources through the shared downloader. Without it
+# the crate only exposes the layer and rule schema, so that the phone core (`skimap-core`,
+# C8) can depend on it without linking an HTTP stack.
+pipeline = ["skimap-common/download"]
+
 [dependencies]
 skimap-common = { workspace = true }
 thiserror.workspace = true
+tracing.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 geo.workspace = true
 geojson.workspace = true
 chrono.workspace = true
+
+[dev-dependencies]
+tracing-subscriber.workspace = true
+
+[[example]]
+name = "build_zones"
+required-features = ["pipeline"]
+
+[[test]]
+name = "real_sites"
+required-features = ["pipeline"]
 
 [lints]
 workspace = true
