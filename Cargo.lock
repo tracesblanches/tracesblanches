@@ -2203,7 +2203,6 @@ dependencies = [
  "serde",
  "serde_json",
  "skimap-common",
- "skimap-terrain",
  "skimap-zones",
  "thiserror",
 ]

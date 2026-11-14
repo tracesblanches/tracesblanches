@@ -3,8 +3,8 @@
 //! # Data flow
 //!
 //! The pipeline prepares, once per site, compact rasters on the 5 m Lambert-93 grid of
-//! `skimap-terrain` (`data/out/<site>/offpiste/`, written by the `prepare` command of the
-//! `offpiste_bench` example, see its documentation):
+//! `skimap-terrain` (`data/out/<site>/offpiste/`, written by [`prepare::prepare`], feature
+//! `pipeline`; command `prepare` of the `offpiste_bench` example):
 //!
 //! | File | Type | Content |
 //! |---|---|---|
@@ -78,6 +78,9 @@
 //! bound of every remaining path and is consistent, so the first time the goal is popped
 //! its cost is optimal (checked against Dijkstra in the tests). Memory: 9 bytes per window
 //! cell (factor `f32`, cost `f32`, state `u8`) plus the open list.
+
+#[cfg(feature = "pipeline")]
+pub mod prepare;
 
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;

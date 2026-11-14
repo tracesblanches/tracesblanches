@@ -8,10 +8,11 @@ publish.workspace = true
 
 [features]
 default = []
-# Pipeline side only: reads the 5 m terrain model (GeoTIFF, through
+# Pipeline side only: reads the 5 m terrain model and the snow rasters (GeoTIFF, through
 # `skimap_common::geotiff`) to store an elevation profile on every edge of the trail graph
-# (`routing::build`). The phone never reads the raster: it loads the graph with its
-# profiles. No HTTP stack either way.
+# (`routing::build`) and to prepare the off-piste rasters (`offpiste::prepare`). The phone
+# never reads GeoTIFF: it loads the graph with its profiles and the SKR1 rasters. No HTTP
+# stack either way.
 pipeline = ["skimap-common/geotiff"]
 
 [dependencies]
@@ -31,10 +32,9 @@ required-features = ["pipeline"]
 name = "matching_bench"
 required-features = ["pipeline"]
 
-[dev-dependencies]
-# offpiste_bench example only (pipeline side of C3: GeoTIFF reading, GeoJSON).
-skimap-terrain.workspace = true
-serde_json.workspace = true
+[[example]]
+name = "offpiste_bench"
+required-features = ["pipeline"]
 
 [lints]
 workspace = true

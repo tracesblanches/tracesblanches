@@ -51,6 +51,9 @@ pub enum Error {
     /// Shared foundation error (projections, grids).
     #[error(transparent)]
     Common(#[from] skimap_common::error::Error),
+    /// Off-piste raster error (C3).
+    #[error(transparent)]
+    Offpiste(#[from] crate::offpiste::Error),
 }
 
 impl Error {
