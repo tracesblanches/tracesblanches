@@ -1,5 +1,5 @@
-# CI du workspace Rust (F1 #1, F4 #4) : format, clippy sans avertissement, tests,
-# compilation du binaire `skimap` pour Android arm64.
+# CI du workspace Rust (F1 #1, F4 #4) : format, clippy sans avertissement, tests (dont
+# skimap-core avec la fonction `pipeline`), compilation du binaire `skimap` pour Android arm64.
 # La chaîne Rust vient de rust-toolchain.toml (version figée, rustfmt, clippy, cible Android).
 name: CI
 
@@ -42,6 +42,9 @@ jobs:
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      # Pipeline side of the core (GeoTIFF reading, graph profiles, off-piste rasters) and
+      # its examples, which require the feature.
+      - run: cargo clippy -p skimap-core --features pipeline --all-targets --locked -- -D warnings
 
   test:
     name: cargo test
@@ -56,6 +59,7 @@ jobs:
       - run: cargo test --workspace --locked
       # Crates that run on the phone must build without the downloader.
       - run: cargo test -p skimap-common --locked
+      - run: cargo test -p skimap-core --features pipeline --locked
 
   android:
     name: build skimap (aarch64-linux-android)
