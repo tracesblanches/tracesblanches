@@ -12,7 +12,7 @@
 //! - [`battery`]: C9 (#41) battery forecast model.
 //!
 //! Shared modules: [`graph`] (typed trail graph with elevation profiles, used by C1, C2,
-//! C5), [`error`];
+//! C5), [`ephemeris`] (sun times and French legal time, used by C7 and C8), [`error`];
 //! [`dem`] (feature `pipeline`, pipeline side only) samples the terrain model along the graph.
 //!
 //! Runs on the phone (through UniFFI or a native binary, decision K0 #49): no networking,
@@ -21,6 +21,7 @@
 pub mod battery;
 #[cfg(feature = "pipeline")]
 pub mod dem;
+pub mod ephemeris;
 pub mod error;
 pub mod eta;
 pub mod graph;

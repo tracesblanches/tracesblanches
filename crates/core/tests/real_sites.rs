@@ -1,15 +1,17 @@
-//! Real-data checks of C1, C2 and C5 on the graph written by the pipeline
+//! Real-data checks of C1, C2, C5 and C7 on the graph written by the pipeline
 //! (`data/out/<site>/routes/piste_graph.json`, built by
 //! `cargo run --release -p skimap-core --features pipeline --example routes`).
 //!
 //! Run with `cargo test -p skimap-core --test real_sites -- --ignored`.
 
+use chrono::NaiveDate;
 use skimap_common::geom::LonLat;
 use skimap_core::eta::{EtaModel, munter_s, tobler_s};
 use skimap_core::graph::{PisteGraph, Snap};
 use skimap_core::matching::synth::{Noise, Rng, add_noise, sample_polyline};
 use skimap_core::matching::{AlertEvent, MatchParams, MatchState, ROUTE_HYSTERESIS, RouteMonitor};
 use skimap_core::routing::{Distance, Route, Router, Style, StylePolicy};
+use skimap_core::turnaround::{TurnaroundParams, deadline, out_and_back};
 
 fn graph(site: &str) -> PisteGraph {
     let root = std::env::var("SKIMAP_DATA_DIR")
@@ -122,6 +124,25 @@ fn chapelle_village_chalet_gaillard() {
     assert!(rt.gain_loss(&g).0 < r.gain_loss(&g).0);
     let [c, s, m, t] = times(&g, &r);
     assert!(s < c && c < t && t < m, "{c} {s} {m} {t}");
+    // C7: out and back from the village, 15 January 2027 at 13:00 local: the whole route
+    // fits before the deadline (30 min before civil dusk).
+    let date = NaiveDate::from_ymd_opt(2027, 1, 15).unwrap();
+    let p = TurnaroundParams::default();
+    let dl = deadline(date, village, &p).unwrap();
+    let start = date.and_hms_opt(12, 0, 0).unwrap().and_utc();
+    let ob = out_and_back(&g, &rt, &EtaModel::new(Style::Classic), start, &dl, &p).unwrap();
+    assert!(ob.whole_route && ob.arrival <= dl.deadline);
+    // Starting at 14:00 it does not: turn around before the chalet.
+    let late = out_and_back(
+        &g,
+        &rt,
+        &EtaModel::new(Style::Classic),
+        start + chrono::Duration::hours(1),
+        &dl,
+        &p,
+    )
+    .unwrap();
+    assert!(!late.whole_route && late.turn_at_m < rt.length_m());
 }
 
 #[test]

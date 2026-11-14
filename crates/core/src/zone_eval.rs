@@ -21,15 +21,13 @@
 //! Outside every jurisdiction zone of the layer (`country`, `canton`), for instance in
 //! Italy near Cervières, nothing is known: [`Evaluation::covered`] is false.
 //!
-//! Sun times use the sunrise equation (solar declination and equation of time from the
-//! mean anomaly, refraction −0.833°), within about a minute of the NOAA algorithm.
+//! Sun times come from [`crate::ephemeris`] (sunrise equation, refraction −0.833°), within
+//! about a minute of the NOAA algorithm.
 
 use std::fmt::Write as _;
 
+use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, Utc};
 use skimap_common::geom::LonLat;
-use skimap_zones::chrono::{
-    DateTime, Datelike, Duration, NaiveDate, NaiveDateTime, TimeZone, Utc, Weekday,
-};
 use skimap_zones::layer::{Zone, ZoneKind, ZoneLayer};
 use skimap_zones::rules::{Effect, Period, Rule, RuleSet, SourceKind, Topic};
 
@@ -254,64 +252,7 @@ impl Evaluation {
     }
 }
 
-/// Last Sunday of a month.
-fn last_sunday(year: i32, month: u32) -> NaiveDate {
-    let next = if month == 12 {
-        NaiveDate::from_ymd_opt(year + 1, 1, 1)
-    } else {
-        NaiveDate::from_ymd_opt(year, month + 1, 1)
-    }
-    .expect("valid date");
-    let mut d = next - Duration::days(1);
-    while d.weekday() != Weekday::Sun {
-        d -= Duration::days(1);
-    }
-    d
-}
-
-/// UTC offset of French and Swiss legal time at an instant: +2 h from the last Sunday of
-/// March 01:00 UTC to the last Sunday of October 01:00 UTC, +1 h otherwise.
-pub fn legal_offset_hours(at: DateTime<Utc>) -> i64 {
-    let y = at.year();
-    let start = Utc.from_utc_datetime(&last_sunday(y, 3).and_hms_opt(1, 0, 0).expect("time"));
-    let end = Utc.from_utc_datetime(&last_sunday(y, 10).and_hms_opt(1, 0, 0).expect("time"));
-    if at >= start && at < end { 2 } else { 1 }
-}
-
-/// Local legal time (CET / CEST) of an instant.
-pub fn local_time(at: DateTime<Utc>) -> NaiveDateTime {
-    at.naive_utc() + Duration::hours(legal_offset_hours(at))
-}
-
-/// Sunrise and sunset (UTC) on a date at a place, `None` during polar day or night.
-pub fn sun_times(date: NaiveDate, place: LonLat) -> Option<(DateTime<Utc>, DateTime<Utc>)> {
-    let rad = f64::to_radians;
-    // Julian day of the date at 12:00 UTC (0001-01-01 is day 1 of the common era and
-    // JD 1 721 425.5 at 00:00), then days since J2000.0 and mean solar noon at the
-    // place (east longitudes are earlier in UTC).
-    let jd_noon = date.num_days_from_ce() as f64 + 1_721_424.5 + 0.5;
-    let n = (jd_noon - 2_451_545.0).round();
-    let j_star = n - place.lon / 360.0;
-    let m = (357.5291 + 0.985_600_28 * j_star).rem_euclid(360.0);
-    let c = 1.9148 * rad(m).sin() + 0.02 * rad(2.0 * m).sin() + 0.0003 * rad(3.0 * m).sin();
-    let lambda = (m + c + 180.0 + 102.9372).rem_euclid(360.0);
-    let j_transit = 2_451_545.0 + j_star + 0.0053 * rad(m).sin() - 0.0069 * rad(2.0 * lambda).sin();
-    let sin_d = rad(lambda).sin() * rad(23.4397).sin();
-    let cos_d = sin_d.asin().cos();
-    let cos_w = (rad(-0.833).sin() - rad(place.lat).sin() * sin_d) / (rad(place.lat).cos() * cos_d);
-    if !(-1.0..=1.0).contains(&cos_w) {
-        return None;
-    }
-    let w = cos_w.acos().to_degrees();
-    let to_utc = |jd: f64| {
-        let secs = ((jd - 2_440_587.5) * 86_400.0).round() as i64;
-        DateTime::<Utc>::from_timestamp(secs, 0)
-    };
-    Some((
-        to_utc(j_transit - w / 360.0)?,
-        to_utc(j_transit + w / 360.0)?,
-    ))
-}
+pub use crate::ephemeris::{legal_offset_hours, local_time, sun_times};
 
 fn period_state(
     period: &Period,
@@ -454,6 +395,8 @@ pub fn evaluate(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ephemeris::last_sunday;
+    use chrono::TimeZone;
     use skimap_common::geom::BBox;
     use skimap_zones::geo::MultiPolygon;
     use skimap_zones::geom::bbox_polygon;

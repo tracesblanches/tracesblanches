@@ -21,9 +21,11 @@ use skimap_common::config::Config;
 use skimap_common::geom::LonLat;
 use skimap_common::layout::DataLayout;
 use skimap_common::site::{Site, site};
+use skimap_core::ephemeris::local_time;
 use skimap_core::eta::{EtaModel, munter_s, tobler_s};
 use skimap_core::graph::{PisteGraph, Snap};
 use skimap_core::routing::{self, Distance, Piece, Route, Router, Style, StylePolicy};
+use skimap_core::turnaround::{TurnaroundParams, deadline, out_and_back};
 
 const MAX_SNAP_M: f64 = 500.0;
 
@@ -334,6 +336,48 @@ fn run(site: &Site, layout: &DataLayout) -> Result<(), Box<dyn std::error::Error
                                 prof.elevation_at(snap.along_m)
                             );
                         }
+                    }
+                }
+                if model == "temps_classique" {
+                    // C7: out and back on this route, 15 January 2027, start 13:00 local.
+                    let date = chrono::NaiveDate::from_ymd_opt(2027, 1, 15).unwrap();
+                    let start = date.and_hms_opt(12, 0, 0).unwrap().and_utc();
+                    let tp = TurnaroundParams::default();
+                    let dl = deadline(date, r.start.pos, &tp).unwrap();
+                    let hm = |t: chrono::DateTime<chrono::Utc>| {
+                        local_time(t).format("%H:%M").to_string()
+                    };
+                    match out_and_back(&g, &r, &EtaModel::new(Style::Classic), start, &dl, &tp) {
+                        Some(ob) => {
+                            println!(
+                                "    C7 aller-retour le 15/01/2027, départ 13:00 : coucher {} , fin du crépuscule civil {}, limite de retour {} ; aller-retour complet : retour {} ({}) ; demi-tour au plus tard au km {:.1} sur {:.1} à {}, retour {}",
+                                hm(dl.sunset),
+                                hm(dl.civil_dusk),
+                                hm(dl.deadline),
+                                hm(ob.whole_arrival),
+                                if ob.whole_route {
+                                    "possible"
+                                } else {
+                                    "trop tard"
+                                },
+                                ob.turn_at_m / 1000.0,
+                                r.length_m() / 1000.0,
+                                hm(ob.turn_time),
+                                hm(ob.arrival),
+                            );
+                            props.insert(
+                                "turnaround_2027_01_15".into(),
+                                json!({
+                                    "start_local": "13:00",
+                                    "deadline_local": hm(dl.deadline),
+                                    "whole_route": ob.whole_route,
+                                    "turn_at_m": ob.turn_at_m.round(),
+                                    "turn_local": hm(ob.turn_time),
+                                    "arrival_local": hm(ob.arrival),
+                                }),
+                            );
+                        }
+                        None => println!("    C7 : départ à 13:00 déjà trop tard"),
                     }
                 }
                 features.push(r.to_feature(&g, props));
