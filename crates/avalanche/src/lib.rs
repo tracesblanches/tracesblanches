@@ -1,16 +1,20 @@
 //! Avalanche terrain exposure.
 //!
 //! Owned tickets:
-//! - P16 (#29): run the auto-ATES reference implementation (GPL, Python) on Cervières as an
-//!   oracle; reference layer and runtime measured. The oracle is tooling, never the hot path.
-//! - P17 (#30): Rust reimplementation (release areas, runout, forest), compared with P16.
-//! - P18 (#31): validation against known avalanches (CLPA, EPA) in the Queyras.
+//! - P16 (#29): run the AutoATES v3.0 reference implementation (Python, MIT, with
+//!   AvaFrame com4FlowPy) on Cervières as an oracle (`oracle/autoates_oracle.py`, outside
+//!   the pipeline); compared cell by cell in [`exposure::oracle`].
+//! - P17 (#30): Rust reimplementation (release areas, Flow-Py runout, forest, dev8 classes,
+//!   three exposure classes, piste runs), see [`exposure`].
+//! - P18 (#31): validation against known avalanches (CLPA; EPA behind personal sources),
+//!   see [`exposure::validation`].
 //! - P20 (#99): historic avalanches (CLPA republished by the DDT 05) and the piste sections
 //!   crossing them, see [`historic`].
 //!
 //! Never phrase any output as "safe". Pipeline side: may use `skimap_common::download`.
 
 pub mod error;
+pub mod exposure;
 pub mod historic;
 
 pub use error::{Error, Result};

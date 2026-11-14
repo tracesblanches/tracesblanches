@@ -2138,11 +2138,16 @@ name = "skimap-avalanche"
 version = "0.1.0"
 dependencies = [
  "approx",
+ "rayon",
  "serde",
  "serde_json",
  "skimap-common",
  "skimap-meteo",
+ "skimap-terrain",
  "thiserror",
+ "tiff",
+ "tracing",
+ "tracing-subscriber",
  "zip",
 ]
 
