@@ -259,9 +259,13 @@ pub struct SiteRelation {
     pub id: i64,
     /// `name`.
     pub name: Option<String>,
-    /// Ways reached directly or through member relations (any depth).
+    /// Ways reached directly or through member route relations (any depth). Ways of a
+    /// nested `site=piste` relation belong to that inner site, not to this one.
     #[serde(skip)]
     pub ways: BTreeSet<i64>,
+    /// Enclosing `site=piste` relations: those listing this one as a member, and those
+    /// whose ways are a strict superset of this one's.
+    pub parents: Vec<i64>,
 }
 
 /// One-way status of a segment (`piste:oneway`).
@@ -490,8 +494,14 @@ pub fn classify(data: &OsmData) -> PisteSet {
         });
     }
 
-    // Site relations: ways reached through any depth of member relations.
+    // Site relations: ways reached through any depth of member relations, stopping at
+    // nested sites (the inner site is the more specific grouping).
+    let is_site = |id: i64| {
+        data.relation(id)
+            .is_some_and(|r| r.tags.is("site", "piste"))
+    };
     let mut sites = Vec::new();
+    let mut parents: BTreeMap<i64, Vec<i64>> = BTreeMap::new();
     for r in &data.relations {
         if !r.tags.is("site", "piste") {
             continue;
@@ -511,6 +521,9 @@ pub fn classify(data: &OsmData) -> PisteSet {
                     MemberKind::Way => {
                         ways.insert(m.id);
                     }
+                    MemberKind::Relation if m.id != r.id && is_site(m.id) => {
+                        parents.entry(m.id).or_default().push(r.id);
+                    }
                     MemberKind::Relation => stack.push(m.id),
                     MemberKind::Node => {}
                 }
@@ -520,7 +533,40 @@ pub fn classify(data: &OsmData) -> PisteSet {
             id: r.id,
             name: r.tags.non_empty("name").map(str::to_owned),
             ways,
+            parents: Vec::new(),
         });
+    }
+    // A site whose ways are a strict subset of another's is a sub-site of it (sites often
+    // list the same route relations: « Le Risoux » inside « Les Rousses »).
+    let mut sites_of_way: HashMap<i64, Vec<usize>> = HashMap::new();
+    for (i, s) in sites.iter().enumerate() {
+        for w in &s.ways {
+            sites_of_way.entry(*w).or_default().push(i);
+        }
+    }
+    let mut pairs: BTreeSet<(usize, usize)> = BTreeSet::new();
+    for v in sites_of_way.values() {
+        for &a in v {
+            for &b in v {
+                if a != b {
+                    pairs.insert((a, b));
+                }
+            }
+        }
+    }
+    for (a, b) in pairs {
+        let (sa, sb) = (&sites[a], &sites[b]);
+        if sa.ways.len() < sb.ways.len() && sa.ways.is_subset(&sb.ways) {
+            let (child, parent) = (sa.id, sb.id);
+            parents.entry(child).or_default().push(parent);
+        }
+    }
+    for s in &mut sites {
+        if let Some(p) = parents.remove(&s.id) {
+            s.parents = p;
+            s.parents.sort_unstable();
+            s.parents.dedup();
+        }
     }
     sites.sort_by_key(|s| s.id);
 
@@ -594,6 +640,7 @@ impl PisteSet {
             .map(|p| p.length_m)
             .sum::<f64>()
             / 1000.0
+            + 0.0
     }
 }
 
@@ -752,6 +799,38 @@ mod tests {
         assert_eq!(set.sites[0].ways, BTreeSet::from([2, 3]));
         // Length: 0.001° of longitude at 46.6° N ≈ 76.5 m.
         assert!((p1.length_m - 76.5).abs() < 0.5, "{}", p1.length_m);
+    }
+
+    #[test]
+    fn nested_sites_keep_their_own_ways() {
+        let d = sample();
+        let mut rels = d.relations.clone();
+        rels.push(Relation {
+            id: 201,
+            members: vec![
+                Member {
+                    kind: MemberKind::Relation,
+                    id: 200,
+                    role: String::new(),
+                },
+                Member {
+                    kind: MemberKind::Way,
+                    id: 5,
+                    role: String::new(),
+                },
+            ],
+            tags: tags(&[("type", "site"), ("site", "piste"), ("name", "Massif")]),
+        });
+        let nodes: Vec<(i64, LonLat)> = (1..=5).map(|i| (i, d.node(i).unwrap())).collect();
+        let d = OsmData::from_elements(nodes, d.ways.clone(), rels);
+        let set = classify(&d);
+        assert_eq!(set.sites.len(), 2);
+        let (inner, outer) = (&set.sites[0], &set.sites[1]);
+        assert_eq!(inner.id, 200);
+        assert_eq!(inner.ways, BTreeSet::from([2, 3]));
+        assert_eq!(inner.parents, vec![201]);
+        assert_eq!(outer.ways, BTreeSet::from([5]));
+        assert!(outer.parents.is_empty());
     }
 
     #[test]

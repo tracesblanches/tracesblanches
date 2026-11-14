@@ -6,6 +6,8 @@
 //!
 //! Pipeline side: uses `skimap_common::download`.
 
+pub mod census;
+pub mod domains;
 pub mod error;
 pub mod extract;
 pub mod graph;

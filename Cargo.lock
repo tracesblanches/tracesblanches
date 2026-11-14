@@ -2264,7 +2264,10 @@ name = "skimap-osm"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "csv",
  "flate2",
+ "geo",
+ "geo-types",
  "quick-xml",
  "rstar 0.12.2",
  "serde",

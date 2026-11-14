@@ -15,6 +15,9 @@ serde_json.workspace = true
 quick-xml.workspace = true
 flate2.workspace = true
 rstar.workspace = true
+geo.workspace = true
+geo-types.workspace = true
+csv.workspace = true
 chrono.workspace = true
 
 [dev-dependencies]
