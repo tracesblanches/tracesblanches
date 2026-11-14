@@ -2301,7 +2301,23 @@ dependencies = [
 name = "skimap-pack"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "flate2",
+ "geojson",
+ "hex",
+ "pmtiles",
+ "rayon",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
  "skimap-common",
+ "skimap-terrain",
+ "skimap-zones",
+ "tempfile",
+ "thiserror",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

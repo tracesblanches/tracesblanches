@@ -1,12 +1,28 @@
 //! Per-site offline pack.
 //!
 //! Owned tickets:
-//! - P4 (#17): per-site basemap (Protomaps PMTiles extract, Plan IGN v2 vector style).
-//! - P14 (#27): versioned pack format (PMTiles, GeoJSON layers, metadata: dates, sources,
-//!   attributions), read by the Rust core.
-//! - P15 (#28): local MapLibre GL JS viewer showing every layer of a pack.
+//! - P4 (#17): per-site basemaps: Plan IGN v2 vector tiles and an OSM (Protomaps) extract,
+//!   each a PMTiles archive with its MapLibre style, sprites and fonts ([`build::plan_ign`],
+//!   [`build::osm`]).
+//! - P14 (#27): versioned pack format ([`manifest`]), written by [`build::build`] from the
+//!   pipeline outputs and read by [`reader::Pack`] on the phone.
+//! - P15 (#28): local MapLibre GL JS viewer, `tools/viewer/index.html`.
+//! - P21 (#100): export of a pack for Locus Map and OsmAnd ([`export`]).
 //!
-//! Read on the phone: keep the reader free of networking (no `download` feature).
+//! Without the `pipeline` feature the crate is the reader only: no HTTP stack, no SQLite.
+
+pub mod error;
+pub mod manifest;
+pub mod png;
+pub mod reader;
+pub mod tiles;
+
+#[cfg(feature = "pipeline")]
+pub mod build;
+
+pub use error::{Error, Result};
+pub use manifest::{FORMAT, FORMAT_VERSION, Manifest};
+pub use reader::{Pack, TileArchive};
 
 /// Name of this crate, checked by the crate smoke test.
 pub const CRATE: &str = env!("CARGO_PKG_NAME");
