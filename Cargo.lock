@@ -2138,7 +2138,6 @@ name = "skimap-avalanche"
 version = "0.1.0"
 dependencies = [
  "approx",
- "chrono",
  "serde",
  "serde_json",
  "skimap-common",

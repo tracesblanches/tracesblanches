@@ -9,7 +9,6 @@ publish.workspace = true
 [dependencies]
 skimap-common = { workspace = true, features = ["download"] }
 skimap-meteo.workspace = true
-chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
