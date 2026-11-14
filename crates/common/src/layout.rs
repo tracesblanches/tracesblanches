@@ -4,12 +4,17 @@
 //! data/                       root, `SKIMAP_DATA_DIR` or ./data
 //!   cache/<source>/           downloader cache: <key>.body, <key>.json, ratelimit.json
 //!   out/<site>/<layer>/...    pipeline products per site (GeoJSON, grids, packs)
+//!   out/france/<layer>/...    France-wide products (domain census)
 //! ```
 
 use std::path::{Path, PathBuf};
 
 use crate::error::{Error, Result};
 use crate::site::Site;
+
+/// Output target of the France-wide layers (`data/out/france/`); no site uses this
+/// identifier.
+pub const FRANCE: &str = "france";
 
 /// Paths of the data directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,6 +56,16 @@ impl DataLayout {
     /// Product directory of one layer of a site, e.g. `out/cervieres/pistes`.
     pub fn layer_dir(&self, site: &Site, layer: &str) -> Result<PathBuf> {
         Ok(self.out_dir(site).join(checked_component(layer)?))
+    }
+
+    /// Product directory of the France-wide layers, `out/france`.
+    pub fn france_dir(&self) -> PathBuf {
+        self.out_root().join(FRANCE)
+    }
+
+    /// Product directory of one France-wide layer, e.g. `out/france/domaines`.
+    pub fn france_layer_dir(&self, layer: &str) -> Result<PathBuf> {
+        Ok(self.france_dir().join(checked_component(layer)?))
     }
 
     /// Creates `dir` and its parents.
@@ -95,5 +110,15 @@ mod tests {
         assert!(l.cache_dir("a/b").is_err());
         assert!(l.cache_dir("").is_err());
         assert!(l.cache_dir(".hidden").is_err());
+        assert_eq!(
+            l.france_layer_dir("domaines").unwrap(),
+            Path::new("data/out/france/domaines")
+        );
+        assert!(l.france_layer_dir("../x").is_err());
+    }
+
+    #[test]
+    fn france_is_not_a_site() {
+        assert!(crate::site::SITES.iter().all(|s| s.id != FRANCE));
     }
 }

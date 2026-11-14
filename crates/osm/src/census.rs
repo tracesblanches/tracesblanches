@@ -16,7 +16,8 @@
 //!   [`CensusOptions::personal_sources`], off by default): station names matched by name
 //!   within the departments of their association.
 //!
-//! Layers: `data/out/france/domaines/` and `data/out/<site>/domaines/`. The domain layer is
+//! Layers: `data/out/france/domaines/` (`DataLayout::france_layer_dir`) and
+//! `data/out/<site>/domaines/`. The domain layer is
 //! derived from OSM and OpenSkiMap (both ODbL) and geo.api.gouv.fr (Licence Ouverte);
 //! SkiRadar matches are in a separate file with their attribution, Nordic France matches
 //! in another one, written only when personal sources are enabled.
@@ -43,8 +44,6 @@ use skimap_common::output::{feature, point, round7, write_geojson, write_json};
 
 /// Layer name.
 pub const LAYER: &str = "domaines";
-/// Output directory name for the France-wide layer, next to the site directories.
-pub const FRANCE_DIR: &str = "france";
 /// OpenSkiMap ski areas (CSV).
 pub const OPENSKIMAP_AREAS_URL: &str = "https://tiles.openskimap.org/csv/ski_areas.csv";
 /// OpenSkiMap runs (CSV).
@@ -1074,7 +1073,7 @@ pub fn build_france_from(
                 })
             })
             .collect();
-        let dir = layout.out_root().join(FRANCE_DIR).join(LAYER);
+        let dir = layout.france_layer_dir(LAYER)?;
         write_json(
             &dir.join("nordic_france.json"),
             &json!({
@@ -1093,7 +1092,7 @@ pub fn build_france_from(
     }
 
     // Write the France layer.
-    let dir = layout.out_root().join(FRANCE_DIR).join(LAYER);
+    let dir = layout.france_layer_dir(LAYER)?;
     write_domain_files(&dir, &domains, None)?;
     let count_km = |km: f64| domains.iter().filter(|r| r.km_nordic >= km).count();
     let named = |src: &str| {
@@ -1156,7 +1155,7 @@ pub fn build_france_from(
     ));
     sources.extend(skiradar_sources);
     let meta = layer_meta(
-        FRANCE_DIR,
+        skimap_common::layout::FRANCE,
         planet,
         sources,
         &domains,
