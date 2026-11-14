@@ -21,7 +21,7 @@ Instantané de l'état des pistes (pipeline), interrogé une fois pour tous les 
 | Cervières | widget Nordic France `/widget/marqueblanche/station/3167` : secteurs, date de damage par secteur, état et commentaire par piste, « Mise à jour » | HTML seulement | au plus toutes les 3 h |
 | Cervières | page « Info damage » de la mairie : un tableau par secteur (piste, ouvert/fermé, damage, classique, skating, commentaire), `article:modified_time` | HTML seulement | au plus toutes les 3 h |
 
-**Usage personnel** : aucune de ces sources n'affiche de licence (ENJ : ticket L1 ouvert ; Nordic France et mairie : HTML sans conditions). `poll` refuse donc de tourner sans `personal_sources` (erreur `PersonalSourcesDisabled`, rien n'est écrit). L'option n'existe pas encore dans `skimap_common::config::Config` ; l'exemple la lit dans `SKIMAP_PERSONAL_SOURCES=1`.
+**Usage personnel** : aucune de ces sources n'affiche de licence (ENJ : ticket L1 ouvert ; Nordic France et mairie : HTML sans conditions). `poll` refuse donc de tourner sans `personal_sources` (erreur `PersonalSourcesDisabled`, rien n'est écrit). L'option est `skimap_common::config::Config::personal_sources`, lue dans `SKIMAP_PERSONAL_SOURCES=1` (ou `true`).
 
 ## Planification
 

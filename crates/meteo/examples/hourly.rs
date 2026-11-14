@@ -1,8 +1,7 @@
 //! Builds the hourly weather of a site:
 //! `SKIMAP_PERSONAL_SOURCES=1 cargo run -p skimap-meteo --example hourly -- <site>`.
 //!
-//! `SKIMAP_PERSONAL_SOURCES` stands for the `personal_sources` option until it exists in
-//! `skimap_common::config::Config`.
+//! `SKIMAP_PERSONAL_SOURCES` sets `skimap_common::config::Config::personal_sources`.
 
 use skimap_common::config::Config;
 use skimap_common::download::Downloader;
@@ -10,10 +9,9 @@ use skimap_common::site;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let site = site::site(&std::env::args().nth(1).ok_or("usage: hourly <site>")?)?;
-    let personal = std::env::var("SKIMAP_PERSONAL_SOURCES").is_ok_and(|v| v == "1");
     let cfg = Config::from_env()?;
     let dl = Downloader::from_config(&cfg)?;
-    let f = skimap_meteo::hourly::build(site, &cfg.layout(), &dl, personal)?;
+    let f = skimap_meteo::hourly::build(site, &cfg.layout(), &dl, cfg.personal_sources)?;
     for p in &f.points {
         println!(
             "{} ({}) {:.4},{:.4} elevation {} m, {} hours",

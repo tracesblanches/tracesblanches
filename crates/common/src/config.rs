@@ -7,6 +7,7 @@
 //! | `DATATOURISME_API_KEY` | DATAtourisme API key |
 //! | `SKITOUR_API_KEY` | Skitour API key |
 //! | `SKIMAP_RATE_LIMIT_<SOURCE>` | rate-limit override, e.g. `SKIMAP_RATE_LIMIT_DATATOURISME=1000/h` |
+//! | `SKIMAP_PERSONAL_SOURCES` | `1` or `true`: also use the personal-use-only sources (default off) |
 //!
 //! Keys are wrapped in [`Secret`], whose `Debug` and `Display` never print the value:
 //! a key never reaches a log, an error message or a cache file.
@@ -136,6 +137,17 @@ pub fn rate_limit_var(source: &str) -> String {
     )
 }
 
+/// Boolean environment flag: `1` / `true` or `0` / `false` (case-insensitive).
+fn parse_flag(name: &str, v: &str) -> Result<bool> {
+    match v.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" => Ok(true),
+        "0" | "false" => Ok(false),
+        _ => Err(Error::Config(format!(
+            "{name}: expected 1, true, 0 or false, got `{v}`"
+        ))),
+    }
+}
+
 /// Process configuration.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
@@ -149,6 +161,10 @@ pub struct Config {
     pub skitour_api_key: Option<Secret>,
     /// Rate-limit overrides per source name.
     pub rate_limits: BTreeMap<String, Vec<RateLimit>>,
+    /// Also use the sources whose terms only allow personal, non-commercial use (Nordic
+    /// France widget, Open-Meteo free API, trail status pages without a licence). Off by
+    /// default: their content must not end up in a redistributed pack.
+    pub personal_sources: bool,
 }
 
 impl Config {
@@ -170,6 +186,7 @@ impl Config {
             datatourisme_api_key: None,
             skitour_api_key: None,
             rate_limits: BTreeMap::new(),
+            personal_sources: false,
         };
         for (k, v) in vars {
             let (k, v) = (k.as_ref(), v.into());
@@ -181,6 +198,7 @@ impl Config {
                 "METEOFRANCE_API_KEY" => cfg.meteofrance_api_key = Some(Secret::new(v)),
                 "DATATOURISME_API_KEY" => cfg.datatourisme_api_key = Some(Secret::new(v)),
                 "SKITOUR_API_KEY" => cfg.skitour_api_key = Some(Secret::new(v)),
+                "SKIMAP_PERSONAL_SOURCES" => cfg.personal_sources = parse_flag(k, &v)?,
                 _ => {
                     if let Some(src) = k.strip_prefix("SKIMAP_RATE_LIMIT_") {
                         let source = src.to_ascii_lowercase().replace('_', "-");
@@ -241,6 +259,23 @@ mod tests {
             ]
         );
         assert!(Config::from_vars([("SKIMAP_RATE_LIMIT_X", "fast")]).is_err());
+    }
+
+    #[test]
+    fn personal_sources_flag() {
+        let get = |v: &str| Config::from_vars([("SKIMAP_PERSONAL_SOURCES", v)]);
+        assert!(
+            !Config::from_vars(Vec::<(String, String)>::new())
+                .unwrap()
+                .personal_sources
+        );
+        for on in ["1", "true", "TRUE", " true "] {
+            assert!(get(on).unwrap().personal_sources, "{on}");
+        }
+        for off in ["0", "false", ""] {
+            assert!(!get(off).unwrap().personal_sources, "{off}");
+        }
+        assert!(get("yes").is_err());
     }
 
     #[test]

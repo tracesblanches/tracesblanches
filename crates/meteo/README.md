@@ -67,4 +67,4 @@ SKIMAP_PERSONAL_SOURCES=1 cargo run -p skimap-meteo --example hourly -- cerviere
 SKIMAP_PERSONAL_SOURCES=1 cargo run -p skimap-meteo --example hourly -- chapelle-des-bois
 ```
 
-`SKIMAP_PERSONAL_SOURCES` tient lieu de l'option `personal_sources` tant qu'elle n'existe pas dans `skimap_common::config::Config`.
+`SKIMAP_PERSONAL_SOURCES=1` (ou `true`) active `skimap_common::config::Config::personal_sources`.

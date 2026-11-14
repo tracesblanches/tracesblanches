@@ -45,9 +45,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cfg = Config::from_env()?;
     let layout = cfg.layout();
     let dl = Downloader::from_config(&cfg)?;
-    let personal = std::env::var("SKIMAP_PERSONAL_SOURCES").is_ok_and(|v| v == "1");
     let opts = CensusOptions {
-        personal_sources: personal,
+        personal_sources: cfg.personal_sources,
         ..Default::default()
     };
     let t = Instant::now();

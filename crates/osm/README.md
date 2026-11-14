@@ -70,7 +70,7 @@ Sorties, WGS84 :
 | `nordic_france.json` | stations Nordic France et domaine rapproché (seulement si `personal_sources`) | usage personnel |
 | `data/out/<site>/domaines/` | mêmes fichiers, domaines touchant l'emprise du site | idem |
 
-API : `census::build(site, &layout, &downloader)` ; `census::build_france_from` puis `census::build_site_from` pour réutiliser l'extrait. Exemple : `cargo run --release -p skimap-osm --example domaines` (`SKIMAP_PERSONAL_SOURCES=1` pour Nordic France ; la variable n'est lue que par l'exemple, `common::config` ne la connaît pas encore).
+API : `census::build(site, &layout, &downloader)` ; `census::build_france_from` puis `census::build_site_from` pour réutiliser l'extrait. Exemple : `cargo run --release -p skimap-osm --example domaines` (`SKIMAP_PERSONAL_SOURCES=1` pour Nordic France, lu par `common::config::Config::personal_sources`).
 
 Résultats au 13/11/2026 :
 
