@@ -10,5 +10,10 @@ publish.workspace = true
 skimap-common = { workspace = true }
 skimap-zones = { workspace = true }
 
+[dev-dependencies]
+# offpiste_bench example only (pipeline side of C3: GeoTIFF reading, GeoJSON).
+skimap-terrain.workspace = true
+serde_json.workspace = true
+
 [lints]
 workspace = true
