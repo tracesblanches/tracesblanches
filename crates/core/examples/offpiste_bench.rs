@@ -1,5 +1,5 @@
 //! Off-piste routing (C3, #35): pipeline-side preparation, proof routes, and the benchmark
-//! of the dominating case (10 × 10 km at 5 m).
+//! of the dominating case (C4, #36: 10 × 10 km at 5 m, on the host and on the Pixel 8).
 //!
 //! ```sh
 //! # Pipeline: static rasters + snow of the given snow layer directories (default: the
@@ -12,7 +12,7 @@
 //!     <lon,lat> <RFC 3339 instant> <snow file> <name>
 //! # Benchmark (also on the phone): load, zone policy, A*, Dijkstra, exhaustive search
 //! cargo run --release -p skimap-core --example offpiste_bench -- bench <site> <snow file> \
-//!     [--window-km 10] [--iters 3] [--at <RFC 3339>]
+//!     [--window-km 10] [--iters 3] [--at <RFC 3339>] [--power]
 //! ```
 //!
 //! Data directory: `$SKIMAP_DATA_DIR` or `./data`. Snow files are named
@@ -34,10 +34,67 @@
 //!   `uses` contains `nordic`) and other marked itineraries;
 //! - snow classes of each snow layer (`class_srn.tif`, `class_groomed.tif`, 25 m), date
 //!   taken from `snow.meta.json` (`valid_for`).
+//!
+//! `--power` samples `/sys/class/power_supply/battery/{current_now,voltage_now}` (or
+//! `$SKIMAP_POWER_SUPPLY`) every 100 ms: 5 s idle baseline, then the workload.
+//!
+//! # Pixel 8 (C4)
+//!
+//! ```sh
+//! export ANDROID_NDK_HOME=~/Android/Sdk/ndk/28.2.13676358
+//! cargo ndk -t arm64-v8a --platform 34 build --release -p skimap-core --example offpiste_bench
+//! adb devices
+//! adb shell getprop ro.product.model
+//! adb push target/aarch64-linux-android/release/examples/offpiste_bench /data/local/tmp/
+//! adb shell chmod 755 /data/local/tmp/offpiste_bench
+//! adb shell mkdir -p /data/local/tmp/skimap-data/out/cervieres/zones \
+//!     /data/local/tmp/skimap-data/out/chapelle-des-bois/zones
+//! adb push data/out/cervieres/offpiste /data/local/tmp/skimap-data/out/cervieres/
+//! adb push data/out/cervieres/zones/zones.geojson data/out/cervieres/zones/rules.json \
+//!     /data/local/tmp/skimap-data/out/cervieres/zones/
+//! adb push data/out/chapelle-des-bois/offpiste /data/local/tmp/skimap-data/out/chapelle-des-bois/
+//! adb push data/out/chapelle-des-bois/zones/zones.geojson \
+//!     data/out/chapelle-des-bois/zones/rules.json /data/local/tmp/skimap-data/out/chapelle-des-bois/zones/
+//! # Time and memory (USB connected), dominating case: Cervières 10 x 10 km
+//! adb shell 'cd /data/local/tmp && SKIMAP_DATA_DIR=/data/local/tmp/skimap-data ./offpiste_bench \
+//!     bench cervieres skimap-data/out/cervieres/offpiste/snow_2026-02-15.skr --iters 5' \
+//!     > bench_pixel8_cervieres_10km.json
+//! # Same on the X3 big core only (cpu 8) and on a little A510 core (cpu 0)
+//! adb shell 'cd /data/local/tmp && SKIMAP_DATA_DIR=/data/local/tmp/skimap-data taskset 100 \
+//!     ./offpiste_bench bench cervieres skimap-data/out/cervieres/offpiste/snow_2026-02-15.skr \
+//!     --iters 5' > bench_pixel8_cervieres_10km_x3.json
+//! adb shell 'cd /data/local/tmp && SKIMAP_DATA_DIR=/data/local/tmp/skimap-data taskset 1 \
+//!     ./offpiste_bench bench cervieres skimap-data/out/cervieres/offpiste/snow_2026-02-15.skr \
+//!     --iters 3' > bench_pixel8_cervieres_10km_a510.json
+//! # Whole site (16.6 km window, 11 M cells) and Chapelle-des-Bois 10 x 10 km
+//! adb shell 'cd /data/local/tmp && SKIMAP_DATA_DIR=/data/local/tmp/skimap-data ./offpiste_bench \
+//!     bench cervieres skimap-data/out/cervieres/offpiste/snow_2026-02-15.skr --iters 3 \
+//!     --window-km 20' > bench_pixel8_cervieres_full.json
+//! adb shell 'cd /data/local/tmp && SKIMAP_DATA_DIR=/data/local/tmp/skimap-data ./offpiste_bench \
+//!     bench chapelle-des-bois skimap-data/out/chapelle-des-bois/offpiste/snow_2026-02-15.skr \
+//!     --iters 5' > bench_pixel8_chapelle_10km.json
+//! # Energy: the phone must run on battery. Wireless debugging (Developer options >
+//! # Wireless debugging > Pair device with pairing code), then unplug the USB cable.
+//! adb pair <ip>:<pairing port> <code>
+//! adb connect <ip>:<port>
+//! adb shell dumpsys battery | grep -E 'powered|status|level'   # all "powered: false"
+//! adb shell cat /sys/class/power_supply/battery/current_now /sys/class/power_supply/battery/voltage_now
+//! adb shell 'cd /data/local/tmp && SKIMAP_DATA_DIR=/data/local/tmp/skimap-data ./offpiste_bench \
+//!     bench cervieres skimap-data/out/cervieres/offpiste/snow_2026-02-15.skr --iters 30 --power' \
+//!     > bench_pixel8_cervieres_10km_power.json
+//! ```
+//!
+//! Energy of the work = (mean power of `workload` − mean power of `idle`) × duration of
+//! `workload` (`energy` in the output; current in µA, voltage in µV, negative current =
+//! discharging on Pixel phones). If `current_now` is not readable by the shell user, the
+//! output says so and `dumpsys batterystats` (reset before, `--charged` after, uid 2000)
+//! is the fallback.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 use skimap_common::crs::{self, Crs};
@@ -997,13 +1054,96 @@ fn mem() -> Value {
     json!({"rss_kib": proc_status("VmRSS:"), "peak_rss_kib": proc_status("VmHWM:")})
 }
 
+struct PowerSampler {
+    stop: Arc<AtomicBool>,
+    handle: std::thread::JoinHandle<Vec<(f64, f64, f64)>>,
+    t0: Instant,
+}
+
+impl PowerSampler {
+    fn start(dir: PathBuf) -> Option<Self> {
+        let read = |f: &str| -> Option<f64> {
+            std::fs::read_to_string(dir.join(f))
+                .ok()?
+                .trim()
+                .parse()
+                .ok()
+        };
+        read("current_now")?;
+        read("voltage_now")?;
+        let stop = Arc::new(AtomicBool::new(false));
+        let s2 = stop.clone();
+        let t0 = Instant::now();
+        let handle = std::thread::spawn(move || {
+            let read = |f: &str| -> Option<f64> {
+                std::fs::read_to_string(dir.join(f))
+                    .ok()?
+                    .trim()
+                    .parse()
+                    .ok()
+            };
+            let mut v = Vec::new();
+            while !s2.load(Ordering::Relaxed) {
+                if let (Some(i), Some(u)) = (read("current_now"), read("voltage_now")) {
+                    v.push((t0.elapsed().as_secs_f64(), i, u));
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            v
+        });
+        Some(Self { stop, handle, t0 })
+    }
+
+    fn now(&self) -> f64 {
+        self.t0.elapsed().as_secs_f64()
+    }
+
+    fn finish(self, phases: &[(&str, f64, f64)]) -> Value {
+        self.stop.store(true, Ordering::Relaxed);
+        let samples = self.handle.join().unwrap_or_default();
+        let mut out = serde_json::Map::new();
+        for (name, a, b) in phases {
+            let s: Vec<_> = samples.iter().filter(|x| x.0 >= *a && x.0 <= *b).collect();
+            if s.is_empty() {
+                out.insert((*name).into(), json!({"samples": 0}));
+                continue;
+            }
+            let n = s.len() as f64;
+            let i = s.iter().map(|x| x.1).sum::<f64>() / n;
+            let u = s.iter().map(|x| x.2).sum::<f64>() / n;
+            // current_now (µA) × voltage_now (µV) -> W; the sign convention depends on the
+            // device (negative = discharging on Pixel phones).
+            let p = s.iter().map(|x| x.1 * x.2 * 1e-12).sum::<f64>() / n;
+            out.insert(
+                (*name).into(),
+                json!({"samples": s.len(), "duration_s": b - a, "mean_current_ua": i, "mean_voltage_uv": u, "mean_power_w": p}),
+            );
+        }
+        // Net energy of the workload: (|P_workload| - |P_idle|) x duration.
+        let pw = |k: &str| {
+            out.get(k)
+                .and_then(|v| v["mean_power_w"].as_f64())
+                .map(f64::abs)
+        };
+        if let (Some(work), Some(idle), Some(d)) = (
+            pw("workload"),
+            pw("idle"),
+            out.get("workload").and_then(|v| v["duration_s"].as_f64()),
+        ) {
+            out.insert("net_energy_j".into(), json!((work - idle) * d));
+        }
+        Value::Object(out)
+    }
+}
+
 fn bench(layout: &DataLayout, args: &[String]) -> Res<()> {
-    let usage = "bench <site> <snow file> [--window-km 10] [--iters 3] [--at <RFC 3339>]";
+    let usage = "bench <site> <snow file> [--window-km 10] [--iters 3] [--at <RFC 3339>] [--power]";
     let s = site(args.first().ok_or(usage)?)?;
     let snow_path = PathBuf::from(args.get(1).ok_or(usage)?);
     let mut window_km = 10.0f64;
     let mut iters = 3usize;
     let mut at: DateTime<Utc> = "2026-02-15T09:00:00Z".parse()?;
+    let mut power = false;
     let mut k = 2;
     while k < args.len() {
         match args[k].as_str() {
@@ -1019,10 +1159,33 @@ fn bench(layout: &DataLayout, args: &[String]) -> Res<()> {
                 at = args.get(k + 1).ok_or(usage)?.parse()?;
                 k += 1;
             }
+            "--power" => power = true,
             a => return Err(format!("unknown argument {a}; {usage}").into()),
         }
         k += 1;
     }
+    let sampler = if power {
+        let dir = std::env::var("SKIMAP_POWER_SUPPLY")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("/sys/class/power_supply/battery"));
+        let p = PowerSampler::start(dir.clone());
+        if p.is_none() {
+            eprintln!(
+                "power: {} not readable, no energy measurement",
+                dir.display()
+            );
+        }
+        p
+    } else {
+        None
+    };
+    let mut phases = Vec::new();
+    if let Some(p) = &sampler {
+        let a = p.now();
+        std::thread::sleep(Duration::from_secs(5));
+        phases.push(("idle", a, p.now()));
+    }
+    let work_start = sampler.as_ref().map(PowerSampler::now);
     let mem0 = mem();
 
     let t0 = Instant::now();
@@ -1155,6 +1318,11 @@ fn bench(layout: &DataLayout, args: &[String]) -> Res<()> {
     let explore_s = t0.elapsed().as_secs_f64();
     runs.push(json!({"heuristic": "exhaustive (unreachable destination)", "total_s": explore_s, "prepare_s": e.prepare_s, "search_s": e.search_s,
                      "expanded": e.expanded, "pushed": e.pushed, "max_open": e.max_open, "bytes": e.bytes, "passable_cells": e.passable_cells}));
+    let work_end = sampler.as_ref().map(PowerSampler::now);
+    if let (Some(a), Some(b)) = (work_start, work_end) {
+        phases.push(("workload", a, b));
+    }
+    let energy = sampler.map(|p| p.finish(&phases));
     let mut sorted = astar_s.clone();
     sorted.sort_by(f64::total_cmp);
     let out = json!({
@@ -1171,6 +1339,7 @@ fn bench(layout: &DataLayout, args: &[String]) -> Res<()> {
         "runs": runs,
         "astar_median_s": sorted[sorted.len() / 2],
         "memory": {"start": mem0, "after_grid_load": mem_grid, "end": mem()},
+        "energy": energy,
     });
     println!("{}", serde_json::to_string_pretty(&out)?);
     Ok(())
