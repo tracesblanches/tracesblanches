@@ -2304,7 +2304,18 @@ dependencies = [
 name = "skimap-terrain"
 version = "0.1.0"
 dependencies = [
+ "approx",
+ "chrono",
+ "flate2",
+ "rayon",
+ "serde",
+ "serde_json",
  "skimap-common",
+ "tempfile",
+ "thiserror",
+ "tiff",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
