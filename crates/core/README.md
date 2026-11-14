@@ -12,6 +12,7 @@ La crate ne contient aucune pile HTTP (`cargo tree -p skimap-core -e normal` : n
 | `dem` (fonction `pipeline`) | C1 | lecture de `terrain/dem_5m.tif` (P5) et profil d'altitude de chaque arête tous les 10 m |
 | `routing` | C1 | coûts enfichables (`CostModel`), préférences de style, Dijkstra entre deux points rattachés, sorties GeoJSON, `build(site, &layout)` |
 | `eta` | C5 | modèle physique de temps, Munter, Tobler |
+| `matching` | C2 | rattachement HMM (Viterbi en ligne), détection d'écart avec hystérésis, mode couloir hors piste, traces synthétiques |
 | `zone_eval` | C8 | zones et règles à une position et une date |
 
 ## Pipeline et sorties
@@ -22,10 +23,12 @@ La crate ne contient aucune pile HTTP (`cargo tree -p skimap-core -e normal` : n
 |---|---|
 | `piste_graph.json` | graphe typé (`GraphData`, JSON serde) avec les profils d'altitude : c'est ce que le téléphone charge (`PisteGraph::from_json`), il ne lit jamais le MNT |
 | `routes.geojson` | itinéraires de preuve (exemple `routes`) |
+| `matching_example.geojson` | une trace synthétique, ses rattachements et ses alertes (exemple `matching_bench`) |
 | `routes.meta.json` | sources (OSM ODbL, IGN LiDAR HD Licence Ouverte), date de génération, date de validité des données OSM, fichiers et propriétés, paramètres, chiffres du graphe |
 
 ```sh
 cargo run --release -p skimap-core --features pipeline --example routes          # C1, C5
+cargo run --release -p skimap-core --features pipeline --example matching_bench  # C2
 cargo test -p skimap-core --features pipeline
 cargo test -p skimap-core --test real_sites -- --ignored  # données réelles
 ```
@@ -34,3 +37,4 @@ cargo test -p skimap-core --test real_sites -- --ignored  # données réelles
 
 - [C1 : graphe et routage](docs/routage.md) : sens unique, coût, style, chiffres et itinéraires de preuve, limites des données P2
 - [C5 : temps estimé](docs/temps.md) : modèle physique, paramètres et sources, comparaison à Munter, Tobler, Skitourenguru
+- [C2 : rattachement et écart](docs/rattachement.md) : HMM, hystérésis, mode couloir, traces synthétiques et mesures

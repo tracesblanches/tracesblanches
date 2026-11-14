@@ -27,6 +27,10 @@ thiserror.workspace = true
 name = "routes"
 required-features = ["pipeline"]
 
+[[example]]
+name = "matching_bench"
+required-features = ["pipeline"]
+
 [dev-dependencies]
 # offpiste_bench example only (pipeline side of C3: GeoTIFF reading, GeoJSON).
 skimap-terrain.workspace = true

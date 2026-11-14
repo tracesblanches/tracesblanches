@@ -1,4 +1,4 @@
-//! Real-data checks of C1 and C5 on the graph written by the pipeline
+//! Real-data checks of C1, C2 and C5 on the graph written by the pipeline
 //! (`data/out/<site>/routes/piste_graph.json`, built by
 //! `cargo run --release -p skimap-core --features pipeline --example routes`).
 //!
@@ -7,6 +7,8 @@
 use skimap_common::geom::LonLat;
 use skimap_core::eta::{EtaModel, munter_s, tobler_s};
 use skimap_core::graph::{PisteGraph, Snap};
+use skimap_core::matching::synth::{Noise, Rng, add_noise, sample_polyline};
+use skimap_core::matching::{AlertEvent, MatchParams, MatchState, ROUTE_HYSTERESIS, RouteMonitor};
 use skimap_core::routing::{Distance, Route, Router, Style, StylePolicy};
 
 fn graph(site: &str) -> PisteGraph {
@@ -120,4 +122,52 @@ fn chapelle_village_chalet_gaillard() {
     assert!(rt.gain_loss(&g).0 < r.gain_loss(&g).0);
     let [c, s, m, t] = times(&g, &r);
     assert!(s < c && c < t && t < m, "{c} {s} {m} {t}");
+}
+
+#[test]
+#[ignore = "needs data/out/chapelle-des-bois/routes/piste_graph.json"]
+fn chapelle_matching_under_forest_noise() {
+    let g = graph("chapelle-des-bois");
+    let r = shortest(
+        &g,
+        LonLat::new(6.12167, 46.56318),
+        LonLat::new(6.11442, 46.64122),
+    );
+    let plan = r.polyline(&g);
+    let truth = sample_polyline(&plan, 1.0, |_| 3.5);
+    let noise = Noise {
+        sigma_m: 15.0,
+        tau_s: 30.0,
+        outlier_rate_hz: 0.02,
+        outlier_m: 30.0,
+        outlier_len_s: (2.0, 10.0),
+    };
+    let fixes = add_noise(&truth, &noise, &mut Rng(5));
+    let mut mon = RouteMonitor::new(&g, &plan, MatchParams::default(), ROUTE_HYSTERESIS);
+    let mut alerts = 0;
+    let (mut near, mut raw_near) = (0, 0);
+    for (f, t) in fixes.iter().zip(&truth) {
+        let out = mon.push(*f);
+        if let Some(AlertEvent::Raised(_)) = out.event {
+            alerts += 1;
+        }
+        if let MatchState::OnTrail(s) = out.state
+            && s.pos.haversine_m(t.pos) < 25.0
+        {
+            near += 1;
+        }
+        if f.pos.haversine_m(t.pos) < 25.0 {
+            raw_near += 1;
+        }
+    }
+    let n = fixes.len() as f64;
+    let (share, raw) = (near as f64 / n, raw_near as f64 / n);
+    println!(
+        "{} fixes, within 25 m: matched {share:.3}, raw GPS {raw:.3}, alerts {alerts}",
+        fixes.len()
+    );
+    // The along-track part of a correlated error cannot be removed by snapping: the
+    // matched point beats the raw fix but stays below ~85 % within 25 m at σ = 15 m.
+    assert!(share > 0.78 && share > raw + 0.1, "{share} vs {raw}");
+    assert_eq!(alerts, 0);
 }
