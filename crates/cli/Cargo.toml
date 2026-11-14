@@ -21,7 +21,9 @@ skimap-coverage.workspace = true
 skimap-refuges.workspace = true
 skimap-status.workspace = true
 skimap-avalanche.workspace = true
-skimap-core.workspace = true
+# Pipeline side of the core: graph profiles from the terrain model, off-piste rasters.
+skimap-core = { workspace = true, features = ["pipeline"] }
+skimap-voice.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
 clap.workspace = true

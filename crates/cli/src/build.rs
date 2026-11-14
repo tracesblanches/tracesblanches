@@ -152,6 +152,41 @@ impl Ctx {
         })
     }
 
+    /// C1: trail graph with elevation profiles, `routes/piste_graph.json` (needs the
+    /// `pistes` and `terrain` layers).
+    pub fn routing(&self, site: &Site) -> Result<skimap_core::routing::GraphBuild> {
+        Ok(skimap_core::routing::build(site, &self.layout)?.1)
+    }
+
+    /// C3: off-piste rasters, `offpiste/` (needs `terrain`, `zones`, `pistes` and the snow
+    /// layer directories, default the site's `snow`).
+    pub fn offpiste_prepare(&self, site: &Site, snow_dirs: &[PathBuf]) -> Result<LayerMeta> {
+        let default;
+        let dirs = if snow_dirs.is_empty() {
+            default = [self.layout.layer_dir(site, "snow")?];
+            &default[..]
+        } else {
+            snow_dirs
+        };
+        Ok(skimap_core::offpiste::prepare::prepare(
+            site,
+            &self.layout,
+            dirs,
+        )?)
+    }
+
+    /// VO3: voice clips of the pack with the names of the built layers (`pistes`,
+    /// `refuges`, `zones`); Pocket TTS on this workstation (`VoiceConfig::from_env`).
+    pub fn voice(
+        &self,
+        site: &Site,
+    ) -> Result<(skimap_voice::pack::VoiceBuild, skimap_voice::PackNames)> {
+        let (names, sources) = crate::voice::pack_names(&self.layout, site)?;
+        let cfg = skimap_voice::VoiceConfig::from_env()?;
+        let b = skimap_voice::build(site, &self.layout, &names, &sources, &cfg)?;
+        Ok((b, names))
+    }
+
     /// Runs every available builder of `site` in dependency order and prints the time and
     /// the key figures of each step. A step whose dependency failed is skipped; the
     /// personal-use steps are skipped when `personal_sources` is off. Fails if any step
@@ -257,6 +292,39 @@ impl Ctx {
             let kinds: Vec<String> = z.by_kind.iter().map(|(k, n)| format!("{k} {n}")).collect();
             Ok(format!("{} zones ({})", z.zones, kinds.join(", ")))
         });
+        run.step("routing", &["pistes", "terrain"], || {
+            let g = self.routing(site)?;
+            Ok(format!(
+                "{} nœuds, {} arêtes, {:.1} km ({:.1} km à sens unique), {} composantes ; profils sur {} / {} arêtes ; {} octets",
+                g.nodes,
+                g.edges,
+                g.length_km,
+                g.oneway_km,
+                g.components,
+                g.profiles.edges_with_profile,
+                g.edges,
+                g.graph_bytes
+            ))
+        });
+        run.step(
+            "offpiste-prepare",
+            &["terrain", "snow", "zones", "pistes"],
+            || {
+                let m = self.offpiste_prepare(site, &[])?;
+                let g = &m.stats["grid"];
+                Ok(format!(
+                    "grille {} x {} cellules de {} m, pente ≥ 30° {:.1} %, {} classes de zones (écarts de contrôle {}), {} cellules de piste damée, {} fichiers",
+                    g["size_cells"][0],
+                    g["size_cells"][1],
+                    g["cell_size"],
+                    g["share_slope_ge_30_of_valid"].as_f64().unwrap_or(f64::NAN) * 100.0,
+                    m.stats["zones"]["classes"],
+                    m.stats["zones"]["check_mismatches"],
+                    m.stats["pistes"]["cells_groomed"],
+                    m.files.len()
+                ))
+            },
+        );
         run.step("coverage", &[], || {
             let c = self.coverage(site, &skimap_coverage::CoverageOptions::default())?;
             Ok(format!(

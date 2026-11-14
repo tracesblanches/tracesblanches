@@ -5,6 +5,8 @@
 //! remaining placeholders name the ticket that will provide it.
 
 mod build;
+mod route;
+mod voice;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -136,14 +138,54 @@ enum Command {
         /// `YYYY-MM-DD` (noon), `YYYY-MM-DDTHH:MM` in French legal time, or RFC 3339.
         date: String,
     },
+    /// Trail graph with elevation profiles, `routes/piste_graph.json` (C1, #33); needs the
+    /// `pistes` and `terrain` layers.
+    Routing(SiteArg),
+    /// Off-piste rasters of a site, `offpiste/` (C3, #35); needs `terrain`, `zones`,
+    /// `pistes` and a snow layer.
+    OffpistePrepare {
+        /// Site identifier.
+        site: String,
+        /// Snow layer directories (default: the site's `snow` layer); repeatable.
+        #[arg(long = "snow-dir")]
+        snow_dirs: Vec<PathBuf>,
+    },
+    /// Route on the trails between two points: length, climb, estimated time (C1 #33,
+    /// C5 #37), turnaround before nightfall with `--start` (C7 #39); writes a GeoJSON.
+    Route {
+        /// Site identifier.
+        site: String,
+        /// Start, `lat,lon` (WGS84 degrees).
+        #[arg(allow_hyphen_values = true)]
+        from: String,
+        /// End, `lat,lon`.
+        #[arg(allow_hyphen_values = true)]
+        to: String,
+        /// Technique: classic or skating.
+        #[arg(long, default_value = "classic")]
+        style: String,
+        /// Date of the outing YYYY-MM-DD (default: today), for `--start HH:MM`.
+        #[arg(long)]
+        date: Option<String>,
+        /// Start time: `HH:MM` (French legal time) or date and time; gives the turnaround.
+        #[arg(long)]
+        start: Option<String>,
+        /// Largest distance from a point to the trails, metres.
+        #[arg(long, default_value_t = 500.0)]
+        max_snap: f64,
+        /// GeoJSON written.
+        #[arg(long, default_value = "route.geojson")]
+        out: PathBuf,
+    },
+    /// Voice clips of the pack of a site (VO3, #85) with the names of its built layers
+    /// (`pistes`, `refuges`, `zones`); Pocket TTS on this workstation.
+    Voice(SiteArg),
     /// Every available builder of a site, in dependency order, timed.
     BuildAll(SiteArg),
     /// Fetch every source of a site (P2, P5, P6, P8, P9, P11, P12, P13, P19).
     Fetch(Placeholder),
     /// Build the offline pack of a site (P14, #27).
     BuildPack(Placeholder),
-    /// Route between two points, on trails or off-piste (C1 #33, C3 #35).
-    Route(Placeholder),
     /// Estimated time of a route (C5, #37).
     Eta(Placeholder),
     /// Export the layers of a site for the viewer (P15, #28).
@@ -397,6 +439,54 @@ fn run(cli: Cli) -> Result<()> {
             print!("{}", e.describe_fr());
             Ok(())
         }
+        Command::Routing(a) => {
+            let s = site(&a.site)?;
+            print_json(&ctx()?.routing(s)?)
+        }
+        Command::OffpistePrepare { site: s, snow_dirs } => {
+            let s = site(&s)?;
+            print_json(&ctx()?.offpiste_prepare(s, &snow_dirs)?.stats)
+        }
+        Command::Route {
+            site: s,
+            from,
+            to,
+            style,
+            date,
+            start,
+            max_snap,
+            out,
+        } => {
+            let s = site(&s)?;
+            let date = date.as_deref().map(build::parse_date).transpose()?;
+            let req = route::RouteRequest {
+                from: route::parse_lat_lon(&from)?,
+                to: route::parse_lat_lon(&to)?,
+                style: route::parse_style(&style)?,
+                start: start
+                    .as_deref()
+                    .map(|t| route::parse_start(t, date))
+                    .transpose()?,
+                max_snap_m: max_snap,
+                out,
+            };
+            let g = route::load_graph(&cfg.layout(), s)?;
+            for line in route::route(&g, s, &req)? {
+                println!("{line}");
+            }
+            Ok(())
+        }
+        Command::Voice(a) => {
+            let s = site(&a.site)?;
+            let (b, names) = ctx()?.voice(s)?;
+            println!(
+                "noms : {} pistes, {} lieux, {} dates",
+                names.pistes.len(),
+                names.places.len(),
+                names.dates.len()
+            );
+            print_json(&b)
+        }
         Command::BuildAll(a) => {
             let s = site(&a.site)?;
             ctx()?.build_all(s)
@@ -406,7 +496,6 @@ fn run(cli: Cli) -> Result<()> {
             "P2 #15, P5 #18, P6 #19, P8 #21, P9 #22, P11 #24, P12 #25, P13 #26, P19 #32",
         ),
         Command::BuildPack(_) => not_implemented("build-pack", "P14 #27"),
-        Command::Route(_) => not_implemented("route", "C1 #33, C3 #35"),
         Command::Eta(_) => not_implemented("eta", "C5 #37"),
         Command::Export(_) => not_implemented("export", "P15 #28"),
         Command::Briefing(_) => not_implemented("briefing", "A1 #88"),
@@ -438,9 +527,62 @@ mod tests {
     #[test]
     fn placeholders_accept_any_arguments() {
         let cli =
-            Cli::try_parse_from(["skimap", "route", "cervieres", "--from", "6.7,44.8"]).unwrap();
-        assert!(matches!(cli.command, Command::Route(p) if p.args.len() == 3));
+            Cli::try_parse_from(["skimap", "eta", "cervieres", "--from", "6.7,44.8"]).unwrap();
+        assert!(matches!(cli.command, Command::Eta(p) if p.args.len() == 3));
         assert!(run(Cli::try_parse_from(["skimap", "eta"]).unwrap()).is_err());
+    }
+
+    #[test]
+    fn route_and_core_subcommands_parse() {
+        let cli = Cli::try_parse_from([
+            "skimap",
+            "route",
+            "cervieres",
+            "44.85894,6.72501",
+            "44.84465,6.8157",
+            "--style",
+            "skating",
+            "--date",
+            "2027-01-15",
+            "--start",
+            "13:00",
+        ])
+        .unwrap();
+        assert!(matches!(
+            cli.command,
+            Command::Route { ref style, start: Some(ref t), max_snap, .. }
+                if style == "skating" && t == "13:00" && max_snap == 500.0
+        ));
+        let cli = Cli::try_parse_from([
+            "skimap",
+            "offpiste-prepare",
+            "cervieres",
+            "--snow-dir",
+            "a",
+            "--snow-dir",
+            "b",
+        ])
+        .unwrap();
+        assert!(
+            matches!(cli.command, Command::OffpistePrepare { ref snow_dirs, .. } if snow_dirs.len() == 2)
+        );
+        for cmd in ["routing", "voice"] {
+            Cli::try_parse_from(["skimap", cmd, "chapelle-des-bois"]).unwrap();
+        }
+        // Without the graph, `route` says how to build it.
+        let dir = tempfile::tempdir().unwrap();
+        let cli = Cli::try_parse_from([
+            "skimap",
+            "--data-dir",
+            dir.path().to_str().unwrap(),
+            "route",
+            "cervieres",
+            "44.85,6.72",
+            "44.84,6.81",
+        ])
+        .unwrap();
+        let e = format!("{:#}", run(cli).unwrap_err());
+        assert!(e.contains("skimap routing cervieres"), "{e}");
     }
 
     #[test]

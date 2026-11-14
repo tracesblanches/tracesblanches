@@ -2182,6 +2182,7 @@ dependencies = [
  "skimap-snow",
  "skimap-status",
  "skimap-terrain",
+ "skimap-voice",
  "skimap-zones",
  "tempfile",
  "tracing",
