@@ -31,3 +31,7 @@ En bref :
    - [Ligne de commande](architecture/compiler.md#ligne-de-commande)
    - [Android (F4, #4)](architecture/compiler.md#android-f4-4)
    - [Git](architecture/compiler.md#git)
+5. [Voix : pile reprise de speak, banque de phrases, clips des packs](voix.md)
+   - [Pocket TTS sur le poste depuis skimap](voix.md#pocket-tts-sur-le-poste-depuis-skimap)
+   - [Banque de phrases (VO2)](voix.md#banque-de-phrases-vo2)
+   - [Clips des packs (VO3)](voix.md#clips-des-packs-vo3-mesurés-le-14112026)
