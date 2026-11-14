@@ -1,13 +1,14 @@
-//! Proof run of C1 (routing) on both sites.
+//! Proof run of C1 (routing) and C5 (time model) on both sites.
 //!
 //! ```sh
 //! cargo run --release -p skimap-core --features pipeline --example routes [site ...]
 //! ```
 //!
 //! For each site: builds the graph with elevation profiles (`routes/piste_graph.json`),
-//! routes real point pairs in both directions (shortest distance), compares the route
-//! length with the OSM lengths of the edges and the elevations with refuges.info, writes
-//! `routes/routes.geojson`, then times 2 000 random routes on the network.
+//! routes real point pairs in both directions with three cost models (shortest distance,
+//! classic time, skating time), compares the route length with the OSM lengths of the
+//! edges, gives the physical time (classic, skating, and without relief), Munter and
+//! Tobler, writes `routes/routes.geojson`, then times 2 000 random routes on the network.
 
 #[path = "common/mod.rs"]
 mod common;
@@ -20,8 +21,9 @@ use skimap_common::config::Config;
 use skimap_common::geom::LonLat;
 use skimap_common::layout::DataLayout;
 use skimap_common::site::{Site, site};
+use skimap_core::eta::{EtaModel, munter_s, tobler_s};
 use skimap_core::graph::{PisteGraph, Snap};
-use skimap_core::routing::{self, Distance, Route, Router, Style, StylePolicy};
+use skimap_core::routing::{self, Distance, Piece, Route, Router, Style, StylePolicy};
 
 const MAX_SNAP_M: f64 = 500.0;
 
@@ -50,12 +52,26 @@ fn named_lengths(dir: &std::path::Path) -> BTreeMap<String, f64> {
     m
 }
 
+fn hms(s: f64) -> String {
+    let m = (s / 60.0).round() as i64;
+    format!("{}h{:02}", m / 60, m % 60)
+}
+
 struct Eval {
     props: Map<String, Value>,
     line: String,
 }
 
 fn evaluate(g: &PisteGraph, r: &Route, osm: &[f64]) -> Eval {
+    let pieces = r.pieces(g);
+    let classic = EtaModel::new(Style::Classic);
+    let skating = EtaModel::new(Style::Skating);
+    let bc = classic.time_s(&pieces);
+    let bs = skating.time_s(&pieces);
+    let flat_pieces: Vec<Piece<'_>> = pieces.iter().map(|p| Piece { dz_m: 0.0, ..*p }).collect();
+    let bflat = classic.time_s(&flat_pieces);
+    let munter = munter_s(&pieces, 4.0, 10.0);
+    let tobler = tobler_s(&pieces);
     let osm_sum: f64 = r
         .legs
         .iter()
@@ -67,13 +83,30 @@ fn evaluate(g: &PisteGraph, r: &Route, osm: &[f64]) -> Eval {
         "osm_length_sum_m".into(),
         json!((osm_sum * 10.0).round() / 10.0),
     );
+    props.insert("eta_classic_s".into(), json!(bc.total_s.round()));
+    props.insert("eta_skating_s".into(), json!(bs.total_s.round()));
+    props.insert("eta_classic_flat_s".into(), json!(bflat.total_s.round()));
+    props.insert("munter_s".into(), json!(munter.round()));
+    props.insert("tobler_s".into(), json!(tobler.round()));
+    props.insert(
+        "classic_split_s".into(),
+        json!({"uphill": bc.uphill_s.round(), "flat": bc.flat_s.round(), "downhill": bc.downhill_s.round()}),
+    );
     let line = format!(
-        "{:>7.2} km (OSM {:>7.2} km, Δ {:+.2} %) D+ {:>4.0} m D- {:>4.0} m",
+        "{:>7.2} km (OSM {:>7.2} km, Δ {:+.2} %) D+ {:>4.0} m D- {:>4.0} m | classique {} ({:.1} km/h) skating {} ({:+.1} %) sans relief {} | Munter {} Tobler {} Skitourenguru (rapport 06) {}",
         r.length_m() / 1000.0,
         osm_sum / 1000.0,
         (r.length_m() / osm_sum - 1.0) * 100.0,
         up,
         down,
+        hms(bc.total_s),
+        bc.mean_kmh(),
+        hms(bs.total_s),
+        (bc.total_s / bs.total_s - 1.0) * 100.0,
+        hms(bflat.total_s),
+        hms(munter),
+        hms(tobler),
+        hms((0.288 * r.length_m() / 1000.0 + 0.208 * up / 100.0) * 3600.0),
     );
     Eval { props, line }
 }
@@ -227,13 +260,24 @@ fn run(site: &Site, layout: &DataLayout) -> Result<(), Box<dyn std::error::Error
             policy: StylePolicy::default(),
         },
     );
+    let t = Instant::now();
+    let eta_c = Router::new(&g, EtaModel::new(Style::Classic));
+    let pre_us = t.elapsed().as_secs_f64() * 1e6;
+    let eta_s = Router::new(&g, EtaModel::new(Style::Skating));
+    println!(
+        "précalcul des coûts (modèle de temps, toutes les arêtes, deux sens) : {pre_us:.0} µs"
+    );
 
     let refuge_alt = refuge_altitudes(&layout.layer_dir(site, "refuges")?);
     let mut features = Vec::new();
     for (pa, pb) in common::pairs(site.id) {
         for (from, to) in [(pa, pb), (pb, pa)] {
             println!("\n{} → {}", from.label, to.label);
-            for (model, route) in [("distance", dist.route(from.pos, to.pos, MAX_SNAP_M))] {
+            for (model, route) in [
+                ("distance", dist.route(from.pos, to.pos, MAX_SNAP_M)),
+                ("temps_classique", eta_c.route(from.pos, to.pos, MAX_SNAP_M)),
+                ("temps_skating", eta_s.route(from.pos, to.pos, MAX_SNAP_M)),
+            ] {
                 let r = match route {
                     Ok(r) => r,
                     Err(e) => {
@@ -331,11 +375,16 @@ fn run(site: &Site, layout: &DataLayout) -> Result<(), Box<dyn std::error::Error
         "composante principale : {main_nodes} nœuds, dont {} dans la plus grande composante fortement connexe (sens uniques respectés)",
         largest_scc(&g)
     );
-    for (name, f) in [(
-        "distance",
-        &(|s, t| dist.route_snaps(s, t).map(|r| r.length_m()))
-            as &dyn Fn(Snap, Snap) -> skimap_core::error::Result<f64>,
-    )] {
+    for (name, f) in [
+        (
+            "distance",
+            &(|s, t| dist.route_snaps(s, t).map(|r| r.length_m()))
+                as &dyn Fn(Snap, Snap) -> skimap_core::error::Result<f64>,
+        ),
+        ("temps_classique", &|s, t| {
+            eta_c.route_snaps(s, t).map(|r| r.length_m())
+        }),
+    ] {
         let mut times = Vec::with_capacity(queries.len());
         let (mut ok, mut longest) = (0, 0.0f64);
         for &(s, t) in &queries {

@@ -1,10 +1,11 @@
-//! Real-data checks of C1 on the graph written by the pipeline
+//! Real-data checks of C1 and C5 on the graph written by the pipeline
 //! (`data/out/<site>/routes/piste_graph.json`, built by
 //! `cargo run --release -p skimap-core --features pipeline --example routes`).
 //!
 //! Run with `cargo test -p skimap-core --test real_sites -- --ignored`.
 
 use skimap_common::geom::LonLat;
+use skimap_core::eta::{EtaModel, munter_s, tobler_s};
 use skimap_core::graph::{PisteGraph, Snap};
 use skimap_core::routing::{Distance, Route, Router, Style, StylePolicy};
 
@@ -47,6 +48,17 @@ fn max_elev(g: &PisteGraph, r: &Route) -> f64 {
         .fold(f64::NEG_INFINITY, f64::max)
 }
 
+/// Physical classic and skating, Munter and Tobler, seconds.
+fn times(g: &PisteGraph, r: &Route) -> [f64; 4] {
+    let p = r.pieces(g);
+    [
+        EtaModel::new(Style::Classic).time_s(&p).total_s,
+        EtaModel::new(Style::Skating).time_s(&p).total_s,
+        munter_s(&p, 4.0, 10.0),
+        tobler_s(&p),
+    ]
+}
+
 #[test]
 #[ignore = "needs data/out/cervieres/routes/piste_graph.json"]
 fn cervieres_laus_fonts_and_izoard() {
@@ -63,6 +75,9 @@ fn cervieres_laus_fonts_and_izoard() {
     assert!((up - 462.0).abs() < 20.0 && (down - 145.0).abs() < 20.0);
     // refuges.info: Refuge des Fonts de Cervières, 2040 m.
     assert!((elev(&g, &r.end) - 2040.0).abs() < 10.0);
+    let [c, s, m, t] = times(&g, &r);
+    assert!(s < c && c < t && t < m, "{c} {s} {m} {t}");
+    assert!((0.09..0.14).contains(&(c / s - 1.0)));
     // Le Laus → Brunissard over the Col d'Izoard (2360 m).
     let r = shortest(
         &g,
@@ -97,4 +112,12 @@ fn chapelle_village_chalet_gaillard() {
     assert!((r.length_m() - 12_900.0).abs() < 200.0);
     // refuges.info: Chalet Gaillard, 1232 m.
     assert!((elev(&g, &r.end) - 1232.0).abs() < 10.0);
+    // Time routing avoids part of the climb for a slightly longer route.
+    let rt = Router::new(&g, EtaModel::new(Style::Classic))
+        .route(village, gaillard, 500.0)
+        .unwrap();
+    assert!(rt.length_m() >= r.length_m());
+    assert!(rt.gain_loss(&g).0 < r.gain_loss(&g).0);
+    let [c, s, m, t] = times(&g, &r);
+    assert!(s < c && c < t && t < m, "{c} {s} {m} {t}");
 }
