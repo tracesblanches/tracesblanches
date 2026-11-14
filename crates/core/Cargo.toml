@@ -6,9 +6,26 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
+[features]
+default = []
+# Pipeline side only: reads the 5 m terrain model (GeoTIFF, through
+# `skimap_common::geotiff`) to store an elevation profile on every edge of the trail graph
+# (`routing::build`). The phone never reads the raster: it loads the graph with its
+# profiles. No HTTP stack either way.
+pipeline = ["skimap-common/geotiff"]
+
 [dependencies]
 skimap-common = { workspace = true }
 skimap-zones = { workspace = true }
+chrono.workspace = true
+rstar.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[[example]]
+name = "routes"
+required-features = ["pipeline"]
 
 [dev-dependencies]
 # offpiste_bench example only (pipeline side of C3: GeoTIFF reading, GeoJSON).

@@ -2198,10 +2198,14 @@ dependencies = [
 name = "skimap-core"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "rstar 0.12.2",
+ "serde",
  "serde_json",
  "skimap-common",
  "skimap-terrain",
  "skimap-zones",
+ "thiserror",
 ]
 
 [[package]]

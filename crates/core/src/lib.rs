@@ -11,11 +11,19 @@
 //! - [`zone_eval`]: C8 (#40) zones and rules active at a position and a date.
 //! - [`battery`]: C9 (#41) battery forecast model.
 //!
+//! Shared modules: [`graph`] (typed trail graph with elevation profiles, used by C1, C2,
+//! C5), [`error`];
+//! [`dem`] (feature `pipeline`, pipeline side only) samples the terrain model along the graph.
+//!
 //! Runs on the phone (through UniFFI or a native binary, decision K0 #49): no networking,
 //! no dependency on the `download` feature of `skimap-common`.
 
 pub mod battery;
+#[cfg(feature = "pipeline")]
+pub mod dem;
+pub mod error;
 pub mod eta;
+pub mod graph;
 pub mod matching;
 pub mod offpiste;
 pub mod routing;
