@@ -2266,7 +2266,6 @@ dependencies = [
 name = "skimap-osm"
 version = "0.1.0"
 dependencies = [
- "chrono",
  "csv",
  "flate2",
  "geo",
@@ -2336,7 +2335,6 @@ name = "skimap-terrain"
 version = "0.1.0"
 dependencies = [
  "approx",
- "chrono",
  "flate2",
  "rayon",
  "serde",
