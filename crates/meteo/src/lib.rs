@@ -4,13 +4,14 @@
 //! - P8 (#21): avalanche bulletin (BERA) per massif, XML parsing, Queyras extraction; Jura:
 //!   Météo-France warnings and SLF link. See [`bera`].
 //! - P19 (#32): hourly weather per site (wind, wind chill, visibility / fog, 0 °C
-//!   isotherm, forecast snowfall). See `hourly`.
+//!   isotherm, forecast snowfall). See [`hourly`].
 //!
 //! The API key comes from `skimap_common::config::Config` (`METEOFRANCE_API_KEY`) and must
 //! never be logged. Pipeline side: uses `skimap_common::download`.
 
 pub mod bera;
 pub mod error;
+pub mod hourly;
 pub mod meta;
 pub mod xml;
 

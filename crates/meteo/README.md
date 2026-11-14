@@ -32,3 +32,39 @@ cargo run -p skimap-meteo --example bera -- chapelle-des-bois       # notice Jur
 ```
 
 Tests : exemple Belledonne de la spécification recopié (`tests/fixtures/bera_spec_belledonne_20231026.xml`) et bulletin réel du Queyras du 15/04/2023 tiré de l'archive publique, sans le contenu base64 des images (`tests/fixtures/BRA.QUEYRAS.20230415135925.noimg.xml`).
+
+## Météo heure par heure par site (P19, module `hourly`)
+
+`skimap_meteo::hourly::build(site, &layout, &downloader, personal_sources)` écrit `data/out/<site>/meteo-hourly/` :
+
+| Fichier | Contenu |
+|---|---|
+| `hourly.json` | `HourlyFile` : par point de prévision, altitude du modèle, modèle de chaque variable, 72 heures (heure locale) et un résumé par jour |
+| `meteo-hourly.meta.json` | source, licence, attribution, période couverte, notes |
+
+Variables par heure : température à 2 m, température apparente (Open-Meteo), indice de refroidissement éolien calculé (formule JAG-TI d'Environnement Canada, la « température ressentie » de Météo-France ; défini sous 10 °C et au-delà de 4,8 km/h), vent moyen, rafales, direction, visibilité, brouillard (visibilité < 1000 m ou code OMM 45/48), isotherme 0 °C, chute de neige, précipitations, nébulosité totale et basse, code OMM. Par jour : neige cumulée, nébulosité moyenne de 9 h à 16 h (indicateur de soleil), rafale maximale, refroidissement minimal, heures de brouillard de 9 h à 16 h, isotherme 0 °C le plus bas.
+
+Points de prévision : Cervières, Le Laus (1750 m) et Les Fonts (2044 m), d'après les nœuds OSM `place=hamlet` ; Chapelle-des-Bois, départ des pistes (1087 m), premier point des itinéraires ENJ. Le centre de la commune de Cervières (geo.api.gouv.fr) est à 2431 m : il ne représente pas le domaine.
+
+Source actuelle : **Open-Meteo**, gratuit pour un usage non commercial seulement (données CC BY 4.0), donc derrière `personal_sources` : `build` refuse de tourner sans l'option (erreur `PersonalSourcesDisabled`, rien n'est écrit). Deux appels par point, cache d'une heure :
+
+- `models=meteofrance_seamless` (AROME et ARPEGE) pour la température, le vent, la neige, les nuages et le code OMM ;
+- `models=best_match` pour `visibility` et `freezing_level_height`, nuls dans les modèles Météo-France d'Open-Meteo (vérifié le 14/11/2026 à Cervières).
+
+`snow_depth` n'est jamais lu : nul avec `meteofrance_seamless` (rapport 03) ; la hauteur de neige vient de la couche d'enneigement (P6).
+
+### Passage à AROME de Météo-France
+
+Deux voies, non codées :
+
+1. **API « AROME » du portail Météo-France**, avec la clé `METEOFRANCE_API_KEY` dans l'en-tête `apikey` : service WCS 2.0.1 `https://public-api.meteofrance.fr/public/arome/1.0/wcs/MF-NWP-HIGHRES-AROME-001-FRANCE-WCS/` (`GetCapabilities` répond 401 sans clé le 14/11/2026), puis `GetCoverage` par paramètre avec un sous-ensemble lat/long/temps autour de chaque point. Petites extractions ; quotas du portail à confirmer.
+2. **« Paquets AROME 0,01° » en données ouvertes** (Licence Ouverte, sans clé) sur data.gouv.fr : fichiers GRIB2 horaires de toute la grille EURW1S100 (mis à jour en continu). Il faut un décodeur GRIB2 (absent du workspace) et de gros téléchargements.
+
+Dans les deux cas, seule la fonction qui remplit `Hour` change ; `hourly.json` garde le même format, avec le modèle de chaque variable dans `models`.
+
+```sh
+SKIMAP_PERSONAL_SOURCES=1 cargo run -p skimap-meteo --example hourly -- cervieres
+SKIMAP_PERSONAL_SOURCES=1 cargo run -p skimap-meteo --example hourly -- chapelle-des-bois
+```
+
+`SKIMAP_PERSONAL_SOURCES` tient lieu de l'option `personal_sources` tant qu'elle n'existe pas dans `skimap_common::config::Config`.
