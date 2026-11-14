@@ -164,6 +164,7 @@ tickets:
   body: |
     Regrouper les pistes en domaines (méthode OpenSkiMap ou équivalente), rapprocher des domaines Nordic France / SkiRadar pour les noms. France d'abord.
     Critère : liste des domaines France avec géométrie, nom, km ; taux de rapprochement mesuré.
+    OpenSkiMap fusionne Cervières dans « Queyras - Arvieux » (regroupement à 0,5 km par le col d'Izoard) : faire notre propre regroupement, sans traverser un col (rapport 07).
 
 - key: P4
   title: Fond de carte par site (Plan IGN v2 + PMTiles OSM)
@@ -295,7 +296,7 @@ tickets:
   title: Valider l'exposition aux avalanches contre CLPA / EPA
   milestone: M1 Preuve Rust
   labels: [preuve, sécurité]
-  deps: [P17]
+  deps: [P17, P20]
   body: |
     Comparer les zones calculées aux avalanches connues (CLPA, EPA) sur le Queyras.
     Critère : taux d'avalanches connues tombant en terrain classé non avalancheux (objectif : aucune).
@@ -308,6 +309,16 @@ tickets:
   body: |
     Vent, température ressentie, visibilité / brouillard, isotherme 0 °C, chutes de neige prévues, depuis l'API Météo-France.
     Critère : fichier statique par site mis à jour à chaque run.
+
+- key: P20
+  title: Avalanches historiques (CLPA republiée par la DDT 05) et alerte par tronçon
+  milestone: M1 Preuve Rust
+  labels: [pipeline, sécurité]
+  deps: [P1, P2]
+  body: |
+    La CLPA d'INRAE est limitée à « un usage personnel » ; la DDT des Hautes-Alpes la republie en Licence Ouverte (droit de republication à confirmer). Cervières : 171 emprises ; 5,8 km des 34,5 km du réseau nordique les traversent (liaison Le Laus – Les Fonts, Chemin du Sioux, Le Cancel, Izoard). Source : research/reports/07-recensement-et-avalanche.md.
+    Couche des emprises + liste des tronçons de pistes et d'itinéraires qui les traversent, croisée avec le BERA Queyras pour l'alerte. Le Jura n'a ni CLPA ni BERA.
+    Critère : longueurs recalculées et cohérentes avec le rapport 07.
 
 # ---------- M1 Preuve Rust : algorithmes du noyau ----------
 - key: C1
@@ -491,6 +502,7 @@ tickets:
   body: |
     Liste des sites, téléchargement, mise à jour différentielle des couches quotidiennes.
     Critère : mode avion sans perte de fonction.
+    Le pack de la zone inclut les clips vocaux pré-générés (noms de pistes, refuges, lieux, phrases communes).
 
 - key: K3
   title: Affichage des couches (pistes, état, pentes, neige, zones, refuges, réseau, BERA, météo)
@@ -514,16 +526,17 @@ tickets:
   title: Guidage vocal hors ligne
   milestone: M3 Client v1
   labels: [client, pendant]
-  deps: [K4, C1, F3]
+  deps: [K4, C1, F3, VO2, VO3]
   body: |
     Annonces de direction, temps restant, alertes (F22), voix française hors ligne.
     Critère : itinéraire complet guidé sans regarder l'écran.
+    Les annonces jouent les clips pré-générés du pack (VO3) ; voix Android en repli.
 
 - key: K6
   title: Alertes, sons et vibrations
   milestone: M3 Client v1
   labels: [client, sécurité]
-  deps: [K4, C2, C7, C8]
+  deps: [K4, C2, C7, C8, A8, P20]
   body: |
     Écart d'itinéraire, pente > 30°, zone protégée, demi-tour, entrée en zone sans réseau ; sons gauche / droite / hors piste, signal de rassurance (F23–F25).
     Critère : chaque alerte déclenchée sur un rejeu de trace.
@@ -550,7 +563,7 @@ tickets:
   title: Planification sur pistes avec temps estimé et demi-tour
   milestone: M3 Client v1
   labels: [client, planifier]
-  deps: [K1, C1, C5, C7]
+  deps: [K1, C1, C5, C7, A5, A9]
   body: |
     Choix d'un itinéraire, temps estimé, heure de demi-tour (F15, F17, F18).
     Critère : plan créé et suivi sur le terrain.
@@ -746,3 +759,150 @@ tickets:
   deps: [W1, W2]
   body: |
     F38. Critère : deux sorties sur neiges différentes comparées après correction.
+
+# ---------- Voix (VO) et assistance intelligente (A) ----------
+- key: VO1
+  title: Reprendre la pile vocale du projet speak
+  milestone: M0 Fondations
+  labels: [recherche, pendant]
+  deps: []
+  body: |
+    Le projet local ../speak (NOTES.md, pixel/, app/) a déjà validé sur le Pixel 8 Pro : Pocket TTS français 6 couches (modèle d'octobre converti depuis Kyutai, WER 0) via pockettts.cpp patché, TTS entièrement sur GPU Vulkan depuis le patch ggml 0008 (validé sur le téléphone, 0 grésillement au test d'écho) : RTF 0,39, premier morceau 210 ms, sans chauffer le CPU ; 27 voix livrées (fr par défaut : estelle) ; STT Parakeet v3 int8 par sherpa-onnx ; Gemma 4 E2B par LiteRT-LM (~17 tok/s) ; Gemini Nano indisponible sur 8 Pro.
+    Faire l'inventaire de ce qui se réutilise tel quel pour skimap (scripts de build Android, patchs ggml, modèles, licences des voix — `cosette` est CC-BY-NC) et de ce qui manque.
+    Critère : note `docs/voix.md` listant fichiers, versions et licences repris.
+
+- key: VO2
+  title: Banque de phrases de guidage et d'alerte en français
+  milestone: M1 Preuve Rust
+  labels: [algo, pendant]
+  deps: [F1]
+  body: |
+    Modèles de phrases paramétrés : direction, distances, temps restant, demi-tour, pente, zone protégée, zone sans réseau, écart d'itinéraire, rassurance, briefing du jour. Arrondis naturels (« dans deux cents mètres », « environ une heure »). Morceaux de 50 tokens au plus, coupés aux fins de phrase (mesure speak).
+    Critère : générateur de texte testé, une phrase par événement du noyau.
+
+- key: VO3
+  title: Clips vocaux pré-générés dans les packs (Pocket TTS côté pipeline)
+  milestone: M1 Preuve Rust
+  labels: [pipeline, pendant]
+  deps: [VO1, VO2]
+  body: |
+    Le modèle sur le téléphone coûte ~140 Mo (modèle français Q8_0 133 Mo + une seule voix extraite des 158 Mo du fichier de 27 voix). À la place : le pipeline Rust génère avec Pocket TTS (poste, GPU) les phrases fixes, les nombres, distances, durées et tous les noms de pistes, refuges et lieux d'un pack, en Ogg/Opus ; l'app assemble les clips. Silence de début coupé.
+    Critère : taille des clips par pack mesurée (objectif quelques Mo) ; écoute d'annonces assemblées jugée naturelle ; repli voix Android pour tout texte non prévu.
+
+- key: VO4
+  title: Guidage parlé sur le Pixel et choix du moteur
+  milestone: M1 Preuve Rust
+  labels: [preuve, pendant]
+  deps: [VO3, F4]
+  body: |
+    Rejouer un itinéraire sur le Pixel, écran éteint, en comparant : clips pré-générés (VO3), voix Android hors ligne, Pocket TTS embarqué (option à télécharger, ~140 Mo). Mesurer taille, latence, énergie, naturel.
+    Énergie : mesurer la consommation par annonce et par heure de guidage (haut-parleur, écouteurs filaires, Bluetooth) et la comparer à celle du GPS sur la même heure. La voix ne doit pas peser face au GPS ; nombre d'annonces par heure réglable.
+    Critère : enregistrement audio et chiffres (taille, latence, mAh par annonce et par heure) ; moteur par défaut décidé.
+
+- key: VO5
+  title: Commandes vocales hors ligne avec Parakeet v3
+  milestone: M4 v2
+  labels: [preuve, pendant]
+  deps: [VO1]
+  body: |
+    Reprendre VAD Silero + Parakeet v3 int8 de speak pour « Où suis-je ? », « Temps restant ? », « Signale : trace faite ». Coût de chargement mesuré dans speak : 2,9–3,7 s pour la session ONNX ; à garder chargé ou à charger à la demande selon la batterie.
+    Critère : commandes reconnues hors réseau, dehors, avec du vent.
+
+- key: A1
+  title: Briefing du jour — où skier aujourd'hui
+  milestone: M1 Preuve Rust
+  labels: [algo, planifier]
+  deps: [P3, P6, P13, P19, A4]
+  body: |
+    Classer domaines et itinéraires selon pistes ouvertes, neige estimée, météo (vent, froid, brouillard), affluence prévue, distance. Chaque raison du classement est expliquée.
+    Critère : briefing généré pour les deux sites sur des journées passées, relu à la main.
+
+- key: A2
+  title: Recommandation de fartage
+  milestone: M1 Preuve Rust
+  labels: [algo, planifier]
+  deps: [P19, P6]
+  body: |
+    Classique (retenue et glisse) et skating (glisse), selon température de l'air et de la neige, humidité, neige fraîche / transformée / regelée. Tables de fabricants citées comme source.
+    Critère : recommandation produite pour chaque jour de la semaine de test, avec sa source.
+
+- key: A3
+  title: Qualité de neige par heure et par versant
+  milestone: M1 Preuve Rust
+  labels: [algo, carte]
+  deps: [P19, P5]
+  body: |
+    Modèle simple : regel nocturne, ramollissement selon température, ensoleillement et orientation, neige soupe l'après-midi. Donne le meilleur créneau et le meilleur versant.
+    Critère : prévisions comparées aux observations de terrain (T5) quand elles existent.
+
+- key: A4
+  title: Prévision d'affluence
+  milestone: M1 Preuve Rust
+  labels: [algo, planifier]
+  deps: [F1]
+  body: |
+    Calendriers des vacances : zones A, B, C, Fédération Wallonie-Bruxelles, cantons suisses voisins ; week-ends, jours fériés ; bonus de conditions (neige fraîche + soleil).
+    Critère : niveau d'affluence par jour et par site sur la saison 2026-27, sources citées.
+
+- key: A5
+  title: Suggestion d'itinéraire selon temps disponible, niveau et technique
+  milestone: M1 Preuve Rust
+  labels: [algo, planifier]
+  deps: [C1, C5, C7, A1]
+  body: |
+    Exemple : « 2 h, skating, retour avant 16 h » → boucles candidates classées, avec temps estimé, dénivelé, état des pistes et raison du choix.
+    Critère : suggestions plausibles sur les deux sites dans le visualiseur.
+
+- key: A6
+  title: Liste d'équipement adaptée à la sortie
+  milestone: M1 Preuve Rust
+  labels: [algo, sécurité]
+  deps: [P8, P19, P12, C7]
+  body: |
+    DVA, pelle, sonde si l'itinéraire traverse du terrain avalancheux ou une zone du BERA ; frontale si le retour approche la nuit ; couches selon le froid ressenti ; batterie externe et prévenir un proche si zone sans réseau longue ; boussole par brouillard.
+    Critère : liste générée pour 5 sorties types, chaque élément avec sa raison.
+
+- key: A7
+  title: Synthèse en clair des risques et règles du jour
+  milestone: M1 Preuve Rust
+  labels: [algo, sécurité]
+  deps: [P8, C8, P19, VO2]
+  body: |
+    Trois phrases au plus : avalanche, météo, zones et règles applicables, en mots simples, lisibles et lues à voix haute. Jamais « sans danger ».
+    Critère : synthèses produites pour des journées passées, relues.
+
+- key: A8
+  title: Alertes de changement de conditions pendant la sortie
+  milestone: M1 Preuve Rust
+  labels: [algo, sécurité]
+  deps: [P19, C7]
+  body: |
+    Vent qui se lève, brouillard, chute de neige, température qui chute, heure de demi-tour avancée par un retard sur le temps estimé. Côté noyau ; affichage par K6.
+    Critère : alertes déclenchées sur des rejeux de prévisions et de traces.
+
+- key: A9
+  title: Meilleur moment pour partir
+  milestone: M1 Preuve Rust
+  labels: [algo, planifier]
+  deps: [A3, A4, C7, P19]
+  body: |
+    Créneau horaire conseillé combinant météo, qualité de neige (A3), lumière, affluence (A4) et temps estimé.
+    Critère : créneau produit et justifié pour chaque jour de test.
+
+- key: A10
+  title: Bilan de sortie
+  milestone: M3 Client v1
+  labels: [client, sport]
+  deps: [K4, C5]
+  body: |
+    Résumé parlé et écrit : distance, temps, temps estimé contre réel, comparaison aux sorties précédentes, conditions rencontrées.
+    Critère : bilan produit après une sortie réelle.
+
+- key: A11
+  title: Questions libres hors ligne — classification d'intention cadrée (LLM optionnel)
+  milestone: M4 v2
+  labels: [recherche]
+  deps: [VO1, VO5, A1]
+  body: |
+    Questions libres (« Où skier demain avec du vent d'ouest ? ») répondues hors ligne à partir des données du pack. Gemini Nano est indisponible sur le 8 Pro ; speak fait tourner Gemma 4 E2B par LiteRT-LM (~17 tok/s sur CPU). Pas de LLM en v1 : toutes les réponses viennent des modèles de phrases (VO2). Si un LLM est ajouté, cadrage strict : il classe seulement la question vers une liste fermée de fonctions du noyau avec leurs paramètres ; la réponse reste produite par les modèles de phrases ; aucun chiffre, lieu ou conseil de sécurité ne sort du modèle ; question non reconnue → « je n'ai pas compris » et liste des questions possibles.
+    Critère : taux de bonne classification mesuré sur un jeu de questions réelles ; décision d'ajouter ou non.
