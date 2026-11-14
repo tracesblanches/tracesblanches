@@ -45,9 +45,11 @@ fn history(site: &Site, forecast: bool, route: &str) -> SiteData {
         }
     }
     if forecast {
-        paths
-            .meteo
-            .push(l.layer_dir(site, "meteo-hourly").unwrap().join("hourly.json"));
+        paths.meteo.push(
+            l.layer_dir(site, "meteo-hourly")
+                .unwrap()
+                .join("hourly.json"),
+        );
         paths.snow_dirs.push(l.layer_dir(site, "snow").unwrap());
     }
     paths.route = Some(l.layer_dir(site, "routes").unwrap().join(route));
@@ -70,7 +72,11 @@ fn cervieres_january_2026_snowfall_and_cold() {
     let cerv = b.domains.iter().find(|c| c.name == "Cervières").unwrap();
     let snow = cerv.snow.unwrap();
     assert!((10.0..20.0).contains(&snow.depth_cm()), "{snow:?}");
-    assert!(cerv.reasons.iter().any(|r| r.factor == Factor::Snow && r.points == -3.0));
+    assert!(
+        cerv.reasons
+            .iter()
+            .any(|r| r.factor == Factor::Snow && r.points == -3.0)
+    );
     let q = &b.snow_quality[0];
     assert_eq!(q.flat, Quality::OldDry);
     // 9 January: snowfall (the station went from 19 to 40 cm): fresh snow, limit depth.
@@ -91,7 +97,7 @@ fn cervieres_january_2026_snowfall_and_cold() {
     let s = synthesis::synthesise(&d, date("2026-01-05"));
     assert!(s.sentences[0].contains("pas disponible hors ligne"));
     let km = s.facts.clpa_km.unwrap();
-    assert!(km >= 1.38 && km < 4.0, "{km}");
+    assert!((1.38..4.0).contains(&km), "{km}");
     assert_eq!(s.sentences.len(), 3);
     assert!(!s.text().contains("sans danger"));
 }
@@ -107,7 +113,11 @@ fn cervieres_spring_2023_bera_and_softening() {
     let q = &b.snow_quality[0];
     let c = |code: &str| q.classes.iter().find(|c| c.code == code).unwrap();
     assert_eq!(c("S20").morning, Quality::Hard);
-    let (e, s, w) = (c("E20").softens_at, c("S20").softens_at, c("W20").softens_at);
+    let (e, s, w) = (
+        c("E20").softens_at,
+        c("S20").softens_at,
+        c("W20").softens_at,
+    );
     assert!(e.unwrap() <= s.unwrap() && s.unwrap() <= w.unwrap());
     let syn = synthesis::synthesise(&d, date("2023-04-15"));
     assert!(syn.sentences[0].starts_with("Risque d'avalanche deux sur cinq, limité"));
@@ -121,13 +131,21 @@ fn chapelle_february_2026_thaw() {
     let b = briefing::day(&d, day, &briefing::Options::default());
     // Thaw week (La Boissaude 1222 m: 33 cm on the 22nd, 9 cm on the 28th): wet snow,
     // klister, no hard wax.
-    assert!(b.snow_quality[0].flat.is_wet(), "{:?}", b.snow_quality[0].flat);
+    assert!(
+        b.snow_quality[0].flat.is_wet(),
+        "{:?}",
+        b.snow_quality[0].flat
+    );
     let w = wax::day_wax(&d.weather.as_ref().unwrap().points[0], &b.snow_quality[0]).unwrap();
     assert!(w.afternoon.kick.klister);
     // No BERA in the Jura, never « safe »; the APPB rule on the route is said.
     let s = synthesis::synthesise(&d, day);
     assert!(s.sentences[0].starts_with("Pas de bulletin d'avalanche pour ce massif"));
-    assert!(s.sentences[2].contains("sortie des itinéraires balisés interdite"), "{}", s.sentences[2]);
+    assert!(
+        s.sentences[2].contains("sortie des itinéraires balisés interdite"),
+        "{}",
+        s.sentences[2]
+    );
     assert!(!s.text().contains("sans danger"));
 }
 

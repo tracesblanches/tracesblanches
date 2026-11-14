@@ -584,7 +584,7 @@ fn common_reasons(
             &mut out,
             Factor::Crowd,
             crowd_points(c.level),
-            format!("affluence {}{why}", c.level.label()),
+            format!("niveau d'affluence {}{why}", c.level.label()),
         );
     }
     let distance = ctx.opts.home.map(|h| h.haversine_m(at) / 1000.0);

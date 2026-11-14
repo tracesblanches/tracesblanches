@@ -228,13 +228,18 @@ fn weather_sentence(data: &SiteData, date: NaiveDate) -> (String, Option<Event>)
     let w = p.summary(date, 9, 16);
     let mut parts = Vec::new();
     if let (Some(a), Some(b)) = (w.temperature_min_c, w.temperature_max_c) {
-        parts.push(format!("de {a:.0} à {b:.0} °C"));
+        if a.round() == b.round() {
+            parts.push(format!("{a:.0} °C"));
+        } else {
+            parts.push(format!("de {a:.0} à {b:.0} °C"));
+        }
     }
     if let Some(c) = w.wind_chill_min_c.filter(|c| *c <= -10.0) {
         parts.push(format!("ressenti {c:.0} °C"));
     }
     match w.gust_max_kmh {
         Some(g) if g >= 40.0 => parts.push(format!("rafales jusqu'à {g:.0} km/h")),
+        Some(g) if g >= 25.0 => parts.push(format!("vent modéré (rafales {g:.0} km/h)")),
         Some(_) => parts.push("vent faible".into()),
         None => {}
     }
