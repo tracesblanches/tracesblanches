@@ -2290,7 +2290,13 @@ dependencies = [
 name = "skimap-refuges"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
  "skimap-common",
+ "skimap-osm",
+ "thiserror",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
