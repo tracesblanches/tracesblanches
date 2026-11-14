@@ -139,6 +139,7 @@ fn print_sites(json: bool) -> Result<()> {
             .collect::<Vec<_>>()
             .join(" / ");
         let status = match s.massif_status {
+            MassifStatus::Verified => "vérifié sur les polygones snowtools",
             MassifStatus::Assumed => "supposé",
             MassifStatus::ToConfirm => "à confirmer",
         };

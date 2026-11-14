@@ -31,8 +31,10 @@ Les clés sont des `Secret` qui s'affichent `***` : elles n'apparaissent dans au
 
 Définis dans `common::site` :
 
-- Cervières (05), INSEE 05027, emprise 44.77,6.66,44.92,6.86 ; massif Météo-France 17 Queyras, supposé et non vérifié (voisins : Thabor 13, Pelvoux 16) ; BERA disponible.
-- Chapelle-des-Bois (25), INSEE 25121, emprise 46.54,6.02,46.68,6.20 ; massif 55 Haut-Doubs ou 56 Haut-Jura, à confirmer par P6 (#19) ; pas de BERA dans le Jura.
+- Cervières (05), INSEE 05027, emprise 44.77,6.66,44.92,6.86 ; massif Météo-France 17 Queyras (100 % de la commune) ; BERA disponible.
+- Chapelle-des-Bois (25), INSEE 25121, emprise 46.54,6.02,46.68,6.20 ; massifs 55 Haut-Doubs (93,2 % de la commune et le village) puis 56 Haut-Jura (côté Risoux, 6,0 %) ; pas de BERA dans le Jura.
+
+Rattachement vérifié par P6 (#19) sur les polygones snowtools (`UMR-CNRM/snowtools`, `massifs.shp`) et le contour de la commune : `MassifStatus::Verified` pour les deux sites.
 
 Les emprises débordent sur l'Italie et la Suisse : les crates qui ne veulent que la France découpent avec les contours des communes.
 

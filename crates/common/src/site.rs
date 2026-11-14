@@ -4,11 +4,12 @@
 //! near Chapelle-des-Bois): crates that need French-only data clip with commune or
 //! department outlines.
 //!
-//! Météo-France massif codes are those of the snowpack simulation and of the BERA:
-//! - Cervières: Queyras (17) is the assumed massif; research report 03 marks the
-//!   attachment as not verified (neighbours: Thabor 13, Pelvoux 16).
-//! - Chapelle-des-Bois: Haut-Doubs (55) or Haut-Jura (56), to be confirmed by P6 (#19).
-//!   The Jura has no BERA.
+//! Météo-France massif codes are those of the snowpack simulation and of the BERA,
+//! verified by P6 (#19) on the snowtools massif polygons (`UMR-CNRM/snowtools`,
+//! `massifs.shp`) against the commune outlines (geo.api.gouv.fr):
+//! - Cervières: Queyras (17) covers 100 % of the commune.
+//! - Chapelle-des-Bois: Haut-Doubs (55) covers 93.2 % of the commune and the village;
+//!   Haut-Jura (56) covers the Risoux side (6.0 %, south-west edge). The Jura has no BERA.
 
 use serde::Serialize;
 
@@ -28,6 +29,9 @@ pub struct Massif {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MassifStatus {
+    /// Verified on the snowtools massif polygons (UMR-CNRM/snowtools `massifs.shp`) and
+    /// the commune outline; the first massif covers most of the commune.
+    Verified,
     /// Single massif, assumed from geography, not verified against Météo-France.
     Assumed,
     /// Several candidates, in order of preference; to be confirmed.
@@ -49,7 +53,7 @@ pub struct Site {
     pub commune_center: LonLat,
     /// Working area, WGS84.
     pub bbox: BBox,
-    /// Météo-France massif candidates, in order of preference.
+    /// Météo-France massifs covering the commune, the main one first.
     pub massifs: &'static [Massif],
     /// Confidence in [`Site::massifs`].
     pub massif_status: MassifStatus,
@@ -76,7 +80,7 @@ pub const CERVIERES: Site = Site {
         code: 17,
         name: "Queyras",
     }],
-    massif_status: MassifStatus::Assumed,
+    massif_status: MassifStatus::Verified,
     has_bera: true,
 };
 
@@ -98,7 +102,7 @@ pub const CHAPELLE_DES_BOIS: Site = Site {
             name: "Haut-Jura",
         },
     ],
-    massif_status: MassifStatus::ToConfirm,
+    massif_status: MassifStatus::Verified,
     has_bera: false,
 };
 
@@ -134,7 +138,10 @@ mod tests {
             );
             assert!(s.bbox.contains(s.commune_center), "{}", s.id);
             assert!(!s.massifs.is_empty());
+            assert_eq!(s.massif_status, MassifStatus::Verified, "{}", s.id);
         }
+        let codes: Vec<_> = CHAPELLE_DES_BOIS.massifs.iter().map(|m| m.code).collect();
+        assert_eq!(codes, [55, 56], "Haut-Doubs first (93.2 % of the commune)");
         let ids: Vec<_> = SITES.iter().map(|s| s.id).collect();
         assert_eq!(ids, ["cervieres", "chapelle-des-bois"]);
     }
