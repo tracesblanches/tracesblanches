@@ -6,8 +6,9 @@ research/transcripts/
 # Rust
 target/
 
-# Données téléchargées et produites par le pipeline (cache, sorties) : locales uniquement
-/data/
+# Données téléchargées et produites par le pipeline (cache, sorties) : locales uniquement ;
+# sans barre finale pour ignorer aussi un lien symbolique (worktrees des agents)
+/data
 
 # Worktrees des agents
 .claude/worktrees/
