@@ -6,18 +6,20 @@
 //!
 //! Reads the same subset, which is what the IGN Géoplateforme WMS returns for
 //! `FORMAT=image/geotiff` (uncompressed Float32, `GDAL_NODATA = -9999`).
+//!
+//! Feature `geotiff` (pipeline crates writing or reading rasters).
 
 use std::fs::File;
 use std::io::{BufWriter, Cursor, Seek, Write};
 use std::path::Path;
 
-use skimap_common::crs::Crs;
-use skimap_common::grid::{GeoTransform, Grid};
 use tiff::decoder::{Decoder, DecodingResult, Limits};
 use tiff::encoder::{Compression, DeflateLevel, TiffEncoder, colortype::Gray32Float};
 use tiff::tags::Tag;
 
+use crate::crs::Crs;
 use crate::error::{Error, Result};
+use crate::grid::{GeoTransform, Grid};
 
 // GeoTIFF key identifiers (GeoTIFF 1.1, section 7).
 const GT_MODEL_TYPE: u16 = 1024;
@@ -174,16 +176,21 @@ pub fn encode_f32<W: Write + Seek>(w: W, grid: &Grid<f32>) -> Result<()> {
     Ok(())
 }
 
-/// Writes a Float32 grid as a GeoTIFF file; returns the file size in bytes.
+/// Writes a Float32 grid as a GeoTIFF file atomically (`<file>.tmp` then rename);
+/// returns the file size in bytes.
 pub fn write_f32(path: &Path, grid: &Grid<f32>) -> Result<u64> {
-    let f = File::create(path).map_err(|e| Error::io(path, e))?;
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(".tmp");
+    let tmp = path.with_file_name(name);
+    let f = File::create(&tmp).map_err(|e| Error::io(&tmp, e))?;
     let mut w = BufWriter::new(f);
     encode_f32(&mut w, grid)?;
-    w.flush().map_err(|e| Error::io(path, e))?;
+    w.flush().map_err(|e| Error::io(&tmp, e))?;
     drop(w);
-    let len = std::fs::metadata(path)
-        .map_err(|e| Error::io(path, e))?
+    let len = std::fs::metadata(&tmp)
+        .map_err(|e| Error::io(&tmp, e))?
         .len();
+    std::fs::rename(&tmp, path).map_err(|e| Error::io(path, e))?;
     Ok(len)
 }
 
@@ -253,7 +260,7 @@ pub fn decode_f32(bytes: &[u8]) -> Result<Grid<f32>> {
             }
         }
     }
-    Ok(Grid::from_vec(w as usize, h as usize, gt, crs, data)?)
+    Grid::from_vec(w as usize, h as usize, gt, crs, data)
 }
 
 /// Reads a single-band Float32 GeoTIFF file.

@@ -6,8 +6,10 @@
 //! - [`dem`] — LiDAR HD tiles from the Géoplateforme WMS-R, mosaic, crop, block mean.
 //! - [`slope`] — Horn slope and aspect.
 //! - [`ign_slopes`] — comparison with the IGN slope map (WMTS).
-//! - [`geotiff`] — Float32 GeoTIFF reader / writer; [`png`] — PNG decoder for WMTS tiles.
-//! - [`meta`] — `<layer>.meta.json`.
+//! - [`png`] — PNG decoder for WMTS tiles.
+//!
+//! GeoTIFF reading / writing and the `<layer>.meta.json` schema are in `skimap-common`
+//! (`geotiff`, `meta`).
 //!
 //! [`build`] writes `data/out/<site>/terrain/`:
 //! `dem_5m.tif`, `slope_5m.tif`, `aspect_5m.tif` (GeoTIFF Float32, Lambert-93
@@ -17,9 +19,7 @@
 
 pub mod dem;
 pub mod error;
-pub mod geotiff;
 pub mod ign_slopes;
-pub mod meta;
 pub mod png;
 pub mod slope;
 
@@ -34,7 +34,8 @@ use tracing::info;
 
 pub use dem::Extent;
 pub use error::{Error, Result};
-use meta::{FileMeta, LayerMeta, SourceMeta};
+use skimap_common::geotiff;
+use skimap_common::meta::{FileMeta, LayerMeta, SourceRef};
 
 /// Layer name (output directory).
 pub const LAYER: &str = "terrain";
@@ -111,51 +112,16 @@ pub struct Timings {
 }
 
 /// Sources of the terrain layer.
-pub fn sources() -> Vec<SourceMeta> {
+pub fn sources() -> Vec<SourceRef> {
     vec![
-        SourceMeta {
-            name: "MNT LiDAR HD (5 m, rééchantillonné par le WMS)".into(),
-            producer: "IGN".into(),
-            url: format!("{}?LAYERS={}", dem::WMS_URL, dem::LAYER),
-            licence: "Licence Ouverte 2.0 (Etalab)".into(),
-            attribution: "IGN – MNT LiDAR HD".into(),
-            edition: Some(
-                "Cervières : vol août 2021, édition 15/03/2025 ; Chapelle-des-Bois : vol oct.-nov. 2022, édition 21/07/2025 (rapport 07)"
-                    .into(),
+        SourceRef::new("MNT LiDAR HD (5 m, rééchantillonné par le WMS)", format!("{}?LAYERS={}", dem::WMS_URL, dem::LAYER), "Licence Ouverte 2.0 (Etalab)", "IGN – MNT LiDAR HD")
+.producer("IGN")
+.edition(
+                "Cervières : vol août 2021, édition 15/03/2025 ; Chapelle-des-Bois : vol oct.-nov. 2022, édition 21/07/2025 (rapport 07)",
             ),
-        },
-        SourceMeta {
-            name: "Carte des pentes (SLOPES.MOUNTAIN), comparaison seulement".into(),
-            producer: "IGN".into(),
-            url: format!("https://data.geopf.fr/wmts?LAYER={}", ign_slopes::LAYER),
-            licence: "Géoplateforme IGN, sans clé ; licence d'un usage hors ligne non confirmée (features.md n° 5) : la couche n'est utilisée que pour la comparaison, rien n'en est redistribué".into(),
-            attribution: "IGN – Carte des pentes".into(),
-            edition: None,
-        },
+        SourceRef::new("Carte des pentes (SLOPES.MOUNTAIN), comparaison seulement", format!("https://data.geopf.fr/wmts?LAYER={}", ign_slopes::LAYER), "Géoplateforme IGN, sans clé ; licence d'un usage hors ligne non confirmée (features.md n° 5) : la couche n'est utilisée que pour la comparaison, rien n'en est redistribué", "IGN – Carte des pentes")
+.producer("IGN"),
     ]
-}
-
-fn file_meta(
-    path: &std::path::Path,
-    description: &str,
-    unit: &str,
-    g: &skimap_common::grid::Grid<f32>,
-    bytes: u64,
-) -> FileMeta {
-    FileMeta {
-        name: path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default(),
-        description: description.into(),
-        unit: unit.into(),
-        format: "GeoTIFF Float32, Deflate".into(),
-        crs: format!("EPSG:{}", g.crs().epsg()),
-        cell_size: Some(g.transform().pixel_width),
-        size_cells: Some([g.width(), g.height()]),
-        nodata: Some("NaN".into()),
-        bytes,
-    }
 }
 
 /// Builds the terrain layer of a site: terrain model, slope, aspect, IGN comparison.
@@ -202,7 +168,7 @@ pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<Terrai
     ] {
         let path = dir.join(name);
         let bytes = geotiff::write_f32(&path, grid)?;
-        fmeta.push(file_meta(&path, desc, unit, grid, bytes));
+        fmeta.push(FileMeta::geotiff_f32(name, desc, unit, grid, bytes));
         files.push(path);
     }
     t.write = t0.elapsed().as_secs_f64();
@@ -230,15 +196,19 @@ pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<Terrai
     let cmp = ign_slopes::compare(site.bbox, &sa.slope, dl, COMPARISON_ZOOM)?;
     t.comparison = t0.elapsed().as_secs_f64();
     let cmp_path = dir.join("slope_ign_comparison.json");
-    std::fs::write(&cmp_path, serde_json::to_vec_pretty(&cmp)?)
-        .map_err(|e| Error::io(&cmp_path, e))?;
+    skimap_common::output::write_json(&cmp_path, &cmp)?;
     files.push(cmp_path);
 
+    let mut fmeta_cmp = FileMeta::new(
+        "slope_ign_comparison.json",
+        "comparaison de la pente à la carte des pentes IGN",
+    );
+    fmeta_cmp.format = Some("JSON".into());
+    fmeta.push(fmeta_cmp);
     let meta = LayerMeta {
-        layer: LAYER.into(),
-        site: site.id.into(),
-        generated_at: meta::now_rfc3339(),
-        valid_for: "relief permanent (date des levés LiDAR HD, voir sources)".into(),
+        tickets: vec!["P5 (#18)".into()],
+        validity: Some("relief permanent (date des levés LiDAR HD, voir sources)".into()),
+        crs: Some("EPSG:2154 (Lambert-93), altitudes IGN69".into()),
         sources: sources(),
         files: fmeta,
         notes: vec![
@@ -250,6 +220,7 @@ pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<Terrai
                 "Comparaison à la carte des pentes IGN (zoom {COMPARISON_ZOOM}) dans slope_ign_comparison.json : la carte IGN vient du RGE ALTI 5 m, la nôtre du LiDAR HD."
             ),
         ],
+        ..LayerMeta::new(LAYER, site.id)
     };
     files.push(meta.write(&dir)?);
 

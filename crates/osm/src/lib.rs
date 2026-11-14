@@ -11,7 +11,6 @@ pub mod domains;
 pub mod error;
 pub mod extract;
 pub mod graph;
-pub mod output;
 pub mod parse;
 pub mod pistes;
 

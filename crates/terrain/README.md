@@ -7,7 +7,7 @@ Relief IGN par zone, pente et orientation (pipeline). Ticket : P5 (#18).
 - `dem` : télécharge le MNT LiDAR HD de l'IGN rééchantillonné à 5 m par le WMS-R de la Géoplateforme (`IGNF_LIDAR-HD_MNT_ELEVATION.ELEVATIONGRIDCOVERAGE.LAMB93`, sans clé, Licence Ouverte), dalle de 1 km par dalle, par le téléchargeur commun (source `ign-lidar-wms`, cache d'un an fixé par la politique commune `known_sources` : le WMS n'envoie ni `ETag` ni `Last-Modified`). Mosaïque, découpe, moyenne par blocs.
 - `slope` : pente et orientation par l'opérateur de Horn (celui de `gdaldem`).
 - `ign_slopes` : comparaison avec la carte des pentes IGN `GEOGRAPHICALGRIDSYSTEMS.SLOPES.MOUNTAIN` (WMTS, sans clé).
-- `geotiff`, `png`, `meta` : lecture et écriture GeoTIFF Float32, décodeur PNG minimal (aucune crate PNG dans le workspace), `<couche>.meta.json`.
+- `png` : décodeur PNG minimal (aucune crate PNG dans le workspace). La lecture et l'écriture GeoTIFF Float32 (`skimap_common::geotiff`, fonction `geotiff`) et le schéma `<couche>.meta.json` (`skimap_common::meta`) sont dans `common`, partagés avec `snow`.
 
 `skimap_terrain::build(site, &layout, &downloader)` écrit `data/out/<site>/terrain/` :
 

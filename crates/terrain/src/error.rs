@@ -22,15 +22,6 @@ pub enum Error {
         source: std::io::Error,
     },
 
-    /// Malformed or unsupported GeoTIFF.
-    #[error("GeoTIFF error ({context}): {message}")]
-    Tiff {
-        /// What was being read or written.
-        context: String,
-        /// Description.
-        message: String,
-    },
-
     /// Malformed or unsupported PNG.
     #[error("PNG error: {0}")]
     Png(String),
@@ -51,14 +42,6 @@ impl Error {
         Self::Io {
             path: path.into(),
             source,
-        }
-    }
-
-    /// Builds an [`Error::Tiff`].
-    pub fn tiff(context: impl Into<String>, message: impl std::fmt::Display) -> Self {
-        Self::Tiff {
-            context: context.into(),
-            message: message.to_string(),
         }
     }
 }

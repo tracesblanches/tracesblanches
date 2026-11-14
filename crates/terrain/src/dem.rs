@@ -21,7 +21,7 @@ use skimap_common::grid::{GeoTransform, Grid};
 use tracing::{debug, warn};
 
 use crate::error::{Error, Result};
-use crate::geotiff::decode_f32;
+use skimap_common::geotiff::decode_f32;
 
 /// Downloader source name of the LiDAR HD WMS-R. Its policy in
 /// `skimap_common::download::known_sources` keeps tiles a year: LiDAR HD editions change

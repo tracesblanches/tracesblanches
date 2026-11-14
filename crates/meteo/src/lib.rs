@@ -7,12 +7,12 @@
 //!   isotherm, forecast snowfall). See [`hourly`].
 //!
 //! The API key comes from `skimap_common::config::Config` (`METEOFRANCE_API_KEY`) and must
-//! never be logged. Pipeline side: uses `skimap_common::download`.
+//! never be logged. Pipeline side: uses `skimap_common::download`. Layer metadata:
+//! `skimap_common::meta`.
 
 pub mod bera;
 pub mod error;
 pub mod hourly;
-pub mod meta;
 pub mod xml;
 
 pub use error::{Error, Result};

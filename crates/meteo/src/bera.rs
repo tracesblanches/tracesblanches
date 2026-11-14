@@ -33,8 +33,9 @@ use skimap_common::layout::DataLayout;
 use skimap_common::site::Site;
 
 use crate::error::{Error, Result};
-use crate::meta::{LayerMeta, SourceRef, now_rfc3339, write_bytes, write_json};
 use crate::xml::{self, Element};
+use skimap_common::meta::{FileMeta, LayerMeta, SourceRef, now_rfc3339};
+use skimap_common::output::{write_bytes, write_json};
 
 /// Base URL of the DonneesPubliquesBRA API.
 pub const API_BASE: &str = "https://public-api.meteofrance.fr/public/DPBRA/v1";
@@ -852,13 +853,12 @@ pub fn build(
     let dir = layout.layer_dir(site, LAYER)?;
     DataLayout::ensure(&dir)?;
     let generated_at = now_rfc3339();
-    let mf_source = SourceRef {
-        name: "Météo-France, bulletin d'estimation du risque d'avalanche".to_owned(),
-        url: API_BASE.to_owned(),
-        licence: "Licence Ouverte Etalab 2.0 (données publiques Météo-France)".to_owned(),
-        attribution: "Météo-France".to_owned(),
-        personal_use_only: false,
-    };
+    let mf_source = SourceRef::new(
+        "Météo-France, bulletin d'estimation du risque d'avalanche",
+        API_BASE,
+        "Licence Ouverte Etalab 2.0 (données publiques Météo-France)",
+        "Météo-France",
+    );
     let mut notes = Vec::new();
 
     let mut file = BeraFile {
@@ -892,15 +892,12 @@ pub fn build(
             link("Bulletin SLF en CAAML JSON", SLF_CAAML_URL),
         ];
         notes.push("Pas de BERA dans le Jura (absent de l'annexe 1 de la spécification).".into());
-        vec![SourceRef {
-            name: "Liens Météo-France et SLF".to_owned(),
-            url: SLF_BULLETIN_URL.to_owned(),
-            licence: "liens seulement, aucune donnée reprise".to_owned(),
-            attribution: "Météo-France ; WSL Institut pour l'étude de la neige et des \
-                          avalanches SLF"
-                .to_owned(),
-            personal_use_only: false,
-        }]
+        vec![SourceRef::new(
+            "Liens Météo-France et SLF",
+            SLF_BULLETIN_URL,
+            "liens seulement, aucune donnée reprise",
+            "Météo-France ; WSL Institut pour l'étude de la neige et des avalanches SLF",
+        )]
     } else {
         let mf = massif(site.primary_massif().code).ok_or_else(|| {
             Error::format(
@@ -997,10 +994,13 @@ pub fn build(
         vec![s]
     };
 
-    let mut files = vec!["bera.json: résumé structuré (BeraFile)".to_owned()];
+    let mut files = vec![FileMeta::new("bera.json", "résumé structuré (BeraFile)")];
     if let Some(body) = &raw_xml {
         write_bytes(&dir.join("bera.xml"), body)?;
-        files.push("bera.xml: bulletin XML brut de Météo-France".to_owned());
+        files.push(FileMeta::new(
+            "bera.xml",
+            "bulletin XML brut de Météo-France",
+        ));
     } else {
         let stale = dir.join("bera.xml");
         if stale.exists() {
@@ -1010,14 +1010,14 @@ pub fn build(
     write_json(&dir.join("bera.json"), &file)?;
     let b = file.bulletin.as_ref();
     LayerMeta {
-        layer: LAYER.to_owned(),
-        site: site.id.to_owned(),
+        tickets: vec!["P8 (#21)".to_owned()],
         generated_at,
         valid_from: b.and_then(|b| b.date_bulletin.clone()),
         valid_until: b.and_then(|b| b.date_validity.clone()),
         sources,
         files,
         notes,
+        ..LayerMeta::new(LAYER, site.id)
     }
     .write(&dir)?;
     Ok(file)

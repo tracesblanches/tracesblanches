@@ -7,7 +7,7 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
-skimap-common = { workspace = true, features = ["download"] }
+skimap-common = { workspace = true, features = ["download", "geotiff"] }
 skimap-terrain.workspace = true
 chrono.workspace = true
 flate2.workspace = true

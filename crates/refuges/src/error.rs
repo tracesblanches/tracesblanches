@@ -10,10 +10,6 @@ pub enum RefugesError {
     #[error(transparent)]
     Common(#[from] skimap_common::Error),
 
-    /// Error while writing a layer.
-    #[error(transparent)]
-    Output(#[from] skimap_osm::OsmError),
-
     /// Unexpected content of a downloaded document.
     #[error("unexpected content from {source_name}: {message}")]
     Format {

@@ -2164,6 +2164,7 @@ name = "skimap-common"
 version = "0.1.0"
 dependencies = [
  "approx",
+ "chrono",
  "geo-types",
  "hex",
  "httpdate",
@@ -2175,6 +2176,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "thiserror",
+ "tiff",
  "tiny_http",
  "tracing",
  "webpki-roots",
@@ -2326,7 +2328,6 @@ dependencies = [
  "serde",
  "serde_json",
  "skimap-common",
- "skimap-meteo",
  "tempfile",
  "thiserror",
 ]
@@ -2343,7 +2344,6 @@ dependencies = [
  "serde_json",
  "skimap-common",
  "thiserror",
- "tiff",
  "tracing",
  "tracing-subscriber",
 ]

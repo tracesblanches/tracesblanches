@@ -14,7 +14,6 @@
 pub mod error;
 pub mod geom;
 pub mod layer;
-pub mod meta;
 pub mod rules;
 
 #[cfg(feature = "pipeline")]

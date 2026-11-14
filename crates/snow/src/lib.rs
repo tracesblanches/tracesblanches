@@ -36,11 +36,11 @@ use std::time::Instant;
 use chrono::{Datelike, NaiveDate};
 use serde::{Deserialize, Serialize};
 use skimap_common::download::Downloader;
+use skimap_common::geotiff;
 use skimap_common::layout::DataLayout;
+use skimap_common::meta::{FileMeta, LayerMeta, SourceRef};
 use skimap_common::site::Site;
 use skimap_terrain::Extent;
-use skimap_terrain::geotiff;
-use skimap_terrain::meta::{self, FileMeta, LayerMeta, SourceMeta};
 use tracing::info;
 
 pub use error::{Error, Result};
@@ -102,36 +102,34 @@ pub struct Timings {
 }
 
 /// Sources of the snow layer.
-pub fn sources() -> Vec<SourceMeta> {
+pub fn sources() -> Vec<SourceRef> {
     vec![
-        SourceMeta {
-            name: "Données de Modèle de Simulation Nivologique".into(),
-            producer: "Météo-France".into(),
-            url: sim::DATASET_URL.into(),
-            licence: "Licence Ouverte 2.0 (Etalab)".into(),
-            attribution: "Météo-France – simulation nivologique".into(),
-            edition: None,
-        },
-        SourceMeta {
-            name: "Contours des massifs (snowtools, massifs.shp)".into(),
-            producer: "Météo-France / CNRS, CNRM (CEN)".into(),
-            url: massifs::url("shp"),
-            licence: "CeCILL-C (dépôt UMR-CNRM/snowtools)".into(),
-            attribution: "Météo-France CNRM – snowtools".into(),
-            edition: Some(format!("commit {}", massifs::SNOWTOOLS_COMMIT)),
-        },
-        SourceMeta {
-            name: "MNT LiDAR HD (5 m, agrégé à 25 m)".into(),
-            producer: "IGN".into(),
-            url: format!(
+        SourceRef::new(
+            "Données de Modèle de Simulation Nivologique",
+            sim::DATASET_URL,
+            "Licence Ouverte 2.0 (Etalab)",
+            "Météo-France – simulation nivologique",
+        )
+        .producer("Météo-France"),
+        SourceRef::new(
+            "Contours des massifs (snowtools, massifs.shp)",
+            massifs::url("shp"),
+            "CeCILL-C (dépôt UMR-CNRM/snowtools)",
+            "Météo-France CNRM – snowtools",
+        )
+        .producer("Météo-France / CNRS, CNRM (CEN)")
+        .edition(format!("commit {}", massifs::SNOWTOOLS_COMMIT)),
+        SourceRef::new(
+            "MNT LiDAR HD (5 m, agrégé à 25 m)",
+            format!(
                 "{}?LAYERS={}",
                 skimap_terrain::dem::WMS_URL,
                 skimap_terrain::dem::LAYER
             ),
-            licence: "Licence Ouverte 2.0 (Etalab)".into(),
-            attribution: "IGN – MNT LiDAR HD".into(),
-            edition: None,
-        },
+            "Licence Ouverte 2.0 (Etalab)",
+            "IGN – MNT LiDAR HD",
+        )
+        .producer("IGN"),
     ]
 }
 
@@ -262,27 +260,20 @@ pub fn build(
     for (name, g, desc, unit) in outputs {
         let path = dir.join(&name);
         let bytes = geotiff::write_f32(&path, g)?;
-        fmeta.push(FileMeta {
-            name,
-            description: desc,
-            unit: unit.into(),
-            format: "GeoTIFF Float32, Deflate".into(),
-            crs: format!("EPSG:{}", g.crs().epsg()),
-            cell_size: Some(g.transform().pixel_width),
-            size_cells: Some([g.width(), g.height()]),
-            nodata: Some("NaN".into()),
-            bytes,
-        });
+        fmeta.push(FileMeta::geotiff_f32(name, desc, unit, g, bytes));
         files.push((path, bytes));
     }
     let meta = LayerMeta {
-        layer: LAYER.into(),
-        site: site.id.into(),
-        generated_at: meta::now_rfc3339(),
-        valid_for: format!("{date} 06:00 UTC (simulation du jour J, publiée J+1)"),
+        tickets: vec!["P6 (#19)".into()],
+        valid_from: Some(format!("{date}T06:00:00Z")),
+        validity: Some(format!(
+            "{date} 06:00 UTC (simulation du jour J, publiée J+1)"
+        )),
+        crs: Some("EPSG:2154 (Lambert-93)".into()),
         sources: sources(),
         files: fmeta,
         notes: notes(),
+        ..LayerMeta::new(LAYER, site.id)
     };
     let meta_path = meta.write(&dir)?;
     let meta_bytes = std::fs::metadata(&meta_path)

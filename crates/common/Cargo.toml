@@ -11,6 +11,8 @@ default = []
 # Shared downloader (P1, #14). Pipeline crates enable it; crates that run on the phone
 # (core, assist, voice, pack reader) do not, so they never link an HTTP stack.
 download = ["dep:reqwest", "dep:rustls", "dep:webpki-roots", "dep:sha2", "dep:hex", "dep:httpdate"]
+# Float32 GeoTIFF reader / writer (terrain, snow rasters).
+geotiff = ["dep:tiff"]
 
 [dependencies]
 thiserror.workspace = true
@@ -19,6 +21,8 @@ serde.workspace = true
 serde_json.workspace = true
 proj4rs.workspace = true
 geo-types.workspace = true
+chrono.workspace = true
+tiff = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 rustls = { workspace = true, optional = true }
 webpki-roots = { workspace = true, optional = true }

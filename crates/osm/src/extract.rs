@@ -24,12 +24,10 @@ use skimap_common::site::Site;
 
 use crate::error::Result;
 use crate::graph::{EdgeKind, Graph};
-use crate::output::{
-    FileMeta, LayerMeta, SourceMeta, feature, line_string, now_rfc3339, point, write_geojson,
-    write_json,
-};
 use crate::parse::{Aoi, OsmData, read_file};
 use crate::pistes::{Oneway, Piste, PisteSet, Use, classify};
+use skimap_common::meta::{FileMeta, LayerMeta, SourceRef};
+use skimap_common::output::{feature, line_string, point, write_geojson, write_json};
 
 /// Daily extract of every piste of the planet (OpenSnowMap).
 pub const PLANET_URL: &str = "https://www.opensnowmap.org/download/planet_pistes.osm.gz";
@@ -62,7 +60,7 @@ pub struct Planet {
     /// Pistes of the area.
     pub set: PisteSet,
     /// Source description.
-    pub source: SourceMeta,
+    pub source: SourceRef,
     /// Timestamp of the OSM data (`planet_pistes-state.txt`).
     pub valid_at: Option<String>,
 }
@@ -91,7 +89,7 @@ pub fn load_planet(dl: &Downloader) -> Result<Planet> {
     Ok(Planet {
         data,
         set,
-        source: SourceMeta::from_fetched(
+        source: SourceRef::from_fetched(
             "OpenSnowMap planet_pistes.osm.gz",
             LICENCE,
             ATTRIBUTION,
@@ -379,40 +377,28 @@ pub fn build_from(site: &Site, layout: &DataLayout, planet: &Planet) -> Result<P
         m.insert("length_m".into(), json!("longueur de l'arête, m"));
     }
     let meta = LayerMeta {
-        layer: LAYER.to_owned(),
-        site: site.id.to_owned(),
         tickets: vec!["P2 (#15)".to_owned()],
-        generated_at: now_rfc3339(),
-        valid_at: planet.valid_at.clone(),
-        crs: "EPSG:4326 (WGS84, longitude, latitude)".to_owned(),
+        valid_from: planet.valid_at.clone(),
+        crs: Some("EPSG:4326 (WGS84, longitude, latitude)".to_owned()),
         sources: vec![planet.source.clone()],
         files: vec![
-            FileMeta {
-                path: "pistes.geojson".to_owned(),
-                description: "ways OSM de ski nordique, raquettes et randonnée hivernale ayant au moins un sommet dans l'emprise du site".to_owned(),
-                licence: LICENCE.to_owned(),
-                count: features.len(),
-                properties: piste_properties_doc(),
-            },
-            FileMeta {
-                path: "graph_edges.geojson".to_owned(),
-                description: format!("graphe de routage : ways coupés aux jonctions, plus des connecteurs fermant les trous de moins de {CONNECTOR_MAX_M} m entre un cul-de-sac et une autre piste"),
-                licence: LICENCE.to_owned(),
-                count: edge_features.len(),
-                properties: edge_doc,
-            },
-            FileMeta {
-                path: "graph_nodes.geojson".to_owned(),
-                description: "nœuds du graphe : jonctions, extrémités, cibles des connecteurs".to_owned(),
-                licence: LICENCE.to_owned(),
-                count: node_features.len(),
-                properties: json!({
+            FileMeta::new("pistes.geojson", "ways OSM de ski nordique, raquettes et randonnée hivernale ayant au moins un sommet dans l'emprise du site")
+                .licence(LICENCE)
+                .count(features.len())
+                .properties_json(&piste_properties_doc()),
+            FileMeta::new("graph_edges.geojson", format!("graphe de routage : ways coupés aux jonctions, plus des connecteurs fermant les trous de moins de {CONNECTOR_MAX_M} m entre un cul-de-sac et une autre piste"))
+                .licence(LICENCE)
+                .count(edge_features.len())
+                .properties_json(&edge_doc),
+            FileMeta::new("graph_nodes.geojson", "nœuds du graphe : jonctions, extrémités, cibles des connecteurs")
+                .licence(LICENCE)
+                .count(node_features.len())
+                .properties_json(&json!({
                     "node": "index du nœud",
                     "osm_node_id": "identifiant OSM",
                     "degree": "nombre d'arêtes incidentes",
                     "component": "composante connexe du graphe",
-                }),
-            },
+                })),
         ],
         parameters: json!({
             "bbox_south_west_north_east": [site.bbox.south, site.bbox.west, site.bbox.north, site.bbox.east],
@@ -420,6 +406,7 @@ pub fn build_from(site: &Site, layout: &DataLayout, planet: &Planet) -> Result<P
             "connector_max_m": CONNECTOR_MAX_M,
         }),
         stats: json!({ "summary": stats, "relations": relations }),
+        ..LayerMeta::new(LAYER, site.id)
     };
     write_json(&dir.join(format!("{LAYER}.meta.json")), &meta)?;
     Ok(PistesOutput { dir, set, stats })

@@ -36,8 +36,9 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use skimap_common::download::{Downloader, Origin, Request};
 use skimap_common::layout::DataLayout;
+use skimap_common::meta::{FileMeta, LayerMeta, SourceRef};
+use skimap_common::output::write_json;
 use skimap_common::site::Site;
-use skimap_meteo::meta::{LayerMeta, SourceRef, write_json};
 
 pub use error::{Error, Result};
 use store::Store;
@@ -105,13 +106,7 @@ fn rfc3339(t: DateTime<Utc>) -> String {
 }
 
 fn source_ref(name: &str, url: &str, licence: &str, attribution: &str) -> SourceRef {
-    SourceRef {
-        name: name.to_owned(),
-        url: url.to_owned(),
-        licence: licence.to_owned(),
-        attribution: attribution.to_owned(),
-        personal_use_only: true,
-    }
+    SourceRef::new(name, url, licence, attribution).personal_use_only()
 }
 
 fn poll_enj(
@@ -281,9 +276,12 @@ pub fn poll(
     let mut sources = Vec::new();
     let mut refs = Vec::new();
     let mut files = vec![
-        "status.json: dernier contenu normalisé de chaque source".to_owned(),
-        "<source>/polls.jsonl, <source>/snapshots/: historique horodaté".to_owned(),
-        "<source>/history.json: fréquence de mise à jour observée".to_owned(),
+        FileMeta::new("status.json", "dernier contenu normalisé de chaque source"),
+        FileMeta::new(
+            "<source>/polls.jsonl, <source>/snapshots/",
+            "historique horodaté",
+        ),
+        FileMeta::new("<source>/history.json", "fréquence de mise à jour observée"),
     ];
 
     if let Some(city) = enj::city_id(site.id) {
@@ -294,7 +292,10 @@ pub fn poll(
             "aucune licence affichée (ticket L1) : usage personnel",
             "Espace Nordique Jurassien",
         ));
-        files.push("status.geojson: itinéraires ENJ (WGS84) et leur état".to_owned());
+        files.push(FileMeta::new(
+            "status.geojson",
+            "itinéraires ENJ (WGS84) et leur état",
+        ));
     }
     if let Some(station) = nordicfrance::station_id(site.id) {
         let url = nordicfrance::station_url(station);
@@ -356,17 +357,17 @@ pub fn poll(
         &json!({ "site": site.id, "polled_at": rfc3339(now), "sources": latest }),
     )?;
     LayerMeta {
-        layer: LAYER.to_owned(),
-        site: site.id.to_owned(),
+        tickets: vec!["P13 (#26)".to_owned()],
         generated_at: rfc3339(now),
         valid_from: Some(rfc3339(now)),
-        valid_until: None,
+        crs: Some("EPSG:4326 (WGS84, longitude, latitude)".to_owned()),
         sources: refs,
         files,
         notes: vec![
             "Sources sans licence affichée : activées seulement avec personal_sources.".into(),
             "L'état publié n'est pas un état en temps réel ; afficher l'heure de la source.".into(),
         ],
+        ..LayerMeta::new(LAYER, site.id)
     }
     .write(&dir)?;
     Ok(PollReport {

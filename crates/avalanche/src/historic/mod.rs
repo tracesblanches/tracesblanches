@@ -40,9 +40,10 @@ use skimap_common::crs::{self, Crs};
 use skimap_common::download::{Downloader, Request};
 use skimap_common::geom::LonLat;
 use skimap_common::layout::DataLayout;
+use skimap_common::meta::{FileMeta, LayerMeta, SourceRef, now_rfc3339};
+use skimap_common::output::write_json;
 use skimap_common::site::Site;
 use skimap_meteo::bera::{BeraFile, risk_label};
-use skimap_meteo::meta::{LayerMeta, SourceRef, now_rfc3339, write_json};
 
 use crate::error::{Error, Result};
 use clip::{Poly, inside_runs};
@@ -511,35 +512,30 @@ pub fn build_with_pistes(
 
     let mut sources = Vec::new();
     let commune = read_commune(&dl.fetch(&commune_request(site))?.bytes()?)?;
-    sources.push(SourceRef {
-        name: "Contour de la commune (geo.api.gouv.fr)".into(),
-        url: commune_request(site).url().to_owned(),
-        licence: "Licence Ouverte 2.0".into(),
-        attribution: "IGN, Admin Express via geo.api.gouv.fr".into(),
-        personal_use_only: false,
-    });
+    sources.push(SourceRef::new(
+        "Contour de la commune (geo.api.gouv.fr)",
+        commune_request(site).url(),
+        "Licence Ouverte 2.0",
+        "IGN, Admin Express via geo.api.gouv.fr",
+    ));
     let emprises = if covered {
         let zip = dl.fetch(&ddt05_request())?;
-        sources.push(SourceRef {
-            name: "DDT 05, aléa avalanche dans les Hautes-Alpes (CLPA republiée)".into(),
-            url: DDT05_DATASET_URL.into(),
-            licence: "Licence Ouverte 2.0 (droit de republication de la CLPA par la DDT \
-                      non vérifié)"
-                .into(),
-            attribution: "DDT des Hautes-Alpes ; CLPA INRAE (ex-Cemagref)".into(),
-            personal_use_only: false,
-        });
+        sources.push(SourceRef::new(
+            "DDT 05, aléa avalanche dans les Hautes-Alpes (CLPA republiée)",
+            DDT05_DATASET_URL,
+            "Licence Ouverte 2.0 (droit de republication de la CLPA par la DDT non vérifié)",
+            "DDT des Hautes-Alpes ; CLPA INRAE (ex-Cemagref)",
+        ));
         read_ddt05_zip(&zip.bytes()?)?
     } else {
         Vec::new()
     };
-    sources.push(SourceRef {
-        name: format!("Pistes et itinéraires OSM ({pistes_source})"),
-        url: OVERPASS_URL.into(),
-        licence: "ODbL 1.0".into(),
-        attribution: "© les contributeurs d'OpenStreetMap".into(),
-        personal_use_only: false,
-    });
+    sources.push(SourceRef::new(
+        format!("Pistes et itinéraires OSM ({pistes_source})"),
+        OVERPASS_URL,
+        "ODbL 1.0",
+        "© les contributeurs d'OpenStreetMap",
+    ));
 
     let (bx0, by0, bx1, by1) = crs::project_bbox(site.bbox, Crs::Lambert93, 16)?;
     let in_box = |e: &&Emprise| {
@@ -749,24 +745,31 @@ pub fn build_with_pistes(
     };
     write_json(&dir.join("summary.json"), &summary)?;
     LayerMeta {
-        layer: LAYER.to_owned(),
-        site: site.id.to_owned(),
+        tickets: vec!["P20 (#99)".to_owned()],
         generated_at,
-        valid_from: None,
-        valid_until: None,
+        crs: Some("EPSG:4326 (WGS84) ; longueurs et surfaces en Lambert-93 (EPSG:2154)".into()),
         sources,
         files: vec![
-            "emprises.geojson: emprises CLPA (WGS84), propriétés de la couche DDT 05".into(),
-            "crossings.geojson: tronçons de pistes dans une emprise (WGS84), longueur en m \
-             (Lambert-93), niveau et texte d'alerte"
-                .into(),
-            "summary.json: totaux par réseau et par piste, comparaison au rapport 07, BERA".into(),
+            FileMeta::new(
+                "emprises.geojson",
+                "emprises CLPA (WGS84), propriétés de la couche DDT 05",
+            ),
+            FileMeta::new(
+                "crossings.geojson",
+                "tronçons de pistes dans une emprise (WGS84), longueur en m (Lambert-93), \
+                 niveau et texte d'alerte",
+            ),
+            FileMeta::new(
+                "summary.json",
+                "totaux par réseau et par piste, comparaison au rapport 07, BERA",
+            ),
         ],
         notes: vec![
             "Zones historiques connues seulement ; jamais une garantie d'absence de danger.".into(),
             "Longueurs euclidiennes en Lambert-93, comme le calcul de référence du rapport 07."
                 .into(),
         ],
+        ..LayerMeta::new(LAYER, site.id)
     }
     .write(&dir)?;
     Ok(summary)

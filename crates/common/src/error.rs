@@ -48,6 +48,15 @@ pub enum Error {
     #[error("grid error: {0}")]
     Grid(String),
 
+    /// Malformed or unsupported GeoTIFF.
+    #[error("GeoTIFF error ({context}): {message}")]
+    Tiff {
+        /// What was being read or written.
+        context: String,
+        /// Description.
+        message: String,
+    },
+
     /// Transport-level HTTP failure (connection, TLS, timeout) after all retries.
     #[error("HTTP request to {url} failed: {message}")]
     Http {
@@ -89,6 +98,14 @@ impl Error {
         Self::Io {
             path: path.into(),
             source,
+        }
+    }
+
+    /// Builds an [`Error::Tiff`] from a context and a message.
+    pub fn tiff(context: impl Into<String>, message: impl std::fmt::Display) -> Self {
+        Self::Tiff {
+            context: context.into(),
+            message: message.to_string(),
         }
     }
 

@@ -31,12 +31,11 @@ use serde::Serialize;
 use skimap_common::crs::Crs;
 use skimap_common::download::Downloader;
 use skimap_common::layout::DataLayout;
+use skimap_common::meta::{FileMeta, LayerMeta, SourceRef};
+use skimap_common::output::{write_json, write_text};
 use skimap_common::site::Site;
 use skimap_zones::geom::{reproject, union_all};
 use skimap_zones::layer::round_multipolygon;
-use skimap_zones::meta::{
-    FileMeta, LayerMeta, SourceMeta, now_rfc3339, write_json_pretty, write_text,
-};
 use skimap_zones::sources::jurisdiction::france_part;
 
 pub use arcep::{Operator, Release};
@@ -316,8 +315,8 @@ pub fn build(
             total_s: secs(t_start.elapsed()),
         },
     };
-    layer_meta(site, &report, opts).write(&dir.join(format!("{LAYER}.meta.json")))?;
-    write_json_pretty(&dir.join("build_report.json"), &report)?;
+    layer_meta(site, &report, opts).write(&dir)?;
+    write_json(&dir.join("build_report.json"), &report)?;
     Ok(report)
 }
 
@@ -328,44 +327,23 @@ fn round2(v: f64) -> f64 {
 fn layer_meta(site: &Site, r: &CoverageReport, opts: &CoverageOptions) -> LayerMeta {
     let rel = opts.release;
     LayerMeta {
-        layer: LAYER.into(),
-        site: site.id.into(),
-        generated_at: now_rfc3339(),
-        valid_until: None,
-        validity: format!(
+        tickets: vec!["P12 (#25)".into()],
+        validity: Some(format!(
             "Cartes 2G/3G voix ARCEP {} (situation au {}). Publication semestrielle (T2 et T4) : régénérer à chaque nouvelle publication.",
             rel.tag(),
             rel.quarter_end()
-        ),
-        crs: "EPSG:4326 (longitude, latitude), coordonnées arrondies à 1e-6° ; calculs en Lambert-93 (EPSG:2154)".into(),
+        )),
+        crs: Some("EPSG:4326 (longitude, latitude), coordonnées arrondies à 1e-6° ; calculs en Lambert-93 (EPSG:2154)".into()),
         files: vec![
-            FileMeta { name: "no_network.geojson".into(), description: "zones sans aucun réseau voix, même pour le 112 (aucun des quatre opérateurs)".into() },
-            FileMeta { name: "analysed_area.geojson".into(), description: "partie française de l'emprise : hors de ce contour, la couverture est inconnue".into() },
-            FileMeta { name: "build_report.json".into(), description: "chiffres et temps de calcul".into() },
-        ],
-        properties: vec![
-            ("kind".into(), "no_voice_network_any_operator (no_network.geojson) ou analysed_area".into()),
-            ("area_ha".into(), "surface du polygone, Lambert-93 plan, hectares".into()),
-            ("release".into(), "publication ARCEP, ex. 2026_T2".into()),
-            ("area_km2".into(), "surface analysée, Lambert-93 plan".into()),
+            FileMeta::new("no_network.geojson", "zones sans aucun réseau voix, même pour le 112 (aucun des quatre opérateurs)").count(r.no_network_polygons).properties([("kind", "no_voice_network_any_operator"), ("area_ha", "surface du polygone, Lambert-93 plan, hectares"), ("release", "publication ARCEP, ex. 2026_T2")]),
+            FileMeta::new("analysed_area.geojson", "partie française de l'emprise : hors de ce contour, la couverture est inconnue").count(1).properties([("kind", "analysed_area"), ("area_km2", "surface analysée, Lambert-93 plan")]),
+            FileMeta::new("build_report.json", "chiffres et temps de calcul"),
         ],
         sources: vec![
-            SourceMeta {
-                name: "ARCEP, Mon Réseau Mobile, couvertures théoriques 2G/3G voix".into(),
-                url: Operator::ALL.iter().map(|o| rel.url(*o)).collect::<Vec<_>>().join(" "),
-                license: "Licence Ouverte (data.gouv.fr, jeu « Mon Réseau Mobile », fr-lo)".into(),
-                attribution: "Arcep, Mon Réseau Mobile".into(),
-                data_date: Some(rel.quarter_end()),
-                note: Some("simulations des opérateurs ; résolution non documentée ; Free : pas de carte 2G depuis 2024 T4".into()),
-            },
-            SourceMeta {
-                name: "geo.api.gouv.fr, contours des communes (partie française de l'emprise)".into(),
-                url: format!("{}/departements/<code>/communes?format=geojson&geometry=contour", skimap_zones::sources::jurisdiction::API),
-                license: "non vérifiée (F5, #11)".into(),
-                attribution: "geo.api.gouv.fr (Etalab, IGN)".into(),
-                data_date: None,
-                note: None,
-            },
+            SourceRef::new("ARCEP, Mon Réseau Mobile, couvertures théoriques 2G/3G voix", Operator::ALL.iter().map(|o| rel.url(*o)).collect::<Vec<_>>().join(" "), "Licence Ouverte (data.gouv.fr, jeu « Mon Réseau Mobile », fr-lo)", "Arcep, Mon Réseau Mobile")
+                .edition(rel.quarter_end())
+                .note("simulations des opérateurs ; résolution non documentée ; Free : pas de carte 2G depuis 2024 T4"),
+            SourceRef::new("geo.api.gouv.fr, contours des communes (partie française de l'emprise)", format!("{}/departements/<code>/communes?format=geojson&geometry=contour", skimap_zones::sources::jurisdiction::API), "non vérifiée (F5, #11)", "geo.api.gouv.fr (Etalab, IGN)"),
         ],
         notes: vec![
             "Le 112 peut passer par l'antenne de n'importe quel opérateur : seule l'union des quatre réseaux compte (réponse ministérielle QE 4594, JO du 20/01/2026).".into(),
@@ -374,6 +352,7 @@ fn layer_meta(site: &Site, r: &CoverageReport, opts: &CoverageOptions) -> LayerM
             "Hors de la partie française de l'emprise (Italie, Suisse), aucune information.".into(),
         ],
         stats: serde_json::to_value(r).expect("report serialises"),
+        ..LayerMeta::new(LAYER, site.id)
     }
 }
 

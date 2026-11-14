@@ -30,10 +30,9 @@ use serde_json::{Value, json};
 use skimap_common::download::{Downloader, Fetched, Request};
 use skimap_common::geom::LonLat;
 use skimap_common::layout::DataLayout;
+use skimap_common::meta::{FileMeta, LayerMeta, SourceRef};
+use skimap_common::output::{feature, point, write_geojson, write_json};
 use skimap_common::site::Site;
-use skimap_osm::output::{
-    FileMeta, LayerMeta, SourceMeta, feature, now_rfc3339, point, write_geojson, write_json,
-};
 
 pub use error::{RefugesError, Result};
 
@@ -68,8 +67,8 @@ fn in_france(dl: &Downloader, cache: &mut HashMap<(i64, i64), bool>, p: LonLat) 
     Ok(fr)
 }
 
-fn source(name: &str, licence: &str, attribution: &str, f: &Fetched) -> SourceMeta {
-    SourceMeta::from_fetched(name, licence, attribution, f)
+fn source(name: &str, licence: &str, attribution: &str, f: &Fetched) -> SourceRef {
+    SourceRef::from_fetched(name, licence, attribution, f)
 }
 
 fn count_by<'a>(items: impl Iterator<Item = (&'a str, bool)>) -> Value {
@@ -265,42 +264,29 @@ pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<Refuge
             f,
         ));
     }
-    sources.push(SourceMeta {
-        name: format!("Camptocamp /waypoints/<id> ({} documents)", c2c.documents),
-        url: format!("{}/waypoints/<id>?cook=fr", camptocamp::API),
-        licence: camptocamp::LICENCE.to_owned(),
-        attribution: camptocamp::ATTRIBUTION.to_owned(),
-        fetched_at: None,
-        last_modified: None,
-        etag: None,
-        sha256: None,
-    });
-    sources.push(SourceMeta {
-        name: "geo.api.gouv.fr communes (en France ou non)".to_owned(),
-        url: "https://geo.api.gouv.fr/communes".to_owned(),
-        licence: "Licence Ouverte 2.0".to_owned(),
-        attribution: "geo.api.gouv.fr".to_owned(),
-        fetched_at: None,
-        last_modified: None,
-        etag: None,
-        sha256: None,
-    });
+    sources.push(SourceRef::new(
+        format!("Camptocamp /waypoints/<id> ({} documents)", c2c.documents),
+        format!("{}/waypoints/<id>?cook=fr", camptocamp::API),
+        camptocamp::LICENCE.to_owned(),
+        camptocamp::ATTRIBUTION.to_owned(),
+    ));
+    sources.push(SourceRef::new(
+        "geo.api.gouv.fr communes (en France ou non)",
+        "https://geo.api.gouv.fr/communes",
+        "Licence Ouverte 2.0",
+        "geo.api.gouv.fr",
+    ));
     let valid_at = ri.full.meta.fetched_at_unix.max(osm_f.meta.fetched_at_unix);
     let meta = LayerMeta {
-        layer: LAYER.to_owned(),
-        site: site.id.to_owned(),
         tickets: vec!["P11 (#24)".to_owned()],
-        generated_at: now_rfc3339(),
-        valid_at: skimap_osm::output::unix_to_rfc3339(valid_at as i64),
-        crs: "EPSG:4326 (WGS84, longitude, latitude)".to_owned(),
+        valid_from: skimap_common::meta::unix_to_rfc3339(valid_at as i64),
+        crs: Some("EPSG:4326 (WGS84, longitude, latitude)".to_owned()),
         sources,
         files: vec![
-            FileMeta {
-                path: "refuges_info.geojson".to_owned(),
-                description: "points refuges.info de l'emprise (instantané hebdomadaire + mise à jour depuis=), dernier commentaire daté".to_owned(),
-                licence: refuges_info::LICENCE.to_owned(),
-                count: ri_features.len(),
-                properties: json!({
+            FileMeta::new("refuges_info.geojson", "points refuges.info de l'emprise (instantané hebdomadaire + mise à jour depuis=), dernier commentaire daté")
+                .licence(refuges_info::LICENCE)
+                .count(ri_features.len())
+                .properties_json(&json!({
                     "id": "identifiant refuges.info",
                     "name": "nom",
                     "type_id": "type (7 cabane non gardée, 9 gîte d'étape, 10 refuge gardé, 23 point d'eau...)",
@@ -319,27 +305,21 @@ pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<Refuge
                     "in_france": "commune française au point (geo.api.gouv.fr)",
                     "link": "index dans links.json",
                     "hiver": "aucun champ « ouvert en hiver » ni « local d'hiver » dans refuges.info",
-                }),
-            },
-            FileMeta {
-                path: "osm.geojson".to_owned(),
-                description: "refuges et abris OSM (tourism=alpine_hut, tourism=wilderness_hut, amenity=shelter, ref:refuges.info) ; centre des ways et relations".to_owned(),
-                licence: osm::LICENCE.to_owned(),
-                count: osm_features.len(),
-                properties: json!({
+                })),
+            FileMeta::new("osm.geojson", "refuges et abris OSM (tourism=alpine_hut, tourism=wilderness_hut, amenity=shelter, ref:refuges.info) ; centre des ways et relations")
+                .licence(osm::LICENCE)
+                .count(osm_features.len())
+                .properties_json(&json!({
                     "osm_type": "node, way ou relation", "osm_id": "identifiant OSM",
                     "kind": "alpine_hut, wilderness_hut, shelter, bus_shelter (shelter_type=public_transport) ou other",
                     "refuges_info_id": "identifiant refuges.info (ref:refuges.info)",
                     "tags": format!("étiquettes retenues : {}", osm::KEPT_TAGS.join(", ")),
                     "in_france": "commune française au point", "link": "index dans links.json",
-                }),
-            },
-            FileMeta {
-                path: "camptocamp.geojson".to_owned(),
-                description: "cabanes (hut), abris (shelter) et gîtes Camptocamp de l'emprise, avec la capacité hors gardiennage".to_owned(),
-                licence: camptocamp::LICENCE.to_owned(),
-                count: c2c_features.len(),
-                properties: json!({
+                })),
+            FileMeta::new("camptocamp.geojson", "cabanes (hut), abris (shelter) et gîtes Camptocamp de l'emprise, avec la capacité hors gardiennage")
+                .licence(camptocamp::LICENCE)
+                .count(c2c_features.len())
+                .properties_json(&json!({
                     "id": "document Camptocamp", "title": "nom", "waypoint_type": "hut, shelter, gite",
                     "elevation": "altitude, m", "country": "pays (zone Camptocamp)",
                     "capacity_unstaffed": "places hors gardiennage (local d'hiver)",
@@ -351,18 +331,14 @@ pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<Refuge
                     "url": "page Camptocamp", "licence": "licence du document",
                     "attribution_url": "historique (auteurs) à citer",
                     "in_france": "pays = France", "link": "index dans links.json",
-                }),
-            },
-            FileMeta {
-                path: "links.json".to_owned(),
-                description: "correspondances entre les trois sources (identifiants seulement) : ref:refuges.info d'OSM, sinon position (250 m) et nom, ou position seule (40 m)".to_owned(),
-                licence: "identifiants ; couches séparées, licence de la combinaison à trancher (L3)".to_owned(),
-                count: links.len(),
-                properties: json!({
+                })),
+            FileMeta::new("links.json", "correspondances entre les trois sources (identifiants seulement) : ref:refuges.info d'OSM, sinon position (250 m) et nom, ou position seule (40 m)")
+                .licence("identifiants ; couches séparées, licence de la combinaison à trancher (L3)")
+                .count(links.len())
+                .properties_json(&json!({
                     "refuges_info": "identifiant refuges.info", "osm": "éléments OSM",
                     "camptocamp": "documents Camptocamp", "methods": "méthode de chaque rattachement",
-                }),
-            },
+                })),
         ],
         parameters: json!({
             "bbox_south_west_north_east": [site.bbox.south, site.bbox.west, site.bbox.north, site.bbox.east],
@@ -372,6 +348,7 @@ pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<Refuge
             "links_min_name_similarity": links::MIN_NAME,
         }),
         stats: stats.clone(),
+        ..LayerMeta::new(LAYER, site.id)
     };
     write_json(&dir.join(format!("{LAYER}.meta.json")), &meta)?;
     Ok(RefugesOutput { dir, stats })

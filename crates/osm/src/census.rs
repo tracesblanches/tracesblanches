@@ -37,10 +37,9 @@ use skimap_common::site::Site;
 use crate::domains::{Domain, Params, Seed, cluster};
 use crate::error::{OsmError, Result};
 use crate::extract::{Planet, load_planet};
-use crate::output::{
-    FileMeta, LayerMeta, SourceMeta, feature, now_rfc3339, point, round7, write_geojson, write_json,
-};
 use crate::pistes::{Piste, PisteSet};
+use skimap_common::meta::{FileMeta, LayerMeta, SourceRef};
+use skimap_common::output::{feature, point, round7, write_geojson, write_json};
 
 /// Layer name.
 pub const LAYER: &str = "domaines";
@@ -183,7 +182,7 @@ pub struct OpenSkiMap {
     /// Areas of the nordic runs, by OSM element.
     pub runs: RunAreas,
     /// Sources.
-    pub sources: Vec<SourceMeta>,
+    pub sources: Vec<SourceRef>,
 }
 
 /// A SkiRadar station with a nordic block.
@@ -398,13 +397,13 @@ fn load_openskimap(dl: &Downloader) -> Result<OpenSkiMap> {
         areas,
         runs,
         sources: vec![
-            SourceMeta::from_fetched(
+            SourceRef::from_fetched(
                 "OpenSkiMap ski_areas.csv",
                 "ODbL 1.0",
                 attribution,
                 &areas_f,
             ),
-            SourceMeta::from_fetched("OpenSkiMap runs.csv", "ODbL 1.0", attribution, &runs_f),
+            SourceRef::from_fetched("OpenSkiMap runs.csv", "ODbL 1.0", attribution, &runs_f),
         ],
     })
 }
@@ -447,7 +446,7 @@ pub fn parse_skiradar(v: &Value) -> Result<(Vec<SkiRadarStation>, u64)> {
     Ok((out, pages))
 }
 
-fn load_skiradar(dl: &Downloader) -> Result<(Vec<SkiRadarStation>, Vec<SourceMeta>)> {
+fn load_skiradar(dl: &Downloader) -> Result<(Vec<SkiRadarStation>, Vec<SourceRef>)> {
     let mut all = Vec::new();
     let mut sources = Vec::new();
     let mut page = 1;
@@ -457,8 +456,8 @@ fn load_skiradar(dl: &Downloader) -> Result<(Vec<SkiRadarStation>, Vec<SourceMet
         let v: Value = f.json()?;
         let (st, pages) = parse_skiradar(&v)?;
         all.extend(st);
-        sources.push(SourceMeta::from_fetched(
-            &format!("SkiRadar geo-feed page {page}"),
+        sources.push(SourceRef::from_fetched(
+            format!("SkiRadar geo-feed page {page}"),
             "réutilisation avec attribution « skiradar.fr » et lien vers la fiche",
             "skiradar.fr",
             &f,
@@ -515,7 +514,7 @@ pub fn parse_nordic_france(association: &str, html: &str) -> Vec<NordicFranceSta
     out
 }
 
-fn load_nordic_france(dl: &Downloader) -> Result<(Vec<NordicFranceStation>, Vec<SourceMeta>)> {
+fn load_nordic_france(dl: &Downloader) -> Result<(Vec<NordicFranceStation>, Vec<SourceRef>)> {
     let mut all = Vec::new();
     let mut sources = Vec::new();
     for (slug, _) in NORDIC_FRANCE_ASSOCIATIONS {
@@ -524,12 +523,15 @@ fn load_nordic_france(dl: &Downloader) -> Result<(Vec<NordicFranceStation>, Vec<
             Ok(f) => {
                 let html = String::from_utf8_lossy(&f.bytes()?).into_owned();
                 all.extend(parse_nordic_france(slug, &html));
-                sources.push(SourceMeta::from_fetched(
-                    &format!("Nordic France widget {slug}"),
-                    "aucune licence publiée : usage personnel uniquement",
-                    "Nordic France",
-                    &f,
-                ));
+                sources.push(
+                    SourceRef::from_fetched(
+                        format!("Nordic France widget {slug}"),
+                        "aucune licence publiée : usage personnel uniquement",
+                        "Nordic France",
+                        &f,
+                    )
+                    .personal_use_only(),
+                );
             }
             Err(e) => tracing::warn!(association = slug, error = %e, "Nordic France widget"),
         }
@@ -1146,16 +1148,12 @@ pub fn build_france_from(
     )?;
     let mut sources = vec![planet.source.clone()];
     sources.extend(osm.sources.iter().cloned());
-    sources.push(SourceMeta {
-        name: "geo.api.gouv.fr communes".to_owned(),
-        url: "https://geo.api.gouv.fr/communes".to_owned(),
-        licence: "Licence Ouverte 2.0".to_owned(),
-        attribution: "geo.api.gouv.fr (Etalab, IGN Admin Express)".to_owned(),
-        fetched_at: None,
-        last_modified: None,
-        etag: None,
-        sha256: None,
-    });
+    sources.push(SourceRef::new(
+        "geo.api.gouv.fr communes",
+        "https://geo.api.gouv.fr/communes",
+        "Licence Ouverte 2.0",
+        "geo.api.gouv.fr (Etalab, IGN Admin Express)",
+    ));
     sources.extend(skiradar_sources);
     let meta = layer_meta(
         FRANCE_DIR,
@@ -1226,19 +1224,17 @@ fn touches(mp: &MultiPolygon<f64>, b: &BBox) -> bool {
 fn layer_meta(
     site: &str,
     planet: &Planet,
-    sources: Vec<SourceMeta>,
+    sources: Vec<SourceRef>,
     domains: &[DomainRecord],
     opts: &CensusOptions,
     stats: Value,
     france: bool,
 ) -> LayerMeta {
     let mut files = vec![
-        FileMeta {
-            path: "domaines.geojson".to_owned(),
-            description: "domaines de ski de fond : enveloppe concave des pistes + tampon".to_owned(),
-            licence: "ODbL 1.0 (OSM, OpenSkiMap) ; communes : Licence Ouverte 2.0".to_owned(),
-            count: domains.len(),
-            properties: json!({
+        FileMeta::new("domaines.geojson", "domaines de ski de fond : enveloppe concave des pistes + tampon")
+            .licence("ODbL 1.0 (OSM, OpenSkiMap) ; communes : Licence Ouverte 2.0")
+            .count(domains.len())
+            .properties_json(&json!({
                 "id": "identifiant stable : site-<relation OSM site=piste> ou net-<plus petit way OSM du réseau>",
                 "name": "nom affiché",
                 "name_source": "osm_site (relation site=piste), openskimap (domaine OpenSkiMap non issu d'une autre relation site), commune (commune du point représentatif)",
@@ -1254,48 +1250,27 @@ fn layer_meta(
                 "alt_names": "noms des domaines OpenSkiMap couvrant au moins la moitié du domaine (hors domaines issus d'une autre relation site)",
                 "lon": "longitude du point représentatif (sur le réseau)",
                 "lat": "latitude du point représentatif",
-            }),
-        },
-        FileMeta {
-            path: "domaines_points.geojson".to_owned(),
-            description: "point représentatif de chaque domaine (point du réseau le plus proche du barycentre)".to_owned(),
-            licence: "ODbL 1.0".to_owned(),
-            count: domains.len(),
-            properties: json!({"id": "identifiant", "name": "nom", "km_nordic": "km nordiques"}),
-        },
-        FileMeta {
-            path: "domaines_ways.json".to_owned(),
-            description: "ways OSM de chaque domaine (identifiant de domaine → liste d'identifiants de ways)".to_owned(),
-            licence: "ODbL 1.0".to_owned(),
-            count: domains.len(),
-            properties: json!({}),
-        },
+            })),
+        FileMeta::new("domaines_points.geojson", "point représentatif de chaque domaine (point du réseau le plus proche du barycentre)")
+            .licence("ODbL 1.0")
+            .count(domains.len())
+            .properties_json(&json!({"id": "identifiant", "name": "nom", "km_nordic": "km nordiques"})),
+        FileMeta::new("domaines_ways.json", "ways OSM de chaque domaine (identifiant de domaine → liste d'identifiants de ways)")
+            .licence("ODbL 1.0")
+            .count(domains.len()),
     ];
     if france {
-        files.push(FileMeta {
-            path: "rapprochements.json".to_owned(),
-            description: "rapprochements : domaines OpenSkiMap partagés entre plusieurs de nos domaines ou sans aucun de nos ways ; stations SkiRadar et domaine le plus proche".to_owned(),
-            licence: "ODbL 1.0 (OpenSkiMap) ; SkiRadar : attribution « skiradar.fr »".to_owned(),
-            count: 0,
-            properties: json!({}),
-        });
+        files.push(FileMeta::new("rapprochements.json", "rapprochements : domaines OpenSkiMap partagés entre plusieurs de nos domaines ou sans aucun de nos ways ; stations SkiRadar et domaine le plus proche")
+                .licence("ODbL 1.0 (OpenSkiMap) ; SkiRadar : attribution « skiradar.fr »"));
         if opts.personal_sources {
-            files.push(FileMeta {
-                path: "nordic_france.json".to_owned(),
-                description: "stations Nordic France (widget) et domaine rapproché par le nom ; usage personnel".to_owned(),
-                licence: "aucune licence publiée : usage personnel uniquement".to_owned(),
-                count: 0,
-                properties: json!({}),
-            });
+            files.push(FileMeta::new("nordic_france.json", "stations Nordic France (widget) et domaine rapproché par le nom ; usage personnel")
+                    .licence("aucune licence publiée : usage personnel uniquement"));
         }
     }
     LayerMeta {
-        layer: LAYER.to_owned(),
-        site: site.to_owned(),
         tickets: vec!["P3 (#16)".to_owned()],
-        generated_at: now_rfc3339(),
-        valid_at: planet.valid_at.clone(),
-        crs: "EPSG:4326 (WGS84) ; calculs d'enveloppe en Lambert-93 (EPSG:2154)".to_owned(),
+        valid_from: planet.valid_at.clone(),
+        crs: Some("EPSG:4326 (WGS84) ; calculs d'enveloppe en Lambert-93 (EPSG:2154)".to_owned()),
         sources,
         files,
         parameters: json!({
@@ -1306,6 +1281,7 @@ fn layer_meta(
             "france_filter": "commune française au point représentatif (geo.api.gouv.fr)",
         }),
         stats,
+        ..LayerMeta::new(LAYER, site)
     }
 }
 
@@ -1329,31 +1305,12 @@ pub fn build_site_from(
         "domains": n,
         "list": kept.iter().map(|r| json!({"id": r.id, "name": r.name, "km_nordic": r.km_nordic, "km_hike_only": r.km_hike_only})).collect::<Vec<_>>(),
     });
+    // Sources of the France layer, without SkiRadar (not used by the site layer).
     let mut sources = vec![planet.source.clone()];
-    if let Ok(m) = std::fs::read_to_string(census.dir.join(format!("{LAYER}.meta.json")))
-        && let Ok(v) = serde_json::from_str::<Value>(&m)
-        && let Some(arr) = v.get("sources").and_then(Value::as_array)
-    {
-        sources = arr
-            .iter()
-            .filter_map(|s| {
-                Some(SourceMeta {
-                    name: s.get("name")?.as_str()?.to_owned(),
-                    url: s.get("url")?.as_str()?.to_owned(),
-                    licence: s.get("licence")?.as_str()?.to_owned(),
-                    attribution: s.get("attribution")?.as_str()?.to_owned(),
-                    fetched_at: s
-                        .get("fetched_at")
-                        .and_then(Value::as_str)
-                        .map(str::to_owned),
-                    last_modified: s
-                        .get("last_modified")
-                        .and_then(Value::as_str)
-                        .map(str::to_owned),
-                    etag: s.get("etag").and_then(Value::as_str).map(str::to_owned),
-                    sha256: s.get("sha256").and_then(Value::as_str).map(str::to_owned),
-                })
-            })
+    if let Ok(m) = LayerMeta::read(&census.dir.join(LayerMeta::file_name(LAYER))) {
+        sources = m
+            .sources
+            .into_iter()
             .filter(|s| !s.name.starts_with("SkiRadar"))
             .collect();
     }

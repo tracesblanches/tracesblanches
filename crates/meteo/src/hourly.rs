@@ -36,7 +36,8 @@ use skimap_common::layout::DataLayout;
 use skimap_common::site::Site;
 
 use crate::error::{Error, Result};
-use crate::meta::{LayerMeta, SourceRef, now_rfc3339, write_json};
+use skimap_common::meta::{FileMeta, LayerMeta, SourceRef, now_rfc3339};
+use skimap_common::output::write_json;
 
 /// Layer name.
 pub const LAYER: &str = "meteo-hourly";
@@ -427,19 +428,23 @@ pub fn build(
     write_json(&dir.join("hourly.json"), &file)?;
     let first = file.points.first();
     LayerMeta {
-        layer: LAYER.to_owned(),
-        site: site.id.to_owned(),
+        tickets: vec!["P19 (#32)".to_owned()],
         generated_at,
         valid_from: first.and_then(|p| p.hours.first()).map(|h| h.time.clone()),
         valid_until: first.and_then(|p| p.hours.last()).map(|h| h.time.clone()),
-        sources: vec![SourceRef {
-            name: "Open-Meteo, API forecast (meteofrance_seamless et best_match)".into(),
-            url: FORECAST_URL.into(),
-            licence: "CC BY 4.0 ; API gratuite réservée à l'usage non commercial".into(),
-            attribution: "Weather data by Open-Meteo.com".into(),
-            personal_use_only: true,
-        }],
-        files: vec!["hourly.json: prévision horaire par point (HourlyFile)".into()],
+        sources: vec![
+            SourceRef::new(
+                "Open-Meteo, API forecast (meteofrance_seamless et best_match)",
+                FORECAST_URL,
+                "CC BY 4.0 ; API gratuite réservée à l'usage non commercial",
+                "Weather data by Open-Meteo.com",
+            )
+            .personal_use_only(),
+        ],
+        files: vec![FileMeta::new(
+            "hourly.json",
+            "prévision horaire par point (HourlyFile)",
+        )],
         notes: vec![
             "Heures locales Europe/Paris.".into(),
             "visibility et freezing_level_height viennent de best_match : nuls dans les \
@@ -447,6 +452,7 @@ pub fn build(
                 .into(),
             "snow_depth n'est pas utilisé (nul avec meteofrance_seamless, rapport 03).".into(),
         ],
+        ..LayerMeta::new(LAYER, site.id)
     }
     .write(&dir)?;
     Ok(file)

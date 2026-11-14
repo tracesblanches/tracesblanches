@@ -10,10 +10,6 @@ pub enum Error {
     #[error(transparent)]
     Common(#[from] skimap_common::Error),
 
-    /// Error of the meta writer.
-    #[error(transparent)]
-    Meteo(#[from] skimap_meteo::Error),
-
     /// Content that does not match what the source documents.
     #[error("unexpected content from {source_name}: {message}")]
     Format {

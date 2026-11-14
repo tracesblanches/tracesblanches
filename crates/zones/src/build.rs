@@ -20,10 +20,11 @@ use skimap_common::site::Site;
 use crate::error::{Error, Result};
 use crate::geom::{area_ha, clip_to_bbox, geodesic_area_m2, union_all};
 use crate::layer::{Zone, ZoneKind, ZoneLayer};
-use crate::meta::{FileMeta, LayerMeta, SourceMeta, now_rfc3339, write_json_pretty, write_text};
 use crate::rules::{RULES_JSON, RuleSet};
 use crate::sources::gpu::{Ac2Class, GpuZone};
 use crate::sources::{RawZone, biodiv, gpu, inpn, jurisdiction, swiss};
+use skimap_common::meta::{FileMeta, LayerMeta, SourceRef};
+use skimap_common::output::{write_json, write_text};
 
 /// Layer (directory) name.
 pub const LAYER: &str = "zones";
@@ -242,7 +243,7 @@ pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<ZonesR
     write_text(&dir.join("zones.geojson"), &layer.to_geojson_string()?)?;
     write_text(&dir.join("rules.json"), RULES_JSON)?;
     let meta = layer_meta(site, &layer, &by_kind, &resolution);
-    meta.write(&dir.join(format!("{LAYER}.meta.json")))?;
+    meta.write(&dir)?;
 
     let report = ZonesReport {
         site: site.id.to_owned(),
@@ -252,7 +253,7 @@ pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<ZonesR
         rules: resolution,
         elapsed: t0.elapsed(),
     };
-    write_json_pretty(&report.dir.join("build_report.json"), &report)?;
+    write_json(&report.dir.join("build_report.json"), &report)?;
     Ok(report)
 }
 
@@ -290,59 +291,26 @@ fn layer_meta(
         ("note", "remarque du pipeline"),
     ];
     LayerMeta {
-        layer: LAYER.into(),
-        site: site.id.into(),
-        generated_at: now_rfc3339(),
+        tickets: vec!["P9 (#22)".into(), "P10 (#23)".into()],
         valid_until: Some((today + chrono::Days::new(30)).to_string()),
-        validity: "Régénérer au moins chaque mois : Biodiv'sports évolue sans calendrier, INPN est mis à jour chaque semestre, le GPU en continu. Les règles (rules.json) sont relues à la main (date `reviewed`).".into(),
-        crs: "EPSG:4326 (longitude, latitude), coordonnées arrondies à 1e-6°".into(),
+        validity: Some("Régénérer au moins chaque mois : Biodiv'sports évolue sans calendrier, INPN est mis à jour chaque semestre, le GPU en continu. Les règles (rules.json) sont relues à la main (date `reviewed`).".into()),
+        crs: Some("EPSG:4326 (longitude, latitude), coordonnées arrondies à 1e-6°".into()),
         files: vec![
-            FileMeta { name: "zones.geojson".into(), description: "toutes les zones, découpées à l'emprise du site".into() },
-            FileMeta { name: "rules.json".into(), description: "règles saisies à la main depuis les textes (schéma skimap_zones::rules)".into() },
-            FileMeta { name: "build_report.json".into(), description: "résumé de la construction".into() },
+            FileMeta::new("zones.geojson", "toutes les zones, découpées à l'emprise du site").count(layer.zones.len()).properties(props),
+            FileMeta::new("rules.json", "règles saisies à la main depuis les textes (schéma skimap_zones::rules)"),
+            FileMeta::new("build_report.json", "résumé de la construction"),
         ],
-        properties: props.iter().map(|(k, v)| ((*k).into(), (*v).into())).collect(),
         sources: vec![
-            SourceMeta {
-                name: "INPN espaces protégés (PatriNat)".into(),
-                url: format!("{} couches {}", crate::sources::GEOPF_WFS, inpn::LAYERS.iter().map(|l| l.0).collect::<Vec<_>>().join(", ")),
-                license: "« other-open » selon data.gouv.fr, à confirmer (F5, #11)".into(),
-                attribution: "PatriNat (OFB, MNHN, CNRS, IRD), Inventaire national du patrimoine naturel".into(),
-                data_date: None,
-                note: Some("WFS Géoplateforme, sortie demandée en CRS:84 (la valeur par défaut est EPSG:3857)".into()),
-            },
-            SourceMeta {
-                name: "Géoportail de l'urbanisme, servitudes d'utilité publique".into(),
-                url: format!("{} couche {}", crate::sources::GEOPF_WFS, gpu::LAYER),
-                license: "non vérifiée (F5, #11)".into(),
-                attribution: "Géoportail de l'urbanisme".into(),
-                data_date: None,
-                note: Some("seule source des sites inscrits (R111-33) ; AC1, AC2, AC4, AS1, A7 conservées".into()),
-            },
-            SourceMeta {
-                name: "Biodiv'sports".into(),
-                url: biodiv::areas_url(b),
-                license: "non vérifiée (F5, #11)".into(),
-                attribution: "Biodiv'sports (LPO AuRA et partenaires)".into(),
-                data_date: None,
-                note: Some("period=ignore : toutes les zones, quel que soit le mois ; mois sensibles dans `months`".into()),
-            },
-            SourceMeta {
-                name: "geo.admin.ch (OFEV districts francs, swissBOUNDARIES3D)".into(),
-                url: swiss::identify_url(swiss::LAYER_DISTRICTS, b),
-                license: "opendata.swiss « terms_by » (attribution obligatoire)".into(),
-                attribution: "© OFEV, © swisstopo".into(),
-                data_date: None,
-                note: Some("districts francs : parties à protection intégrale ou partielle seulement".into()),
-            },
-            SourceMeta {
-                name: "geo.api.gouv.fr, contours des communes".into(),
-                url: format!("{}/departements/<code>/communes?format=geojson&geometry=contour", jurisdiction::API),
-                license: "non vérifiée (F5, #11)".into(),
-                attribution: "geo.api.gouv.fr (Etalab, IGN)".into(),
-                data_date: None,
-                note: Some("France, départements et communes citées par les règles".into()),
-            },
+            SourceRef::new("INPN espaces protégés (PatriNat)", format!("{} couches {}", crate::sources::GEOPF_WFS, inpn::LAYERS.iter().map(|l| l.0).collect::<Vec<_>>().join(", ")), "« other-open » selon data.gouv.fr, à confirmer (F5, #11)", "PatriNat (OFB, MNHN, CNRS, IRD), Inventaire national du patrimoine naturel")
+                .note("WFS Géoplateforme, sortie demandée en CRS:84 (la valeur par défaut est EPSG:3857)"),
+            SourceRef::new("Géoportail de l'urbanisme, servitudes d'utilité publique", format!("{} couche {}", crate::sources::GEOPF_WFS, gpu::LAYER), "non vérifiée (F5, #11)", "Géoportail de l'urbanisme")
+                .note("seule source des sites inscrits (R111-33) ; AC1, AC2, AC4, AS1, A7 conservées"),
+            SourceRef::new("Biodiv'sports", biodiv::areas_url(b), "non vérifiée (F5, #11)", "Biodiv'sports (LPO AuRA et partenaires)")
+                .note("period=ignore : toutes les zones, quel que soit le mois ; mois sensibles dans `months`"),
+            SourceRef::new("geo.admin.ch (OFEV districts francs, swissBOUNDARIES3D)", swiss::identify_url(swiss::LAYER_DISTRICTS, b), "opendata.swiss « terms_by » (attribution obligatoire)", "© OFEV, © swisstopo")
+                .note("districts francs : parties à protection intégrale ou partielle seulement"),
+            SourceRef::new("geo.api.gouv.fr, contours des communes", format!("{}/departements/<code>/communes?format=geojson&geometry=contour", jurisdiction::API), "non vérifiée (F5, #11)", "geo.api.gouv.fr (Etalab, IGN)")
+                .note("France, départements et communes citées par les règles"),
         ],
         notes: vec![
             "Les zones sont découpées à l'emprise du site : hors emprise, aucune règle n'est évaluée.".into(),
@@ -356,5 +324,6 @@ fn layer_meta(
             "rules": resolution,
             "areas_ha": layer.zones.iter().map(|z| (z.id().to_owned(), z.props.area_ha)).collect::<BTreeMap<_, _>>(),
         }),
+        ..LayerMeta::new(LAYER, site.id)
     }
 }
