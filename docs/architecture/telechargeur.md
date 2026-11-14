@@ -19,7 +19,7 @@ TLS : rustls avec le fournisseur `ring` et les racines Mozilla (`webpki-roots`),
 - cache disque par source : `data/cache/<source>/<sha256>.body` et `.json` (URL publique, ETag, Last-Modified, dates, taille, sha256) ;
 - requêtes conditionnelles `If-None-Match` / `If-Modified-Since`, réponse 304 servie depuis le cache ;
 - politique de cache par requête : `Normal` (aucune requête tant que l'entrée a moins de `max_age`), `Revalidate`, `Reload`, `Offline` ;
-- limites de débit par source en fenêtre glissante, persistées dans `data/cache/<source>/ratelimit.json` (un quota journalier survit à un redémarrage) ; une attente au-delà de `max_wait` donne l'erreur `RateLimited` sans requête ;
+- limites de débit par source en fenêtre glissante, persistées dans `data/cache/<source>/ratelimit.json` (un quota journalier survit à un redémarrage) ; une requête est inscrite avant l'envoi (un arrêt brutal ne l'efface pas du quota), puis datée de la fin de sa réponse : le serveur ne voit jamais deux requêtes plus proches que la fenêtre, quel que soit le temps passé entre l'inscription et l'envoi (écriture de l'état avec `fsync`, connexion, machine chargée) ; une attente au-delà de `max_wait` donne l'erreur `RateLimited` sans requête ;
 - une seule requête en vol par source ; sources différentes en parallèle ;
 - reprises avec attente exponentielle sur erreur réseau, 408, 429, 5xx, en respectant `Retry-After` ;
 - User-Agent générique `skimap/<version> (offline nordic ski map data pipeline)`, sans donnée personnelle ;

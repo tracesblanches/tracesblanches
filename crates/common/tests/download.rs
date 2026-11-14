@@ -359,9 +359,10 @@ fn rate_limit_state_survives_a_restart() {
         start.elapsed()
     );
     let seen = srv.seen();
+    let spacing = seen[1].at.duration_since(seen[0].at);
     assert!(
-        seen[1].at.duration_since(seen[0].at) + Duration::from_millis(50)
-            >= Duration::from_millis(500)
+        spacing + Duration::from_millis(50) >= Duration::from_millis(500),
+        "requests {spacing:?} apart at the server"
     );
 }
 

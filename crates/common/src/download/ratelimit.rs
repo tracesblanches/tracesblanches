@@ -115,6 +115,31 @@ impl Limiter {
         while self.history.front().is_some_and(|&t| t + longest <= now_ms) {
             self.history.pop_front();
         }
+        self.persist()
+    }
+
+    /// Moves the time of the request recorded at `started_ms` (the latest one: the caller
+    /// holds the source lock from [`Limiter::acquire`] to the end of the request) to
+    /// `done_ms`, when its response has arrived, and persists the state.
+    ///
+    /// The request is recorded before it is sent, so that a crash cannot lose it from a
+    /// daily quota; but the time that matters to the server is when it received the
+    /// request, which is somewhere between the two. Counting the window from the end of
+    /// the response guarantees that the server never sees two requests closer than the
+    /// window, whatever the time spent between the record and the send (state written
+    /// with `fsync`, connection, a busy machine).
+    pub(crate) fn finish(&mut self, started_ms: u64, done_ms: u64) -> Result<()> {
+        if let Some(last) = self.history.back_mut()
+            && *last == started_ms
+            && done_ms > started_ms
+        {
+            *last = done_ms;
+            return self.persist();
+        }
+        Ok(())
+    }
+
+    fn persist(&self) -> Result<()> {
         if let Some(p) = &self.state_path {
             let state = State {
                 requests_ms: self.history.iter().copied().collect(),
@@ -126,7 +151,8 @@ impl Limiter {
         Ok(())
     }
 
-    /// Waits (with `clock`) until a request is allowed, then records it.
+    /// Waits (with `clock`) until a request is allowed, then records it; returns the time
+    /// recorded, to pass to [`Limiter::finish`] once the response is in.
     ///
     /// Fails with [`Error::RateLimited`] without waiting when the required wait exceeds
     /// `max_wait`.
@@ -135,12 +161,13 @@ impl Limiter {
         source: &str,
         clock: &dyn Clock,
         max_wait: Duration,
-    ) -> Result<()> {
+    ) -> Result<u64> {
         loop {
             let now = unix_ms(clock.now());
             let wait = self.wait_needed(now);
             if wait.is_zero() {
-                return self.record(now);
+                self.record(now)?;
+                return Ok(now);
             }
             if wait > max_wait {
                 return Err(Error::RateLimited {
@@ -221,6 +248,31 @@ pub(crate) mod tests {
             e => panic!("unexpected {e}"),
         }
         assert_eq!(ms(&clock), 2_000);
+    }
+
+    #[test]
+    fn window_counts_from_the_end_of_the_response() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ratelimit.json");
+        let clock = MockClock::at_ms(0);
+        let limits = vec![RateLimit::new(1, Duration::from_millis(500))];
+        let mut l = Limiter::load(limits.clone(), Some(path.clone())).unwrap();
+        let t = l.acquire("t", &clock, Duration::from_secs(1)).unwrap();
+        assert_eq!(t, 0);
+        // The request took 300 ms (state written, connection, transfer).
+        *clock.0.lock().unwrap() += Duration::from_millis(300);
+        l.finish(t, ms(&clock)).unwrap();
+        // The next one waits 500 ms from the end of the response, not from the record.
+        assert_eq!(l.wait_needed(ms(&clock)), Duration::from_millis(500));
+        // The persisted state has the end time too.
+        let again = Limiter::load(limits, Some(path)).unwrap();
+        assert_eq!(again.history, [300]);
+        // A stale start time changes nothing.
+        l.finish(7, 900).unwrap();
+        assert_eq!(l.history, [300]);
+        let t2 = l.acquire("t", &clock, Duration::from_secs(1)).unwrap();
+        assert_eq!(t2, 800);
+        assert_eq!(ms(&clock), 800);
     }
 
     #[test]

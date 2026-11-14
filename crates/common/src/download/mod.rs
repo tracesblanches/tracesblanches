@@ -441,8 +441,10 @@ impl Downloader {
 
         let mut attempt = 0u32;
         loop {
-            limiter.acquire(&req.source, self.clock.as_ref(), policy.max_wait)?;
-            match self.attempt(req, &policy, conditional.as_ref(), &entry) {
+            let sent = limiter.acquire(&req.source, self.clock.as_ref(), policy.max_wait)?;
+            let outcome = self.attempt(req, &policy, conditional.as_ref(), &entry);
+            limiter.finish(sent, unix_ms(self.clock.now()))?;
+            match outcome {
                 Attempt::Done(f) => return Ok(f),
                 Attempt::Fatal(e) => return Err(e),
                 Attempt::Retry(e, retry_after) => {
