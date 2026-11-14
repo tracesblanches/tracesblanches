@@ -1,0 +1,450 @@
+<!doctype html>
+<!--
+  skimap pack viewer (P15, #28). Static page, no build step.
+  Serve the repository root with a static server that answers HTTP Range requests
+  (PMTiles; python3 -m http.server does not), then open this page:
+    cargo run --release -p skimap-pack --features pipeline --example serve -- <repo> 127.0.0.1:8765
+    google-chrome "http://127.0.0.1:8765/tools/viewer/index.html?pack=../../data/out/cervieres/pack/"
+  See tools/viewer/README.md (phone: adb reverse).
+-->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>skimap — visualiseur de pack</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.1/dist/maplibre-gl.css"
+      integrity="sha384-uTttxo/aOKbdE5RlD/SPzSDoDmNvGlUYPjONi2MN/b7c9HPSvW07OIuyP7uL6jxK" crossorigin="anonymous">
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.1/dist/maplibre-gl.js"
+        integrity="sha384-nXMl9YiLoSG5KBPTFgvxVuIqQQcqIvo0bFrvoEaGJC6r7IibIzF1S36Zbf/sKBtL" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/pmtiles@4.5.0/dist/pmtiles.js"
+        integrity="sha384-pbKNZbDshUsLnZMIVsn/t+j3xEY9PGfuX5Z22l5rcy/obXz3EwaMx1F5d9sRsJMn" crossorigin="anonymous"></script>
+<style>
+  :root { --panel: min(360px, 88vw); --fg: #1d1d1f; --muted: #666; --line: #ddd; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font: 14px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--fg); }
+  #map { position: absolute; inset: 0; }
+  #panel { position: absolute; top: 0; left: 0; bottom: 0; width: var(--panel); background: rgba(255,255,255,.97);
+           box-shadow: 2px 0 8px rgba(0,0,0,.2); overflow-y: auto; z-index: 2; padding: 10px 12px 40px;
+           transition: transform .2s; -webkit-overflow-scrolling: touch; }
+  #panel.closed { transform: translateX(-105%); }
+  #toggle { position: absolute; top: 10px; left: calc(var(--panel) + 10px); z-index: 3; transition: left .2s;
+            border: 0; border-radius: 6px; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.3);
+            font-size: 16px; padding: 8px 12px; min-height: 40px; cursor: pointer; }
+  #panel.closed + #toggle { left: 10px; }
+  h1 { font-size: 17px; margin: 2px 0 6px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 14px 0 6px;
+       border-top: 1px solid var(--line); padding-top: 10px; }
+  select, input[type=range] { width: 100%; }
+  select { font-size: 15px; padding: 6px; }
+  label.row { display: flex; align-items: center; gap: 8px; padding: 5px 0; min-height: 34px; cursor: pointer; }
+  label.row input { width: 20px; height: 20px; flex: none; }
+  .swatch { width: 14px; height: 14px; border-radius: 3px; flex: none; border: 1px solid rgba(0,0,0,.25); display: inline-block; }
+  .legend { margin: 0 0 6px 28px; font-size: 12px; color: #333; }
+  .legend span.item { display: inline-flex; align-items: center; gap: 4px; margin: 2px 8px 2px 0; }
+  .small { font-size: 12px; color: var(--muted); }
+  .note { font-size: 12px; background: #fff8e1; border-left: 3px solid #f0b400; padding: 6px 8px; margin: 6px 0; }
+  .warn { font-size: 12px; background: #fdecea; border-left: 3px solid #d73027; padding: 6px 8px; margin: 6px 0; }
+  .opacity { margin: 0 0 6px 28px; }
+  #attrib li, #missing li { font-size: 12px; margin: 3px 0; }
+  .maplibregl-popup-content { max-width: min(420px, 86vw); max-height: 55vh; overflow-y: auto; padding: 10px 12px; font-size: 13px; }
+  .maplibregl-popup-content h3 { margin: 0 0 4px; font-size: 14px; }
+  .maplibregl-popup-content .layer { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+  .maplibregl-popup-content table { border-collapse: collapse; width: 100%; }
+  .maplibregl-popup-content td { vertical-align: top; padding: 2px 4px; border-bottom: 1px solid #eee; font-size: 12px; word-break: break-word; }
+  .maplibregl-popup-content td:first-child { color: var(--muted); white-space: nowrap; }
+  .maplibregl-popup-content .pre { white-space: pre-wrap; }
+  .maplibregl-popup-content hr { border: 0; border-top: 2px solid #ccc; margin: 8px 0; }
+  #error { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); z-index: 5; max-width: 90vw;
+           background: #fdecea; border: 1px solid #d73027; padding: 10px 14px; border-radius: 6px; display: none; }
+  @media (max-width: 640px) { body { font-size: 15px; } .maplibregl-ctrl-top-right { top: 56px; } }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="panel">
+  <h1>skimap — visualiseur</h1>
+  <select id="packSelect" aria-label="Pack"></select>
+  <div id="packInfo" class="small"></div>
+  <h2>Fond de carte</h2>
+  <div id="basemaps"></div>
+  <h2>Couches</h2>
+  <div id="layers"></div>
+  <h2>Infos du pack</h2>
+  <div id="infos"></div>
+  <h2>Attributions</h2>
+  <ul id="attrib"></ul>
+  <h2>Couches absentes</h2>
+  <ul id="missing"></ul>
+</div>
+<button id="toggle" aria-label="Afficher ou masquer le panneau">☰</button>
+<div id="error"></div>
+<script>
+"use strict";
+// The map writes its position in the URL hash as soon as it exists: remember whether the
+// page was opened on a position.
+const OPENED_WITH_POSITION = /^#[0-9.]+\/-?[0-9.]+\/-?[0-9.]+/.test(location.hash);
+// ---------------------------------------------------------------------------------
+// Configuration
+const KNOWN_PACKS = [
+  { name: "Cervières", url: "../../data/out/cervieres/pack/" },
+  { name: "Chapelle-des-Bois", url: "../../data/out/chapelle-des-bois/pack/" },
+];
+const DIFF_COLORS = ["match", ["get", "difficulty"],
+  "novice", "#1a9850", "easy", "#2166ac", "intermediate", "#d73027", "advanced", "#111111", "#8c8c8c"];
+const ZONE_COLORS = ["match", ["get", "kind"],
+  "biodiv_sports", "#e06c00", "parc_naturel_regional", "#4d9221", "parc_national", "#1b7837",
+  "reserve_naturelle_nationale", "#00441b", "reserve_naturelle_regionale", "#00441b",
+  "reserve_biologique", "#006d2c", "apb", "#c51b7d", "natura2000_sic", "#3182bd", "natura2000_zps", "#08519c",
+  "site_classe", "#8073ac", "site_inscrit", "#b2abd2", "monument_historique", "#8c510a", "monument_abords", "#bf812d",
+  "spr", "#dfc27d", "district_franc", "#c51b7d", "#41ab5d"];
+function swatchColor(id) {
+  if (id.startsWith("route-offpiste-")) return "#ff7f00";
+  return null;
+}
+const REFUGE_COLORS = { "refuges-info": "#8c2d04", "refuges-osm": "#2166ac", "refuges-camptocamp": "#e08214" };
+
+// Vector layer drawing, by pack layer id. Each entry: list of MapLibre layer stubs.
+function vectorLayers(id, font) {
+  const lineW = (a, b) => ["interpolate", ["linear"], ["zoom"], 10, a, 16, b];
+  switch (id) {
+    case "domaines": return [{ type: "line", paint: { "line-color": "#2b6cb0", "line-width": 1.5, "line-dasharray": [3, 2] } }];
+    case "zones": return [
+      { type: "fill", filter: ["!", ["get", "_admin"]], paint: { "fill-color": ZONE_COLORS, "fill-opacity": 0.14 } },
+      // Invisible fill: a tap inside a country, département or commune shows its general rules.
+      { type: "fill", filter: ["get", "_admin"], paint: { "fill-color": "#000", "fill-opacity": 0 } },
+      { type: "line", filter: ["!", ["get", "_admin"]], paint: { "line-color": ZONE_COLORS, "line-width": 1.6 } },
+      { type: "line", filter: ["get", "_admin"], paint: { "line-color": "#777", "line-width": 1, "line-dasharray": [4, 3] } }];
+    case "no-network": return [{ type: "fill", paint: { "fill-color": "#4a1486", "fill-opacity": 0.28 } }];
+    case "coverage-area": return [{ type: "line", paint: { "line-color": "#555", "line-width": 1.2, "line-dasharray": [1, 2] } }];
+    case "avalanche-areas": return [
+      { type: "fill", paint: { "fill-color": "#e41a1c", "fill-opacity": 0.22 } },
+      { type: "line", paint: { "line-color": "#99000d", "line-width": 0.8 } }];
+    case "pistes-graph-edges": return [{ type: "line", paint: { "line-color": ["case", ["==", ["get", "kind"], "connector"], "#00bcd4", "#ff00ff"], "line-width": 1.2 } }];
+    case "pistes": {
+      const l = [
+        { type: "line", filter: ["!", ["get", "_hike"]], layout: { "line-cap": "round", "line-join": "round" },
+          paint: { "line-color": DIFF_COLORS, "line-width": lineW(1.5, 5) } },
+        { type: "line", filter: ["get", "_hike"], paint: { "line-color": DIFF_COLORS, "line-width": lineW(1.5, 4), "line-dasharray": [1.5, 1.2] } }];
+      if (font) l.push({ type: "symbol", minzoom: 13, layout: { "symbol-placement": "line", "text-field": ["coalesce", ["get", "name"], ""],
+                         "text-font": [font], "text-size": 12 }, paint: { "text-color": DIFF_COLORS, "text-halo-color": "#fff", "text-halo-width": 1.5 } });
+      return l;
+    }
+    case "status": return [{ type: "line", paint: { "line-color": ["match", ["get", "state"], "open", "#1a9850", "closed", "#d73027", "#888"],
+                                                     "line-width": lineW(2, 6), "line-opacity": 0.55 } }];
+    case "avalanche-crossings": return [{ type: "line", layout: { "line-cap": "round" },
+                                          paint: { "line-color": "#e41a1c", "line-width": lineW(3, 10), "line-opacity": 0.8 } }];
+    case "routes": return [
+      { type: "line", filter: ["==", ["get", "kind"], "route"], layout: { "line-cap": "round" },
+        paint: { "line-color": ["match", ["get", "model"], "distance", "#006da8", "temps_classique", "#2ca25f", "#756bb1"],
+                 "line-width": lineW(2, 6), "line-opacity": 0.7 } },
+      { type: "circle", filter: ["==", ["get", "kind"], "endpoint"], paint: { "circle-radius": 6, "circle-color": "#006da8", "circle-stroke-color": "#fff", "circle-stroke-width": 2 } }];
+    case "pistes-graph-nodes": return [{ type: "circle", paint: { "circle-radius": 2.5, "circle-color": "#ff00ff" } }];
+    default:
+      if (id.startsWith("route-offpiste-")) return [
+        { type: "line", filter: ["==", ["get", "kind"], "route"], layout: { "line-cap": "round" },
+          paint: { "line-color": "#ff7f00", "line-width": lineW(2, 6), "line-opacity": 0.8 } },
+        { type: "line", filter: ["==", ["get", "kind"], "stretch"], paint: { "line-color": "#ff7f00", "line-width": 1, "line-dasharray": [2, 2] } },
+        { type: "circle", filter: ["in", ["get", "kind"], ["literal", ["requested_from", "requested_to"]]],
+          paint: { "circle-radius": 6, "circle-color": "#ff7f00", "circle-stroke-color": "#fff", "circle-stroke-width": 2 } }];
+      if (REFUGE_COLORS[id]) {
+        const l = [{ type: "circle", paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 4, 16, 8],
+                                             "circle-color": REFUGE_COLORS[id], "circle-stroke-color": "#fff", "circle-stroke-width": 1.5 } }];
+        if (font && id === "refuges-info") l.push({ type: "symbol", minzoom: 12, layout: { "text-field": ["coalesce", ["get", "name"], ""],
+                         "text-font": [font], "text-size": 12, "text-offset": [0, 1.1], "text-anchor": "top" },
+                         paint: { "text-color": REFUGE_COLORS[id], "text-halo-color": "#fff", "text-halo-width": 1.5 } });
+        return l;
+      }
+      return [{ type: "line", paint: { "line-color": "#333", "line-width": 1 } }, { type: "circle", paint: { "circle-radius": 3 } }];
+  }
+}
+
+// Flat properties used by the styles (MapLibre turns nested values into strings).
+function derive(id, p) {
+  if (id === "pistes") {
+    const uses = Array.isArray(p.uses) ? p.uses : [];
+    p._hike = uses.includes("hike") && !uses.includes("nordic");
+  }
+  if (id === "zones") p._admin = ["country", "department", "commune", "canton"].includes(p.kind);
+}
+
+// ---------------------------------------------------------------------------------
+// State
+const state = { base: null, manifest: null, basemap: null, visible: {}, opacity: {}, data: {}, styles: {} };
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const abs = (rel) => state.base + rel;
+const fmtBytes = (n) => n >= 1e6 ? (n / 1e6).toFixed(1).replace(".", ",") + " Mo" : Math.ceil(n / 1e3) + " Ko";
+
+function showError(msg) { const e = $("error"); e.innerHTML = msg; e.style.display = "block"; }
+
+const protocol = new pmtiles.Protocol();
+maplibregl.addProtocol("pmtiles", protocol.tile);
+
+const map = new maplibregl.Map({ container: "map", style: { version: 8, sources: {}, layers: [] }, hash: true,
+                                 attributionControl: { compact: true }, maxPitch: 0 });
+map.addControl(new maplibregl.NavigationControl({ showCompass: true }), "top-right");
+map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-right");
+map.addControl(new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true }), "top-right");
+
+// ---------------------------------------------------------------------------------
+// Style composition: basemap style (URLs made absolute) + pack layers on top.
+async function basemapStyle(b) {
+  if (!b) return { version: 8, sources: {}, layers: [{ id: "bg", type: "background", paint: { "background-color": "#f4f1ea" } }] };
+  if (!state.styles[b.id]) {
+    const r = await fetch(abs(b.style));
+    if (!r.ok) throw new Error(`style ${b.style}: HTTP ${r.status}`);
+    state.styles[b.id] = await r.json();
+  }
+  const s = structuredClone(state.styles[b.id]);
+  if (s.sprite && typeof s.sprite === "string" && !/^[a-z]+:/.test(s.sprite)) s.sprite = abs(s.sprite);
+  if (s.glyphs && !/^[a-z]+:\/\//.test(s.glyphs)) s.glyphs = abs(s.glyphs);
+  for (const src of Object.values(s.sources)) {
+    if (src.url && src.url.startsWith("pmtiles://") && !src.url.startsWith("pmtiles://http")) src.url = "pmtiles://" + abs(src.url.slice(10));
+  }
+  return s;
+}
+
+function fontFor(b) { return !b ? null : b.id === "plan-ign" ? "Source Sans Pro Regular" : "Noto Sans Regular"; }
+
+async function loadData(l) {
+  if (state.data[l.id]) return state.data[l.id];
+  const r = await fetch(abs(l.file));
+  if (!r.ok) throw new Error(`${l.file}: HTTP ${r.status}`);
+  const fc = await r.json();
+  fc.features.forEach((f, i) => { f.properties = f.properties || {}; derive(l.id, f.properties); f.properties._i = i; });
+  state.data[l.id] = fc;
+  return fc;
+}
+
+async function render() {
+  const m = state.manifest;
+  const b = m.basemaps.find((x) => x.id === state.basemap) || null;
+  const style = await basemapStyle(b);
+  const font = fontFor(b);
+  style.layers = style.layers || [];
+  // Rasters first (under the vectors), in manifest order.
+  for (const l of m.layers.filter((x) => x.kind === "raster")) {
+    if (!state.visible[l.id]) continue;
+    style.sources["pk-" + l.id] = { type: "raster", url: "pmtiles://" + abs(l.file), tileSize: 256 };
+    style.layers.push({ id: "pk-" + l.id, type: "raster", source: "pk-" + l.id,
+                        paint: { "raster-opacity": state.opacity[l.id] ?? 0.75, "raster-resampling": "nearest" } });
+  }
+  for (const l of m.layers.filter((x) => x.kind === "vector")) {
+    if (!state.visible[l.id]) continue;
+    const data = await loadData(l);
+    style.sources["pk-" + l.id] = { type: "geojson", data };
+    vectorLayers(l.id, font).forEach((stub, k) => {
+      style.layers.push(Object.assign({ id: `pk-${l.id}-${k}`, source: "pk-" + l.id, metadata: { pack_layer: l.id } }, stub));
+    });
+  }
+  map.setStyle(style, { diff: false });
+}
+
+// ---------------------------------------------------------------------------------
+// Popups
+function row(k, v) { return v === undefined || v === null || v === "" ? "" : `<tr><td>${esc(k)}</td><td>${v}</td></tr>`; }
+function table(rows) { return `<table>${rows.join("")}</table>`; }
+const DIFF_FR = { novice: "verte", easy: "bleue", intermediate: "rouge", advanced: "noire" };
+
+function genericRows(p) {
+  return Object.entries(p).filter(([k]) => !k.startsWith("_")).map(([k, v]) =>
+    row(k, typeof v === "object" && v !== null ? `<span class="pre">${esc(JSON.stringify(v, null, 1))}</span>` : esc(v)));
+}
+
+function popupHtml(id, p, title) {
+  const link = (u) => u ? `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a>` : "";
+  let h = `<div class="layer">${esc(title)}</div>`;
+  switch (id) {
+    case "pistes":
+      return h + `<h3>${esc(p.name || p.way_name || "Piste sans nom")}</h3>` + table([
+        row("Difficulté", esc(DIFF_FR[p.difficulty] || p.difficulty || "inconnue")),
+        row("La plus dure", p.difficulty_max !== p.difficulty ? esc(DIFF_FR[p.difficulty_max] || p.difficulty_max) : ""),
+        row("Damage", esc(p.grooming)), row("Usage", esc((p.uses || []).join(", "))),
+        row("Sens unique", p.oneway ? "oui" : ""), row("Longueur", p.length_m ? `${Math.round(p.length_m)} m` : ""),
+        row("Itinéraires", esc((p.relations || []).map((r) => r.name).filter(Boolean).join(", "))),
+        row("OSM", p.osm_way_id ? link(`https://www.openstreetmap.org/way/${p.osm_way_id}`) : "")]);
+    case "zones":
+      return h + `<h3>${esc(p.name)}</h3>` + table([
+        row("Type", esc(p.kind)), row("Mois sensibles", esc((p.months || []).join(", "))),
+        row("Pratiques", esc((p.practices || []).join(", "))), row("Surface", p.area_ha ? `${p.area_ha.toFixed(1)} ha` : ""),
+        row("Règles", p.rules_text ? `<span class="pre">${esc(p.rules_text)}</span>` : "aucune règle saisie"),
+        row("Fiche", link(p.url))]);
+    case "refuges-info": {
+      const c = p.last_comment;
+      return h + `<h3>${esc(p.name)}</h3>` + table([
+        row("Type", esc(p.type_label)), row("État", esc(p.state)), row("Places", esc(p.places)),
+        row("Altitude", p.alt ? `${Math.round(p.alt)} m` : ""), row("Poêle", p.stove === true ? "oui" : p.stove === false ? "non" : ""),
+        row("Cheminée", p.fireplace === true ? "oui" : p.fireplace === false ? "non" : ""),
+        row("Couvertures", p.blankets === true ? "oui" : p.blankets === false ? "non" : ""),
+        row("Dernier commentaire", c ? `<b>${esc((c.date || "").slice(0, 10))}</b> ${esc(c.text)}` : ""),
+        row("Fiche", link(p.url))]);
+    }
+    case "refuges-osm":
+      return h + `<h3>${esc((p.tags || {}).name || p.kind)}</h3>` + table([row("Type", esc(p.kind)),
+        row("Étiquettes", `<span class="pre">${esc(Object.entries(p.tags || {}).map(([k, v]) => `${k}=${v}`).join("\n"))}</span>`),
+        row("OSM", link(`https://www.openstreetmap.org/${p.osm_type}/${p.osm_id}`))]);
+    case "refuges-camptocamp":
+      return h + `<h3>${esc(p.title)}</h3>` + table([row("Type", esc(p.waypoint_type)),
+        row("Places hors gardiennage", esc(p.capacity_unstaffed)), row("Places gardé", esc(p.capacity_staffed)),
+        row("Gardiennage", esc(p.custodianship)), row("Période", esc(p.access_period)),
+        row("Altitude", p.elevation ? `${Math.round(p.elevation)} m` : ""), row("Fiche", link(p.url))]);
+    case "avalanche-crossings":
+      return h + `<h3>${esc(p.name || "Piste sans nom")}</h3>` + table([
+        row("Longueur en zone", p.length_m ? `<b>${Math.round(p.length_m)} m</b>` : ""), row("Alerte", esc(p.alert)),
+        row("Niveau", esc(p.alert_level)), row("Aléa", esc((p.risque || []).join(", "))),
+        row("Réseau", esc(p.network)), row("Itinéraires", esc((p.relations || []).join(", ")))]) +
+        `<div class="warn">Zone historique connue seulement : une avalanche peut se produire ailleurs. Consultez le BERA.</div>`;
+    case "routes":
+      if (p.kind === "route") return h + `<h3>${esc(p.from)} → ${esc(p.to)}</h3>` + table([
+        row("Modèle de coût", esc(p.model)), row("Longueur", p.length_m ? `${(p.length_m / 1000).toFixed(1)} km` : ""),
+        row("Montée / descente", p.gain_m !== undefined ? `${Math.round(p.gain_m)} m / ${Math.round(p.loss_m)} m` : ""),
+        row("Temps classique", p.eta_classic_s ? `${Math.floor(p.eta_classic_s / 3600)} h ${String(Math.round(p.eta_classic_s % 3600 / 60)).padStart(2, "0")}` : ""),
+        row("Temps skating", p.eta_skating_s ? `${Math.floor(p.eta_skating_s / 3600)} h ${String(Math.round(p.eta_skating_s % 3600 / 60)).padStart(2, "0")}` : ""),
+        row("Pistes", esc((p.names || []).join(", ")))]);
+      return h + table(genericRows(p));
+    case "no-network":
+      return h + `<h3>Aucun réseau mobile, 112 compris</h3>` + table([row("Surface", p.area_ha ? `${p.area_ha.toFixed(1)} ha` : ""),
+        row("Cartes ARCEP", esc(p.release))]);
+    case "status":
+      return h + `<h3>${esc(p.name)}</h3>` + table([row("État", `<b>${p.state === "open" ? "ouvert" : p.state === "closed" ? "fermé" : esc(p.state)}</b>`),
+        row("Mise à jour", esc(p.update_datetime)), row("Pratique", esc(p.practice)), row("Difficulté", esc(p.difficulty)),
+        row("Notes", esc((p.notes || []).join(" ; "))), row("Relevé", esc(p.polled_at))]);
+    default:
+      return h + table(genericRows(p));
+  }
+}
+
+map.on("click", (e) => {
+  const r = 8;
+  const feats = map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]])
+    .filter((f) => f.layer.metadata && f.layer.metadata.pack_layer);
+  const seen = new Set(); const parts = [];
+  for (const f of feats) {
+    const id = f.layer.metadata.pack_layer; const key = id + ":" + f.properties._i;
+    if (seen.has(key)) continue; seen.add(key);
+    const orig = state.data[id].features[f.properties._i].properties;
+    parts.push(popupHtml(id, orig, state.manifest.layers.find((l) => l.id === id).title));
+    if (parts.length >= 6) break;
+  }
+  if (parts.length) new maplibregl.Popup({ maxWidth: "none" }).setLngLat(e.lngLat).setHTML(parts.join("<hr>")).addTo(map);
+});
+map.on("mousemove", (e) => {
+  const f = map.queryRenderedFeatures(e.point).some((f) => f.layer.metadata && f.layer.metadata.pack_layer);
+  map.getCanvas().style.cursor = f ? "pointer" : "";
+});
+
+// ---------------------------------------------------------------------------------
+// Panel
+function legendHtml(l) {
+  if (l.raster) return `<div class="legend">${l.raster.legend.map((e) =>
+    `<span class="item"><span class="swatch" style="background:${e.color.slice(0, 7)};opacity:${e.color.endsWith("00") ? 0.15 : 1}"></span>${esc(e.label)}</span>`).join("")}</div>`;
+  if (l.id === "pistes") return `<div class="legend">${[["#1a9850", "verte"], ["#2166ac", "bleue"], ["#d73027", "rouge"], ["#111", "noire"], ["#8c8c8c", "autre"]]
+    .map(([c, t]) => `<span class="item"><span class="swatch" style="background:${c}"></span>${t}</span>`).join("")} <span class="item">pointillé : raquettes / piétons</span></div>`;
+  return "";
+}
+
+function swatchFor(l) {
+  const c = { pistes: "#d73027", zones: "#41ab5d", "no-network": "#4a1486", "avalanche-areas": "#e41a1c", "avalanche-crossings": "#e41a1c",
+              status: "#1a9850", domaines: "#2b6cb0", "coverage-area": "#555", routes: "#006da8" }[l.id] || REFUGE_COLORS[l.id] || swatchColor(l.id) || "#ff00ff";
+  return `<span class="swatch" style="background:${c}"></span>`;
+}
+
+function buildPanel() {
+  const m = state.manifest;
+  $("packInfo").innerHTML = `${esc(m.site.name)} — pack ${esc(m.pack_version)}, ${fmtBytes(m.total_bytes)}, format v${m.format_version}` +
+    (m.personal_sources ? ` <span class="note">sources à usage personnel incluses</span>` : "");
+  const bm = $("basemaps"); bm.innerHTML = "";
+  const opts = m.basemaps.map((b) => ({ id: b.id, title: `${b.title} (z${b.minzoom}-${b.maxzoom}, ${fmtBytes(b.bytes)})` }));
+  opts.push({ id: "", title: "aucun" });
+  for (const o of opts) {
+    const lab = document.createElement("label"); lab.className = "row";
+    lab.innerHTML = `<input type="radio" name="basemap" value="${esc(o.id)}" ${state.basemap === o.id || (!state.basemap && !o.id) ? "checked" : ""}> ${esc(o.title)}`;
+    lab.querySelector("input").onchange = () => { state.basemap = o.id || null; render().catch(err); };
+    bm.appendChild(lab);
+  }
+  const box = $("layers"); box.innerHTML = "";
+  const shown = [...m.layers.filter((l) => l.kind === "vector").reverse(), ...m.layers.filter((l) => l.kind === "raster").reverse()];
+  for (const l of shown) {
+    const lab = document.createElement("label"); lab.className = "row";
+    const extra = l.features !== null && l.features !== undefined ? ` <span class="small">(${l.features})</span>` : "";
+    lab.innerHTML = `<input type="checkbox" ${state.visible[l.id] ? "checked" : ""}> ${l.kind === "raster" ? "" : swatchFor(l)} <span>${esc(l.title)}${extra}</span>`;
+    lab.querySelector("input").onchange = (ev) => { state.visible[l.id] = ev.target.checked; render().catch(err); };
+    box.appendChild(lab);
+    box.insertAdjacentHTML("beforeend", legendHtml(l));
+    if (l.kind === "raster") {
+      const d = document.createElement("div"); d.className = "opacity";
+      d.innerHTML = `<input type="range" min="0" max="1" step="0.05" value="${state.opacity[l.id] ?? 0.75}" aria-label="Opacité ${esc(l.title)}">`;
+      d.querySelector("input").oninput = (ev) => {
+        state.opacity[l.id] = +ev.target.value;
+        if (map.getLayer("pk-" + l.id)) map.setPaintProperty("pk-" + l.id, "raster-opacity", state.opacity[l.id]);
+      };
+      box.appendChild(d);
+    }
+  }
+  // Infos: validity, BERA, avalanche summary, voice.
+  const inf = [];
+  inf.push(`<div class="note">${esc(m.valid_for.note)}</div>`);
+  inf.push(`<div class="small">Construit le ${esc(m.generated_at)} par ${esc(m.generator)}.</div>`);
+  for (const l of m.layers.filter((x) => x.kind !== "data")) {
+    const v = [["depuis", l.valid_from], ["jusqu'au", l.valid_until], ["validité", l.validity]]
+      .filter(([, x]) => x).map(([k, x]) => `${k} ${x}`).join(" ; ");
+    inf.push(`<div class="small"><b>${esc(l.title)}</b> — généré ${esc(l.generated_at || "?")}${v ? " ; " + esc(v) : ""}</div>`);
+  }
+  inf.push(`<div class="small"><b>Voix</b> — ${esc(m.voice.status)} : ${m.voice.clips} clips, ${fmtBytes(m.voice.bytes)}. ${esc(m.voice.note)}</div>`);
+  $("infos").innerHTML = inf.join("");
+  for (const id of ["bera", "avalanche-summary", "status-summary"]) {
+    const l = m.layers.find((x) => x.id === id); if (!l) continue;
+    fetch(abs(l.file)).then((r) => r.json()).then((j) => {
+      const msg = j.message || j.notice || (j.user_message) || "";
+      const text = typeof msg === "string" ? msg : JSON.stringify(msg);
+      const extra = id === "bera" ? `statut : ${j.status}` : "";
+      $("infos").insertAdjacentHTML("afterbegin", `<div class="${id === "bera" ? "warn" : "note"}"><b>${esc(l.title)}</b> ${esc(extra)} ${esc(text)}</div>`);
+    }).catch(() => {});
+  }
+  $("attrib").innerHTML = m.attributions.map((a) => `<li>${esc(a)}</li>`).join("") +
+    m.layers.flatMap((l) => l.sources.map((s) => `<li class="small"><b>${esc(l.title)}</b> : ${esc(s.name)}${s.licence ? " — " + esc(s.licence) : ""}${s.personal_use_only ? " — usage personnel" : ""}</li>`)).join("") +
+    m.basemaps.flatMap((b) => b.sources.map((s) => `<li class="small"><b>${esc(b.title)}</b> : ${esc(s.name)} — ${esc(s.licence || "")}</li>`)).join("");
+  $("missing").innerHTML = (m.missing || []).map((x) => `<li><b>${esc(x.id)}</b> : ${esc(x.reason)}</li>`).join("") || "<li>aucune</li>";
+}
+
+function err(e) { console.error(e); showError(esc(e.message || e)); }
+
+async function openPack(url) {
+  state.base = new URL(url, location.href).href.replace(/\/?$/, "/");
+  const r = await fetch(state.base + "manifest.json").catch(() => null);
+  if (!r || !r.ok) {
+    showError(`Pack introuvable : <code>${esc(state.base)}manifest.json</code>. Construire le pack (example <code>build_pack</code>) ` +
+              `et servir la racine du dépôt avec un serveur qui gère les requêtes partielles (Range) : ` +
+              `<code>cargo run --release -p skimap-pack --features pipeline --example serve -- &lt;dépôt&gt;</code>.`);
+    return;
+  }
+  $("error").style.display = "none";
+  const m = await r.json();
+  if (m.format !== "skimap-pack" || m.format_version > 1) { showError(`format ${esc(m.format)} v${m.format_version} non lu par ce visualiseur`); return; }
+  state.manifest = m; state.data = {}; state.styles = {};
+  state.visible = {}; for (const l of m.layers) state.visible[l.id] = !!l.visible;
+  state.basemap = (m.basemaps[0] || {}).id || null;
+  buildPanel();
+  await render();
+  if (!OPENED_WITH_POSITION || state.fitted) {
+    const [w, s, e, n] = m.site.bbox;
+    map.fitBounds([[w, s], [e, n]], { padding: 20, duration: 0 });
+  }
+  state.fitted = true;
+  document.title = `skimap — ${m.site.name}`;
+}
+
+// Pack choice: ?pack=<url> or the known packs.
+const params = new URLSearchParams(location.search);
+const sel = $("packSelect");
+const packs = [...KNOWN_PACKS];
+if (params.get("pack") && !packs.some((p) => p.url === params.get("pack"))) packs.unshift({ name: params.get("pack"), url: params.get("pack") });
+for (const p of packs) sel.insertAdjacentHTML("beforeend", `<option value="${esc(p.url)}">${esc(p.name)}</option>`);
+sel.value = params.get("pack") || packs[0].url;
+sel.onchange = () => { params.set("pack", sel.value); history.replaceState(null, "", "?" + params.toString()); openPack(sel.value).catch(err); };
+$("toggle").onclick = () => { $("panel").classList.toggle("closed"); setTimeout(() => map.resize(), 250); };
+if (window.innerWidth < 700) $("panel").classList.add("closed");
+openPack(sel.value).catch(err);
+</script>
+</body>
+</html>
