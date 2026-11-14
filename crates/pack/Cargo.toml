@@ -1,0 +1,13 @@
+[package]
+name = "skimap-pack"
+description = "Format de pack par site (écriture côté pipeline, lecture côté téléphone), fond de carte et visualiseur."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+skimap-common = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,13 @@
+[package]
+name = "skimap-refuges"
+description = "Refuges et abris : refuges.info, OSM, Camptocamp (pipeline)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+skimap-common = { workspace = true, features = ["download"] }
+
+[lints]
+workspace = true
