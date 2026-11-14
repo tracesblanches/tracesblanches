@@ -9,6 +9,8 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo test -p skimap-common          # sans la fonction download (côté téléphone)
+cargo clippy -p skimap-core --features pipeline --all-targets -- -D warnings
+cargo test -p skimap-core --features pipeline   # côté pipeline du noyau (GeoTIFF, exemples)
 cargo run -p skimap-cli -- sites
 cargo run -p skimap-cli -- fetch-url 'https://geo.api.gouv.fr/communes/05027' --source geo-api
 cargo run --release -p skimap-cli -- build-all cervieres
@@ -27,7 +29,7 @@ skimap route cervieres 44.85894,6.725006 44.84465,6.8157 --date 2027-01-15 --sta
 
 `build-all <site>` lance dans l'ordre des dépendances : lecture de l'extrait OpenSnowMap (partagée), `pistes`, `domaines`, `terrain`, `snow`, `refuges`, `zones`, `routing` (après `pistes` et `terrain`), `offpiste-prepare` (après `terrain`, `snow`, `zones` et `pistes`), `coverage`, `bera`, `meteo` et `status-poll` (seulement avec `personal_sources`), `avalanche-historic` (après `pistes`). `voice` n'en fait pas partie (binaire pockettts.cpp et GPU). Une ligne par étape : temps et chiffres clés ; une étape dont une dépendance a échoué est sautée ; code de sortie non nul si une étape échoue. Avec le cache rempli (15/11/2026) : 12,8 s (Cervières, dont 3,5 s de lecture de l'extrait, 0,2 s `routing`, 1,2 s `offpiste-prepare`), 10,6 s (Chapelle-des-Bois). `offpiste-prepare` de `build-all` ne prend que la couche `snow` du jour : relancer `skimap offpiste-prepare <site> --snow-dir …` pour garder d'autres dates.
 
-La version de Rust est figée dans `rust-toolchain.toml` (1.99.1, avec rustfmt, clippy et la cible Android) ; `rustup toolchain install` l'installe. La CI (`.github/workflows/ci.yml`) lance fmt, clippy, les tests et la compilation Android.
+La version de Rust est figée dans `rust-toolchain.toml` (1.99.1, avec rustfmt, clippy et la cible Android) ; `rustup toolchain install` l'installe. La CI (`.github/workflows/ci.yml`) lance fmt, clippy, les tests (dont clippy et tests de `skimap-core` avec la fonction `pipeline`) et la compilation Android.
 
 ## Android (F4, #4)
 
