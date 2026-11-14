@@ -11,6 +11,9 @@
 //! The Jura has no CLPA: for sites outside the Hautes-Alpes the layer is empty with a
 //! notice.
 //!
+//! Pistes: the `pistes` layer of the site (`skimap_osm::extract`, P2), which must be built
+//! first; [`build_from_dump`] reads a saved Overpass extract instead (report 07).
+//!
 //! Output (`data/out/<site>/avalanche-historic/`):
 //! - `emprises.geojson`: CLPA footprints intersecting the site box or in the site commune,
 //!   WGS84 polygons;
@@ -40,7 +43,7 @@ use skimap_common::crs::{self, Crs};
 use skimap_common::download::{Downloader, Request};
 use skimap_common::geom::LonLat;
 use skimap_common::layout::DataLayout;
-use skimap_common::meta::{FileMeta, LayerMeta, SourceRef, now_rfc3339};
+use skimap_common::meta::{FileMeta, LayerMeta, SourceRef, now_rfc3339, unix_to_rfc3339};
 use skimap_common::output::write_json;
 use skimap_common::site::Site;
 use skimap_meteo::bera::{BeraFile, risk_label};
@@ -60,8 +63,12 @@ pub const DDT05_ZIP_URL: &str = "https://atom.geo-ide.developpement-durable.gouv
 pub const DDT05_DATASET_URL: &str = "https://www.data.gouv.fr/datasets/ddt05-risque-naturel-alea-avalanche-dans-les-hautes-alpes-shp";
 /// Downloader source of the ministry ATOM service.
 pub const SOURCE_GEOIDE: &str = "geoide";
-/// Public Overpass endpoint.
+/// Public Overpass endpoint (source of the research extracts read by [`build_from_dump`]).
 pub const OVERPASS_URL: &str = "https://overpass-api.de/api/interpreter";
+/// Layer of the OSM crate holding the piste lines (`skimap_osm::extract::LAYER`).
+pub const PISTES_LAYER: &str = "pistes";
+/// File of [`PISTES_LAYER`] read by [`build`].
+pub const PISTES_FILE: &str = "pistes.geojson";
 /// Footprints smaller than this (m²) are counted as slivers in the summary (digitising
 /// artefacts: 11 of the 171 CLPA records of Cervières are below it); they are kept.
 pub const SLIVER_AREA_M2: f64 = 100.0;
@@ -145,18 +152,9 @@ pub fn read_ddt05(shp: &[u8], dbf: &[u8]) -> Result<Vec<Emprise>> {
         .collect())
 }
 
-/// Request of the DDT 05 archive (static dataset, cached 30 days).
+/// Request of the DDT 05 archive (static dataset, cached 30 days by the `geoide` policy).
 pub fn ddt05_request() -> Request {
-    Request::get(SOURCE_GEOIDE, DDT05_ZIP_URL).max_age(std::time::Duration::from_secs(30 * 86_400))
-}
-
-/// Request of the piste lines of a site on the public Overpass API.
-pub fn overpass_request(site: &Site) -> Request {
-    Request::post_form(
-        "overpass",
-        OVERPASS_URL,
-        &[("data", &pistes::overpass_query(&site.bbox))],
-    )
+    Request::get(SOURCE_GEOIDE, DDT05_ZIP_URL)
 }
 
 /// Request of the commune outline (geo.api.gouv.fr).
@@ -495,14 +493,16 @@ pub const REPORT07_CERVIERES: &[(&str, f64)] = &[
     ("L'Aigalan", 0.34),
 ];
 
-/// Builds the layer from given piste lines (the OSM crate output, once converted, or an
-/// Overpass dump) and writes it.
+/// Builds the layer from given piste lines (the OSM crate layer or an Overpass dump) and
+/// writes it. `pistes_source` describes the lines in the summary, `source` is their
+/// provenance in the metadata.
 pub fn build_with_pistes(
     site: &Site,
     layout: &DataLayout,
     dl: &Downloader,
     lines: &[PisteLine],
     pistes_source: &str,
+    source: SourceRef,
 ) -> Result<Summary> {
     let dir = layout.layer_dir(site, LAYER)?;
     DataLayout::ensure(&dir)?;
@@ -530,12 +530,7 @@ pub fn build_with_pistes(
     } else {
         Vec::new()
     };
-    sources.push(SourceRef::new(
-        format!("Pistes et itinéraires OSM ({pistes_source})"),
-        OVERPASS_URL,
-        "ODbL 1.0",
-        "© les contributeurs d'OpenStreetMap",
-    ));
+    sources.push(source);
 
     let (bx0, by0, bx1, by1) = crs::project_bbox(site.bbox, Crs::Lambert93, 16)?;
     let in_box = |e: &&Emprise| {
@@ -775,20 +770,35 @@ pub fn build_with_pistes(
     Ok(summary)
 }
 
-/// Builds the layer with the piste lines of an Overpass extract fetched through the
-/// shared downloader (until the OSM crate output is available).
+/// Builds the layer with the piste lines of the site's `pistes` layer (OSM crate, P2),
+/// which must have been built (`skimap pistes <site>`).
 pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<Summary> {
-    let req = overpass_request(site);
-    let f = dl.fetch(&req)?;
-    let lines = pistes::from_overpass_json(&f.bytes()?)
-        .map_err(|e| Error::format("overpass", e.to_string()))?;
-    let source = format!(
-        "Overpass, téléchargé le {}",
-        chrono::DateTime::from_timestamp(f.meta.fetched_at_unix as i64, 0)
-            .map(|d| d.to_rfc3339())
-            .unwrap_or_default()
+    let dir = layout.layer_dir(site, PISTES_LAYER)?;
+    let path = dir.join(PISTES_FILE);
+    if !path.exists() {
+        return Err(Error::MissingLayer {
+            layer: PISTES_LAYER.to_owned(),
+            site: site.id.to_owned(),
+            path,
+        });
+    }
+    let body = std::fs::read(&path).map_err(|e| skimap_common::Error::io(&path, e))?;
+    let lines = pistes::from_pistes_geojson(&body)
+        .map_err(|e| Error::format(path.display().to_string(), e.to_string()))?;
+    // Provenance of the OSM data: the sources of the pistes layer (OpenSnowMap extract).
+    let meta = LayerMeta::read(&dir.join(LayerMeta::file_name(PISTES_LAYER)))?;
+    let osm = meta.sources.first().ok_or_else(|| {
+        Error::format(PISTES_LAYER, "pistes.meta.json lists no source".to_owned())
+    })?;
+    let data_date = meta.valid_from.clone().unwrap_or_else(|| "?".to_owned());
+    let mut source = osm.clone();
+    source.name = format!(
+        "Pistes et itinéraires OSM, couche pistes (P2) : {}",
+        osm.name
     );
-    build_with_pistes(site, layout, dl, &lines, &source)
+    source.edition = Some(format!("données OSM du {data_date}"));
+    let description = format!("couche pistes (P2), données OSM du {data_date}");
+    build_with_pistes(site, layout, dl, &lines, &description, source)
 }
 
 /// Builds the layer from a saved Overpass JSON dump (e.g. `research/raw/osm/cerv2.json`,
@@ -802,12 +812,27 @@ pub fn build_from_dump(
     let body = std::fs::read(dump).map_err(|e| skimap_common::Error::io(dump, e))?;
     let lines = pistes::from_overpass_json(&body)
         .map_err(|e| Error::format("overpass dump", e.to_string()))?;
+    let mut source = SourceRef::new(
+        format!(
+            "Pistes et itinéraires OSM (extrait Overpass {})",
+            dump.display()
+        ),
+        OVERPASS_URL,
+        "ODbL 1.0",
+        "© les contributeurs d'OpenStreetMap",
+    );
+    source.edition = std::fs::metadata(dump)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .and_then(|d| unix_to_rfc3339(d.as_secs() as i64));
     build_with_pistes(
         site,
         layout,
         dl,
         &lines,
         &format!("extrait {}", dump.display()),
+        source,
     )
 }
 

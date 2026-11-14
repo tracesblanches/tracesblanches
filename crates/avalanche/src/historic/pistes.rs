@@ -1,9 +1,9 @@
 //! Piste and itinerary lines used by the CLPA crossing computation.
 //!
-//! The OSM crate (P2, #15) is written in parallel; until its output is available the lines
-//! come from an Overpass extract (`out body geom`), fetched through the shared downloader
-//! or read from a saved dump. [`PisteLine`] is the only input of the crossing computation,
-//! so the OSM crate output only needs a conversion into it.
+//! [`PisteLine`] is the only input of the crossing computation. The pipeline reads the
+//! `pistes.geojson` layer of the OSM crate (P2, #15) with [`from_pistes_geojson`]; an
+//! Overpass extract (`out body geom`) saved by the research (report 07) is read with
+//! [`from_overpass_json`] to reproduce the figures of the report.
 
 use serde::Deserialize;
 use skimap_common::geom::{BBox, LonLat};
@@ -209,9 +209,123 @@ pub fn from_overpass_json(json: &[u8]) -> Result<Vec<PisteLine>, serde_json::Err
     Ok(lines)
 }
 
+#[derive(Deserialize)]
+struct LayerDoc {
+    features: Vec<LayerFeature>,
+}
+
+#[derive(Deserialize)]
+struct LayerFeature {
+    geometry: LayerLine,
+    properties: LayerProps,
+}
+
+#[derive(Deserialize)]
+struct LayerLine {
+    coordinates: Vec<[f64; 2]>,
+}
+
+#[derive(Deserialize)]
+struct LayerRelation {
+    name: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct LayerProps {
+    osm_way_id: i64,
+    way_name: Option<String>,
+    uses: Vec<String>,
+    tagged: bool,
+    relations: Vec<LayerRelation>,
+}
+
+/// Reads the `pistes.geojson` layer of the OSM crate (`skimap_osm::extract`, one
+/// LineString per OSM way) into piste lines.
+///
+/// Same rule as [`from_overpass_json`] (report 07): a way is [`Network::Nordic`] when it
+/// or one of its piste relations is nordic (`uses` contains `nordic`), otherwise
+/// [`Network::Hike`] (hike or snowshoe only). A way tagged itself keeps its own name; a
+/// way that is a piste only through its relations takes the name of its first relation. `piste_type` holds the uses of a way tagged itself, joined by
+/// `;`, and is empty for a way that is a piste only through its relations.
+pub fn from_pistes_geojson(json: &[u8]) -> Result<Vec<PisteLine>, serde_json::Error> {
+    let doc: LayerDoc = serde_json::from_slice(json)?;
+    Ok(doc
+        .features
+        .into_iter()
+        .filter(|f| f.geometry.coordinates.len() >= 2)
+        .map(|f| {
+            let p = f.properties;
+            let relations: Vec<String> = p.relations.into_iter().filter_map(|r| r.name).collect();
+            let nordic = p.uses.iter().any(|u| u == "nordic");
+            PisteLine {
+                osm_way_id: Some(p.osm_way_id),
+                // Report 07: a way tagged itself keeps its own name; a way that is a piste
+                // only through its relations (a road section) takes the relation name.
+                name: if p.tagged {
+                    p.way_name
+                } else {
+                    relations.first().cloned()
+                },
+                relations,
+                network: if nordic {
+                    Network::Nordic
+                } else {
+                    Network::Hike
+                },
+                piste_type: if p.tagged {
+                    p.uses.join(";")
+                } else {
+                    String::new()
+                },
+                coords: f
+                    .geometry
+                    .coordinates
+                    .into_iter()
+                    .map(|[lon, lat]| LonLat::new(lon, lat))
+                    .collect(),
+            }
+        })
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn osm_layer_rules() {
+        let j = br#"{"type":"FeatureCollection","features":[
+{"geometry":{"type":"LineString","coordinates":[[6.7,44.85],[6.7,44.86]]},"properties":{"osm_way_id":1,"name":"A","way_name":"A","uses":["nordic","hike"],"tagged":true,"relations":[{"id":10,"name":"R"}],"length_m":1.0}},
+{"geometry":{"type":"LineString","coordinates":[[6.7,44.86],[6.7,44.87]]},"properties":{"osm_way_id":3,"name":"Route","way_name":"Route","uses":["nordic","hike"],"tagged":false,"relations":[{"id":10,"name":"R"},{"id":11,"name":"H"}]}},
+{"geometry":{"type":"LineString","coordinates":[[6.7,44.8],[6.7,44.81]]},"properties":{"osm_way_id":5,"name":null,"way_name":null,"uses":["snowshoe"],"tagged":true,"relations":[]}},
+{"geometry":{"type":"LineString","coordinates":[[6.7,44.8]]},"properties":{"osm_way_id":6,"way_name":null,"uses":["hike"],"tagged":true,"relations":[]}}
+]}"#;
+        let l = from_pistes_geojson(j).unwrap();
+        let ids: Vec<_> = l
+            .iter()
+            .map(|p| (p.osm_way_id.unwrap(), p.network))
+            .collect();
+        assert_eq!(
+            ids,
+            [
+                (1, Network::Nordic),
+                (3, Network::Nordic),
+                (5, Network::Hike)
+            ],
+            "single-vertex line dropped"
+        );
+        assert_eq!(l[0].name.as_deref(), Some("A"));
+        assert_eq!(l[0].piste_type, "nordic;hike");
+        assert_eq!(
+            l[1].name.as_deref(),
+            Some("R"),
+            "named after the first relation"
+        );
+        assert_eq!(l[1].relations, ["R", "H"]);
+        assert_eq!(l[1].piste_type, "");
+        assert_eq!(l[2].name, None);
+        assert!((l[0].coords[1].lat - 44.86).abs() < 1e-12);
+    }
 
     #[test]
     fn overpass_rules() {

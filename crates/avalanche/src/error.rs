@@ -10,9 +10,16 @@ pub enum Error {
     #[error(transparent)]
     Common(#[from] skimap_common::Error),
 
-    /// Error of the Météo-France crate (meta files).
-    #[error(transparent)]
-    Meteo(#[from] skimap_meteo::Error),
+    /// A layer this one is built from has not been built yet.
+    #[error("layer `{layer}` of `{site}` is missing ({path}); build it first")]
+    MissingLayer {
+        /// Missing layer.
+        layer: String,
+        /// Site identifier.
+        site: String,
+        /// File looked for.
+        path: std::path::PathBuf,
+    },
 
     /// Content that does not match what the source documents.
     #[error("unexpected content from {source_name}: {message}")]

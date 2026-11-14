@@ -1,7 +1,8 @@
 //! Builds the historic avalanche layer of a site:
 //! `cargo run -p skimap-avalanche --example historic -- <site> [overpass-dump.json]`.
 //!
-//! Without a dump the piste lines come from the public Overpass API (shared downloader).
+//! Without a dump the piste lines come from the site's `pistes` layer (OSM crate, P2),
+//! which must be built first (`skimap pistes <site>`).
 
 use std::time::Instant;
 
