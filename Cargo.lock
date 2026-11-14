@@ -2321,7 +2321,6 @@ dependencies = [
  "serde",
  "serde_json",
  "skimap-common",
- "tempfile",
  "thiserror",
  "tiff",
  "tracing",
