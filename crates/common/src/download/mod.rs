@@ -145,10 +145,26 @@ impl Request {
         Self::post(source, url, body, "application/x-www-form-urlencoded")
     }
 
-    /// Adds a public header (part of neither the cache key nor the logs).
+    /// Adds a public header (not logged; part of the cache key only for `Range`).
     pub fn header(mut self, name: &str, value: &str) -> Self {
         self.headers.push((name.to_owned(), value.to_owned()));
         self
+    }
+
+    /// Asks for `len` bytes from `offset` (`Range: bytes=offset-(offset+len-1)`). Each
+    /// range is its own cache entry; the server must answer `206 Partial Content`.
+    pub fn range(self, offset: u64, len: u64) -> Self {
+        let end = offset + len.max(1) - 1;
+        self.header("Range", &format!("bytes={offset}-{end}"))
+    }
+
+    /// Value of the `Range` header, if any (last one wins, as for the request sent).
+    pub fn range_header(&self) -> Option<&str> {
+        self.headers
+            .iter()
+            .rev()
+            .find(|(k, _)| k.eq_ignore_ascii_case("range"))
+            .map(|(_, v)| v.as_str())
     }
 
     /// Adds a secret header (API key); never logged, never cached.
@@ -404,7 +420,12 @@ impl Downloader {
         let policy = self.policy(&req.source);
         let dir = self.cache_root.join(&req.source);
         std::fs::create_dir_all(&dir).map_err(|e| Error::io(&dir, e))?;
-        let key = cache::key(req.method.as_str(), &req.url, req.body.as_deref());
+        let key = cache::key(
+            req.method.as_str(),
+            &req.url,
+            req.body.as_deref(),
+            req.range_header(),
+        );
         let entry = Entry::new(&dir, &key);
         let mode = if self.offline {
             CachePolicy::Offline
@@ -542,6 +563,21 @@ impl Downloader {
             return Attempt::Done(self.done(req, entry, meta, Origin::NotModified));
         }
 
+        if status.is_success()
+            && req.range_header().is_some()
+            && status != StatusCode::PARTIAL_CONTENT
+        {
+            // The whole resource instead of the part asked for: never cache it under the
+            // key of a range.
+            return Attempt::Fatal(Error::Http {
+                url: req.url.clone(),
+                message: format!(
+                    "status {} to a range request ({}): the server ignores Range",
+                    status.as_u16(),
+                    req.range_header().unwrap_or_default()
+                ),
+            });
+        }
         if status.is_success() {
             let headers = resp.headers().clone();
             let tmp = cache::tmp_path(&entry.body);
@@ -568,6 +604,7 @@ impl Downloader {
                 validated_at_unix: now,
                 size,
                 sha256,
+                range: req.range_header().map(str::to_owned),
             };
             // Remove the old metadata first: a crash between the two renames leaves a body
             // without metadata, which is treated as not cached.

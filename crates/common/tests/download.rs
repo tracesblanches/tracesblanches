@@ -585,3 +585,67 @@ fn invalid_source_names_are_rejected() {
         .unwrap_err();
     assert!(matches!(err, Error::Config(_)), "{err}");
 }
+
+/// Serves `data` with `Range: bytes=a-b` support (206) when `honour`, else whole (200).
+fn range_server(data: &'static [u8], honour: bool) -> TestServer {
+    TestServer::start(move |s, _| match s.header("range").filter(|_| honour) {
+        Some(r) => {
+            let (a, b) = r.trim_start_matches("bytes=").split_once('-').unwrap();
+            let (a, b): (usize, usize) = (a.parse().unwrap(), b.parse().unwrap());
+            let b = b.min(data.len() - 1);
+            Reply {
+                status: 206,
+                body: data[a..=b].to_vec(),
+                headers: vec![("Content-Range", format!("bytes {a}-{b}/{}", data.len()))],
+            }
+        }
+        None => Reply {
+            status: 200,
+            body: data.to_vec(),
+            headers: Vec::new(),
+        },
+    })
+}
+
+#[test]
+fn range_requests_are_cached_apart() {
+    let srv = range_server(b"0123456789abcdefghij", true);
+    let dir = tempfile::tempdir().unwrap();
+    let dl = downloader(dir.path(), policy("t"));
+    let url = srv.url("/archive.pmtiles");
+    let head = dl.fetch(&Request::get("t", &url).range(0, 4)).unwrap();
+    let tail = dl.fetch(&Request::get("t", &url).range(10, 5)).unwrap();
+    let whole = dl.fetch(&Request::get("t", &url)).unwrap();
+    assert_eq!(head.bytes().unwrap(), b"0123");
+    assert_eq!(tail.bytes().unwrap(), b"abcde");
+    assert_eq!(whole.bytes().unwrap(), b"0123456789abcdefghij");
+    assert_eq!(head.meta.range.as_deref(), Some("bytes=0-3"));
+    assert_eq!(whole.meta.range, None);
+    assert_ne!(head.path, tail.path);
+    assert_eq!(srv.count(), 3);
+    // Second time: all from the cache, each range with its own body.
+    let again = dl.fetch(&Request::get("t", &url).range(10, 5)).unwrap();
+    assert_eq!(again.origin, Origin::Cache);
+    assert_eq!(again.bytes().unwrap(), b"abcde");
+    let head = dl.fetch(&Request::get("t", &url).range(0, 4)).unwrap();
+    assert_eq!(head.bytes().unwrap(), b"0123");
+    assert_eq!(srv.count(), 3);
+    let seen = srv.seen();
+    assert_eq!(seen[0].header("range"), Some("bytes=0-3"));
+    assert_eq!(seen[2].header("range"), None);
+}
+
+#[test]
+fn range_ignored_by_the_server_is_an_error() {
+    let srv = range_server(b"0123456789", false);
+    let dir = tempfile::tempdir().unwrap();
+    let dl = downloader(dir.path(), policy("t"));
+    let req = Request::get("t", &srv.url("/f")).range(2, 3);
+    let err = dl.fetch(&req).unwrap_err();
+    assert!(err.to_string().contains("ignores Range"), "{err}");
+    // Nothing cached under the key of the range.
+    assert!(matches!(
+        dl.fetch(&req.cache(CachePolicy::Offline)),
+        Err(Error::NotCached { .. })
+    ));
+}

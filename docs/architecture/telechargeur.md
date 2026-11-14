@@ -16,7 +16,7 @@ TLS : rustls avec le fournisseur `ring` et les racines Mozilla (`webpki-roots`),
 
 `skimap_common::download::Downloader` :
 
-- cache disque par source : `data/cache/<source>/<sha256>.body` et `.json` (URL publique, ETag, Last-Modified, dates, taille, sha256) ;
+- cache disque par source : `data/cache/<source>/<sha256>.body` et `.json` (URL publique, ETag, Last-Modified, dates, taille, sha256, plage) ; la clé est le SHA-256 de la méthode, de l'URL publique, du corps et, pour une requête partielle (`Request::range`, en-tête `Range`), de la plage : deux parties d'un même fichier sont deux entrées ; une réponse 200 à une requête partielle est une erreur (rien n'est mis en cache) ;
 - requêtes conditionnelles `If-None-Match` / `If-Modified-Since`, réponse 304 servie depuis le cache ;
 - politique de cache par requête : `Normal` (aucune requête tant que l'entrée a moins de `max_age`), `Revalidate`, `Reload`, `Offline` ;
 - limites de débit par source en fenêtre glissante, persistées dans `data/cache/<source>/ratelimit.json` (un quota journalier survit à un redémarrage) ; une requête est inscrite avant l'envoi (un arrêt brutal ne l'efface pas du quota), puis datée de la fin de sa réponse : le serveur ne voit jamais deux requêtes plus proches que la fenêtre, quel que soit le temps passé entre l'inscription et l'envoi (écriture de l'état avec `fsync`, connexion, machine chargée) ; une attente au-delà de `max_wait` donne l'erreur `RateLimited` sans requête ;
