@@ -1,13 +1,19 @@
 //! Nordic ski trails extracted from OSM, and cross-country ski areas.
 //!
 //! Owned tickets:
-//! - P2 (#15): extraction of nordic trails from OpenSnowMap `planet_pistes.osm.gz`
-//!   (ways and relations `piste:type=nordic` / `hike`, names and colours from relations,
-//!   `piste:grooming`, `piste:oneway`), GeoJSON and graph for both sites.
-//! - P3 (#16): grouping trails into ski areas (France first), matching with Nordic France /
-//!   SkiRadar names.
+//! - P2 (#15): extraction of nordic trails from OpenSnowMap `planet_pistes.osm.gz`.
+//! - P3 (#16): grouping trails into ski areas (France first), matching names.
 //!
-//! Pipeline side: may use `skimap_common::download`.
+//! Pipeline side: uses `skimap_common::download`.
+
+pub mod error;
+pub mod extract;
+pub mod graph;
+pub mod output;
+pub mod parse;
+pub mod pistes;
+
+pub use error::{OsmError, Result};
 
 /// Name of this crate, checked by the crate smoke test.
 pub const CRATE: &str = env!("CARGO_PKG_NAME");

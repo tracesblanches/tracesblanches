@@ -2263,7 +2263,17 @@ dependencies = [
 name = "skimap-osm"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "flate2",
+ "quick-xml",
+ "rstar 0.12.2",
+ "serde",
+ "serde_json",
  "skimap-common",
+ "tempfile",
+ "thiserror",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
