@@ -14,10 +14,11 @@ use skimap_common::download::{Downloader, Request};
 use skimap_common::geom::{BBox, LonLat};
 use skimap_common::grid::Grid;
 
-use crate::dem::SOURCE;
 use crate::error::Result;
 use crate::png;
 
+/// Downloader source name of the IGN Géoplateforme WMTS.
+pub const SOURCE: &str = "ign";
 /// WMTS layer identifier.
 pub const LAYER: &str = "GEOGRAPHICALGRIDSYSTEMS.SLOPES.MOUNTAIN";
 /// Class edges of the IGN layer, degrees.

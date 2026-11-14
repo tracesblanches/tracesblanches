@@ -23,8 +23,11 @@ use tracing::{debug, warn};
 use crate::error::{Error, Result};
 use crate::geotiff::decode_f32;
 
-/// Downloader source name of the IGN Géoplateforme.
-pub const SOURCE: &str = "ign";
+/// Downloader source name of the LiDAR HD WMS-R. Its policy in
+/// `skimap_common::download::known_sources` keeps tiles a year: LiDAR HD editions change
+/// rarely and the WMS sends neither `ETag` nor `Last-Modified`, so a revalidation is a full
+/// download (0.5 s per tile); force a refresh with `CachePolicy::Reload`.
+pub const SOURCE: &str = "ign-lidar-wms";
 /// WMS-R endpoint of the Géoplateforme (raw rasters).
 pub const WMS_URL: &str = "https://data.geopf.fr/wms-r";
 /// LiDAR HD terrain model layer (Lambert-93, IGN69 heights).
@@ -35,10 +38,6 @@ pub const CELL: f64 = 5.0;
 pub const TILE_PX: usize = 200;
 /// Offset of the tile grid relative to whole kilometres, metres.
 pub const TILE_SHIFT: f64 = 0.25;
-/// Cache lifetime of a tile. LiDAR HD editions change rarely and the WMS sends neither
-/// `ETag` nor `Last-Modified`, so a revalidation is a full download (0.5 s per tile):
-/// tiles are kept a year (force a refresh with `CachePolicy::Reload`).
-pub const TILE_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(365 * 86_400);
 /// Attempts when the WMS answers 200 with a service exception instead of an image.
 const EXCEPTION_ATTEMPTS: u32 = 4;
 
@@ -144,11 +143,7 @@ pub fn fetch_tile(t: TileId, dl: &Downloader) -> Result<Grid<f32>> {
     let mut policy = CachePolicy::Normal;
     let mut last_err = None;
     for attempt in 0..EXCEPTION_ATTEMPTS {
-        let f = dl.fetch(
-            &Request::get(SOURCE, &url)
-                .cache(policy)
-                .max_age(TILE_MAX_AGE),
-        )?;
+        let f = dl.fetch(&Request::get(SOURCE, &url).cache(policy))?;
         let bytes = f.bytes()?;
         match decode_f32(&bytes) {
             Ok(g) => {

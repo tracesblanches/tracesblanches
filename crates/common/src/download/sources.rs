@@ -121,6 +121,41 @@ pub fn known_sources() -> Vec<SourcePolicy> {
         SourcePolicy::new("geo-api")
             .limits([RateLimit::new(10, SECOND)])
             .max_age(30 * DAY),
+        // IGN Géoplateforme WMS-R, LiDAR HD terrain tiles (P5): the answers carry neither
+        // ETag nor Last-Modified, so nothing can be revalidated; LiDAR HD editions change
+        // rarely. Same per-IP rate as `ign`. Cache 1 year: prudence, non sourcé.
+        SourcePolicy::new("ign-lidar-wms")
+            .limits([RateLimit::new(20, SECOND)])
+            .max_age(365 * DAY),
+        // Météo-France public BERA archive (donneespubliques.meteofrance.fr), one index and
+        // one bulletin a day: no published quota (prudence, non sourcé).
+        SourcePolicy::new("meteofrance-archive").max_age(DAY),
+        // Ministry ATOM service (geo-ide), DDT 05 avalanche shapefile, a static dataset: no
+        // published quota (prudence, non sourcé).
+        SourcePolicy::new("geoide").max_age(30 * DAY),
+        // Open-Meteo free API: 10 000 calls/day, non-commercial use only
+        // (open-meteo.com/en/terms, report 03); forecasts refreshed hourly.
+        SourcePolicy::new("open-meteo")
+            .limits([RateLimit::new(1, SECOND), RateLimit::per_day(10_000)])
+            .max_age(HOUR),
+        // Nordic France white-label widget: HTML without terms, personal use only, polled at
+        // low frequency (prudence, non sourcé).
+        SourcePolicy::new("nordicfrance")
+            .limits([RateLimit::new(1, MINUTE)])
+            .max_age(3 * HOUR),
+        // Cervières town hall « Info damage » page: same as Nordic France (prudence, non
+        // sourcé).
+        SourcePolicy::new("cervieres-mairie")
+            .limits([RateLimit::new(1, MINUTE)])
+            .max_age(3 * HOUR),
+        // OpenSkiMap / OpenSkiData exports (ski_areas.csv, runs.csv): automated download
+        // allowed "at most once per day" (openskidata.org, report 07): each of the two
+        // files once a day.
+        SourcePolicy::new("openskimap")
+            .limits([RateLimit::new(1, MINUTE), RateLimit::per_day(2)])
+            .max_age(DAY),
+        // SkiRadar geo-feed: 30 requests/min (data.gouv.fr dataservice page, report 03).
+        SourcePolicy::new("skiradar").limits([RateLimit::new(30, MINUTE)]),
     ]
 }
 
@@ -143,5 +178,19 @@ mod tests {
         assert!(dt.limits.contains(&RateLimit::per_hour(1000)));
         let st = all.iter().find(|p| p.name == "skitour").unwrap();
         assert!(st.limits.contains(&RateLimit::per_day(1000)));
+        let om = all.iter().find(|p| p.name == "open-meteo").unwrap();
+        assert!(om.limits.contains(&RateLimit::per_day(10_000)));
+        let lidar = all.iter().find(|p| p.name == "ign-lidar-wms").unwrap();
+        assert_eq!(lidar.max_age, 365 * DAY);
+        for n in [
+            "meteofrance-archive",
+            "geoide",
+            "nordicfrance",
+            "cervieres-mairie",
+            "openskimap",
+            "skiradar",
+        ] {
+            assert!(all.iter().any(|p| p.name == n), "{n}");
+        }
     }
 }
