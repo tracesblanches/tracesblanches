@@ -40,4 +40,11 @@ Définis dans `download::known_sources`, modifiables par `SKIMAP_RATE_LIMIT_<SOU
 | `ign` | 20/s | CGU : 400/s par IP pour le TMS |
 | `geo-api` | 10/s | prudence |
 | `opensnowmap` | 1/min | extrait quotidien |
+| `open-meteo` | 1/s et 10 000/jour, cache 1 h | conditions d'Open-Meteo (rapport 03) |
+| `openskimap` | 1/min et 2/jour, cache 1 jour | « at most once per day » par fichier (openskidata.org, rapport 07) |
+| `skiradar` | 30/min | page data.gouv.fr du flux (rapport 03) |
+| `ign-lidar-wms` | 20/s, cache 1 an | dalles LiDAR HD sans `ETag` ni `Last-Modified` ; prudence |
+| `nordicfrance`, `cervieres-mairie` | 1/min, cache 3 h | prudence, non sourcé (HTML sans conditions) |
+| `meteofrance-archive` | 1/s, cache 1 jour | prudence, non sourcé |
+| `geoide` | 1/s, cache 30 jours | prudence, non sourcé (jeu statique) |
 | `biodiv-sports`, `refuges-info`, `camptocamp`, `enj`, `datagouv`, toute autre source | 1/s | aucun quota publié, à confirmer |

@@ -8,7 +8,7 @@ Toutes les crates sont dans `crates/`, nommées `skimap-<dossier>` (bibliothèqu
 
 | Crate | Rôle | Côté | Tickets |
 |---|---|---|---|
-| `common` | sites, géométrie, grilles, projections, arborescence `data/`, configuration, erreurs ; téléchargeur (fonction `download`) | les deux | F1 #1, P1 #14 |
+| `common` | sites, géométrie, grilles, projections, arborescence `data/`, configuration, erreurs, schéma `<couche>.meta.json` (`meta`), écrivains atomiques JSON / GeoJSON (`output`) ; téléchargeur (fonction `download`), GeoTIFF Float32 (fonction `geotiff`) | les deux | F1 #1, P1 #14 |
 | `osm` | pistes nordiques OSM, domaines de fond | pipeline | P2 #15, P3 #16 |
 | `terrain` | relief IGN, pente, orientation | pipeline | P5 #18 |
 | `snow` | carte d'enneigement estimée, validation | pipeline | P6 #19, P7 #20 |
@@ -22,10 +22,12 @@ Toutes les crates sont dans `crates/`, nommées `skimap-<dossier>` (bibliothèqu
 | `core` | routage, rattachement, hors piste, temps estimé, demi-tour, zones, batterie (un module par ticket) | téléphone | C1 #33 à C10 #42 |
 | `assist` | briefing, fartage, qualité de neige, affluence, suggestions, équipement, synthèse, alertes, meilleur moment, bilan, questions (un module par ticket) | téléphone | A1 #88 à A11 #98 |
 | `voice` | banque de phrases, clips pré-générés | les deux | VO2 #84, VO3 #85 |
-| `cli` | binaire `skimap` | outil | F1 #1, F4 #4 |
+| `cli` | binaire `skimap` : une sous-commande par constructeur, `build-all` (voir [compiler.md](compiler.md#ligne-de-commande)) | outil | F1 #1, F4 #4 |
 | `deps` | dépend de toutes les dépendances externes : `Cargo.lock` les fixe déjà, la CI prouve qu'elles compilent | outil | F1 #1 (orchestrateur) |
 
-Les crates « téléphone » (`core`, `assist`, `voice`, lecteur de `pack`) dépendent de `skimap-common` **sans** la fonction `download` : elles n'embarquent aucune pile HTTP (`cargo tree -p skimap-core` le montre). Les crates du pipeline l'activent : `skimap-common = { workspace = true, features = ["download"] }`.
+Les crates « téléphone » (`core`, `assist`, `voice`, lecteur de `pack`) dépendent de `skimap-common` **sans** la fonction `download` : elles n'embarquent aucune pile HTTP (`cargo tree -p skimap-core` le montre). Les crates du pipeline l'activent : `skimap-common = { workspace = true, features = ["download"] }` (plus `"geotiff"` pour terrain et snow).
+
+Dépendances entre crates du pipeline : `snow` → `terrain` (dalles et pente) ; `avalanche` → `meteo` (BERA du jour) ; `refuges` → `osm` (comparaison de noms) ; `coverage` → `zones` (partie française de l'emprise) ; `core` → `zones` (schéma). Les métadonnées et l'écriture des couches passent par `common`, pas par une autre crate.
 
 ## Règle de propriété
 

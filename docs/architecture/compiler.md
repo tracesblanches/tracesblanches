@@ -11,7 +11,19 @@ cargo test --workspace
 cargo test -p skimap-common          # sans la fonction download (côté téléphone)
 cargo run -p skimap-cli -- sites
 cargo run -p skimap-cli -- fetch-url 'https://geo.api.gouv.fr/communes/05027' --source geo-api
+cargo run --release -p skimap-cli -- build-all cervieres
 ```
+
+## Ligne de commande
+
+Une sous-commande par constructeur de couche, qui appelle la fonction publique de la crate : `pistes`, `domaines` (France puis les sites), `terrain`, `snow [--date]`, `snow-validate [--seasons A B]`, `refuges`, `zones`, `coverage [--release YYYY_TQ] [--archives DIR]`, `bera [--date]`, `meteo`, `status-poll`, `avalanche-historic [--dump FICHIER]`, et `zones-at <site> <lat> <lon> <date>` (C8 sur la couche `zones`). `build-pack`, `route`, `eta`, `briefing`, `export`, `fetch` attendent leurs tickets.
+
+```sh
+SKIMAP_PERSONAL_SOURCES=1 skimap build-all cervieres
+skimap zones-at chapelle-des-bois 46.5952 6.1118 2027-01-10T22:00
+```
+
+`build-all <site>` lance dans l'ordre des dépendances : lecture de l'extrait OpenSnowMap (partagée), `pistes`, `domaines`, `terrain`, `snow`, `refuges`, `zones`, `coverage`, `bera`, `meteo` et `status-poll` (seulement avec `personal_sources`), `avalanche-historic` (après `pistes`). Une ligne par étape : temps et chiffres clés ; une étape dont une dépendance a échoué est sautée ; code de sortie non nul si une étape échoue. Avec le cache rempli : 9,5 s (Cervières), 11,2 s (Chapelle-des-Bois).
 
 La version de Rust est figée dans `rust-toolchain.toml` (1.99.1, avec rustfmt, clippy et la cible Android) ; `rustup toolchain install` l'installe. La CI (`.github/workflows/ci.yml`) lance fmt, clippy, les tests et la compilation Android.
 

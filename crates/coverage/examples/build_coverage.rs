@@ -5,7 +5,7 @@
 //!     [--archives <dir with the .7z>] [--release 2026_T2] [site...]
 //! ```
 //!
-//! Stand-in for the `skimap` sub-command until the orchestrator wires it in `crates/cli`.
+//! Same as `skimap coverage <site>` (several sites at once).
 
 use skimap_common::config::Config;
 use skimap_common::download::Downloader;

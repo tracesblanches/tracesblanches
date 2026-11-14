@@ -4,7 +4,7 @@
 //! cargo run --release -p skimap-zones --features pipeline --example build_zones -- cervieres
 //! ```
 //!
-//! Stand-in for the `skimap` sub-command until the orchestrator wires it in `crates/cli`.
+//! Same as `skimap zones <site>` (several sites at once).
 
 use skimap_common::config::Config;
 use skimap_common::download::Downloader;

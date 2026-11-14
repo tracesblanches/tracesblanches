@@ -7,7 +7,8 @@ En bref :
 - un workspace cargo, édition 2024, résolveur 3, Rust 1.99.1 figé ; seize crates dans `crates/` ;
 - un agent ne modifie que sa crate ; `common`, `cli`, `deps`, le `Cargo.toml` racine et la CI passent par l'orchestrateur ;
 - tout est bloquant (`reqwest::blocking`, rayon), aucune API `async` ;
-- données dans `data/` (ignoré par git) : `data/cache/<source>/`, `data/out/<site>/`.
+- données dans `data/` (ignoré par git) : `data/cache/<source>/`, `data/out/<site>/`, `data/out/france/` ;
+- un seul schéma `<couche>.meta.json` (`common::meta`) pour toutes les couches.
 
 ## Sommaire
 
@@ -22,9 +23,11 @@ En bref :
 3. [Données, configuration, sites et projections](architecture/donnees.md)
    - [Arborescence des données](architecture/donnees.md#arborescence-des-données)
    - [Configuration](architecture/donnees.md#configuration)
+   - [Métadonnées des couches](architecture/donnees.md#métadonnées-des-couches)
    - [Sites](architecture/donnees.md#sites)
    - [Projections et grilles](architecture/donnees.md#projections-et-grilles)
 4. [Compiler, tester, Android, git](architecture/compiler.md)
    - [Compiler et tester](architecture/compiler.md#compiler-et-tester)
+   - [Ligne de commande](architecture/compiler.md#ligne-de-commande)
    - [Android (F4, #4)](architecture/compiler.md#android-f4-4)
    - [Git](architecture/compiler.md#git)
