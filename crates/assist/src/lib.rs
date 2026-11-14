@@ -13,6 +13,9 @@
 //! - [`recap`]: A10 (#97) outing recap.
 //! - [`questions`]: A11 (#98) offline free-form questions, bounded intent classification.
 //!
+//! Shared by the modules: [`layers`] (typed readers of the layer outputs), [`inputs`] (all
+//! layers of a site), [`sun`] (sun position and irradiance), [`error`].
+//!
 //! Never phrase any output as "safe" ("sans danger"). Runs on the phone: no networking.
 
 pub mod alerts;
@@ -20,9 +23,14 @@ pub mod best_time;
 pub mod briefing;
 pub mod crowd;
 pub mod equipment;
+pub mod error;
+pub mod inputs;
+pub mod layers;
 pub mod questions;
 pub mod recap;
 pub mod snow_quality;
 pub mod suggest;
+pub mod sun;
 pub mod synthesis;
 pub mod wax;
+

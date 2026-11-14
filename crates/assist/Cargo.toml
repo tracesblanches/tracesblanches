@@ -6,8 +6,27 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
+# Runs on the phone: no `download` feature of skimap-common, no HTTP stack. The assistant
+# only reads the layer outputs in data/out/<site>/ (`cargo tree -p skimap-assist -e normal`).
 [dependencies]
-skimap-common = { workspace = true }
+skimap-common = { workspace = true, features = ["geotiff"] }
+skimap-core.workspace = true
+skimap-zones.workspace = true
+skimap-voice.workspace = true
+chrono.workspace = true
+geo.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+# `history` example only (workstation side): fetches past weather from the Open-Meteo
+# historical forecast API through the shared downloader, past snow maps and BERA, to prove
+# the assistant on real past days. Never linked into the library.
+skimap-common = { workspace = true, features = ["download", "geotiff"] }
+skimap-meteo.workspace = true
+skimap-snow.workspace = true
+tempfile.workspace = true
 
 [lints]
 workspace = true
