@@ -16,13 +16,14 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 use skimap_common::config::Config;
 use skimap_common::geom::BBox;
+use skimap_common::meta::SourceRef;
 use skimap_common::site::{self, Site};
 use skimap_voice::bank::{
     Announcement, Briefing, Change, Event, Glide, Item, Kick, Name, Side, ZoneRule,
 };
 use skimap_voice::clips::{DayMonth, Direction};
 use skimap_voice::names::{Colour, PisteName};
-use skimap_voice::pack::{Source, VoiceManifest};
+use skimap_voice::pack::VoiceManifest;
 use skimap_voice::quantity::Clock;
 use skimap_voice::{PackNames, VoiceConfig, assemble, build};
 
@@ -142,7 +143,7 @@ fn zones(
     Ok(())
 }
 
-fn pack_names(raw: &Path, s: &Site) -> Res<(PackNames, Vec<Source>)> {
+fn pack_names(raw: &Path, s: &Site) -> Res<(PackNames, Vec<SourceRef>)> {
     let mut pistes = BTreeSet::new();
     let mut place = BTreeSet::new();
     let mut dates = BTreeSet::new();
@@ -164,24 +165,24 @@ fn pack_names(raw: &Path, s: &Site) -> Res<(PackNames, Vec<Source>)> {
     };
     osm_pistes(raw, osm, &s.bbox, &mut pistes)?;
     let mut sources = vec![
-        Source {
-            name: "Noms des pistes nordiques (Overpass, piste:type=nordic)".into(),
-            url: "https://overpass-api.de/api/interpreter".into(),
-            licence: "ODbL".into(),
-            attribution: "© les contributeurs d'OpenStreetMap".into(),
-        },
-        Source {
-            name: "Noms des refuges et abris".into(),
-            url: "https://www.refuges.info/api".into(),
-            licence: "CC-BY-SA-2.0 (refuges.info), ODbL (OSM)".into(),
-            attribution: "refuges.info, © les contributeurs d'OpenStreetMap".into(),
-        },
-        Source {
-            name: "Noms et périodes des zones protégées (INPN, Biodiv'sports)".into(),
-            url: "https://biodiv-sports.fr/api/v2/sensitivearea/ ; https://www.data.gouv.fr/datasets/inpn-donnees-du-programme-espaces-proteges".into(),
-            licence: "à confirmer (L6, #11)".into(),
-            attribution: "INPN (PatriNat), Biodiv'sports".into(),
-        },
+        SourceRef::new(
+            "Noms des pistes nordiques (Overpass, piste:type=nordic)",
+            "https://overpass-api.de/api/interpreter",
+            "ODbL",
+            "© les contributeurs d'OpenStreetMap",
+        ),
+        SourceRef::new(
+            "Noms des refuges et abris",
+            "https://www.refuges.info/api",
+            "CC-BY-SA-2.0 (refuges.info), ODbL (OSM)",
+            "refuges.info, © les contributeurs d'OpenStreetMap",
+        ),
+        SourceRef::new(
+            "Noms et périodes des zones protégées (INPN, Biodiv'sports)",
+            "https://biodiv-sports.fr/api/v2/sensitivearea/ ; https://www.data.gouv.fr/datasets/inpn-donnees-du-programme-espaces-proteges",
+            "à confirmer (L6, #11)",
+            "INPN (PatriNat), Biodiv'sports",
+        ),
     ];
     if s.id == "chapelle-des-bois" {
         for t in read(raw, "enj/treks_cdb.json")?["results"]
@@ -202,12 +203,12 @@ fn pack_names(raw: &Path, s: &Site) -> Res<(PackNames, Vec<Source>)> {
                 pistes.insert(PisteName::new(n.trim(), c));
             }
         }
-        sources.push(Source {
-            name: "Itinéraires de ski de fond de l'Espace Nordique Jurassien (API Snowmap)".into(),
-            url: "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/".into(),
-            licence: "à confirmer (L1, #6)".into(),
-            attribution: "Espace Nordique Jurassien".into(),
-        });
+        sources.push(SourceRef::new(
+            "Itinéraires de ski de fond de l'Espace Nordique Jurassien (API Snowmap)",
+            "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/",
+            "à confirmer (L1, #6)",
+            "Espace Nordique Jurassien",
+        ));
     }
     places(raw, huts, ri, &s.bbox, &mut place)?;
     zones(raw, prefix, bsp, &mut place, &mut dates)?;

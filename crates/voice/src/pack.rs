@@ -5,7 +5,8 @@
 //! data/out/<site>/voice/
 //!   clips/<clip id>.opus     one clip per manifest entry
 //!   manifest.json            clip id -> text, kind, file, duration, size, tokens
-//!   voice.meta.json          sources, licences, generation date
+//!   voice.meta.json          common layer metadata (`skimap_common::meta::LayerMeta`):
+//!                            sources, licences, files, parameters, key figures
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -15,6 +16,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use skimap_common::layout::DataLayout;
+use skimap_common::meta::{FileMeta, LayerMeta, SourceRef};
 use skimap_common::site::Site;
 
 use crate::audio::{Ffmpeg, MIN_ONSET_MS, Shape, shape, speech_onset_ms, write_wav};
@@ -167,52 +169,32 @@ impl VoiceManifest {
     }
 }
 
-/// A data source of the layer, for `voice.meta.json`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Source {
-    /// What it is.
-    pub name: String,
-    /// Where it comes from.
-    pub url: String,
-    /// Licence.
-    pub licence: String,
-    /// Attribution to display.
-    pub attribution: String,
-}
-
-#[derive(Serialize)]
-struct Meta<'a> {
-    layer: &'static str,
-    site: &'a str,
-    generated_at: String,
-    valid_until: &'static str,
-    sources: Vec<Source>,
-    notes: &'static [&'static str],
-}
-
-/// Sources of the voice itself (model, voice, engine).
-pub fn voice_sources(voice: &str) -> Vec<Source> {
+/// Sources of the voice itself (model, voice, engine), for `voice.meta.json`.
+pub fn voice_sources(voice: &str) -> Vec<SourceRef> {
     let mut s = vec![
-        Source {
-            name: "Pocket TTS, modèle français 6 couches (pack d'octobre), converti en GGUF Q8_0".into(),
-            url: "https://huggingface.co/kyutai/pocket-tts-without-voice-cloning/tree/08ffc58775e62aad9409511b9591c9af626270f3/languages/french".into(),
-            licence: "CC-BY-4.0, avec les usages interdits de Kyutai (pas de clonage sans consentement, pas de contenu trompeur)".into(),
-            attribution: "Voix de synthèse : Pocket TTS, Kyutai".into(),
-        },
-        Source {
-            name: "pockettts.cpp fab79722 + patchs speak 0001-0008".into(),
-            url: "https://github.com/ServeurpersoCom/pockettts.cpp".into(),
-            licence: "MIT".into(),
-            attribution: "pockettts.cpp".into(),
-        },
+        SourceRef::new(
+            "Pocket TTS, modèle français 6 couches (pack d'octobre), converti en GGUF Q8_0",
+            "https://huggingface.co/kyutai/pocket-tts-without-voice-cloning/tree/08ffc58775e62aad9409511b9591c9af626270f3/languages/french",
+            "CC-BY-4.0, avec les usages interdits de Kyutai (pas de clonage sans consentement, pas de contenu trompeur)",
+            "Voix de synthèse : Pocket TTS, Kyutai",
+        )
+        .producer("Kyutai")
+        .edition("08ffc58"),
+        SourceRef::new(
+            "pockettts.cpp fab79722 + patchs speak 0001-0008",
+            "https://github.com/ServeurpersoCom/pockettts.cpp",
+            "MIT",
+            "pockettts.cpp",
+        )
+        .edition("fab79722"),
     ];
     if voice == "estelle" {
-        s.push(Source {
-            name: "Voix estelle (unmute-prod-website/developpeuse-3.wav)".into(),
-            url: "https://huggingface.co/kyutai/tts-voices".into(),
-            licence: "CC0 (enregistrement de Kyutai)".into(),
-            attribution: "Voix estelle, Kyutai".into(),
-        });
+        s.push(SourceRef::new(
+            "Voix estelle (unmute-prod-website/developpeuse-3.wav)",
+            "https://huggingface.co/kyutai/tts-voices",
+            "CC0 (enregistrement de Kyutai)",
+            "Voix estelle, Kyutai",
+        ));
     }
     s
 }
@@ -263,12 +245,13 @@ fn sha256_file(p: &Path) -> Result<String> {
 }
 
 /// Generates the voice layer of `site` for the pack names `names`. `name_sources` are the
-/// sources of the names (OSM, refuges.info...), written to `voice.meta.json`.
+/// sources of the names (OSM, refuges.info...), written to `voice.meta.json` after those of
+/// the voice.
 pub fn build(
     site: &Site,
     layout: &DataLayout,
     names: &PackNames,
-    name_sources: &[Source],
+    name_sources: &[SourceRef],
     cfg: &VoiceConfig,
 ) -> Result<VoiceBuild> {
     let t0 = Instant::now();
@@ -409,22 +392,6 @@ pub fn build(
         clips: entries,
     };
     write_json(&dir.join("manifest.json"), &vm)?;
-    let mut sources = voice_sources(&cfg.tts.voice);
-    sources.extend_from_slice(name_sources);
-    write_json(
-        &dir.join(format!("{LAYER}.meta.json")),
-        &Meta {
-            layer: LAYER,
-            site: site.id,
-            generated_at: chrono::Utc::now().to_rfc3339(),
-            valid_until: "jusqu'au prochain changement des noms du pack (pistes, refuges, lieux, zones)",
-            sources,
-            notes: &[
-                "Clips Ogg/Opus mono, silence de début et de fin coupé, niveau normalisé.",
-                "Tout texte absent du manifeste est lu par la voix Android (repli).",
-            ],
-        },
-    )?;
 
     let mut per_kind = Vec::new();
     for k in [ClipKind::Fixed, ClipKind::Value, ClipKind::Name] {
@@ -438,7 +405,7 @@ pub fn build(
     }
     let mut leads: Vec<u32> = vm.clips.iter().map(|c| c.lead_trim_ms).collect();
     leads.sort_unstable();
-    Ok(VoiceBuild {
+    let summary = VoiceBuild {
         dir,
         per_kind,
         total_bytes: vm.clips.iter().map(|c| c.bytes).sum(),
@@ -461,7 +428,99 @@ pub fn build(
         tts_load_ms,
         encode_wall_s,
         total_wall_s: t0.elapsed().as_secs_f64(),
-    })
+    };
+    write_meta(site, &summary, &vm, names, name_sources)?;
+    Ok(summary)
+}
+
+/// Writes `voice.meta.json` in the common layer schema (`skimap_common::meta::LayerMeta`).
+fn write_meta(
+    site: &Site,
+    b: &VoiceBuild,
+    vm: &VoiceManifest,
+    names: &PackNames,
+    name_sources: &[SourceRef],
+) -> Result<PathBuf> {
+    let mut meta = LayerMeta::new(LAYER, site.id);
+    meta.tickets = vec!["VO3 (#85)".into()];
+    meta.validity = Some(
+        "jusqu'au prochain changement des noms du pack (pistes, refuges, lieux, zones)".into(),
+    );
+    meta.sources = voice_sources(&vm.voice);
+    meta.sources.extend_from_slice(name_sources);
+    let kinds = |k: ClipKind| b.per_kind.iter().find(|p| p.0 == k).map_or(0, |p| p.1);
+    meta.files = vec![
+        FileMeta::new(
+            "manifest.json",
+            "manifeste des clips (skimap_voice::pack::VoiceManifest) : voix, modèle, graine, pauses, et pour chaque clip son texte et son fichier",
+        )
+        .count(vm.clips.len())
+        .properties([
+            ("clips[].id", "identifiant du clip (celui de skimap_voice::bank)"),
+            ("clips[].kind", "fixed (phrase fixe), value (valeur sur une grille), name (nom du pack)"),
+            ("clips[].text", "texte prononcé"),
+            ("clips[].file", "fichier Ogg/Opus, relatif au dossier de la couche"),
+            ("clips[].duration_ms", "durée après coupe, ms"),
+            ("clips[].bytes", "taille du fichier, octets"),
+            ("clips[].tokens", "tokens Pocket TTS (vérifiés contre le journal de pockettts.cpp)"),
+            ("clips[].lead_trim_ms / tail_trim_ms", "silence coupé au début / à la fin, ms"),
+            ("clips[].gain_db", "gain appliqué, dB"),
+            ("clips[].end_burst", "son coupé de fin de génération retiré"),
+            ("clips[].seed", "graine du bruit de la génération gardée"),
+            ("clips[].onset_clipped", "attaque peut-être coupée après toutes les graines essayées"),
+        ]),
+        FileMeta {
+            format: Some(format!(
+                "Ogg/Opus mono, {} kbit/s, {} Hz avant encodage",
+                vm.opus_kbps, vm.sample_rate
+            )),
+            bytes: Some(b.total_bytes),
+            ..FileMeta::new(
+                "clips/<id>.opus",
+                "un clip par entrée du manifeste ; silence de début et de fin coupé, niveau normalisé",
+            )
+            .count(vm.clips.len())
+        },
+    ];
+    meta.notes = vec![
+        "Clips générés sur le poste par pockettts.cpp (sous-processus), un appel par passe ; un clip dont l'attaque est coupée ou sans fin de parole est refait avec la graine suivante.".into(),
+        "Tout texte absent du manifeste est lu par la voix Android (repli).".into(),
+    ];
+    meta.parameters = serde_json::json!({
+        "voice": vm.voice,
+        "model": vm.model,
+        "model_sha256": vm.model_sha256,
+        "seed": vm.seed,
+        "seed_attempts": SEED_ATTEMPTS,
+        "max_tokens": MAX_TOKENS,
+        "sample_rate_hz": vm.sample_rate,
+        "opus_kbps": vm.opus_kbps,
+        "pauses_ms": [vm.pauses_ms.0, vm.pauses_ms.1],
+    });
+    meta.stats = serde_json::json!({
+        "clips": vm.clips.len(),
+        "clips_fixed": kinds(ClipKind::Fixed),
+        "clips_value": kinds(ClipKind::Value),
+        "clips_name": kinds(ClipKind::Name),
+        "names": {
+            "site": names.site,
+            "pistes": names.pistes.len(),
+            "places": names.places.len(),
+            "dates": names.dates.len(),
+            "status_pistes": names.status_pistes,
+        },
+        "bytes": b.total_bytes,
+        "audio_s": (b.total_audio_s * 10.0).round() / 10.0,
+        "max_tokens": b.max_tokens,
+        "lead_trim_ms_min_median_max": [b.lead_trim_ms.0, b.lead_trim_ms.1, b.lead_trim_ms.2],
+        "end_bursts": b.end_bursts,
+        "passes": b.passes,
+        "onset_clipped": b.onset_clipped,
+        "tts_wall_s": (b.tts_wall_s * 100.0).round() / 100.0,
+        "encode_wall_s": (b.encode_wall_s * 100.0).round() / 100.0,
+        "total_wall_s": (b.total_wall_s * 100.0).round() / 100.0,
+    });
+    Ok(meta.write(&b.dir)?)
 }
 
 fn write_json(path: &Path, v: &impl Serialize) -> Result<()> {
@@ -529,4 +588,97 @@ pub fn assemble(
         duration_s: out.len() as f64 / f64::from(sr),
         files: vec![wav, opus],
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::names::{Colour, PisteName};
+
+    #[test]
+    fn meta_follows_the_common_schema() {
+        let dir = tempfile::tempdir().unwrap();
+        let clip = |id: &str, kind, bytes| ClipEntry {
+            id: id.into(),
+            kind,
+            text: "Texte.".into(),
+            file: format!("clips/{id}.opus"),
+            duration_ms: 500,
+            bytes,
+            tokens: 3,
+            lead_trim_ms: 90,
+            tail_trim_ms: 40,
+            gain_db: 1.5,
+            end_burst: false,
+            seed: 42,
+            onset_clipped: false,
+        };
+        let vm = VoiceManifest {
+            format: 1,
+            voice: "estelle".into(),
+            model: "pocket-tts-french-Q8_0.gguf".into(),
+            model_sha256: "e7".into(),
+            seed: 42,
+            sample_rate: SAMPLE_RATE,
+            opus_kbps: 24,
+            pauses_ms: (150, 400),
+            clips: vec![
+                clip("arrivee", ClipKind::Fixed, 1000),
+                clip("piste.greffier.noire", ClipKind::Name, 2000),
+            ],
+        };
+        let b = VoiceBuild {
+            dir: dir.path().to_owned(),
+            per_kind: vec![
+                (ClipKind::Fixed, 1, 1000, 500),
+                (ClipKind::Value, 0, 0, 0),
+                (ClipKind::Name, 1, 2000, 500),
+            ],
+            total_bytes: 3000,
+            total_audio_s: 1.0,
+            max_tokens: 3,
+            lead_trim_ms: (90, 90, 90),
+            end_bursts: 0,
+            passes: vec![2],
+            onset_clipped: 0,
+            tts_wall_s: 1.0,
+            tts_load_ms: 250.0,
+            encode_wall_s: 0.1,
+            total_wall_s: 1.2,
+        };
+        let names = PackNames {
+            site: "Chapelle-des-Bois".into(),
+            pistes: vec![PisteName::new("Greffier", Some(Colour::Black))],
+            places: vec![],
+            dates: vec![],
+            status_pistes: 1,
+        };
+        let osm = SourceRef::new("OSM", "https://example.org", "ODbL 1.0", "© OSM");
+        let path = write_meta(
+            &skimap_common::site::CHAPELLE_DES_BOIS,
+            &b,
+            &vm,
+            &names,
+            std::slice::from_ref(&osm),
+        )
+        .unwrap();
+        assert_eq!(path, dir.path().join("voice.meta.json"));
+        let m = LayerMeta::read(&path).unwrap();
+        assert_eq!(
+            (m.layer.as_str(), m.site.as_str()),
+            ("voice", "chapelle-des-bois")
+        );
+        assert_eq!(
+            m.sources.len(),
+            4,
+            "model, engine, voice estelle, then the names"
+        );
+        assert_eq!(m.sources[3], osm);
+        assert_eq!(m.files[0].name, "manifest.json");
+        assert_eq!(m.files[1].count, Some(2));
+        assert_eq!(m.files[1].bytes, Some(3000));
+        assert_eq!(m.parameters["voice"], "estelle");
+        assert_eq!(m.stats["clips_name"], 1);
+        assert_eq!(m.stats["names"]["pistes"], 1);
+    }
 }
