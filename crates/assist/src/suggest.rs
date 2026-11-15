@@ -1135,7 +1135,7 @@ mod tests {
         })
         .unwrap();
         SiteData {
-            site: CHAPELLE_DES_BOIS,
+            site: *CHAPELLE_DES_BOIS,
             weather: None,
             snows: vec![],
             beras: vec![],

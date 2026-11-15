@@ -50,7 +50,7 @@ fn fixture_packs() -> FixturePacks {
         .offline(true)
         .build()
         .unwrap();
-    for site in SITES {
+    for site in SITES.iter() {
         // Slope raster of the pack: Horn slope of the 1 km window (the 5 m slope of the
         // whole site, 36 MB, is not in the fixtures).
         let dem = skimap_common::geotiff::read_f32(&fixtures::input(&format!(
@@ -109,7 +109,7 @@ fn fixture_packs() -> FixturePacks {
 #[test]
 fn fixture_packs_match_their_sources_and_geotiffs() {
     let p = fixture_packs();
-    for site in SITES {
+    for site in SITES.iter() {
         sources(&p.layout, site);
         let classes = rasters(&p.layout, site);
         let pack = Pack::open(pack_dir(site, &p.layout).unwrap()).unwrap();
@@ -142,7 +142,7 @@ fn fixture_packs_match_their_sources_and_geotiffs() {
 #[ignore = "full-data: data/out/<site>/pack"]
 fn full_data_packs_match_their_sources() {
     let layout = full_layout();
-    for site in SITES {
+    for site in SITES.iter() {
         sources(&layout, site);
     }
 }
@@ -153,7 +153,7 @@ fn full_data_packs_match_their_sources() {
 #[ignore = "full-data: data/out/<site>/pack"]
 fn full_data_rasters_match_their_geotiffs() {
     let layout = full_layout();
-    for site in SITES {
+    for site in SITES.iter() {
         let _ = rasters(&layout, site);
     }
 }
@@ -289,7 +289,7 @@ fn rasters(layout: &DataLayout, site: &Site) -> Vec<(String, BTreeMap<u8, u64>)>
 #[ignore = "full-data: data/out/<site>/pack"]
 fn full_data_basemaps_are_complete() {
     let layout = full_layout();
-    for site in SITES {
+    for site in SITES.iter() {
         let pack = Pack::open(pack_dir(site, &layout).unwrap()).unwrap();
         let m = pack.manifest();
         for b in &m.basemaps {
@@ -350,7 +350,7 @@ fn full_data_class_polygons_match_their_geotiffs() {
 
 /// See [`full_data_class_polygons_match_their_geotiffs`].
 fn class_polygons(layout: &DataLayout) {
-    for site in SITES {
+    for site in SITES.iter() {
         let pack = Pack::open(pack_dir(site, layout).unwrap()).unwrap();
         for spec in class_tiles::catalog() {
             let Ok(l) = pack.layer(spec.id) else {
@@ -448,7 +448,7 @@ fn zone_rule_fields(layout: &DataLayout) {
         .map(|v| v.as_str())
         .collect();
     let mut seen: BTreeMap<String, String> = BTreeMap::new();
-    for site in SITES {
+    for site in SITES.iter() {
         let pack = Pack::open(pack_dir(site, layout).unwrap()).unwrap();
         let Ok(zones) = pack.read_geojson("zones") else {
             continue;
@@ -492,7 +492,7 @@ fn zone_rule_fields(layout: &DataLayout) {
 #[ignore = "full-data: data/out/<site>/pack"]
 fn full_data_pistes_carry_the_state_of_their_ways() {
     let layout = full_layout();
-    for site in SITES {
+    for site in SITES.iter() {
         let pack = Pack::open(pack_dir(site, &layout).unwrap()).unwrap();
         let pistes = pack.read_geojson("pistes").unwrap();
         let mut by_state: BTreeMap<String, u64> = BTreeMap::new();
@@ -542,7 +542,7 @@ fn full_data_pistes_carry_the_state_of_their_ways() {
 #[ignore = "full-data: data/out/<site>"]
 fn full_data_public_pack_from_real_outputs_has_no_restricted_source() {
     let real = full_layout();
-    for site in SITES {
+    for site in SITES.iter() {
         let tmp = tempfile::tempdir().unwrap();
         let out = tmp.path().join("out").join(site.id);
         std::fs::create_dir_all(&out).unwrap();

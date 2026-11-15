@@ -20,6 +20,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use skimap_common::download::{CachePolicy, Downloader, Request};
+use skimap_common::site::Site;
 
 use crate::error::{Error, Result};
 
@@ -31,12 +32,10 @@ pub const SOURCE: &str = "enj";
 pub const STATUS_FIELDS: &str =
     "id,name,route,labels,update_datetime,practice,difficulty,length_2d,networks,departure_city";
 
-/// ENJ city identifier of a site (`cities=` filter), if the site is in the ENJ.
-pub fn city_id(site_id: &str) -> Option<u32> {
-    match site_id {
-        "chapelle-des-bois" => Some(14),
-        _ => None,
-    }
+/// ENJ city identifier of a site (`cities=` filter), if the site is in the ENJ: the
+/// `status.enj_city` of the site table (`skimap_common::site`).
+pub fn city_id(site: &Site) -> Option<u32> {
+    site.status.enj_city
 }
 
 /// URL of the status list of a city.
@@ -472,8 +471,8 @@ mod tests {
         );
         assert_eq!(note_times(&s)["10:09"], 1);
         assert_eq!(s.enj_notes.len(), 1);
-        assert_eq!(city_id("chapelle-des-bois"), Some(14));
-        assert_eq!(city_id("cervieres"), None);
+        assert_eq!(city_id(&skimap_common::site::CHAPELLE_DES_BOIS), Some(14));
+        assert_eq!(city_id(&skimap_common::site::CERVIERES), None);
         assert!(status_url(14).contains("cities=14") && status_url(14).contains("fields="));
     }
 }

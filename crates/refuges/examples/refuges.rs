@@ -19,7 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cfg = Config::from_env()?;
     let layout = cfg.layout();
     let dl = Downloader::from_config(&cfg)?;
-    for site in SITES {
+    for site in SITES.iter() {
         let t = Instant::now();
         let out = skimap_refuges::build(site, &layout, &dl)?;
         println!(

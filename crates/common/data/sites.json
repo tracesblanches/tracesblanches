@@ -1,0 +1,131 @@
+{
+  "about": "Données propres à des sites, lues par skimap-common (site::evaluation_sites, site::local). Les sites d'évaluation de la v1 (Cervières, Chapelle-des-Bois) sont deux domaines du recensement P3 comme les autres ; cette table garde leur emprise de travail choisie à la main (plus large que l'enveloppe du domaine + 2 km), leur commune et leurs massifs vérifiés par P6 (#19), et leurs données locales : sources d'état des pistes, points de départ, jour archivé, demandes de plan, sorties de preuve. Un domaine absent de la table prend les valeurs dérivées du recensement (site::Registry).",
+  "sites": [
+    {
+      "id": "cervieres",
+      "census_id": "net-152532950",
+      "name": "Cervières",
+      "kind": "nordic_station",
+      "department": "05",
+      "insee": "05027",
+      "commune": "Cervières",
+      "commune_center": { "lon": 6.7746, "lat": 44.8586 },
+      "bbox": { "south": 44.77, "west": 6.66, "north": 44.92, "east": 6.86 },
+      "massifs": [{ "code": 17, "name": "Queyras" }],
+      "massif_status": "verified",
+      "massif_note": "Queyras (17) couvre 100 % de la commune (P6, polygones snowtools massifs.shp et contour geo.api.gouv.fr)",
+      "has_bera": true,
+      "status": {
+        "nordicfrance_station": 3167,
+        "town_hall_page": "https://cervieres.fr/domaine-nordique-2/info-damage/"
+      },
+      "local": {
+        "starts": [
+          {
+            "id": "le-laus",
+            "name": "Le Laus (secteur Le Laus - Izoard)",
+            "phrase": "Le Laus",
+            "lon": 6.7269,
+            "lat": 44.8552,
+            "provenance": "OSM node place=hamlet « Le Laus » (Overpass, 14/11/2026)"
+          },
+          {
+            "id": "les-fonts",
+            "name": "Les Fonts (secteur Les Fonts)",
+            "phrase": "Les Fonts",
+            "lon": 6.8161,
+            "lat": 44.8448,
+            "provenance": "OSM node place=hamlet « Les Fonts » (Overpass, 14/11/2026)"
+          }
+        ],
+        "archived_day": "2026-01-09",
+        "plan_requests": [
+          {
+            "label": "3 h, classique",
+            "start": 0,
+            "budget_min": 180.0,
+            "style": "classic"
+          },
+          {
+            "label": "1 h 30, classique, vertes et bleues, départ 14 h 30",
+            "start": 1,
+            "start_time": "14:30",
+            "budget_min": 90.0,
+            "style": "classic",
+            "easy_only": true
+          }
+        ],
+        "proof_outings": [
+          {
+            "label": "Le Laus → refuge des Fonts, pistes, classique",
+            "file": "routes.geojson",
+            "start_time": "10:00",
+            "offpiste": false
+          },
+          {
+            "label": "Le Laus → col d'Izoard, hors piste, départ 13 h",
+            "file": "offpiste_laus_izoard.geojson",
+            "start_time": "13:00",
+            "offpiste": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "chapelle-des-bois",
+      "census_id": "site-13681086",
+      "name": "Chapelle-des-Bois",
+      "kind": "nordic_station",
+      "department": "25",
+      "insee": "25121",
+      "commune": "Chapelle-des-Bois",
+      "commune_center": { "lon": 6.1118, "lat": 46.5952 },
+      "bbox": { "south": 46.54, "west": 6.02, "north": 46.68, "east": 6.20 },
+      "massifs": [
+        { "code": 55, "name": "Haut-Doubs" },
+        { "code": 56, "name": "Haut-Jura" }
+      ],
+      "massif_status": "verified",
+      "massif_note": "Haut-Doubs (55) couvre 93,2 % de la commune et le village, Haut-Jura (56) le côté du Risoux (6,0 %) ; pas de BERA dans le Jura",
+      "has_bera": false,
+      "status": { "enj_city": 14 },
+      "local": {
+        "starts": [
+          {
+            "id": "depart-des-pistes",
+            "name": "Départ des pistes de Chapelle-des-Bois",
+            "phrase": "le départ des pistes de Chapelle-des-Bois",
+            "lon": 6.1125,
+            "lat": 46.6032,
+            "provenance": "premier point des itinéraires ENJ partant du village (API Geotrek, « Départ des pistes (25240 Chapelle des Bois) »)"
+          }
+        ],
+        "archived_day": "2026-02-22",
+        "plan_requests": [
+          {
+            "label": "2 h, skating, retour avant 16 h",
+            "start": 0,
+            "budget_min": 120.0,
+            "style": "skating",
+            "return_before": "16:00"
+          },
+          {
+            "label": "3 h, classique",
+            "start": 0,
+            "start_time": "10:00",
+            "budget_min": 180.0,
+            "style": "classic"
+          }
+        ],
+        "proof_outings": [
+          {
+            "label": "Traversée du Risoux, hors piste, départ 10 h 30",
+            "file": "offpiste_risoux_fevrier.geojson",
+            "start_time": "10:30",
+            "offpiste": true
+          }
+        ]
+      }
+    }
+  ]
+}

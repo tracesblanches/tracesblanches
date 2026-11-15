@@ -33,7 +33,7 @@ fn rust_extract_matches_go_pmtiles() {
     let url = format!("{}{}", osm::BUILD_BASE, build.key);
     let reference = std::env::var_os("SKIMAP_PMTILES_REFERENCE").map(PathBuf::from);
     let dir = tempfile::tempdir().unwrap();
-    for site in SITES {
+    for site in SITES.iter() {
         let out = dir.path().join(format!("{}.pmtiles", site.id));
         let t = Instant::now();
         let s = extract(

@@ -18,12 +18,10 @@ pub const SOURCE: &str = "nordicfrance";
 /// Shortest interval between two requests (the cache serves the page in between).
 pub const MIN_INTERVAL: Duration = Duration::from_secs(3 * 3600);
 
-/// Station identifier of a site.
-pub fn station_id(site_id: &str) -> Option<u32> {
-    match site_id {
-        "cervieres" => Some(3167),
-        _ => None,
-    }
+/// Station identifier of a site: the `status.nordicfrance_station` of the site table
+/// (`skimap_common::site`; research report 08 for the census domains).
+pub fn station_id(site: &skimap_common::site::Site) -> Option<u32> {
+    site.status.nordicfrance_station
 }
 
 /// Widget URL of a station.
@@ -316,6 +314,6 @@ mod tests {
         assert_eq!(z.pistes[1].comment, None);
         let v = serde_json::to_value(&s).unwrap();
         assert_eq!(stamps(&v), ["mise à jour 06/04", "damage IZOARD 04/03"]);
-        assert_eq!(station_id("cervieres"), Some(3167));
+        assert_eq!(station_id(&skimap_common::site::CERVIERES), Some(3167));
     }
 }

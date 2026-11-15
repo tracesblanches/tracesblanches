@@ -1,88 +1,87 @@
-//! Ready-made requests on archived past days of the two evaluation sites, shared by the
-//! example, the real-data tests and the scenario bench (Q9).
+//! Ready-made requests on archived past days of a site (site table of `skimap-common`:
+//! the two evaluation sites), shared by the example, the real-data tests and the scenario
+//! bench (Q9).
 
 use chrono::{NaiveDate, NaiveTime};
 use skimap_assist::inputs::SiteData;
-use skimap_common::geom::LonLat;
 use skimap_common::layout::DataLayout;
-use skimap_common::site::Site;
+use skimap_common::site::{PlanPreset, PresetStyle, Site};
 use skimap_core::graph::Difficulty;
 use skimap_core::routing::Style;
 
 use crate::error::Result;
 use crate::plan::{Context, PlanRequest};
 
-/// Day archived in `assist/history/` used for the plans of a site.
+/// Day archived in `assist/history/` used for the plans of a site: the `archived_day` of
+/// the site table (`skimap_common::site::local`), or today (UTC) for a site without one.
 pub fn past_day(site: &Site) -> NaiveDate {
-    match site.id {
-        "cervieres" => NaiveDate::from_ymd_opt(2026, 1, 9).expect("date"),
-        _ => NaiveDate::from_ymd_opt(2026, 2, 22).expect("date"),
-    }
+    archived_day(site).unwrap_or_else(|| chrono::Utc::now().date_naive())
 }
 
-/// Requests of a site on a day: Cervières, 3 h classic from Le Laus; Chapelle-des-Bois,
-/// 2 h skating back before 16 h from the start of the pistes; the start time is the best
-/// time of A9 from 8 h.
+/// Archived day of a site in the site table, if any.
+pub fn archived_day(site: &Site) -> Option<NaiveDate> {
+    skimap_common::site::local(site.id).and_then(|l| l.archived_day)
+}
+
+/// Requests of a site on a day, from the site table (Cervières: 3 h classic from Le Laus,
+/// 1 h 30 green and blue from Les Fonts at 14:30; Chapelle-des-Bois: 2 h skating back
+/// before 16 h, 3 h classic at 10:00, from the start of the pistes); a site without
+/// requests in the table gets those two shapes from its main start
+/// (`skimap_common::site::starts`). Without a fixed time, the start time is the best time
+/// of A9 from 8 h.
 pub fn requests(site: &Site, date: NaiveDate) -> Vec<PlanRequest> {
     let t = |h, m| NaiveTime::from_hms_opt(h, m, 0).expect("time");
-    match site.id {
-        "cervieres" => vec![
+    let hhmm = |s: &Option<String>| {
+        s.as_deref()
+            .map(|x| skimap_common::site::parse_hhmm(x).expect("site table time"))
+    };
+    let starts = skimap_common::site::starts(site);
+    let generic = [
+        PlanPreset {
+            label: "2 h, skating, retour avant 16 h".into(),
+            start: 0,
+            start_time: None,
+            budget_min: 120.0,
+            style: PresetStyle::Skating,
+            return_before: Some("16:00".into()),
+            easy_only: false,
+        },
+        PlanPreset {
+            label: "3 h, classique".into(),
+            start: 0,
+            start_time: Some("10:00".into()),
+            budget_min: 180.0,
+            style: PresetStyle::Classic,
+            return_before: None,
+            easy_only: false,
+        },
+    ];
+    let presets = match skimap_common::site::local(site.id) {
+        Some(l) if !l.plan_requests.is_empty() => &l.plan_requests[..],
+        _ => &generic[..],
+    };
+    presets
+        .iter()
+        .map(|p| {
+            let s = &starts[p.start.min(starts.len() - 1)];
             PlanRequest {
-                label: "3 h, classique".into(),
-                start: LonLat::new(6.7269, 44.8552),
-                start_name: "Le Laus".into(),
+                label: p.label.clone(),
+                start: s.position(),
+                start_name: s.phrase.clone(),
                 date,
-                start_time: None,
+                start_time: hhmm(&p.start_time),
                 earliest: t(8, 0),
-                budget_min: 180.0,
-                style: Style::Classic,
-                return_before: None,
-                max_difficulty: None,
+                budget_min: p.budget_min,
+                style: match p.style {
+                    PresetStyle::Classic => Style::Classic,
+                    PresetStyle::Skating => Style::Skating,
+                },
+                return_before: hhmm(&p.return_before),
+                max_difficulty: p.easy_only.then_some(Difficulty::Easy),
                 max_results: 3,
-            },
-            PlanRequest {
-                label: "1 h 30, classique, vertes et bleues, départ 14 h 30".into(),
-                start: LonLat::new(6.8161, 44.8448),
-                start_name: "Les Fonts".into(),
-                date,
-                start_time: Some(t(14, 30)),
-                earliest: t(8, 0),
-                budget_min: 90.0,
-                style: Style::Classic,
-                return_before: None,
-                max_difficulty: Some(Difficulty::Easy),
-                max_results: 3,
-            },
-        ],
-        _ => vec![
-            PlanRequest {
-                label: "2 h, skating, retour avant 16 h".into(),
-                start: LonLat::new(6.1125, 46.6032),
-                start_name: "le départ des pistes de Chapelle-des-Bois".into(),
-                date,
-                start_time: None,
-                earliest: t(8, 0),
-                budget_min: 120.0,
-                style: Style::Skating,
-                return_before: Some(t(16, 0)),
-                max_difficulty: None,
-                max_results: 3,
-            },
-            PlanRequest {
-                label: "3 h, classique".into(),
-                start: LonLat::new(6.1125, 46.6032),
-                start_name: "le départ des pistes de Chapelle-des-Bois".into(),
-                date,
-                start_time: Some(t(10, 0)),
-                earliest: t(8, 0),
-                budget_min: 180.0,
-                style: Style::Classic,
-                return_before: None,
-                max_difficulty: None,
-                max_results: 3,
-            },
-        ],
-    }
+            }
+        })
+        .collect()
 }
 
 /// A short loop for a family (C11): the start of the site's first request, 75 min of model

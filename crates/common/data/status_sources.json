@@ -1,0 +1,1575 @@
+{
+  "source": "research/reports/08-sources-etat-pistes.csv (rapport 08, G3 #119, 15/11/2026)",
+  "kinds": {
+    "nordicfrance_widget": "widget Nordic France en marque blanche (id de station connu)",
+    "enj": "API Geotrek de l'ENJ (état route 1 Fermé / 2 Ouvert), filtre in_bbox",
+    "nordicfrance_page": "fiche Nordic France (id du widget à lire sur la fiche)",
+    "nordicfrance_page_uncertain": "fiche Nordic France, rapprochement de nom incertain",
+    "pyreneige": "API Pyreneige, payante",
+    "none": "aucune source d'état trouvée (lien vers le site de la station quand il existe)"
+  },
+  "domains": {
+    "net-100012601": {
+      "kind": "nordicfrance_page",
+      "name": "Val-Cenis",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/aussois-val-cenis-sardiere",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "net-100978343": {
+      "kind": "none",
+      "name": "Les Portes du Soleil",
+      "url": "https://www.portesdusoleil.com/",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-1012797281": {
+      "kind": "nordicfrance_widget",
+      "name": "La Roche-sur-Foron",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/1564",
+      "nordicfrance_station": 1564,
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement manuel du nom de station du widget)"
+    },
+    "net-1014108203": {
+      "kind": "nordicfrance_widget",
+      "name": "La Chapelle-Rambaud",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/3578",
+      "nordicfrance_station": 3578,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-1021944915": {
+      "kind": "none",
+      "name": "Menthières",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-1133481879": {
+      "kind": "nordicfrance_widget",
+      "name": "La Morte",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/9420",
+      "nordicfrance_station": 9420,
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement manuel du nom de station du widget)"
+    },
+    "net-114488898": {
+      "kind": "nordicfrance_page_uncertain",
+      "name": "Le Born",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/laubert-plateau-du-roy",
+      "authorisation_required": "oui",
+      "evidence": "déduit, incertain"
+    },
+    "net-116121483": {
+      "kind": "nordicfrance_widget",
+      "name": "La Colle Saint Michel",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/3668",
+      "nordicfrance_station": 3668,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-117653514": {
+      "kind": "none",
+      "name": "Alpe d'Huez Grand Domaine",
+      "url": "https://www.alpedhuez.com/",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-1234665002": {
+      "kind": "nordicfrance_page",
+      "name": "Villar-d'Arêne",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/domaine-nordique-villar-darene-pays-de-la-meije",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "net-1236468092": {
+      "kind": "none",
+      "name": "Saint-Nicolas-la-Chapelle",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-1236468096": {
+      "kind": "none",
+      "name": "La Giettaz",
+      "url": "https://www.lesportesdumontblanc.fr/",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-123797916": {
+      "kind": "enj",
+      "name": "Arc-sous-Cicon",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=6.3509,47.0195,6.4213,47.0671",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (8 itinéraires de ski dans l’enveloppe)"
+    },
+    "net-126531615": {
+      "kind": "none",
+      "name": "Cornimont",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-128558461": {
+      "kind": "nordicfrance_widget",
+      "name": "Ratery",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/3040",
+      "nordicfrance_station": 3040,
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement manuel du nom de station du widget)"
+    },
+    "net-135450391": {
+      "kind": "none",
+      "name": "Plancher-les-Mines",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-1424819615": {
+      "kind": "none",
+      "name": "Demi-Quartier",
+      "url": "https://www.lesportesdumontblanc.fr/",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-1430236674": {
+      "kind": "nordicfrance_widget",
+      "name": "Les Portes du Soleil",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/1607",
+      "nordicfrance_station": 1607,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-1466769360": {
+      "kind": "none",
+      "name": "Bourg-Saint-Maurice",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-146696717": {
+      "kind": "nordicfrance_page",
+      "name": "Pailherols",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/pailherols-carlades-les-flocons-verts",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "net-1468699324": {
+      "kind": "none",
+      "name": "Servoz",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-1469608289": {
+      "kind": "none",
+      "name": "Taninges",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-152532950": {
+      "kind": "nordicfrance_widget",
+      "name": "Cervières",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/3167",
+      "nordicfrance_station": 3167,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-155671256": {
+      "kind": "none",
+      "name": "Saint-Pierre-de-Chartreuse",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-159224166": {
+      "kind": "enj",
+      "name": "Les Combes",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=6.4871,47.0489,6.5679,47.0845",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (5 itinéraires de ski dans l’enveloppe)"
+    },
+    "net-162129092": {
+      "kind": "nordicfrance_page",
+      "name": "Domaine Nordique du Meygal",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/domaine-nordique-du-meygal",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "net-162538644": {
+      "kind": "nordicfrance_page",
+      "name": "La Chavade Bel Air",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/domaine-nordique-de-la-chavade",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "net-163701161": {
+      "kind": "none",
+      "name": "Rouge Gazon",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-164034991": {
+      "kind": "nordicfrance_widget",
+      "name": "Gresse en Vercors",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/3953",
+      "nordicfrance_station": 3953,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-165299867": {
+      "kind": "none",
+      "name": "Saint François Longchamp",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-166232828": {
+      "kind": "nordicfrance_page",
+      "name": "Grand Echaillon",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/le-grand-echaillon",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "net-166390325": {
+      "kind": "none",
+      "name": "Bolandoz",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-172069030": {
+      "kind": "none",
+      "name": "Le Hohwald",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-173609856": {
+      "kind": "nordicfrance_widget",
+      "name": "Paradiski",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/6742",
+      "nordicfrance_station": 6742,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-175558527": {
+      "kind": "none",
+      "name": "Caille",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-175813949": {
+      "kind": "nordicfrance_widget",
+      "name": "Beaufort",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/2292",
+      "nordicfrance_station": 2292,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-182402744": {
+      "kind": "nordicfrance_widget",
+      "name": "Domaine Nordique - Vallon de Champagny le Haut",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/6649",
+      "nordicfrance_station": 6649,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-182416835": {
+      "kind": "none",
+      "name": "Laveissenet",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-185244921": {
+      "kind": "none",
+      "name": "Les Premiers Sapins",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-185244936": {
+      "kind": "none",
+      "name": "Les Premiers Sapins",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-185278352": {
+      "kind": "none",
+      "name": "Tignes - Val d'Isère",
+      "url": "https://www.espacekilly.com/",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-185284964": {
+      "kind": "enj",
+      "name": "Fournets-Luisans",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=6.5509,47.0819,6.5813,47.1121",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (8 itinéraires de ski dans l’enveloppe)"
+    },
+    "net-186910068": {
+      "kind": "none",
+      "name": "Alpe d'Huez Grand Domaine",
+      "url": "https://www.alpedhuez.com/",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-188365138": {
+      "kind": "none",
+      "name": "Alpe d'Huez Grand Domaine",
+      "url": "https://www.alpedhuez.com/",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-190381222": {
+      "kind": "none",
+      "name": "Le Crouzet",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-196901574": {
+      "kind": "nordicfrance_widget",
+      "name": "Saint-Sigismond",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/3633",
+      "nordicfrance_station": 3633,
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement manuel du nom de station du widget)"
+    },
+    "net-206107197": {
+      "kind": "enj",
+      "name": "Fournet-Blancheroche",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=6.7901,47.1511,6.8422,47.2021",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (3 itinéraires de ski dans l’enveloppe)"
+    },
+    "net-206900853": {
+      "kind": "nordicfrance_page",
+      "name": "Laguiole",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/laguiole",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "net-217195829": {
+      "kind": "nordicfrance_widget",
+      "name": "Le Val d'Ambin (Val Cenis)",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/2111",
+      "nordicfrance_station": 2111,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-220797557": {
+      "kind": "none",
+      "name": "Les Portes du Soleil",
+      "url": "https://www.portesdusoleil.com/",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-220799502": {
+      "kind": "nordicfrance_widget",
+      "name": "Les Portes du Soleil",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/13274",
+      "nordicfrance_station": 13274,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-221160928": {
+      "kind": "none",
+      "name": "La Chapelle",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-22890557": {
+      "kind": "nordicfrance_page",
+      "name": "Gérardmer",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/domaine-nordique-des-bas-rupts-a-gerardmer-vosges",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "net-23078106": {
+      "kind": "nordicfrance_widget",
+      "name": "Bessans",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/4697",
+      "nordicfrance_station": 4697,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-23084075": {
+      "kind": "nordicfrance_widget",
+      "name": "Domaine du Barioz",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/6794",
+      "nordicfrance_station": 6794,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-24660872": {
+      "kind": "nordicfrance_widget",
+      "name": "Le Revard",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/6034",
+      "nordicfrance_station": 6034,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-24662668": {
+      "kind": "nordicfrance_widget",
+      "name": "La Ruchère-St-Christophe",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/5289",
+      "nordicfrance_station": 5289,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-25276105": {
+      "kind": "nordicfrance_widget",
+      "name": "Chamonix-Mont-Blanc",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/3542",
+      "nordicfrance_station": 3542,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-25832211": {
+      "kind": "nordicfrance_widget",
+      "name": "Sardières (Val Cenis)",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/2979",
+      "nordicfrance_station": 2979,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-25873304": {
+      "kind": "nordicfrance_widget",
+      "name": "Freissinières",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/9713",
+      "nordicfrance_station": 9713,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-25938117": {
+      "kind": "nordicfrance_page",
+      "name": "Saint-Véran",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/molines-saint-veran-vallee-des-aigues",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "net-25969220": {
+      "kind": "nordicfrance_widget",
+      "name": "Vallouise-Pelvoux",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/6214",
+      "nordicfrance_station": 6214,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-26438169": {
+      "kind": "nordicfrance_widget",
+      "name": "Molines-en-Queyras",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/4646",
+      "nordicfrance_station": 4646,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-274102261": {
+      "kind": "none",
+      "name": "Arçon",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-27434035": {
+      "kind": "nordicfrance_page",
+      "name": "Site Nordique des Trois Fours",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/trois-fours",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "net-28151103": {
+      "kind": "nordicfrance_widget",
+      "name": "Les Entremonts",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/1657",
+      "nordicfrance_station": 1657,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-294930878": {
+      "kind": "none",
+      "name": "Passy - Plaine Joux",
+      "url": "https://www.passy-mont-blanc.com",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-30070848": {
+      "kind": "nordicfrance_widget",
+      "name": "Gréolières-Les-Neiges",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/10218",
+      "nordicfrance_station": 10218,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-30145262": {
+      "kind": "none",
+      "name": "Alpe d'Huez Grand Domaine",
+      "url": "https://www.alpedhuez.com/",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-31649980": {
+      "kind": "nordicfrance_page",
+      "name": "Lac Blanc",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/station-du-lac-blanc-dans-le-massif-des-vosges",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "net-32999591": {
+      "kind": "nordicfrance_widget",
+      "name": "Pralognan-la-Vanoise",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/6772",
+      "nordicfrance_station": 6772,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-334848400": {
+      "kind": "nordicfrance_page",
+      "name": "Giron",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/giron-1000",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "net-33554872": {
+      "kind": "nordicfrance_page",
+      "name": "Les Chosalets (Chamonix)",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/chamonix",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "net-35326750": {
+      "kind": "nordicfrance_widget",
+      "name": "Val-des-Prés",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/3052",
+      "nordicfrance_station": 3052,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-35547652": {
+      "kind": "nordicfrance_widget",
+      "name": "Domaine skiable Valberg",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/10219",
+      "nordicfrance_station": 10219,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-365871451": {
+      "kind": "none",
+      "name": "Saint-Sorlin-d'Arves",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-37047183": {
+      "kind": "nordicfrance_widget",
+      "name": "Col de Marcieu",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/4971",
+      "nordicfrance_station": 4971,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-37281902": {
+      "kind": "none",
+      "name": "Vallorcine",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-37342204": {
+      "kind": "none",
+      "name": "Prabouré",
+      "url": "https://praboure.fr/",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-37844608": {
+      "kind": "nordicfrance_widget",
+      "name": "Le Semnoz",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/3670",
+      "nordicfrance_station": 3670,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-38867652": {
+      "kind": "nordicfrance_widget",
+      "name": "Puy-Saint-Vincent",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/3456",
+      "nordicfrance_station": 3456,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-395442641": {
+      "kind": "nordicfrance_page",
+      "name": "Le Sappey-en-Chartreuse",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/domaine-de-chamechaude-col-de-porte-sappey-en-chartreuse-st-hugues-de-chartreuse",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "net-39824142": {
+      "kind": "nordicfrance_page_uncertain",
+      "name": "Pont de Montvert - Sud Mont Lozère",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/le-mas-de-la-barque-espace-nordique-du-mont-lozere",
+      "authorisation_required": "oui",
+      "evidence": "déduit, incertain"
+    },
+    "net-40322308": {
+      "kind": "nordicfrance_page",
+      "name": "Font-Romeu-Odeillo-Via",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/altiservice-font-romeu-pyrenees2000",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "net-40906815": {
+      "kind": "nordicfrance_widget",
+      "name": "Le Grand-Bornand",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/3692",
+      "nordicfrance_station": 3692,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-421543053": {
+      "kind": "none",
+      "name": "Grande-Rivière Château",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-42505626": {
+      "kind": "nordicfrance_widget",
+      "name": "Le Sappey-en-Chartreuse",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/6653",
+      "nordicfrance_station": 6653,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-427577376": {
+      "kind": "none",
+      "name": "Cézens",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-4375572": {
+      "kind": "nordicfrance_widget",
+      "name": "Domaine Skiable Chamrousse",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/6963",
+      "nordicfrance_station": 6963,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-440014910": {
+      "kind": "none",
+      "name": "La Croix de Bauzon",
+      "url": "https://www.croixdebauzon.com",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-440309340": {
+      "kind": "none",
+      "name": "Lachamp-Raphaël",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-44644829": {
+      "kind": "none",
+      "name": "Les Houches",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-4602780": {
+      "kind": "nordicfrance_page_uncertain",
+      "name": "Le Lioran",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/domaine-nordique-de-prat-de-bouc",
+      "authorisation_required": "oui",
+      "evidence": "déduit, incertain"
+    },
+    "net-4602799": {
+      "kind": "none",
+      "name": "Le Falgoux",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-46247962": {
+      "kind": "nordicfrance_widget",
+      "name": "Domaine de Beldina",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/3930",
+      "nordicfrance_station": 3930,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-468513927": {
+      "kind": "none",
+      "name": "Faverges-Seythenex",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-478721195": {
+      "kind": "enj",
+      "name": "Les Rousses",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=6.0640,46.4458,6.0782,46.4542",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (1 itinéraires de ski dans l’enveloppe)"
+    },
+    "net-50406368": {
+      "kind": "nordicfrance_page",
+      "name": "Nasbinals",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/nasbinals-fer-a-cheval",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "net-50694408": {
+      "kind": "nordicfrance_page_uncertain",
+      "name": "Chalmazel-Jeansagnière",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/col-de-la-loge",
+      "authorisation_required": "oui",
+      "evidence": "déduit, incertain"
+    },
+    "net-541063042": {
+      "kind": "none",
+      "name": "Brénod",
+      "url": "https://www.brenod.com/",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-58453752": {
+      "kind": "nordicfrance_page",
+      "name": "Le Pilat",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/espace-nordique-des-monts-du-pilat",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "net-596693047": {
+      "kind": "none",
+      "name": "Saint-Setiers",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-597088859": {
+      "kind": "none",
+      "name": "Saint-Setiers",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-627317060": {
+      "kind": "none",
+      "name": "Montgenèvre",
+      "url": "https://www.montgenevre.com",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-645697084": {
+      "kind": "none",
+      "name": "Saint-Setiers",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-66410529": {
+      "kind": "nordicfrance_widget",
+      "name": "Crots",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/10778",
+      "nordicfrance_station": 10778,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-70174946": {
+      "kind": "none",
+      "name": "La Montagne",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-70374336": {
+      "kind": "nordicfrance_widget",
+      "name": "Saint-Paul-sur-Ubaye",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/5027",
+      "nordicfrance_station": 5027,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-72128758": {
+      "kind": "nordicfrance_widget",
+      "name": "Evasion Mont Blanc",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/1554",
+      "nordicfrance_station": 1554,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-72443280": {
+      "kind": "nordicfrance_page",
+      "name": "Les Estables",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/domaine-nordique-du-mezenc",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "net-73102183": {
+      "kind": "nordicfrance_widget",
+      "name": "Villar-d'Arêne",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/4332",
+      "nordicfrance_station": 4332,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-78675377": {
+      "kind": "nordicfrance_widget",
+      "name": "Rencurel",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/5811",
+      "nordicfrance_station": 5811,
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement manuel du nom de station du widget)"
+    },
+    "net-80702923": {
+      "kind": "nordicfrance_widget",
+      "name": "Plateau des Glières",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/2681",
+      "nordicfrance_station": 2681,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-818379662": {
+      "kind": "nordicfrance_page_uncertain",
+      "name": "Pont de Montvert - Sud Mont Lozère",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/le-mas-de-la-barque-espace-nordique-du-mont-lozere",
+      "authorisation_required": "oui",
+      "evidence": "déduit, incertain"
+    },
+    "net-851228263": {
+      "kind": "none",
+      "name": "Thilay",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-851228264": {
+      "kind": "none",
+      "name": "Thilay",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-851228266": {
+      "kind": "none",
+      "name": "Thilay",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-87271071": {
+      "kind": "nordicfrance_page_uncertain",
+      "name": "Saint-Agnan-en-Vercors",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/site-du-haut-vercors",
+      "authorisation_required": "oui",
+      "evidence": "déduit, incertain"
+    },
+    "net-88197525": {
+      "kind": "enj",
+      "name": "Le Laveron",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=6.2460,46.8353,6.3516,46.8846",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (5 itinéraires de ski dans l’enveloppe)"
+    },
+    "net-89487999": {
+      "kind": "none",
+      "name": "La Tour-d'Auvergne",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-914473998": {
+      "kind": "enj",
+      "name": "Damprichard",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=6.8376,47.1850,6.9039,47.2371",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (3 itinéraires de ski dans l’enveloppe)"
+    },
+    "net-920680329": {
+      "kind": "nordicfrance_widget",
+      "name": "Chaux-Neuve",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/4491",
+      "nordicfrance_station": 4491,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "net-925024307": {
+      "kind": "none",
+      "name": "Le Bélieu",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "net-97559764": {
+      "kind": "enj",
+      "name": "La Chaux-de-Gilley",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=6.3735,46.9905,6.4589,47.0299",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (5 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-10213454": {
+      "kind": "nordicfrance_widget",
+      "name": "Col du Fanget",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/4144",
+      "nordicfrance_station": 4144,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-10214976": {
+      "kind": "nordicfrance_widget",
+      "name": "Le Boréon",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/10220",
+      "nordicfrance_station": 10220,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-10543444": {
+      "kind": "nordicfrance_widget",
+      "name": "Nâves",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/1707",
+      "nordicfrance_station": 1707,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-10616936": {
+      "kind": "nordicfrance_page",
+      "name": "Le Chioula",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/le-chioula-2",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "site-10616940": {
+      "kind": "pyreneige",
+      "name": "Étang de Lers",
+      "url": "https://www.pyreneige.fr/ressources/api/",
+      "authorisation_required": "oui",
+      "evidence": "déduit (couverture par station non vérifiée)"
+    },
+    "site-10786643": {
+      "kind": "nordicfrance_page",
+      "name": "Le Markstein",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/domaine-nordique-markstein-grand-ballon",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "site-10801131": {
+      "kind": "nordicfrance_widget",
+      "name": "Plateau de Solaison",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/3605",
+      "nordicfrance_station": 3605,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-11960150": {
+      "kind": "nordicfrance_widget",
+      "name": "Domaine Nordique Col d'Ornon",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/4640",
+      "nordicfrance_station": 4640,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-12022904": {
+      "kind": "nordicfrance_page",
+      "name": "Markstein-Grand Ballon",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/domaine-nordique-markstein-grand-ballon",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "site-12086827": {
+      "kind": "none",
+      "name": "Domaine Nordique de Ventron",
+      "url": "https://www.ermitage-resort.com/-Ski-Loisirs-",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "site-12168453": {
+      "kind": "enj",
+      "name": "Saint-Laurent-en-Grandvaux",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=5.9455,46.5349,5.9766,46.5778",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (3 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-12203182": {
+      "kind": "nordicfrance_widget",
+      "name": "Domaine nordique des Moises",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/1571",
+      "nordicfrance_station": 1571,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-12211261": {
+      "kind": "none",
+      "name": "Stade de neige du Col du Feu",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "site-13134081": {
+      "kind": "enj",
+      "name": "Nanchez",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=5.8094,46.4813,5.8873,46.5587",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (17 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-13134084": {
+      "kind": "enj",
+      "name": "Saint-Pierre",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=5.8696,46.5481,5.9263,46.5862",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (5 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-13134088": {
+      "kind": "enj",
+      "name": "Les Crozets",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=5.7863,46.4608,5.7970,46.4924",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (3 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-13502421": {
+      "kind": "nordicfrance_page",
+      "name": "Station Nordique du Col de la Llose",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/domaine-nordique-du-col-de-la-llose",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "site-13664042": {
+      "kind": "enj",
+      "name": "Site nordique de La Praille",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=5.6145,45.9376,5.6428,46.0285",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (7 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-13681086": {
+      "kind": "enj",
+      "name": "Chapelle-des-Bois",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=6.0617,46.5836,6.1427,46.6468",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (28 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-13699336": {
+      "kind": "enj",
+      "name": "La Pesse / Les Bouchoux",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=5.8110,46.2473,5.9360,46.3425",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (18 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-13704619": {
+      "kind": "enj",
+      "name": "Belleydoux",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=5.7252,46.2507,5.7731,46.2640",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (3 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-13704653": {
+      "kind": "enj",
+      "name": "Giron",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=5.7704,46.2066,5.8436,46.2499",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (11 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-13705091": {
+      "kind": "enj",
+      "name": "Les Moussières / Bellecombe / Molunes",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=5.8754,46.2946,5.9485,46.3698",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (7 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-13705382": {
+      "kind": "enj",
+      "name": "Lajoux / Massacre",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=5.9443,46.3670,6.0683,46.4722",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (37 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-13714784": {
+      "kind": "enj",
+      "name": "Site nordique de Morbier",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=6.0190,46.5467,6.0801,46.6037",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (12 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-13714785": {
+      "kind": "enj",
+      "name": "Bellefontaine",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=6.0513,46.5480,6.1205,46.5916",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (12 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-13767199": {
+      "kind": "enj",
+      "name": "La Malmaison",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=6.3784,46.9187,6.4708,46.9673",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (17 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-13768889": {
+      "kind": "enj",
+      "name": "Foncine / Chaux-Neuve",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=6.0581,46.6079,6.1188,46.6710",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (5 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-13768933": {
+      "kind": "enj",
+      "name": "Lac des Rouges Truites",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=5.9925,46.5909,6.0697,46.6334",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (10 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-13841278": {
+      "kind": "none",
+      "name": "Station de Sports d'Hiver du Haut-Folin",
+      "url": "https://skimorvan.wixsite.com/haut-folin",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "site-15411343": {
+      "kind": "none",
+      "name": "Malbuisson - La Fuvelle",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "site-16842409": {
+      "kind": "nordicfrance_widget",
+      "name": "Domaine nordique de Névache",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/3106",
+      "nordicfrance_station": 3106,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-16863674": {
+      "kind": "nordicfrance_widget",
+      "name": "Site Nordique de Serre Chevalier",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/3958",
+      "nordicfrance_station": 3958,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-17491742": {
+      "kind": "nordicfrance_page",
+      "name": "Font d'Urle - Col de Carri",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/font-durle",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "site-19199059": {
+      "kind": "nordicfrance_page",
+      "name": "Baraque des Bouviers",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/la-baraque-des-bouviers",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "site-19751525": {
+      "kind": "none",
+      "name": "Orelle",
+      "url": "https://www.les3vallees.com/",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "site-20021650": {
+      "kind": "nordicfrance_widget",
+      "name": "Larche",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/11692",
+      "nordicfrance_station": 11692,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-20194045": {
+      "kind": "nordicfrance_widget",
+      "name": "Barcelonnette",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/5037",
+      "nordicfrance_station": 5037,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-20385000": {
+      "kind": "nordicfrance_widget",
+      "name": "Plateau de Beauregard",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/3629",
+      "nordicfrance_station": 3629,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-21355703": {
+      "kind": "none",
+      "name": "Courchevel",
+      "url": "https://www.les3vallees.com/",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "site-21355704": {
+      "kind": "nordicfrance_page",
+      "name": "Méribel",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/meribel",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "site-2754619": {
+      "kind": "none",
+      "name": "Domaine Nordique de Pessade",
+      "url": "http://www.tourisme-lescheires.com/les-activites-nordiques.html",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "site-2764548": {
+      "kind": "enj",
+      "name": "Les Fourgs",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=6.3332,46.7534,6.4868,46.8936",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (23 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-2783292": {
+      "kind": "enj",
+      "name": "Domaine Nordique Haute-Joux Combe Noire",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=6.0961,46.7142,6.2440,46.8642",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (22 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-2783351": {
+      "kind": "enj",
+      "name": "Site nordique de Mouthe",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=6.1242,46.6030,6.2442,46.7130",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (19 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-2798243": {
+      "kind": "nordicfrance_widget",
+      "name": "Espace Nordique du Haut vercors",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/5216",
+      "nordicfrance_station": 5216,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-2798246": {
+      "kind": "nordicfrance_widget",
+      "name": "Lans en Vercors",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/4963",
+      "nordicfrance_station": 4963,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-2801725": {
+      "kind": "nordicfrance_page",
+      "name": "Méaudre",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/domaine-nordique-autrans-meaudre-en-vercors",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "site-2801730": {
+      "kind": "nordicfrance_widget",
+      "name": "Autrans",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/6704",
+      "nordicfrance_station": 6704,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-2868907": {
+      "kind": "none",
+      "name": "Domaine Nordique de Guéry",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "site-2873910": {
+      "kind": "pyreneige",
+      "name": "Cauterets Pont d'Espagne",
+      "url": "https://www.pyreneige.fr/ressources/api/",
+      "authorisation_required": "oui",
+      "evidence": "déduit (couverture par station non vérifiée)"
+    },
+    "site-2877789": {
+      "kind": "pyreneige",
+      "name": "Luz-Ardiden",
+      "url": "https://www.pyreneige.fr/ressources/api/",
+      "authorisation_required": "oui",
+      "evidence": "déduit (couverture par station non vérifiée)"
+    },
+    "site-3161151": {
+      "kind": "enj",
+      "name": "La Vattay",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=5.9647,46.3387,6.1078,46.4278",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (17 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-3161169": {
+      "kind": "enj",
+      "name": "Les Rousses",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=6.0564,46.4678,6.1543,46.5513",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (9 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-3161183": {
+      "kind": "enj",
+      "name": "Le Risoux",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=6.0528,46.4911,6.1472,46.5742",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (7 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-3161203": {
+      "kind": "enj",
+      "name": "Metabief - Mont d'or",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=6.2403,46.6994,6.3597,46.7562",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (11 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-3424095": {
+      "kind": "none",
+      "name": "Pertuyzat-Montchal",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "site-3533848": {
+      "kind": "enj",
+      "name": "Le Larmont",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=6.3924,46.8909,6.4578,46.9200",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (11 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-3545070": {
+      "kind": "none",
+      "name": "Super Besse",
+      "url": "https://lemontdore.fr",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "site-3584930": {
+      "kind": "nordicfrance_widget",
+      "name": "Crévoux",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/4618",
+      "nordicfrance_station": 4618,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-3619015": {
+      "kind": "nordicfrance_widget",
+      "name": "Réallon",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/3967",
+      "nordicfrance_station": 3967,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-3922976": {
+      "kind": "none",
+      "name": "Aillon-Margériaz",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "site-3923526": {
+      "kind": "none",
+      "name": "Chabanon",
+      "url": "https://www.chabanon-selonnet.com/",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "site-3962219": {
+      "kind": "none",
+      "name": "Les Ménuires",
+      "url": "https://www.les3vallees.com/",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "site-4143350": {
+      "kind": "pyreneige",
+      "name": "Nistos",
+      "url": "https://www.pyreneige.fr/ressources/api/",
+      "authorisation_required": "oui",
+      "evidence": "déduit (couverture par station non vérifiée)"
+    },
+    "site-4522185": {
+      "kind": "nordicfrance_page",
+      "name": "Queyras - Aiguilles",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/aiguilles-abries-ristolas-vallee-du-haut-guil",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "site-4522202": {
+      "kind": "nordicfrance_widget",
+      "name": "Queyras - Haut-Guil (Abriès)",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/4650",
+      "nordicfrance_station": 4650,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-4626858": {
+      "kind": "pyreneige",
+      "name": "La Pierre Saint-Martin",
+      "url": "https://www.pyreneige.fr/ressources/api/",
+      "authorisation_required": "oui",
+      "evidence": "déduit (couverture par station non vérifiée)"
+    },
+    "site-4638636": {
+      "kind": "pyreneige",
+      "name": "Le Somport",
+      "url": "https://www.pyreneige.fr/ressources/api/",
+      "authorisation_required": "oui",
+      "evidence": "déduit (couverture par station non vérifiée)"
+    },
+    "site-4874561": {
+      "kind": "pyreneige",
+      "name": "Espace Nordique du Val d'Azun",
+      "url": "https://www.pyreneige.fr/ressources/api/",
+      "authorisation_required": "oui",
+      "evidence": "déduit (couverture par station non vérifiée)"
+    },
+    "site-5719103": {
+      "kind": "nordicfrance_widget",
+      "name": "Foyer nordique du Salève",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/3697",
+      "nordicfrance_station": 3697,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-5731035": {
+      "kind": "nordicfrance_widget",
+      "name": "Galibier-Thabor",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/14040",
+      "nordicfrance_station": 14040,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-5757130": {
+      "kind": "nordicfrance_widget",
+      "name": "Massif des Brasses",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/20277",
+      "nordicfrance_station": 20277,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-5757153": {
+      "kind": "nordicfrance_widget",
+      "name": "Hirmentaz - Les Habères",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/3372",
+      "nordicfrance_station": 3372,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-5757156": {
+      "kind": "nordicfrance_page",
+      "name": "Roc d'Enfer",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/ski-de-fond-bellevaux",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "site-5757942": {
+      "kind": "nordicfrance_widget",
+      "name": "Praz de Lys Sommand",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/1736",
+      "nordicfrance_station": 1736,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-5759134": {
+      "kind": "none",
+      "name": "Thollon-les-Mémises",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "site-5993384": {
+      "kind": "none",
+      "name": "Espace Diamant",
+      "url": "https://www.espacediamant.com",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "site-5993417": {
+      "kind": "none",
+      "name": "Les Portes du Mont-Blanc",
+      "url": "https://www.lesportesdumontblanc.fr/",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "site-5993424": {
+      "kind": "nordicfrance_widget",
+      "name": "Megève",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/1608",
+      "nordicfrance_station": 1608,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-5994157": {
+      "kind": "none",
+      "name": "La Plagne",
+      "url": "https://paradiski.com",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    },
+    "site-5994241": {
+      "kind": "nordicfrance_widget",
+      "name": "La Clusaz",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/3172",
+      "nordicfrance_station": 3172,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-6048090": {
+      "kind": "nordicfrance_widget",
+      "name": "Gap-Bayard",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/4540",
+      "nordicfrance_station": 4540,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-6090461": {
+      "kind": "nordicfrance_page",
+      "name": "Col de Porte",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/domaine-de-chamechaude-col-de-porte-sappey-en-chartreuse-st-hugues-de-chartreuse",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "site-6346133": {
+      "kind": "nordicfrance_widget",
+      "name": "Queyras - Arvieux",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/4613",
+      "nordicfrance_station": 4613,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-6352206": {
+      "kind": "nordicfrance_widget",
+      "name": "Queyras - Ceillac",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/4590",
+      "nordicfrance_station": 4590,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-6927465": {
+      "kind": "nordicfrance_page",
+      "name": "Font d'Urle - Chaud Clapier",
+      "url": "https://www.nordicfrance.fr/nordicfrance_station/font-durle",
+      "authorisation_required": "oui",
+      "evidence": "déduit (rapprochement de nom, fiche non ouverte)"
+    },
+    "site-8012984": {
+      "kind": "nordicfrance_widget",
+      "name": "Dévoluy",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/3725",
+      "nordicfrance_station": 3725,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-8021598": {
+      "kind": "nordicfrance_widget",
+      "name": "Ancelle",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/2808",
+      "nordicfrance_station": 2808,
+      "authorisation_required": "oui",
+      "evidence": "station vérifiée dans le widget d’association ; domaine rapproché par le nom (P3)"
+    },
+    "site-9134314": {
+      "kind": "nordicfrance_widget",
+      "name": "Plateau de Beille",
+      "url": "https://www.nordicfrance.fr/widget/marqueblanche/station/6413",
+      "nordicfrance_station": 6413,
+      "authorisation_required": "oui",
+      "evidence": "vérifié (id lu sur la fiche, widget testé)"
+    },
+    "site-9227542": {
+      "kind": "enj",
+      "name": "Sur Lyand",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=5.7439,45.9310,5.7777,45.9633",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (6 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-9227575": {
+      "kind": "enj",
+      "name": "Plateau de Retord",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=5.6947,46.0312,5.7414,46.1518",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (13 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-9227579": {
+      "kind": "enj",
+      "name": "Lachat",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=5.6353,46.0650,5.6667,46.1159",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (5 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-9231568": {
+      "kind": "enj",
+      "name": "Apremont",
+      "url": "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?practices=2,3&in_bbox=5.6387,46.1887,5.6912,46.2257",
+      "authorisation_required": "oui",
+      "evidence": "vérifié (4 itinéraires de ski dans l’enveloppe)"
+    },
+    "site-9282437": {
+      "kind": "none",
+      "name": "Col de Légal",
+      "authorisation_required": "inconnu",
+      "evidence": "vérifié : absent d’ENJ, du widget NF et des fiches NF rapprochées"
+    }
+  }
+}
