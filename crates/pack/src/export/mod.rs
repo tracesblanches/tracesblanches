@@ -659,6 +659,78 @@ fn zone_items(fc: &geojson::FeatureCollection) -> Vec<Item> {
     items
 }
 
+/// Readable texts of a JSON document of the assistant: the `text` field (string or list
+/// of strings) of the outermost objects that have one; the details below such an object
+/// (reasons, per-hour values) are not repeated.
+fn collect_texts(v: &Value, out: &mut Vec<String>) {
+    match v {
+        Value::Object(m) => match m.get("text") {
+            Some(Value::String(t)) => out.push(t.clone()),
+            Some(Value::Array(a)) if a.iter().all(Value::is_string) => {
+                out.extend(a.iter().filter_map(Value::as_str).map(str::to_owned));
+            }
+            _ => m.values().for_each(|x| collect_texts(x, out)),
+        },
+        Value::Array(a) => a.iter().for_each(|x| collect_texts(x, out)),
+        _ => {}
+    }
+}
+
+/// « 13 km, ~2 h, retour 12 h 15 »: length to the kilometre, time to the quarter hour,
+/// return time as given (`HH:MM`).
+pub fn loop_name(length_km: f64, eta_min: f64, arrival: Option<&str>) -> String {
+    let q = ((eta_min / 15.0).round() as i64 * 15).max(15);
+    let dur = match (q / 60, q % 60) {
+        (0, m) => format!("~{m} min"),
+        (h, 0) => format!("~{h} h"),
+        (h, m) => format!("~{h} h {m:02}"),
+    };
+    let mut s = format!("{} km, {dur}", length_km.round() as i64);
+    if let Some((h, m)) = arrival.and_then(|a| a.split_once(':')) {
+        let h = h.trim_start_matches('0');
+        let h = if h.is_empty() { "0" } else { h };
+        if m == "00" {
+            let _ = write!(s, ", retour {h} h");
+        } else {
+            let _ = write!(s, ", retour {h} h {m}");
+        }
+    }
+    s
+}
+
+/// Items of the suggestions GeoJSON of the assistant.
+fn loop_items(fc: &geojson::FeatureCollection) -> Vec<Item> {
+    fc.features
+        .iter()
+        .filter_map(|f| {
+            let name = loop_name(
+                prop_f64(f, "length_km").unwrap_or(0.0),
+                prop_f64(f, "eta_min").unwrap_or(0.0),
+                prop_str(f, "arrival").as_deref(),
+            );
+            let rank = prop_f64(f, "rank").unwrap_or(1.0) as u32;
+            let mut desc = Vec::new();
+            if let Some(r) = prop_str(f, "request") {
+                desc.push(format!("Demande : {r} (choix n° {rank})"));
+            }
+            if let Some(l) = prop_str(f, "label") {
+                desc.push(format!("Boucle : {l}"));
+            }
+            if let Some(Value::Array(r)) = prop(f, "reasons") {
+                desc.extend(r.iter().filter_map(Value::as_str).map(str::to_owned));
+            }
+            desc.push("Suggestion de l'assistant, pas une garantie : vérifier neige, BERA et état des pistes.".to_owned());
+            Some(Item {
+                name,
+                desc,
+                geom: geom_of(f)?,
+                style: if rank == 1 { "loop-best" } else { "loop" }.to_owned(),
+                folder: prop_str(f, "request").unwrap_or_else(|| "Boucles".to_owned()),
+            })
+        })
+        .collect()
+}
+
 /// Label of an exposure class of the `avalanche-exposure` layer (never « sûr »).
 pub fn exposure_label(class: u64) -> &'static str {
     match class {
@@ -1097,6 +1169,54 @@ pub fn export(pack: &Pack, dir: &Path) -> Result<ExportReport> {
         ));
     }
 
+    // Suggested loops of the assistant (A5): « 13 km, ~2 h, retour 12 h 15 ».
+    if has("assist-suggestions") {
+        let l = pack.layer("assist-suggestions")?;
+        let fc = pack.read_geojson("assist-suggestions")?;
+        collections.push((
+            Collection {
+                stem: "boucles-suggerees".to_owned(),
+                title: format!("{} — {}", l.title, m.site.name),
+                about: about(l, &generated),
+                styles: vec![
+                    style("loop-best", [0x00, 0x6d, 0xa8], 230, 5.0, None),
+                    style("loop", [0x6a, 0x9f, 0xc8], 200, 4.0, None),
+                ],
+                items: loop_items(&fc),
+            },
+            false,
+        ));
+    }
+    // Texts of the assistant (A1 briefing, A2 wax, A3 snow quality) for reading on the
+    // phone next to the map.
+    let mut texts = String::new();
+    for id in ["assist-briefing", "assist-wax", "assist-snow-quality"] {
+        if !has(id) {
+            continue;
+        }
+        let l = pack.layer(id)?;
+        let v = pack.read_json(id)?;
+        let mut lines = Vec::new();
+        collect_texts(&v, &mut lines);
+        if lines.is_empty() {
+            continue;
+        }
+        let _ = writeln!(texts, "== {}\n", l.title);
+        for t in lines {
+            let _ = writeln!(texts, "{t}");
+        }
+        texts.push('\n');
+    }
+    if !texts.is_empty() {
+        texts.push_str("Sorties de l'assistant (skimap assist) : jamais une garantie de sécurité ; vérifier le BERA, la neige et les règles avant de partir.\n");
+        let p = "assistant/assistant.txt".to_owned();
+        files.push(ExportedFile {
+            bytes: write_bytes(&dir.join(&p), texts.as_bytes())?,
+            path: p,
+            count: 0,
+        });
+    }
+
     // Itineraries: proof routes on trails (C1, C5) and off-piste (C3).
     let route_layers: Vec<&Layer> = m
         .layers
@@ -1388,6 +1508,32 @@ mod tests {
         assert!(k.contains("<styleUrl>#exposure-3</styleUrl>"), "{k}");
         let g = gpx(&c, "skimap", "2026-11-15T00:00:00Z");
         assert!(g.contains("Exposition aux avalanches : très exposé"));
+    }
+
+    #[test]
+    fn loop_names_read_aloud() {
+        assert_eq!(
+            loop_name(12.8, 118.0, Some("12:15")),
+            "13 km, ~2 h, retour 12 h 15"
+        );
+        assert_eq!(
+            loop_name(10.03, 75.0, Some("16:00")),
+            "10 km, ~1 h 15, retour 16 h"
+        );
+        assert_eq!(
+            loop_name(3.2, 20.0, Some("09:45")),
+            "3 km, ~15 min, retour 9 h 45"
+        );
+        assert_eq!(loop_name(15.59, 181.0, None), "16 km, ~3 h");
+        let mut t = Vec::new();
+        collect_texts(
+            &serde_json::json!({"days": [
+                {"text": ["a", "b"], "reasons": [{"text": "detail"}]},
+                {"points": [{"text": "c"}]}
+            ]}),
+            &mut t,
+        );
+        assert_eq!(t, ["a", "b", "c"]);
     }
 
     #[test]

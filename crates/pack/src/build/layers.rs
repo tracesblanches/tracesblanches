@@ -369,6 +369,61 @@ pub fn discovered(out: &Path) -> Result<Vec<Spec>> {
             )
         });
     }
+    // Assistant (A1, A2, A3, A5): the files of the latest briefing date.
+    if let Some(date) = discover(out, "assist", "briefing_", ".json")?
+        .pop()
+        .map(|n| n["briefing_".len()..n.len() - ".json".len()].to_owned())
+    {
+        for (id, title, prefix, ext, kind) in [
+            (
+                "assist-briefing",
+                "Assistant : briefing du jour",
+                "briefing_",
+                "json",
+                LayerKind::Data,
+            ),
+            (
+                "assist-wax",
+                "Assistant : fartage",
+                "wax_",
+                "json",
+                LayerKind::Data,
+            ),
+            (
+                "assist-snow-quality",
+                "Assistant : qualité de neige heure par heure",
+                "snow_quality_",
+                "json",
+                LayerKind::Data,
+            ),
+            (
+                "assist-suggestions",
+                "Assistant : boucles suggérées",
+                "suggestions_",
+                "geojson",
+                LayerKind::Vector,
+            ),
+        ] {
+            let file = format!("{prefix}{date}.{ext}");
+            if !out.join("assist").join(&file).is_file() {
+                continue;
+            }
+            let base = if kind == LayerKind::Vector {
+                vector("", "", "assist", "", "assist.meta.json", true)
+            } else {
+                data("", "", "assist", "", "assist.meta.json")
+            };
+            v.push(Spec {
+                id: Cow::Borrowed(id),
+                title: Cow::Owned(format!("{title} ({date})")),
+                file: Cow::Owned(file),
+                notes: &[
+                    "Sortie de l'assistant (skimap assist) pour le jour indiqué : jamais une garantie de sécurité ; vérifier BERA, neige et règles.",
+                ],
+                ..base
+            });
+        }
+    }
     Ok(v)
 }
 
