@@ -1,0 +1,84 @@
+{
+  "alerts.le-laus": [],
+  "alerts.les-fonts": [],
+  "best_time.le-laus": [
+    "Meilleur départ vers 8 h 30 (retour vers 10 h 54, sortie de 120 min) : rien ne distingue les créneaux."
+  ],
+  "best_time.les-fonts": [
+    "Meilleur départ vers 8 h 00 (retour vers 10 h 24, sortie de 120 min) : rien ne distingue les créneaux."
+  ],
+  "briefing.0.text": [
+    "Cervières — dimanche 15 novembre 2026",
+    "Domaines :",
+    "1. Les Fonts (score -2,75) : pas de source d'état des pistes pour ce domaine ; 0 cm de neige estimée (médiane, carte du 14/11, 0 % des points ≥ 20 cm) : insuffisante pour damer [-3,00] ; vent faible (rafales 20 km/h) ; 6 °C en moyenne, ressenti 0 °C ; niveau d'affluence modéré (dimanche) [-0,25] ; à 15 km à vol d'oiseau [-0,30] ; 40 km de pistes nordiques (OSM) [+0,80].",
+    "2. Cervières (score -12,81) : 2 itinéraires ouverts sur 3 (10 km sur 15) mais neige estimée insuffisante : à vérifier ; domaine fermé à cette date (dates d'ouverture publiées par la commune) [-10,00] ; 0 cm de neige estimée (médiane, carte du 14/11, 0 % des points ≥ 20 cm) : insuffisante pour damer [-3,00] ; vent faible (rafales 15 km/h) ; 8 °C en moyenne, ressenti 4 °C ; niveau d'affluence modéré (dimanche) [-0,25] ; à 8 km à vol d'oiseau [-0,16] ; 30 km de pistes nordiques (OSM) [+0,60].",
+    "Itinéraires (les 5 premiers non fermés) :",
+    "1. Chemin du Blétonnet (score -3,46) : ouvert selon la source, mais neige estimée insuffisante : état sans doute hors saison, à vérifier ; 0 cm de neige estimée (médiane, carte du 14/11, 0 % des points ≥ 20 cm) : insuffisante pour damer [-3,00] ; vent faible (rafales 15 km/h) ; 8 °C en moyenne, ressenti 4 °C ; niveau d'affluence modéré (dimanche) [-0,25] ; à 11 km à vol d'oiseau [-0,21].",
+    "2. Souliers (score -3,59) : ouvert selon la source, mais neige estimée insuffisante : état sans doute hors saison, à vérifier ; 0 cm de neige estimée (médiane, carte du 14/11, 0 % des points ≥ 20 cm) : insuffisante pour damer [-3,00] ; vent faible (rafales 20 km/h) ; 6 °C en moyenne, ressenti 0 °C ; météo du point Les Fonts à 9 km ; niveau d'affluence modéré (dimanche) [-0,25] ; à 17 km à vol d'oiseau [-0,34].",
+    "Qualité de neige (le-laus) : Pas ou trop peu de neige estimée au point (0 cm, 1750 m) : qualité de neige non évaluée.",
+    "Qualité de neige (les-fonts) : Pas ou trop peu de neige estimée au point (0 cm, 2040 m) : qualité de neige non évaluée.",
+    "Coucher du soleil 17 h 05.",
+    "Données : BERA ; état des pistes ; domaines ; avalanches historiques ; exposition aux avalanches ; Nordic France : 2/3 ouverts."
+  ],
+  "briefing.0.voice": [
+    "Point du jour. Cervières. Deux pistes ouvertes. Température, six degrés. Vent de dix kilomètres heure. Affluence moyenne. Coucher du soleil. Dix-sept heures."
+  ],
+  "briefing.1.text": [
+    "Cervières — lundi 16 novembre 2026",
+    "Domaines :",
+    "1. Les Fonts (score -2,50) : pas de source d'état des pistes pour ce domaine ; 0 cm de neige estimée (médiane, carte du 14/11, 0 % des points ≥ 20 cm) : insuffisante pour damer [-3,00] ; vent faible (rafales 20 km/h) ; 6 °C en moyenne, ressenti 0 °C ; niveau d'affluence calme ; à 15 km à vol d'oiseau [-0,30] ; 40 km de pistes nordiques (OSM) [+0,80].",
+    "2. Cervières (score -12,56) : 2 itinéraires ouverts sur 3 (10 km sur 15) (dernier état connu) mais neige estimée insuffisante : à vérifier ; domaine fermé à cette date (dates d'ouverture publiées par la commune) [-10,00] ; 0 cm de neige estimée (médiane, carte du 14/11, 0 % des points ≥ 20 cm) : insuffisante pour damer [-3,00] ; vent faible (rafales 15 km/h) ; 8 °C en moyenne, ressenti 4 °C ; niveau d'affluence calme ; à 8 km à vol d'oiseau [-0,16] ; 30 km de pistes nordiques (OSM) [+0,60].",
+    "Itinéraires (les 5 premiers non fermés) :",
+    "1. Chemin du Blétonnet (score -3,21) : ouvert selon la source, mais neige estimée insuffisante : état sans doute hors saison, à vérifier (dernier état connu) ; 0 cm de neige estimée (médiane, carte du 14/11, 0 % des points ≥ 20 cm) : insuffisante pour damer [-3,00] ; vent faible (rafales 15 km/h) ; 8 °C en moyenne, ressenti 4 °C ; niveau d'affluence calme ; à 11 km à vol d'oiseau [-0,21].",
+    "2. Souliers (score -3,34) : ouvert selon la source, mais neige estimée insuffisante : état sans doute hors saison, à vérifier (dernier état connu) ; 0 cm de neige estimée (médiane, carte du 14/11, 0 % des points ≥ 20 cm) : insuffisante pour damer [-3,00] ; vent faible (rafales 20 km/h) ; 6 °C en moyenne, ressenti 0 °C ; météo du point Les Fonts à 9 km ; niveau d'affluence calme ; à 17 km à vol d'oiseau [-0,34].",
+    "Qualité de neige (le-laus) : Pas ou trop peu de neige estimée au point (0 cm, 1750 m) : qualité de neige non évaluée.",
+    "Qualité de neige (les-fonts) : Pas ou trop peu de neige estimée au point (0 cm, 2040 m) : qualité de neige non évaluée.",
+    "Coucher du soleil 17 h 04.",
+    "Données : BERA ; état des pistes ; domaines ; avalanches historiques ; exposition aux avalanches ; état des pistes : dernier connu (15/11 07:30) ; Nordic France : 2/3 ouverts."
+  ],
+  "briefing.1.voice": [
+    "Point du jour. Cervières. Deux pistes ouvertes. Température, six degrés. Vent de dix kilomètres heure. Affluence faible. Coucher du soleil. Dix-sept heures."
+  ],
+  "quality.le-laus": [
+    "dimanche 15 novembre 2026 — le-laus (1750 m). F fraîche, V soufflée, A ancienne sèche, T transformée (décaille), H humide, S soupe, D dure regelée, G glace",
+    "heure  flat  N20 NE20  E20 SE20  S20 SW20  W20 NW20  N40 NE40  E40 SE40  S40 SW40  W40 NW40",
+    "  06 h    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D",
+    "  07 h    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D",
+    "  08 h    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D",
+    "  09 h    T    D    T    T    T    T    D    D    D    D    D    T    T    T    D    D    D",
+    "  10 h    T    T    T    T    T    T    T    T    T    D    T    T    H    H    T    T    D",
+    "  11 h    T    T    T    T    H    H    T    T    T    T    T    H    H    H    H    T    T",
+    "  12 h    H    T    T    H    H    H    H    T    T    T    T    H    H    H    H    T    T",
+    "  13 h    H    T    T    H    H    H    H    H    T    T    T    H    H    H    H    H    T",
+    "  14 h    H    T    T    H    H    H    H    H    T    T    T    T    H    H    H    H    T",
+    "  15 h    H    T    T    T    H    H    H    H    T    T    T    T    H    H    H    H    T",
+    "  16 h    T    T    T    T    T    H    H    H    T    T    T    T    H    H    H    H    T",
+    "  17 h    T    T    T    T    T    T    T    T    T    T    T    T    T    H    H    T    T",
+    "  18 h    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T",
+    "  19 h    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T",
+    "Pas ou trop peu de neige estimée au point (0 cm, 1750 m) : qualité de neige non évaluée."
+  ],
+  "quality.les-fonts": [
+    "dimanche 15 novembre 2026 — les-fonts (2040 m). F fraîche, V soufflée, A ancienne sèche, T transformée (décaille), H humide, S soupe, D dure regelée, G glace",
+    "heure  flat  N20 NE20  E20 SE20  S20 SW20  W20 NW20  N40 NE40  E40 SE40  S40 SW40  W40 NW40",
+    "  06 h    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D",
+    "  07 h    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D",
+    "  08 h    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D",
+    "  09 h    D    D    D    T    T    T    D    D    D    D    D    T    T    T    D    D    D",
+    "  10 h    T    D    T    T    T    T    T    D    D    D    T    T    H    T    T    D    D",
+    "  11 h    T    T    T    T    H    H    T    T    T    T    T    H    H    H    T    T    T",
+    "  12 h    T    T    T    H    H    H    H    T    T    T    T    H    H    H    H    T    T",
+    "  13 h    H    T    T    H    H    H    H    H    T    T    T    H    H    H    H    H    T",
+    "  14 h    H    T    T    H    H    H    H    H    T    T    T    T    H    H    H    H    T",
+    "  15 h    H    T    T    T    H    H    H    H    T    T    T    T    H    H    H    H    T",
+    "  16 h    T    T    T    T    T    H    H    H    T    T    T    T    T    H    H    H    T",
+    "  17 h    T    T    T    T    T    T    T    T    T    T    T    T    T    T    H    T    T",
+    "  18 h    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T",
+    "  19 h    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T",
+    "Pas ou trop peu de neige estimée au point (0 cm, 2040 m) : qualité de neige non évaluée."
+  ],
+  "synthesis": [
+    "Le BERA Queyras de ce jour n'est pas chargé : consultez-le avant de partir, le risque d'avalanche n'est jamais nul en montagne. Météo de 9 h à 16 h (Le Laus, 1750 m) : de 6 à 9 °C, vent faible. Sur les pistes du site : feu interdit, réchauds compris (Cervières) (hors de France et de Suisse, aucune règle connue) ; 14 % des pistes sans aucun réseau mobile, même pour le 112.",
+    "Bulletin d'avalanche non disponible hors ligne. Consultez-le avant de partir. Température, huit degrés. Vent de dix kilomètres heure. Feu interdit sur la commune, réchauds compris."
+  ]
+}

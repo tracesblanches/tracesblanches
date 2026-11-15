@@ -36,6 +36,7 @@ use skimap_voice::clips::{self, DayMonth};
 use skimap_zones::ZoneKind;
 use skimap_zones::rules::{Period, Topic};
 
+use crate::briefing::degrees;
 use crate::inputs::SiteData;
 use crate::layers::{BeraStatus, densify};
 
@@ -231,13 +232,13 @@ fn weather_sentence(data: &SiteData, date: NaiveDate) -> (String, Option<Event>)
     let mut parts = Vec::new();
     if let (Some(a), Some(b)) = (w.temperature_min_c, w.temperature_max_c) {
         if a.round() == b.round() {
-            parts.push(format!("{a:.0} °C"));
+            parts.push(format!("{} °C", degrees(a)));
         } else {
-            parts.push(format!("de {a:.0} à {b:.0} °C"));
+            parts.push(format!("de {} à {} °C", degrees(a), degrees(b)));
         }
     }
     if let Some(c) = w.wind_chill_min_c.filter(|c| *c <= -10.0) {
-        parts.push(format!("ressenti {c:.0} °C"));
+        parts.push(format!("ressenti {} °C", degrees(c)));
     }
     match w.gust_max_kmh {
         Some(g) if g >= 40.0 => parts.push(format!("rafales jusqu'à {g:.0} km/h")),

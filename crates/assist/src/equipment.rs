@@ -273,10 +273,16 @@ pub fn equipment(data: &SiteData, o: &Outing) -> Equipment {
     }
     if let Some(c) = w.as_ref().and_then(|w| w.wind_chill_min_c) {
         if c <= -10.0 {
-            add(Kind::WarmLayer, format!("ressenti jusqu'à {c:.0} °C"));
+            add(
+                Kind::WarmLayer,
+                format!("ressenti jusqu'à {} °C", crate::briefing::degrees(c)),
+            );
         }
         if c <= -20.0 {
-            add(Kind::FaceProtection, format!("ressenti jusqu'à {c:.0} °C"));
+            add(
+                Kind::FaceProtection,
+                format!("ressenti jusqu'à {} °C", crate::briefing::degrees(c)),
+            );
         }
     }
     let long_no_net = no_net >= 1.0 || (total > 0.0 && no_net / total >= 0.25);

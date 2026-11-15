@@ -171,3 +171,158 @@ pub fn proof_outings(
     }
     Ok((outings, skipped))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use skimap_common::geom::LonLat;
+    use skimap_common::site::{CERVIERES, CHAPELLE_DES_BOIS};
+
+    #[test]
+    fn archived_days_by_kind() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = DataLayout::new(tmp.path());
+        let h = layout
+            .layer_dir(&CERVIERES, "assist")
+            .unwrap()
+            .join("history");
+        std::fs::create_dir_all(h.join("snow_2026-01-05")).unwrap();
+        std::fs::create_dir_all(h.join("snow_2026-01-04")).unwrap();
+        for f in [
+            "meteo_2026-01-09_2026-01-10.json",
+            "meteo_2026-01-04_2026-01-08.json",
+            "meteo-hourly.meta.json",
+            "meteo_x.meta.json",
+            "meteo_notes.txt",
+            "snow_2026-01-06.json",
+            "bera_2026-01-05.json",
+            "bera_2026-01-05.txt",
+            "bera.meta.json",
+            "autre.json",
+        ] {
+            std::fs::write(h.join(f), "{}").unwrap();
+        }
+        let p = history_paths(&layout, &CERVIERES, false).unwrap();
+        let names = |v: &[PathBuf]| -> Vec<String> {
+            v.iter()
+                .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+                .collect()
+        };
+        assert_eq!(
+            names(&p.meteo),
+            [
+                "meteo_2026-01-04_2026-01-08.json",
+                "meteo_2026-01-09_2026-01-10.json"
+            ]
+        );
+        assert_eq!(names(&p.snow_dirs), ["snow_2026-01-04", "snow_2026-01-05"]);
+        assert_eq!(names(&p.beras), ["bera_2026-01-05.json"]);
+        assert_eq!(p.status_dir, None);
+        // With the forecast: the current layers last.
+        let p = history_paths(&layout, &CERVIERES, true).unwrap();
+        assert!(
+            p.meteo
+                .last()
+                .unwrap()
+                .ends_with("meteo-hourly/hourly.json")
+        );
+        assert!(p.snow_dirs.last().unwrap().ends_with("snow"));
+        assert_eq!(p.meteo.len(), 3);
+        // No archive: an error that names the directory.
+        let e = history_paths(&layout, &CHAPELLE_DES_BOIS, false).unwrap_err();
+        assert!(e.to_string().contains("history"), "{e}");
+    }
+
+    #[test]
+    fn requests_of_both_sites() {
+        let d = NaiveDate::from_ymd_opt(2027, 1, 12).unwrap();
+        let c = suggestion_requests(&CERVIERES, d);
+        assert_eq!(c.len(), 3);
+        assert_eq!(c[0].start_name, "Le Laus");
+        assert_eq!(c[2].start_name, "Les Fonts");
+        assert_eq!(c[2].max_difficulty, Some(Difficulty::Easy));
+        assert_eq!(c[0].return_before, NaiveTime::from_hms_opt(16, 0, 0));
+        assert_eq!((c[1].budget_min, c[1].style), (180.0, Style::Classic));
+        assert_eq!(c[2].start_time, d.and_hms_opt(14, 30, 0).unwrap());
+        let ch = suggestion_requests(&CHAPELLE_DES_BOIS, d);
+        assert!(ch.iter().all(|r| r.start == LonLat::new(6.1125, 46.6032)));
+    }
+
+    #[test]
+    fn outings_of_the_proof_routes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = DataLayout::new(tmp.path());
+        let dir = layout.layer_dir(&CERVIERES, "routes").unwrap();
+        std::fs::create_dir_all(&dir).unwrap();
+        let line = serde_json::json!({"type": "LineString", "coordinates": [[6.72, 44.85], [6.73, 44.85]]});
+        // The pistes route with its classic time; the off-piste one with the cost only.
+        std::fs::write(
+            dir.join("routes.geojson"),
+            serde_json::json!({"type": "FeatureCollection", "features": [
+                {"type": "Feature", "geometry": line, "properties": {"kind": "start"}},
+                {"type": "Feature", "geometry": line, "properties": {"kind": "route", "eta_classic_s": 8100.0}}
+            ]})
+            .to_string(),
+        )
+        .unwrap();
+        let d = NaiveDate::from_ymd_opt(2027, 1, 12).unwrap();
+        let (o, skipped) = proof_outings(&layout, &CERVIERES, d).unwrap();
+        assert_eq!(o.len(), 1);
+        assert_eq!(o[0].duration_min, 135.0);
+        assert_eq!(o[0].start, d.and_hms_opt(10, 0, 0).unwrap());
+        assert!(!o[0].offpiste);
+        assert_eq!(o[0].route.len(), 2);
+        assert_eq!(o[0].label, "Le Laus → refuge des Fonts, pistes, classique");
+        assert_eq!(skipped.len(), 1);
+        assert!(skipped[0].starts_with("Le Laus → col d'Izoard, hors piste, départ 13 h : "));
+        std::fs::write(
+            dir.join("offpiste_laus_izoard.geojson"),
+            serde_json::json!({"type": "FeatureCollection", "features": [
+                {"type": "Feature", "geometry": line, "properties": {"kind": "route", "summary": {"cost_s": 3600.0}}}
+            ]})
+            .to_string(),
+        )
+        .unwrap();
+        let (o, skipped) = proof_outings(&layout, &CERVIERES, d).unwrap();
+        assert!(skipped.is_empty());
+        assert_eq!(o.len(), 2);
+        assert_eq!((o[1].duration_min, o[1].offpiste), (60.0, true));
+        assert_eq!(o[1].start, d.and_hms_opt(13, 0, 0).unwrap());
+        // A file without a route feature, or without a time: an error.
+        std::fs::write(
+            dir.join("offpiste_laus_izoard.geojson"),
+            serde_json::json!({"type": "FeatureCollection", "features": [
+                {"type": "Feature", "geometry": line, "properties": {"kind": "start"}}
+            ]})
+            .to_string(),
+        )
+        .unwrap();
+        assert!(proof_outings(&layout, &CERVIERES, d).is_err());
+        std::fs::write(
+            dir.join("offpiste_laus_izoard.geojson"),
+            serde_json::json!({"type": "FeatureCollection", "features": [
+                {"type": "Feature", "geometry": line, "properties": {"kind": "route"}}
+            ]})
+            .to_string(),
+        )
+        .unwrap();
+        assert!(proof_outings(&layout, &CERVIERES, d).is_err());
+        // Chapelle-des-Bois: the Risoux crossing at 10 h 30, off the pistes.
+        let cdir = layout.layer_dir(&CHAPELLE_DES_BOIS, "routes").unwrap();
+        std::fs::create_dir_all(&cdir).unwrap();
+        std::fs::write(
+            cdir.join("offpiste_risoux_fevrier.geojson"),
+            serde_json::json!({"type": "FeatureCollection", "features": [
+                {"type": "Feature", "geometry": line, "properties": {"kind": "route", "eta_classic_s": 600.0}}
+            ]})
+            .to_string(),
+        )
+        .unwrap();
+        let (o, _) = proof_outings(&layout, &CHAPELLE_DES_BOIS, d).unwrap();
+        assert_eq!(o.len(), 1);
+        assert_eq!(
+            (o[0].start, o[0].offpiste),
+            (d.and_hms_opt(10, 30, 0).unwrap(), true)
+        );
+    }
+}

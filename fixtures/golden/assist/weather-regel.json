@@ -1,0 +1,105 @@
+{
+  "alerts.le-laus": [],
+  "alerts.les-fonts": [],
+  "best_time.le-laus": [
+    "Meilleur départ vers 9 h 00 (retour vers 11 h 24, sortie de 120 min) : plat : neige dure, regelée puis neige transformée qui ramollit (décaille), soleil ; départ à 16 h 00 : retour à moins de 30 min de l'heure limite (18 h 43)."
+  ],
+  "best_time.les-fonts": [
+    "Meilleur départ vers 10 h 00 (retour vers 12 h 24, sortie de 120 min) : plat : neige transformée qui ramollit (décaille), soleil ; départ à 8 h 00 : plat : neige dure, regelée puis neige transformée qui ramollit (décaille) ; départ à 16 h 00 : retour à moins de 30 min de l'heure limite (18 h 42)."
+  ],
+  "briefing.0.text": [
+    "Cervières — samedi 20 mars 2027",
+    "BERA : risque 2 sur 5 (lisez le bulletin complet).",
+    "Domaines :",
+    "1. Cervières (score 4,19) : 2 itinéraires ouverts sur 3 (10 km sur 15) [+2,00] ; 60 cm de neige estimée (médiane, carte du 20/03, 100 % des points ≥ 20 cm) : suffisante [+2,00] ; vent faible (rafales 15 km/h) ; 3 °C en moyenne, ressenti -2 °C ; ensoleillé [+0,50] ; surface : neige humide et lourde [-0,50] ; niveau d'affluence modéré (samedi, soleil) [-0,25] ; à 8 km à vol d'oiseau [-0,16] ; 30 km de pistes nordiques (OSM) [+0,60].",
+    "2. Les Fonts (score 3,25) : pas de source d'état des pistes pour ce domaine ; 60 cm de neige estimée (médiane, carte du 20/03, 100 % des points ≥ 20 cm) : suffisante [+2,00] ; vent faible (rafales 20 km/h) ; 1 °C en moyenne, ressenti -6 °C ; ensoleillé [+0,50] ; surface : neige transformée qui ramollit (décaille) [+0,50] ; niveau d'affluence modéré (samedi, soleil) [-0,25] ; à 15 km à vol d'oiseau [-0,30] ; 40 km de pistes nordiques (OSM) [+0,80].",
+    "Itinéraires (les 5 premiers non fermés) :",
+    "1. Souliers (score 5,41) : ouvert [+3,00] ; 60 cm de neige estimée (médiane, carte du 20/03, 100 % des points ≥ 20 cm) : suffisante [+2,00] ; vent faible (rafales 20 km/h) ; 1 °C en moyenne, ressenti -6 °C ; ensoleillé [+0,50] ; météo du point Les Fonts à 9 km ; surface : neige transformée qui ramollit (décaille) [+0,50] ; niveau d'affluence modéré (samedi, soleil) [-0,25] ; à 17 km à vol d'oiseau [-0,34].",
+    "2. Chemin du Blétonnet (score 4,54) : ouvert [+3,00] ; 60 cm de neige estimée (médiane, carte du 20/03, 100 % des points ≥ 20 cm) : suffisante [+2,00] ; vent faible (rafales 15 km/h) ; 3 °C en moyenne, ressenti -2 °C ; ensoleillé [+0,50] ; surface : neige humide et lourde [-0,50] ; niveau d'affluence modéré (samedi, soleil) [-0,25] ; à 11 km à vol d'oiseau [-0,21].",
+    "Qualité de neige (le-laus) : Au plat (1750 m) : neige humide et lourde entre 10 h et 15 h. Meilleur créneau : nord-est, pente de 20° de 10 h à 17 h (neige transformée qui ramollit (décaille)). Pentes de 20° : ramollissement vers nord 11 h, nord-est 10 h, est 9 h, sud-est 9 h, sud 10 h, sud-ouest 10 h, ouest 11 h, nord-ouest 11 h. Neige lourde : est 20° dès 11 h, sud-est 20° dès 11 h, sud 20° dès 11 h, sud-ouest 20° dès 12 h, ouest 20° dès 13 h, nord-ouest 20° dès 14 h, est 40° dès 11 h, sud-est 40° dès 10 h, sud 40° dès 11 h, sud-ouest 40° dès 12 h, ouest 40° dès 14 h. Modèle simple (température, soleil, nuages, vent) : ni ombre du relief ni damage ; à confirmer sur le terrain.",
+    "Qualité de neige (les-fonts) : Au plat (2040 m) : neige transformée qui ramollit (décaille) entre 10 h et 15 h. Meilleur créneau : nord-est, pente de 20° de 10 h à 17 h (neige transformée qui ramollit (décaille)). Pentes de 20° : ramollissement vers nord 11 h, nord-est 10 h, est 9 h, sud-est 9 h, sud 10 h, sud-ouest 11 h, ouest 11 h, nord-ouest 12 h. Neige lourde : est 20° dès 12 h, sud-est 20° dès 11 h, sud 20° dès 12 h, sud-ouest 20° dès 12 h, ouest 20° dès 14 h, est 40° dès 11 h, sud-est 40° dès 11 h, sud 40° dès 11 h, sud-ouest 40° dès 13 h, ouest 40° dès 14 h. Modèle simple (température, soleil, nuages, vent) : ni ombre du relief ni damage ; à confirmer sur le terrain.",
+    "Coucher du soleil 18 h 43.",
+    "Données : BERA ; état des pistes ; domaines ; avalanches historiques ; exposition aux avalanches ; Nordic France : 2/3 ouverts."
+  ],
+  "briefing.0.voice": [
+    "Point du jour. Cervières. Risque d'avalanche deux sur cinq, limité. Deux pistes ouvertes. Conseillé aujourd'hui. Souliers. Température, trois degrés. Vent de dix kilomètres heure. Neige humide et lourde. Affluence moyenne. Coucher du soleil. Dix-huit heures quarante-cinq."
+  ],
+  "briefing.1.text": [
+    "Cervières — dimanche 21 mars 2027",
+    "Domaines :",
+    "1. Cervières (score 4,19) : 2 itinéraires ouverts sur 3 (10 km sur 15) (dernier état connu) [+2,00] ; 60 cm de neige estimée (médiane, carte du 20/03, 100 % des points ≥ 20 cm) : suffisante [+2,00] ; vent faible (rafales 15 km/h) ; 3 °C en moyenne, ressenti -2 °C ; ensoleillé [+0,50] ; surface : neige humide et lourde [-0,50] ; niveau d'affluence modéré (dimanche, soleil) [-0,25] ; à 8 km à vol d'oiseau [-0,16] ; 30 km de pistes nordiques (OSM) [+0,60].",
+    "2. Les Fonts (score 3,25) : pas de source d'état des pistes pour ce domaine ; 60 cm de neige estimée (médiane, carte du 20/03, 100 % des points ≥ 20 cm) : suffisante [+2,00] ; vent faible (rafales 20 km/h) ; 1 °C en moyenne, ressenti -6 °C ; ensoleillé [+0,50] ; surface : neige transformée qui ramollit (décaille) [+0,50] ; niveau d'affluence modéré (dimanche, soleil) [-0,25] ; à 15 km à vol d'oiseau [-0,30] ; 40 km de pistes nordiques (OSM) [+0,80].",
+    "Itinéraires (les 5 premiers non fermés) :",
+    "1. Souliers (score 5,41) : ouvert (dernier état connu) [+3,00] ; 60 cm de neige estimée (médiane, carte du 20/03, 100 % des points ≥ 20 cm) : suffisante [+2,00] ; vent faible (rafales 20 km/h) ; 1 °C en moyenne, ressenti -6 °C ; ensoleillé [+0,50] ; météo du point Les Fonts à 9 km ; surface : neige transformée qui ramollit (décaille) [+0,50] ; niveau d'affluence modéré (dimanche, soleil) [-0,25] ; à 17 km à vol d'oiseau [-0,34].",
+    "2. Chemin du Blétonnet (score 4,54) : ouvert (dernier état connu) [+3,00] ; 60 cm de neige estimée (médiane, carte du 20/03, 100 % des points ≥ 20 cm) : suffisante [+2,00] ; vent faible (rafales 15 km/h) ; 3 °C en moyenne, ressenti -2 °C ; ensoleillé [+0,50] ; surface : neige humide et lourde [-0,50] ; niveau d'affluence modéré (dimanche, soleil) [-0,25] ; à 11 km à vol d'oiseau [-0,21].",
+    "Qualité de neige (le-laus) : Au plat (1750 m) : neige humide et lourde entre 10 h et 15 h. Meilleur créneau : nord-est, pente de 40° de 9 h à 17 h (neige transformée qui ramollit (décaille)). Pentes de 20° : ramollissement vers nord 11 h, nord-est 10 h, est 9 h, sud-est 9 h, sud 10 h, sud-ouest 10 h, ouest 11 h, nord-ouest 11 h. Neige lourde : est 20° dès 11 h, sud-est 20° dès 11 h, sud 20° dès 11 h, sud-ouest 20° dès 12 h, ouest 20° dès 13 h, nord-ouest 20° dès 14 h, est 40° dès 11 h, sud-est 40° dès 10 h, sud 40° dès 11 h, sud-ouest 40° dès 12 h, ouest 40° dès 14 h. Modèle simple (température, soleil, nuages, vent) : ni ombre du relief ni damage ; à confirmer sur le terrain.",
+    "Qualité de neige (les-fonts) : Au plat (2040 m) : neige transformée qui ramollit (décaille) entre 10 h et 15 h. Meilleur créneau : nord-est, pente de 20° de 10 h à 17 h (neige transformée qui ramollit (décaille)). Pentes de 20° : ramollissement vers nord 11 h, nord-est 10 h, est 9 h, sud-est 9 h, sud 10 h, sud-ouest 11 h, ouest 11 h, nord-ouest 12 h. Neige lourde : est 20° dès 12 h, sud-est 20° dès 11 h, sud 20° dès 12 h, sud-ouest 20° dès 12 h, ouest 20° dès 13 h, est 40° dès 11 h, sud-est 40° dès 11 h, sud 40° dès 11 h, sud-ouest 40° dès 12 h, ouest 40° dès 14 h. Modèle simple (température, soleil, nuages, vent) : ni ombre du relief ni damage ; à confirmer sur le terrain.",
+    "Coucher du soleil 18 h 45.",
+    "Données : BERA ; état des pistes ; domaines ; avalanches historiques ; exposition aux avalanches ; état des pistes : dernier connu (20/03 07:30) ; Nordic France : 2/3 ouverts."
+  ],
+  "briefing.1.voice": [
+    "Point du jour. Cervières. Deux pistes ouvertes. Conseillé aujourd'hui. Souliers. Température, trois degrés. Vent de dix kilomètres heure. Neige humide et lourde. Affluence moyenne. Coucher du soleil. Dix-huit heures quarante-cinq."
+  ],
+  "quality.le-laus": [
+    "samedi 20 mars 2027 — le-laus (1750 m). F fraîche, V soufflée, A ancienne sèche, T transformée (décaille), H humide, S soupe, D dure regelée, G glace",
+    "heure  flat  N20 NE20  E20 SE20  S20 SW20  W20 NW20  N40 NE40  E40 SE40  S40 SW40  W40 NW40",
+    "  06 h    D    D    D    D    D    D    D    D    D    D    D    D    D    D    G    G    D",
+    "  07 h    D    D    D    D    D    D    D    D    D    D    D    D    D    D    G    G    D",
+    "  08 h    D    D    D    D    D    D    D    D    D    D    D    T    D    D    G    G    D",
+    "  09 h    D    D    D    T    T    D    D    D    D    D    D    T    T    T    G    G    D",
+    "  10 h    T    D    T    T    T    T    T    D    D    D    T    T    H    T    T    G    D",
+    "  11 h    T    T    T    H    H    H    T    T    T    D    T    H    H    H    T    G    D",
+    "  12 h    H    T    T    H    H    H    H    T    T    D    T    H    H    H    H    T    D",
+    "  13 h    H    T    T    H    H    H    H    H    T    T    T    H    H    H    H    T    T",
+    "  14 h    H    T    T    H    H    H    H    H    H    T    T    H    H    H    H    H    T",
+    "  15 h    H    T    T    H    H    H    H    H    H    T    T    T    H    H    H    H    T",
+    "  16 h    H    T    T    T    H    H    H    H    H    T    T    T    T    H    H    H    T",
+    "  17 h    T    T    T    T    T    T    H    H    T    T    T    T    T    H    H    H    T",
+    "  18 h    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T",
+    "  19 h    T    T    T    T    T    T    T    T    T    D    D    T    T    T    T    T    T",
+    "Au plat (1750 m) : neige humide et lourde entre 10 h et 15 h.",
+    "Meilleur créneau : nord-est, pente de 20° de 10 h à 17 h (neige transformée qui ramollit (décaille)).",
+    "Pentes de 20° : ramollissement vers nord 11 h, nord-est 10 h, est 9 h, sud-est 9 h, sud 10 h, sud-ouest 10 h, ouest 11 h, nord-ouest 11 h.",
+    "Neige lourde : est 20° dès 11 h, sud-est 20° dès 11 h, sud 20° dès 11 h, sud-ouest 20° dès 12 h, ouest 20° dès 13 h, nord-ouest 20° dès 14 h, est 40° dès 11 h, sud-est 40° dès 10 h, sud 40° dès 11 h, sud-ouest 40° dès 12 h, ouest 40° dès 14 h.",
+    "Modèle simple (température, soleil, nuages, vent) : ni ombre du relief ni damage ; à confirmer sur le terrain."
+  ],
+  "quality.les-fonts": [
+    "samedi 20 mars 2027 — les-fonts (2040 m). F fraîche, V soufflée, A ancienne sèche, T transformée (décaille), H humide, S soupe, D dure regelée, G glace",
+    "heure  flat  N20 NE20  E20 SE20  S20 SW20  W20 NW20  N40 NE40  E40 SE40  S40 SW40  W40 NW40",
+    "  06 h    D    D    D    D    D    D    D    D    D    D    D    D    D    D    G    G    D",
+    "  07 h    D    D    D    D    D    D    D    D    D    D    D    D    D    D    G    G    D",
+    "  08 h    D    D    D    D    D    D    D    D    D    D    D    D    D    D    G    G    D",
+    "  09 h    D    D    D    T    T    D    D    D    D    D    D    T    T    D    G    G    D",
+    "  10 h    T    D    T    T    T    T    D    D    D    D    T    T    T    T    G    G    D",
+    "  11 h    T    T    T    T    H    T    T    T    D    D    T    H    H    H    T    G    D",
+    "  12 h    T    T    T    H    H    H    H    T    T    D    T    H    H    H    T    T    D",
+    "  13 h    H    T    T    H    H    H    H    T    T    D    T    H    H    H    H    T    T",
+    "  14 h    H    T    T    H    H    H    H    H    T    D    T    T    H    H    H    H    T",
+    "  15 h    H    T    T    T    H    H    H    H    T    T    T    T    H    H    H    H    T",
+    "  16 h    T    T    T    T    T    H    H    H    T    T    T    T    T    H    H    H    T",
+    "  17 h    T    T    T    T    T    T    H    H    T    T    T    T    T    T    H    H    T",
+    "  18 h    T    T    T    T    T    T    T    T    T    D    D    T    T    T    T    T    T",
+    "  19 h    D    D    D    D    T    T    T    T    T    D    D    D    D    T    T    T    T",
+    "Au plat (2040 m) : neige transformée qui ramollit (décaille) entre 10 h et 15 h.",
+    "Meilleur créneau : nord-est, pente de 20° de 10 h à 17 h (neige transformée qui ramollit (décaille)).",
+    "Pentes de 20° : ramollissement vers nord 11 h, nord-est 10 h, est 9 h, sud-est 9 h, sud 10 h, sud-ouest 11 h, ouest 11 h, nord-ouest 12 h.",
+    "Neige lourde : est 20° dès 12 h, sud-est 20° dès 11 h, sud 20° dès 12 h, sud-ouest 20° dès 12 h, ouest 20° dès 14 h, est 40° dès 11 h, sud-est 40° dès 11 h, sud 40° dès 11 h, sud-ouest 40° dès 13 h, ouest 40° dès 14 h.",
+    "Modèle simple (température, soleil, nuages, vent) : ni ombre du relief ni damage ; à confirmer sur le terrain."
+  ],
+  "synthesis": [
+    "Risque d'avalanche deux sur cinq, limité au-dessus de 2200 m (1 sur 5 plus bas), pentes nord, nord-est, nord-ouest les plus exposées : lisez le bulletin complet avant de partir. Météo de 9 h à 16 h (Le Laus, 1750 m) : de 0 à 5 °C, vent faible, ciel dégagé. Sur les pistes du site : feu interdit, réchauds compris (Cervières) (hors de France et de Suisse, aucune règle connue) ; 14 % des pistes sans aucun réseau mobile, même pour le 112.",
+    "Risque d'avalanche deux sur cinq, limité. Température, trois degrés. Vent de dix kilomètres heure. Feu interdit sur la commune, réchauds compris."
+  ],
+  "wax.le-laus": [
+    "Matin 9 h–12 h, air +2 °C, neige ≈ 0 °C, neige transformée humide : classique, retenue incertaine, skis à écailles ou peaux conseillés (neige dure, regelée au début du créneau, neige transformée qui ramollit (décaille) ensuite : aucun fart ne tient tout le créneau) ; sinon KX40S Silver Klister (Swix) ; glisse classique et skating PS8 Red (Swix) ou Base Performance Hot Wax yellow (Toko). Après-midi 12 h–16 h, air +5 °C, neige ≈ 0 °C, neige mouillée : classique, retenue KX65 Red Klister (Swix) ; glisse classique et skating PS10 Yellow (Swix) ou Base Performance Hot Wax yellow (Toko).",
+    "neige transformée humide (modèle de qualité de neige A3, plat), air +1,7 °C en moyenne (+0,2 à +3,1) ; glisse : air +1,7 °C (tables Swix), neige estimée +0,0 °C (tables Toko) ; humidité 60 %",
+    "neige mouillée (modèle de qualité de neige A3, plat), air +4,7 °C en moyenne (+4,1 à +5,0) ; glisse : air +4,7 °C (tables Swix), neige estimée +0,0 °C (tables Toko) ; humidité 60 %",
+    "Fartage. Prenez des skis à écailles ou des peaux. Fart de glisse pour neige chaude et humide."
+  ],
+  "wax.les-fonts": [
+    "Matin 9 h–12 h, air 0 °C, neige ≈ 0 °C, neige transformée humide : classique, retenue incertaine, skis à écailles ou peaux conseillés (neige dure, regelée au début du créneau, neige transformée qui ramollit (décaille) ensuite : aucun fart ne tient tout le créneau) ; sinon KX40S Silver Klister (Swix) ou Nordic Klister yellow (Toko) ; glisse classique et skating PS8 Red (Swix) ou Base Performance Hot Wax yellow (Toko). Après-midi 12 h–16 h, air +3 °C, neige ≈ 0 °C, neige mouillée : classique, retenue KX65 Red Klister (Swix) ; glisse classique et skating PS10 Yellow (Swix) ou Base Performance Hot Wax yellow (Toko).",
+    "neige transformée humide (modèle de qualité de neige A3, plat), air -0,3 °C en moyenne (-1,8 à +1,1) ; glisse : air -0,3 °C (tables Swix), neige estimée +0,0 °C (tables Toko) ; humidité 60 %",
+    "neige mouillée (modèle de qualité de neige A3, plat), air +2,7 °C en moyenne (+2,1 à +3,0) ; glisse : air +2,7 °C (tables Swix), neige estimée +0,0 °C (tables Toko) ; humidité 60 %",
+    "Fartage. Prenez des skis à écailles ou des peaux. Fart de glisse pour neige chaude et humide."
+  ]
+}

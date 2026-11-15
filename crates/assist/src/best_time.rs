@@ -221,7 +221,7 @@ pub fn best_time(
                 &mut reasons,
                 Factor::Cold,
                 -0.5 * cold,
-                format!("ressenti jusqu'à {c:.0} °C"),
+                format!("ressenti jusqu'à {} °C", crate::briefing::degrees(c)),
             );
         }
         let sun = share(&|h| {
@@ -410,5 +410,160 @@ mod tests {
             ..req
         };
         assert!(best_time(&point(24), None, None, &long).best.is_none());
+    }
+
+    fn req(minutes: f64) -> Request {
+        Request {
+            date: NaiveDate::from_ymd_opt(2027, 1, 12).unwrap(),
+            duration_min: minutes,
+            earliest: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
+            classes: vec![],
+        }
+    }
+
+    /// The test point with every hour changed by `f(hour)`.
+    fn point_with(f: impl Fn(u32, &mut WeatherHour)) -> WeatherPoint {
+        let mut p = point(24);
+        for h in &mut p.hours {
+            f(h.time.hour(), h);
+        }
+        p
+    }
+
+    fn start(b: &BestTime, h: u32, m: u32) -> &Start {
+        b.starts
+            .iter()
+            .find(|s| s.start.hour() == h && s.start.minute() == m)
+            .unwrap()
+    }
+
+    fn reason(s: &Start, f: Factor) -> Option<&Reason> {
+        s.reasons.iter().find(|r| r.factor == f)
+    }
+
+    #[test]
+    fn snowfall_rain_sun_thresholds() {
+        // 1.5 cm/h from 12 to 14 h: an outing of 2 h (2 h 24 planned) from 11 h has 2 of its
+        // 3 hours (11, 12 and 13 h) of snowfall.
+        let p = point_with(|h, w| {
+            w.cloud_cover_pct = Some(80.0);
+            if (12..14).contains(&h) {
+                w.snowfall_cm = Some(1.5);
+            }
+        });
+        let b = best_time(&p, None, None, &req(120.0));
+        let s = start(&b, 11, 0);
+        let r = reason(s, Factor::Snowfall).unwrap();
+        assert!((r.points + 0.3 * 2.0 / 3.0).abs() < 1e-12, "{r:?}");
+        assert_eq!(r.text, "chute de neige");
+        assert!(reason(start(&b, 9, 0), Factor::Snowfall).is_none());
+        // Under 1 cm/h: not counted.
+        let p = point_with(|_, w| {
+            w.cloud_cover_pct = Some(80.0);
+            w.snowfall_cm = Some(0.9);
+        });
+        assert!(
+            best_time(&p, None, None, &req(120.0))
+                .starts
+                .iter()
+                .all(|s| reason(s, Factor::Snowfall).is_none())
+        );
+        // Rain: precipitation without snowfall above +0.5 °C (0.5 °C itself is not).
+        let rain = |t: f64| {
+            let p = point_with(|_, w| {
+                w.cloud_cover_pct = Some(80.0);
+                w.temperature_c = Some(t);
+                w.precipitation_mm = Some(0.2);
+            });
+            best_time(&p, None, None, &req(120.0))
+        };
+        let b = rain(0.6);
+        assert_eq!(reason(&b.starts[0], Factor::Rain).unwrap().points, -1.0);
+        assert!(reason(&rain(0.5).starts[0], Factor::Rain).is_none());
+        // Sun: cloud cover under 30 % (30 itself is not), with the sun up.
+        let sun = |c: f64| {
+            let p = point_with(|_, w| w.cloud_cover_pct = Some(c));
+            best_time(&p, None, None, &req(120.0))
+        };
+        let r = reason(&sun(29.0).starts[0], Factor::Sun).unwrap().clone();
+        assert!((r.points - 0.2).abs() < 1e-12);
+        assert!(reason(&sun(30.0).starts[0], Factor::Sun).is_none());
+        // Wind chill down to −15 °C.
+        let p = point_with(|h, w| {
+            w.cloud_cover_pct = Some(80.0);
+            w.wind_chill_c = Some(if h < 10 { -15.0 } else { -14.9 });
+        });
+        let b = best_time(&p, None, None, &req(120.0));
+        let r = reason(&b.starts[0], Factor::Cold).unwrap();
+        assert!(
+            r.points < 0.0 && r.text == "ressenti jusqu'à -15 °C",
+            "{r:?}"
+        );
+        assert!(reason(start(&b, 10, 0), Factor::Cold).is_none());
+    }
+
+    #[test]
+    fn crowd_share_of_the_peak_and_the_deadline_margin() {
+        let p = point_with(|_, w| w.cloud_cover_pct = Some(80.0));
+        // A very busy day, 9 h to 11 h 24: 54 of 144 minutes in the peak (10 h 30 – 14 h).
+        let b = best_time(&p, None, Some(CrowdLevel::VeryBusy), &req(120.0));
+        let r = reason(start(&b, 9, 0), Factor::Crowd).unwrap();
+        assert!((r.points + 54.0 / 144.0).abs() < 1e-12, "{r:?}");
+        assert_eq!(
+            r.text,
+            "journée très chargé : pic supposé de 10 h 30 à 14 h"
+        );
+        // Busy: half of it; moderate: nothing.
+        let b = best_time(&p, None, Some(CrowdLevel::Busy), &req(120.0));
+        let r = reason(start(&b, 9, 0), Factor::Crowd).unwrap();
+        assert!((r.points + 0.5 * 54.0 / 144.0).abs() < 1e-12, "{r:?}");
+        let b = best_time(&p, None, Some(CrowdLevel::Moderate), &req(120.0));
+        assert!(b.starts.iter().all(|s| reason(s, Factor::Crowd).is_none()));
+        // Back 30 min before the deadline or more: no point; less: −0.5.
+        let d = b.deadline.unwrap();
+        let s0 = b.starts[2].start;
+        // An outing that ends 30 min 20 s before the deadline from that start.
+        let planned_s = (d - s0).num_seconds() - 30 * 60 - 20;
+        let b = best_time(&p, None, None, &req(planned_s as f64 / 72.0));
+        let s = b.starts.iter().find(|s| s.start == s0).unwrap();
+        assert_eq!((d - s.back).num_minutes(), 30);
+        assert!(reason(s, Factor::Data).is_none(), "{s:?}");
+        // The next one ends 20 s before the deadline: said.
+        let next = b.starts.iter().find(|s| s.start > s0).unwrap();
+        assert_eq!(reason(next, Factor::Data).unwrap().points, -0.5);
+        let planned_s = (d - s0).num_seconds() - 29 * 60;
+        let b = best_time(&p, None, None, &req(planned_s as f64 / 72.0));
+        let s = b.starts.iter().find(|s| s.start == s0).unwrap();
+        assert_eq!(
+            reason(s, Factor::Data).unwrap().text,
+            format!(
+                "retour à moins de 30 min de l'heure limite ({} h {:02})",
+                d.hour(),
+                d.minute()
+            )
+        );
+    }
+
+    #[test]
+    fn hours_missing_in_the_morning() {
+        // The forecast starts at 12 h: the starts before 9 h 36 have no hour of weather and
+        // are skipped; the first one is 10 h (back at 12 h 24).
+        let mut p = point(24);
+        p.hours.retain(|h| h.time.hour() >= 12);
+        let b = best_time(&p, None, None, &req(120.0));
+        assert_eq!(b.starts[0].start.hour(), 10);
+        assert_eq!(b.starts[0].start.minute(), 0);
+        // No weather at all: no start, said.
+        p.hours.clear();
+        let b = best_time(&p, None, None, &req(120.0));
+        assert!(b.starts.is_empty() && b.best.is_none());
+        assert!(
+            b.text.starts_with(
+                "Pas de créneau : une sortie de 120 min ne finit pas avant l'heure limite ("
+            ),
+            "{}",
+            b.text
+        );
+        assert!(b.voice().is_none());
     }
 }

@@ -30,8 +30,9 @@
 //!    air temperature, the one whose range is centred closest; coarse frozen snow takes the
 //!    ice klister (KX30), or the universal K21S when the air is above 0 °C; transformed moist
 //!    snow takes KX40S (or K21S above +2 °C); wet snow takes KX65 (KX75 when slush or above
-//!    +5 °C), K22 as the universal alternative. V40 near 0 °C (above −2 °C) with humid air
-//!    (≥ 80 %) or old snow becomes V45, per its own page.
+//!    +5 °C), K22 as the universal alternative. Above −2 °C
+//!    the closest centre is V45's, so V40 (« near 0 °C, dry air and fresh snow are
+//!    required ») is never given near 0 °C.
 //! 3. **Skis à écailles ou peaux** when grip wax is unreliable: new snow between −1 and +1
 //!    °C (the dry-to-moist change of the V50 / V55 pages), snow refrozen in the morning that
 //!    turns wet in the window, air temperature crossing 0 °C in the window (from ≤ −2 to
@@ -663,21 +664,10 @@ pub fn advise(c: &WaxConditions) -> WaxAdvice {
     let kick = match c.snow_type {
         SnowType::New | SnowType::Old => {
             let new = c.snow_type == SnowType::New;
+            // V40 « near 0 °C, dry air and fresh snow are required »: above −2 °C the
+            // closest centre is V45's (new snow, −3 to 0 °C) and V40's old-snow column
+            // stops at −3 °C, so V40 is never given near 0 °C.
             match pick_hard("Swix", t, new) {
-                Some(k)
-                    if k.product == "V40 Blue Extra"
-                        && t > -2.0
-                        && (!new || c.humidity_pct.is_some_and(|h| h >= 80.0)) =>
-                {
-                    reasons.push(
-                        "V40 demande près de 0 °C un air sec et de la neige fraîche (Swix) : V45"
-                            .into(),
-                    );
-                    *KICK
-                        .iter()
-                        .find(|k| k.product == "V45 Violet Special")
-                        .expect("V45")
-                }
                 Some(k) => k,
                 None if t < -15.0 => {
                     reasons
@@ -892,7 +882,8 @@ mod tests {
         assert_eq!(a.voice_kick(), Kick::Violet);
         // Toko equivalent on the same temperature.
         assert_eq!(a.kick_alternative.unwrap().product, "Nordic GripWax yellow");
-        // Humid air near 0 with new snow: V40 replaced by V45 per the V40 page.
+        // New snow at −1.5 °C (humid or not): V45, the closest centre (V40 is never given
+        // above −2 °C).
         let mut c = cond(-1.5, SnowType::New, fresh);
         c.air_min_c = -2.0;
         c.air_max_c = -1.0;
@@ -957,5 +948,336 @@ mod tests {
                     || k.url.starts_with("https://www.toko.ch/")
             );
         }
+    }
+
+    /// The range written in a Swix product URL (`…-25c-to-12c-…`, `…-0c-43g…`), °C.
+    fn url_range(url: &str) -> Option<(f64, f64)> {
+        let name = url.rsplit('/').next()?;
+        let parts: Vec<&str> = name.split('-').collect();
+        let deg = |s: &str| s.strip_suffix('c')?.parse::<f64>().ok();
+        let degs: Vec<f64> = parts.iter().filter_map(|p| deg(p)).collect();
+        match degs.as_slice() {
+            [a] => Some((*a, *a)),
+            [a, b, ..] => Some((*a, *b)),
+            [] => None,
+        }
+    }
+
+    #[test]
+    fn tables_are_the_published_ranges() {
+        // The range in each Swix URL (both bounds without their sign for the hard waxes
+        // and glide waxes: « 25c-to-12c » is −25 to −12) against the table.
+        for k in KICK.iter().filter(|k| k.brand == "Swix") {
+            let (a, b) = url_range(k.url).unwrap_or_else(|| panic!("{}", k.url));
+            let (warm, cold) = if k.klister {
+                k.old_snow.unwrap()
+            } else {
+                k.new_snow.unwrap()
+            };
+            let ok = |x: f64, y: f64| (x == warm && y == cold) || (x == cold && y == warm);
+            assert!(
+                ok(a, b) || ok(-a, -b) || ok(-a, b) || ok(a, -b),
+                "{} {:?} vs {:?}",
+                k.product,
+                (a, b),
+                (warm, cold)
+            );
+            // Below 0 °C, both written without sign: the table has the negative values.
+            if k.url.contains("c-to-") && !k.klister && warm < 0.0 {
+                assert!(warm < 0.0 && cold < warm, "{}", k.product);
+            }
+        }
+        for g in GLIDE.iter().filter(|g| g.brand == "Swix") {
+            let (a, b) = url_range(g.url).unwrap_or_else(|| panic!("{}", g.url));
+            let (warm, cold) = g.range;
+            assert!(
+                [(a, b), (-a, -b), (a, -b), (-a, b)]
+                    .iter()
+                    .any(|(x, y)| (*x == warm && *y == cold) || (*x == cold && *y == warm)),
+                "{} {:?} vs {:?}",
+                g.product,
+                (a, b),
+                g.range
+            );
+        }
+        // The columns the URLs do not carry: old snow of the hard waxes (Swix pages) and
+        // the Toko lists, as read on 15/11/2026.
+        let old: Vec<(&str, (f64, f64))> = KICK
+            .iter()
+            .filter(|k| !k.klister)
+            .map(|k| (k.product, k.old_snow.unwrap()))
+            .collect();
+        assert_eq!(
+            old,
+            [
+                ("V05 Polar", (-15.0, -30.0)),
+                ("V20 Green", (-10.0, -18.0)),
+                ("V30 Blue", (-5.0, -15.0)),
+                ("V40 Blue Extra", (-3.0, -10.0)),
+                ("V45 Violet Special", (-2.0, -6.0)),
+                ("V50 Violet", (-1.0, -3.0)),
+                ("V55 Red Special", (0.0, -2.0)),
+                ("V60 Red/Silver", (1.0, -1.0)),
+                ("Nordic GripWax X-Cold", (-12.0, -30.0)),
+                ("Nordic GripWax blue", (-7.0, -30.0)),
+                ("Nordic GripWax red", (-2.0, -10.0)),
+                ("Nordic GripWax yellow", (0.0, -2.0)),
+            ]
+        );
+        type Columns = (&'static str, Option<(f64, f64)>, Option<(f64, f64)>);
+        let toko: Vec<Columns> = KICK
+            .iter()
+            .filter(|k| k.brand == "Toko")
+            .map(|k| (k.product, k.new_snow, k.old_snow))
+            .collect();
+        assert_eq!(
+            toko,
+            [
+                (
+                    "Nordic GripWax X-Cold",
+                    Some((-12.0, -30.0)),
+                    Some((-12.0, -30.0))
+                ),
+                (
+                    "Nordic GripWax blue",
+                    Some((-7.0, -30.0)),
+                    Some((-7.0, -30.0))
+                ),
+                (
+                    "Nordic GripWax red",
+                    Some((-2.0, -10.0)),
+                    Some((-2.0, -10.0))
+                ),
+                (
+                    "Nordic GripWax yellow",
+                    Some((0.0, -2.0)),
+                    Some((0.0, -2.0))
+                ),
+                ("Nordic Klister blue", None, Some((-7.0, -30.0))),
+                ("Nordic Klister red", None, Some((-1.0, -8.0))),
+                ("Nordic Klister yellow", None, Some((0.0, -2.0))),
+            ]
+        );
+        let toko_glide: Vec<(&str, (f64, f64), Basis)> = GLIDE
+            .iter()
+            .filter(|g| g.brand == "Toko")
+            .map(|g| (g.product, g.range, g.basis))
+            .collect();
+        assert_eq!(
+            toko_glide,
+            [
+                ("Base Performance Hot Wax blue", (-10.0, -30.0), Basis::Snow),
+                ("Base Performance Hot Wax red", (-4.0, -12.0), Basis::Snow),
+                ("Base Performance Hot Wax yellow", (0.0, -6.0), Basis::Snow),
+            ]
+        );
+        assert!(
+            GLIDE
+                .iter()
+                .filter(|g| g.brand == "Swix")
+                .all(|g| g.basis == Basis::Air)
+        );
+    }
+
+    #[test]
+    fn ranges_and_single_values() {
+        // A single value (V50 at 0 °C) covers ±0.5 °C.
+        assert!(contains((0.0, 0.0), 0.5) && contains((0.0, 0.0), -0.5));
+        assert!(!contains((0.0, 0.0), 0.51) && !contains((0.0, 0.0), -0.51));
+        assert!(contains((-2.0, -10.0), -2.0) && contains((-2.0, -10.0), -10.0));
+        assert!(!contains((-2.0, -10.0), -1.99) && !contains((-2.0, -10.0), -10.01));
+        assert_eq!(centre_distance((-2.0, -10.0), -6.0), 0.0);
+        assert_eq!(centre_distance((-2.0, -10.0), -3.0), 3.0);
+        assert_eq!(centre_distance((-2.0, -10.0), -9.0), 3.0);
+        assert_eq!(signed(0.4), "0");
+        assert_eq!(signed(-0.4), "0");
+        assert_eq!(signed(1.6), "+2");
+        assert_eq!(signed(-2.0), "-2");
+    }
+
+    #[test]
+    fn grip_beyond_the_tables() {
+        let dry = (Quality::OldDry, Quality::OldDry);
+        let fresh = (Quality::Fresh, Quality::Fresh);
+        // Colder than every range: V05 at the limit, said.
+        for (t, s, q) in [(-31.0, SnowType::Old, dry), (-26.0, SnowType::New, fresh)] {
+            let a = advise(&cond(t, s, q));
+            assert_eq!(a.kick.product, "V05 Polar", "{t}");
+            assert!(
+                a.reasons
+                    .iter()
+                    .any(|r| r.starts_with("plus froid que toutes les plages"))
+            );
+        }
+        // −20 °C old snow is in V05's column: no « limit » said.
+        let a = advise(&cond(-20.0, SnowType::Old, dry));
+        assert_eq!(a.kick.product, "V05 Polar");
+        assert!(!a.reasons.iter().any(|r| r.starts_with("plus froid")));
+        // Warmer than the hard waxes of old snow: the universal klister, said.
+        let a = advise(&cond(2.0, SnowType::Old, dry));
+        assert_eq!(a.kick.product, "K21S Universal Silver Klister");
+        assert!(
+            a.reasons
+                .iter()
+                .any(|r| r.starts_with("plus chaud que les farts durs"))
+        );
+        assert!(a.kick.klister);
+        // The Toko alternative of a klister is a Toko klister.
+        assert_eq!(a.kick_alternative, None, "no Toko klister contains +2 °C");
+        let a = advise(&cond(
+            -0.5,
+            SnowType::CoarseFrozen,
+            (Quality::Hard, Quality::Hard),
+        ));
+        assert_eq!(a.kick_alternative.unwrap().product, "Nordic Klister yellow");
+        // New snow at +2 °C: V60 (new 0 to +3).
+        assert_eq!(
+            advise(&cond(2.0, SnowType::New, fresh)).kick.product,
+            "V60 Red/Silver"
+        );
+    }
+
+    #[test]
+    fn klister_thresholds() {
+        let hard = (Quality::Hard, Quality::Hard);
+        let kick = |t: f64, s: SnowType, q: (Quality, Quality)| advise(&cond(t, s, q)).kick.product;
+        assert_eq!(
+            kick(0.0, SnowType::CoarseFrozen, hard),
+            "KX30 Blue Ice Klister"
+        );
+        assert_eq!(
+            kick(0.1, SnowType::CoarseFrozen, hard),
+            "K21S Universal Silver Klister"
+        );
+        let tr = (Quality::Transformed, Quality::Transformed);
+        assert_eq!(
+            kick(2.0, SnowType::TransformedMoist, tr),
+            "KX40S Silver Klister"
+        );
+        assert_eq!(
+            kick(2.1, SnowType::TransformedMoist, tr),
+            "K21S Universal Silver Klister"
+        );
+        let wet = (Quality::Wet, Quality::Wet);
+        assert_eq!(kick(5.0, SnowType::Wet, wet), "KX75 Red Extra Wet Klister");
+        assert_eq!(kick(4.9, SnowType::Wet, wet), "KX65 Red Klister");
+        assert_eq!(kick(1.0, SnowType::Wet, wet), "KX65 Red Klister");
+        assert_eq!(kick(0.9, SnowType::Wet, wet), "K22 Universal VM Klister");
+        assert_eq!(
+            kick(0.9, SnowType::Wet, (Quality::Wet, Quality::Slush)),
+            "KX75 Red Extra Wet Klister"
+        );
+        let a = advise(&cond(-5.0, SnowType::CoarseFrozen, hard));
+        assert!(a.reasons[1].starts_with("neige regelée à gros grains : klister"));
+    }
+
+    #[test]
+    fn when_grip_wax_does_not_hold() {
+        let dry = (Quality::OldDry, Quality::OldDry);
+        let fresh = (Quality::Fresh, Quality::Fresh);
+        let skins = |c: &WaxConditions| advise(c).skins;
+        // New snow from −1 to +1 °C.
+        assert!(skins(&cond(-1.0, SnowType::New, fresh)).is_some());
+        assert!(skins(&cond(1.0, SnowType::New, fresh)).is_some());
+        let mut c = cond(-1.1, SnowType::New, fresh);
+        c.air_min_c = -1.5;
+        assert!(skins(&c).is_none());
+        // Old dry, hard or icy in the morning, wet later: none holds the window.
+        for first in [Quality::OldDry, Quality::Hard, Quality::Icy] {
+            let mut c = cond(0.5, SnowType::Old, (first, Quality::Transformed));
+            c.air_min_c = 0.0;
+            assert!(
+                skins(&c)
+                    .unwrap()
+                    .contains("aucun fart ne tient tout le créneau"),
+                "{first:?}"
+            );
+        }
+        let mut c = cond(0.5, SnowType::Old, (Quality::Fresh, Quality::Transformed));
+        c.air_min_c = 0.0;
+        assert!(
+            skins(&c).is_none(),
+            "fresh snow then softening: not refrozen"
+        );
+        let mut c = cond(-0.5, SnowType::Old, (Quality::Hard, Quality::Hard));
+        c.air_min_c = -0.6;
+        assert!(skins(&c).is_none(), "refrozen all along");
+        // The air crossing 0 °C, from −2 to +1.
+        let mut c = cond(-0.5, SnowType::Old, dry);
+        c.air_min_c = -2.0;
+        c.air_max_c = 1.0;
+        assert_eq!(
+            skins(&c).unwrap(),
+            "skis à écailles ou peaux conseillés (la température passe de -2 à +1 °C dans le créneau)"
+        );
+        c.air_min_c = -1.9;
+        assert!(skins(&c).is_none());
+        c.air_min_c = -2.0;
+        c.air_max_c = 0.9;
+        assert!(skins(&c).is_none());
+        // Rain, or snow falling above 0 °C.
+        let mut c = cond(-0.5, SnowType::Old, dry);
+        c.air_min_c = -1.0;
+        c.rain_mm = 0.5;
+        assert!(
+            skins(&c)
+                .unwrap()
+                .contains("pluie ou neige mouillée qui tombe")
+        );
+        c.rain_mm = 0.4;
+        assert!(skins(&c).is_none());
+        let mut c = cond(0.5, SnowType::Old, dry);
+        c.air_min_c = 0.0;
+        c.snowfall_cm = 0.5;
+        assert!(skins(&c).is_some());
+        c.air_c = 0.0;
+        assert!(skins(&c).is_none(), "snow falling at 0 °C is not wet");
+        c.air_c = 0.5;
+        c.snowfall_cm = 0.4;
+        assert!(skins(&c).is_none());
+        // Unreliable grip is said in the text, with the wax all the same.
+        let mut c = cond(0.0, SnowType::New, fresh);
+        c.humidity_pct = Some(85.0);
+        let a = advise(&c);
+        let t = a.text_fr();
+        assert!(t.contains("retenue incertaine, skis à écailles ou peaux conseillés (neige fraîche autour de 0 °C"), "{t}");
+        assert!(a.reasons.contains(&"humidité 85 %".to_owned()));
+        assert!(
+            advise(&cond(-5.0, SnowType::Old, dry))
+                .reasons
+                .contains(&"humidité inconnue (absente de la couche météo)".to_owned())
+        );
+    }
+
+    #[test]
+    fn glide_beyond_the_tables_and_voice() {
+        let dry = (Quality::OldDry, Quality::OldDry);
+        let g = |t: f64| advise(&cond(t, SnowType::Old, dry)).glide.product;
+        assert_eq!(g(11.0), "PS10 Yellow");
+        assert_eq!(g(-40.0), "PS Polar");
+        assert_eq!(g(-33.0), "PS Polar");
+        assert_eq!(g(1.0), "PS8 Red");
+        assert_eq!(g(3.0), "PS10 Yellow", "centre +5 closer than PS8's 0");
+        // The voice of the glide family.
+        let v = |t: f64, q: (Quality, Quality)| advise(&cond(t, SnowType::Old, q)).voice_glide();
+        assert_eq!(v(6.0, dry), Glide::Warm);
+        assert_eq!(v(0.0, dry), Glide::Warm, "PS8 at 0 °C");
+        assert_eq!(v(-1.0, dry), Glide::Medium, "PS8 below 0 °C, dry");
+        assert_eq!(
+            v(-1.0, (Quality::OldDry, Quality::Transformed)),
+            Glide::Warm,
+            "PS8 below 0 °C, wet at the end"
+        );
+        assert_eq!(v(-5.0, dry), Glide::Medium, "PS7");
+        assert_eq!(v(-9.0, dry), Glide::Cold, "PS6");
+        // Toko glide by the snow temperature.
+        let mut c = cond(-1.0, SnowType::Old, dry);
+        c.snow_c = -11.0;
+        assert_eq!(
+            advise(&c).glide_alternative.unwrap().product,
+            "Base Performance Hot Wax red"
+        );
+        c.snow_c = -31.0;
+        assert_eq!(advise(&c).glide_alternative, None);
     }
 }

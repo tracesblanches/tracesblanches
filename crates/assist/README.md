@@ -56,6 +56,7 @@ skimap assist cervieres --date 2026-01-05 --days 5 --history past \
 skimap assist chapelle-des-bois --date 2026-11-15 --history with-forecast \
     --home 6.3554,46.9035 --route data/out/chapelle-des-bois/routes/offpiste_risoux_fevrier.geojson
 cargo test -p skimap-assist --test real_sites -- --ignored   # contrôles sur les données réelles
+cargo test -p skimap-assist --test weather   # A1–A9 sur 7 jeux de météo synthétiques versionnés (tests/data/weather, X15)
 ```
 
 `--history past` lit les fichiers de `history/` (chaque jour prend sa carte d'enneigement et son BERA) ; `with-forecast` ajoute la prévision courante (`meteo-hourly`) et la carte d'enneigement courante. Le point de départ « maison » des commandes est Briançon (Cervières) et Pontarlier (Chapelle-des-Bois), choisis comme villes d'accès, pas comme domicile de quelqu'un.

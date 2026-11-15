@@ -740,7 +740,9 @@ impl Status {
                 // First 100 characters, cut at a word.
                 let mut short = String::new();
                 for w in msg.split_whitespace() {
-                    if short.chars().count() + w.chars().count() > 100 {
+                    // The space before the word counts too.
+                    let sep = usize::from(!short.is_empty());
+                    if short.chars().count() + sep + w.chars().count() > 100 {
                         short.push_str(" …");
                         break;
                     }
@@ -1314,6 +1316,157 @@ mod tests {
         let total: f64 = pts.iter().map(|p| p.1).sum();
         assert!((total - line_length_m(&line)).abs() < 1e-6);
         assert!(pts.len() >= 11);
+    }
+
+    #[test]
+    fn status_sources_enj_and_the_mairie() {
+        let dir = tempfile::tempdir().unwrap();
+        let long = "Le domaine nordique ouvre samedi 19 décembre : pistes damées du Laus aux \
+                    Fonts, forfait en vente à la mairie et au foyer de ski de fond, horaires \
+                    affichés.";
+        std::fs::write(
+            dir.path().join("status.json"),
+            serde_json::json!({
+                "polled_at": "2027-01-12T07:00:00Z",
+                "sources": {
+                    "enj": {"treks": [
+                        {"id": 244720, "name": "Les Mortes", "practice": "Ski de fond",
+                         "difficulty": "bleu", "length_m": 12500.0, "state": "Ouvert",
+                         "departure_city": 39114},
+                        {"id": 7, "name": "Raquettes du Mont", "practice": "Raquettes",
+                         "difficulty": null, "length_m": null, "state": "?",
+                         "departure_city": null}
+                    ]},
+                    "nordicfrance": {"open_summary": "2/3", "updated": "12/01", "snow_depth": "40 cm",
+                        "sectors": [{"name": "LE LAUS", "pistes": [
+                            {"name": "Le Gibera", "activity": "Ski de fond", "state": "open", "length_km": 1.5},
+                            {"name": "Le Savare", "activity": "skating", "state": "closed"},
+                            {"name": "La Pinatelle", "activity": "Multi-activités", "state": "open"}
+                        ]}]},
+                    "cervieres-mairie": {"message": long, "modified_time": "11/01/2027",
+                        "sectors": [{"rows": [
+                            {"piste": "Gibera (Le)", "state": "Fermée"},
+                            {"piste": "Le Savare", "state": "fermé"},
+                            {"piste": "La Pinatelle", "state": "inconnu"},
+                            {"piste": "Ailleurs", "state": "ouvert"}
+                        ]}]}
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let st = Status::load(dir.path()).unwrap();
+        let mortes = &st.itineraries[0];
+        assert_eq!(mortes.id, "enj:244720");
+        assert_eq!(mortes.length_km, Some(12.5));
+        assert_eq!(mortes.sector.as_deref(), Some("commune ENJ 39114"));
+        assert_eq!(mortes.practice, Practice::Nordic);
+        assert_eq!(mortes.state, OpenState::Open);
+        assert_eq!(st.itineraries[1].practice, Practice::Snowshoe);
+        assert_eq!(st.itineraries[1].state, OpenState::Unknown);
+        assert_eq!(st.itineraries[1].length_km, None);
+        let savare = st
+            .itineraries
+            .iter()
+            .find(|i| i.name == "Le Savare")
+            .unwrap();
+        assert_eq!(savare.practice, Practice::Nordic, "skating is nordic");
+        let pinatelle = st
+            .itineraries
+            .iter()
+            .find(|i| i.name == "La Pinatelle")
+            .unwrap();
+        assert_eq!(pinatelle.practice, Practice::Multi);
+        assert_eq!(
+            st.messages[0],
+            "Nordic France : 2/3 ouverts, mise à jour du 12/01, neige 40 cm"
+        );
+        // The message of the mairie: its first 100 characters, cut at a word.
+        let m = &st.messages[1];
+        assert!(
+            m.starts_with("Mairie (11/01/2027) : Le domaine nordique ouvre samedi 19 décembre :"),
+            "{m}"
+        );
+        assert!(m.ends_with(" …"), "{m}");
+        let short = m
+            .trim_start_matches("Mairie (11/01/2027) : ")
+            .trim_end_matches(" …");
+        assert!(
+            short.chars().count() <= 100 && long.starts_with(short),
+            "{short}"
+        );
+        assert!(long.chars().count() > 100);
+        let next = long[short.len()..].split_whitespace().next().unwrap();
+        assert!(short.chars().count() + next.chars().count() + 1 > 100);
+        // Disagreements: Le Gibera open for Nordic France, closed for the mairie; the
+        // Savare closed for both; the Pinatelle unknown at the mairie; « Ailleurs » not
+        // listed by Nordic France.
+        assert_eq!(
+            st.conflicts,
+            ["Le Gibera : Nordic France Open, mairie Closed"]
+        );
+        assert_eq!(st.polled_at.to_rfc3339(), "2027-01-12T07:00:00+00:00");
+    }
+
+    #[test]
+    fn rain_practices_and_last_hour() {
+        let hour = |t: f64, snow: f64, rain: f64| WeatherHour {
+            time: NaiveDate::from_ymd_opt(2027, 1, 12)
+                .unwrap()
+                .and_hms_opt(10, 0, 0)
+                .unwrap(),
+            temperature_c: Some(t),
+            apparent_temperature_c: None,
+            wind_chill_c: None,
+            wind_kmh: None,
+            gust_kmh: None,
+            visibility_m: None,
+            fog: None,
+            freezing_level_m: None,
+            snowfall_cm: Some(snow),
+            precipitation_mm: Some(rain),
+            cloud_cover_pct: None,
+            relative_humidity_pct: None,
+            weather_code: None,
+        };
+        // Rain: precipitation of the hours above +0.5 °C without snowfall.
+        assert_eq!(summarise(&[hour(0.6, 0.0, 2.0)]).rain_mm, 2.0);
+        assert_eq!(summarise(&[hour(0.5, 0.0, 2.0)]).rain_mm, 0.0);
+        assert_eq!(summarise(&[hour(3.0, 0.1, 2.0)]).rain_mm, 0.0);
+        let s = summarise(&[hour(3.0, 0.0, 1.0), hour(-1.0, 2.0, 2.0)]);
+        assert_eq!((s.rain_mm, s.snowfall_cm, s.hours), (1.0, 2.0, 2));
+        assert_eq!(
+            (s.temperature_min_c, s.temperature_max_c),
+            (Some(-1.0), Some(3.0))
+        );
+        assert_eq!(s.temperature_mean_c, Some(1.0));
+        assert_eq!(summarise(&[]).temperature_mean_c, None);
+        assert_eq!(practice_of("Multi"), Practice::Multi);
+        assert_eq!(practice_of(""), Practice::Nordic);
+        assert_eq!(practice_of("skating"), Practice::Nordic);
+        assert_eq!(practice_of("Classique"), Practice::Nordic);
+        assert_eq!(practice_of("Piéton, ski de fond"), Practice::Multi);
+        // The last hour of every point.
+        let p = |id: &str, h: u32| WeatherPoint {
+            id: id.into(),
+            name: id.into(),
+            position: LonLat::new(6.0, 46.0),
+            elevation_m: 1000.0,
+            hours: vec![WeatherHour {
+                time: NaiveDate::from_ymd_opt(2027, 1, 12)
+                    .unwrap()
+                    .and_hms_opt(h, 0, 0)
+                    .unwrap(),
+                ..hour(0.0, 0.0, 0.0)
+            }],
+        };
+        let w = Weather {
+            points: vec![p("a", 10), p("b", 14)],
+            files: vec![],
+        };
+        assert_eq!(chrono::Timelike::hour(&w.last_hour().unwrap()), 14);
+        assert_eq!(Weather::default().last_hour(), None);
+        assert_eq!(w.nearest(LonLat::new(6.0, 46.0)).unwrap().1, 0.0);
     }
 
     #[test]
