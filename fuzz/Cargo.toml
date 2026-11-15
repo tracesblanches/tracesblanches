@@ -1,6 +1,7 @@
 # Fuzz targets (Q3, #103) of everything the phone reads from a downloaded file: pack
 # (manifest, pack.meta.json, layers, voice manifest), pack updates (bundle, site index), SKR1 rasters, zone classes, trail
 # graph, PMTiles (the patched vendor reader and the pack's TileArchive), palette PNG tiles,
+# vector tiles of the class layers,
 # GeoTIFF (common::geotiff), BERA XML. Outside the main workspace (cargo-fuzz needs
 # nightly and sanitizers): `cd fuzz && cargo +nightly fuzz run <target>`; usage in
 # `src/lib.rs`.
@@ -95,6 +96,13 @@ bench = false
 [[bin]]
 name = "png"
 path = "fuzz_targets/png.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "mvt"
+path = "fuzz_targets/mvt.rs"
 test = false
 doc = false
 bench = false

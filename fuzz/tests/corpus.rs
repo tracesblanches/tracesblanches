@@ -461,6 +461,7 @@ fn pack_seed() -> Vec<u8> {
             geometry_types: vec![],
             visible: true,
             raster,
+            classes: None,
             notes: vec![],
         };
     let slope = RasterInfo {
@@ -748,6 +749,22 @@ fn make_seeds() {
     write_seed("pmtiles_vendor", "png3", &pmtiles_archive());
     write_seed("tile_archive", "png3", &pmtiles_archive());
     write_seed("png", "palette", &palette_png());
+    {
+        use skimap_pack::mvt::{LayerWriter, Value, encode_tile};
+        let mut l = LayerWriter::new("slope");
+        // Exterior (positive area, y down) with a hole, and a second polygon.
+        let outer = vec![[100, 100], [3000, 100], [3000, 3000], [100, 3000]];
+        let hole = vec![[1000, 1000], [1000, 2000], [2000, 2000], [2000, 1000]];
+        l.add_polygon(&[("class", Value::Int(2))], &[outer, hole]);
+        l.add_polygon(
+            &[
+                ("class", Value::Int(3)),
+                ("label", Value::Str("seed".into())),
+            ],
+            &[vec![[3500, 3500], [4000, 3500], [4000, 4000]]],
+        );
+        write_seed("mvt", "slope", &encode_tile(&[l], 4096).expect("tile"));
+    }
     let g = grid(5, 4, |c, r| {
         if c == r {
             f32::NAN

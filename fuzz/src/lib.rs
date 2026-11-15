@@ -36,6 +36,7 @@ pub const TARGETS: &[(&str, Target)] = &[
     ("pmtiles_vendor", pmtiles_vendor),
     ("tile_archive", tile_archive),
     ("png", png),
+    ("mvt", mvt),
     ("geotiff", geotiff),
     ("bera", bera),
 ];
@@ -502,6 +503,42 @@ pub fn png(data: &[u8]) {
             img.indices.len() as u64,
             u64::from(img.width) * u64::from(img.height)
         );
+    }
+}
+
+/// Vector tiles of the class layers (slope, avalanche exposure, `skimap_pack::mvt`):
+/// decoding never panics, and what the phone does with a decoded polygon (area, filling
+/// the pixels of a 256 × 256 tile) neither.
+pub fn mvt(data: &[u8]) {
+    use skimap_pack::mvt::{decode, fill_even_odd, ring_area};
+    let Ok(layers) = decode(data) else {
+        return;
+    };
+    for l in layers.iter().take(8) {
+        let scale = 256.0 / f64::from(l.extent.max(1));
+        for f in l.features.iter().take(64) {
+            let _ = f.get("class");
+            let rings: Vec<Vec<[f64; 2]>> = f
+                .parts
+                .iter()
+                .take(64)
+                .map(|r| {
+                    let _ = ring_area(r);
+                    r.iter()
+                        .take(4096)
+                        .map(|p| [f64::from(p[0]) * scale, f64::from(p[1]) * scale])
+                        .collect()
+                })
+                .collect();
+            if f.geom_type == 3 {
+                let mut n = 0usize;
+                fill_even_odd(&rings, 256, 256, |i| {
+                    assert!(i < 256 * 256, "pixel {i} outside the tile");
+                    n += 1;
+                });
+                assert!(n <= 256 * 256);
+            }
+        }
     }
 }
 
