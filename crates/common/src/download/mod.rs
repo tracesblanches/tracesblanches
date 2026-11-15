@@ -471,6 +471,12 @@ impl Downloader {
         if let Some(s) = states.get(&policy.name) {
             return Ok(s.clone());
         }
+        if let Some(age) = policy.purge_after {
+            let (n, bytes) = purge(dir, self.now_unix().saturating_sub(age.as_secs()));
+            if n > 0 {
+                tracing::info!(source = %policy.name, entries = n, bytes, "old cache entries purged");
+            }
+        }
         let l = Limiter::load(policy.limits.clone(), Some(dir.join("ratelimit.json")))?;
         let s = Arc::new(SourceState {
             breaker: Mutex::new((0, 0)),
@@ -825,6 +831,35 @@ impl Downloader {
             Attempt::Fatal(err)
         }
     }
+}
+
+/// Removes the cache entries of `dir` downloaded before `before_unix` (body and metadata)
+/// and their orphan temporary files; returns the entries removed and their bytes.
+pub fn purge(dir: &Path, before_unix: u64) -> (usize, u64) {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return (0, 0);
+    };
+    let (mut n, mut bytes) = (0, 0);
+    for e in rd.flatten() {
+        let p = e.path();
+        if p.extension().is_none_or(|x| x != "json")
+            || p.file_name().is_some_and(|f| f == "ratelimit.json")
+        {
+            continue;
+        }
+        let old = std::fs::read(&p)
+            .ok()
+            .and_then(|b| serde_json::from_slice::<CacheMeta>(&b).ok())
+            .is_some_and(|m| m.fetched_at_unix < before_unix);
+        if old {
+            let body = p.with_extension("body");
+            bytes += std::fs::metadata(&body).map_or(0, |m| m.len());
+            let _ = std::fs::remove_file(&body);
+            let _ = std::fs::remove_file(&p);
+            n += 1;
+        }
+    }
+    (n, bytes)
 }
 
 /// Whether an error after all retries means the source is down (transport error, 408,

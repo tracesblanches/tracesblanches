@@ -918,3 +918,57 @@ fn client_errors_do_not_trip_the_breaker() {
         "fine"
     );
 }
+
+#[test]
+fn old_entries_of_a_purged_source_are_removed_on_first_use() {
+    let srv = TestServer::start(|_, _| Reply::ok("run"));
+    let dir = tempfile::tempdir().unwrap();
+    // A first process downloads two files.
+    {
+        let dl = downloader(dir.path(), policy("t"));
+        dl.fetch(&Request::get("t", &srv.url("/old"))).unwrap();
+        dl.fetch(&Request::get("t", &srv.url("/new"))).unwrap();
+    }
+    // Age the first entry by three days.
+    let src = dir.path().join("t");
+    let mut aged = 0;
+    for e in std::fs::read_dir(&src).unwrap().flatten() {
+        let p = e.path();
+        if p.extension().is_some_and(|x| x == "json") && !p.ends_with("ratelimit.json") {
+            let mut m: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
+            if m["url"].as_str().unwrap().ends_with("/old") {
+                m["fetched_at_unix"] =
+                    serde_json::json!(m["fetched_at_unix"].as_u64().unwrap() - 3 * 86_400);
+                std::fs::write(&p, serde_json::to_vec(&m).unwrap()).unwrap();
+                aged += 1;
+            }
+        }
+    }
+    assert_eq!(aged, 1);
+    let bodies = || {
+        std::fs::read_dir(&src)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.path().extension().is_some_and(|x| x == "body"))
+            .count()
+    };
+    assert_eq!(bodies(), 2);
+    // A new process with a purge after 2 days: the old entry goes at the first use.
+    let dl = downloader(
+        dir.path(),
+        policy("t").purge_after(Duration::from_secs(2 * 86_400)),
+    );
+    let n = srv.count();
+    dl.fetch(&Request::get("t", &srv.url("/new"))).unwrap();
+    assert_eq!(
+        srv.count(),
+        n,
+        "the recent entry is still served from the cache"
+    );
+    assert_eq!(bodies(), 1);
+    assert!(matches!(
+        dl.fetch(&Request::get("t", &srv.url("/old")).cache(CachePolicy::Offline)),
+        Err(Error::NotCached { .. })
+    ));
+}
