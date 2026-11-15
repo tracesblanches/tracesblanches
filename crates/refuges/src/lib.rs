@@ -19,8 +19,10 @@
 
 pub mod camptocamp;
 pub mod error;
+pub mod fiche;
 pub mod links;
 pub mod osm;
+pub mod privacy;
 pub mod refuges_info;
 
 use std::collections::{BTreeMap, HashMap};
@@ -40,6 +42,8 @@ pub use error::{RefugesError, Result};
 pub const CRATE: &str = env!("CARGO_PKG_NAME");
 /// Layer name.
 pub const LAYER: &str = "refuges";
+/// Practical cards file (H1, #132).
+pub const FICHES_FILE: &str = "refuges.geojson";
 
 /// Result of [`build`].
 #[derive(Debug, Clone)]
@@ -184,6 +188,14 @@ pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<Refuge
         .collect();
     write_geojson(&dir.join("camptocamp.geojson"), &c2c_features)?;
 
+    // Practical cards (H1): refuges.info geometry + Camptocamp properties, CC BY-SA 4.0.
+    let cards = fiche::fiches(&ri.points, &ri_fr, &c2c.waypoints);
+    let card_features: Vec<Value> = cards
+        .iter()
+        .map(|(pos, c)| feature(point(*pos), serde_json::to_value(c).unwrap_or(Value::Null)))
+        .collect();
+    write_geojson(&dir.join(FICHES_FILE), &card_features)?;
+
     write_json(
         &dir.join("links.json"),
         &json!({
@@ -233,6 +245,18 @@ pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<Refuge
             "in_box": c2c.waypoints.len(),
             "by_type": count_by(c2c.waypoints.iter().map(|w| (w.waypoint_type.as_str(), w.country.as_deref() == Some("France")))),
             "with_unstaffed_capacity": c2c.waypoints.iter().filter(|w| w.capacity_unstaffed.is_some()).count(),
+        },
+        "fiches": {
+            "cards": cards.len(),
+            "by_kind": count_by(cards.iter().map(|(_, c)| (c.kind.as_str(), c.in_france))),
+            "winter_access": count_by(cards.iter().map(|(_, c)| (c.winter_access.as_str(), c.in_france))),
+            "with_phone": cards.iter().filter(|(_, c)| !c.phones.is_empty()).count(),
+            "phones_by_source": count_by(cards.iter().flat_map(|(_, c)| c.phones.iter().map(|p| (p.source.as_str(), true)))),
+            "with_website": cards.iter().filter(|(_, c)| c.website.is_some()).count(),
+            "with_camptocamp": cards.iter().filter(|(_, c)| !c.camptocamp.is_empty()).count(),
+            "with_places_winter": cards.iter().filter(|(_, c)| c.places_winter.is_some()).count(),
+            "with_info_date": cards.iter().filter(|(_, c)| c.info_date.is_some()).count(),
+            "staffed_or_gite_without_phone": cards.iter().filter(|(_, c)| matches!(c.kind.as_str(), "garde" | "gite") && c.open && c.phones.is_empty()).map(|(_, c)| c.name.clone()).collect::<Vec<_>>(),
         },
         "links": {
             "places": links.len(),
@@ -292,11 +316,37 @@ pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<Refuge
     ));
     let valid_at = ri.full.meta.fetched_at_unix.max(osm_f.meta.fetched_at_unix);
     let meta = LayerMeta {
-        tickets: vec!["P11 (#24)".to_owned()],
+        tickets: vec!["P11 (#24)".to_owned(), "H1 (#132)".to_owned()],
         valid_from: skimap_common::meta::unix_to_rfc3339(valid_at as i64),
         crs: Some("EPSG:4326 (WGS84, longitude, latitude)".to_owned()),
         sources,
         files: vec![
+            FileMeta::new(FICHES_FILE, "fiches pratiques des refuges, gîtes et abris : géométrie refuges.info, propriétés Camptocamp rattachées par position et nom (sans OSM), une source par type d'objet (L3)")
+                .licence(fiche::LICENCE)
+                .count(card_features.len())
+                .properties_json(&json!({
+                    "id": "ri-<identifiant refuges.info>", "refuges_info_id": "identifiant refuges.info", "name": "nom",
+                    "kind": "garde, gite, non_garde, abri (mur manquant, aucune place pour dormir ou « Abri » dans le nom), batiment",
+                    "kind_label": "libellé français du type",
+                    "state": "état refuges.info (« Fermé au public », « Détruite », « Inutilisable ») ; null si ouvert ou inconnu",
+                    "open": "aucun état de fermeture",
+                    "alt": "altitude, m",
+                    "places": "places pour dormir (refuges.info)", "places_mattress": "places sur matelas (refuges.info)",
+                    "places_winter": "places hors gardiennage, local d'hiver (Camptocamp capacity)",
+                    "places_staffed": "places en période gardée (Camptocamp)",
+                    "wardened_period": "période de gardiennage, texte Camptocamp filtré",
+                    "winter_access": "ferme, local_hiver, cle, pendant_gardiennage, libre, inconnu",
+                    "winter_access_text": "phrase française", "winter_access_source": "refuges.info ou camptocamp",
+                    "equipment": "stove, fireplace (refuges.info), heating_winter, gas_winter (Camptocamp hors gardiennage), wood_nearby (forêt à moins de 100 m, pas une réserve de bois), water_nearby, blankets, mattresses, latrines ; null = inconnu",
+                    "phones": "téléphones d'établissement seulement : e164, display, label (etablissement, sms, mairie, office_tourisme, pc_securite, onf, club), source ; jamais le numéro d'un particulier ni d'un gardien nommé",
+                    "website": "site officiel", "website_source": "refuges.info (« Site officiel ») ou camptocamp (url)",
+                    "access": "accès (texte filtré : téléphones, e-mails et noms retirés)", "remark": "remarques (filtrées)", "owner": "auprès de qui se renseigner (filtré)",
+                    "refuges_info_url": "fiche refuges.info", "camptocamp": "documents Camptocamp : id, title, url, attribution_url (auteurs à citer)",
+                    "info_date": "date de la dernière information (AAAA-MM-JJ) : modification de la fiche ou dernier commentaire",
+                    "refuges_info_modified": "dernière modification de la fiche refuges.info", "last_comment_date": "date du dernier commentaire (texte et auteur non repris)",
+                    "in_france": "commune française au point", "licence": "CC BY-SA 4.0", "attribution": "mention à afficher avec la fiche",
+                    "osm": "lien OSM : pas dans ce fichier (ODbL) ; osm.geojson et links.json, usage personnel (L3)",
+                })),
             FileMeta::new("refuges_info.geojson", "points refuges.info de l'emprise (instantané hebdomadaire + mise à jour depuis=), dernier commentaire daté")
                 .licence(refuges_info::LICENCE)
                 .count(ri_features.len())
@@ -314,8 +364,9 @@ pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<Refuge
                     "water_100m": "eau à moins de 100 m", "blankets": "couvertures",
                     "latrines": "latrines", "missing_wall": "manque un mur",
                     "url": "fiche refuges.info", "modified": "dernière modification de la fiche",
-                    "access": "accès", "remark": "remarques", "owner": "auprès de qui se renseigner",
-                    "last_comment": "dernier commentaire : id, point, date, text, author, photo",
+                    "access": "accès (filtré : téléphones, e-mails, noms retirés)", "remark": "remarques (filtrées)", "owner": "auprès de qui se renseigner (filtré)",
+                    "phones": "téléphones d'établissement tirés du champ propriétaire (e164, display, label, source)", "website": "site officiel (« Site officiel: » du champ propriétaire)",
+                    "last_comment": "dernier commentaire : id, point, date, photo (texte et auteur jamais repris, H1)",
                     "in_france": "commune française au point (geo.api.gouv.fr)",
                     "link": "index dans links.json",
                     "hiver": "aucun champ « ouvert en hiver » ni « local d'hiver » dans refuges.info",
@@ -327,7 +378,8 @@ pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<Refuge
                     "osm_type": "node, way ou relation", "osm_id": "identifiant OSM",
                     "kind": "alpine_hut, wilderness_hut, shelter, bus_shelter (shelter_type=public_transport) ou other",
                     "refuges_info_id": "identifiant refuges.info (ref:refuges.info)",
-                    "tags": format!("étiquettes retenues : {}", osm::KEPT_TAGS.join(", ")),
+                    "tags": format!("étiquettes retenues : {} (description filtrée ; phone et contact:phone jamais en étiquette)", osm::KEPT_TAGS.join(", ")),
+                    "phones": "téléphones d'un tourism=alpine_hut (phone, contact:phone) ; aucun pour les cabanes et abris", "url": "page openstreetmap.org",
                     "in_france": "commune française au point", "link": "index dans links.json",
                 })),
             FileMeta::new("camptocamp.geojson", "cabanes (hut), abris (shelter) et gîtes Camptocamp de l'emprise, avec la capacité hors gardiennage")
@@ -344,6 +396,7 @@ pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<Refuge
                     "access_period": "période de gardiennage (texte)", "quality": "qualité de la fiche",
                     "url": "page Camptocamp", "licence": "licence du document",
                     "attribution_url": "historique (auteurs) à citer",
+                    "phones": "téléphone d'un gîte ou d'un refuge gardé (phone) ; phone_custodian jamais repris", "website": "site officiel (url)",
                     "in_france": "pays = France", "link": "index dans links.json",
                 })),
             FileMeta::new("links.json", "correspondances entre les trois sources (identifiants seulement) : ref:refuges.info d'OSM, sinon position (250 m) et nom, ou position seule (40 m)")

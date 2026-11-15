@@ -1,13 +1,13 @@
 # skimap-refuges
 
-Refuges et abris : refuges.info, OSM, Camptocamp (pipeline). Ticket : P11 (#24).
+Refuges et abris : refuges.info, OSM, Camptocamp (pipeline). Tickets : P11 (#24), fiches pratiques H1 (#132).
 
 ## Sources
 
 | Source | Accès | Licence | Ce qu'on garde |
 |---|---|---|---|
 | refuges.info | `/api/bbox?detail=complet&nb_points=all` (source `refuges-info`, 1 req/s) | CC BY-SA 2.0 | type, état, places, matelas, poêle, cheminée, eau, couvertures, latrines, mur manquant, accès, remarques, date de modification |
-| refuges.info, commentaires | `/api/commentaires?id_point=a,b,c` (40 points par requête) | CC BY-SA 2.0 | dernier commentaire daté de chaque point (date, texte, auteur, photo) |
+| refuges.info, commentaires | `/api/commentaires?id_point=a,b,c` (40 points par requête) | CC BY-SA 2.0 | date du dernier commentaire de chaque point (ni texte ni auteur, H1) |
 | OpenStreetMap | Overpass public (source `overpass`, 1 requête / 5 s), une requête par site : `tourism=alpine_hut`, `tourism=wilderness_hut`, `amenity=shelter`, `ref:refuges.info` | ODbL | type (`kind`), `ref:refuges.info`, étiquettes utiles (capacité, `winter_room`, cheminée, horaires…) |
 | Camptocamp | `/waypoints?wtyp=hut,shelter,gite&bbox=` (EPSG:3857) puis `/waypoints/<id>?cook=fr` | CC BY-SA 3.0 (licence par document) | capacité hors gardiennage (`capacity`), gardée, gardiennage, matelas, couvertures, gaz, chauffage hors gardiennage, période de gardiennage, auteurs |
 | geo.api.gouv.fr | `communes?lat=&lon=` | Licence Ouverte 2.0 | `in_france` (les emprises débordent sur l'Italie et la Suisse) |
@@ -23,9 +23,17 @@ Les trois sources restent dans trois fichiers ; aucune base fusionnée n'est pro
 - Camptocamp est rattaché à refuges.info d'abord, sinon à OSM ;
 - jamais par position : abribus (`shelter_type=public_transport`), points d'eau et passages délicats de refuges.info.
 
+## Fiches pratiques (H1)
+
+`refuges.geojson` : une fiche par cabane, gîte, refuge gardé ou bâtiment de refuges.info (types 7, 9, 10, 28), avec les propriétés Camptocamp du même lieu rattachées par position et nom **sans OSM** (L3 : une source par type d'objet ; CC BY-SA 4.0). Type (`garde`, `gite`, `non_garde`, `abri`, `batiment`), état, places (dont hors gardiennage), période de gardiennage, accès hivernal (`winter_access`), équipements (poêle, cheminée, forêt proche, eau, couvertures, matelas, chauffage et gaz hors gardiennage), téléphones, site, accès, remarques, liens refuges.info et Camptocamp (auteurs), `info_date` (fiche ou dernier commentaire). Le lien OSM reste dans `osm.geojson` / `links.json` (ODbL, usage personnel).
+
+Données personnelles (`privacy`) : seuls les téléphones d'établissement sont gardés : `phone` Camptocamp d'un gîte ou d'un refuge gardé, `phone` / `contact:phone` OSM d'un `alpine_hut`, et dans le texte « Propriétaires » de refuges.info une ligne qui nomme une mairie, un office de tourisme, un PC sécurité (toute cabane) ou porte « Tél », « SMS », « Réservation » (gîte ou refuge gardé ouvert). Jamais : `phone_custodian`, un numéro sur une ligne qui nomme une personne (« Gardien : … »), un fax, un e-mail, le texte ou l'auteur d'un commentaire. Les textes libres (accès, remarques, propriétaire, description OSM, période Camptocamp) perdent numéros, e-mails et noms (« M. », « Mme », « Gardien : », prénom + NOM). `privacy::findings` vérifie chaque fichier écrit (test réel ignoré `tests/real_sites.rs`).
+
+Au 15/11/2026 : Cervières 12 fiches (1 refuge gardé, 1 téléphone : Camptocamp pour les Fonts ; le portable du gardien nommé sur refuges.info est écarté), Chapelle-des-Bois 63 fiches (6 gîtes, 7 fiches avec téléphone : 3 gîtes, 3 abris par la mairie, 1 par le PC sécurité ; Prés d'Haut et Enguenelles sans numéro publiable).
+
 ## Sorties
 
-`data/out/<site>/refuges/` (WGS84) : `refuges_info.geojson`, `osm.geojson`, `camptocamp.geojson`, `links.json`, `refuges.meta.json` (sources avec URL, licence, attribution, ETag, sha256, dates ; propriétés documentées ; chiffres). Chaque point porte `in_france` et `link` (index dans `links.json`).
+`data/out/<site>/refuges/` (WGS84) : `refuges.geojson` (fiches), `refuges_info.geojson`, `osm.geojson`, `camptocamp.geojson`, `links.json`, `refuges.meta.json` (sources avec URL, licence, attribution, ETag, sha256, dates ; propriétés documentées ; chiffres). Chaque point porte `in_france` et `link` (index dans `links.json`).
 
 API : `skimap_refuges::build(site, &layout, &downloader)`. Exemple : `cargo run --release -p skimap-refuges --example refuges`.
 
