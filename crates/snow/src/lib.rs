@@ -189,6 +189,19 @@ pub fn build(
     let current = year == chrono::Utc::now().year();
     let gz = sim::fetch_year(dl, year, current)?;
     let simulation = sim::Simulation::parse_gz(&gz, &codes, |d| date.is_none_or(|x| x == d))?;
+    // Massifs of the box that the simulation does not cover at all (the Spanish
+    // Pyrenees massifs 80 to 91 of snowtools, next to Le Somport, G2): their cells stay
+    // without estimate (`NaN`, as outside every massif) instead of failing the layer.
+    let (codes, unsimulated): (Vec<u16>, Vec<u16>) = codes
+        .iter()
+        .partition(|c| simulation.days.keys().any(|(m, _)| m == *c));
+    if !unsimulated.is_empty() {
+        tracing::warn!(
+            site = site.id,
+            ?unsimulated,
+            "massifs without simulation: no estimate there"
+        );
+    }
     let date = match date {
         Some(d) => d,
         None => simulation.latest_common_date(&codes).ok_or_else(|| {
@@ -272,7 +285,15 @@ pub fn build(
         crs: Some("EPSG:2154 (Lambert-93)".into()),
         sources: sources(),
         files: fmeta,
-        notes: notes(),
+        notes: {
+            let mut n = notes();
+            if !unsimulated.is_empty() {
+                n.push(format!(
+                    "Massifs de l'emprise sans simulation Météo-France ({unsimulated:?}) : pas d'estimation sur leurs cellules (NaN)."
+                ));
+            }
+            n
+        },
         ..LayerMeta::new(LAYER, site.id)
     };
     let meta_path = meta.write(&dir)?;
