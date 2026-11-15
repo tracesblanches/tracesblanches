@@ -61,6 +61,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 seed: 7,
                 tail_s: 300.0,
                 behaviour: None,
+                step_counter: false,
             };
             match name {
                 "refuge" => {

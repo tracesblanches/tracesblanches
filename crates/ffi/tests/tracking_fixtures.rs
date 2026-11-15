@@ -58,6 +58,7 @@ fn session_follows_the_core_on_the_fixtures() {
         seed: 3,
         tail_s: 300.0,
         behaviour: Some(Behaviour::family()),
+        step_counter: false,
     };
     let run = scenario::run(
         &sc,
@@ -150,6 +151,10 @@ fn session_follows_the_core_on_the_fixtures() {
                         accept: *accept,
                     },
                     Input::Refuse { .. } => TrackEvent::Refuse { t_ms },
+                    Input::Steps { steps, .. } => TrackEvent::Steps {
+                        t_ms,
+                        steps: *steps,
+                    },
                     Input::Screen { on, .. } => TrackEvent::Screen { t_ms, on: *on },
                     Input::Closed { ways, .. } => TrackEvent::Closed {
                         t_ms,
@@ -235,6 +240,7 @@ fn bring_me_back_on_the_fixtures() {
         seed: 1,
         tail_s: 0.0,
         behaviour: None,
+        step_counter: false,
     };
     let run = scenario::run(
         &sc,

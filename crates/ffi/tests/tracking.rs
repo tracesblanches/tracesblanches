@@ -68,6 +68,10 @@ fn event(i: &Input) -> Option<TrackEvent> {
             ways: ways.clone(),
         },
         Input::Refuse { t: x } => TrackEvent::Refuse { t_ms: t(x) },
+        Input::Steps { t: x, steps } => TrackEvent::Steps {
+            t_ms: t(x),
+            steps: *steps,
+        },
         Input::Answer { t: x, accept } => TrackEvent::Answer {
             t_ms: t(x),
             accept: *accept,
@@ -275,6 +279,7 @@ fn morning_to_recap(site: &'static Site, date: &str, budget_min: f64, return_bef
         seed: 11,
         tail_s: 300.0,
         behaviour: Some(Behaviour::family()),
+        step_counter: false,
     };
     let run = scenario::run(
         &sc,
@@ -412,6 +417,7 @@ fn full_data_q9_through_the_session() {
             seed: 7,
             tail_s: 300.0,
             behaviour: bh,
+            step_counter: false,
         };
         let run = scenario::run(
             &sc,
@@ -496,6 +502,7 @@ fn full_data_bring_me_back() {
         seed: 5,
         tail_s: 0.0,
         behaviour: None,
+        step_counter: false,
     };
     let run = scenario::run(
         &sc,

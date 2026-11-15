@@ -154,6 +154,13 @@ pub enum TrackEvent {
         /// Accepted.
         accept: bool,
     },
+    /// Steps counted by the phone since the previous report (X10).
+    Steps {
+        /// Epoch milliseconds.
+        t_ms: i64,
+        /// Steps since the previous report.
+        steps: u32,
+    },
     /// Trails closed (OSM ways).
     Closed {
         /// Epoch milliseconds.
@@ -184,6 +191,10 @@ impl TrackEvent {
             TrackEvent::Answer { t_ms, accept } => Input::Answer {
                 t: utc(*t_ms),
                 accept: *accept,
+            },
+            TrackEvent::Steps { t_ms, steps } => Input::Steps {
+                t: utc(*t_ms),
+                steps: *steps,
             },
             TrackEvent::Closed { t_ms, ways } => Input::Closed {
                 t: utc(*t_ms),
