@@ -1190,3 +1190,15 @@ tickets:
     À mesurer et vérifier : portée réelle sur neige et en forêt entre un Pixel 8 et un Pixel 8 Pro, coût batterie de l'émission et de l'écoute en veille, limites Android en arrière-plan, probabilité de croiser un autre utilisateur selon la fréquentation, vie privée (identifiants tournants, chiffrement), abus et fausses alertes, règles d'appel du 112 par un tiers.
     Jamais présenté comme un DVA. Interférence d'un téléphone avec un DVA à vérifier (recommandations ICAR).
     Critère : rapport chiffré et décision ; si favorable, prototype de relais entre deux téléphones mesuré dehors.
+
+- key: N2
+  title: Mode groupe, positions des membres et alerte de séparation
+  milestone: M3 Client v1
+  labels: [client, sécurité]
+  deps: [K4, J1]
+  body: |
+    Priorité de l'utilisateur. Un groupe créé avant la sortie (code ou QR échangé au chalet, sans compte) partage les positions de ses membres.
+    Sans réseau : Bluetooth basse consommation entre téléphones à portée, retransmission de proche en proche dans le groupe (la dernière position connue de chacun circule). Avec réseau : courts messages chiffrés de bout en bout par le serveur ou par SMS, dernier recours.
+    Sur la carte : chaque membre, l'âge de sa dernière position et sa source. Alertes : membre qui décroche (distance et durée réglables), membre arrêté longtemps hors d'un refuge, membre sorti de l'itinéraire du plan commun, regroupement aux intersections du plan. Tout fonctionne sur le téléphone ; le serveur ne fait que relayer des messages qu'il ne peut pas lire.
+    Batterie : écoute et émission à faible cycle, réglées par les modes de E1.
+    Critère : sortie à deux (Pixel 8 et Pixel 8 Pro) avec séparation simulée, alerte reçue ; portée et coût batterie mesurés.
