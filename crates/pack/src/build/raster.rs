@@ -8,7 +8,8 @@
 //! class, see [`RasterSpec::tie_high`]).
 //!
 //! Any GeoTIFF Float32 layer of the pipeline slots in by adding a [`RasterSpec`] to
-//! [`catalog`]: today the 5 m slope of `terrain` and the 25 m snow rasters of `snow`.
+//! [`catalog`]: today the 25 m snow rasters of `snow`. The slope and avalanche exposure
+//! classes are vector polygons ([`crate::build::class_tiles`]).
 
 use std::collections::HashMap;
 use std::fs::File;
@@ -22,7 +23,7 @@ use skimap_common::download::Downloader;
 use skimap_common::geom::BBox;
 use skimap_common::grid::Grid;
 
-use crate::build::layers::{EntryParts, Outcome, copy_meta, layer_entry, read_meta};
+use crate::build::layers::{EntryParts, Outcome, copy_meta, layer_entry, read_meta, restricted};
 use crate::build::source;
 use crate::error::{Error, Result};
 use crate::manifest::{Layer, LayerKind, LegendEntry, Missing, RasterInfo, ValueEncoding};
@@ -184,7 +185,7 @@ fn snow_depth_classes() -> Vec<Class> {
 }
 
 /// Avalanche exposure classes (values 1, 2, 3). Never « sûr » nor « sans danger ».
-fn exposure_classes() -> Vec<Class> {
+pub fn exposure_classes() -> Vec<Class> {
     vec![
         Class {
             upper: 1.5,
@@ -275,42 +276,17 @@ pub fn catalog() -> Vec<RasterSpec> {
             ],
             read: Read::Float32,
         },
-        RasterSpec {
-            id: "slope",
-            title: "Pentes (LiDAR HD 5 m)",
-            origin: "terrain",
-            file: "slope_5m.tif",
-            meta: "terrain.meta.json",
-            classes: slope_classes(),
-            minzoom: 10,
-            maxzoom: 15,
-            tie_high: true,
-            visible: true,
-            notes: &["Classes et couleurs de la carte des pentes IGN ; moins de 30° transparent."],
-            read: Read::Float32,
-        },
-        RasterSpec {
-            id: "avalanche-exposure",
-            title: "Exposition aux avalanches (modèle et CLPA)",
-            origin: "avalanche-exposure",
-            file: "exposure_5m.tif",
-            meta: "avalanche-exposure.meta.json",
-            classes: exposure_classes(),
-            minzoom: 10,
-            maxzoom: 15,
-            tie_high: true,
-            visible: false,
-            notes: &[
-                "Classes de la couche avalanche-exposure (modèle de type ATES et emprises CLPA fusionnées) : « terrain peu exposé (modèle) », « exposé », « très exposé ». Une sortie de modèle, jamais « sûr » ni « sans danger » ; consulter le BERA.",
-            ],
-            read: Read::AvalancheClasses,
-        },
     ]
 }
 
 /// Reads the GeoTIFF of a raster layer as Float32 (NaN = no data).
 pub fn read_grid(spec: &RasterSpec, src: &Path) -> Result<Grid<f32>> {
-    match spec.read {
+    read_as(spec.read, src)
+}
+
+/// Reads a pipeline GeoTIFF as Float32 (NaN = no data) the way `read` says.
+pub fn read_as(read: Read, src: &Path) -> Result<Grid<f32>> {
+    match read {
         Read::Float32 => Ok(skimap_common::geotiff::read_f32(src)?),
         Read::AvalancheClasses => {
             let g = skimap_common::geotiff::read_u8(src)?;
@@ -542,7 +518,12 @@ fn legend(spec: &RasterSpec) -> Vec<LegendEntry> {
 }
 
 /// Builds a raster layer from the pipeline GeoTIFF, if present.
-pub fn include(spec: &RasterSpec, out: &Path, root: &Path) -> Result<Outcome> {
+pub fn include(
+    spec: &RasterSpec,
+    out: &Path,
+    root: &Path,
+    personal_sources: bool,
+) -> Result<Outcome> {
     let dir = out.join(spec.origin);
     let src = dir.join(spec.file);
     if !src.is_file() {
@@ -554,12 +535,19 @@ pub fn include(spec: &RasterSpec, out: &Path, root: &Path) -> Result<Outcome> {
             ),
         }));
     }
+    let meta = read_meta(&dir.join(spec.meta))?;
+    if meta.as_ref().is_some_and(|m| restricted(&m.meta.sources)) && !personal_sources {
+        return Ok(Outcome::Missing(Missing {
+            id: spec.id.to_owned(),
+            reason: "source à usage personnel seulement : option personal_sources désactivée"
+                .to_owned(),
+        }));
+    }
     let grid = read_grid(spec, &src)?;
     let tiles = render(&grid, spec)?;
     let png_tiles = encode_tiles(&tiles, &spec.palette())?;
     let bbox = grid_bbox_wgs84(&grid)?;
     let file = format!("rasters/{}.pmtiles", spec.id);
-    let meta = read_meta(&dir.join(spec.meta))?;
     let attribution: Vec<String> = meta
         .as_ref()
         .map(|m| {
@@ -696,6 +684,7 @@ pub fn ign_slopes(bbox: BBox, dl: &Downloader, root: &Path) -> Result<Layer> {
         features: None,
         geometry_types: Vec::new(),
         visible: false,
+        classes: None,
         raster: Some(RasterInfo {
             minzoom: minz,
             maxzoom: maxz,
@@ -737,11 +726,11 @@ mod tests {
 
     #[test]
     fn exposure_classes_never_say_safe() {
-        let e = catalog()
-            .into_iter()
-            .find(|s| s.id == "avalanche-exposure")
-            .unwrap();
-        assert_eq!(e.read, Read::AvalancheClasses);
+        let e = RasterSpec {
+            classes: exposure_classes(),
+            read: Read::AvalancheClasses,
+            ..spec()
+        };
         assert_eq!(e.classify(1.0), 0);
         assert_eq!(e.classify(2.0), 1);
         assert_eq!(e.classify(3.0), 2);

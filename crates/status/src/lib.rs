@@ -118,6 +118,8 @@ fn poll_enj(
     city: u32,
     now: DateTime<Utc>,
     latest: &mut serde_json::Map<String, Value>,
+    ways: Option<&[join::OsmWay]>,
+    stats: &mut serde_json::Map<String, Value>,
 ) -> Result<SourcePoll> {
     let (snap, origin) = enj::fetch_status(dl, city)?;
     let content =
@@ -126,14 +128,32 @@ fn poll_enj(
     let (changed, snapshot) = record(&store, now, origin, &content)?;
 
     let geoms = enj::fetch_geometry(dl, city)?;
+    let mut along = Vec::new();
     let features: Vec<Value> = snap
         .treks
         .iter()
         .map(|t| {
             let (geometry, gpx) = geoms.get(&t.id).cloned().unwrap_or((Value::Null, None));
+            let geometry = strip_z(geometry);
+            let practice = join::practice_of(t.practice.as_deref().unwrap_or(""));
+            let matched: Option<Vec<&join::OsmWay>> =
+                ways.map(|w| join::ways_along(&geometry, practice, w));
+            let ids: Option<Vec<i64>> = matched
+                .as_ref()
+                .map(|m| m.iter().map(|w| w.osm_way_id).collect());
+            let osm_len = matched
+                .as_ref()
+                .map(|m| (m.iter().map(|w| w.length_m).sum::<f64>() * 10.0).round() / 10.0 + 0.0);
+            along.push(json!({
+                "itinerary": format!("{}:{}", enj::SOURCE, t.id),
+                "name": t.name,
+                "ways": ids.as_ref().map(Vec::len),
+                "osm_length_m": osm_len,
+                "length_m": t.length_m,
+            }));
             json!({
                 "type": "Feature",
-                "geometry": strip_z(geometry),
+                "geometry": geometry,
                 "properties": {
                         "id": t.id,
                     "itinerary": format!("{}:{}", enj::SOURCE, t.id),
@@ -149,10 +169,26 @@ fn poll_enj(
                     "gtj": t.gtj,
                     "gpx": gpx,
                     "polled_at": rfc3339(now),
+                    "state_at": t.update_datetime,
+                    "osm_practice": practice,
+                    "osm_way_ids": ids,
+                    "osm_length_m": osm_len,
                 }
             })
         })
         .collect();
+    stats.insert(
+        "enj_join".to_owned(),
+        json!({
+            "rule": format!(
+                "voies OSM de la pratique dont au moins {:.0} % des points (tous les 10 m) sont à moins de {} m de l'itinéraire ENJ",
+                join::ALONG_SHARE * 100.0,
+                join::ALONG_DISTANCE_M
+            ),
+            "pistes_layer": ways.is_some(),
+            "itineraries": along,
+        }),
+    );
     write_json(
         &dir.join("status.geojson"),
         &json!({ "type": "FeatureCollection", "features": features }),
@@ -291,7 +327,22 @@ pub fn poll(
     ];
 
     if let Some(city) = enj::city_id(site.id) {
-        sources.push(poll_enj(&dir, dl, city, now, &mut latest)?);
+        // OSM ways of the itineraries, when the pistes layer was built.
+        let pistes_path = layout.layer_dir(site, "pistes")?.join("pistes.geojson");
+        let ways = if pistes_path.is_file() {
+            Some(join::read_pistes(&pistes_path)?)
+        } else {
+            None
+        };
+        sources.push(poll_enj(
+            &dir,
+            dl,
+            city,
+            now,
+            &mut latest,
+            ways.as_deref(),
+            &mut stats,
+        )?);
         refs.push(source_ref(
             "ENJ Snowmap (Geotrek), état des itinéraires",
             &enj::status_url(city),

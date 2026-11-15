@@ -3,6 +3,9 @@
   "layers": [
     {
       "id": "background",
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "paint": {
         "background-color": "#11151a"
       },
@@ -19,6 +22,9 @@
       ],
       "id": "ign-built",
       "maxzoom": 15,
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "paint": {
         "fill-color": "#1b2027"
       },
@@ -44,6 +50,9 @@
         false
       ],
       "id": "ign-forest",
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "paint": {
         "fill-color": "#17221b"
       },
@@ -61,6 +70,9 @@
         "ZONE_GLACIER"
       ],
       "id": "ign-glacier",
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "paint": {
         "fill-color": "#1a2a38"
       },
@@ -72,6 +84,9 @@
       "id": "snow-groomed",
       "layout": {
         "visibility": "none"
+      },
+      "metadata": {
+        "skimap:group": "neige"
       },
       "paint": {
         "raster-fade-duration": 0,
@@ -97,6 +112,9 @@
         false
       ],
       "id": "ign-water",
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "paint": {
         "fill-color": "#1d4a73"
       },
@@ -124,6 +142,9 @@
       "layout": {
         "line-cap": "round",
         "line-join": "round"
+      },
+      "metadata": {
+        "skimap:group": "fond"
       },
       "minzoom": 13.0,
       "paint": {
@@ -165,6 +186,9 @@
         false
       ],
       "id": "ign-contour",
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "minzoom": 14,
       "paint": {
         "line-color": "#3a3329",
@@ -190,6 +214,9 @@
         false
       ],
       "id": "ign-contour-index",
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "minzoom": 12,
       "paint": {
         "line-color": "#3a3329",
@@ -232,6 +259,9 @@
       "layout": {
         "line-cap": "round",
         "line-join": "round"
+      },
+      "metadata": {
+        "skimap:group": "fond"
       },
       "minzoom": 11.0,
       "paint": {
@@ -282,6 +312,9 @@
         "line-cap": "round",
         "line-join": "round"
       },
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "paint": {
         "line-color": "#59616c",
         "line-width": [
@@ -324,6 +357,9 @@
       "layout": {
         "line-cap": "round",
         "line-join": "round"
+      },
+      "metadata": {
+        "skimap:group": "fond"
       },
       "minzoom": 11.0,
       "paint": {
@@ -373,6 +409,9 @@
         "line-cap": "round",
         "line-join": "round"
       },
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "paint": {
         "line-color": "#59616c",
         "line-width": [
@@ -397,6 +436,9 @@
     },
     {
       "id": "ign-building",
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "minzoom": 14,
       "paint": {
         "fill-color": "#3a4048"
@@ -415,6 +457,9 @@
         "REMONTEE_MEC"
       ],
       "id": "ign-lift",
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "minzoom": 12,
       "paint": {
         "line-color": "#b5b5b5",
@@ -455,7 +500,8 @@
         "line-join": "round"
       },
       "metadata": {
-        "skimap:contrast": "background"
+        "skimap:contrast": "background",
+        "skimap:group": "dangers"
       },
       "minzoom": 11,
       "paint": {
@@ -535,6 +581,9 @@
       "layout": {
         "line-cap": "round"
       },
+      "metadata": {
+        "skimap:group": "pistes"
+      },
       "minzoom": 13,
       "paint": {
         "line-color": "#b9ab9c",
@@ -579,6 +628,9 @@
       "layout": {
         "line-cap": "round",
         "line-join": "round"
+      },
+      "metadata": {
+        "skimap:group": "pistes"
       },
       "paint": {
         "line-color": [
@@ -649,7 +701,8 @@
         "line-join": "round"
       },
       "metadata": {
-        "skimap:contrast": "pistes-casing"
+        "skimap:contrast": "pistes-casing",
+        "skimap:group": "pistes"
       },
       "paint": {
         "line-color": [
@@ -725,7 +778,8 @@
         "line-cap": "butt"
       },
       "metadata": {
-        "skimap:contrast": "pistes-casing"
+        "skimap:contrast": "pistes-casing",
+        "skimap:group": "pistes"
       },
       "paint": {
         "line-color": [
@@ -820,6 +874,9 @@
         ]
       ],
       "id": "pistes-classic-only",
+      "metadata": {
+        "skimap:group": "pistes"
+      },
       "minzoom": 13,
       "paint": {
         "line-color": "#0b0e12",
@@ -848,32 +905,36 @@
       "filter": [
         "all",
         [
+          "in",
+          "nordic",
+          [
+            "coalesce",
+            [
+              "get",
+              "uses"
+            ],
+            [
+              "literal",
+              []
+            ]
+          ]
+        ],
+        [
           "==",
           [
             "get",
             "state"
           ],
           "closed"
-        ],
-        [
-          "match",
-          [
-            "get",
-            "practice"
-          ],
-          [
-            "nordic",
-            "Ski de fond",
-            "Pistes multi-activités"
-          ],
-          true,
-          false
         ]
       ],
-      "id": "status-closed",
+      "id": "pistes-closed",
       "layout": {
         "line-cap": "round",
         "line-join": "round"
+      },
+      "metadata": {
+        "skimap:group": "pistes"
       },
       "paint": {
         "line-color": "#11151a",
@@ -896,12 +957,27 @@
           10.0
         ]
       },
-      "source": "status",
+      "source": "pistes",
       "type": "line"
     },
     {
       "filter": [
         "all",
+        [
+          "in",
+          "nordic",
+          [
+            "coalesce",
+            [
+              "get",
+              "uses"
+            ],
+            [
+              "literal",
+              []
+            ]
+          ]
+        ],
         [
           "==",
           [
@@ -909,25 +985,14 @@
             "state"
           ],
           "closed"
-        ],
-        [
-          "match",
-          [
-            "get",
-            "practice"
-          ],
-          [
-            "nordic",
-            "Ski de fond",
-            "Pistes multi-activités"
-          ],
-          true,
-          false
         ]
       ],
-      "id": "status-closed-dash",
+      "id": "pistes-closed-dash",
       "layout": {
         "line-join": "round"
+      },
+      "metadata": {
+        "skimap:group": "pistes"
       },
       "paint": {
         "line-color": "#11151a",
@@ -953,7 +1018,7 @@
           3.5
         ]
       },
-      "source": "status",
+      "source": "pistes",
       "type": "line"
     },
     {
@@ -1020,6 +1085,9 @@
           28.0
         ]
       },
+      "metadata": {
+        "skimap:group": "pistes"
+      },
       "minzoom": 14,
       "paint": {
         "text-color": "#ffffff",
@@ -1050,6 +1118,9 @@
         ]
       ],
       "id": "osm-parking",
+      "metadata": {
+        "skimap:group": "acces"
+      },
       "minzoom": 13,
       "paint": {
         "circle-color": "#2f6fdb",
@@ -1116,7 +1187,8 @@
         ]
       },
       "metadata": {
-        "skimap:contrast": "osm-parking"
+        "skimap:contrast": "osm-parking",
+        "skimap:group": "acces"
       },
       "minzoom": 13,
       "paint": {
@@ -1150,6 +1222,9 @@
         ]
       ],
       "id": "osm-centre",
+      "metadata": {
+        "skimap:group": "acces"
+      },
       "minzoom": 12,
       "paint": {
         "circle-color": "#2ec4b6",
@@ -1214,6 +1289,9 @@
         "text-optional": true,
         "text-size": 13
       },
+      "metadata": {
+        "skimap:group": "acces"
+      },
       "minzoom": 14,
       "paint": {
         "text-color": "#2ec4b6",
@@ -1260,7 +1338,8 @@
       "id": "huts-dot-info",
       "maxzoom": 13.0,
       "metadata": {
-        "skimap:contrast": "background"
+        "skimap:contrast": "background",
+        "skimap:group": "refuges"
       },
       "minzoom": 11.0,
       "paint": {
@@ -1318,6 +1397,9 @@
         ]
       ],
       "id": "huts-disc-info",
+      "metadata": {
+        "skimap:group": "refuges"
+      },
       "minzoom": 13.0,
       "paint": {
         "circle-color": "#f2f2f2",
@@ -1427,6 +1509,9 @@
           12.5
         ]
       },
+      "metadata": {
+        "skimap:group": "refuges"
+      },
       "minzoom": 13.0,
       "paint": {
         "text-color": "#eef2f6",
@@ -1474,6 +1559,9 @@
         "text-padding": 8,
         "text-size": 14.0
       },
+      "metadata": {
+        "skimap:group": "pistes"
+      },
       "minzoom": 13.0,
       "paint": {
         "text-color": "#eef2f6",
@@ -1518,6 +1606,9 @@
         "text-size": 15.0
       },
       "maxzoom": 13.0,
+      "metadata": {
+        "skimap:group": "noms"
+      },
       "minzoom": 10.0,
       "paint": {
         "text-color": "#eef2f6",
@@ -1576,6 +1667,9 @@
         "text-size": 16.0
       },
       "maxzoom": 24.0,
+      "metadata": {
+        "skimap:group": "noms"
+      },
       "minzoom": 13.0,
       "paint": {
         "text-color": "#eef2f6",
@@ -1626,6 +1720,9 @@
         "text-size": 13.0
       },
       "maxzoom": 24.0,
+      "metadata": {
+        "skimap:group": "noms"
+      },
       "minzoom": 13.0,
       "paint": {
         "text-color": "#eef2f6",
@@ -1675,6 +1772,9 @@
         "text-size": 12.0
       },
       "maxzoom": 24.0,
+      "metadata": {
+        "skimap:group": "noms"
+      },
       "minzoom": 15.0,
       "paint": {
         "text-color": "#eef2f6",
@@ -1715,6 +1815,9 @@
         "text-padding": 4,
         "text-size": 13.5
       },
+      "metadata": {
+        "skimap:group": "noms"
+      },
       "minzoom": 11.0,
       "paint": {
         "text-color": "#d2c3ae",
@@ -1727,6 +1830,9 @@
     },
     {
       "id": "position-accuracy",
+      "metadata": {
+        "skimap:group": "position"
+      },
       "paint": {
         "circle-color": "#4ea8ff",
         "circle-opacity": 0.15,
@@ -1776,7 +1882,8 @@
     {
       "id": "position-dot",
       "metadata": {
-        "skimap:contrast": "background"
+        "skimap:contrast": "background",
+        "skimap:group": "position"
       },
       "paint": {
         "circle-color": "#4ea8ff",
@@ -1790,6 +1897,48 @@
   ],
   "metadata": {
     "skimap:generator": "crates/styles (cargo run -p skimap-styles --example write_styles)",
+    "skimap:groups": [
+      {
+        "id": "fond",
+        "title": "Fond de carte (relief, forêt, eau, routes)",
+        "toggleable": false
+      },
+      {
+        "id": "pistes",
+        "title": "Pistes et leur état",
+        "toggleable": false
+      },
+      {
+        "id": "dangers",
+        "title": "Avalanches et passages délicats",
+        "toggleable": false
+      },
+      {
+        "id": "position",
+        "title": "Position",
+        "toggleable": false
+      },
+      {
+        "id": "refuges",
+        "title": "Refuges et abris",
+        "toggleable": true
+      },
+      {
+        "id": "acces",
+        "title": "Parkings et accueils",
+        "toggleable": true
+      },
+      {
+        "id": "noms",
+        "title": "Noms de lieux, sommets, cotes",
+        "toggleable": true
+      },
+      {
+        "id": "neige",
+        "title": "Neige estimée",
+        "toggleable": true
+      }
+    ],
     "skimap:optional_layers": [
       "snow-groomed"
     ],
@@ -1840,10 +1989,6 @@
       "tileSize": 256,
       "type": "raster",
       "url": "pmtiles://rasters/snow-groomed.pmtiles"
-    },
-    "status": {
-      "data": "layers/status.geojson",
-      "type": "geojson"
     }
   },
   "sprite": "basemap/plan-ign/sprite/PlanIgn",

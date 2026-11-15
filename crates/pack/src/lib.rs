@@ -16,6 +16,7 @@
 
 pub mod error;
 pub mod manifest;
+pub mod mvt;
 pub mod png;
 pub mod reader;
 pub mod sync;

@@ -5,7 +5,7 @@ Pack hors ligne par site : fonds de carte, format de pack, lecteur côté télé
 ## Deux usages
 
 - **Sans fonctionnalité** : le lecteur (`reader::Pack`, `reader::TileArchive`, `manifest`, `png`, `tiles`) et la mise à jour (`update` : paquets, `apply_bundle` ; `sync` : index du serveur, `plan`, état). Aucune pile HTTP ni SQLite (`cargo tree -p skimap-pack -e normal` : flate2, geojson, hex, pmtiles, serde, serde_json, sha2, skimap-common, thiserror) ; compile pour `aarch64-linux-android` (`cargo ndk -t arm64-v8a --platform 34 build --release -p skimap-pack`).
-- **Fonctionnalité `pipeline`** : constructeur du pack (`build`), fonds de carte (`build::plan_ign`, `build::osm`), rasters (`build::raster`), export Locus / OsmAnd (`export`), petit serveur HTTP pour le visualiseur (`serve`).
+- **Fonctionnalité `pipeline`** : constructeur du pack (`build`), fonds de carte (`build::plan_ign`, `build::osm`), rasters (`build::raster`), pente et exposition en polygones vectoriels (`build::class_tiles`), pistes enrichies de l'état et du plan des pistes (`build::pistes`), export Locus / OsmAnd (`export`), petit serveur HTTP pour le visualiseur (`serve`).
 
 Ligne de commande : `skimap build-pack <site>`, `skimap export <site>`, `skimap serve [racine]` (et en fin de `skimap build-all <site>`).
 
@@ -20,12 +20,14 @@ google-chrome "http://127.0.0.1:8765/tools/viewer/index.html?pack=../../data/out
 # mesures P4 (warm : remplit le cache IGN par tranches de temps bornées)
 cargo run --release -p skimap-pack --features pipeline --example basemap_sizes -- warm cervieres 17 150
 cargo run --release -p skimap-pack --features pipeline --example basemap_sizes -- 17 cervieres
+# polygones de pente et d'exposition : mesures pour un seuil de petites taches
+cargo run --release -p skimap-pack --features pipeline --example class_tiles -- patch=200 inner=400
 # contrôles
 cargo test -p skimap-pack --features pipeline
 cargo test --release -p skimap-pack --features pipeline --test real_packs -- --ignored --nocapture
 ```
 
-Variables de `build_pack` : `SKIMAP_PERSONAL_SOURCES=1` (`Config::personal_sources` : état des pistes, météo heure par heure), `SKIMAP_PLAN_IGN_MAXZOOM`, `SKIMAP_PROTOMAPS_BUILD=AAAAMMJJ`, `SKIMAP_PACK_IGN_SLOPES=1` (tuiles IGN des pentes pour comparer, +13 à +23 Mo), `SKIMAP_PACK_SKIP=plan-ign,osm,voice` (développement).
+Variables de `build_pack` : `SKIMAP_PERSONAL_SOURCES=1` (`Config::personal_sources` : état des pistes, météo heure par heure, plan des pistes, zones Biodiv'sports, CLPA ; sans l'option, aucune de ces sources ni ce qui en dérive n'entre dans le pack), `SKIMAP_PLAN_IGN_MAXZOOM`, `SKIMAP_PROTOMAPS_BUILD=AAAAMMJJ`, `SKIMAP_PACK_IGN_SLOPES=1` (tuiles IGN des pentes pour comparer, +13 à +23 Mo), `SKIMAP_PACK_SKIP=plan-ign,osm,voice` (développement).
 
 API : `skimap_pack::build::build(site, &layout, &downloader, &BuildOptions) -> BuildReport` ; `skimap_pack::export::export(&Pack, dir) -> ExportReport` ; `skimap_pack::Pack::open(dir)`.
 

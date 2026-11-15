@@ -3,6 +3,9 @@
   "layers": [
     {
       "id": "background",
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "paint": {
         "background-color": "#ffffff"
       },
@@ -19,6 +22,9 @@
       ],
       "id": "ign-built",
       "maxzoom": 15,
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "paint": {
         "fill-color": "#f1eeea"
       },
@@ -43,6 +49,9 @@
         false
       ],
       "id": "ign-forest",
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "paint": {
         "fill-color": "#c6dfb5"
       },
@@ -65,6 +74,9 @@
         false
       ],
       "id": "ign-forest-open",
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "paint": {
         "fill-color": "#e2eed6"
       },
@@ -88,6 +100,9 @@
         false
       ],
       "id": "ign-rock",
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "paint": {
         "fill-color": "#ebe8e4"
       },
@@ -105,6 +120,9 @@
         "ZONE_GLACIER"
       ],
       "id": "ign-glacier",
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "paint": {
         "fill-color": "#e3f1fb"
       },
@@ -113,13 +131,40 @@
       "type": "fill"
     },
     {
-      "id": "avalanche-exposure",
+      "id": "snow-srn",
       "layout": {
-        "visibility": "visible"
+        "visibility": "none"
+      },
+      "metadata": {
+        "skimap:group": "neige"
       },
       "paint": {
         "raster-fade-duration": 0,
-        "raster-opacity": [
+        "raster-opacity": 0.6,
+        "raster-resampling": "nearest"
+      },
+      "source": "snow-srn",
+      "type": "raster"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "class"
+        ],
+        2
+      ],
+      "id": "exposure-2",
+      "maxzoom": 14.0,
+      "metadata": {
+        "skimap:group": "dangers"
+      },
+      "minzoom": 11.0,
+      "paint": {
+        "fill-antialias": true,
+        "fill-color": "#f59628",
+        "fill-opacity": [
           "interpolate",
           [
             "linear"
@@ -130,25 +175,75 @@
           11.0,
           0.0,
           12.0,
-          0.35,
+          0.3,
           13.0,
-          0.35,
+          0.3,
           14.0,
           0.0
-        ],
-        "raster-resampling": "nearest"
+        ]
       },
       "source": "avalanche-exposure",
-      "type": "raster"
+      "source-layer": "avalanche-exposure",
+      "type": "fill"
     },
     {
-      "id": "slope",
-      "layout": {
-        "visibility": "visible"
+      "filter": [
+        "==",
+        [
+          "get",
+          "class"
+        ],
+        3
+      ],
+      "id": "exposure-3",
+      "maxzoom": 14.0,
+      "metadata": {
+        "skimap:group": "dangers"
       },
+      "minzoom": 11.0,
       "paint": {
-        "raster-fade-duration": 0,
-        "raster-opacity": [
+        "fill-antialias": true,
+        "fill-color": "#c81e1e",
+        "fill-opacity": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          11.0,
+          0.0,
+          12.0,
+          0.3,
+          13.0,
+          0.3,
+          14.0,
+          0.0
+        ]
+      },
+      "source": "avalanche-exposure",
+      "source-layer": "avalanche-exposure",
+      "type": "fill"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "class"
+        ],
+        1
+      ],
+      "id": "slope-1",
+      "metadata": {
+        "skimap:group": "pentes"
+      },
+      "minzoom": 13.0,
+      "paint": {
+        "fill-antialias": true,
+        "fill-color": "#f2e500",
+        "fill-opacity": [
           "interpolate",
           [
             "linear"
@@ -160,24 +255,116 @@
           0.0,
           14.0,
           0.55
-        ],
-        "raster-resampling": "nearest"
+        ]
       },
       "source": "slope",
-      "type": "raster"
+      "source-layer": "slope",
+      "type": "fill"
     },
     {
-      "id": "snow-srn",
-      "layout": {
-        "visibility": "none"
+      "filter": [
+        "==",
+        [
+          "get",
+          "class"
+        ],
+        2
+      ],
+      "id": "slope-2",
+      "metadata": {
+        "skimap:group": "pentes"
       },
+      "minzoom": 13.0,
       "paint": {
-        "raster-fade-duration": 0,
-        "raster-opacity": 0.6,
-        "raster-resampling": "nearest"
+        "fill-antialias": true,
+        "fill-color": "#f39419",
+        "fill-opacity": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          13.0,
+          0.0,
+          14.0,
+          0.55
+        ]
       },
-      "source": "snow-srn",
-      "type": "raster"
+      "source": "slope",
+      "source-layer": "slope",
+      "type": "fill"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "class"
+        ],
+        3
+      ],
+      "id": "slope-3",
+      "metadata": {
+        "skimap:group": "pentes"
+      },
+      "minzoom": 13.0,
+      "paint": {
+        "fill-antialias": true,
+        "fill-color": "#f00000",
+        "fill-opacity": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          13.0,
+          0.0,
+          14.0,
+          0.55
+        ]
+      },
+      "source": "slope",
+      "source-layer": "slope",
+      "type": "fill"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "class"
+        ],
+        4
+      ],
+      "id": "slope-4",
+      "metadata": {
+        "skimap:group": "pentes"
+      },
+      "minzoom": 13.0,
+      "paint": {
+        "fill-antialias": true,
+        "fill-color": "#c889bb",
+        "fill-opacity": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          13.0,
+          0.0,
+          14.0,
+          0.55
+        ]
+      },
+      "source": "slope",
+      "source-layer": "slope",
+      "type": "fill"
     },
     {
       "filter": [
@@ -195,6 +382,9 @@
         false
       ],
       "id": "ign-water",
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "paint": {
         "fill-color": "#9fd0f2"
       },
@@ -222,6 +412,9 @@
       "layout": {
         "line-cap": "round",
         "line-join": "round"
+      },
+      "metadata": {
+        "skimap:group": "fond"
       },
       "minzoom": 12.0,
       "paint": {
@@ -256,6 +449,9 @@
         "LIGNE_DESC_ZONE_ROCHEUSE"
       ],
       "id": "ign-rock-line",
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "minzoom": 13,
       "paint": {
         "line-color": "#a8a29a",
@@ -282,6 +478,9 @@
         false
       ],
       "id": "ign-contour",
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "minzoom": 12,
       "paint": {
         "line-color": "#b69772",
@@ -321,6 +520,9 @@
         false
       ],
       "id": "ign-contour-index",
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "minzoom": 10,
       "paint": {
         "line-color": "#8a6a43",
@@ -361,6 +563,9 @@
       "id": "ign-road-track",
       "layout": {
         "line-cap": "round"
+      },
+      "metadata": {
+        "skimap:group": "fond"
       },
       "minzoom": 13,
       "paint": {
@@ -408,6 +613,9 @@
       "layout": {
         "line-cap": "round",
         "line-join": "round"
+      },
+      "metadata": {
+        "skimap:group": "fond"
       },
       "minzoom": 11.0,
       "paint": {
@@ -458,6 +666,9 @@
         "line-cap": "round",
         "line-join": "round"
       },
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "paint": {
         "line-color": "#a39887",
         "line-width": [
@@ -497,6 +708,9 @@
       "id": "ign-road-track-bridge",
       "layout": {
         "line-cap": "round"
+      },
+      "metadata": {
+        "skimap:group": "fond"
       },
       "minzoom": 13,
       "paint": {
@@ -543,6 +757,9 @@
       "layout": {
         "line-cap": "round",
         "line-join": "round"
+      },
+      "metadata": {
+        "skimap:group": "fond"
       },
       "minzoom": 11.0,
       "paint": {
@@ -592,6 +809,9 @@
         "line-cap": "round",
         "line-join": "round"
       },
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "paint": {
         "line-color": "#a39887",
         "line-width": [
@@ -629,6 +849,9 @@
         false
       ],
       "id": "ign-path",
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "minzoom": 13,
       "paint": {
         "line-color": "#7d5a35",
@@ -656,6 +879,9 @@
     },
     {
       "id": "ign-building",
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "minzoom": 14,
       "paint": {
         "fill-color": "#cfc8bd"
@@ -674,6 +900,9 @@
         "REMONTEE_MEC"
       ],
       "id": "ign-lift",
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "minzoom": 12,
       "paint": {
         "line-color": "#4a4a4a",
@@ -697,6 +926,9 @@
     },
     {
       "id": "no-network-fill",
+      "metadata": {
+        "skimap:group": "reseau"
+      },
       "paint": {
         "fill-color": "#5b2a86",
         "fill-opacity": 0.07
@@ -707,7 +939,8 @@
     {
       "id": "no-network-line",
       "metadata": {
-        "skimap:contrast": "background"
+        "skimap:contrast": "background",
+        "skimap:group": "reseau"
       },
       "minzoom": 12,
       "paint": {
@@ -723,52 +956,62 @@
     },
     {
       "filter": [
-        "any",
+        "all",
         [
-          "all",
+          "!",
           [
-            "==",
+            "match",
             [
               "get",
               "kind"
             ],
-            "biodiv_sports"
-          ],
-          [
-            "in",
-            "terrestre",
             [
-              "coalesce",
-              [
-                "get",
-                "practices"
-              ],
-              [
-                "literal",
-                []
-              ]
-            ]
+              "country",
+              "department",
+              "canton",
+              "commune"
+            ],
+            true,
+            false
           ]
         ],
         [
-          "match",
+          "any",
           [
-            "get",
-            "kind"
+            "match",
+            [
+              "get",
+              "access"
+            ],
+            [
+              "forbidden",
+              "routes_only",
+              "avoid_recommended"
+            ],
+            true,
+            false
           ],
           [
-            "appb",
-            "reserve_naturelle_nationale",
-            "reserve_naturelle_regionale",
-            "reserve_biologique",
-            "parc_national",
-            "district_franc"
-          ],
-          true,
-          false
+            "match",
+            [
+              "get",
+              "kind"
+            ],
+            [
+              "reserve_naturelle_nationale",
+              "reserve_naturelle_regionale",
+              "reserve_biologique",
+              "parc_national"
+            ],
+            true,
+            false
+          ]
         ]
       ],
       "id": "zones-fill",
+      "metadata": {
+        "skimap:group": "reglementation"
+      },
       "paint": {
         "fill-color": "#c24e00",
         "fill-opacity": 0.07
@@ -778,54 +1021,62 @@
     },
     {
       "filter": [
-        "any",
+        "all",
         [
-          "all",
+          "!",
           [
-            "==",
+            "match",
             [
               "get",
               "kind"
             ],
-            "biodiv_sports"
-          ],
-          [
-            "in",
-            "terrestre",
             [
-              "coalesce",
-              [
-                "get",
-                "practices"
-              ],
-              [
-                "literal",
-                []
-              ]
-            ]
+              "country",
+              "department",
+              "canton",
+              "commune"
+            ],
+            true,
+            false
           ]
         ],
         [
-          "match",
+          "any",
           [
-            "get",
-            "kind"
+            "match",
+            [
+              "get",
+              "access"
+            ],
+            [
+              "forbidden",
+              "routes_only",
+              "avoid_recommended"
+            ],
+            true,
+            false
           ],
           [
-            "appb",
-            "reserve_naturelle_nationale",
-            "reserve_naturelle_regionale",
-            "reserve_biologique",
-            "parc_national",
-            "district_franc"
-          ],
-          true,
-          false
+            "match",
+            [
+              "get",
+              "kind"
+            ],
+            [
+              "reserve_naturelle_nationale",
+              "reserve_naturelle_regionale",
+              "reserve_biologique",
+              "parc_national"
+            ],
+            true,
+            false
+          ]
         ]
       ],
       "id": "zones-line",
       "metadata": {
-        "skimap:contrast": "background"
+        "skimap:contrast": "background",
+        "skimap:group": "reglementation"
       },
       "paint": {
         "line-color": "#c24e00",
@@ -850,47 +1101,9 @@
       "filter": [
         "all",
         [
-          "in",
-          "Bivouac : interdit",
+          "all",
           [
-            "coalesce",
-            [
-              "get",
-              "rules_text"
-            ],
-            ""
-          ]
-        ],
-        [
-          "!",
-          [
-            "any",
-            [
-              "all",
-              [
-                "==",
-                [
-                  "get",
-                  "kind"
-                ],
-                "biodiv_sports"
-              ],
-              [
-                "in",
-                "terrestre",
-                [
-                  "coalesce",
-                  [
-                    "get",
-                    "practices"
-                  ],
-                  [
-                    "literal",
-                    []
-                  ]
-                ]
-              ]
-            ],
+            "!",
             [
               "match",
               [
@@ -898,20 +1111,85 @@
                 "kind"
               ],
               [
-                "appb",
-                "reserve_naturelle_nationale",
-                "reserve_naturelle_regionale",
-                "reserve_biologique",
-                "parc_national",
-                "district_franc"
+                "country",
+                "department",
+                "canton",
+                "commune"
               ],
               true,
               false
+            ]
+          ],
+          [
+            "==",
+            [
+              "get",
+              "bivouac"
+            ],
+            "forbidden"
+          ]
+        ],
+        [
+          "!",
+          [
+            "all",
+            [
+              "!",
+              [
+                "match",
+                [
+                  "get",
+                  "kind"
+                ],
+                [
+                  "country",
+                  "department",
+                  "canton",
+                  "commune"
+                ],
+                true,
+                false
+              ]
+            ],
+            [
+              "any",
+              [
+                "match",
+                [
+                  "get",
+                  "access"
+                ],
+                [
+                  "forbidden",
+                  "routes_only",
+                  "avoid_recommended"
+                ],
+                true,
+                false
+              ],
+              [
+                "match",
+                [
+                  "get",
+                  "kind"
+                ],
+                [
+                  "reserve_naturelle_nationale",
+                  "reserve_naturelle_regionale",
+                  "reserve_biologique",
+                  "parc_national"
+                ],
+                true,
+                false
+              ]
             ]
           ]
         ]
       ],
       "id": "zones-bivouac",
+      "metadata": {
+        "skimap:group": "reglementation"
+      },
       "minzoom": 12,
       "paint": {
         "line-color": "#7b2d9b",
@@ -926,49 +1204,56 @@
     },
     {
       "filter": [
-        "any",
+        "all",
         [
-          "all",
+          "!",
           [
-            "==",
+            "match",
             [
               "get",
               "kind"
             ],
-            "biodiv_sports"
-          ],
-          [
-            "in",
-            "terrestre",
             [
-              "coalesce",
-              [
-                "get",
-                "practices"
-              ],
-              [
-                "literal",
-                []
-              ]
-            ]
+              "country",
+              "department",
+              "canton",
+              "commune"
+            ],
+            true,
+            false
           ]
         ],
         [
-          "match",
+          "any",
           [
-            "get",
-            "kind"
+            "match",
+            [
+              "get",
+              "access"
+            ],
+            [
+              "forbidden",
+              "routes_only",
+              "avoid_recommended"
+            ],
+            true,
+            false
           ],
           [
-            "appb",
-            "reserve_naturelle_nationale",
-            "reserve_naturelle_regionale",
-            "reserve_biologique",
-            "parc_national",
-            "district_franc"
-          ],
-          true,
-          false
+            "match",
+            [
+              "get",
+              "kind"
+            ],
+            [
+              "reserve_naturelle_nationale",
+              "reserve_naturelle_regionale",
+              "reserve_biologique",
+              "parc_national"
+            ],
+            true,
+            false
+          ]
         ]
       ],
       "id": "zones-label",
@@ -989,6 +1274,9 @@
         ],
         "text-size": 12
       },
+      "metadata": {
+        "skimap:group": "reglementation"
+      },
       "minzoom": 13,
       "paint": {
         "text-color": "#c24e00",
@@ -1001,7 +1289,8 @@
     {
       "id": "avalanche-areas-line",
       "metadata": {
-        "skimap:contrast": "background"
+        "skimap:contrast": "background",
+        "skimap:group": "dangers"
       },
       "minzoom": 13,
       "paint": {
@@ -1042,7 +1331,8 @@
         "line-join": "round"
       },
       "metadata": {
-        "skimap:contrast": "background"
+        "skimap:contrast": "background",
+        "skimap:group": "dangers"
       },
       "minzoom": 11,
       "paint": {
@@ -1120,6 +1410,9 @@
       "layout": {
         "line-cap": "round"
       },
+      "metadata": {
+        "skimap:group": "pistes"
+      },
       "minzoom": 12,
       "paint": {
         "line-color": "#6a5f55",
@@ -1164,6 +1457,9 @@
       "layout": {
         "line-cap": "round",
         "line-join": "round"
+      },
+      "metadata": {
+        "skimap:group": "pistes"
       },
       "paint": {
         "line-color": [
@@ -1232,7 +1528,8 @@
         "line-join": "round"
       },
       "metadata": {
-        "skimap:contrast": "pistes-casing"
+        "skimap:contrast": "pistes-casing",
+        "skimap:group": "pistes"
       },
       "paint": {
         "line-color": [
@@ -1306,7 +1603,8 @@
         "line-cap": "butt"
       },
       "metadata": {
-        "skimap:contrast": "pistes-casing"
+        "skimap:contrast": "pistes-casing",
+        "skimap:group": "pistes"
       },
       "paint": {
         "line-color": [
@@ -1356,32 +1654,36 @@
       "filter": [
         "all",
         [
+          "in",
+          "nordic",
+          [
+            "coalesce",
+            [
+              "get",
+              "uses"
+            ],
+            [
+              "literal",
+              []
+            ]
+          ]
+        ],
+        [
           "==",
           [
             "get",
             "state"
           ],
           "closed"
-        ],
-        [
-          "match",
-          [
-            "get",
-            "practice"
-          ],
-          [
-            "nordic",
-            "Ski de fond",
-            "Pistes multi-activités"
-          ],
-          true,
-          false
         ]
       ],
-      "id": "status-closed",
+      "id": "pistes-closed",
       "layout": {
         "line-cap": "round",
         "line-join": "round"
+      },
+      "metadata": {
+        "skimap:group": "pistes"
       },
       "paint": {
         "line-color": "#ffffff",
@@ -1402,12 +1704,27 @@
           4.5
         ]
       },
-      "source": "status",
+      "source": "pistes",
       "type": "line"
     },
     {
       "filter": [
         "all",
+        [
+          "in",
+          "nordic",
+          [
+            "coalesce",
+            [
+              "get",
+              "uses"
+            ],
+            [
+              "literal",
+              []
+            ]
+          ]
+        ],
         [
           "==",
           [
@@ -1415,25 +1732,14 @@
             "state"
           ],
           "closed"
-        ],
-        [
-          "match",
-          [
-            "get",
-            "practice"
-          ],
-          [
-            "nordic",
-            "Ski de fond",
-            "Pistes multi-activités"
-          ],
-          true,
-          false
         ]
       ],
-      "id": "status-closed-dash",
+      "id": "pistes-closed-dash",
       "layout": {
         "line-join": "round"
+      },
+      "metadata": {
+        "skimap:group": "pistes"
       },
       "paint": {
         "line-color": "#ffffff",
@@ -1457,7 +1763,7 @@
           1.6
         ]
       },
-      "source": "status",
+      "source": "pistes",
       "type": "line"
     },
     {
@@ -1481,6 +1787,9 @@
         ]
       ],
       "id": "osm-parking",
+      "metadata": {
+        "skimap:group": "acces"
+      },
       "minzoom": 13,
       "paint": {
         "circle-color": "#1f5fbf",
@@ -1547,7 +1856,8 @@
         ]
       },
       "metadata": {
-        "skimap:contrast": "osm-parking"
+        "skimap:contrast": "osm-parking",
+        "skimap:group": "acces"
       },
       "minzoom": 13,
       "paint": {
@@ -1567,6 +1877,9 @@
         "point d'eau"
       ],
       "id": "water-point",
+      "metadata": {
+        "skimap:group": "points-eau"
+      },
       "minzoom": 14,
       "paint": {
         "circle-color": "#1f78d1",
@@ -1587,6 +1900,9 @@
         "passage délicat"
       ],
       "id": "hazard",
+      "metadata": {
+        "skimap:group": "dangers"
+      },
       "minzoom": 12,
       "paint": {
         "circle-color": "#c4001a",
@@ -1641,7 +1957,8 @@
         ]
       },
       "metadata": {
-        "skimap:contrast": "hazard"
+        "skimap:contrast": "hazard",
+        "skimap:group": "dangers"
       },
       "minzoom": 12,
       "paint": {
@@ -1687,7 +2004,8 @@
       "id": "huts-dot-info",
       "maxzoom": 13.0,
       "metadata": {
-        "skimap:contrast": "background"
+        "skimap:contrast": "background",
+        "skimap:group": "refuges"
       },
       "minzoom": 10.0,
       "paint": {
@@ -1739,7 +2057,8 @@
       "id": "huts-dot-osm",
       "maxzoom": 13.0,
       "metadata": {
-        "skimap:contrast": "background"
+        "skimap:contrast": "background",
+        "skimap:group": "refuges"
       },
       "minzoom": 10.0,
       "paint": {
@@ -1774,7 +2093,8 @@
       "id": "huts-dot-camptocamp",
       "maxzoom": 13.0,
       "metadata": {
-        "skimap:contrast": "background"
+        "skimap:contrast": "background",
+        "skimap:group": "refuges"
       },
       "minzoom": 10.0,
       "paint": {
@@ -1888,6 +2208,9 @@
           12.5
         ]
       },
+      "metadata": {
+        "skimap:group": "refuges"
+      },
       "minzoom": 13.0,
       "paint": {
         "text-color": "#1b1f24",
@@ -1950,6 +2273,9 @@
           16.0,
           1.0
         ]
+      },
+      "metadata": {
+        "skimap:group": "refuges"
       },
       "minzoom": 13.0,
       "source": "refuges-osm",
@@ -2019,6 +2345,9 @@
           12.5
         ]
       },
+      "metadata": {
+        "skimap:group": "refuges"
+      },
       "minzoom": 13.0,
       "paint": {
         "text-color": "#1b1f24",
@@ -2077,6 +2406,9 @@
           13.0
         ]
       },
+      "metadata": {
+        "skimap:group": "noms"
+      },
       "minzoom": 13,
       "paint": {
         "text-color": "#8a6a43",
@@ -2125,6 +2457,9 @@
         "text-padding": 8,
         "text-size": 12.0
       },
+      "metadata": {
+        "skimap:group": "pistes"
+      },
       "minzoom": 15.0,
       "paint": {
         "text-color": "#1b1f24",
@@ -2167,6 +2502,9 @@
         "text-padding": 6,
         "text-size": 11
       },
+      "metadata": {
+        "skimap:group": "noms"
+      },
       "minzoom": 14,
       "paint": {
         "text-color": "#5a4632",
@@ -2198,6 +2536,9 @@
         "text-max-width": 8,
         "text-padding": 6,
         "text-size": 11.5
+      },
+      "metadata": {
+        "skimap:group": "noms"
       },
       "minzoom": 14,
       "paint": {
@@ -2244,6 +2585,9 @@
         "text-size": 14.0
       },
       "maxzoom": 13.0,
+      "metadata": {
+        "skimap:group": "noms"
+      },
       "minzoom": 10.0,
       "paint": {
         "text-color": "#1b1f24",
@@ -2302,6 +2646,9 @@
         "text-size": 15.0
       },
       "maxzoom": 24.0,
+      "metadata": {
+        "skimap:group": "noms"
+      },
       "minzoom": 13.0,
       "paint": {
         "text-color": "#1b1f24",
@@ -2352,6 +2699,9 @@
         "text-size": 12.0
       },
       "maxzoom": 24.0,
+      "metadata": {
+        "skimap:group": "noms"
+      },
       "minzoom": 12.0,
       "paint": {
         "text-color": "#1b1f24",
@@ -2401,6 +2751,9 @@
         "text-size": 11.0
       },
       "maxzoom": 24.0,
+      "metadata": {
+        "skimap:group": "noms"
+      },
       "minzoom": 14.0,
       "paint": {
         "text-color": "#1b1f24",
@@ -2444,6 +2797,9 @@
         "text-padding": 4,
         "text-size": 13.5
       },
+      "metadata": {
+        "skimap:group": "noms"
+      },
       "minzoom": 11.0,
       "paint": {
         "text-color": "#5a4632",
@@ -2485,6 +2841,9 @@
         "text-padding": 4,
         "text-size": 12.0
       },
+      "metadata": {
+        "skimap:group": "noms"
+      },
       "minzoom": 11.0,
       "paint": {
         "text-color": "#5a4632",
@@ -2521,6 +2880,9 @@
         "text-padding": 4,
         "text-size": 11.5
       },
+      "metadata": {
+        "skimap:group": "noms"
+      },
       "minzoom": 15.0,
       "paint": {
         "text-color": "#5a4632",
@@ -2533,6 +2895,9 @@
     },
     {
       "id": "position-accuracy",
+      "metadata": {
+        "skimap:group": "position"
+      },
       "paint": {
         "circle-color": "#0a6cff",
         "circle-opacity": 0.15,
@@ -2582,7 +2947,8 @@
     {
       "id": "position-dot",
       "metadata": {
-        "skimap:contrast": "background"
+        "skimap:contrast": "background",
+        "skimap:group": "position"
       },
       "paint": {
         "circle-color": "#0a6cff",
@@ -2596,6 +2962,68 @@
   ],
   "metadata": {
     "skimap:generator": "crates/styles (cargo run -p skimap-styles --example write_styles)",
+    "skimap:groups": [
+      {
+        "id": "fond",
+        "title": "Fond de carte (relief, forêt, eau, routes)",
+        "toggleable": false
+      },
+      {
+        "id": "pistes",
+        "title": "Pistes et leur état",
+        "toggleable": false
+      },
+      {
+        "id": "dangers",
+        "title": "Avalanches et passages délicats",
+        "toggleable": false
+      },
+      {
+        "id": "reglementation",
+        "title": "Zones réglementées et bivouac",
+        "toggleable": false
+      },
+      {
+        "id": "position",
+        "title": "Position",
+        "toggleable": false
+      },
+      {
+        "id": "pentes",
+        "title": "Pentes",
+        "toggleable": true
+      },
+      {
+        "id": "refuges",
+        "title": "Refuges et abris",
+        "toggleable": true
+      },
+      {
+        "id": "points-eau",
+        "title": "Points d'eau",
+        "toggleable": true
+      },
+      {
+        "id": "acces",
+        "title": "Parkings et accueils",
+        "toggleable": true
+      },
+      {
+        "id": "noms",
+        "title": "Noms de lieux, sommets, cotes",
+        "toggleable": true
+      },
+      {
+        "id": "reseau",
+        "title": "Zones sans réseau",
+        "toggleable": true
+      },
+      {
+        "id": "neige",
+        "title": "Neige estimée",
+        "toggleable": true
+      }
+    ],
     "skimap:optional_layers": [
       "snow-srn"
     ],
@@ -2618,9 +3046,8 @@
       "type": "geojson"
     },
     "avalanche-exposure": {
-      "tileSize": 256,
-      "type": "raster",
-      "url": "pmtiles://rasters/avalanche-exposure.pmtiles"
+      "type": "vector",
+      "url": "pmtiles://layers/avalanche-exposure.pmtiles"
     },
     "avalanche-segments": {
       "data": "layers/avalanche-segments.geojson",
@@ -2664,18 +3091,13 @@
       "type": "geojson"
     },
     "slope": {
-      "tileSize": 256,
-      "type": "raster",
-      "url": "pmtiles://rasters/slope.pmtiles"
+      "type": "vector",
+      "url": "pmtiles://layers/slope.pmtiles"
     },
     "snow-srn": {
       "tileSize": 256,
       "type": "raster",
       "url": "pmtiles://rasters/snow-srn.pmtiles"
-    },
-    "status": {
-      "data": "layers/status.geojson",
-      "type": "geojson"
     },
     "zones": {
       "data": "layers/zones.geojson",

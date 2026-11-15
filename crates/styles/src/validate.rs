@@ -100,6 +100,7 @@ impl Validator<'_> {
         }
         self.order(layers);
         self.contrast(layers);
+        self.groups(s, layers);
         if let Some(opt) = meta["skimap:optional_layers"].as_array() {
             for o in opt {
                 let hidden = layers
@@ -442,6 +443,50 @@ impl Validator<'_> {
                         ));
                     }
                 }
+            }
+        }
+    }
+
+    /// Every layer has a group declared by the style, each declared group is one of
+    /// [`crate::generate::GROUPS`] with the same switch, and the safety groups cannot be
+    /// hidden.
+    fn groups(&mut self, s: &Value, layers: &[Value]) {
+        let declared: BTreeMap<String, bool> = s["metadata"]["skimap:groups"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|g| Some((g["id"].as_str()?.to_string(), g["toggleable"].as_bool()?)))
+            .collect();
+        for (id, toggleable) in &declared {
+            match crate::generate::GROUPS.iter().find(|g| g.id == id) {
+                None => self.err(format!("group {id}: unknown")),
+                Some(g) if g.toggleable != *toggleable => {
+                    self.err(format!("group {id}: toggleable must be {}", g.toggleable));
+                }
+                _ => {}
+            }
+        }
+        for l in layers {
+            let id = l["id"].as_str().unwrap_or("?");
+            match l["metadata"]["skimap:group"].as_str() {
+                None => self.err(format!("layer {id}: no skimap:group")),
+                Some(g) if !declared.contains_key(g) => {
+                    self.err(format!(
+                        "layer {id}: group {g} not declared in skimap:groups"
+                    ));
+                }
+                _ => {}
+            }
+        }
+        for safety in [
+            "dangers",
+            "reglementation",
+            "itineraire",
+            "position",
+            "pistes",
+        ] {
+            if declared.get(safety) == Some(&true) {
+                self.err(format!("group {safety}: a safety group cannot be hidden"));
             }
         }
     }

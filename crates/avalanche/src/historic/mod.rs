@@ -11,6 +11,14 @@
 //! The Jura has no CLPA: for sites outside the Hautes-Alpes the layer is empty with a
 //! notice.
 //!
+//! **Personal use only.** INRAE restricts the CLPA to personal use and the DDT 05's right
+//! to republish it is not confirmed (docs/licences-donnees.md: « Usage personnel
+//! seulement, tant qu'il n'y a pas d'accord écrit : […] CLPA et EPA d'INRAE »). The
+//! footprints are therefore read only with `personal_sources`
+//! (`skimap_common::config::Config::personal_sources`); without it the layer is written
+//! empty with a notice, so that a previous personal build never lingers, and with it the
+//! DDT 05 source is marked `personal_use_only`.
+//!
 //! Pistes: the `pistes` layer of the site (`skimap_osm::extract`, P2), which must be built
 //! first; [`build_from_dump`] reads a saved Overpass extract instead (report 07).
 //!
@@ -503,11 +511,13 @@ pub fn build_with_pistes(
     lines: &[PisteLine],
     pistes_source: &str,
     source: SourceRef,
+    personal_sources: bool,
 ) -> Result<Summary> {
     let dir = layout.layer_dir(site, LAYER)?;
     DataLayout::ensure(&dir)?;
     let generated_at = now_rfc3339();
-    let covered = site.department == DDT05_DEPARTMENT;
+    let in_ddt05 = site.department == DDT05_DEPARTMENT;
+    let covered = in_ddt05 && personal_sources;
     let bera = bera_context(layout, site)?;
 
     let mut sources = Vec::new();
@@ -523,9 +533,10 @@ pub fn build_with_pistes(
         sources.push(SourceRef::new(
             "DDT 05, aléa avalanche dans les Hautes-Alpes (CLPA republiée)",
             DDT05_DATASET_URL,
-            "Licence Ouverte 2.0 (droit de republication de la CLPA par la DDT non vérifié)",
+            "Licence Ouverte 2.0 (droit de republication de la CLPA par la DDT non vérifié) ; CLPA d'INRAE réservée à un usage personnel : usage personnel tant que la DDT 05 n'a pas confirmé (docs/licences-donnees.md)",
             "DDT des Hautes-Alpes ; CLPA INRAE (ex-Cemagref)",
-        ));
+        )
+        .personal_use_only());
         read_ddt05_zip(&zip.bytes()?)?
     } else {
         Vec::new()
@@ -699,7 +710,12 @@ pub fn build_with_pistes(
         Vec::new()
     };
 
-    let notice = if !covered {
+    let notice = if in_ddt05 && !covered {
+        "Emprises CLPA non incluses : la CLPA d'INRAE est réservée à un usage personnel et \
+         le droit de la DDT 05 de la republier n'est pas confirmé (option personal_sources \
+         désactivée). L'absence de zone affichée ne veut pas dire absence de danger."
+            .to_owned()
+    } else if !covered {
         "Pas de carte de localisation des phénomènes d'avalanche (CLPA) pour ce site : la \
          CLPA ne couvre que les Alpes et les Pyrénées, le Jura n'en a pas. L'absence de zone \
          connue ne veut pas dire absence de danger."
@@ -771,8 +787,21 @@ pub fn build_with_pistes(
 }
 
 /// Builds the layer with the piste lines of the site's `pistes` layer (OSM crate, P2),
-/// which must have been built (`skimap pistes <site>`).
+/// which must have been built (`skimap pistes <site>`); the CLPA only with
+/// `personal_sources` of the environment configuration (`SKIMAP_PERSONAL_SOURCES`, the
+/// configuration of the command line), see [`build_with`].
 pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<Summary> {
+    let personal = skimap_common::config::Config::from_env()?.personal_sources;
+    build_with(site, layout, dl, personal)
+}
+
+/// [`build`] with an explicit `personal_sources` (CLPA footprints read only with it).
+pub fn build_with(
+    site: &Site,
+    layout: &DataLayout,
+    dl: &Downloader,
+    personal_sources: bool,
+) -> Result<Summary> {
     let dir = layout.layer_dir(site, PISTES_LAYER)?;
     let path = dir.join(PISTES_FILE);
     if !path.exists() {
@@ -798,7 +827,15 @@ pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<Summar
     );
     source.edition = Some(format!("données OSM du {data_date}"));
     let description = format!("couche pistes (P2), données OSM du {data_date}");
-    build_with_pistes(site, layout, dl, &lines, &description, source)
+    build_with_pistes(
+        site,
+        layout,
+        dl,
+        &lines,
+        &description,
+        source,
+        personal_sources,
+    )
 }
 
 /// Builds the layer from a saved Overpass JSON dump (e.g. `research/raw/osm/cerv2.json`,
@@ -833,6 +870,7 @@ pub fn build_from_dump(
         &lines,
         &format!("extrait {}", dump.display()),
         source,
+        skimap_common::config::Config::from_env()?.personal_sources,
     )
 }
 

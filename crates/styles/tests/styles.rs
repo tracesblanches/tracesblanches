@@ -66,7 +66,7 @@ fn every_style_has_its_content() {
         let guidage = ids(Kind::Guidage, t);
         for id in [
             "pistes-line",
-            "status-closed",
+            "pistes-closed",
             "pistes-oneway",
             "pistes-label",
             "osm-parking",
@@ -78,8 +78,9 @@ fn every_style_has_its_content() {
         for id in [
             "ign-contour",
             "ign-contour-label",
-            "slope",
-            "avalanche-exposure",
+            "slope-1",
+            "slope-4",
+            "exposure-3",
             "avalanche-areas-line",
             "ign-forest",
             "zones-line",
@@ -141,6 +142,36 @@ fn the_validator_refuses_broken_styles() {
     let snapshot = Snapshot::load().expect("styles/pack-schema.json");
     let base = style(Kind::Fond, Theme::Clair);
     let cases: Vec<(&str, Breaker)> = vec![
+        (
+            "no skimap:group",
+            Box::new(|s| {
+                let i = layer_index(s, "huts-info");
+                s["layers"][i]["metadata"] = json!({});
+            }),
+        ),
+        (
+            "a safety group cannot be hidden",
+            Box::new(|s| {
+                let groups = s["metadata"]["skimap:groups"].as_array_mut().unwrap();
+                let g = groups.iter_mut().find(|g| g["id"] == "pistes").unwrap();
+                g["toggleable"] = json!(true);
+            }),
+        ),
+        (
+            "group refuges: toggleable must be true",
+            Box::new(|s| {
+                let groups = s["metadata"]["skimap:groups"].as_array_mut().unwrap();
+                let g = groups.iter_mut().find(|g| g["id"] == "refuges").unwrap();
+                g["toggleable"] = json!(false);
+            }),
+        ),
+        (
+            "state never has the value",
+            Box::new(|s| {
+                let i = layer_index(s, "pistes-closed");
+                s["layers"][i]["filter"] = json!(["==", ["get", "state"], "ferme"]);
+            }),
+        ),
         (
             "absent from the tiles",
             Box::new(|s| {
@@ -257,7 +288,7 @@ fn the_validator_refuses_broken_styles() {
                 s["layers"][i]["type"] = json!("fill");
                 s["layers"][i]["paint"] = json!({"fill-color": "#000000"});
                 s["layers"][i]["layout"] = json!({});
-                s["layers"][i]["metadata"] = json!({});
+                s["layers"][i]["metadata"] = json!({"skimap:group": "pistes"});
             }),
         ),
     ];

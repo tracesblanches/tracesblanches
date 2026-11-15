@@ -29,10 +29,33 @@
            box-shadow: 2px 0 8px rgba(0,0,0,.2); overflow-y: auto; z-index: 2; padding: 10px 12px 40px;
            transition: transform .2s; -webkit-overflow-scrolling: touch; }
   #panel.closed { transform: translateX(-105%); }
-  #toggle { position: absolute; top: 10px; left: calc(var(--panel) + 10px); z-index: 3; transition: left .2s;
-            border: 0; border-radius: 6px; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.3);
-            font-size: 16px; padding: 8px 12px; min-height: 40px; cursor: pointer; }
-  #panel.closed + #toggle { left: 10px; }
+  #toggle { position: absolute; top: 8px; left: calc(var(--panel) + 8px); z-index: 3; transition: left .2s;
+            border: 0; border-radius: 4px; background: rgba(255,255,255,.92); box-shadow: 0 0 0 1px rgba(0,0,0,.12);
+            font-size: 15px; line-height: 1; width: 29px; height: 29px; padding: 0; cursor: pointer; }
+  #panel.closed + #toggle { left: 8px; }
+  /* Discreet controls: standard size, one corner, hidden while guiding. */
+  .maplibregl-ctrl-top-right .maplibregl-ctrl { margin: 8px 8px 0 0; }
+  body.guiding .maplibregl-ctrl-top-right, body.guiding #toggle, body.guiding .maplibregl-ctrl-bottom-left { display: none; }
+  .maplibregl-ctrl-scale { font-size: 10px; padding: 0 3px; }
+  #credits-btn { position: absolute; right: 6px; bottom: 6px; z-index: 3; width: 22px; height: 22px; border-radius: 11px;
+                 border: 0; padding: 0; font-size: 14px; line-height: 22px; background: rgba(255,255,255,.8);
+                 color: #333; box-shadow: 0 0 0 1px rgba(0,0,0,.15); cursor: pointer; }
+  #credits { position: absolute; right: 6px; bottom: 34px; z-index: 4; max-width: min(380px, 90vw); max-height: 50vh;
+             overflow-y: auto; background: rgba(255,255,255,.97); border-radius: 6px; padding: 8px 10px;
+             box-shadow: 0 1px 6px rgba(0,0,0,.3); font-size: 11px; display: none; }
+  #credits.open { display: block; }
+  #credits li { margin: 2px 0; }
+  /* Guidance: one thin line at the top, the map and the position stay visible. */
+  #guide { position: absolute; top: 0; left: 0; right: 0; z-index: 3; display: none; padding: 3px 10px;
+           background: rgba(17,17,17,.78); color: #fff; font: 600 14px/20px system-ui, sans-serif;
+           white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+  body.guiding #guide { display: block; }
+  #domains input { width: 100%; font-size: 15px; padding: 6px; margin: 4px 0; }
+  #domainList { max-height: 32vh; overflow-y: auto; }
+  #domainList button { display: block; width: 100%; text-align: left; border: 0; border-bottom: 1px solid #eee;
+                       background: none; padding: 6px 2px; font-size: 14px; cursor: pointer; }
+  #domainList button .small { margin-left: 6px; }
+  label.row input:disabled + span { color: var(--muted); }
   h1 { font-size: 17px; margin: 2px 0 6px; }
   h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 14px 0 6px;
        border-top: 1px solid var(--line); padding-top: 10px; }
@@ -61,14 +84,20 @@
   .maplibregl-popup-content hr { border: 0; border-top: 2px solid #ccc; margin: 8px 0; }
   #error { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); z-index: 5; max-width: 90vw;
            background: #fdecea; border: 1px solid #d73027; padding: 10px 14px; border-radius: 6px; display: none; }
-  @media (max-width: 640px) { body { font-size: 15px; } .maplibregl-ctrl-top-right { top: 56px; } }
+  @media (max-width: 640px) { body { font-size: 15px; } }
 </style>
 </head>
 <body>
 <div id="map"></div>
 <div id="panel">
   <h1>skimap — visualiseur</h1>
-  <select id="packSelect" aria-label="Pack"></select>
+  <div id="domains">
+    <button id="franceBtn" class="seg-like">Vue France (tous les domaines)</button>
+    <input id="domainSearch" type="search" placeholder="Chercher un domaine" aria-label="Chercher un domaine">
+    <button id="nearestBtn">Domaine le plus proche</button>
+    <div id="domainList"></div>
+    <div id="catalogNote" class="small"></div>
+  </div>
   <div id="packInfo" class="small"></div>
   <h2>Style</h2>
   <div id="styles"></div>
@@ -78,12 +107,15 @@
   <div id="layers"></div>
   <h2>Infos du pack</h2>
   <div id="infos"></div>
-  <h2>Attributions</h2>
+  <h2>Licences des données</h2>
   <ul id="attrib"></ul>
   <h2>Couches absentes</h2>
   <ul id="missing"></ul>
 </div>
 <button id="toggle" aria-label="Afficher ou masquer le panneau">☰</button>
+<div id="guide"></div>
+<button id="credits-btn" aria-label="Crédits">ⓘ</button>
+<div id="credits"></div>
 <div id="error"></div>
 <script>
 "use strict";
@@ -92,10 +124,12 @@
 const OPENED_WITH_POSITION = /^#[0-9.]+\/-?[0-9.]+\/-?[0-9.]+/.test(location.hash);
 // ---------------------------------------------------------------------------------
 // Configuration
-const KNOWN_PACKS = [
-  { name: "Cervières", url: "../../data/out/cervieres/pack/" },
-  { name: "Chapelle-des-Bois", url: "../../data/out/chapelle-des-bois/pack/" },
-];
+// Every nordic domain of France: the catalogue of the pipeline when it exists
+// (data/out/france/catalog.json: domains with box, centre, km of pistes, pack built or
+// not, size, date), else the census of the domains (data/out/france/domaines/).
+const DATA_OUT = new URL("../../data/out/", location.href).href;
+const CATALOG = DATA_OUT + "france/catalog.json";
+const CENSUS = DATA_OUT + "france/domaines/domaines.geojson";
 const DIFF_COLORS = ["match", ["get", "difficulty"],
   "novice", "#1a9850", "easy", "#2166ac", "intermediate", "#d73027", "advanced", "#111111", "#8c8c8c"];
 const ZONE_COLORS = ["match", ["get", "kind"],
@@ -205,10 +239,12 @@ maplibregl.addProtocol("pmtiles", async (params, abort) => {
   return r.data === null || r.data === undefined ? Object.assign({}, r, { data: NO_RASTER_TILE.slice() }) : r;
 });
 
+// No zoom buttons (pinch, wheel, double tap); the compass and the position only, at the
+// standard size in one corner; the credits behind a small ⓘ.
 const map = new maplibregl.Map({ container: "map", style: { version: 8, sources: {}, layers: [] }, hash: true,
-                                 attributionControl: { compact: true }, maxPitch: 0 });
-map.addControl(new maplibregl.NavigationControl({ showCompass: true }), "top-right");
-map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-right");
+                                 attributionControl: false, maxPitch: 0 });
+map.addControl(new maplibregl.NavigationControl({ showZoom: false, showCompass: true }), "top-right");
+map.addControl(new maplibregl.ScaleControl({ unit: "metric", maxWidth: 80 }), "bottom-left");
 const geolocate = new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true,
                                                     showUserLocation: false, showAccuracyCircle: false });
 map.addControl(geolocate, "top-right");
@@ -358,10 +394,13 @@ async function render() {
     const s = await practiceStyle();
     state.current = s;
     map.setStyle(s, { diff: false });
+    map.once("styledata", applyGroups);
+    setGuiding(state.style === "guidage");
     map.once("idle", () => { window.__skimapIdle = true; });
     return;
   }
   state.current = null;
+  setGuiding(false);
   const m = state.manifest;
   const b = m.basemaps.find((x) => x.id === state.basemap) || null;
   const style = await basemapStyle(b);
@@ -374,7 +413,17 @@ async function render() {
     style.layers.push({ id: "pk-" + l.id, type: "raster", source: "pk-" + l.id,
                         paint: { "raster-opacity": state.opacity[l.id] ?? 0.75, "raster-resampling": "nearest" } });
   }
-  for (const l of m.layers.filter((x) => x.kind === "vector")) {
+  // Class polygons (vector tiles of the pack): one fill per class, legend colours.
+  for (const l of m.layers.filter((x) => x.kind === "vector" && x.format === "pmtiles" && x.classes)) {
+    if (!state.visible[l.id]) continue;
+    style.sources["pk-" + l.id] = { type: "vector", url: "pmtiles://" + abs(l.file) };
+    for (const e of l.classes.legend) {
+      style.layers.push({ id: `pk-${l.id}-${e.value}`, type: "fill", source: "pk-" + l.id, "source-layer": l.classes.source_layer,
+                          filter: ["==", ["get", l.classes.property], e.value], metadata: { pack_layer: l.id },
+                          paint: { "fill-color": e.color.slice(0, 7), "fill-opacity": state.opacity[l.id] ?? 0.55 } });
+    }
+  }
+  for (const l of m.layers.filter((x) => x.kind === "vector" && x.format === "geojson")) {
     if (!state.visible[l.id]) continue;
     const data = await loadData(l);
     style.sources["pk-" + l.id] = { type: "geojson", data };
@@ -384,6 +433,25 @@ async function render() {
   }
   map.setStyle(style, { diff: false });
   map.once("idle", () => { window.__skimapIdle = true; });
+}
+
+// Guidance: thin banner (next decision), controls hidden, position low on the screen so
+// that the route ahead stays visible.
+function setGuiding(on) {
+  document.body.classList.toggle("guiding", on);
+  const d = (state.runtime.decision || [])[0];
+  $("guide").textContent = on ? (d ? d.properties.label : "Guidage : itinéraire du jour") : "";
+  map.setPadding(on ? { top: Math.round(map.getContainer().clientHeight * 0.4), bottom: 0, left: 0, right: 0 }
+                    : { top: 0, bottom: 0, left: 0, right: 0 });
+}
+
+// Credits: a small ⓘ opens the full list.
+$("credits-btn").onclick = () => $("credits").classList.toggle("open");
+function buildCredits() {
+  const m = state.manifest;
+  const items = m ? [...m.attributions, ...m.basemaps.flatMap((b) => b.sources.map((s) => s.attribution))] : ["© OpenStreetMap contributors, OpenSkiMap (domaines)"];
+  $("credits").innerHTML = `<b>Crédits</b><ul>${[...new Set(items.filter(Boolean))].map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` +
+    `<div class="small">Licences détaillées : menu ☰, « Licences des données ».</div>`;
 }
 
 // ---------------------------------------------------------------------------------
@@ -406,13 +474,18 @@ function popupHtml(id, p, title) {
         row("Difficulté", esc(DIFF_FR[p.difficulty] || p.difficulty || "inconnue")),
         row("La plus dure", p.difficulty_max !== p.difficulty ? esc(DIFF_FR[p.difficulty_max] || p.difficulty_max) : ""),
         row("Damage", esc(p.grooming)), row("Usage", esc((p.uses || []).join(", "))),
-        row("Sens unique", p.oneway ? "oui" : ""), row("Longueur", p.length_m ? `${Math.round(p.length_m)} m` : ""),
+        row("État", p.state && p.state !== "unknown" ? `<b>${p.state === "open" ? "ouvert" : "fermé"}</b>${p.state_at ? " (" + esc(p.state_at) + ", " + esc(p.state_source) + ")" : ""}` : "inconnu"),
+        row("Sens unique", p.oneway ? `oui${p.oneway_source === "plan" ? " (plan des pistes)" : ""}` : ""),
+        row("Pistes du plan", esc((p.plan_pistes || []).join(", "))),
+        row("Longueur", p.length_m ? `${Math.round(p.length_m)} m` : ""),
         row("Itinéraires", esc((p.relations || []).map((r) => r.name).filter(Boolean).join(", "))),
         row("OSM", p.osm_way_id ? link(`https://www.openstreetmap.org/way/${p.osm_way_id}`) : "")]);
     case "zones":
       return h + `<h3>${esc(p.name)}</h3>` + table([
         row("Type", esc(p.kind)), row("Mois sensibles", esc((p.months || []).join(", "))),
         row("Pratiques", esc((p.practices || []).join(", "))), row("Surface", p.area_ha ? `${p.area_ha.toFixed(1)} ha` : ""),
+        row("Bivouac", esc({ forbidden: "interdit", forbidden_in_places: "interdit par endroits", tolerated: "toléré", consent_required: "avec l'accord du propriétaire", allowed: "autorisé", unknown: "inconnu" }[p.bivouac] || p.bivouac) + (p.bivouac_period ? " — " + esc(p.bivouac_period) : "")),
+        row("Accès", esc({ forbidden: "interdit", forbidden_in_places: "interdit par endroits", routes_only: "itinéraires balisés seulement", routes_only_in_places: "itinéraires balisés seulement par endroits", avoid_recommended: "à éviter (faune)", allowed: "autorisé", unknown: "inconnu" }[p.access] || p.access) + (p.access_period ? " — " + esc(p.access_period) : "")),
         row("Règles", p.rules_text ? `<span class="pre">${esc(p.rules_text)}</span>` : "aucune règle saisie"),
         row("Fiche", link(p.url))]);
     case "refuges-info": {
@@ -478,6 +551,13 @@ function packLayerOf(f) {
   if (state.mode === "style") return f.properties._i !== undefined ? state.srcPack[f.source] : undefined;
   return f.layer.metadata && f.layer.metadata.pack_layer;
 }
+// Class polygons (vector tiles): class and label only.
+map.on("click", (e) => {
+  const f = map.queryRenderedFeatures(e.point).find((x) => x.sourceLayer && ["slope", "avalanche-exposure"].includes(x.sourceLayer));
+  if (!f || map.queryRenderedFeatures([[e.point.x - 8, e.point.y - 8], [e.point.x + 8, e.point.y + 8]]).some((x) => packLayerOf(x))) return;
+  const t = f.sourceLayer === "slope" ? "Pente" : "Exposition aux avalanches (modèle, jamais « sûr »)";
+  new maplibregl.Popup().setLngLat(e.lngLat).setHTML(`<div class="layer">${esc(t)}</div><h3>${esc(f.properties.label)}</h3>`).addTo(map);
+});
 map.on("mousemove", (e) => {
   const f = map.queryRenderedFeatures(e.point).some((f) => packLayerOf(f));
   map.getCanvas().style.cursor = f ? "pointer" : "";
@@ -486,6 +566,8 @@ map.on("mousemove", (e) => {
 // ---------------------------------------------------------------------------------
 // Panel
 function legendHtml(l) {
+  if (l.classes) return `<div class="legend">${l.classes.legend.map((e) =>
+    `<span class="item"><span class="swatch" style="background:${e.color.slice(0, 7)}"></span>${esc(e.label)}</span>`).join("")}</div>`;
   if (l.raster) return `<div class="legend">${l.raster.legend.map((e) =>
     `<span class="item"><span class="swatch" style="background:${e.color.slice(0, 7)};opacity:${e.color.endsWith("00") ? 0.15 : 1}"></span>${esc(e.label)}</span>`).join("")}</div>`;
   if (l.id === "pistes") return `<div class="legend">${[["#1a9850", "verte"], ["#2166ac", "bleue"], ["#d73027", "rouge"], ["#111", "noire"], ["#8c8c8c", "autre"]]
@@ -535,16 +617,25 @@ function buildLayers() {
   const box = $("layers"); box.innerHTML = "";
   if (state.mode === "style") {
     if (!state.current) return;
-    for (const g of styleGroups(state.current)) {
+    // Groups of the style (metadata skimap:groups): switches of visibility only, no
+    // reload of the style; safety groups cannot be hidden. Remembered per style.
+    const groups = (state.current.metadata || {})["skimap:groups"] || [];
+    const hidden = loadHidden();
+    for (const g of groups) {
       const lab = document.createElement("label"); lab.className = "row";
-      lab.innerHTML = `<input type="checkbox" ${g.shown ? "checked" : ""}> <span>${esc(g.layer.title)}</span>`;
+      const on = !g.toggleable || !hidden.includes(g.id);
+      lab.innerHTML = `<input type="checkbox" ${on ? "checked" : ""} ${g.toggleable ? "" : "disabled"}> <span>${esc(g.title)}${g.toggleable ? "" : " (toujours affiché)"}</span>`;
       lab.querySelector("input").onchange = (ev) => {
-        state.srcVisible[g.id] = ev.target.checked;
-        for (const l of map.getStyle().layers.filter((x) => x.source === g.id)) map.setLayoutProperty(l.id, "visibility", ev.target.checked ? "visible" : "none");
-        state.current.layers.filter((x) => x.source === g.id).forEach((x) => { x.layout = Object.assign({}, x.layout, { visibility: ev.target.checked ? "visible" : "none" }); });
+        const h = loadHidden().filter((x) => x !== g.id);
+        if (!ev.target.checked) h.push(g.id);
+        saveHidden(h);
+        applyGroups();
       };
       box.appendChild(lab);
-      if (g.layer.raster) box.insertAdjacentHTML("beforeend", legendHtml(g.layer));
+    }
+    for (const id of Object.keys(state.current.sources)) {
+      const l = state.srcLayer[id];
+      if (l && (l.raster || l.classes)) box.insertAdjacentHTML("beforeend", `<div class="small">${esc(l.title)}</div>` + legendHtml(l));
     }
     return;
   }
@@ -565,6 +656,25 @@ function buildLayers() {
       };
       box.appendChild(d);
     }
+  }
+}
+
+const HIDDEN_KEY = () => `skimap.viewer.hidden.${state.style}`;
+function loadHidden() {
+  try { const v = JSON.parse(localStorage.getItem(HIDDEN_KEY()) || "[]"); return Array.isArray(v) ? v : []; } catch (e) { return []; }
+}
+function saveHidden(v) { try { localStorage.setItem(HIDDEN_KEY(), JSON.stringify(v)); } catch (e) { /* private mode */ } }
+// Visibility of the layers of the hidden groups (layers hidden by the style itself,
+// optional ones such as the snow, stay hidden).
+function applyGroups() {
+  if (state.mode !== "style" || !state.current) return;
+  const hidden = loadHidden();
+  const toggleable = new Set(((state.current.metadata || {})["skimap:groups"] || []).filter((g) => g.toggleable).map((g) => g.id));
+  for (const l of state.current.layers) {
+    const g = (l.metadata || {})["skimap:group"];
+    if (!toggleable.has(g) || !map.getLayer(l.id)) continue;
+    const base = (l.layout || {}).visibility || "visible";
+    map.setLayoutProperty(l.id, "visibility", hidden.includes(g) ? "none" : base);
   }
 }
 
@@ -594,11 +704,13 @@ function buildInfos() {
     m.layers.flatMap((l) => l.sources.map((s) => `<li class="small"><b>${esc(l.title)}</b> : ${esc(s.name)}${s.licence ? " — " + esc(s.licence) : ""}${s.personal_use_only ? " — usage personnel" : ""}</li>`)).join("") +
     m.basemaps.flatMap((b) => b.sources.map((s) => `<li class="small"><b>${esc(b.title)}</b> : ${esc(s.name)} — ${esc(s.licence || "")}${s.edition ? " — mise à jour du " + esc(s.edition) : ""}</li>`)).join("");
   $("missing").innerHTML = (m.missing || []).map((x) => `<li><b>${esc(x.id)}</b> : ${esc(x.reason)}</li>`).join("") || "<li>aucune</li>";
+  buildCredits();
 }
 
 function err(e) { console.error(e); showError(esc(e.message || e)); }
 
 async function openPack(url) {
+  state.mode = "style";
   state.base = new URL(url, location.href).href.replace(/\/?$/, "/");
   const r = await fetch(state.base + "manifest.json").catch(() => null);
   if (!r || !r.ok) {
@@ -636,14 +748,122 @@ async function openPack(url) {
   document.title = `skimap — ${m.site.name}`;
 }
 
-// Pack choice: ?pack=<url> or the known packs.
+// ---------------------------------------------------------------------------------
+// France: every domain on the map, search by name, nearest domain, pack when built.
 const params = new URLSearchParams(location.search);
-const sel = $("packSelect");
-const packs = [...KNOWN_PACKS];
-if (params.get("pack") && !packs.some((p) => p.url === params.get("pack"))) packs.unshift({ name: params.get("pack"), url: params.get("pack") });
-for (const p of packs) sel.insertAdjacentHTML("beforeend", `<option value="${esc(p.url)}">${esc(p.name)}</option>`);
-sel.value = params.get("pack") || packs[0].url;
-sel.onchange = () => { params.set("pack", sel.value); history.replaceState(null, "", "?" + params.toString() + location.hash); openPack(sel.value).catch(err); };
+const france = { domains: [], source: null };
+const slug = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
+  .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+// Domains of the catalogue (`domains[]` or a FeatureCollection), else of the census.
+async function loadDomains() {
+  const get = (u) => fetch(u).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  const cat = await get(CATALOG);
+  if (cat) {
+    const list = Array.isArray(cat.domains) ? cat.domains : (cat.features || []).map((f) => Object.assign({}, f.properties, { geometry: f.geometry }));
+    france.source = "catalogue";
+    return list.map((d) => ({
+      id: d.id, name: d.name, km: d.km_nordic ?? d.km ?? null, lon: d.lon ?? (d.center || [])[0], lat: d.lat ?? (d.center || [])[1],
+      bbox: d.bbox || null, pack: d.pack && (d.pack.built ?? true) ? (d.pack.dir || d.pack.url || `${d.id}/pack/`) : null,
+      packBytes: d.pack ? d.pack.bytes ?? null : null, packDate: d.pack ? d.pack.date ?? d.pack.generated_at ?? null : null,
+      commune: d.commune || null, known: true,
+    }));
+  }
+  const census = await get(CENSUS);
+  france.source = census ? "recensement" : null;
+  return (census ? census.features : []).map((f) => {
+    const p = f.properties;
+    return { id: p.id, name: p.name, km: p.km_nordic, lon: p.lon, lat: p.lat, bbox: null, pack: null,
+             commune: p.commune || null, geometry: f.geometry, known: false };
+  });
+}
+
+// Pack of a domain: the catalogue says it; with the census, the pack directory of the
+// pipeline is looked for under the domain identifier, then under the commune name
+// (`data/out/<site>/pack/`).
+async function packOf(d) {
+  if (d.known) return d.pack ? new URL(d.pack, DATA_OUT).href : null;
+  for (const id of [d.id, slug(d.commune && d.commune.name), slug(d.name)].filter(Boolean)) {
+    const url = `${DATA_OUT}${id}/pack/`;
+    const r = await fetch(url + "manifest.json", { method: "HEAD" }).catch(() => null);
+    if (r && r.ok) return url;
+  }
+  return null;
+}
+
+function franceStyle() {
+  const fc = { type: "FeatureCollection", features: france.domains.map((d, i) => ({ type: "Feature",
+    geometry: { type: "Point", coordinates: [d.lon, d.lat] }, properties: { i, name: d.name, km: d.km || 0, pack: d.pack ? 1 : 0 } })) };
+  const shapes = { type: "FeatureCollection", features: france.domains.filter((d) => d.geometry).map((d) => ({ type: "Feature", geometry: d.geometry, properties: { i: france.domains.indexOf(d) } })) };
+  return { version: 8, sources: { dom: { type: "geojson", data: fc }, shapes: { type: "geojson", data: shapes } },
+    layers: [{ id: "bg", type: "background", paint: { "background-color": "#f3f1ec" } },
+             { id: "dom-shape", type: "fill", source: "shapes", minzoom: 8, paint: { "fill-color": "#2166ac", "fill-opacity": 0.18 } },
+             { id: "dom-shape-line", type: "line", source: "shapes", minzoom: 8, paint: { "line-color": "#2166ac", "line-width": 1 } },
+             { id: "dom", type: "circle", source: "dom", paint: {
+               "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, ["interpolate", ["linear"], ["get", "km"], 0, 3, 100, 7], 9, 9],
+               "circle-color": ["case", ["==", ["get", "pack"], 1], "#1a9850", "#2166ac"], "circle-stroke-color": "#fff", "circle-stroke-width": 1.5 } }] };
+}
+
+async function showDomain(d) {
+  const url = await packOf(d);
+  const km = d.km ? `${Math.round(d.km)} km de pistes nordiques` : "";
+  const extra = d.packBytes ? ` — ${fmtBytes(d.packBytes)}${d.packDate ? ", " + esc(d.packDate) : ""}` : "";
+  const html = `<div class="layer">Domaine nordique</div><h3>${esc(d.name)}</h3><div class="small">${esc(km)}${d.commune ? " — " + esc(d.commune.name) : ""}</div>` +
+    (url ? `<p><button data-open="${esc(url)}">Ouvrir le pack</button>${extra}</p>` : `<p class="small">Pack pas encore construit.</p>`);
+  const pop = new maplibregl.Popup({ maxWidth: "none" }).setLngLat([d.lon, d.lat]).setHTML(html).addTo(map);
+  const b = pop.getElement().querySelector("[data-open]");
+  if (b) b.onclick = () => { pop.remove(); params.set("pack", b.dataset.open); history.replaceState(null, "", "?" + params.toString()); openPack(b.dataset.open).catch(err); };
+}
+
+function listDomains(q) {
+  const k = slug(q);
+  const found = france.domains.filter((d) => !k || slug(d.name).includes(k) || slug(d.commune && d.commune.name).includes(k));
+  $("domainList").innerHTML = "";
+  for (const d of found.slice(0, 40)) {
+    const b = document.createElement("button");
+    b.innerHTML = `${esc(d.name)}<span class="small">${d.km ? Math.round(d.km) + " km" : ""}${d.pack ? " — pack" : ""}</span>`;
+    b.onclick = () => { if (state.manifest) openFrance(); map.jumpTo({ center: [d.lon, d.lat], zoom: Math.max(map.getZoom(), 9) }); showDomain(d); };
+    $("domainList").appendChild(b);
+  }
+}
+
+async function openFrance() {
+  state.manifest = null; state.current = null; state.mode = "france";
+  setGuiding(false);
+  params.delete("pack"); history.replaceState(null, "", "?" + params.toString() + location.hash);
+  if (!france.domains.length) france.domains = await loadDomains();
+  $("catalogNote").textContent = france.source
+    ? `${france.domains.length} domaines (${france.source === "catalogue" ? "catalogue du pipeline" : "recensement, catalogue pas encore produit"}).`
+    : "Ni catalogue ni recensement des domaines dans data/out/france.";
+  for (const id of ["packInfo", "styles", "layers", "infos", "attrib", "missing", "styleNote"]) $(id).innerHTML = "";
+  map.setStyle(franceStyle(), { diff: false });
+  if (!OPENED_WITH_POSITION || state.fitted) map.fitBounds([[-5.2, 41.3], [9.6, 51.1]], { padding: 20, duration: 0 });
+  state.fitted = true;
+  map.once("idle", () => { window.__skimapIdle = true; });
+  buildCredits();
+  listDomains($("domainSearch").value);
+  document.title = "skimap — domaines nordiques de France";
+}
+map.on("click", "dom", (e) => { const f = e.features[0]; if (f) showDomain(france.domains[f.properties.i]); });
+$("domainSearch").oninput = (e) => listDomains(e.target.value);
+$("franceBtn").onclick = () => openFrance().catch(err);
+$("nearestBtn").onclick = async () => {
+  if (!france.domains.length) france.domains = await loadDomains();
+  const near = (lon, lat) => {
+    let best = null;
+    for (const d of france.domains) {
+      const k = dist([lon, lat], [d.lon, d.lat]);
+      if (!best || k < best[0]) best = [k, d];
+    }
+    if (!best) return;
+    if (state.manifest) openFrance().then(() => { map.jumpTo({ center: [best[1].lon, best[1].lat], zoom: 10 }); showDomain(best[1]); });
+    else { map.jumpTo({ center: [best[1].lon, best[1].lat], zoom: 10 }); showDomain(best[1]); }
+  };
+  const c = map.getCenter();
+  if (navigator.geolocation) navigator.geolocation.getCurrentPosition((p) => near(p.coords.longitude, p.coords.latitude), () => near(c.lng, c.lat), { timeout: 5000 });
+  else near(c.lng, c.lat);
+};
+
 function syncUrl() {
   params.set("style", state.mode === "style" ? state.style : state.basemap || "none");
   if (state.mode === "style") params.set("theme", state.theme);
@@ -651,7 +871,12 @@ function syncUrl() {
 }
 $("toggle").onclick = () => { $("panel").classList.toggle("closed"); setTimeout(() => map.resize(), 250); };
 if (window.innerWidth < 700 || params.get("panel") === "0") $("panel").classList.add("closed");
-openPack(sel.value).catch(err);
+// The domains are read when the France view or the search needs them (a pack opened by
+// ?pack= asks for nothing else).
+$("domainSearch").onfocus = () => {
+  if (!france.domains.length) loadDomains().then((d) => { france.domains = d; listDomains($("domainSearch").value); }).catch(err);
+};
+(params.get("pack") ? openPack(params.get("pack")) : openFrance()).catch(err);
 </script>
 </body>
 </html>

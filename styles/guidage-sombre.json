@@ -3,6 +3,9 @@
   "layers": [
     {
       "id": "background",
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "paint": {
         "background-color": "#11151a"
       },
@@ -19,6 +22,9 @@
       ],
       "id": "ign-built",
       "maxzoom": 15,
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "paint": {
         "fill-color": "#1b2027"
       },
@@ -44,6 +50,9 @@
         false
       ],
       "id": "ign-forest",
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "paint": {
         "fill-color": "#17221b"
       },
@@ -61,6 +70,9 @@
         "ZONE_GLACIER"
       ],
       "id": "ign-glacier",
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "paint": {
         "fill-color": "#1a2a38"
       },
@@ -83,6 +95,9 @@
         false
       ],
       "id": "ign-water",
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "paint": {
         "fill-color": "#1d4a73"
       },
@@ -112,6 +127,9 @@
         false
       ],
       "id": "ign-road-major",
+      "metadata": {
+        "skimap:group": "fond"
+      },
       "paint": {
         "line-color": "#3b4149",
         "line-width": [
@@ -153,6 +171,9 @@
         "line-cap": "round",
         "line-join": "round"
       },
+      "metadata": {
+        "skimap:group": "pistes"
+      },
       "paint": {
         "line-color": "#7b8088",
         "line-width": [
@@ -186,6 +207,9 @@
         "line-cap": "round",
         "line-join": "round"
       },
+      "metadata": {
+        "skimap:group": "itineraire"
+      },
       "paint": {
         "line-color": "#6f6f6f",
         "line-width": [
@@ -218,6 +242,9 @@
       "layout": {
         "line-cap": "round",
         "line-join": "round"
+      },
+      "metadata": {
+        "skimap:group": "itineraire"
       },
       "paint": {
         "line-color": "#0b0e12",
@@ -253,7 +280,8 @@
         "line-join": "round"
       },
       "metadata": {
-        "skimap:contrast": "background"
+        "skimap:contrast": "background",
+        "skimap:group": "itineraire"
       },
       "paint": {
         "line-color": "#ff4fd8",
@@ -309,6 +337,9 @@
         "text-size": 17.0
       },
       "maxzoom": 13.0,
+      "metadata": {
+        "skimap:group": "noms"
+      },
       "minzoom": 10.0,
       "paint": {
         "text-color": "#eef2f6",
@@ -367,6 +398,9 @@
         "text-size": 18.0
       },
       "maxzoom": 24.0,
+      "metadata": {
+        "skimap:group": "noms"
+      },
       "minzoom": 13.0,
       "paint": {
         "text-color": "#eef2f6",
@@ -417,6 +451,9 @@
         "text-size": 15.0
       },
       "maxzoom": 24.0,
+      "metadata": {
+        "skimap:group": "noms"
+      },
       "minzoom": 14.0,
       "paint": {
         "text-color": "#eef2f6",
@@ -430,7 +467,8 @@
     {
       "id": "decision",
       "metadata": {
-        "skimap:contrast": "background"
+        "skimap:contrast": "background",
+        "skimap:group": "itineraire"
       },
       "paint": {
         "circle-color": "#ffd400",
@@ -460,6 +498,9 @@
         ],
         "text-size": 20
       },
+      "metadata": {
+        "skimap:group": "itineraire"
+      },
       "paint": {
         "text-color": "#eef2f6",
         "text-halo-color": "#0b0e12",
@@ -470,6 +511,9 @@
     },
     {
       "id": "position-accuracy",
+      "metadata": {
+        "skimap:group": "position"
+      },
       "paint": {
         "circle-color": "#4ea8ff",
         "circle-opacity": 0.15,
@@ -519,7 +563,8 @@
     {
       "id": "position-dot",
       "metadata": {
-        "skimap:contrast": "background"
+        "skimap:contrast": "background",
+        "skimap:group": "position"
       },
       "paint": {
         "circle-color": "#4ea8ff",
@@ -533,6 +578,33 @@
   ],
   "metadata": {
     "skimap:generator": "crates/styles (cargo run -p skimap-styles --example write_styles)",
+    "skimap:groups": [
+      {
+        "id": "fond",
+        "title": "Fond de carte (relief, forêt, eau, routes)",
+        "toggleable": false
+      },
+      {
+        "id": "pistes",
+        "title": "Pistes et leur état",
+        "toggleable": false
+      },
+      {
+        "id": "itineraire",
+        "title": "Itinéraire et prochaine décision",
+        "toggleable": false
+      },
+      {
+        "id": "position",
+        "title": "Position",
+        "toggleable": false
+      },
+      {
+        "id": "noms",
+        "title": "Noms de lieux, sommets, cotes",
+        "toggleable": true
+      }
+    ],
     "skimap:optional_layers": [],
     "skimap:relative_urls": true,
     "skimap:runtime_sources": {

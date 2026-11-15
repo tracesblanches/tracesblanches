@@ -13,6 +13,7 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use geojson::{Feature, GeometryValue};
+use rayon::prelude::*;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -853,6 +854,155 @@ fn upsample(parent: &png::Indexed, pz: u8, z: u8, x: u32, y: u32) -> Result<Vec<
     png::encode_indexed(ts, ts, &parent.palette, &idx)
 }
 
+/// Highest zoom of the exported overlays of the class polygons (slope, exposure): the
+/// polygons are drawn at every zoom, so the overlay goes as far as the palette rasters
+/// (OsmAnd draws it two zooms further).
+pub const CLASS_EXPORT_MAXZOOM: u8 = 16;
+
+/// Palette of a class layer: index = class value, legend colours, every other index
+/// transparent; the last index is « no class ».
+pub fn class_palette(info: &crate::manifest::ClassTilesInfo) -> Vec<[u8; 4]> {
+    let top = info.legend.iter().map(|e| e.value).max().unwrap_or(0);
+    let mut p = vec![[0u8, 0, 0, 0]; usize::from(top) + 2];
+    for e in &info.legend {
+        let h = e.color.trim_start_matches('#');
+        let b = |i: usize| u8::from_str_radix(h.get(i..i + 2).unwrap_or("00"), 16).unwrap_or(0);
+        p[usize::from(e.value)] = [b(0), b(2), b(4), if h.len() >= 8 { b(6) } else { 255 }];
+    }
+    p
+}
+
+/// Class values (palette indices, [`class_palette`]) of the 256-pixel tile `(z, x, y)`
+/// drawn from the vector polygons of a class layer: the polygons of the vector tile at
+/// `min(z, maxzoom)` covering it, filled at the pixel centres. `None` when no pixel is
+/// in a class.
+pub fn class_pixels(
+    archive: &crate::reader::TileArchive,
+    info: &crate::manifest::ClassTilesInfo,
+    z: u8,
+    x: u32,
+    y: u32,
+    cache: &mut std::collections::HashMap<(u8, u32, u32), Vec<crate::mvt::Layer>>,
+) -> Result<Option<Vec<u8>>> {
+    let zv = z.min(info.maxzoom);
+    let k = 1u32 << (z - zv);
+    let (vx, vy) = (x / k, y / k);
+    if let std::collections::hash_map::Entry::Vacant(e) = cache.entry((zv, vx, vy)) {
+        let layers = match archive.tile(zv, vx, vy)? {
+            Some(b) => crate::mvt::decode(&b).map_err(|e| {
+                Error::Pack(format!("{} {zv}/{vx}/{vy}: {e}", archive.path().display()))
+            })?,
+            None => Vec::new(),
+        };
+        e.insert(layers);
+    }
+    let layers = &cache[&(zv, vx, vy)];
+    let ts = TILE_SIZE as usize;
+    let (ox, oy) = (f64::from(x % k) * 256.0, f64::from(y % k) * 256.0);
+    Ok(class_image(layers, info, k, ox, oy, ts))
+}
+
+/// Class values of a `size × size` image of a decoded vector tile drawn `k` times
+/// larger than its 256 pixels, from the offset `(ox, oy)` (pixels of the enlarged
+/// drawing); `None` when no pixel is in a class.
+fn class_image(
+    layers: &[crate::mvt::Layer],
+    info: &crate::manifest::ClassTilesInfo,
+    k: u32,
+    ox: f64,
+    oy: f64,
+    size: usize,
+) -> Option<Vec<u8>> {
+    let nodata = class_palette(info).len() as u8 - 1;
+    let mut idx = vec![nodata; size * size];
+    let mut any = false;
+    for l in layers.iter().filter(|l| l.name == info.source_layer) {
+        let scale = 256.0 * f64::from(k) / f64::from(l.extent);
+        for f in &l.features {
+            let Some(v) = f.get(&info.property).and_then(crate::mvt::Value::as_i64) else {
+                continue;
+            };
+            let rings: Vec<Vec<[f64; 2]>> = f
+                .parts
+                .iter()
+                .map(|r| {
+                    r.iter()
+                        .map(|p| [f64::from(p[0]) * scale - ox, f64::from(p[1]) * scale - oy])
+                        .collect()
+                })
+                .collect();
+            crate::mvt::fill_even_odd(&rings, size, size, |i| {
+                idx[i] = v as u8;
+                any = true;
+            });
+        }
+    }
+    any.then_some(idx)
+}
+
+/// Palette PNG tiles of a class layer (vector polygons), zoom `minzoom..=16`.
+pub fn class_raster_tiles(pack: &Pack, layer: &Layer) -> Result<(u8, u8, Vec<db::DbTile>)> {
+    let info = layer
+        .classes
+        .as_ref()
+        .ok_or_else(|| Error::Pack(format!("{} has no class polygons", layer.id)))?;
+    let archive = pack.tiles(&layer.id)?;
+    let b = archive.bounds();
+    let bbox = skimap_common::geom::BBox::new(b[1], b[0], b[3], b[2]);
+    let palette = class_palette(info);
+    let top = CLASS_EXPORT_MAXZOOM.max(info.maxzoom);
+    // Each vector tile is decoded once and drawn once per output zoom at the size of all
+    // its descendants (2^(z - maxzoom) × 256 pixels), then cut into 256-pixel tiles.
+    let mut jobs: Vec<(u8, u8, u32, u32, Vec<crate::mvt::Layer>)> = Vec::new();
+    for z in info.minzoom..=top {
+        let zv = z.min(info.maxzoom);
+        for (_, vx, vy) in tiles_covering(bbox, zv, zv) {
+            if let Some(b) = archive.tile(zv, vx, vy)? {
+                let layers = crate::mvt::decode(&b).map_err(|e| {
+                    Error::Pack(format!("{} {zv}/{vx}/{vy}: {e}", archive.path().display()))
+                })?;
+                jobs.push((z, zv, vx, vy, layers));
+            }
+        }
+    }
+    let ts = TILE_SIZE as usize;
+    let tiles: Vec<Vec<db::DbTile>> = jobs
+        .par_iter()
+        .map(|(z, zv, vx, vy, layers)| -> Result<Vec<db::DbTile>> {
+            let k = 1u32 << (z - zv);
+            let size = ts * k as usize;
+            let Some(img) = class_image(layers, info, k, 0.0, 0.0, size) else {
+                return Ok(Vec::new());
+            };
+            let nodata = palette.len() as u8 - 1;
+            let mut out = Vec::new();
+            for cy in 0..k as usize {
+                for cx in 0..k as usize {
+                    let mut t = Vec::with_capacity(ts * ts);
+                    for row in 0..ts {
+                        let s = (cy * ts + row) * size + cx * ts;
+                        t.extend_from_slice(&img[s..s + ts]);
+                    }
+                    if t.iter().all(|&v| v == nodata) {
+                        continue;
+                    }
+                    let (x, y) = (vx * k + cx as u32, vy * k + cy as u32);
+                    out.push((
+                        *z,
+                        x,
+                        y,
+                        png::encode_indexed(TILE_SIZE, TILE_SIZE, &palette, &t)?,
+                    ));
+                }
+            }
+            Ok(out)
+        })
+        .collect::<Result<_>>()?;
+    let mut out: Vec<db::DbTile> = tiles.into_iter().flatten().collect();
+    out.sort_by_key(|t| (t.0, t.1, t.2));
+    Ok((info.minzoom, top, out))
+}
+
 /// Tiles of a palette raster layer, zoom `minzoom..=export_maxzoom`.
 pub fn raster_tiles(pack: &Pack, layer: &Layer) -> Result<(u8, u8, Vec<db::DbTile>)> {
     let r = layer
@@ -1337,19 +1487,31 @@ pub fn export(pack: &Pack, dir: &Path) -> Result<ExportReport> {
 
     // Raster overlays.
     let mut overlays = Vec::new();
-    for l in m.layers.iter().filter(|l| l.raster.is_some()) {
-        let r = l
-            .raster
+    for l in m
+        .layers
+        .iter()
+        .filter(|l| l.raster.is_some() || l.classes.is_some())
+    {
+        let legend = match (&l.raster, &l.classes) {
+            (Some(r), _) => r.legend.clone(),
+            (None, Some(c)) => c.legend.clone(),
+            _ => Vec::new(),
+        };
+        if l.raster
             .as_ref()
-            .ok_or_else(|| Error::Pack("raster".into()))?;
-        if r.encoding != ValueEncoding::PaletteIndex {
+            .is_some_and(|r| r.encoding != ValueEncoding::PaletteIndex)
+        {
             skipped.push((
                 l.id.clone(),
                 "tuiles IGN de comparaison : non exportées (usage hors ligne de la carte des pentes IGN à confirmer)".to_owned(),
             ));
             continue;
         }
-        let (minz, maxz, tiles) = raster_tiles(pack, l)?;
+        let (minz, maxz, tiles) = if l.classes.is_some() {
+            class_raster_tiles(pack, l)?
+        } else {
+            raster_tiles(pack, l)?
+        };
         let stem = match l.id.as_str() {
             "slope" => "pentes",
             "snow-depth" => "neige-hauteur",
@@ -1367,7 +1529,7 @@ pub fn export(pack: &Pack, dir: &Path) -> Result<ExportReport> {
         let desc = format!(
             "{} ; légende : {} ; pack {}",
             l.title,
-            r.legend
+            legend
                 .iter()
                 .filter(|e| !e.color.ends_with("00"))
                 .map(|e| format!("{} {}", e.label, e.color))

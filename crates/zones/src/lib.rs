@@ -12,6 +12,7 @@
 //! `build(site, &DataLayout, &Downloader)`, which writes `data/out/<site>/zones/`.
 
 pub mod error;
+pub mod fields;
 pub mod geom;
 pub mod layer;
 pub mod rules;
@@ -22,7 +23,7 @@ mod build;
 pub mod sources;
 
 #[cfg(feature = "pipeline")]
-pub use build::{LAYER, RuleResolution, ZonesReport, build};
+pub use build::{LAYER, RuleResolution, ZonesReport, build, build_with};
 pub use error::{Error, Result};
 pub use layer::{Months, Zone, ZoneKind, ZoneLayer, ZoneProps};
 pub use rules::{Effect, Period, Rule, RuleSet, Topic};

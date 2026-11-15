@@ -77,12 +77,14 @@ pub fn lisezmoi(
     if !overlays.is_empty() {
         s.push_str("Surcouches (tuiles PNG 256 px, transparentes hors classe) :\n\n");
         for (l, stem, minz, maxz) in overlays {
-            let legend: Vec<String> = l
+            let entries = l
                 .raster
                 .as_ref()
+                .map(|r| &r.legend)
+                .or(l.classes.as_ref().map(|c| &c.legend));
+            let legend: Vec<String> = entries
                 .map(|r| {
-                    r.legend
-                        .iter()
+                    r.iter()
                         .map(|e| {
                             if e.color.ends_with("00") {
                                 format!("{} : transparent", e.label)
@@ -93,10 +95,18 @@ pub fn lisezmoi(
                         .collect()
                 })
                 .unwrap_or_default();
-            let native = l.raster.as_ref().map_or(*maxz, |r| r.maxzoom);
+            let zooms = match &l.raster {
+                Some(r) => format!(
+                    "zooms {minz} à {maxz} (zoom {} calculé, au-delà agrandi)",
+                    r.maxzoom
+                ),
+                None => format!(
+                    "zooms {minz} à {maxz}, dessinées à chaque zoom depuis les polygones vectoriels du pack"
+                ),
+            };
             let _ = writeln!(
                 s,
-                "- `{stem}` : {} ; zooms {minz} à {maxz} (zoom {native} calculé, au-delà agrandi) ; {}.",
+                "- `{stem}` : {} ; {zooms} ; {}.",
                 l.title,
                 legend.join(", ")
             );

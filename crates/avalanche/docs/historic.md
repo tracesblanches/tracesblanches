@@ -2,6 +2,8 @@
 
 # Avalanches historiques et tronçons exposés (P20, module `historic`)
 
+**Usage personnel.** La CLPA d'INRAE est réservée à un usage personnel et le droit de la DDT 05 de la republier n'est pas confirmé (docs/licences-donnees.md) : les emprises ne sont lues qu'avec `personal_sources` (`historic::build_with`, `build` lit `SKIMAP_PERSONAL_SOURCES`) et la source DDT 05 est alors marquée `personal_use_only` ; sans l'option, la couche est écrite vide avec un avis (« Emprises CLPA non incluses… »), pour qu'une construction personnelle précédente ne reste pas en place.
+
 `skimap_avalanche::historic::build(site, &layout, &downloader)` écrit `data/out/<site>/avalanche-historic/` :
 
 | Fichier | Contenu |

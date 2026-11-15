@@ -167,6 +167,10 @@ pub struct Layer {
     /// Raster description (raster layers).
     #[serde(default)]
     pub raster: Option<RasterInfo>,
+    /// Class polygons in vector tiles (slope, avalanche exposure): zooms, legend, method
+    /// and the areas measured against the source raster.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub classes: Option<ClassTilesInfo>,
     /// Notes, French (derived properties, limits).
     #[serde(default)]
     pub notes: Vec<String>,
@@ -205,6 +209,97 @@ pub struct RasterInfo {
     pub source: String,
     /// How lower zooms are made from the highest one.
     pub downsampling: String,
+}
+
+/// Class polygons of a raster of classes, in vector tiles (format `pmtiles`, MVT).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ClassTilesInfo {
+    /// Lowest zoom stored.
+    pub minzoom: u8,
+    /// Highest zoom stored; the map overzooms beyond.
+    pub maxzoom: u8,
+    /// Tile extent (4096).
+    pub extent: u32,
+    /// Number of tiles stored.
+    pub tile_count: u64,
+    /// Vector tile layer (`source-layer` of a style).
+    pub source_layer: String,
+    /// Attribute holding the class value ([`LegendEntry::value`]).
+    pub property: String,
+    /// Classes drawn, with their reference colour (light theme, export).
+    pub legend: Vec<LegendEntry>,
+    /// Source raster: file, CRS and resolution.
+    pub source: String,
+    /// Method, French.
+    pub method: String,
+    /// Patches and holes of the first level smaller than this were removed (m²).
+    pub min_patch_m2: f64,
+    /// Same for the higher levels (m²), whose removal leaves a drawn class.
+    pub min_inner_patch_m2: f64,
+    /// Area from which a raw zone counts as significant in [`LevelCheck`] (m²).
+    pub significant_m2: f64,
+    /// Simplification tolerance per zoom (m).
+    pub tolerance_m: Vec<ZoomValue>,
+    /// Polygons at the highest zoom.
+    pub polygons: u64,
+    /// Vertices per zoom (before the cut into tiles).
+    pub vertices: Vec<ZoomValue>,
+    /// Regions whose boundary gave more than one exterior ring (expected 0).
+    pub regions_with_several_exteriors: u64,
+    /// Areas per class.
+    pub classes: Vec<ClassArea>,
+    /// Areas and significant zones per threshold level (`class >= value`).
+    pub levels: Vec<LevelCheck>,
+}
+
+/// A value at a zoom.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ZoomValue {
+    /// Zoom.
+    pub zoom: u8,
+    /// Value.
+    pub value: f64,
+}
+
+/// Area of one class: source raster, after smoothing, polygons per zoom (m², Lambert-93).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ClassArea {
+    /// Class value.
+    pub value: u8,
+    /// Label, French.
+    pub label: String,
+    /// Cells of the source raster in the class.
+    pub raster_m2: f64,
+    /// Cells in the class after smoothing and removal of small patches.
+    pub filtered_m2: f64,
+    /// Area of the polygons per zoom.
+    pub vector_m2: Vec<ZoomValue>,
+}
+
+/// One threshold level (`class >= from_value`): what the smoothing removed and added,
+/// and whether a significant zone of the source raster disappeared.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LevelCheck {
+    /// Lowest class value of the level.
+    pub from_value: u8,
+    /// Label, French (« 30° et plus »).
+    pub label: String,
+    /// Source cells in the level (m²).
+    pub raster_m2: f64,
+    /// Source cells of the level that left it (m²).
+    pub lost_m2: f64,
+    /// Cells added to the level (m²).
+    pub gained_m2: f64,
+    /// Polygons of the level at the highest zoom (m²).
+    pub vector_m2: f64,
+    /// 4-connected zones of the source level of at least `significant_m2`.
+    pub significant_zones: u64,
+    /// Smallest share of such a zone still in the level after smoothing.
+    pub significant_min_coverage: f64,
+    /// Such zones keeping less than half of their cells.
+    pub significant_below_half: u64,
+    /// Largest source zone of the level removed entirely (m²).
+    pub largest_removed_m2: f64,
 }
 
 /// One class of a raster legend.
