@@ -130,8 +130,8 @@ pub fn proof_outings(
             l.proof_outings
                 .iter()
                 .map(|o| {
-                    let t = skimap_common::site::parse_hhmm(&o.start_time)
-                        .expect("site table time");
+                    let t =
+                        skimap_common::site::parse_hhmm(&o.start_time).expect("site table time");
                     (
                         o.label.as_str(),
                         o.file.as_str(),

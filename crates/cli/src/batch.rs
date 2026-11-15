@@ -139,7 +139,12 @@ fn inputs(ctx: &Ctx, registry: &Registry, site: &Site) -> Result<BuildInputs> {
 }
 
 /// Whether the last build of a site is successful, with the same inputs and recent.
-pub fn up_to_date(rec: &BuildRecord, inputs: &BuildInputs, max_age: Duration, now: DateTime<Utc>) -> bool {
+pub fn up_to_date(
+    rec: &BuildRecord,
+    inputs: &BuildInputs,
+    max_age: Duration,
+    now: DateTime<Utc>,
+) -> bool {
     let recent = DateTime::parse_from_rfc3339(&rec.finished_at)
         .is_ok_and(|t| (now - t.to_utc()).to_std().is_ok_and(|age| age < max_age));
     rec.ok && rec.inputs == *inputs && recent
@@ -273,8 +278,10 @@ pub fn build_many(
                                 site.id,
                                 if o.ok() { "OK   " } else { "ÉCHEC" },
                                 o.seconds,
-                                o.pack_bytes
-                                    .map_or("-".to_owned(), |b| format!("{:.1} Mo", b as f64 / 1e6)),
+                                o.pack_bytes.map_or("-".to_owned(), |b| format!(
+                                    "{:.1} Mo",
+                                    b as f64 / 1e6
+                                )),
                                 if o.ok() {
                                     String::new()
                                 } else {
@@ -282,7 +289,11 @@ pub fn build_many(
                                         " ; {}",
                                         o.failed()
                                             .iter()
-                                            .map(|s| format!("{} : {}", s.name, first_line(&s.line, 120)))
+                                            .map(|s| format!(
+                                                "{} : {}",
+                                                s.name,
+                                                first_line(&s.line, 120)
+                                            ))
                                             .collect::<Vec<_>>()
                                             .join(" | ")
                                     )
@@ -515,7 +526,12 @@ mod tests {
             .to_utc();
         let day = Duration::from_secs(86_400);
         assert!(up_to_date(&rec, &rec.inputs, day, now));
-        assert!(!up_to_date(&rec, &rec.inputs, Duration::from_secs(3600), now));
+        assert!(!up_to_date(
+            &rec,
+            &rec.inputs,
+            Duration::from_secs(3600),
+            now
+        ));
         let mut other = rec.inputs.clone();
         other.personal_sources = true;
         assert!(!up_to_date(&rec, &other, day, now));

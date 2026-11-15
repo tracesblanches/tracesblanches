@@ -543,9 +543,7 @@ pub struct Registry {
 impl Registry {
     /// Path of the registry file.
     pub fn path(layout: &DataLayout) -> Result<PathBuf> {
-        Ok(layout
-            .france_layer_dir(REGISTRY_LAYER)?
-            .join(REGISTRY_FILE))
+        Ok(layout.france_layer_dir(REGISTRY_LAYER)?.join(REGISTRY_FILE))
     }
 
     /// Registry of records (checked; identifiers unique).
@@ -580,8 +578,8 @@ impl Registry {
     /// Reads `data/out/france/sites/sites.json`.
     pub fn read(path: &Path) -> Result<Self> {
         let body = std::fs::read(path).map_err(|e| Error::io(path, e))?;
-        let file: RegistryFile =
-            serde_json::from_slice(&body).map_err(|e| Error::json(path.display().to_string(), e))?;
+        let file: RegistryFile = serde_json::from_slice(&body)
+            .map_err(|e| Error::json(path.display().to_string(), e))?;
         let mut r = Self::from_records(file.sites)?;
         r.path = Some(path.to_owned());
         Ok(r)
@@ -651,7 +649,9 @@ pub fn slug(name: &str) -> String {
     let mut out = String::new();
     for c in name.chars() {
         let base = match c {
-            'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' | 'À' | 'Á' | 'Â' | 'Ã' | 'Ä' | 'Å' => "a",
+            'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' | 'À' | 'Á' | 'Â' | 'Ã' | 'Ä' | 'Å' => {
+                "a"
+            }
             'æ' | 'Æ' => "ae",
             'ç' | 'Ç' => "c",
             'è' | 'é' | 'ê' | 'ë' | 'ė' | 'È' | 'É' | 'Ê' | 'Ë' | 'Ė' => "e",
@@ -707,7 +707,11 @@ pub fn assign_ids(domains: &[IdInput<'_>], fixed: &BTreeMap<&str, &str>) -> Vec<
     }
     let mut out = vec![String::new(); domains.len()];
     for (s, mut idx) in by_slug {
-        let s = if s.is_empty() { "domaine".to_owned() } else { s };
+        let s = if s.is_empty() {
+            "domaine".to_owned()
+        } else {
+            s
+        };
         // A pinned identifier keeps the plain slug; otherwise the largest domain.
         idx.sort_by(|&a, &b| {
             let pa = fixed.contains_key(domains[a].census_id);
@@ -909,7 +913,12 @@ pub fn corridor(line: &[(f64, f64)], half_width: f64) -> Vec<(f64, f64)> {
             .first()
             .map(|&(x, y)| {
                 let h = half_width;
-                vec![(x - h, y - h), (x + h, y - h), (x + h, y + h), (x - h, y + h)]
+                vec![
+                    (x - h, y - h),
+                    (x + h, y - h),
+                    (x + h, y + h),
+                    (x - h, y + h),
+                ]
             })
             .unwrap_or_default();
     }
@@ -1001,7 +1010,10 @@ mod tests {
         assert_eq!(c.proof_outings.len(), 2);
         let j = local("chapelle-des-bois").unwrap();
         assert_eq!(j.plan_requests[0].return_before.as_deref(), Some("16:00"));
-        assert_eq!(parse_hhmm("14:30").unwrap(), NaiveTime::from_hms_opt(14, 30, 0).unwrap());
+        assert_eq!(
+            parse_hhmm("14:30").unwrap(),
+            NaiveTime::from_hms_opt(14, 30, 0).unwrap()
+        );
         assert!(local("mouthe").is_none());
         // A site without local data starts at its centre.
         let mut s = *CERVIERES;
@@ -1036,7 +1048,10 @@ mod tests {
     fn slugs() {
         assert_eq!(slug("Cervières"), "cervieres");
         assert_eq!(slug("Chapelle-des-Bois"), "chapelle-des-bois");
-        assert_eq!(slug("Alpe d'Huez Grand Domaine"), "alpe-d-huez-grand-domaine");
+        assert_eq!(
+            slug("Alpe d'Huez Grand Domaine"),
+            "alpe-d-huez-grand-domaine"
+        );
         assert_eq!(slug("Foncine / Chaux-Neuve"), "foncine-chaux-neuve");
         assert_eq!(slug("  Ratėry 1700 "), "ratery-1700");
         assert_eq!(slug("Œuf & Cœur"), "oeuf-coeur");
@@ -1074,7 +1089,12 @@ mod tests {
         let ids = assign_ids(&d, &fixed);
         assert_eq!(
             ids,
-            ["les-rousses-478721195", "les-rousses", "cervieres", "cervieres-1"]
+            [
+                "les-rousses-478721195",
+                "les-rousses",
+                "cervieres",
+                "cervieres-1"
+            ]
         );
         // Order of the input does not matter.
         let mut r = d.to_vec();
@@ -1135,8 +1155,11 @@ mod tests {
         // in WGS84 because the Lambert-93 grid is rotated by the meridian convergence
         // (about 2.7° at 6.8° E: 5000 × (cos + sin) ≈ 5.2 km).
         let (x, y) = crs::to_lambert93(LonLat::new(6.77, 44.86)).unwrap();
-        let b = bbox_of_lambert93(grow((x - 500.0, y - 500.0, x + 500.0, y + 500.0), DOMAIN_MARGIN_M))
-            .unwrap();
+        let b = bbox_of_lambert93(grow(
+            (x - 500.0, y - 500.0, x + 500.0, y + 500.0),
+            DOMAIN_MARGIN_M,
+        ))
+        .unwrap();
         let (w, h) = b.size_m();
         assert!((4_950.0..5_300.0).contains(&w), "{w}");
         assert!((4_950.0..5_300.0).contains(&h), "{h}");
@@ -1145,7 +1168,12 @@ mod tests {
 
     #[test]
     fn small_envelope_is_one_section() {
-        let ring = vec![(0.0, 0.0), (10_000.0, 0.0), (10_000.0, 8_000.0), (0.0, 8_000.0)];
+        let ring = vec![
+            (0.0, 0.0),
+            (10_000.0, 0.0),
+            (10_000.0, 8_000.0),
+            (0.0, 8_000.0),
+        ];
         let s = split_extent(&[ring], MAX_SITE_SIDE_M, 1_000.0);
         assert_eq!(s, vec![(-1_000.0, -1_000.0, 11_000.0, 9_000.0)]);
     }

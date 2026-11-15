@@ -14,8 +14,8 @@ use skimap_common::geom::{BBox, LonLat};
 use skimap_common::layout::DataLayout;
 use skimap_common::meta::{FileMeta, LayerMeta, SourceRef, now_rfc3339};
 use skimap_common::site::{
-    self, DOMAIN_MARGIN_M, IdInput, MAX_SITE_SIDE_M, MassifRecord, MassifStatus, Rect93,
-    Registry, RegistryFile, SiteKind, SiteRecord, StatusRecord,
+    self, DOMAIN_MARGIN_M, IdInput, MAX_SITE_SIDE_M, MassifRecord, MassifStatus, Rect93, Registry,
+    RegistryFile, SiteKind, SiteRecord, StatusRecord,
 };
 use skimap_snow::massifs::Massif;
 
@@ -94,7 +94,12 @@ fn polygons_93(geometry: &Value, half_width: f64) -> Result<Polys> {
     let c = &geometry["coordinates"];
     Ok(match geometry["type"].as_str() {
         Some("Polygon") => vec![poly(c)?],
-        Some("MultiPolygon") => c.as_array().into_iter().flatten().map(poly).collect::<Result<_>>()?,
+        Some("MultiPolygon") => c
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(poly)
+            .collect::<Result<_>>()?,
         Some("LineString") => vec![vec![site::corridor(&ring(c)?, half_width)]],
         Some("MultiLineString") => c
             .as_array()
@@ -221,7 +226,12 @@ fn massif_note(massifs: &[MassifRecord]) -> String {
         "points tous les {MASSIF_SAMPLE_M:.0} m dans l'enveloppe : {}",
         massifs
             .iter()
-            .map(|m| format!("{} {} {:.1} %", m.code, m.name, m.share.unwrap_or(0.0) * 100.0))
+            .map(|m| format!(
+                "{} {} {:.1} %",
+                m.code,
+                m.name,
+                m.share.unwrap_or(0.0) * 100.0
+            ))
             .collect::<Vec<_>>()
             .join(", ")
     )
@@ -326,7 +336,10 @@ fn census_records(features: &[Value], massifs: &[Massif]) -> Result<Vec<SiteReco
             kind: SiteKind::NordicStation,
             parent: None,
             census_id: Some(census_id),
-            department: p["commune"]["departement"].as_str().unwrap_or("").to_owned(),
+            department: p["commune"]["departement"]
+                .as_str()
+                .unwrap_or("")
+                .to_owned(),
             insee: p["commune"]["insee"].as_str().unwrap_or("").to_owned(),
             commune: p["commune"]["name"].as_str().unwrap_or("").to_owned(),
             commune_center: LonLat::new(lon, lat),
@@ -592,7 +605,10 @@ pub fn write_catalog(layout: &DataLayout, registry: &Registry) -> Result<Catalog
     let mut by_state: BTreeMap<String, usize> = BTreeMap::new();
     let mut total = 0u64;
     for r in registry.records() {
-        let pack_dir = layout.out_root().join(&r.id).join(skimap_pack::build::PACK_LAYER);
+        let pack_dir = layout
+            .out_root()
+            .join(&r.id)
+            .join(skimap_pack::build::PACK_LAYER);
         let manifest: Option<Value> = std::fs::read(pack_dir.join("manifest.json"))
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok());
@@ -611,7 +627,9 @@ pub fn write_catalog(layout: &DataLayout, registry: &Registry) -> Result<Catalog
         };
         *by_state.entry(state.to_owned()).or_insert(0) += 1;
         let pack = manifest.as_ref().map(|m| {
-            let bytes = m["total_bytes"].as_u64().unwrap_or_else(|| dir_bytes(&pack_dir));
+            let bytes = m["total_bytes"]
+                .as_u64()
+                .unwrap_or_else(|| dir_bytes(&pack_dir));
             total += bytes;
             json!({
                 "dir": format!("{}/{}", r.id, skimap_pack::build::PACK_LAYER),
@@ -714,7 +732,12 @@ mod tests {
     use super::*;
 
     fn square(x0: f64, y0: f64, s: f64) -> Polys {
-        vec![vec![vec![(x0, y0), (x0 + s, y0), (x0 + s, y0 + s), (x0, y0 + s)]]]
+        vec![vec![vec![
+            (x0, y0),
+            (x0 + s, y0),
+            (x0 + s, y0 + s),
+            (x0, y0 + s),
+        ]]]
     }
 
     #[test]
@@ -737,12 +760,18 @@ mod tests {
         let (b, s) = boxes(&square(x, y, 7_000.0), DOMAIN_MARGIN_M).unwrap();
         assert!(s.is_empty());
         let (w, h) = b.size_m();
-        assert!((10_900.0..11_600.0).contains(&w) && (10_900.0..11_600.0).contains(&h), "{w} {h}");
+        assert!(
+            (10_900.0..11_600.0).contains(&w) && (10_900.0..11_600.0).contains(&h),
+            "{w} {h}"
+        );
         let (_, s) = boxes(&square(x, y, 60_000.0), 0.0).unwrap();
         assert!(s.len() >= 9, "{}", s.len());
         for b in &s {
             let (w, h) = b.size_m();
-            assert!(w <= MAX_SITE_SIDE_M * 1.05 && h <= MAX_SITE_SIDE_M * 1.05, "{w} {h}");
+            assert!(
+                w <= MAX_SITE_SIDE_M * 1.05 && h <= MAX_SITE_SIDE_M * 1.05,
+                "{w} {h}"
+            );
         }
         let mut out = Vec::new();
         let mut rec = site::evaluation_records()[1].clone();
@@ -753,7 +782,11 @@ mod tests {
         assert_eq!(out[0].sections.len(), s.len());
         assert_eq!(out[1].parent.as_deref(), Some("grand"));
         assert!(out[1].id.starts_with("grand-"));
-        assert!(out[1].name.ends_with(&format!("/{})", s.len())), "{}", out[1].name);
+        assert!(
+            out[1].name.ends_with(&format!("/{})", s.len())),
+            "{}",
+            out[1].name
+        );
         Registry::from_records(out).unwrap();
     }
 }

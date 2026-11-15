@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use anyhow::{Context, Result, anyhow, bail};
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Duration as ChronoDuration, NaiveDate, NaiveDateTime, TimeZone, Utc};
+use serde::{Deserialize, Serialize};
 use skimap_common::config::Config;
 use skimap_common::download::Downloader;
 use skimap_common::layout::DataLayout;
@@ -91,7 +91,12 @@ impl Ctx {
 
     /// P9, P10: zones and rules.
     pub fn zones(&self, site: &Site) -> Result<skimap_zones::ZonesReport> {
-        Ok(skimap_zones::build(site, &self.layout, &self.dl)?)
+        Ok(skimap_zones::build_with(
+            site,
+            &self.layout,
+            &self.dl,
+            self.cfg.personal_sources,
+        )?)
     }
 
     /// P12: areas without any network.
@@ -146,10 +151,19 @@ impl Ctx {
         dump: Option<&Path>,
     ) -> Result<skimap_avalanche::historic::Summary> {
         Ok(match dump {
-            Some(d) => {
-                skimap_avalanche::historic::build_from_dump(site, &self.layout, &self.dl, d)?
-            }
-            None => skimap_avalanche::historic::build(site, &self.layout, &self.dl)?,
+            Some(d) => skimap_avalanche::historic::build_from_dump_with(
+                site,
+                &self.layout,
+                &self.dl,
+                d,
+                self.cfg.personal_sources,
+            )?,
+            None => skimap_avalanche::historic::build_with(
+                site,
+                &self.layout,
+                &self.dl,
+                self.cfg.personal_sources,
+            )?,
         })
     }
 
@@ -165,10 +179,11 @@ impl Ctx {
         &self,
         site: &Site,
     ) -> Result<skimap_avalanche::exposure::ExposureSummary> {
-        Ok(skimap_avalanche::exposure::build(
+        Ok(skimap_avalanche::exposure::build_with(
             site,
             &self.layout,
             &self.dl,
+            self.cfg.personal_sources,
         )?)
     }
 
@@ -543,6 +558,11 @@ impl Ctx {
                     "emprises CLPA publiées seulement pour les Hautes-Alpes (DDT 05) ; département {}",
                     site.department
                 ));
+            }
+            if !self.cfg.personal_sources {
+                return not_applicable(
+                    "CLPA à usage personnel seulement (personal_sources désactivé)",
+                );
             }
             let s = self.avalanche_historic(site, None)?;
             let nets: Vec<String> = s

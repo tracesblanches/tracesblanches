@@ -382,9 +382,10 @@ fn print_sites(registry: &Registry, json: bool) -> Result<()> {
     println!(
         "{} sites ({}), {} construits",
         registry.all().len(),
-        registry
-            .source()
-            .map_or("sites d'évaluation : `skimap domaines` pour toute la France".to_owned(), |p| p.display().to_string()),
+        registry.source().map_or(
+            "sites d'évaluation : `skimap domaines` pour toute la France".to_owned(),
+            |p| p.display().to_string()
+        ),
         registry.buildable().len()
     );
     for (s, r) in registry.all().iter().zip(registry.records()) {
@@ -481,7 +482,9 @@ fn build_all(cfg: &Config, registry: &Registry, a: BuildAllArgs) -> Result<()> {
         jobs: a.jobs.max(1),
         force: a.force,
         max_age: Duration::from_secs_f64(a.max_age_hours.max(0.0) * 3600.0),
-        stop_after: a.stop_after_min.map(|m| Duration::from_secs_f64(m.max(0.0) * 60.0)),
+        stop_after: a
+            .stop_after_min
+            .map(|m| Duration::from_secs_f64(m.max(0.0) * 60.0)),
     };
     let summary = batch::build_many(&c, registry, &sites, &opts)?;
     for l in batch::describe(&summary) {

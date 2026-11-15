@@ -846,6 +846,19 @@ pub fn build_from_dump(
     dl: &Downloader,
     dump: &Path,
 ) -> Result<Summary> {
+    let personal = skimap_common::config::Config::from_env()?.personal_sources;
+    build_from_dump_with(site, layout, dl, dump, personal)
+}
+
+/// [`build_from_dump`] with an explicit `personal_sources` (CLPA footprints read only with
+/// it).
+pub fn build_from_dump_with(
+    site: &Site,
+    layout: &DataLayout,
+    dl: &Downloader,
+    dump: &Path,
+    personal_sources: bool,
+) -> Result<Summary> {
     let body = std::fs::read(dump).map_err(|e| skimap_common::Error::io(dump, e))?;
     let lines = pistes::from_overpass_json(&body)
         .map_err(|e| Error::format("overpass dump", e.to_string()))?;
@@ -870,7 +883,7 @@ pub fn build_from_dump(
         &lines,
         &format!("extrait {}", dump.display()),
         source,
-        skimap_common::config::Config::from_env()?.personal_sources,
+        personal_sources,
     )
 }
 
