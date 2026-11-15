@@ -2,7 +2,7 @@
 
 Assistant : briefing, fartage, qualité de neige, affluence, suggestions, équipement, synthèse, alertes, meilleur moment, bilan, questions. Tickets : A1 (#88) à A11 (#98).
 
-Côté téléphone : la crate ne télécharge rien, elle lit les couches de `data/out/<site>/`. `cargo tree -p skimap-assist -e normal` ne contient ni `reqwest`, ni `rustls`, ni `hyper` ; `skimap-common` y a les fonctions `default` et `geotiff` (lecture des cartes d'enneigement, `tiff` sans réseau). Les dépendances de développement (`skimap-meteo`, `skimap-snow`) ne servent qu'à l'exemple `history`, côté poste.
+Côté téléphone : la crate ne télécharge rien, elle lit les couches de `data/out/<site>/`. `cargo tree -p skimap-assist -e normal` ne contient ni `reqwest`, ni `rustls`, ni `hyper` ; `skimap-common` y a les fonctions `default` et `geotiff` (lecture des cartes d'enneigement, `tiff` sans réseau). Les entrées des jours passés sont archivées par `skimap history`, côté poste.
 
 Jamais « sans danger » : chaque sortie dit ce qu'elle ne sait pas (couche absente, BERA non lisible, état des pistes inconnu, neige hors carte) et renvoie aux sources officielles.
 
@@ -37,7 +37,7 @@ Jamais « sans danger » : chaque sortie dit ce qu'elle ne sait pas (couche abse
 | `alerts_<date>.json` / `.txt` | rejeux météo par jour et rejeux de traces sur les boucles (A8) |
 | `best_time_<date>.json` / `.txt` | meilleur départ par jour et par point, créneaux essayés (A9) |
 | `assist.meta.json` | sources de toutes les couches lues (avec `personal_use_only`), tables de fartage, fichiers, entrées de chaque exécution (`parameters.runs`) |
-| `history/` | entrées archivées des jours passés (exemple `history`) : `meteo_<début>_<fin>.json` (format P19 plus `relative_humidity_pct`), `snow_<date>/` (P6), `bera_<date>.json` (P8) |
+| `history/` | entrées archivées des jours passés (`skimap history`) : `meteo_<début>_<fin>.json` (format P19, `relative_humidity_pct` compris, `skimap_meteo::hourly::history`), `snow_<date>/` (P6), `bera_<date>.json` (P8) |
 
 Chaque JSON commence par `inputs` (fichiers lus) et `missing` (couches absentes).
 
@@ -45,10 +45,10 @@ Chaque JSON commence par `inputs` (fichiers lus) et `missing` (couches absentes)
 
 ```sh
 # entrées des jours passés (poste ; Open-Meteo est réservé à l'usage non commercial)
-SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-assist --example history -- cervieres 2026-01-04 2026-01-10
-SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-assist --example history -- cervieres 2023-04-15 2023-04-15
-SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-assist --example history -- chapelle-des-bois 2026-02-22 2026-02-28
-SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-assist --example history -- cervieres 2026-11-15 2026-11-15 --no-snow
+SKIMAP_PERSONAL_SOURCES=1 skimap history cervieres 2026-01-04 2026-01-10
+SKIMAP_PERSONAL_SOURCES=1 skimap history cervieres 2023-04-15 2023-04-15
+SKIMAP_PERSONAL_SOURCES=1 skimap history chapelle-des-bois 2026-02-22 2026-02-28
+SKIMAP_PERSONAL_SOURCES=1 skimap history cervieres 2026-11-15 2026-11-15 --no-snow
 # l'assistant (aucun réseau)
 cargo run --release -p skimap-assist --example assist -- cervieres 2026-01-05 --days 5 --history past \
     --home 6.6426,44.8986 --route data/out/cervieres/routes/routes.geojson --suggest --outings

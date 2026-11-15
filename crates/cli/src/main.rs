@@ -5,6 +5,7 @@
 //! remaining placeholders name the ticket that will provide it.
 
 mod build;
+mod history;
 mod route;
 mod voice;
 
@@ -114,6 +115,22 @@ enum Command {
     },
     /// Hourly weather of a site (P19, #32); personal use only (`SKIMAP_PERSONAL_SOURCES`).
     Meteo(SiteArg),
+    /// Archives the weather (historical forecast, personal use only), snow maps and BERA
+    /// of past days for the assistant, `assist/history/`.
+    History {
+        /// Site identifier.
+        site: String,
+        /// First date, YYYY-MM-DD (the weather starts three days before).
+        first: String,
+        /// Last date, YYYY-MM-DD.
+        last: String,
+        /// Skip the snow maps.
+        #[arg(long)]
+        no_snow: bool,
+        /// Skip the BERA.
+        #[arg(long)]
+        no_bera: bool,
+    },
     /// One poll of the trail status sources of a site (P13, #26); personal use only.
     StatusPoll(SiteArg),
     /// Historic avalanche footprints (CLPA) and the piste sections crossing them (P20, #99);
@@ -431,6 +448,20 @@ fn run(cli: Cli) -> Result<()> {
         Command::Meteo(a) => {
             let s = site(&a.site)?;
             print_json(&ctx()?.meteo(s)?)
+        }
+        Command::History {
+            site: s,
+            first,
+            last,
+            no_snow,
+            no_bera,
+        } => {
+            let s = site(&s)?;
+            let (first, last) = (build::parse_date(&first)?, build::parse_date(&last)?);
+            for l in history::history(&ctx()?, s, first, last, !no_snow, !no_bera)? {
+                println!("{l}");
+            }
+            Ok(())
         }
         Command::StatusPoll(a) => {
             let s = site(&a.site)?;

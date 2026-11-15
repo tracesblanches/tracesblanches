@@ -35,6 +35,8 @@ Tests : exemple Belledonne de la spécification recopié (`tests/fixtures/bera_s
 
 ## Météo heure par heure par site (P19, module `hourly`)
 
+Jours passés : `skimap_meteo::hourly::history(site, &downloader, personal_sources, premier, dernier, dossier)` (API « historical forecast » d'Open-Meteo, mêmes modèles et variables, à partir de trois jours avant la première date) écrit `meteo_<début>_<fin>.json` au même format ; `skimap history <site> <premier> <dernier>` le range dans `data/out/<site>/assist/history/` avec les cartes d'enneigement et les BERA des mêmes jours (remplace l'exemple `history` de l'assistant ; identique à sa sortie sur Cervières du 01/01 au 10/01/2026 : 480 heures, aucune valeur différente).
+
 `skimap_meteo::hourly::build(site, &layout, &downloader, personal_sources)` écrit `data/out/<site>/meteo-hourly/` :
 
 | Fichier | Contenu |
@@ -42,7 +44,7 @@ Tests : exemple Belledonne de la spécification recopié (`tests/fixtures/bera_s
 | `hourly.json` | `HourlyFile` : par point de prévision, altitude du modèle, modèle de chaque variable, 72 heures (heure locale) et un résumé par jour |
 | `meteo-hourly.meta.json` | source, licence, attribution, période couverte, notes |
 
-Variables par heure : température à 2 m, température apparente (Open-Meteo), indice de refroidissement éolien calculé (formule JAG-TI d'Environnement Canada, la « température ressentie » de Météo-France ; défini sous 10 °C et au-delà de 4,8 km/h), vent moyen, rafales, direction, visibilité, brouillard (visibilité < 1000 m ou code OMM 45/48), isotherme 0 °C, chute de neige, précipitations, nébulosité totale et basse, code OMM. Par jour : neige cumulée, nébulosité moyenne de 9 h à 16 h (indicateur de soleil), rafale maximale, refroidissement minimal, heures de brouillard de 9 h à 16 h, isotherme 0 °C le plus bas.
+Variables par heure : température à 2 m, humidité relative à 2 m (`relative_humidity_pct`, fartage A2), température apparente (Open-Meteo), indice de refroidissement éolien calculé (formule JAG-TI d'Environnement Canada, la « température ressentie » de Météo-France ; défini sous 10 °C et au-delà de 4,8 km/h), vent moyen, rafales, direction, visibilité, brouillard (visibilité < 1000 m ou code OMM 45/48), isotherme 0 °C, chute de neige, précipitations, nébulosité totale et basse, code OMM. Par jour : neige cumulée, nébulosité moyenne de 9 h à 16 h (indicateur de soleil), rafale maximale, refroidissement minimal, heures de brouillard de 9 h à 16 h, isotherme 0 °C le plus bas.
 
 Points de prévision : Cervières, Le Laus (1750 m) et Les Fonts (2044 m), d'après les nœuds OSM `place=hamlet` ; Chapelle-des-Bois, départ des pistes (1087 m), premier point des itinéraires ENJ. Le centre de la commune de Cervières (geo.api.gouv.fr) est à 2431 m : il ne représente pas le domaine.
 

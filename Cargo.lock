@@ -2134,8 +2134,6 @@ dependencies = [
  "serde_json",
  "skimap-common",
  "skimap-core",
- "skimap-meteo",
- "skimap-snow",
  "skimap-voice",
  "skimap-zones",
  "tempfile",

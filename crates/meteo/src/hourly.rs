@@ -1,5 +1,7 @@
 //! Hourly weather per site, P19 (#32): wind and gusts, apparent temperature and wind
-//! chill, visibility and fog, 0 °C isotherm, snowfall, cloud cover.
+//! chill, relative humidity (fartage, A2), visibility and fog, 0 °C isotherm, snowfall,
+//! cloud cover. [`history`]: the same series for past days (historical forecast API), so
+//! that the assistant can be replayed on them.
 //!
 //! **Source for now: Open-Meteo**, free for non-commercial use only (CC BY 4.0 data,
 //! 10 000 calls a day; report 03). It is therefore behind `personal_sources`: [`build`]
@@ -28,8 +30,10 @@
 //! `meteo-hourly.meta.json`.
 
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use skimap_common::download::{Downloader, Request};
 use skimap_common::layout::DataLayout;
@@ -55,6 +59,7 @@ pub const FOG_VISIBILITY_M: f64 = 1000.0;
 /// Variables taken from `meteofrance_seamless`.
 pub const MF_VARIABLES: &[&str] = &[
     "temperature_2m",
+    "relative_humidity_2m",
     "apparent_temperature",
     "wind_speed_10m",
     "wind_gusts_10m",
@@ -189,6 +194,9 @@ pub struct Hour {
     pub time: String,
     /// Air temperature at 2 m, °C.
     pub temperature_c: Option<f64>,
+    /// Relative humidity at 2 m, % (A2 fartage).
+    #[serde(default)]
+    pub relative_humidity_pct: Option<f64>,
     /// Apparent temperature (Open-Meteo, Steadman), °C.
     pub apparent_temperature_c: Option<f64>,
     /// Wind chill index computed from temperature and wind, °C.
@@ -293,6 +301,7 @@ pub fn merge(p: &ForecastPoint, mf: &Series, best: &Series) -> Result<PointForec
         x
     };
     let t = col(mf, "temperature_2m");
+    let rh = col(mf, "relative_humidity_2m");
     let at = col(mf, "apparent_temperature");
     let w = col(mf, "wind_speed_10m");
     let g = col(mf, "wind_gusts_10m");
@@ -315,6 +324,7 @@ pub fn merge(p: &ForecastPoint, mf: &Series, best: &Series) -> Result<PointForec
             Hour {
                 time: times[i].clone(),
                 temperature_c: t[i],
+                relative_humidity_pct: rh[i],
                 apparent_temperature_c: at[i],
                 wind_chill_c: match (t[i], w[i]) {
                     (Some(t), Some(w)) => Some((wind_chill(t, w) * 10.0).round() / 10.0),
@@ -458,6 +468,126 @@ pub fn build(
     Ok(file)
 }
 
+/// Historical forecast endpoint of Open-Meteo: the archived first hours of each run of the
+/// same models (« same models, same parameters, same response format », from 2022).
+pub const HISTORICAL_URL: &str = "https://historical-forecast-api.open-meteo.com/v1/forecast";
+/// Days of weather fetched before the first date of a history (the snow quality model of
+/// the assistant needs the days before).
+pub const HISTORY_LEAD_DAYS: i64 = 3;
+
+/// Request of one model for one point over past dates (historical forecast API). Past
+/// data no longer changes: kept a year in the cache, one hour if `last` is within two
+/// days of `today` (the last runs may still be archived).
+pub fn history_request(
+    p: &ForecastPoint,
+    model: &str,
+    variables: &[&str],
+    start: NaiveDate,
+    last: NaiveDate,
+    today: NaiveDate,
+) -> Request {
+    let max_age = if (today - last).num_days() > 2 {
+        Duration::from_secs(365 * 86_400)
+    } else {
+        MAX_AGE
+    };
+    Request::get(
+        SOURCE,
+        &format!(
+            "{HISTORICAL_URL}?latitude={}&longitude={}&hourly={}&models={model}\
+             &timezone=Europe%2FParis&start_date={start}&end_date={last}&wind_speed_unit=kmh",
+            p.lat,
+            p.lon,
+            variables.join(",")
+        ),
+    )
+    .max_age(max_age)
+}
+
+/// Hourly weather of past days, from [`HISTORY_LEAD_DAYS`] before `first` to `last`, in
+/// the [`HourlyFile`] format, written as `meteo_<start>_<last>.json` with a
+/// `meteo-hourly.meta.json` in `dir` (the assistant reads `data/out/<site>/assist/history/`).
+/// Requires `personal_sources` (Open-Meteo: non-commercial use only). Returns the file
+/// path and the content.
+pub fn history(
+    site: &Site,
+    dl: &Downloader,
+    personal_sources: bool,
+    first: NaiveDate,
+    last: NaiveDate,
+    dir: &Path,
+) -> Result<(PathBuf, HourlyFile)> {
+    if !personal_sources {
+        return Err(Error::PersonalSourcesDisabled(SOURCE));
+    }
+    if last < first {
+        return Err(Error::format("dates", format!("{last} before {first}")));
+    }
+    let pts = forecast_points(site.id);
+    if pts.is_empty() {
+        return Err(Error::format(
+            "site",
+            format!("no forecast point for {}", site.id),
+        ));
+    }
+    let start = first - chrono::Duration::days(HISTORY_LEAD_DAYS);
+    let today = chrono::Utc::now().date_naive();
+    let mut points = Vec::new();
+    for p in pts {
+        let fetch = |model: &str, vars: &[&str]| -> Result<Series> {
+            Series::from_json(
+                &dl.fetch(&history_request(p, model, vars, start, last, today))?
+                    .bytes()?,
+            )
+        };
+        let mf = fetch("meteofrance_seamless", MF_VARIABLES)?;
+        let best = fetch("best_match", BEST_MATCH_VARIABLES)?;
+        points.push(merge(p, &mf, &best)?);
+    }
+    let generated_at = now_rfc3339();
+    let file = HourlyFile {
+        site: site.id.to_owned(),
+        generated_at: generated_at.clone(),
+        points,
+        attribution: "Weather data by Open-Meteo.com (CC BY 4.0), modèles Météo-France".into(),
+    };
+    DataLayout::ensure(dir)?;
+    let name = format!("meteo_{start}_{last}.json");
+    let path = dir.join(&name);
+    write_json(&path, &file)?;
+    LayerMeta {
+        tickets: vec![
+            "P19 (#32)".into(),
+            "A1 (#88)".into(),
+            "A2 (#89)".into(),
+            "A3 (#90)".into(),
+        ],
+        generated_at,
+        valid_from: Some(start.to_string()),
+        valid_until: Some(last.to_string()),
+        sources: vec![
+            SourceRef::new(
+                "Open-Meteo, API historical forecast (meteofrance_seamless et best_match)",
+                HISTORICAL_URL,
+                "CC BY 4.0 ; API gratuite réservée à l'usage non commercial",
+                "Weather data by Open-Meteo.com",
+            )
+            .personal_use_only(),
+        ],
+        files: vec![FileMeta::new(
+            name,
+            "météo horaire archivée (format HourlyFile de P19, humidité relative comprise)",
+        )],
+        notes: vec![
+            "Premières heures de chaque run archivées par Open-Meteo, mêmes modèles et variables que la prévision P19.".into(),
+            "Heures locales Europe/Paris.".into(),
+        ],
+        ..LayerMeta::new(LAYER, site.id)
+    }
+    .write(dir)?;
+    Ok((path, file))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -488,6 +618,7 @@ mod tests {
         let mf = series(
             &[
                 ("temperature_2m", "[-5.0,-4.0,-3.0,0.0]"),
+                ("relative_humidity_2m", "[95,90,null,60]"),
                 ("apparent_temperature", "[-9.0,-8.0,-7.0,-2.0]"),
                 ("wind_speed_10m", "[20.0,20.0,null,10.0]"),
                 ("wind_gusts_10m", "[40.0,55.0,30.0,20.0]"),
@@ -511,6 +642,8 @@ mod tests {
         assert_eq!(f.hours.len(), 4);
         let h = &f.hours;
         assert_eq!(h[0].fog, Some(false));
+        assert_eq!(h[0].relative_humidity_pct, Some(95.0));
+        assert_eq!(h[2].relative_humidity_pct, None);
         assert_eq!(h[1].fog, Some(true), "visibility 800 m");
         assert_eq!(h[2].fog, Some(true), "WMO 45");
         assert_eq!(h[2].wind_chill_c, None, "wind missing");
@@ -555,6 +688,22 @@ mod tests {
         assert!(r.url().contains("latitude=46.6032&longitude=6.1125"));
         assert!(r.url().contains("hourly=visibility&models=best_match"));
         assert!(r.url().contains("wind_speed_unit=kmh"));
+        let d = |s: &str| NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap();
+        let p = &forecast_points("cervieres")[0];
+        let h = history_request(
+            p,
+            "meteofrance_seamless",
+            MF_VARIABLES,
+            d("2026-01-01"),
+            d("2026-01-10"),
+            d("2026-11-15"),
+        );
+        assert!(h.url().starts_with(HISTORICAL_URL));
+        assert!(
+            h.url()
+                .contains("start_date=2026-01-01&end_date=2026-01-10")
+        );
+        assert!(h.url().contains("relative_humidity_2m"));
     }
 
     #[test]

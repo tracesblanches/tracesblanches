@@ -21,12 +21,6 @@ thiserror.workspace = true
 # UInt8 class GeoTIFF of the avalanche exposure (common reads Float32 only); pure Rust.
 
 [dev-dependencies]
-# `history` example only (workstation side): fetches past weather from the Open-Meteo
-# historical forecast API through the shared downloader, past snow maps and BERA, to prove
-# the assistant on real past days. Never linked into the library.
-skimap-common = { workspace = true, features = ["download", "geotiff"] }
-skimap-meteo.workspace = true
-skimap-snow.workspace = true
 tempfile.workspace = true
 
 [lints]
