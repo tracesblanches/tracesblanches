@@ -1,0 +1,46 @@
+# Toute la France : sites, build-all, rafraîchissement
+
+[← Architecture](../architecture.md) · [Compiler, tester, Android, git](compiler.md)
+
+## Sites et build-all (G2, #118)
+
+
+Sites : chaque domaine du recensement P3 est un site. `skimap domaines` lance le recensement puis écrit le registre `data/out/france/sites/sites.json` (`common::site::Registry`, lu par toutes les sous-commandes ; sans lui, seuls les deux sites d'évaluation existent) :
+
+- identifiant : nom du domaine en minuscules sans accents (`site::slug`) ; pour les homonymes, le plus grand garde le nom, les autres prennent les chiffres de leur identifiant de recensement (`les-rousses`, `les-rousses-478721195`) ; `cervieres` et `chapelle-des-bois` sont inchangés ;
+- emprise : enveloppe du domaine + 2 km en Lambert-93 (`site::DOMAIN_MARGIN_M` : une avalanche du scénario rare, α = 18°, partie à 2 km doit tomber de 650 m) ; au-delà de 25 km de côté (`site::MAX_SITE_SIDE_M`), le site est découpé en tronçons recouvrants (1 km) construits chacun comme un site (`gtj-1`…, `parent: gtj`) ;
+- massifs : polygones snowtools, points tous les 250 m dans l'enveloppe, massifs d'au moins 5 % ; sans polygone, massif le plus proche à 10 km au plus (« supposé »), sinon « hors massif » (Ardennes, Morvan) ; BERA si le massif principal en a un ;
+- type : `nordic_station` (recensement), `srn_area` et `traverse` : les zones SRN hors stations de `skimap srn` (G5, `data/out/france/srn/srn_areas.geojson` : domaines de jeu et traversées, identifiant = `id` de la zone, emprise = empreinte + 2 km ; la GTJ, 100 km, est découpée en tronçons) ; pour elles, l'état des pistes est sans objet ;
+- données propres à un site dans des tables, pas dans le code : `crates/common/data/sites.json` (emprise, commune et massifs vérifiés des deux sites d'évaluation, sources d'état, départs, jour archivé, demandes de plan, sorties de preuve), `crates/common/data/status_sources.json` (source d'état de chaque domaine, rapport 08).
+
+```sh
+skimap domaines                                   # recensement, zones SRN, registre
+skimap srn                                        # zones SRN seules (G5)
+skimap stations                                   # fiches et titres des stations (H1, H2)
+skimap refresh cervieres chapelle-des-bois        # rafraîchissement planifié, idempotent
+skimap sites                                      # liste du registre
+skimap build-all --all --jobs 5                   # tous les sites, reprenable
+skimap build-all --domains gerardmer,les-rousses --stop-after-min 45
+skimap catalog                                    # data/out/france/catalog.json et .geojson
+skimap-server publish --all-in data/out           # publie tous les packs, catalogue écrit une fois
+```
+
+`build-all --all` (ou `--domains a,b,c`) construit les sites en parallèle (`--jobs`, 4 par défaut) avec un seul téléchargeur : ses quotas et ses requêtes en vol par source (`SourcePolicy::max_in_flight` : 16 pour `ign`, 8 pour `ign-lidar-wms`, 4 pour `geo-api`, 1 ailleurs) valent pour tous les sites ensemble. L'extrait OSM, le recensement, les zones SRN (étape `srn`, après `domaines`) et la couche `stations` (après les zones SRN, avant le premier site ; parties dues seulement, toutes avec `--force` ; ligne « stations (France, une fois) » du résumé, champ `stations` de `summary.json` ; un échec fait sortir `build-all` en erreur sans marquer les sites) sont calculés une fois. Un site dont le dernier `build-all` a réussi avec les mêmes entrées (fiche du registre, version de `skimap`, `personal_sources`) il y a moins de `--max-age-hours` (24) n'est pas refait ; un échec l'est. Chaque site écrit `data/out/<site>/build-all.log` (une ligne par étape) et `build-all.json` (entrées, étapes, tailles) ; la série écrit `data/out/france/build-all/summary.json` (réussis, échecs par cause, temps par étape, tailles, téléchargements par source) et le catalogue. `--stop-after-min` : aucun site n'est commencé après ce délai, les sites en cours finissent ; relancer reprend.
+
+Étapes « sans objet » (avec la raison, une étape qui en dépend l'est aussi) : `snow` hors des massifs snowtools ; `avalanche-exposure` sans plaque de pente ≥ 30° d'au moins 1000 m² (seuil de déclenchement, tamis des zones de départ d'AutoATES ; `crates/cli/src/relief.rs`) ; `routing` sans piste ; `bera` hors des massifs du BERA, sauf le Jura (notice et liens) ; `avalanche-historic` hors des Hautes-Alpes ou sans `personal_sources` (CLPA) ; `status-poll` pour un domaine SRN ou sans source lisible (widget Nordic France ou ville ENJ) ; `plan` sans jour archivé (`assist/history/`). Le téléchargeur construit depuis la configuration refuse les sources à usage personnel (`SourcePolicy::personal_use_only` : `biodiv-sports`, `geoide`, `enj`, `nordicfrance`, `cervieres-mairie`, `open-meteo`) sans `personal_sources`.
+
+Pour un site SRN, l'étape `srn` écrit aussi `data/out/<site>/srn/` (zones et itinéraires SRN de la couche France qui rencontrent l'emprise), repris par le pack (couches `srn-areas` et `srn-routes`).
+
+Mesures (15/11/2026, données du jour, poste partagé, charge 50 à 190 sur 20 cœurs, `--jobs 4`, cache froid pour les domaines nouveaux) : échantillon de 30 domaines du recensement (Jura, Alpes du Nord et du Sud, Vosges, Massif central, Pyrénées, Ardennes, Morvan ; 4 018 km² d'emprises sur 16 534) : 30 packs, 727 Mo (exports 342 Mo), 3,8 Go de couches ; 14 267 s de travail cumulé (pack 6 189 s, surtout les tuiles Plan IGN du fond de carte ; exposition aux avalanches 3 510 s ; refuges 2 861 s, surtout Overpass ; terrain 1 110 s), parallélisme effectif 3,84 ; mémoire maximale du processus 8,3 Go avec 4 sites en parallèle. Tronçon de 25 × 26 km de la GTJ seul : 889 s, 5,6 Go, pack 102 Mo. Extrapolation à l'emprise : 219 domaines ≈ 15 300 s (4,2 h) au premier passage, 268 sites avec les zones SRN ≈ 5,7 h ; packs ≈ 3 Go (4 Go avec SRN) ; ensuite le cache sert presque tout (un domaine déjà téléchargé : 30 s à 10 min selon le relief).
+
+Catalogue de la France (`skimap catalog`, et à la fin de `build-all --all`) : `data/out/france/catalog.json` (`domains[]` : identifiant, nom, type, tronçons, commune, centre, emprise, km, massifs, BERA, source d'état, état de construction, pack : dossier, taille, version, date) et `catalog.geojson` (emprises), lus par le visualiseur (vue France), l'app et le serveur.
+
+## Rafraîchissement planifié (H1 #132, H2 #133)
+
+`skimap refresh [SITES]...` (`crates/cli/src/refresh.rs`) : `skimap_stations::refresh(&layout, &dl, personal_sources, now, false)` une fois, puis `skimap_refuges::refresh(site, &layout, &dl, now, false)` pour chaque site, l'un après l'autre (le téléchargeur sérialise de toute façon les requêtes d'une source). Sans site : les sites du registre qui ont déjà une couche `refuges`.
+
+- Chaque partie n'est refaite que si elle est due : fiches des stations chaque semaine ; titres, prix et membres (avec `personal_sources`) et refuges chaque jour du 1er novembre au 30 avril, chaque semaine sinon. Une deuxième exécution le même jour ne fait rien (fichiers et journaux inchangés).
+- Une source qui tombe garde les fichiers précédents ; `data/out/france/refresh/status.json` résume l'exécution (`ok`, parties refaites ou à jour, changements, sources cassées, parties en échec, erreurs par site) et `skimap refresh` sort en erreur s'il y a au moins un échec. Le détail reste dans `status.json` et `journal.jsonl` de chaque couche.
+- Sur le serveur : `skimap-job refresh <sites>` (rafraîchissement, puis pack et `skimap-server publish` de chaque site ; un pack inchangé n'est pas republié), CronJobs de `deploy/refresh-cronjobs.yaml` ([deploy/README.md](../../deploy/README.md#cronjobs-heure-de-paris)).
+
+Mesures (15/11/2026, cache du jour) : premier passage sur un dossier neuf 2,5 s (fiches de 219 stations, 12 et 63 fiches de refuges ; 53 Mo de mémoire au plus) ; deuxième passage 0,03 s, rien de refait ; sans réseau, les trois parties échouent, les fichiers restent identiques, code de sortie 1. `skimap-job refresh cervieres chapelle-des-bois` : 10 s la première fois (packs publiés), 13 s ensuite (packs « unchanged ») ; refuges de Cervières refaits : paquet différentiel de 89 ko.
