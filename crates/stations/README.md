@@ -28,6 +28,14 @@ Membres → domaines : mots de chaque partie du libellé dans le nom, le nom Ope
 - Avec `personal_sources` seulement (sinon supprimés) : `titres.json` (titres, prix, membres, pages de domaine, documents, compléments), `titres.geojson` (emprise de chaque titre), `couverture.json` (titres de chaque domaine, règle et prix du titre de site, ways OSM de chaque titre).
 - `status.json`, `journal.jsonl`, `refresh_state.json`, `stations.meta.json`.
 
+## Chiffres au 15/11/2026 (219 domaines)
+
+- 112 en tête des 219 fiches ; poste de secours (pisteurs, premiers secours, secours en montagne) : 64 (29 %) ; avec centres de secours et défibrillateurs : 164 (75 %).
+- Point de vente OSM : 120 (55 %) ; téléphone : 123 (56 %) ; site : 175 (80 %) ; parking : 208 (95 %).
+- Titre au prix daté (usage personnel) : 145 (66 %) ; prix journée : 1 (Cervières). Poste de secours, point de vente et prix daté ensemble : 38 (17 %).
+- Titres : Pass national 143 domaines, Montagnes du Jura 39, NP 74 : 19, Isère-Drôme 22, Alpes du Sud 25, 8 Pass de site ENJ ; 10 sources et 32 pages de domaine lues sans erreur.
+- Overpass : 98 requêtes (42 « loin », 56 « près ») ; avec les deux instances surchargées le 15/11/2026, environ 2 h au premier passage ; ensuite le cache (1 jour) et la période hebdomadaire.
+
 ## Jura (hypothèse de l'utilisateur)
 
 Vraie pour les Pass saison et hebdo Montagnes du Jura, fausse pour la journée : « Le Pass séance est valable uniquement sur le site d'achat du Pass. Une réciprocité existe quand plusieurs domaines peuvent être reliés ski aux pieds. » (FAQ de l'ENJ, lue à chaque rafraîchissement). 39 des 48 domaines de l'Ain, du Doubs et du Jura sont membres de l'ENJ.

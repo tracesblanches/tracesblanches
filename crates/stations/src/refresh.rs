@@ -1,6 +1,6 @@
 //! Scheduled refresh (H1, H2): which part is due, change journal, source states.
 //!
-//! The server CronJob calls [`crate::refresh`] (daily is enough): each part only runs
+//! The server CronJob calls [`crate::refresh()`] (daily is enough): each part only runs
 //! when it is due, so a second call the same day changes nothing (idempotent).
 //!
 //! - Station cards (OSM, OpenSkiMap, SkiRadar): weekly ([`FICHES_EVERY_DAYS`]); points

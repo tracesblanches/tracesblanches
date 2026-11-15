@@ -99,6 +99,7 @@ impl Category {
             (Category::Secours, "emergency_phone") => 200.0,
             (Category::Secours, "access_point") => 100.0,
             (Category::Secours, _) => 1000.0,
+            (Category::Vente, "ticket_autre") => 100.0,
             (Category::Vente, _) => 1000.0,
             (Category::OfficeTourisme | Category::EcoleSki, _) => 6000.0,
             (Category::Parking, _) => 300.0,
@@ -204,7 +205,24 @@ pub fn classify(t: &BTreeMap<String, String>) -> Option<(Category, &'static str)
         return Some((Category::Secours, "patrol_post"));
     }
     if tag(t, "shop") == Some("ticket") {
-        return Some((Category::Vente, "ticket"));
+        // A ticket desk named for something else (a toboggan run, a show) is only kept
+        // inside or next to the footprint (`ticket_autre`, 100 m).
+        let ski = name.is_empty()
+            || has_any(
+                name,
+                &[
+                    "ski",
+                    "forfait",
+                    "nordique",
+                    "piste",
+                    "redevance",
+                    "caisse",
+                    "billet",
+                    "fond",
+                    "pass",
+                ],
+            );
+        return Some((Category::Vente, if ski { "ticket" } else { "ticket_autre" }));
     }
     if tag(t, "vending").is_some_and(|v| has_any(v, &["ski"])) {
         return Some((Category::Vente, "vending"));
@@ -639,6 +657,15 @@ mod tests {
 
     #[test]
     fn classification() {
+        let ticket = |n: &str| classify(&t(&[("shop", "ticket"), ("name", n)])).unwrap().1;
+        assert_eq!(ticket("Caisse vente forfaits du Signal"), "ticket");
+        assert_eq!(ticket("Schlitte Mountain"), "ticket_autre");
+        assert_eq!(Category::Vente.reach_m("ticket_autre"), 100.0);
+        assert_eq!(
+            classify(&t(&[("shop", "ticket")])).unwrap().1,
+            "ticket",
+            "an unnamed desk"
+        );
         assert_eq!(
             classify(&t(&[("emergency", "defibrillator")])),
             Some((Category::Secours, "defibrillator"))

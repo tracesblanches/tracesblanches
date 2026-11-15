@@ -14,7 +14,7 @@
 //! - `status.json` (state of every source and part), `journal.jsonl` (changes between
 //!   runs), `refresh_state.json`, `stations.meta.json`.
 //!
-//! [`refresh`] is what the server's CronJob calls; [`build`] forces every part.
+//! [`refresh()`] is what the server's CronJob calls; [`build`] forces every part.
 //! Pipeline side: uses `skimap_common::download`.
 
 pub mod catalogue;
@@ -57,7 +57,7 @@ pub struct StationsOutput {
     pub stats: Value,
 }
 
-/// Result of [`refresh`].
+/// Result of [`refresh()`].
 #[derive(Debug, Clone)]
 pub struct RefreshReport {
     /// Layer directory.
@@ -220,7 +220,7 @@ fn fiches_part(dl: &Downloader, ds: &[domains::Domain], census_dir: &Path) -> Re
 }
 
 /// Refreshes the parts that are due at `now` (all with `force`): station cards weekly,
-/// titles daily in season ([`refresh`] module). Idempotent: a second call with nothing due
+/// titles daily in season ([`mod@refresh`] module). Idempotent: a second call with nothing due
 /// rewrites the status but no data. A failing source keeps the previous values, flagged.
 pub fn refresh(
     layout: &DataLayout,

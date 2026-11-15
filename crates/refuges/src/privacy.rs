@@ -3,8 +3,8 @@
 //! Rule of the project: only the phones and contacts of establishments are kept (staffed
 //! hut, gîte, town hall, tourist office, ski patrol post); never a private person's
 //! number, a personal e-mail or a signed comment. The sources mix both in free text
-//! (refuges.info « Propriétaires » field: « Gardien : <name> <mobile> », « Tél : <gîte> »,
-//! « E-mail : <private address> »), so:
+//! (refuges.info « Propriétaires » field: « Gardien : name mobile », « Tél : gîte number »,
+//! « E-mail : private address »), so:
 //!
 //! - [`redact`] removes every phone number, every e-mail address and the names announced
 //!   by a title or a role (« M. », « Mme », « Gardien : », « Privé : », first name +

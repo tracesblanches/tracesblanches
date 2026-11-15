@@ -1,5 +1,5 @@
 //! Scheduled refresh of the hut layer of a site (H1): the server CronJob calls
-//! [`refresh`] every day; the layer is rebuilt when due, daily in the nordic season
+//! [`refresh()`] every day; the layer is rebuilt when due, daily in the nordic season
 //! (1 November to 30 April: wardening periods, closures and winter rooms change), weekly
 //! otherwise. Changes go to `journal.jsonl`, the state of the run to `status.json`; when
 //! a source fails, the previous files are kept and the failure is reported.
@@ -59,7 +59,7 @@ impl State {
     }
 }
 
-/// Result of [`refresh`].
+/// Result of [`refresh()`].
 #[derive(Debug, Clone)]
 pub struct RefreshReport {
     /// Whether the layer was rebuilt.

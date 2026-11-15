@@ -131,3 +131,36 @@ fn titles_from_live_sources() {
         ds.len()
     );
 }
+
+/// After a build, a refresh the same day has nothing due: it writes the status but no
+/// data, and the journal does not grow.
+#[test]
+#[ignore = "data directory (after a build)"]
+fn refresh_is_idempotent() {
+    let cfg = Config::from_env().unwrap();
+    let layout = cfg.layout();
+    let dl = Downloader::from_config(&cfg).unwrap();
+    let dir = layout.france_layer_dir(skimap_stations::LAYER).unwrap();
+    let journal = std::fs::read(dir.join("journal.jsonl"))
+        .unwrap_or_default()
+        .len();
+    let r = skimap_stations::refresh(
+        &layout,
+        &dl,
+        cfg.personal_sources,
+        chrono::Utc::now(),
+        false,
+    )
+    .unwrap();
+    assert!(r.ran.is_empty(), "{:?}", r.ran);
+    assert_eq!(r.changes, 0);
+    let after = std::fs::read(dir.join("journal.jsonl"))
+        .unwrap_or_default()
+        .len();
+    assert_eq!(after, journal);
+    let status: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(dir.join("status.json")).unwrap()).unwrap();
+    let sources = status["sources"].as_object().unwrap();
+    println!("sources : {}", sources.len());
+    assert!(sources.values().all(|s| s["status"] == "ok"));
+}

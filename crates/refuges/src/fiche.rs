@@ -130,7 +130,7 @@ pub struct Fiche {
     pub in_france: bool,
     /// When the sources of the card were read (RFC 3339): refuges.info snapshot or update.
     pub checked_at: Option<String>,
-    /// Last time the card changed (set by [`crate::refresh`], from `journal.jsonl`).
+    /// Last time the card changed (set by [`crate::refresh()`], from `journal.jsonl`).
     pub changed_at: Option<String>,
     /// Licence of the card.
     pub licence: String,
