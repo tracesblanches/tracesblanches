@@ -13,6 +13,8 @@ path = "src/main.rs"
 [dependencies]
 # Phone-side reader of the pack crate (manifest, verify, update format): no pipeline.
 skimap-pack.workspace = true
+# Collaborative reports (V8): rules and SQLite store.
+skimap-collab = { path = "../collab", features = ["server"] }
 # Site names and identifiers (no download feature: no HTTP stack from it).
 skimap-common.workspace = true
 anyhow.workspace = true

@@ -15,6 +15,7 @@
 pub mod alerts;
 pub mod app;
 pub mod clock;
+pub mod collab;
 pub mod config;
 pub mod http;
 pub mod privacy;
