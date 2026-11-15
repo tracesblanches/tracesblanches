@@ -103,12 +103,12 @@ fn serve(cfg: Config, addr: Option<String>) -> Result<()> {
     if let Some(c) = &cfg.controller {
         app.controller = c.clone();
     }
-    // Collaborative reports (V8): their own database, purged hourly.
-    let collab_db = std::env::var("SKIMAP_COLLAB_DB")
-        .unwrap_or_else(|_| "/data/server/collab.sqlite".to_owned());
-    let collab = Arc::new(skimap_server::collab::Collab::open(std::path::Path::new(
-        &collab_db,
-    ))?);
+    // Collaborative reports (V8): their own database beside the alerts' one (or
+    // `SKIMAP_COLLAB_DB`), purged hourly.
+    let collab_db = std::env::var_os("SKIMAP_COLLAB_DB")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| cfg.db.with_file_name("collab.sqlite"));
+    let collab = Arc::new(skimap_server::collab::Collab::open(&collab_db)?);
     app.collab = Some(Arc::clone(&collab));
     let purge_clock = Arc::clone(&clock);
     std::thread::spawn(move || {

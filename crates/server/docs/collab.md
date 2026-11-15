@@ -2,7 +2,7 @@
 
 [← skimap-server](../README.md)
 
-Routes sous `/v1/collab/` (`src/collab.rs`), règles et stockage dans `crates/collab` ([règles](../../collab/docs/regles.md)). Base SQLite à part : `SKIMAP_COLLAB_DB` (défaut `/data/server/collab.sqlite`), purgée toutes les heures.
+Routes sous `/v1/collab/` (`src/collab.rs`), règles et stockage dans `crates/collab` ([règles](../../collab/docs/regles.md)). Base SQLite à part : `SKIMAP_COLLAB_DB` (défaut : `collab.sqlite` à côté de `SKIMAP_SERVER_DB`, donc `/data/server/collab.sqlite`), purgée toutes les heures.
 
 ## Points d'accès
 
