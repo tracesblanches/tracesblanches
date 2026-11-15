@@ -97,10 +97,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ];
                 }
                 "wrong_turn" => {
-                    let j = p
-                        .junctions
-                        .iter()
-                        .position(|j| j.s > 1000.0 && j.branches > 0)
+                    // The first junction after 1 km with a trail the loop never takes (a
+                    // branch it takes later is not a wrong turn).
+                    let j = (0..p.junctions.len())
+                        .find(|&k| {
+                            p.junctions[k].s > 1000.0
+                                && p.junctions[k].branches > 0
+                                && scenario::wrong_turn(&p, g, k, 250.0, true).is_ok()
+                        })
                         .ok_or("junction")?;
                     sc.steps = vec![Step::WrongTurn {
                         junction: j,
@@ -111,6 +115,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 _ => {
                     sc.steps = vec![Step::WaitAtStart { secs: 60.0 }];
                     sc.behaviour = Some(Behaviour::family());
+                    // The phone counts the steps (X10): reports go with the fixes.
+                    sc.step_counter = true;
                 }
             }
             let run = scenario::run(&sc, &p, TrackView::new(&trk)?, g, TrackerParams::default())?;

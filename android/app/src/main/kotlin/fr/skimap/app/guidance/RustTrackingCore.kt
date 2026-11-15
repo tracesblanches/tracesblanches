@@ -21,9 +21,11 @@ import fr.skimap.tracking.GpsMode
 import fr.skimap.tracking.GpsRequest
 import fr.skimap.tracking.Guidance
 import fr.skimap.tracking.Phase
+import fr.skimap.tracking.ProfileProposal
 import fr.skimap.tracking.Proposal
 import fr.skimap.tracking.Recap
 import fr.skimap.tracking.RouteSwitch
+import fr.skimap.tracking.StepReport
 import fr.skimap.tracking.TrackingCore
 import fr.skimap.tracking.Turn
 import fr.skimap.tracking.Utterance
@@ -35,6 +37,16 @@ class RustTrackingCore(
     internal val session: TrackingSession,
 ) : TrackingCore {
     override fun pushFixes(packed: ByteArray): Batch = map(session.pushFixes(packed))
+
+    override fun pushBatch(
+        packed: ByteArray,
+        steps: List<StepReport>,
+    ): Batch = map(session.pushBatch(packed, steps.map { fr.skimap.core.StepReport(it.tMs, it.steps.toUInt()) }))
+
+    override fun profileAnswer(
+        tMs: Long,
+        accept: Boolean,
+    ): Batch = map(session.pushEvent(TrackEvent.ProfileAnswer(tMs, accept)))
 
     override fun screen(
         tMs: Long,
@@ -102,6 +114,8 @@ class RustTrackingCore(
                 gps = b.gps?.let(::gps),
                 recap = b.recap?.let { Recap(it.arrived, it.distanceKm, it.movingMin, it.text) },
                 guidance = guidance(b.guidance),
+                profileProposals = b.profileProposals.map { ProfileProposal(it.name, it.profileJson, it.text) },
+                profileChosen = b.profileChosen,
             )
 
         fun utterance(s: SpokenView): Utterance =
@@ -186,6 +200,7 @@ class RustTrackingCore(
                 gpsMode = gps(GpsRequestView(g.gpsMode, true, 0, 0, false)).mode,
                 proposal = g.proposal?.let { Proposal(it.id.toInt(), it.kind, it.text) },
                 switch = g.switch?.let { RouteSwitch(it.route, it.cause, it.reverted, it.refusable) },
+                profileProposal = g.profileProposal?.let { ProfileProposal(it.name, it.profileJson, it.text) },
             )
     }
 }

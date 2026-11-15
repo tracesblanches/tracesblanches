@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tracking_channel">Guidage</string>
+    <string name="tracking_channel_description">Prochaine direction, temps restant et arrivée pendant la sortie</string>
+    <string name="reminder_channel">Rappel de retour</string>
+    <string name="tracking_starting">Suivi de la sortie : recherche de la position…</string>
+    <string name="accept">Accepter</string>
+    <string name="decline">Refuser</string>
+    <string name="refuse_switch">Garder l\'itinéraire</string>
+    <string name="switched">Itinéraire changé : %1$s</string>
+    <string name="bring_me_back">Ramène-moi</string>
+    <string name="back_stop">Reprendre le plan</string>
+    <string name="reminder_sms">Prévenir : bien rentré</string>
+    <string name="profile_choose">Choisir ce profil</string>
+    <string name="profile_keep">Garder le profil</string>
+    <string name="turn_left">à gauche</string>
+    <string name="turn_right">à droite</string>
+    <string name="turn_slight_left">légèrement à gauche</string>
+    <string name="turn_slight_right">légèrement à droite</string>
+    <string name="turn_keep_left">restez à gauche</string>
+    <string name="turn_keep_right">restez à droite</string>
+    <string name="turn_straight">tout droit</string>
+    <string name="turn_u_turn">demi-tour</string>
+    <string name="guidance_back">Retour :</string>
+    <string name="guidance_start">Départ %1$s</string>
+    <string name="guidance_finished">Sortie terminée</string>
+    <string name="guidance_arrival_in">Arrivée dans %1$s</string>
+    <string name="guidance_paused">Pause</string>
+    <string name="guidance_refuge">Au refuge</string>
+    <string name="guidance_detail">%1$s restantes · arrivée %2$s%3$s</string>
+    <string name="guidance_short">%1$s · arrivée %2$s</string>
+</resources>

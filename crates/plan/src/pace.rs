@@ -34,9 +34,11 @@ use chrono::{Duration, NaiveDateTime, Timelike};
 use serde::{Deserialize, Serialize};
 use skimap_assist::alerts;
 use skimap_core::calibration::{
-    GroupProfile, OutingObs, PaceParams, Prediction, ProfileModel, TERRAINS, Terrain, terrain_ratio,
+    DAY_SIGMA_W, GroupProfile, Level, OutingObs, PaceParams, Prediction, ProfileModel, TERRAINS,
+    Terrain, terrain_ratio,
 };
 use skimap_core::graph::PisteGraph;
+use skimap_core::routing::Style;
 use skimap_core::turnaround;
 use skimap_voice::bank::{Announcement, Pause, Segment};
 use skimap_voice::clips::{self, Fixed};
@@ -596,4 +598,117 @@ mod tests {
         let t = NaiveDateTime::parse_from_str("2026-01-09 15:18:40", "%Y-%m-%d %H:%M:%S").unwrap();
         assert_eq!(clock_fr(t), "15 h 20");
     }
+}
+
+/// Settings of the proposal to choose another group profile (X14 #148).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ProfileFitParams {
+    /// Proposed at all.
+    pub enabled: bool,
+    /// Moving time of the day before the pace says anything, seconds.
+    pub min_moving_s: f64,
+    /// Progress along the route before, metres.
+    pub min_progress_m: f64,
+    /// The other profile explains the day this much better (log likelihood ratio: 3 is
+    /// twenty times more likely).
+    pub min_log_ratio: f64,
+    /// The same when the group is durably late and a shorter way would be proposed (C11):
+    /// the profile is asked first.
+    pub min_log_ratio_late: f64,
+    /// Not answered after this long, the proposal lapses, seconds.
+    pub ttl_s: f64,
+}
+
+impl Default for ProfileFitParams {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            min_moving_s: 900.0,
+            min_progress_m: 1000.0,
+            min_log_ratio: 3.0,
+            min_log_ratio_late: 0.5,
+            ttl_s: 180.0,
+        }
+    }
+}
+
+/// The profiles the tracker compares the day with when the app gives none
+/// ([`crate::tracker::Tracker::with_profiles`]): a lone adult of each level, the family the
+/// app offers first ([`GroupProfile::app_default`]) and a family with a child of 6, in the
+/// technique of the plan.
+pub fn profile_presets(style: Style) -> Vec<ProfileModel> {
+    let solo = |level, name: &str| GroupProfile {
+        name: name.into(),
+        ..GroupProfile::solo(style, level)
+    };
+    let mut family = GroupProfile::app_default();
+    family.style = style;
+    let young = GroupProfile {
+        name: "Famille, enfant de 6 ans, débutants".into(),
+        adults: 2,
+        children: vec![6],
+        style,
+        level: Level::Beginner,
+    };
+    [
+        solo(Level::Beginner, "Adulte débutant"),
+        solo(Level::Intermediate, "Adulte"),
+        solo(Level::Expert, "Adulte confirmé"),
+        family,
+        young,
+    ]
+    .into_iter()
+    .map(ProfileModel::new)
+    .collect()
+}
+
+/// How well a group's parameters explain the day so far (log likelihood, up to a constant
+/// common to every profile): the moving time against the time the group would take for the
+/// model time progressed per terrain (log-normal: the group's predictive spread and the
+/// day's own), and the stops of 90 s or more (Poisson at the group's rate).
+pub fn day_fit(p: &PaceParams, model_done: [f64; TERRAINS], moving_s: f64, stops: u32) -> f64 {
+    let (mut pred, mut var_w) = (0.0, 0.0);
+    for (m, n) in model_done.iter().zip(&p.pace) {
+        let t = m.max(0.0) * (-n.m).exp();
+        pred += t;
+        var_w += t * n.pred_var();
+    }
+    if pred <= 0.0 || moving_s <= 0.0 {
+        return 0.0;
+    }
+    let var = var_w / pred + DAY_SIGMA_W * DAY_SIGMA_W * 600.0 / moving_s.max(600.0);
+    let z = (moving_s / pred).ln();
+    let pace = -0.5 * z * z / var - 0.5 * var.ln();
+    let mu = p.stops.mean().max(1e-3) * moving_s / 3600.0;
+    let stops = f64::from(stops) * mu.ln() - mu;
+    pace + stops
+}
+
+/// A proposal to choose another group profile (X14): the pace of the day fits it better
+/// than the one planned on. Never imposed: answered by
+/// [`crate::tracker::Input::ProfileAnswer`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProfileProposal {
+    /// Index in the profiles compared ([`crate::tracker::Tracker::profiles`]).
+    pub index: usize,
+    /// The profile proposed.
+    pub profile: GroupProfile,
+    /// How much better it explains the day (log likelihood ratio).
+    pub log_ratio: f64,
+    /// Text, French (screen).
+    pub text: String,
+    /// What is said (`Fixed::PlanProfileMismatch`).
+    pub announcement: Announcement,
+}
+
+/// The phrase of the profile proposal in the bank (`fix.plan-profile-mismatch`, X14).
+pub const PROFILE_PHRASES: [Fixed; 1] = [Fixed::PlanProfileMismatch];
+
+/// « Votre rythme ressemble à celui du profil « Famille, enfant de 6 ans ». Voulez-vous le
+/// choisir ? »
+pub fn profile_text(p: &GroupProfile) -> String {
+    format!(
+        "Votre rythme ressemble à celui du profil « {} ». Voulez-vous le choisir ? Accepter ou refuser.",
+        p.name
+    )
 }

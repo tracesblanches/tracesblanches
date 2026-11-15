@@ -13,8 +13,8 @@ use chrono::NaiveTime;
 use skimap_common::layout::DataLayout;
 use skimap_common::site::{CERVIERES, CHAPELLE_DES_BOIS, Site};
 use skimap_ffi::tracking::{
-    BatchOut, GpsModeView, PhaseView, TrackActivity, TrackEvent, TrackingSession, load_graph,
-    open_tracking, pack_fixes,
+    BatchOut, GpsModeView, PhaseView, StepReport, TrackActivity, TrackEvent, TrackingSession,
+    load_graph, load_layers, open_tracking, pack_fixes,
 };
 use skimap_ffi::tracking_day::{
     DayRequest, GroupSpec, day_starts, group_learn, group_new, open_day_planner, read_day_plan,
@@ -68,6 +68,10 @@ fn event(i: &Input) -> Option<TrackEvent> {
             ways: ways.clone(),
         },
         Input::Refuse { t: x } => TrackEvent::Refuse { t_ms: t(x) },
+        Input::ProfileAnswer { t: x, accept } => TrackEvent::ProfileAnswer {
+            t_ms: t(x),
+            accept: *accept,
+        },
         Input::Steps { t: x, steps } => TrackEvent::Steps {
             t_ms: t(x),
             steps: *steps,
@@ -86,6 +90,7 @@ struct Said {
     gps_last: Option<(GpsModeView, i64, i64)>,
     switches: usize,
     proposals: usize,
+    profiles: usize,
     finished: bool,
 }
 
@@ -95,6 +100,7 @@ fn from_session(b: &BatchOut) -> Said {
         gps_last: b.gps.map(|g| (g.mode, g.interval_ms, g.max_delay_ms)),
         switches: b.switches.len(),
         proposals: b.proposals.len(),
+        profiles: b.profile_proposals.len(),
         finished: b.recap.is_some(),
     }
 }
@@ -125,6 +131,7 @@ fn from_direct(outs: &[Output]) -> Said {
             Output::Gps { request, .. } => s.gps_last = Some(gps_key(request)),
             Output::Switched { .. } | Output::Reverted { .. } => s.switches += 1,
             Output::Proposal { .. } => s.proposals += 1,
+            Output::ProfileProposal { .. } => s.profiles += 1,
             Output::Recap { .. } => s.finished = true,
             _ => {}
         }
@@ -458,6 +465,172 @@ fn full_data_q9_through_the_session() {
             assert!(results.iter().any(|b| !b.proposals.is_empty()));
         }
     }
+}
+
+/// The phone's batches: fixes of the GPS delay in force with the step reports over the
+/// same time, one `push_batch` per batch; other events alone. Checks each call against
+/// the core's tracker on the same inputs.
+fn follow_batched(
+    session: &TrackingSession,
+    direct: &mut Tracker<'_>,
+    inputs: &[Input],
+) -> Vec<BatchOut> {
+    let mut results = Vec::new();
+    let mut delay_ms: i64 = 0;
+    let mut i = 0;
+    while i < inputs.len() {
+        let mut outs = Vec::new();
+        let b = match (&inputs[i], event(&inputs[i])) {
+            (Input::Steps { .. } | Input::Fix { .. }, _) => {
+                let first = inputs[i].t().timestamp_millis();
+                let (mut fixes, mut steps) = (Vec::new(), Vec::new());
+                while i < inputs.len() {
+                    let t = inputs[i].t().timestamp_millis();
+                    if t - first > delay_ms && !(fixes.is_empty() && steps.is_empty()) {
+                        break;
+                    }
+                    match &inputs[i] {
+                        Input::Fix { pos, .. } => fixes.push((t, pos.lon, pos.lat)),
+                        Input::Steps { steps: n, .. } => {
+                            steps.push(StepReport { t_ms: t, steps: *n })
+                        }
+                        _ => break,
+                    }
+                    direct.push(&inputs[i], &mut outs);
+                    i += 1;
+                }
+                session.push_batch(pack_fixes(&fixes), steps).unwrap()
+            }
+            (_, Some(e)) => {
+                direct.push(&inputs[i], &mut outs);
+                i += 1;
+                session.push_event(e).unwrap()
+            }
+            (_, None) => unreachable!(),
+        };
+        assert_eq!(from_session(&b), from_direct(&outs), "call at input {i}");
+        if let Some(g) = b.gps {
+            delay_ms = g.max_delay_ms;
+        }
+        results.push(b);
+    }
+    results
+}
+
+/// X11 and X10 through the session: Q9-33 (Cervières, 1 h 30 from Les Fonts, a wrong turn
+/// at the third junction, the route computed then crosses a zone without any network and
+/// a historic avalanche path), the phone counting the steps. `open_tracking` gives the
+/// tracker the pack's layers: the new route announces them, as the core with the same
+/// layers does call for call; the steps go with the fixes in one call per batch.
+#[test]
+#[ignore = "full-data: needs data/out/cervieres/ and the archived day"]
+fn full_data_rerouted_route_says_the_hazards_through_the_session() {
+    let layout = DataLayout::new(data());
+    let (mut d, ctx) = presets::load(&layout, &CERVIERES).unwrap();
+    let req = presets::requests(&CERVIERES, presets::past_day(&CERVIERES))[1].clone();
+    let m = skimap_plan::plan::morning(&d, &req);
+    let plan = skimap_plan::plan::build(&mut d, &m, 0, &ctx).unwrap();
+    let g = d.graph.take().unwrap();
+    let trk = skimap_plan::plan::track(&plan, &g).unwrap().to_bytes();
+    let work = tempfile::tempdir().unwrap();
+    std::fs::write(work.path().join("plan.json"), plan.to_json().unwrap()).unwrap();
+    std::fs::write(work.path().join("plan.trk"), &trk).unwrap();
+    std::fs::write(
+        work.path().join("pack.txt"),
+        pack(&CERVIERES).display().to_string(),
+    )
+    .unwrap();
+    let sc = Scenario {
+        name: "q9-33 session".into(),
+        start: scenario::departure_utc(&plan),
+        slowdown: 1.0,
+        steps: vec![
+            Step::WaitAtStart { secs: 60.0 },
+            Step::WrongTurn {
+                junction: 2,
+                length_m: 600.0,
+                back: false,
+            },
+        ],
+        sigma_m: 10.0,
+        forest: true,
+        seed: 7,
+        tail_s: 300.0,
+        behaviour: None,
+        step_counter: true,
+    };
+    let run = scenario::run_with_layers(
+        &sc,
+        &plan,
+        TrackView::new(&trk).unwrap(),
+        &g,
+        TrackerParams::default(),
+        Some(&d),
+    )
+    .unwrap();
+    let n_steps = run
+        .inputs
+        .iter()
+        .filter(|i| matches!(i, Input::Steps { .. }))
+        .count();
+    assert!(n_steps > 100, "{n_steps} step reports");
+    let t0 = Instant::now();
+    let s = open_tracking(work.path().display().to_string()).unwrap();
+    println!(
+        "session opened with the pack's layers in {} ms: {:?}",
+        t0.elapsed().as_millis(),
+        s.layers()
+    );
+    assert_eq!(s.layers(), vec!["no_network", "avalanche_paths", "zones"]);
+    let pack_layers = load_layers(&pack(&CERVIERES), &work.path().join("direct")).unwrap();
+    let manifest = VoiceManifest::read(&pack(&CERVIERES).join("voice")).unwrap();
+    let voice = Voice::new(&manifest, "pack");
+    let mut direct = Tracker::new(
+        &plan,
+        TrackView::new(&trk).unwrap(),
+        &g,
+        Some(&voice),
+        TrackerParams::default(),
+    )
+    .unwrap()
+    .with_layers(&pack_layers);
+    let results = follow_batched(&s, &mut direct, &run.inputs);
+    let kinds: Vec<(String, Vec<String>)> = results
+        .iter()
+        .flat_map(|b| b.spoken.iter())
+        .map(|x| (x.text.clone(), x.kinds.clone()))
+        .collect();
+    let has = |k: &str| kinds.iter().any(|(_, ks)| ks.iter().any(|x| x == k));
+    for (t, k) in &kinds {
+        if k.iter()
+            .any(|x| x.starts_with("no_network") || x == "avalanche_path")
+        {
+            println!("{k:?}: {t}");
+        }
+    }
+    println!(
+        "{} inputs ({n_steps} step reports) in {} calls",
+        run.inputs.len(),
+        results.len()
+    );
+    for k in ["rerouted", "no_network", "avalanche_path", "no_network_end"] {
+        assert!(has(k), "{k} not said: {kinds:?}");
+    }
+    // Said along the route computed on the phone (after « Nouvel itinéraire calculé. »),
+    // which only the layers given by `open_tracking` make it say.
+    let rr = kinds
+        .iter()
+        .position(|(_, ks)| ks.iter().any(|x| x == "rerouted"))
+        .unwrap();
+    let after: Vec<&String> = kinds[rr..].iter().flat_map(|(_, ks)| ks.iter()).collect();
+    println!("after the new route: {after:?}");
+    for k in ["no_network", "avalanche_path", "no_network_end"] {
+        assert!(
+            after.iter().any(|x| *x == k),
+            "{k} not said on the new route"
+        );
+    }
+    assert!(results.iter().any(|b| b.recap.is_some()));
 }
 
 /// « Ramène-moi » in the middle of an outing: the way back along the trace skied, its

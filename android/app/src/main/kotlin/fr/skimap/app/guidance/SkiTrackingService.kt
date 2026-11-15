@@ -15,6 +15,7 @@ import fr.skimap.tracking.GuidanceNotifier
 import fr.skimap.tracking.OutingExtension
 import fr.skimap.tracking.Recap
 import fr.skimap.tracking.ReturnReminder
+import fr.skimap.tracking.Tracking
 import fr.skimap.tracking.TrackingCore
 import fr.skimap.tracking.TrackingService
 import fr.skimap.tracking.TrackingState
@@ -29,6 +30,14 @@ class SkiTrackingService : TrackingService() {
 
     /** The group mode (N2): BLE advertising and batched scan during the outing, if this phone has a group. */
     override fun extensions(planDir: String): List<OutingExtension> = listOf(GroupLink(RustGroupBackend(), GroupStore(this), planDir))
+
+    /** The profile chosen during the outing (X14), kept next to the plan for the screens and the learning. */
+    override fun onProfileChosen(profileJson: String) {
+        val dir = (Tracking.state.value as? TrackingState.Running)?.planDir ?: return
+        runCatching { java.io.File(dir, PROFILE_FILE).writeText(profileJson) }
+            .onSuccess { Log.i(TAG, "profile chosen during the outing: $profileJson") }
+            .onFailure { Log.w(TAG, "profile chosen", it) }
+    }
 
     @SuppressLint("MissingPermission")
     override fun onEnded(
@@ -68,5 +77,8 @@ class SkiTrackingService : TrackingService() {
 
     private companion object {
         const val ENDED_ID = 4209
+
+        /** The profile chosen during the outing (X14), next to the plan. */
+        const val PROFILE_FILE = "profile_chosen.json"
     }
 }

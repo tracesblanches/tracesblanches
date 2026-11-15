@@ -502,6 +502,7 @@ mod tests {
             gps_mode: GpsModeView::Pocket,
             proposal: None,
             switch: None,
+            profile_proposal: None,
         }
     }
 

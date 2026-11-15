@@ -2038,3 +2038,132 @@ fn q9_32_chapelle_children_are_offered_a_shorter_loop_sooner() {
         "a shorter loop first"
     );
 }
+
+fn profile_proposals(run: &Run) -> Vec<(f64, pace::ProfileProposal)> {
+    run.outputs
+        .iter()
+        .filter_map(|o| match o {
+            Output::ProfileProposal { t, proposal } => {
+                Some((scenario::rel(run, *t), (**proposal).clone()))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn q9_36_chapelle_family_without_profile_offered_its_profile() {
+    // X14: the family of Q9-25 on the 2 h loop planned without a group (a lone adult
+    // expected). Its pace soon fits a family profile much better: « Votre rythme ressemble à
+    // celui d'un autre profil. Voulez-vous le choisir ? », once, never imposed, before the
+    // shorter way (which waits for the answer, 3 min at most). Accepted, the day is planned
+    // on that profile from then on.
+    let b = chapelle();
+    let steps = |profile: Option<bool>| {
+        let mut v = vec![Step::Answer {
+            accept: true,
+            after_s: 20.0,
+        }];
+        if let Some(accept) = profile {
+            v.push(Step::AnswerProfile {
+                accept,
+                after_s: 15.0,
+            });
+        }
+        v
+    };
+    let mut errs = Vec::new();
+    for (name, answer) in [
+        ("sans réponse", None),
+        ("refusé", Some(false)),
+        ("accepté", Some(true)),
+    ] {
+        let run = group(
+            &b,
+            &format!("Chapelle-des-Bois, famille sans profil, profil {name}"),
+            Behaviour::family(),
+            steps(answer),
+        );
+        let pp = profile_proposals(&run);
+        assert_eq!(pp.len(), 1, "{name}: one profile proposal");
+        let (tp, p) = &pp[0];
+        // A slower profile than the lone adult expected (what the first half hour says).
+        let adult = calibration::PaceParams::prior(&calibration::GroupProfile::solo(
+            b.plan.request.style,
+            calibration::Level::Intermediate,
+        ));
+        let prior = calibration::PaceParams::prior(&p.profile);
+        assert!(
+            prior.progress_pace(calibration::Terrain::Flat)
+                < adult.progress_pace(calibration::Terrain::Flat)
+                || prior.stops.mean() > adult.stops.mean(),
+            "{name}: {:?}",
+            p.profile
+        );
+        assert!(p.log_ratio >= TrackerParams::default().profile.min_log_ratio_late);
+        expect(&run, &[(M::Said("profile_proposal"), *tp, tp + 120.0)]);
+        let answered = run.outputs.iter().find_map(|o| match o {
+            Output::ProfileAnswered {
+                accept, profile, ..
+            } => Some((*accept, profile.clone())),
+            _ => None,
+        });
+        match answer {
+            None => assert!(answered.is_none()),
+            Some(a) => {
+                let (acc, prof) = answered.expect("answered");
+                assert_eq!(acc, a);
+                assert_eq!(prof.is_some(), a);
+            }
+        }
+        let ps = proposals(&run);
+        let (t1, first) = ps.first().cloned().expect("a proposal");
+        // Asked before the shorter way, which waits for the answer.
+        assert!(*tp < t1, "{name}: profile at {tp} s, proposal at {t1} s");
+        let back = scenario::local(run.t0 + chrono::Duration::seconds(arrival_rel(&run) as i64));
+        let err = (first.arrival - back).num_minutes();
+        println!(
+            "{name} : profil « {} » proposé à {tp:.0} s (rapport {:.1}), première proposition à {t1:.0} s, retour proposé {} ({}–{}), réel {}, erreur {err:+} min",
+            p.profile.name,
+            p.log_ratio,
+            first.arrival.format("%H:%M"),
+            first.arrival_lo.format("%H:%M"),
+            first.arrival_hi.format("%H:%M"),
+            back.format("%H:%M"),
+        );
+        errs.push(err);
+    }
+    // Measured, not a gain: the first half hour points to a slow lone adult, whose stops
+    // are an adult's; accepted, the first proposal errs as much as without (15/11/2026:
+    // −22, −22, −25 min). The error of the family's first proposal stays open (X14).
+    println!("erreurs sans réponse / refusé / accepté : {errs:?} min");
+    assert!(errs.iter().all(|e| e.abs() <= 40), "{errs:?}");
+}
+
+#[test]
+fn q9_37_adults_at_the_model_pace_offered_no_profile() {
+    // X14: an adult at the pace of the model, and a trained one, on the plan without a
+    // group: no family profile proposed (a lone adult nobody described fits them).
+    let b = chapelle();
+    for (name, bh) in [
+        ("adulte normal", Behaviour::normal_adult()),
+        ("adulte rapide", Behaviour::fast_adult()),
+    ] {
+        let run = group(
+            &b,
+            &format!("Chapelle-des-Bois, {name} sans profil"),
+            bh,
+            vec![],
+        );
+        let pp = profile_proposals(&run);
+        println!(
+            "{name} : profils proposés {:?}",
+            pp.iter().map(|(_, p)| &p.profile.name).collect::<Vec<_>>()
+        );
+        assert!(
+            pp.iter().all(|(_, p)| !p.profile.has_children()),
+            "{name}: {:?}",
+            pp.iter().map(|(_, p)| &p.profile.name).collect::<Vec<_>>()
+        );
+    }
+}

@@ -175,3 +175,8 @@ Bout en bout (questions de `test.tsv` dites par Pocket TTS, deux voix par langue
 | Questions hors liste refusées | 97,7 % | 95,5 % | 97,7 % | 97,7 % | 93,2 % |
 
 Les erreurs françaises sont de la transcription, pas de la classification : les questions courtes sortent dans une autre langue (« Tämpsäistä » pour « Temps restant », « Him and more » pour « Ramène-moi ») ; la voix `marius` est mal reconnue même sans vent. Le biais par hotwords n'apporte que 3 points (61,2 → 64,6 % en français propre). Sur le Pixel, ni mesuré ni testé (consigne) : chargement 1,3 à 4,3 s sur le poste (speak : 2,9 à 3,7 s sur le Pixel).
+
+## Proposition de profil (X14, 15/11/2026)
+
+**Phrase nouvelle** `fix.plan-profile-mismatch` : « Votre rythme ressemble à celui d'un autre profil. Voulez-vous le choisir ? » (une question, finie par « ? » : seule exception à la règle du point, testée). Couches voice refaites sur les deux sites : 900 clips à Cervières, 1 146 à Chapelle-des-Bois, le clip nouveau à la graine 42 (3,37 s, 28 jetons, 9 744 o), aucune attaque coupée. Transcription (Parakeet v3) du clip de chaque site : exacte (WER 0/24).
+

@@ -26,6 +26,7 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, NaiveDateTime, Timelike, Utc};
+use skimap_assist::inputs::{Paths, SiteData};
 use skimap_common::geom::LonLat;
 use skimap_core::graph::PisteGraph;
 use skimap_pack::Pack;
@@ -47,10 +48,13 @@ use skimap_voice::clips::Direction;
 use skimap_voice::pack::VoiceManifest;
 
 use crate::tracking_back::Backtrack;
-use crate::tracking_day::{PACK_FILE, PLAN_FILE, TRACK_FILE};
+use crate::tracking_day::{PACK_FILE, PLAN_FILE, PackView, TRACK_FILE};
 
 /// Inputs recorded next to the plan (JSON lines of `skimap_plan::tracker::Input`).
 pub const INPUTS_FILE: &str = "inputs.jsonl";
+/// Directory under the plan's where the pack's layers are linked in the pipeline layout
+/// ([`PackView`]) for the tracker ([`Tracker::with_layers`]).
+pub const LAYERS_DIR: &str = "layers";
 /// Bytes of one packed fix: epoch milliseconds (i64), longitude, latitude (f64), little
 /// endian.
 pub const FIX_BYTES: usize = 24;
@@ -154,6 +158,13 @@ pub enum TrackEvent {
         /// Accepted.
         accept: bool,
     },
+    /// Answers the proposal to choose another group profile (X14, one gesture).
+    ProfileAnswer {
+        /// Epoch milliseconds.
+        t_ms: i64,
+        /// Accepted.
+        accept: bool,
+    },
     /// Steps counted by the phone since the previous report (X10).
     Steps {
         /// Epoch milliseconds.
@@ -192,6 +203,10 @@ impl TrackEvent {
                 t: utc(*t_ms),
                 accept: *accept,
             },
+            TrackEvent::ProfileAnswer { t_ms, accept } => Input::ProfileAnswer {
+                t: utc(*t_ms),
+                accept: *accept,
+            },
             TrackEvent::Steps { t_ms, steps } => Input::Steps {
                 t: utc(*t_ms),
                 steps: *steps,
@@ -202,6 +217,16 @@ impl TrackEvent {
             },
         }
     }
+}
+
+/// Steps counted by the phone over one report (X10): Android's step counter, summed over
+/// about 10 s, delivered with the batch of fixes it overlaps ([`TrackingSession::push_batch`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct StepReport {
+    /// End of the report, epoch milliseconds.
+    pub t_ms: i64,
+    /// Steps since the previous report (0: none, the phone still counts).
+    pub steps: u32,
 }
 
 /// GPS mode decided by the core (report 09, `skimap_plan::gps`).
@@ -414,6 +439,21 @@ pub struct ProposalView {
     pub text: String,
 }
 
+/// The proposal to choose another group profile (X14), to accept or refuse with one
+/// gesture.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct ProfileProposalView {
+    /// Epoch milliseconds.
+    pub t_ms: i64,
+    /// Name of the profile proposed.
+    pub name: String,
+    /// The profile proposed (`skimap_core::calibration::GroupProfile`), JSON: the app
+    /// makes it the group of the day when accepted.
+    pub profile_json: String,
+    /// Text, French.
+    pub text: String,
+}
+
 /// A decision on the outing.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct SessionChange {
@@ -537,6 +577,8 @@ pub struct GuidanceView {
     pub proposal: Option<ProposalView>,
     /// A switch the skier may refuse.
     pub switch: Option<SwitchView>,
+    /// Profile proposal waiting for an answer (X14).
+    pub profile_proposal: Option<ProfileProposalView>,
 }
 
 /// What a call produced, in order of kind.
@@ -552,6 +594,10 @@ pub struct BatchOut {
     pub proposals: Vec<ProposalView>,
     /// Answers taken into account: (accepted, applied).
     pub answered: Vec<bool>,
+    /// Profile proposals (X14).
+    pub profile_proposals: Vec<ProfileProposalView>,
+    /// The profile chosen by an answer (X14), JSON of `GroupProfile`.
+    pub profile_chosen: Option<String>,
     /// Decisions on the outing.
     pub session: Vec<SessionChange>,
     /// GPS request to apply (the last one of the call), when it changed.
@@ -646,11 +692,14 @@ struct Owned {
     graph: PisteGraph,
     voice: Option<Voice>,
     clips: Clips,
+    /// The pack's layers of the day (X11): a route computed during the outing announces
+    /// zones without network, avalanche paths and protected zones.
+    layers: Option<SiteData>,
     log: PathBuf,
 }
 
 enum Cmd {
-    Fixes(Vec<u8>),
+    Fixes(Vec<u8>, Vec<StepReport>),
     Event(TrackEvent),
     BackStart(i64),
     BackStop,
@@ -677,6 +726,7 @@ pub struct TrackingSession {
     chan: Mutex<Chan>,
     plan_dir: PathBuf,
     replayed: u32,
+    layers: Vec<String>,
 }
 
 impl std::fmt::Debug for TrackingSession {
@@ -711,7 +761,48 @@ pub fn open_tracking(plan_dir: String) -> Result<Arc<TrackingSession>, TrackingE
     let trk = read(TRACK_FILE)?;
     let pack_dir = PathBuf::from(String::from_utf8_lossy(&read(PACK_FILE)?).trim());
     let graph = load_graph(&pack_dir)?;
-    TrackingSession::start(plan, trk, graph, Some(pack_dir.join("voice")), dir)
+    let layers = load_layers(&pack_dir, &dir.join(LAYERS_DIR));
+    TrackingSession::start_with(plan, trk, graph, Some(pack_dir.join("voice")), layers, dir)
+}
+
+/// The layers of the pack in `pack_dir` for the tracker (X11), loaded by the morning's
+/// loaders on the pack's files linked under `work` ([`PackView`]). An error (a pack without
+/// the layers, or of a site without them) leaves the outing followed without them: the
+/// reason is the error's text.
+pub fn load_layers(pack_dir: &Path, work: &Path) -> Result<SiteData, String> {
+    let pack = Pack::open(pack_dir.to_path_buf()).map_err(|e| e.to_string())?;
+    let site = skimap_common::site::site(&pack.manifest().site.id).map_err(|e| e.to_string())?;
+    let view = PackView::build(&pack, work).map_err(|e| e.to_string())?;
+    SiteData::load(&view.layout, site, &Paths::default()).map_err(|e| e.to_string())
+}
+
+/// What the tracker has of the layers: `no_network`, `avalanche_paths`, `zones`, and the
+/// reason of each one missing.
+fn layers_note(l: &Result<SiteData, String>) -> Vec<String> {
+    match l {
+        Err(e) => vec![format!("sans couches : {e}")],
+        Ok(d) => {
+            let mut v = Vec::new();
+            v.push(
+                if d.no_network.is_some() {
+                    "no_network"
+                } else {
+                    "-no_network"
+                }
+                .into(),
+            );
+            v.push(
+                if d.clpa.is_some() {
+                    "avalanche_paths"
+                } else {
+                    "-avalanche_paths"
+                }
+                .into(),
+            );
+            v.push(if d.zones.is_some() { "zones" } else { "-zones" }.into());
+            v
+        }
+    }
 }
 
 impl TrackingSession {
@@ -725,6 +816,27 @@ impl TrackingSession {
         voice_dir: Option<PathBuf>,
         plan_dir: PathBuf,
     ) -> Result<Arc<Self>, TrackingError> {
+        Self::start_with(
+            plan,
+            trk,
+            graph,
+            voice_dir,
+            Err("non demandées".into()),
+            plan_dir,
+        )
+    }
+
+    /// [`TrackingSession::start`] with the layers of the day for the tracker
+    /// ([`Tracker::with_layers`], X11), or why there are none.
+    pub fn start_with(
+        plan: DayPlan,
+        trk: Vec<u8>,
+        graph: PisteGraph,
+        voice_dir: Option<PathBuf>,
+        layers: Result<SiteData, String>,
+        plan_dir: PathBuf,
+    ) -> Result<Arc<Self>, TrackingError> {
+        let note = layers_note(&layers);
         let manifest = voice_dir.as_ref().and_then(|v| VoiceManifest::read(v).ok());
         let voice = manifest
             .as_ref()
@@ -742,6 +854,7 @@ impl TrackingSession {
                 manifest,
                 dir: voice_dir.unwrap_or_default(),
             },
+            layers: layers.ok(),
             log,
         };
         let (tx, rx) = channel::<Cmd>();
@@ -760,6 +873,7 @@ impl TrackingSession {
             chan: Mutex::new((tx, rrx)),
             plan_dir,
             replayed,
+            layers: note,
         }))
     }
 }
@@ -808,16 +922,33 @@ impl TrackingSession {
         self.replayed
     }
 
+    /// What the tracker has of the pack's layers (X11): `no_network`, `avalanche_paths`,
+    /// `zones` (`-` before a missing one), or why it has none.
+    pub fn layers(&self) -> Vec<String> {
+        self.layers.clone()
+    }
+
     /// A batch of fixes, packed ([`FIX_BYTES`] each: epoch ms i64, lon f64, lat f64, little
     /// endian), in time order.
     pub fn push_fixes(&self, packed: Vec<u8>) -> Result<BatchOut, TrackingError> {
+        self.push_batch(packed, Vec::new())
+    }
+
+    /// A batch of fixes (as [`TrackingSession::push_fixes`]) and the steps counted over the
+    /// same time (X10), given to the tracker in time order (a report at the time of a fix
+    /// after it): one call per batch.
+    pub fn push_batch(
+        &self,
+        packed: Vec<u8>,
+        steps: Vec<StepReport>,
+    ) -> Result<BatchOut, TrackingError> {
         if !packed.len().is_multiple_of(FIX_BYTES) {
             return Err(invalid(format!(
                 "{} octets : pas des positions",
                 packed.len()
             )));
         }
-        self.out(Cmd::Fixes(packed))
+        self.out(Cmd::Fixes(packed, steps))
     }
 
     /// An input other than a fix.
@@ -886,7 +1017,10 @@ fn serve(
         owned.voice.as_ref(),
         TrackerParams::default(),
     ) {
-        Ok(t) => t,
+        Ok(t) => match &owned.layers {
+            Some(l) => t.with_layers(l),
+            None => t,
+        },
         Err(e) => {
             let _ = tx.send(Err(invalid(e)));
             return;
@@ -928,6 +1062,7 @@ struct Engine<'a> {
     back_gps: GpsState,
     last_gps: Option<GpsRequest>,
     proposal: Option<ProposalView>,
+    profile_proposal: Option<ProfileProposalView>,
     switch: Option<SwitchView>,
     /// Where the refusable switch leaves the previous route, metres: accepted (no longer
     /// refusable) once the skier is `accept_m` past it.
@@ -964,6 +1099,7 @@ impl<'a> Engine<'a> {
             back_gps: GpsState::default(),
             last_gps: None,
             proposal: None,
+            profile_proposal: None,
             switch: None,
             switch_div: 0.0,
             finished: false,
@@ -1042,7 +1178,7 @@ impl<'a> Engine<'a> {
 
     fn handle(&mut self, cmd: Cmd) -> Result<Reply, TrackingError> {
         match cmd {
-            Cmd::Fixes(b) => {
+            Cmd::Fixes(b, steps) => {
                 let mut inputs = std::mem::take(&mut self.inputs);
                 inputs.clear();
                 for c in b.as_chunks::<FIX_BYTES>().0 {
@@ -1062,6 +1198,14 @@ impl<'a> Engine<'a> {
                         pos: LonLat::new(lon, lat),
                     });
                 }
+                if !steps.is_empty() {
+                    inputs.extend(steps.iter().map(|s| Input::Steps {
+                        t: utc(s.t_ms),
+                        steps: s.steps,
+                    }));
+                    // Stable: a report at the time of a fix comes after it.
+                    inputs.sort_by_key(Input::t);
+                }
                 for i in &inputs {
                     self.feed(i);
                 }
@@ -1076,6 +1220,9 @@ impl<'a> Engine<'a> {
                 }
                 if matches!(ev, TrackEvent::Answer { .. }) {
                     self.proposal = None;
+                }
+                if matches!(ev, TrackEvent::ProfileAnswer { .. }) {
+                    self.profile_proposal = None;
                 }
                 self.feed(&i);
                 self.record(std::slice::from_ref(&i));
@@ -1130,6 +1277,8 @@ impl<'a> Engine<'a> {
             switches: Vec::new(),
             proposals: Vec::new(),
             answered: Vec::new(),
+            profile_proposals: Vec::new(),
+            profile_chosen: None,
             session: Vec::new(),
             gps: None,
             recap: None,
@@ -1233,6 +1382,20 @@ impl<'a> Engine<'a> {
                     self.proposal = None;
                     b.answered.push(accept);
                 }
+                Output::ProfileProposal { t, proposal } => {
+                    let p = ProfileProposalView {
+                        t_ms: ms(t),
+                        name: proposal.profile.name.clone(),
+                        profile_json: serde_json::to_string(&proposal.profile).unwrap_or_default(),
+                        text: proposal.text.clone(),
+                    };
+                    self.profile_proposal = Some(p.clone());
+                    b.profile_proposals.push(p);
+                }
+                Output::ProfileAnswered { profile, .. } => {
+                    self.profile_proposal = None;
+                    b.profile_chosen = profile.and_then(|p| serde_json::to_string(&p).ok());
+                }
             }
         }
         self.refresh_route();
@@ -1253,6 +1416,11 @@ impl<'a> Engine<'a> {
             && t - pr.t_ms as f64 / 1000.0 >= p.propose.ttl_s
         {
             self.proposal = None;
+        }
+        if let (Some(pr), Some((t, _))) = (&self.profile_proposal, self.last)
+            && t - pr.t_ms as f64 / 1000.0 >= p.profile.ttl_s
+        {
+            self.profile_proposal = None;
         }
     }
 
@@ -1396,6 +1564,7 @@ impl<'a> Engine<'a> {
                 .map_or(GpsModeView::Idle, |r| mode_view(r.mode)),
             proposal: self.proposal.clone(),
             switch: self.switch.clone(),
+            profile_proposal: self.profile_proposal.clone(),
         }
     }
 
@@ -1514,6 +1683,7 @@ fn placeholder_guidance() -> GuidanceView {
         gps_mode: GpsModeView::Idle,
         proposal: None,
         switch: None,
+        profile_proposal: None,
     }
 }
 

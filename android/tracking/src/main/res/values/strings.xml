@@ -1,14 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="tracking_channel">Guidage</string>
-    <string name="tracking_channel_description">Prochaine direction, temps restant et arrivée pendant la sortie</string>
-    <string name="reminder_channel">Rappel de retour</string>
-    <string name="tracking_starting">Suivi de la sortie : recherche de la position…</string>
-    <string name="accept">Accepter</string>
-    <string name="decline">Refuser</string>
-    <string name="refuse_switch">Garder l\'itinéraire</string>
-    <string name="switched">Itinéraire changé : %1$s</string>
-    <string name="bring_me_back">Ramène-moi</string>
-    <string name="back_stop">Reprendre le plan</string>
-    <string name="reminder_sms">Prévenir : bien rentré</string>
+    <string name="tracking_channel">Guidance</string>
+    <string name="tracking_channel_description">Next direction, time left and arrival during the outing</string>
+    <string name="reminder_channel">Return reminder</string>
+    <string name="tracking_starting">Following the outing: looking for the position…</string>
+    <string name="accept">Accept</string>
+    <string name="decline">Decline</string>
+    <string name="refuse_switch">Keep the route</string>
+    <string name="switched">Route changed: %1$s</string>
+    <string name="bring_me_back">Take me back</string>
+    <string name="back_stop">Back to the plan</string>
+    <string name="reminder_sms">Tell them: back home</string>
+    <string name="profile_choose">Choose this profile</string>
+    <string name="profile_keep">Keep the profile</string>
+    <string name="turn_left">left</string>
+    <string name="turn_right">right</string>
+    <string name="turn_slight_left">bear left</string>
+    <string name="turn_slight_right">bear right</string>
+    <string name="turn_keep_left">keep left</string>
+    <string name="turn_keep_right">keep right</string>
+    <string name="turn_straight">straight on</string>
+    <string name="turn_u_turn">turn back</string>
+    <string name="guidance_back">Way back:</string>
+    <string name="guidance_start">Start %1$s</string>
+    <string name="guidance_finished">Outing over</string>
+    <string name="guidance_arrival_in">Arrival in %1$s</string>
+    <string name="guidance_paused">Paused</string>
+    <string name="guidance_refuge">At the hut</string>
+    <string name="guidance_detail">%1$s left · arrival %2$s%3$s</string>
+    <string name="guidance_short">%1$s · arrival %2$s</string>
 </resources>

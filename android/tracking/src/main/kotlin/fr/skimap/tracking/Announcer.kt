@@ -144,6 +144,7 @@ object OpusDecoder {
  * text when a clip is missing (`docs/voix.md`). One announcement at a time, in order, on
  * its own thread; the text-to-speech engine starts only when first needed.
  */
+@Suppress("TooManyFunctions")
 class Announcer(
     private val context: Context,
     private val locale: Locale = Locale.FRANCE,
@@ -189,6 +190,25 @@ class Announcer(
         }
     }
 
+    /** Short sounds played (K6), for the tests and the logs. */
+    @Volatile var earcons = 0
+        private set
+
+    /**
+     * Plays a short sound of K6 ([EarconSynth]) in turn with the announcements (a turn's
+     * sound just before its words), with the same transient focus that ducks the music.
+     */
+    fun earcon(
+        e: Earcon,
+        volume: Float,
+    ) {
+        audio.execute {
+            runCatching { play(Pcm(EarconSynth.pcm(e, volume), EarconSynth.RATE, 2)) }
+                .onSuccess { earcons++ }
+                .onFailure { Log.w(TAG, "earcon $e: ${it.message}") }
+        }
+    }
+
     /** Runs [block] on the voice thread once everything queued before it was said. */
     fun afterQueue(block: () -> Unit) {
         audio.execute(block)
@@ -208,6 +228,13 @@ class Announcer(
         val pcm =
             PcmAssembler.assemble(u.clips.map { OpusDecoder.decode(it.file!!) }, u.clips.map { it.pauseMs })
                 ?: return false
+        play(pcm)
+        played++
+        return true
+    }
+
+    /** Plays [pcm] in one go with a transient ducking focus, given back at once. */
+    private fun play(pcm: Pcm) {
         val channelMask = if (pcm.channels == 2) AudioFormat.CHANNEL_OUT_STEREO else AudioFormat.CHANNEL_OUT_MONO
         val bytes = pcm.samples.size * 2
         val track =
@@ -241,8 +268,6 @@ class Announcer(
             track.play()
             val ms = frames * MS_PER_S / pcm.rate
             done.await(ms + MARGIN_MS, TimeUnit.MILLISECONDS)
-            played++
-            return true
         } finally {
             track.release()
             manager?.abandonAudioFocusRequest(req)

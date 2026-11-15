@@ -3,6 +3,7 @@ package fr.skimap.tracking
 import android.content.Context
 import android.content.Intent
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,6 +42,14 @@ object Tracking {
     const val ACTION_REFUSE_SWITCH = "fr.skimap.tracking.REFUSE_SWITCH"
     const val ACTION_BACK = "fr.skimap.tracking.BACK"
     const val ACTION_SAY = "fr.skimap.tracking.SAY"
+
+    /** Answers to the proposal to choose another group profile (X14). */
+    const val ACTION_PROFILE_ACCEPT = "fr.skimap.tracking.PROFILE_ACCEPT"
+    const val ACTION_PROFILE_DECLINE = "fr.skimap.tracking.PROFILE_DECLINE"
+
+    /** Short sounds left / right / off the route / reassurance (K6): on, and their volume (0 to 1). */
+    const val KEY_EARCONS = "earcons"
+    const val KEY_EARCON_VOLUME = "earcon_volume"
     const val EXTRA_PLAN_DIR = "plan_dir"
 
     /** `fused` (default when the platform has it) or `gps`: the A/B of report 09 on the Pixel. */
@@ -63,6 +72,23 @@ object Tracking {
 
     internal fun publish(s: TrackingState) {
         mutable.value = s
+    }
+
+    /** The short sounds of K6: on or off, and their volume (0 to 1); read when the outing starts. */
+    fun setEarcons(
+        context: Context,
+        enabled: Boolean,
+        volume: Float,
+    ) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit {
+            putBoolean(KEY_EARCONS, enabled)
+            putFloat(KEY_EARCON_VOLUME, volume.coerceIn(0f, 1f))
+        }
+    }
+
+    fun earcons(context: Context): EarconSettings {
+        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return EarconSettings(p.getBoolean(KEY_EARCONS, true), p.getFloat(KEY_EARCON_VOLUME, EarconSettings.DEFAULT_VOLUME))
     }
 
     /** Plan of an outing not ended (the process was stopped): offered to resume. */

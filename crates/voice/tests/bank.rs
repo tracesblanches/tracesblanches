@@ -474,7 +474,11 @@ fn clip_set_size_and_ids() {
                 .iter()
                 .any(|f| f.continued() && f.clip().id == *id);
         assert_eq!(text.ends_with(','), continues, "{id}: {text}");
-        assert!(continues || text.ends_with('.'), "{id}: {text}");
+        // A question asks for one gesture (X14): it ends with « ? ».
+        assert!(
+            continues || text.ends_with('.') || text.ends_with(" ?"),
+            "{id}: {text}"
+        );
         let lower = id.starts_with("loop.about.") || id.starts_with("loop.back.");
         assert_eq!(
             text.chars().next().is_some_and(char::is_uppercase),

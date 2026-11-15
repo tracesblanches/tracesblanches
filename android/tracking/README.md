@@ -1,4 +1,4 @@
-# Module `tracking` : la sortie sur le téléphone (K4, K5, K6, K8, K13, E1)
+# Module `tracking` : la sortie sur le téléphone (K4, K5, K6, K8, K13, E1, X10, X11, X14, VO6)
 
 Un seul service de premier plan `location` par sortie, démarré par « Valider la journée » (un geste : il garde la position et le son écran éteint, rapport 09), jamais relancé depuis l'arrière-plan. Le noyau Rust (`crates/ffi/src/tracking.rs`) décide de tout ; le service applique et dit.
 
@@ -13,6 +13,11 @@ Le module ne connaît pas les liaisons UniFFI : l'app adapte le noyau à l'inter
 | Écran | `ACTION_SCREEN_ON/OFF` au noyau (mode interaction) ; écran allumé : `requestFlush` (le lot en attente arrive tout de suite). |
 | Sobriété | un seul fil (`HandlerThread`) qui dort entre deux lots ; aucune wakelock, aucune minuterie (sauf l'attente bornée des derniers mots après le bilan, 30 s), aucune scrutation. Notification republiée seulement quand son texte change. |
 | Annonces (K5) | clips Ogg/Opus du pack décodés (`MediaCodec`), assemblés avec leurs pauses (150 / 400 ms), joués en une fois (`AudioTrack`, usage guidage) avec un focus transitoire « ducking » rendu aussitôt ; voix Android pour toute annonce dont un clip manque (moteur démarré au premier besoin ; `<queries>` TTS_SERVICE). Une annonce à la fois, dans l'ordre. |
+| Pas comptés (X10) | compteur de pas d'Android (`TYPE_STEP_COUNTER`, capteur sans réveil, lots de sa FIFO jusqu'à 60 s : il ne réveille jamais le téléphone) ; à chaque lot de positions, `SensorManager.flush`, puis un seul appel au noyau avec le lot et les relevés de 10 s (`StepReports`, silences compris : 0 pas) : `push_batch`. Sans compteur (ou sans réponse au vidage), les positions seules, comme avant. |
+| Couches du jour (X11) | `open_tracking` charge les couches du pack (zones sans réseau, couloirs d'avalanche, zones protégées) et les donne au suivi : un itinéraire recalculé les annonce (`TrackingSession.layers()` le dit). |
+| Sons courts (K6) | gauche (deux bips aigus à gauche), droite (à droite), hors piste (trois impulsions graves descendantes, au centre), rassurance au retour sur l'itinéraire (un carillon doux) : synthétisés (`EarconSynth`, 140 à 430 ms, crête à −14 dBFS à plein volume, −20 dBFS au volume par défaut de 0,5), stéréo au casque, joués juste avant les mots dans la file de la voix avec le même focus transitoire (« ducking », rendu aussitôt). Réglables : `Tracking.setEarcons(context, enabled, volume)`, lus au départ. |
+| Changer de profil (X14) | proposition du noyau dans la notification (« Choisir ce profil » / « Garder le profil », un geste) ; le profil choisi est écrit à côté du plan (`profile_chosen.json`, `onProfileChosen`). |
+| Langue (VO6) | textes de la notification et du bandeau en anglais par défaut (`res/values`), en français sur un téléphone en français (`res/values-fr`, `GuidanceLabels.of`). |
 | Vibrations (K6) | sécurité : 3 longues ; retour sur l'itinéraire : 1 courte ; gauche : 2 courtes ; droite : 1 longue ; demi-tour : 3 courtes ; proposition : 2 moyennes (usage alarme : senties en silencieux). |
 | Boutons (K13) | session média : bouton du casque (appui : prochaine direction et temps restant ; maintien 0,8 s : ramène-moi) ; écran éteint, touches de volume (haut : direction ; bas : temps restant ; maintien : ramène-moi), écran allumé elles règlent le volume. |
 | Écran verrouillé | notification en cours promue (Live Update : puce de la barre d'état, progression le long de l'itinéraire) : prochaine direction et distance, temps restant, arrivée et sa fourchette ; actions : accepter / refuser une proposition, garder l'itinéraire après une bascule, ramène-moi. |
@@ -35,6 +40,8 @@ adb logcat -s skimap   # « Q9 … », « day flow … », « energy: … »
 
 ## Limites
 
-- Pas de reconnaissance d'activité (Play services) : la pause se décide sur les positions seules (`pause_fix_ms` du noyau) et le mouvement significatif.
+- Pas de reconnaissance d'activité (Play services) : la pause se décide sur les positions, les pas comptés (X10) et le mouvement significatif. Le compteur de pas en ski de fond n'est pas mesuré (rapport 09) ; vérifié sous Robolectric et sur émulateur (pas de capteur de pas sur l'émulateur).
+- Sons courts : réglage exposé par `Tracking.setEarcons`, pas encore d'écran de réglage dans l'app.
+- Textes venus du noyau (annonces, propositions, causes) : en français quelle que soit la langue ; voix anglaise non générée (VO6, reste).
 - Les touches de volume et le bouton du casque n'arrivent à la session que si elle est la session média active (la dernière à avoir joué du son) : une app de musique lancée après prend la main.
 - L'énergie réelle se mesure sur le Pixel (rails ODPM, Perfetto) ; sur l'émulateur, seulement le CPU.
