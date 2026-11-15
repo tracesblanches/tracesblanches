@@ -491,7 +491,40 @@ mod tests {
 
     #[test]
     fn colour_words_only_after_piste() {
-        let s = &crate::spec::chapelle_des_bois();
+        use crate::spec::{Ink, LabelSource, PlanSource, PlanSpec};
+        let ink = |n: &str| Ink {
+            name: n.into(),
+            refs: vec![[0, 0, 0]],
+            max_de: 10.0,
+            difficulty: None,
+            kind: crate::transcript::PisteKind::Ski,
+        };
+        let src = PlanSource {
+            site: String::new(),
+            id: String::new(),
+            title: String::new(),
+            publisher: String::new(),
+            url: String::new(),
+            page_url: String::new(),
+            source: String::new(),
+            edition: String::new(),
+            rights: String::new(),
+        };
+        let s = &PlanSpec::new(
+            &src,
+            200,
+            [0.0; 4],
+            Vec::new(),
+            skimap_common::geom::BBox::new(0.0, 0.0, 1.0, 1.0),
+            ["green", "blue", "red", "black", "orange", "yellow"]
+                .iter()
+                .map(|n| ink(n))
+                .collect(),
+            LabelSource::TextLayer,
+            crate::autospec::provisional_line_params(0.36),
+            false,
+            Vec::new(),
+        );
         let ink = |n: &str| s.inks.iter().position(|i| i.name == n);
         assert_eq!(colour_word(s, "Combe Verte 8,4 km"), None);
         assert_eq!(colour_word(s, "Piste verte : le Gibera"), ink("green"));

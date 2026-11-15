@@ -14,7 +14,7 @@ On ne redistribue pas le plan, et on ne l'affiche pas en image sur la carte. Il 
 | Cervières | « Plan des pistes - Cervières » (dépliant « L'Izoard, hiver ») | [nordicfrance.fr/…/Plan-des-pistes-Cervieres.pdf](https://www.nordicfrance.fr/content/uploads/2018/12/Plan-des-pistes-Cervieres.pdf), lié par nordicalpesdusud.com/domaines/cervieres (saison 2025-2026) ; PDF Canva du 27/03/2024, image 1280 × 1255 px sans couche texte | aucune licence ; « Conception graphique : Emilie Chenier » |
 | Chapelle-des-Bois | « Plan des pistes ski de fond, Lacs et Montagnes du Haut-Doubs (Sud) » | `ENJ_Plans_CCLMHD_VALdeMOUTHE_2511_WEB_ski.pdf`, lié par espacenordiquejurassien.com/haut-doubs.html ; « Décembre 2025 », PDF InDesign du 17/02/2026, 1/50 000, couche texte | aucune licence ; « Cartographie Latitude Cartagène », « © les contributeurs d'OpenStreetMap » |
 
-Téléchargés par le téléchargeur commun (sources `nordicfrance`, `enj`, cache 30 jours). Les rendus restent dans `data/cache/pisteplan/`.
+Aucun plan n'est choisi à la main, aucune fiche ni aucun réglage n'est propre à un site. `build(site)` (`register_site`) prend dans le catalogue du collecteur les plans rattachés à un domaine du recensement qui touche l'emprise du site, les lit tous avec la fiche automatique et garde celui dont l'emprise dessinée touche le site avec le plus de pistes transcrites par l'appariement exact (la liste des plans essayés est dans `stats.plans_considered`). Cervières : 3 plans essayés, nf-14976 retenu ; Chapelle-des-Bois : 12 essayés, 9 calés, le plan ENJ du Val de Mouthe retenu (28 pistes exactes contre 19 au plan suivant). Les rendus restent dans `data/cache/pisteplan/`.
 
 **Collecteur** (`collect`, exemple `collect_plans`) : médiathèque WordPress de Nordic France (recherches « plan » et « piste », station de rattachement → domaine du recensement) et pages des massifs de l'ENJ. Les fichiers sont choisis sur leur titre (raquettes, piétons, alpin, navettes… écartés). Sources propres, une requête toutes les 5 s. Au 15/11/2026 : 298 candidats, 257 plans distincts (41 doublons, 0 erreur), dont 114 PDF avec couche texte, 105 PDF-image, 15 PDF vectoriels sans texte, 22 images. 159 sont rattachés à un domaine (station, sites ou nom de la page) ; 99 des 219 domaines ont au moins un plan. Dates de création de 2009 à 2026, surtout 2018-2026. Sortie : `data/out/france/plans/catalogue.json` (usage personnel).
 
@@ -27,7 +27,7 @@ Téléchargés par le téléchargeur commun (sources `nordicfrance`, `enj`, cach
 5. Calage. Un RANSAC exhaustif apparie étiquettes et repères (similitude ≤ 45°, tolérance 15 pt), puis une ICP non rigide ajuste une spline plaque mince. Elle apparie les encres de ski aux voies nordiques de même couleur, avec un rayon qui décroît de 600 à 70 m. Points d'appui : jonctions du dessin et jonctions OSM nordiques, plus proches voisins mutuels, sans ambiguïté.
 6. Appariement **exact**. Il faut d'abord un nom certain : clé identique sur une couche texte, ou une lecture OCR unique (similarité ≥ 0,6 et écart ≥ 0,15). Les homonymes non reliés sont départagés par la proximité de l'encadré. Il faut ensuite que l'encre de la piste soit dessinée le long de la géométrie OSM, dans le même sens (≤ 30°), sur au moins 50 %. Cette part doit aussi dépasser celle des 16 copies décalées (400 et 800 m) : test de permutation, p ≤ 1/17. Le rayon (3, 5, 8 ou 12 pt) est choisi par validation sur les candidats. Une piste qui échoue n'est pas transcrite : elle est listée avec la raison.
 
-**Fiche automatique** (`autospec`, `register_auto`) : la fiche de lecture (`PlanSpec`) est déduite du plan seul. Résolution et source des étiquettes viennent du PDF (`pdfinfo`, `pdfimages`). Les encres sont lues sur la légende (tiret de chaque piste, mot de couleur), puis ajustées sur les lignes de la carte (pixels contrastés, même teinte). Une couleur tracée sans entrée de légende devient une encre non ski. L'épaisseur des traits donne les paramètres de ligne. Les panneaux et encadrés sont des aplats rectangulaires. La zone de carte entoure le réseau dessiné. L'emprise est l'étendue du plan une fois placé par le RANSAC, plus 3 km.
+**Fiche automatique** (`autospec`, `register_auto`), la seule : la fiche de lecture (`PlanSpec`) est déduite du plan seul. Résolution et source des étiquettes viennent du PDF (`pdfinfo`, `pdfimages`). Les encres sont lues sur la légende (tiret de chaque piste, mot de couleur), puis ajustées sur les lignes de la carte (pixels contrastés, même teinte). Une couleur tracée sans entrée de légende devient une encre non ski. L'épaisseur des traits donne les paramètres de ligne. Les panneaux et encadrés sont des aplats rectangulaires. La zone de carte entoure le réseau dessiné. L'emprise est l'étendue du plan une fois placé par le RANSAC, plus 3 km.
 
 ## Apprentissage (étiquetage automatique, modèle)
 
@@ -46,12 +46,11 @@ Téléchargés par le téléchargeur commun (sources `nordicfrance`, `enj`, cach
 | `plan_pistes.meta.json` | sources (plan : `personal_use_only`), paramètres, `stats` : décisions, raisons des refus, validation, RANSAC, ICP, points d'appui, validation croisée, OCR |
 
 ```sh
-SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-pisteplan --features pipeline --example plan_pistes
+SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-pisteplan --features pipeline --example plan_pistes -- cervieres chapelle-des-bois
 SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-pisteplan --features pipeline --example ocr_gold   # OCR Cervières
 cargo test -p skimap-pisteplan --features pipeline
 cargo test -p skimap-pisteplan --test real_outputs -- --ignored   # lecteur sur les sorties réelles
-# diagnostics locaux (images du plan, jamais publiées) : examples inspect, register, ocr_dump
-SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-pisteplan --features pipeline --example auto_compare  # fiche auto / à la main
+# diagnostics locaux (images du plan, jamais publiées) : examples register, diag_plan
 # collect_plans, train_pairs [jobs], train_model [rows.csv] : collecte, étiquetage, modèle (data/out/france/)
 ```
 
@@ -64,7 +63,7 @@ Démo : `demo/compare.html?site=…&view=osm|plan` (style et couleurs du visuali
 | Pistes de la légende (lignes) | 8 lues sur 9 (OCR) | 56 (59 lignes) |
 | Avec une piste OSM du même nom | 6 | 39 |
 | Transcrites (exact) | 3 (Gibera, Pinatelle, Chemin du Sioux) | 30 (54 % du plan, 77 % des candidats) |
-| Fiche automatique : transcrites (exact) | 2 sur les 3 (Chemin du Sioux : 48 % < 50 %) ; avec le modèle, 3 (Sioux, p = 0,91) | 32 : les 30 + La Chaux Mourant, Le Petit Glacier (justes, vérifiées à l'écran) |
+| Fiche automatique seule (15/11/2026, sans fiche à la main) : exact + modèle | 3 + 0 (Gibera, Pinatelle, Chemin du Sioux à 50 %) | 28 + 6 = 34 |
 | Transcrites, exact + modèle (sorties) | 3 + 0 | **30 + 6 = 36** (64 %) : Le Pré d'Haut (OSM « Les Prés d'Haut »), Combe des Cives, Le Griffon (« Le Griffond »), Élodie Bourgois Pin (« Elodie Bourgeois Pin »), La Passerelle, Le Petit Glacier ; 6/6 justes à l'écran |
 | Couleur du plan = couleur OSM | 3 / 3 | 30 / 30 |
 | Repères appariés | 14 | 16 |

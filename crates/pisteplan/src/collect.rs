@@ -689,6 +689,99 @@ pub fn write_catalogue(
     Ok(stats)
 }
 
+/// Reads `data/out/france/plans/catalogue.json` (written by [`write_catalogue`]).
+pub fn load_catalogue(layout: &DataLayout) -> Result<Vec<Collected>> {
+    let p = layout.france_layer_dir(LAYER)?.join("catalogue.json");
+    let bytes = std::fs::read(&p).map_err(|e| Error::io(&p, e))?;
+    serde_json::from_slice(&bytes).map_err(|e| Error::Json {
+        context: "catalogue.json".to_owned(),
+        source: e,
+    })
+}
+
+/// Whether the pipeline reads this file: downloaded, not a duplicate, a PDF or an image.
+pub fn readable(c: &Collected) -> bool {
+    c.duplicate_of.is_none()
+        && c.error.is_none()
+        && c.format
+            .as_deref()
+            .is_some_and(|f| f.starts_with("pdf") || f == "image")
+}
+
+/// The source of a collected plan (its publisher, page and date; no licence is published).
+pub fn plan_source(c: &Collected) -> crate::spec::PlanSource {
+    crate::spec::PlanSource {
+        site: c.candidate.domains.first().cloned().unwrap_or_default(),
+        id: c.candidate.id.clone(),
+        title: c.candidate.title.clone(),
+        publisher: c.candidate.publisher.clone(),
+        url: c.candidate.url.clone(),
+        page_url: c.candidate.page_url.clone(),
+        source: c.candidate.source.clone(),
+        edition: c
+            .created
+            .clone()
+            .or_else(|| c.candidate.uploaded.clone())
+            .unwrap_or_default(),
+        rights: "aucune licence publiée : propriété de l'exploitant, usage personnel".into(),
+    }
+}
+
+/// `b` grown by `km` on every side.
+pub fn grown(b: BBox, km: f64) -> BBox {
+    let dlat = km / 111.0;
+    let dlon = km / (111.0 * b.center().lat.to_radians().cos());
+    BBox::new(b.south - dlat, b.west - dlon, b.north + dlat, b.east + dlon)
+}
+
+/// Union of boxes.
+pub fn union(bs: &[BBox]) -> Option<BBox> {
+    let first = *bs.first()?;
+    Some(bs.iter().fold(first, |a, b| {
+        BBox::new(
+            a.south.min(b.south),
+            a.west.min(b.west),
+            a.north.max(b.north),
+            a.east.max(b.east),
+        )
+    }))
+}
+
+/// Margin of the hint around the domains of a plan, km.
+pub const HINT_MARGIN_KM: f64 = 10.0;
+
+/// Extent where a plan is looked for: its census domains, grown by [`HINT_MARGIN_KM`].
+pub fn hint(domains: &[String], census: &[Domain]) -> Option<BBox> {
+    let boxes: Vec<BBox> = census
+        .iter()
+        .filter(|d| domains.contains(&d.id))
+        .map(|d| d.bbox)
+        .collect();
+    union(&boxes).map(|b| grown(b, HINT_MARGIN_KM))
+}
+
+/// Whether two boxes meet.
+pub fn intersects(a: &BBox, b: &BBox) -> bool {
+    a.south < b.north && a.north > b.south && a.west < b.east && a.east > b.west
+}
+
+/// Plans of the catalogue that may draw an area: readable, with a census domain whose
+/// extent meets `area`. The same rule for every site (no hand-picked plan).
+pub fn plans_for_area<'a>(
+    area: &BBox,
+    cat: &'a [Collected],
+    census: &[Domain],
+) -> Vec<&'a Collected> {
+    cat.iter()
+        .filter(|c| readable(c))
+        .filter(|c| {
+            census
+                .iter()
+                .any(|d| c.candidate.domains.contains(&d.id) && intersects(&d.bbox, area))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

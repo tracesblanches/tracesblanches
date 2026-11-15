@@ -16,25 +16,7 @@ use skimap_pisteplan::autospec::register_auto;
 use skimap_pisteplan::collect::{self, Collected, Domain};
 use skimap_pisteplan::spec::PlanSource;
 use skimap_pisteplan::transcribe::{self, InkDistance};
-use skimap_pisteplan::{Error, learn, ocr, spec};
-
-fn grown(b: BBox, km: f64) -> BBox {
-    let dlat = km / 111.0;
-    let dlon = km / (111.0 * b.center().lat.to_radians().cos());
-    BBox::new(b.south - dlat, b.west - dlon, b.north + dlat, b.east + dlon)
-}
-
-fn union(bs: &[BBox]) -> Option<BBox> {
-    let first = *bs.first()?;
-    Some(bs.iter().fold(first, |a, b| {
-        BBox::new(
-            a.south.min(b.south),
-            a.west.min(b.west),
-            a.north.max(b.north),
-            a.east.max(b.east),
-        )
-    }))
-}
+use skimap_pisteplan::{Error, learn, ocr};
 
 struct Job {
     src: PlanSource,
@@ -140,43 +122,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .france_layer_dir(collect::LAYER)?
         .join("catalogue.json");
     let cat: Vec<Collected> = serde_json::from_slice(&std::fs::read(&cat_path)?)?;
+    // Every readable plan of the catalogue attached to a census domain; a plan that may
+    // draw an evaluation site is read the same way, marked test (never trained on).
     let mut jobs: Vec<Job> = Vec::new();
-    // The two sites (test only).
-    for m in spec::manual_plans() {
-        let site = skimap_common::site::site(&m.site)?;
-        jobs.push(Job {
-            src: m.plan_source(),
-            hint: grown(site.bbox, 10.0),
-            format: format!("{:?}", m.labels),
-            test: true,
-        });
-    }
-    for c in &cat {
-        let fmt = c.format.clone().unwrap_or_default();
-        if c.duplicate_of.is_some() || c.error.is_some() || !fmt.starts_with("pdf") {
+    for c in cat.iter().filter(|c| collect::readable(c)) {
+        let Some(hint) = collect::hint(&c.candidate.domains, &census) else {
             continue;
-        }
-        let boxes: Vec<BBox> = census
-            .iter()
-            .filter(|d| c.candidate.domains.contains(&d.id))
-            .map(|d| d.bbox)
-            .collect();
-        let Some(b) = union(&boxes) else { continue };
+        };
+        let test = skimap_common::site::SITES.iter().any(|s| {
+            !collect::plans_for_area(&s.bbox, std::slice::from_ref(c), &census).is_empty()
+        });
         jobs.push(Job {
-            src: PlanSource {
-                site: c.candidate.domains[0].clone(),
-                id: c.candidate.id.clone(),
-                title: c.candidate.title.clone(),
-                publisher: c.candidate.publisher.clone(),
-                url: c.candidate.url.clone(),
-                page_url: c.candidate.page_url.clone(),
-                source: c.candidate.source.clone(),
-                edition: c.created.clone().unwrap_or_default(),
-                rights: "aucune licence publiée : usage personnel".into(),
-            },
-            hint: grown(b, 10.0),
-            format: fmt,
-            test: false,
+            src: collect::plan_source(c),
+            hint,
+            format: c.format.clone().unwrap_or_default(),
+            test,
         });
     }
     // Most likely to register first: the test sites, the ENJ plans (one cartographer, text

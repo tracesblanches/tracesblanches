@@ -516,10 +516,11 @@ fn props_of(reg: &Registration, d: &transcribe::Decision) -> Option<PlanPiste> {
 /// Transcribes a registered plan and writes `data/out/<site>/plan_pistes/`.
 pub fn transcribe_and_write(
     reg: &Registration,
+    site: &skimap_common::site::Site,
+    considered: &[PlanTried],
     layout: &DataLayout,
     planet_source: &SourceRef,
 ) -> Result<BuildReport> {
-    let site = skimap_common::site::site(&reg.spec.site)?;
     let dir = layout.layer_dir(site, LAYER)?;
     DataLayout::ensure(&dir)?;
     let plan = transcribe::entries(reg);
@@ -682,6 +683,8 @@ pub fn transcribe_and_write(
     let ocr = ocr_rate(reg, 0.8);
     let ocr_exact = ocr_rate(reg, 1.0);
     let stats = json!({
+        "plan": reg.spec.id,
+        "plans_considered": considered,
         "legend_lines": plan.len(),
         "plan_pistes": decisions.len(),
         "transcribed": transcribed,
@@ -830,8 +833,85 @@ pub fn transcribe_and_write(
     })
 }
 
+/// A collected plan tried for a site, and its outcome.
+#[derive(Debug, Clone, Serialize)]
+pub struct PlanTried {
+    /// Catalogue identifier.
+    pub id: String,
+    /// Registered on the map.
+    pub registered: bool,
+    /// Drawn extent meets the site.
+    pub draws_site: bool,
+    /// Pistes transcribed by the exact matching.
+    pub exact: usize,
+    /// Failure, if any.
+    pub error: Option<String>,
+}
+
+/// Registers the plans of the catalogue that may draw the site (census domains meeting
+/// its extent, [`crate::collect::plans_for_area`]), each with an automatic sheet, and
+/// keeps the one whose drawn extent meets the site with the most pistes transcribed by
+/// the exact matching. The same rule for every site: no plan, sheet or threshold of its
+/// own.
+pub fn register_site(
+    site: &skimap_common::site::Site,
+    layout: &DataLayout,
+    dl: &Downloader,
+    planet: &Planet,
+    engine: &ocrs::OcrEngine,
+) -> Result<(Registration, Vec<PlanTried>)> {
+    let census = crate::collect::load_census(layout)?;
+    let cat = crate::collect::load_catalogue(layout)?;
+    let mut plans = crate::collect::plans_for_area(&site.bbox, &cat, &census);
+    plans.sort_by(|a, b| a.candidate.id.cmp(&b.candidate.id));
+    let mut tried = Vec::new();
+    let mut best: Option<(usize, Registration)> = None;
+    for c in plans {
+        let Some(hint) = crate::collect::hint(&c.candidate.domains, &census) else {
+            continue;
+        };
+        let src = crate::collect::plan_source(c);
+        match crate::autospec::register_auto(&src, hint, layout, dl, planet, engine) {
+            Ok(a) => {
+                let reg = a.reg;
+                let draws = crate::collect::intersects(&reg.spec.extent, &site.bbox);
+                let dmap = transcribe::InkDistance::new(&reg);
+                let entries = transcribe::entries(&reg);
+                let (ds, _) = transcribe::decide(&reg, &dmap, &entries);
+                let exact = ds.iter().filter(|d| d.status.is_some()).count();
+                tried.push(PlanTried {
+                    id: c.candidate.id.clone(),
+                    registered: true,
+                    draws_site: draws,
+                    exact,
+                    error: None,
+                });
+                if draws && best.as_ref().is_none_or(|(n, _)| exact > *n) {
+                    best = Some((exact, reg));
+                }
+            }
+            Err(e) => tried.push(PlanTried {
+                id: c.candidate.id.clone(),
+                registered: false,
+                draws_site: false,
+                exact: 0,
+                error: Some(e.to_string()),
+            }),
+        }
+    }
+    match best {
+        Some((_, reg)) => Ok((reg, tried)),
+        None => Err(Error::Data(format!(
+            "no collected plan registers on {}: {}",
+            site.id,
+            serde_json::to_string(&tried).unwrap_or_default()
+        ))),
+    }
+}
+
 /// Builds the transcription of the site's plan: personal sources required (the plan is
-/// the resort's), planet extract and OCR models from the cache.
+/// the resort's), catalogue of the collected plans, planet extract and OCR models from
+/// the cache.
 pub fn build(
     site: &skimap_common::site::Site,
     layout: &DataLayout,
@@ -841,11 +921,9 @@ pub fn build(
     if !personal_sources {
         return Err(Error::PersonalSourcesDisabled);
     }
-    let spec = crate::spec::plan_for(site.id)
-        .ok_or_else(|| Error::Data(format!("no official plan known for {}", site.id)))?;
     let planet = skimap_osm::extract::load_planet(dl)
         .map_err(|e| Error::Data(format!("planet extract: {e}")))?;
     let engine = ocr::engine(dl)?;
-    let reg = register(spec, layout, dl, &planet, Some(&engine))?;
-    transcribe_and_write(&reg, layout, &planet.source)
+    let (reg, tried) = register_site(site, layout, dl, &planet, &engine)?;
+    transcribe_and_write(&reg, site, &tried, layout, &planet.source)
 }

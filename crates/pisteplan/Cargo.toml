@@ -44,15 +44,7 @@ tracing-subscriber.workspace = true
 workspace = true
 
 [[example]]
-name = "inspect"
-required-features = ["pipeline"]
-
-[[example]]
 name = "register"
-required-features = ["pipeline"]
-
-[[example]]
-name = "ocr_dump"
 required-features = ["pipeline"]
 
 [[example]]
@@ -61,14 +53,6 @@ required-features = ["pipeline"]
 
 [[example]]
 name = "ocr_gold"
-required-features = ["pipeline"]
-
-[[example]]
-name = "autospec"
-required-features = ["pipeline"]
-
-[[example]]
-name = "auto_compare"
 required-features = ["pipeline"]
 
 [[example]]
