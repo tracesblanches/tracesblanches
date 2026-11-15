@@ -23,7 +23,15 @@
 //!
 //! Runs on the phone: no networking. Never « sans danger », never « sûr ».
 
+pub mod course;
 pub mod error;
+pub mod fallback;
+pub mod guidance;
+pub mod line;
+pub mod phrases;
+pub mod plan;
+pub mod presets;
 pub mod speech;
+pub mod track;
 
 pub use error::{Error, Result};
