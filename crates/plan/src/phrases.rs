@@ -183,16 +183,23 @@ mod tests {
         let all: Vec<Fixed> = PLAN_PHRASES
             .into_iter()
             .chain(crate::pace::PROPOSAL_PHRASES)
+            .chain(crate::pace::PROFILE_PHRASES)
             .collect();
         let ours: BTreeSet<String> = all.iter().map(|f| f.clip().id).collect();
         assert_eq!(ours.len(), all.len());
-        assert_eq!(ours.len(), 15);
+        assert_eq!(ours.len(), 16);
         assert_eq!(ours, bank);
         for p in all {
             let c = p.clip();
             // « Je vous propose la boucle courte, » is continued by « retour vers … ».
-            let end = if p.continued() { ',' } else { '.' };
-            assert!(c.text.ends_with(end), "{}", c.text);
+            let end = if p.continued() { "," } else { "." };
+            // The profile proposal asks a question (X14).
+            assert!(
+                c.text.ends_with(end)
+                    || (p == Fixed::PlanProfileMismatch && c.text.ends_with(" ?")),
+                "{}",
+                c.text
+            );
             assert!(never_safe(&c.text), "{}", c.text);
             assert_eq!(announce(p).segments.len(), 1);
         }

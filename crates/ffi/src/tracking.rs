@@ -158,6 +158,13 @@ pub enum TrackEvent {
         /// Accepted.
         accept: bool,
     },
+    /// Answers the proposal to choose another group profile (X14, one gesture).
+    ProfileAnswer {
+        /// Epoch milliseconds.
+        t_ms: i64,
+        /// Accepted.
+        accept: bool,
+    },
     /// Steps counted by the phone since the previous report (X10).
     Steps {
         /// Epoch milliseconds.
@@ -193,6 +200,10 @@ impl TrackEvent {
             },
             TrackEvent::Refuse { t_ms } => Input::Refuse { t: utc(*t_ms) },
             TrackEvent::Answer { t_ms, accept } => Input::Answer {
+                t: utc(*t_ms),
+                accept: *accept,
+            },
+            TrackEvent::ProfileAnswer { t_ms, accept } => Input::ProfileAnswer {
                 t: utc(*t_ms),
                 accept: *accept,
             },
@@ -428,6 +439,21 @@ pub struct ProposalView {
     pub text: String,
 }
 
+/// The proposal to choose another group profile (X14), to accept or refuse with one
+/// gesture.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct ProfileProposalView {
+    /// Epoch milliseconds.
+    pub t_ms: i64,
+    /// Name of the profile proposed.
+    pub name: String,
+    /// The profile proposed (`skimap_core::calibration::GroupProfile`), JSON: the app
+    /// makes it the group of the day when accepted.
+    pub profile_json: String,
+    /// Text, French.
+    pub text: String,
+}
+
 /// A decision on the outing.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct SessionChange {
@@ -551,6 +577,8 @@ pub struct GuidanceView {
     pub proposal: Option<ProposalView>,
     /// A switch the skier may refuse.
     pub switch: Option<SwitchView>,
+    /// Profile proposal waiting for an answer (X14).
+    pub profile_proposal: Option<ProfileProposalView>,
 }
 
 /// What a call produced, in order of kind.
@@ -566,6 +594,10 @@ pub struct BatchOut {
     pub proposals: Vec<ProposalView>,
     /// Answers taken into account: (accepted, applied).
     pub answered: Vec<bool>,
+    /// Profile proposals (X14).
+    pub profile_proposals: Vec<ProfileProposalView>,
+    /// The profile chosen by an answer (X14), JSON of `GroupProfile`.
+    pub profile_chosen: Option<String>,
     /// Decisions on the outing.
     pub session: Vec<SessionChange>,
     /// GPS request to apply (the last one of the call), when it changed.
@@ -1030,6 +1062,7 @@ struct Engine<'a> {
     back_gps: GpsState,
     last_gps: Option<GpsRequest>,
     proposal: Option<ProposalView>,
+    profile_proposal: Option<ProfileProposalView>,
     switch: Option<SwitchView>,
     /// Where the refusable switch leaves the previous route, metres: accepted (no longer
     /// refusable) once the skier is `accept_m` past it.
@@ -1066,6 +1099,7 @@ impl<'a> Engine<'a> {
             back_gps: GpsState::default(),
             last_gps: None,
             proposal: None,
+            profile_proposal: None,
             switch: None,
             switch_div: 0.0,
             finished: false,
@@ -1187,6 +1221,9 @@ impl<'a> Engine<'a> {
                 if matches!(ev, TrackEvent::Answer { .. }) {
                     self.proposal = None;
                 }
+                if matches!(ev, TrackEvent::ProfileAnswer { .. }) {
+                    self.profile_proposal = None;
+                }
                 self.feed(&i);
                 self.record(std::slice::from_ref(&i));
                 Ok(Reply::Out(Box::new(self.collect())))
@@ -1240,6 +1277,8 @@ impl<'a> Engine<'a> {
             switches: Vec::new(),
             proposals: Vec::new(),
             answered: Vec::new(),
+            profile_proposals: Vec::new(),
+            profile_chosen: None,
             session: Vec::new(),
             gps: None,
             recap: None,
@@ -1343,6 +1382,20 @@ impl<'a> Engine<'a> {
                     self.proposal = None;
                     b.answered.push(accept);
                 }
+                Output::ProfileProposal { t, proposal } => {
+                    let p = ProfileProposalView {
+                        t_ms: ms(t),
+                        name: proposal.profile.name.clone(),
+                        profile_json: serde_json::to_string(&proposal.profile).unwrap_or_default(),
+                        text: proposal.text.clone(),
+                    };
+                    self.profile_proposal = Some(p.clone());
+                    b.profile_proposals.push(p);
+                }
+                Output::ProfileAnswered { profile, .. } => {
+                    self.profile_proposal = None;
+                    b.profile_chosen = profile.and_then(|p| serde_json::to_string(&p).ok());
+                }
             }
         }
         self.refresh_route();
@@ -1363,6 +1416,11 @@ impl<'a> Engine<'a> {
             && t - pr.t_ms as f64 / 1000.0 >= p.propose.ttl_s
         {
             self.proposal = None;
+        }
+        if let (Some(pr), Some((t, _))) = (&self.profile_proposal, self.last)
+            && t - pr.t_ms as f64 / 1000.0 >= p.profile.ttl_s
+        {
+            self.profile_proposal = None;
         }
     }
 
@@ -1506,6 +1564,7 @@ impl<'a> Engine<'a> {
                 .map_or(GpsModeView::Idle, |r| mode_view(r.mode)),
             proposal: self.proposal.clone(),
             switch: self.switch.clone(),
+            profile_proposal: self.profile_proposal.clone(),
         }
     }
 
@@ -1624,6 +1683,7 @@ fn placeholder_guidance() -> GuidanceView {
         gps_mode: GpsModeView::Idle,
         proposal: None,
         switch: None,
+        profile_proposal: None,
     }
 }
 

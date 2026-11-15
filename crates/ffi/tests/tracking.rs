@@ -68,6 +68,10 @@ fn event(i: &Input) -> Option<TrackEvent> {
             ways: ways.clone(),
         },
         Input::Refuse { t: x } => TrackEvent::Refuse { t_ms: t(x) },
+        Input::ProfileAnswer { t: x, accept } => TrackEvent::ProfileAnswer {
+            t_ms: t(x),
+            accept: *accept,
+        },
         Input::Steps { t: x, steps } => TrackEvent::Steps {
             t_ms: t(x),
             steps: *steps,
@@ -86,6 +90,7 @@ struct Said {
     gps_last: Option<(GpsModeView, i64, i64)>,
     switches: usize,
     proposals: usize,
+    profiles: usize,
     finished: bool,
 }
 
@@ -95,6 +100,7 @@ fn from_session(b: &BatchOut) -> Said {
         gps_last: b.gps.map(|g| (g.mode, g.interval_ms, g.max_delay_ms)),
         switches: b.switches.len(),
         proposals: b.proposals.len(),
+        profiles: b.profile_proposals.len(),
         finished: b.recap.is_some(),
     }
 }
@@ -125,6 +131,7 @@ fn from_direct(outs: &[Output]) -> Said {
             Output::Gps { request, .. } => s.gps_last = Some(gps_key(request)),
             Output::Switched { .. } | Output::Reverted { .. } => s.switches += 1,
             Output::Proposal { .. } => s.proposals += 1,
+            Output::ProfileProposal { .. } => s.profiles += 1,
             Output::Recap { .. } => s.finished = true,
             _ => {}
         }

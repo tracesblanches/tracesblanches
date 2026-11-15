@@ -48,7 +48,8 @@ use skimap_assist::layers::WeatherPoint;
 use skimap_assist::suggest::{loop_voice, node_snap};
 use skimap_common::geom::LonLat;
 use skimap_core::calibration::{
-    DayPace, OutingObs, PaceParams, Prediction, TERRAINS, Terrain, terrain_ratio,
+    DayPace, GroupProfile, OutingObs, PaceParams, Prediction, ProfileModel, TERRAINS, Terrain,
+    terrain_ratio,
 };
 use skimap_core::graph::{LocalPlane, PisteGraph, Snap};
 use skimap_core::matching::{AlertEvent, DeviationDetector, Hysteresis, ROUTE_HYSTERESIS};
@@ -64,8 +65,8 @@ use crate::gps::{self, GpsInput, GpsParams, GpsRequest, GpsState};
 use crate::guidance::{self, Junction};
 use crate::line::turn_deg;
 use crate::pace::{
-    self, PaceReason, PaceRoute, Proposal, ProposalKind, ProposeParams, proposal_announcement,
-    proposal_text,
+    self, PaceReason, PaceRoute, ProfileFitParams, ProfileProposal, Proposal, ProposalKind,
+    ProposeParams, proposal_announcement, proposal_text,
 };
 use crate::phrases::{self, Voice};
 use crate::plan::{self, DayPlan, PlannedAnnouncement, Trigger};
@@ -135,6 +136,9 @@ pub struct TrackerParams {
     /// Proposals when the group is durably slower than planned (C11).
     #[serde(default)]
     pub propose: ProposeParams,
+    /// Proposal to choose another group profile (X14).
+    #[serde(default)]
+    pub profile: ProfileFitParams,
 }
 
 impl Default for TrackerParams {
@@ -156,6 +160,7 @@ impl Default for TrackerParams {
             refuse_m: 150.0,
             slow_every_s: 60.0,
             propose: ProposeParams::default(),
+            profile: ProfileFitParams::default(),
         }
     }
 }
@@ -213,6 +218,13 @@ pub enum Input {
         /// Steps since the previous report.
         steps: u32,
     },
+    /// The skier answers the proposal to choose another group profile (X14): one gesture.
+    ProfileAnswer {
+        /// Time.
+        t: DateTime<Utc>,
+        /// Accepted.
+        accept: bool,
+    },
 }
 
 impl Input {
@@ -225,7 +237,8 @@ impl Input {
             | Input::Closed { t, .. }
             | Input::Refuse { t }
             | Input::Answer { t, .. }
-            | Input::Steps { t, .. } => *t,
+            | Input::Steps { t, .. }
+            | Input::ProfileAnswer { t, .. } => *t,
         }
     }
 }
@@ -414,6 +427,24 @@ pub enum Output {
         /// Applied (an accepted exit already passed is not).
         applied: bool,
     },
+    /// The pace of the day fits another group profile better (X14): choose it? Answered
+    /// by [`Input::ProfileAnswer`].
+    ProfileProposal {
+        /// Time.
+        t: DateTime<Utc>,
+        /// Proposal.
+        proposal: Box<ProfileProposal>,
+    },
+    /// The answer to the profile proposal: accepted, the tracker plans on that profile
+    /// from now on (arrival, proposals).
+    ProfileAnswered {
+        /// Time.
+        t: DateTime<Utc>,
+        /// Accepted.
+        accept: bool,
+        /// The profile chosen (accepted).
+        profile: Option<GroupProfile>,
+    },
 }
 
 /// The estimated arrival at the pace of the day (C11), from the last fix.
@@ -449,7 +480,9 @@ impl Output {
             | Output::Gps { t, .. }
             | Output::Recap { t, .. }
             | Output::Proposal { t, .. }
-            | Output::Answered { t, .. } => *t,
+            | Output::Answered { t, .. }
+            | Output::ProfileProposal { t, .. }
+            | Output::ProfileAnswered { t, .. } => *t,
         }
     }
 }
@@ -599,6 +632,15 @@ pub struct Tracker<'a> {
     loop_zones: Option<BTreeSet<String>>,
     /// When the terrain at the cursor was last given to the session, seconds.
     climb_t: f64,
+    /// X14: model time progressed per terrain while moving, the profiles the day is
+    /// compared with, the proposal waiting (time, index), asked once, the profile chosen.
+    model_done: [f64; TERRAINS],
+    profiles: Vec<ProfileModel>,
+    /// A lone adult of the plan's technique: the profile a plan without one is compared to.
+    adult: PaceParams,
+    profile_pending: Option<(f64, usize)>,
+    profile_asked: bool,
+    profile_chosen: Option<GroupProfile>,
 }
 
 impl<'a> Tracker<'a> {
@@ -703,6 +745,15 @@ impl<'a> Tracker<'a> {
             layers: None,
             loop_zones: None,
             climb_t: f64::NEG_INFINITY,
+            model_done: [0.0; TERRAINS],
+            profiles: pace::profile_presets(plan.request.style),
+            adult: PaceParams::prior(&GroupProfile::solo(
+                plan.request.style,
+                skimap_core::calibration::Level::Intermediate,
+            )),
+            profile_pending: None,
+            profile_asked: false,
+            profile_chosen: None,
             p,
         })
     }
@@ -714,6 +765,23 @@ impl<'a> Tracker<'a> {
     pub fn with_layers(mut self, data: &'a SiteData) -> Self {
         self.layers = Some(data);
         self
+    }
+
+    /// The group profiles the pace of the day is compared with (X14): the app's (its saved
+    /// groups), instead of [`pace::profile_presets`].
+    pub fn with_profiles(mut self, models: Vec<ProfileModel>) -> Self {
+        self.profiles = models;
+        self
+    }
+
+    /// The group profiles the pace of the day is compared with.
+    pub fn profiles(&self) -> &[ProfileModel] {
+        &self.profiles
+    }
+
+    /// The profile chosen during the outing (X14), if any.
+    pub fn profile_chosen(&self) -> Option<&GroupProfile> {
+        self.profile_chosen.as_ref()
     }
 
     /// Route followed.
@@ -816,6 +884,7 @@ impl<'a> Tracker<'a> {
             Input::Closed { ways, .. } => self.closure(t, ways, out),
             Input::Refuse { .. } => self.revert(t, false, out),
             Input::Answer { accept, .. } => self.answer(t, *accept, out),
+            Input::ProfileAnswer { accept, .. } => self.profile_answer(t, *accept, out),
         }
         if let Some(s) = self.speech.tick(t) {
             self.spoken += 1;
@@ -1200,6 +1269,7 @@ impl<'a> Tracker<'a> {
             }
             self.return_time(t, out);
             self.pace_check(t, out);
+            self.profile_check(t, out);
         }
         // 6. GPS mode.
         self.gps_mode(t, out);
@@ -2094,6 +2164,9 @@ impl<'a> Tracker<'a> {
             if dt > 0.0 && ds >= 0.0 && !(dt > 60.0 && ds < 30.0) {
                 let d = self.pace_route.between(s0, c);
                 self.day.moving(dt, d);
+                for (m, x) in self.model_done.iter_mut().zip(d) {
+                    *m += x.max(0.0);
+                }
                 self.progress_total += ds;
             }
         }
@@ -2220,6 +2293,7 @@ impl<'a> Tracker<'a> {
             || !self.session.running()
             || self.session.paused()
             || self.props.pending.is_some()
+            || self.profile_pending.is_some()
             || self.pending.is_some()
             || self.switched_other
         {
@@ -2256,6 +2330,9 @@ impl<'a> Tracker<'a> {
             || pred.median_s < pp.min_rest_s
             || delay < thr
         {
+            return;
+        }
+        if self.profile_offer(t, self.p.profile.min_log_ratio_late, out) {
             return;
         }
         self.propose(t, r, pred, paused_for, delay, out);
@@ -2362,6 +2439,131 @@ impl<'a> Tracker<'a> {
             arrival: t + self.planned_s(&p),
             median: t + p.median_s,
             delay,
+        });
+    }
+
+    /// Once a minute (X14): when the pace of the day fits another group profile much better
+    /// than the one planned on (a lone adult when the plan has none), propose it, once.
+    fn profile_check(&mut self, t: f64, out: &mut Vec<Output>) {
+        let fp = self.p.profile;
+        if let Some((t0, _)) = self.profile_pending
+            && t - t0 >= fp.ttl_s
+        {
+            self.profile_pending = None;
+        }
+        if self.props.pending.is_some() || self.pending.is_some() {
+            return;
+        }
+        self.profile_offer(t, fp.min_log_ratio, out);
+    }
+
+    /// The profile proposal (X14) if one fits the day `min_ratio` better than the profile
+    /// planned on; true when made. Before a proposal of a shorter way (C11), the group being
+    /// durably late already says the profile does not fit: a lower ratio
+    /// ([`ProfileFitParams::min_log_ratio_late`]) is asked, and the shorter way waits for
+    /// the answer (planned again on the profile chosen).
+    fn profile_offer(&mut self, t: f64, min_ratio: f64, out: &mut Vec<Output>) -> bool {
+        let fp = self.p.profile;
+        if !fp.enabled
+            || self.profile_asked
+            || self.profile_pending.is_some()
+            || self.profiles.is_empty()
+            || !self.session.running()
+            || self.session.paused()
+        {
+            return false;
+        }
+        let moving = self.day.moving_total_s();
+        let (stops, _) = self.day.stops();
+        if moving < fp.min_moving_s || self.progress_total < fp.min_progress_m {
+            return false;
+        }
+        let current = self.plan.pace.as_ref().map(|p| &p.profile);
+        // The profile planned on; without one, a lone adult (the plan's « nobody described »
+        // is too wide to be contradicted: the question is whether the day is an adult's).
+        let reference = match &self.plan.pace {
+            Some(_) => self.pace_base,
+            None => self.adult,
+        };
+        let here = pace::day_fit(&reference, self.model_done, moving, stops);
+        let best = self
+            .profiles
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| current != Some(&m.profile))
+            .map(|(i, m)| {
+                (
+                    i,
+                    pace::day_fit(&m.params, self.model_done, moving, stops) - here,
+                )
+            })
+            .max_by(|a, b| a.1.total_cmp(&b.1));
+        let Some((i, ratio)) = best.filter(|b| b.1 >= min_ratio) else {
+            return false;
+        };
+        self.profile_asked = true;
+        self.profile_pending = Some((t, i));
+        let profile = self.profiles[i].profile.clone();
+        let announcement = phrases::announce(Fixed::PlanProfileMismatch);
+        self.offer(
+            t,
+            Priority::Schedule,
+            "profile",
+            "profile_proposal",
+            announcement.clone(),
+            Some(fp.ttl_s),
+        );
+        out.push(Output::ProfileProposal {
+            t: utc_of(t),
+            proposal: Box::new(ProfileProposal {
+                index: i,
+                text: pace::profile_text(&profile),
+                profile,
+                log_ratio: ratio,
+                announcement,
+            }),
+        });
+        true
+    }
+
+    /// The answer to the profile proposal (X14): accepted, the day is planned on that
+    /// profile's parameters from now on (its pace of the day rebuilt on what was skied, its
+    /// proposals with children sooner).
+    fn profile_answer(&mut self, t: f64, accept: bool, out: &mut Vec<Output>) {
+        let Some((_, i)) = self.profile_pending.take() else {
+            return;
+        };
+        self.speech.withdraw("profile");
+        let mut chosen = None;
+        if accept {
+            let m = self.profiles[i].clone();
+            let moving = self.day.moving_total_s();
+            let mut day = DayPace::new(&m.params, self.pace_route.total());
+            day.moving(moving, self.model_done);
+            for s in &self.stops_s {
+                day.stop(*s);
+            }
+            self.day = day;
+            self.pace_base = m.params;
+            self.plan_q = m.plan_quantile();
+            if m.profile.has_children() {
+                self.p.propose = self.p.propose.with_children();
+            }
+            self.offer(
+                t,
+                Priority::Schedule,
+                "profile",
+                "profile_accepted",
+                phrases::announce(Fixed::PlanProposalAccepted),
+                Some(60.0),
+            );
+            self.profile_chosen = Some(m.profile.clone());
+            chosen = Some(m.profile);
+        }
+        out.push(Output::ProfileAnswered {
+            t: utc_of(t),
+            accept,
+            profile: chosen,
         });
     }
 
