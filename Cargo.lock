@@ -2698,8 +2698,11 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "flate2",
+ "hex",
  "serde",
  "serde_json",
+ "sha2",
  "skimap-assist",
  "skimap-avalanche",
  "skimap-common",
@@ -2757,6 +2760,7 @@ dependencies = [
  "serde_json",
  "skimap-common",
  "skimap-zones",
+ "tempfile",
  "thiserror",
 ]
 

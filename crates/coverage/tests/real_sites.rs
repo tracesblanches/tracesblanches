@@ -1,29 +1,28 @@
 //! Checks of the coverage layers of the two real sites against research report 06
-//! (2G/3G voice, T2 2026, French part of the boxes). Ignored by default: they read
-//! `data/out/<site>/coverage/` and the extracted GeoPackages.
+//! (2G/3G voice, T2 2026, French part of the boxes).
+//!
+//! By default on the versioned layers (`fixtures/`); the `full_data_` variants read the
+//! complete local data, including the extracted ARCEP GeoPackages (weekly job):
 //!
 //! ```sh
-//! cargo run --release -p skimap-coverage --example build_coverage -- --archives research/raw/arcep/dl
-//! cargo test -p skimap-coverage --test real_sites -- --ignored
+//! cargo test -p skimap-coverage --test real_sites
+//! cargo test -p skimap-coverage --test real_sites -- --ignored full_data_
 //! ```
 
-use std::path::PathBuf;
+#[path = "../../../fixtures/support/mod.rs"]
+mod fixtures;
+
+use std::path::{Path, PathBuf};
 
 use geo::{Coord, Rect};
 use skimap_coverage::{GeoPackage, Operator, Release};
 
-fn data_dir() -> PathBuf {
-    std::env::var("SKIMAP_DATA_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data")))
+fn coverage_dir(root: &Path, site: &str) -> PathBuf {
+    root.join("out").join(site).join("coverage")
 }
 
-fn report(site: &str) -> serde_json::Value {
-    let p = data_dir()
-        .join("out")
-        .join(site)
-        .join("coverage")
-        .join("build_report.json");
+fn report(root: &Path, site: &str) -> serde_json::Value {
+    let p = coverage_dir(root, site).join("build_report.json");
     serde_json::from_str(
         &std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display())),
     )
@@ -31,6 +30,7 @@ fn report(site: &str) -> serde_json::Value {
 }
 
 fn check(
+    root: &Path,
     site: &str,
     analysed: f64,
     shares: [(&str, f64); 4],
@@ -38,7 +38,7 @@ fn check(
     none_km2: f64,
     none_pct: f64,
 ) {
-    let r = report(site);
+    let r = report(root, site);
     let close = |what: &str, got: f64, want: f64, tol: f64| {
         println!("{site} {what}: {got} (report 06: {want})");
         assert!((got - want).abs() <= tol, "{site} {what}: {got} vs {want}");
@@ -81,16 +81,11 @@ fn check(
         none_pct,
         0.1,
     );
-    let fc: geojson::FeatureCollection = std::fs::read_to_string(
-        data_dir()
-            .join("out")
-            .join(site)
-            .join("coverage")
-            .join("no_network.geojson"),
-    )
-    .unwrap()
-    .parse()
-    .unwrap();
+    let p = coverage_dir(root, site).join("no_network.geojson");
+    let fc: geojson::FeatureCollection = std::fs::read_to_string(&p)
+        .unwrap_or_else(|e| panic!("{}: {e}", p.display()))
+        .parse()
+        .unwrap();
     let total_ha: f64 = fc
         .features
         .iter()
@@ -105,9 +100,19 @@ fn check(
 }
 
 #[test]
-#[ignore = "needs data/out/cervieres/coverage"]
 fn cervieres_matches_report_06() {
+    cervieres(&fixtures::data());
+}
+
+#[test]
+#[ignore = "full-data: data/out/cervieres/coverage"]
+fn full_data_cervieres_matches_report_06() {
+    cervieres(&fixtures::full_data());
+}
+
+fn cervieres(root: &Path) {
     check(
+        root,
         "cervieres",
         225.6,
         [
@@ -123,9 +128,19 @@ fn cervieres_matches_report_06() {
 }
 
 #[test]
-#[ignore = "needs data/out/chapelle-des-bois/coverage"]
 fn chapelle_des_bois_matches_report_06() {
+    chapelle_des_bois(&fixtures::data());
+}
+
+#[test]
+#[ignore = "full-data: data/out/chapelle-des-bois/coverage"]
+fn full_data_chapelle_des_bois_matches_report_06() {
+    chapelle_des_bois(&fixtures::full_data());
+}
+
+fn chapelle_des_bois(root: &Path) {
     check(
+        root,
         "chapelle-des-bois",
         172.7,
         [
@@ -140,10 +155,11 @@ fn chapelle_des_bois_matches_report_06() {
     );
 }
 
+/// The whole-France GeoPackages (about 1 GB each) are not in the fixtures.
 #[test]
-#[ignore = "needs the extracted ARCEP GeoPackages in data/cache/arcep/gpkg"]
-fn real_geopackage_layout() {
-    let p = data_dir()
+#[ignore = "full-data: the extracted ARCEP GeoPackages in data/cache/arcep/gpkg"]
+fn full_data_real_geopackage_layout() {
+    let p = fixtures::full_data()
         .join("cache/arcep/gpkg")
         .join(Release::LATEST_KNOWN.gpkg_name(Operator::Orange));
     let g = GeoPackage::open(&p).unwrap();

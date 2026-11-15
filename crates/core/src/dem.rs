@@ -150,5 +150,106 @@ mod tests {
         assert_eq!(s.edges_with_profile, 0);
         assert_eq!(s.edges_without, 5);
         assert!(g.edges().iter().all(|e| e.profile.is_none()));
+        assert!((s.length_without_m - g.total_length_m()).abs() < 1e-6);
+        assert_eq!(s.length_with_m, 0.0);
+        assert_eq!(s.stations_filled, 0);
+    }
+
+    /// Every statistic, the stations and the linear interpolation of a gap between two
+    /// valid stations (Q4: mutants of the station count, the distances and the filling).
+    #[test]
+    fn statistics_stations_and_gap_interpolation() {
+        let mut g = toy();
+        let plane = toy_plane();
+        let lengths: Vec<f64> = (0..g.edges().len()).map(|e| g.length_m(e)).collect();
+        // Edge e4 (y = −500 m) has no value at all; on e0 (y = 0, x from 0 to 1000 m) the
+        // values between x = 300 and 600 m are missing: interpolated linearly.
+        let s = attach_profiles(&mut g, 100.0, "gap", |p| {
+            let [x, y] = plane.xy(p);
+            if (y + 500.0).abs() < 1.0 && x > 999.0 {
+                return None;
+            }
+            let gap = y.abs() < 1.0 && x > 250.0 && x < 650.0;
+            (!gap).then_some(2000.0 + x * x / 1000.0)
+        });
+        // Stations: ceil(len / 100) + 1 per edge (both ends included).
+        let stations: usize = lengths
+            .iter()
+            .map(|l| (l / 100.0).ceil().max(1.0) as usize + 1)
+            .sum();
+        assert_eq!(s.stations, stations);
+        assert_eq!(s.edges_with_profile, 4);
+        assert_eq!(s.edges_without, 1);
+        assert!((s.length_without_m - lengths[4]).abs() < 1e-6, "{s:?}");
+        assert!((s.length_with_m + s.length_without_m - g.total_length_m()).abs() < 1e-6);
+        // e0: stations at 0, 100, ..., 1000 m; 300, 400, 500, 600 m are filled; e2 and
+        // e3 end on e4: their last two stations (500 m and the end, 500.0x m long) too.
+        assert_eq!(s.stations_filled, 8, "{s:?}");
+        let p0 = g.edge(0).profile.as_ref().unwrap();
+        assert_eq!(p0.filled, 4);
+        // 1000.0x m long: stations 0, 100, ..., 1000 m and the end.
+        assert_eq!(p0.dist_m.len(), 12);
+        assert!((p0.dist_m[3] - 300.0).abs() < 0.5 && (p0.dist_m[11] - 1000.0).abs() < 0.5);
+        // Linear between 200 m (2040 m) and 700 m (2490 m): 400 m → 2220 m.
+        let z = |d: f64| 2000.0 + d * d / 1000.0;
+        let lin = z(200.0) + (z(700.0) - z(200.0)) * (400.0 - 200.0) / 500.0;
+        assert!(
+            (f64::from(p0.elev_m[4]) - lin).abs() < 0.05,
+            "{}",
+            p0.elev_m[4]
+        );
+        assert!((f64::from(p0.elev_m[7]) - z(700.0)).abs() < 0.05);
+        assert!(g.edge(4).profile.is_none());
+        assert_eq!(g.data().elevation_source.as_deref(), Some("gap"));
+    }
+
+    /// A trailing gap is held at the last valid value; a single-station edge shorter than
+    /// the step gets its two ends.
+    #[test]
+    fn trailing_gap_and_short_step() {
+        let mut g = toy();
+        let plane = toy_plane();
+        attach_profiles(&mut g, 300.0, "tail", |p| {
+            let [x, y] = plane.xy(p);
+            (!(y.abs() < 1.0 && x > 650.0 && x < 1001.0)).then_some(100.0 + x / 10.0)
+        });
+        let p0 = g.edge(0).profile.as_ref().unwrap();
+        // Stations 0, 300, 600, 900, 1000 m: the last two held at 600 m's 160 m.
+        assert_eq!(p0.dist_m.len(), 5);
+        assert!((p0.elev_m[3] - 160.0).abs() < 0.01 && (p0.elev_m[4] - 160.0).abs() < 0.01);
+        let mut g = toy();
+        let s = attach_profiles(&mut g, 5000.0, "long step", |_| Some(1.0));
+        assert_eq!(s.stations, 2 * g.edges().len());
+    }
+
+    #[test]
+    fn terrain_model_must_be_lambert93_and_is_sampled_bilinearly() {
+        use skimap_common::grid::{GeoTransform, Grid};
+        let dir = tempfile::tempdir().unwrap();
+        // 4 x 3 cells of 5 m around Lambert-93 (998000, 6425000), z = x offset in metres.
+        let t = GeoTransform::north_up(998_000.0, 6_425_000.0, 5.0);
+        let data: Vec<f32> = (0..12).map(|i| (i % 4) as f32 * 5.0).collect();
+        let g = Grid::from_vec(4, 3, t, Crs::Lambert93, data.clone()).unwrap();
+        let p = dir.path().join("l93.tif");
+        skimap_common::geotiff::write_f32(&p, &g).unwrap();
+        let dem = read_dem(&p).unwrap();
+        // Centre of cell (1, 1) and halfway to (2, 1).
+        let at = |x: f64, y: f64| {
+            crate::dem::elevation(&dem, skimap_common::crs::from_lambert93(x, y).unwrap())
+        };
+        assert!((at(998_007.5, 6_424_992.5).unwrap() - 5.0).abs() < 1e-3);
+        assert!((at(998_010.0, 6_424_992.5).unwrap() - 7.5).abs() < 1e-3);
+        assert!(at(990_000.0, 6_424_992.5).is_none());
+        let g = Grid::from_vec(
+            4,
+            3,
+            GeoTransform::north_up(6.0, 45.0, 0.001),
+            Crs::Wgs84,
+            data,
+        )
+        .unwrap();
+        let p = dir.path().join("wgs84.tif");
+        skimap_common::geotiff::write_f32(&p, &g).unwrap();
+        assert!(read_dem(&p).is_err());
     }
 }

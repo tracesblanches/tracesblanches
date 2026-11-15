@@ -1,0 +1,281 @@
+{
+  "layer": "pistes",
+  "site": "cervieres",
+  "tickets": [
+    "P2 (#15)"
+  ],
+  "generated_at": "2026-11-15T09:00:25Z",
+  "valid_from": "2026-11-13T23:00:00Z",
+  "valid_until": null,
+  "validity": null,
+  "crs": "EPSG:4326 (WGS84, longitude, latitude)",
+  "sources": [
+    {
+      "name": "OpenSnowMap planet_pistes.osm.gz",
+      "url": "https://www.opensnowmap.org/download/planet_pistes.osm.gz",
+      "licence": "ODbL 1.0",
+      "attribution": "© les contributeurs d'OpenStreetMap (ODbL), extrait quotidien OpenSnowMap.org",
+      "personal_use_only": false,
+      "fetched_at": "2026-11-14T21:40:58Z",
+      "last_modified": "Sat, 14 Nov 2026 03:29:40 GMT",
+      "etag": "\"c29a951-6603427b2307e\"",
+      "sha256": "4a68841cff09076f1d361b5c8abcae3404a29e273b992a30ccf26927dc61a00b"
+    }
+  ],
+  "files": [
+    {
+      "name": "pistes.geojson",
+      "description": "ways OSM de ski nordique, raquettes et randonnée hivernale ayant au moins un sommet dans l'emprise du site, plus les ways hors de l'emprise qui ramènent le réseau dans l'emprise (chemin hors emprise le plus court, 10 km au plus, propriété in_box = false)",
+      "licence": "ODbL 1.0",
+      "count": 196,
+      "properties": {
+        "backcountry": "non damé (traces faites par les skieurs)",
+        "classic": "traces classiques",
+        "colours": "couleurs distinctes des relations",
+        "difficulty": "difficulté la plus facile parmi les relations (couleur d'abord, sinon piste:difficulty des relations, sinon celle du way) ; novice = verte, easy = bleue, intermediate = rouge, advanced = noire",
+        "difficulty_max": "difficulté la plus dure parmi les mêmes sources",
+        "difficulty_source": "relation_colour, relation_difficulty ou way",
+        "grooming": "piste:grooming brut (way, sinon relation)",
+        "in_box": "au moins un sommet dans l'emprise du site ; false : way hors de l'emprise gardé pour que le réseau y revienne (sens uniques qui sortent de l'emprise)",
+        "length_m": "longueur, m (haversine)",
+        "lit": "éclairée (piste:lit ou lit), null si inconnu",
+        "name": "nom du way (piste:name, sinon name), sinon noms des relations joints par « / »",
+        "oneway": "sens unique ; la géométrie est alors dans le sens de circulation",
+        "oneway_tag": "piste:oneway : forward, backward (géométrie inversée), no, unknown (absent, double sens)",
+        "osm_way_id": "identifiant du way OSM",
+        "relations": "relations de piste contenant le way : id, name, ref, colour (green, blue, red, black, other), colour_raw, difficulty",
+        "scooter": "damé à la motoneige",
+        "skating": "piste de skating",
+        "tagged": "le way porte lui-même piste:type (sinon il n'est piste que par une relation)",
+        "uses": "usages : nordic, hike (raquettes / piéton), snowshoe ; union du way et de ses relations",
+        "way_difficulty": "piste:difficulty du way (incohérent, gardé pour comparaison)",
+        "way_name": "nom porté par le way lui-même"
+      }
+    },
+    {
+      "name": "graph_edges.geojson",
+      "description": "graphe de routage : ways coupés aux jonctions, plus des connecteurs fermant les trous de moins de 10 m entre un cul-de-sac et une autre piste",
+      "licence": "ODbL 1.0",
+      "count": 224,
+      "properties": {
+        "backcountry": "non damé (traces faites par les skieurs)",
+        "classic": "traces classiques",
+        "colours": "couleurs distinctes des relations",
+        "difficulty": "difficulté la plus facile parmi les relations (couleur d'abord, sinon piste:difficulty des relations, sinon celle du way) ; novice = verte, easy = bleue, intermediate = rouge, advanced = noire",
+        "difficulty_max": "difficulté la plus dure parmi les mêmes sources",
+        "difficulty_source": "relation_colour, relation_difficulty ou way",
+        "edge": "index de l'arête",
+        "from": "index du nœud de départ (graph_nodes.geojson)",
+        "from_osm_node": "identifiant OSM du nœud de départ",
+        "grooming": "piste:grooming brut (way, sinon relation)",
+        "in_box": "au moins un sommet dans l'emprise du site ; false : way hors de l'emprise gardé pour que le réseau y revienne (sens uniques qui sortent de l'emprise)",
+        "kind": "piste (morceau de way) ou connector (jonction ajoutée)",
+        "length_m": "longueur de l'arête, m",
+        "lit": "éclairée (piste:lit ou lit), null si inconnu",
+        "name": "nom du way (piste:name, sinon name), sinon noms des relations joints par « / »",
+        "oneway": "circulation seulement de from vers to",
+        "oneway_tag": "piste:oneway : forward, backward (géométrie inversée), no, unknown (absent, double sens)",
+        "osm_way_id": "identifiant du way OSM",
+        "relations": "relations de piste contenant le way : id, name, ref, colour (green, blue, red, black, other), colour_raw, difficulty",
+        "scooter": "damé à la motoneige",
+        "skating": "piste de skating",
+        "tagged": "le way porte lui-même piste:type (sinon il n'est piste que par une relation)",
+        "to": "index du nœud d'arrivée",
+        "to_osm_node": "identifiant OSM du nœud d'arrivée",
+        "uses": "usages : nordic, hike (raquettes / piéton), snowshoe ; union du way et de ses relations",
+        "way_difficulty": "piste:difficulty du way (incohérent, gardé pour comparaison)",
+        "way_name": "nom porté par le way lui-même"
+      }
+    },
+    {
+      "name": "graph_nodes.geojson",
+      "description": "nœuds du graphe : jonctions, extrémités, cibles des connecteurs",
+      "licence": "ODbL 1.0",
+      "count": 189,
+      "properties": {
+        "component": "composante connexe du graphe",
+        "degree": "nombre d'arêtes incidentes",
+        "node": "index du nœud",
+        "osm_node_id": "identifiant OSM"
+      }
+    }
+  ],
+  "notes": [],
+  "parameters": {
+    "bbox_south_west_north_east": [
+      44.77,
+      6.66,
+      44.92,
+      6.86
+    ],
+    "connector_max_m": 10.0,
+    "oneway": "piste:oneway du way seulement : ni oneway=* (sens des voitures sur les routes), ni oneway=yes ni rôles forward / backward des relations (une relation aller-retour comme « Fabrice Guy » parcourt les mêmes ways dans les deux sens)",
+    "reentry_max_m": 10000.0,
+    "selection": "ways dont piste:type contient nordic, hike ou snowshoe, ou membres d'une relation de piste de ces types (ou route=ski) ; area=yes exclus ; au moins un sommet dans l'emprise"
+  },
+  "stats": {
+    "reentries": [
+      {
+        "from_osm_node": 455119883,
+        "length_m": 1535.5,
+        "osm_way_ids": [
+          1384938707
+        ],
+        "to_osm_node": 5708965231
+      }
+    ],
+    "relations": {
+      "15066255": {
+        "colour": "blue",
+        "km_in_site": 5.77,
+        "name": "L'Aigalan",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "15066278": {
+        "colour": "red",
+        "km_in_site": 12.96,
+        "name": "Le Chemin du Sioux",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "15582060": {
+        "colour": null,
+        "km_in_site": 4.68,
+        "name": "Liaison Le Laus - Les Fonts",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2702466": {
+        "colour": "black",
+        "km_in_site": 7.83,
+        "name": "La Pinatelle",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2702467": {
+        "colour": "red",
+        "km_in_site": 4.22,
+        "name": "Le Cancel",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2702468": {
+        "colour": "green",
+        "km_in_site": 1.42,
+        "name": "Le Gibera",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2702469": {
+        "colour": "blue",
+        "km_in_site": 2.23,
+        "name": "Le Savare",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2704630": {
+        "colour": "other",
+        "km_in_site": 7.58,
+        "name": "Izoard",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2704631": {
+        "colour": "other",
+        "km_in_site": 11.08,
+        "name": "Route du Col d'Izoard",
+        "uses": [
+          "hike"
+        ]
+      },
+      "5983465": {
+        "colour": "red",
+        "km_in_site": 5.17,
+        "name": "Souliers",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "5986795": {
+        "colour": "other",
+        "km_in_site": 2.3,
+        "name": "Clapier Long",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "5986796": {
+        "colour": "black",
+        "km_in_site": 6.96,
+        "name": "La Bergerie",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "5986797": {
+        "colour": "green",
+        "km_in_site": 1.72,
+        "name": "Le Plan d'Eau",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "5986798": {
+        "colour": "blue",
+        "km_in_site": 2.67,
+        "name": "Les Clots",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "5986799": {
+        "colour": "red",
+        "km_in_site": 4.67,
+        "name": "Les Pins",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "6354784": {
+        "colour": "other",
+        "km_in_site": 2.5,
+        "name": "Traversée du Queyras - Chanteloube",
+        "uses": [
+          "nordic"
+        ]
+      }
+    },
+    "summary": {
+      "graph_components": 4,
+      "graph_connectors": 1,
+      "graph_edges": 224,
+      "graph_nodes": 189,
+      "km_hike_only": 5.16,
+      "km_nordic": 61.56,
+      "km_nordic_tagged": 33.58,
+      "km_outside_box": 1.54,
+      "km_total": 66.72,
+      "oneway_sinks": [],
+      "oneway_sources": [],
+      "relations": 16,
+      "ways": 195,
+      "ways_difficulty_from_colour": 136,
+      "ways_difficulty_from_relation_tag": 12,
+      "ways_difficulty_from_way": 29,
+      "ways_oneway": 0,
+      "ways_outside_box": 1,
+      "ways_relation_only": 70,
+      "ways_tagged": 125,
+      "ways_with_grooming": 193
+    }
+  }
+}

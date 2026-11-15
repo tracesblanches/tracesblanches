@@ -1,0 +1,1864 @@
+{
+  "features": [
+    {
+      "geometry": {
+        "coordinates": [
+          6.1866994,
+          46.6251038
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "alpine_hut",
+        "link": 56,
+        "osm_id": 622567141,
+        "osm_type": "node",
+        "refuges_info_id": null,
+        "tags": {
+          "ele": "1370",
+          "name": "La Jaique",
+          "tourism": "alpine_hut"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.159868,
+          46.6327859
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "alpine_hut",
+        "link": 51,
+        "osm_id": 1344471481,
+        "osm_type": "node",
+        "refuges_info_id": null,
+        "tags": {
+          "name": "La Grande-Verrière",
+          "tourism": "alpine_hut"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1671896,
+          46.6037647
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 32,
+        "osm_id": 2449327292,
+        "osm_type": "node",
+        "refuges_info_id": 3126,
+        "tags": {
+          "amenity": "shelter",
+          "fireplace": "stove",
+          "name": "Refuge de la Belle-Combe",
+          "ref:refuges.info": "3126",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1635795,
+          46.6003323
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 30,
+        "osm_id": 2449327401,
+        "osm_type": "node",
+        "refuges_info_id": 3085,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "fireplace": "yes",
+          "name": "Refuge de la Guerre",
+          "ref:refuges.info": "3085",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1757401,
+          46.5939714
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 28,
+        "osm_id": 2449327492,
+        "osm_type": "node",
+        "refuges_info_id": null,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "fireplace": "stove",
+          "name": "Refuge de la Réserve",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1035227,
+          46.5768606
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "other",
+        "link": 47,
+        "osm_id": 3587761897,
+        "osm_type": "node",
+        "refuges_info_id": 3717,
+        "tags": {
+          "access": "no",
+          "ele": "1141",
+          "name": "Chez l'Aimé",
+          "ref:refuges.info": "3717"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.112664,
+          46.6026337
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "shelter",
+        "link": null,
+        "osm_id": 7984419646,
+        "osm_type": "node",
+        "refuges_info_id": null,
+        "tags": {
+          "amenity": "shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1685705,
+          46.5515695
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 46,
+        "osm_id": 8171593741,
+        "osm_type": "node",
+        "refuges_info_id": 3642,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "fireplace": "stove",
+          "name": "La cabane à Charly",
+          "ref:refuges.info": "3642",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1520469,
+          46.5547141
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 21,
+        "osm_id": 8171657018,
+        "osm_type": "node",
+        "refuges_info_id": 2966,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "fireplace": "stove",
+          "name": "La Combe-des-Mines",
+          "ref:refuges.info": "2966",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.0482527,
+          46.6668176
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "wilderness_hut",
+        "link": 52,
+        "osm_id": 9965887298,
+        "osm_type": "node",
+        "refuges_info_id": 7787,
+        "tags": {
+          "access": "yes",
+          "name": "Refuge des Arboux",
+          "ref:refuges.info": "7787",
+          "tourism": "wilderness_hut"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1268985,
+          46.5728067
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 54,
+        "osm_id": 10302365763,
+        "osm_type": "node",
+        "refuges_info_id": 8004,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "fee": "no",
+          "ref:refuges.info": "8004",
+          "shelter_type": "basic_hut"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1364804,
+          46.6423898
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "shelter",
+        "link": null,
+        "osm_id": 11279828170,
+        "osm_type": "node",
+        "refuges_info_id": null,
+        "tags": {
+          "amenity": "shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.0964561,
+          46.6071164
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "shelter",
+        "link": null,
+        "osm_id": 13109066361,
+        "osm_type": "node",
+        "refuges_info_id": null,
+        "tags": {
+          "amenity": "shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1999401,
+          46.6310611
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": null,
+        "osm_id": 14076933502,
+        "osm_type": "node",
+        "refuges_info_id": null,
+        "tags": {
+          "amenity": "shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1142532,
+          46.5980679
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "shelter",
+        "link": null,
+        "osm_id": 90741456,
+        "osm_type": "way",
+        "refuges_info_id": null,
+        "tags": {
+          "amenity": "shelter",
+          "building": "yes"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1320396,
+          46.5602203
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "shelter",
+        "link": 3,
+        "osm_id": 90741887,
+        "osm_type": "way",
+        "refuges_info_id": 1558,
+        "tags": {
+          "amenity": "shelter",
+          "building": "yes",
+          "name": "La Caserne",
+          "ref:refuges.info": "1558",
+          "shelter_type": "basic_hut"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1135039,
+          46.6014068
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "alpine_hut",
+        "link": 42,
+        "osm_id": 90741975,
+        "osm_type": "way",
+        "refuges_info_id": 3194,
+        "tags": {
+          "building": "yes",
+          "name": "La Maison du Montagnon",
+          "ref:refuges.info": "3194",
+          "tourism": "alpine_hut"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.0785635,
+          46.6347216
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "shelter",
+        "link": 55,
+        "osm_id": 90741983,
+        "osm_type": "way",
+        "refuges_info_id": 8768,
+        "tags": {
+          "amenity": "shelter",
+          "building": "barn",
+          "name": "La Thieulette",
+          "ref:refuges.info": "8768",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.0939368,
+          46.5456065
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "alpine_hut",
+        "link": null,
+        "osm_id": 101555534,
+        "osm_type": "way",
+        "refuges_info_id": null,
+        "tags": {
+          "building": "yes",
+          "tourism": "alpine_hut"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1143101,
+          46.6412457
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "alpine_hut",
+        "link": 4,
+        "osm_id": 223683152,
+        "osm_type": "way",
+        "refuges_info_id": 2154,
+        "tags": {
+          "building": "yes",
+          "name": "Les Près d'Haut",
+          "ref:refuges.info": "2154",
+          "tourism": "alpine_hut"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.0657895,
+          46.5582719
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "bus_shelter",
+        "link": null,
+        "osm_id": 224375977,
+        "osm_type": "way",
+        "refuges_info_id": null,
+        "tags": {
+          "amenity": "shelter",
+          "building": "yes",
+          "shelter_type": "public_transport"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.074111,
+          46.6597573
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "shelter",
+        "link": null,
+        "osm_id": 224379022,
+        "osm_type": "way",
+        "refuges_info_id": null,
+        "tags": {
+          "amenity": "shelter",
+          "building": "yes"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.0313166,
+          46.6627869
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "wilderness_hut",
+        "link": 5,
+        "osm_id": 224379450,
+        "osm_type": "way",
+        "refuges_info_id": 2455,
+        "tags": {
+          "building": "yes",
+          "name": "Refuge du Paradis",
+          "ref:refuges.info": "2455",
+          "tourism": "wilderness_hut"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.0636931,
+          46.6547939
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "shelter",
+        "link": null,
+        "osm_id": 224379566,
+        "osm_type": "way",
+        "refuges_info_id": null,
+        "tags": {
+          "amenity": "shelter",
+          "building": "yes",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.148521,
+          46.5944746
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 10,
+        "osm_id": 236977762,
+        "osm_type": "way",
+        "refuges_info_id": 2936,
+        "tags": {
+          "amenity": "shelter",
+          "building": "yes",
+          "name": "Chalet Capt",
+          "ref:refuges.info": "2936"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1270793,
+          46.5726892
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "wilderness_hut",
+        "link": 0,
+        "osm_id": 236984857,
+        "osm_type": "way",
+        "refuges_info_id": 1291,
+        "tags": {
+          "access": "yes",
+          "beds": "20",
+          "building": "yes",
+          "fee": "no",
+          "fireplace": "stove",
+          "name": "Refuge de l'Hôtel de l'Italie",
+          "ref:refuges.info": "1291",
+          "tourism": "wilderness_hut"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1792418,
+          46.6084316
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 36,
+        "osm_id": 236992135,
+        "osm_type": "way",
+        "refuges_info_id": 3159,
+        "tags": {
+          "access": "permissive",
+          "amenity": "shelter",
+          "building": "yes",
+          "ele": "1295",
+          "fireplace": "stove",
+          "name": "Villa Brun",
+          "ref:refuges.info": "3159",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.121534,
+          46.5633866
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "alpine_hut",
+        "link": 2,
+        "osm_id": 250233668,
+        "osm_type": "way",
+        "refuges_info_id": 1557,
+        "tags": {
+          "building": "yes",
+          "name": "Le Chalet Gaillard",
+          "ref:refuges.info": "1557",
+          "tourism": "alpine_hut"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1578568,
+          46.561571
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 23,
+        "osm_id": 285791990,
+        "osm_type": "way",
+        "refuges_info_id": 2968,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "building": "yes",
+          "fireplace": "stove",
+          "name": "Couvert de la Combette",
+          "ref:refuges.info": "2968",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1616716,
+          46.5506874
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 43,
+        "osm_id": 319553533,
+        "osm_type": "way",
+        "refuges_info_id": 3639,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "building": "yes",
+          "fireplace": "stove",
+          "name": "Le Carroz",
+          "ref:refuges.info": "3639"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.15744,
+          46.5810572
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 24,
+        "osm_id": 319579509,
+        "osm_type": "way",
+        "refuges_info_id": 2969,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "building": "yes",
+          "ele": "1195",
+          "fireplace": "stove",
+          "name": "L'Ecorce",
+          "ref:refuges.info": "2969",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1729308,
+          46.5969731
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 29,
+        "osm_id": 319584191,
+        "osm_type": "way",
+        "refuges_info_id": 3084,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "building": "yes",
+          "fireplace": "stove",
+          "name": "La Merminette",
+          "ref:refuges.info": "3084",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1425706,
+          46.5905308
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 14,
+        "osm_id": 320593684,
+        "osm_type": "way",
+        "refuges_info_id": 2946,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "building": "yes",
+          "ele": "1306",
+          "fireplace": "stove",
+          "name": "Refuge des Combes",
+          "ref:refuges.info": "2946",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1901263,
+          46.6073942
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 37,
+        "osm_id": 320593691,
+        "osm_type": "way",
+        "refuges_info_id": 3165,
+        "tags": {
+          "access": "permissive",
+          "amenity": "shelter",
+          "building": "yes",
+          "ele": "1210",
+          "fireplace": "stove",
+          "name": "La Place à Fourneau",
+          "ref:refuges.info": "3165",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1763869,
+          46.6026672
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 33,
+        "osm_id": 320593694,
+        "osm_type": "way",
+        "refuges_info_id": 3137,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "building": "yes",
+          "ele": "1253",
+          "fireplace": "stove",
+          "name": "Refuge du Pillichody",
+          "ref:refuges.info": "3137"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1185381,
+          46.5736696
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 7,
+        "osm_id": 320593699,
+        "osm_type": "way",
+        "refuges_info_id": 2930,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "building": "yes",
+          "fireplace": "yes",
+          "name": "La Gare du Nord",
+          "ref:refuges.info": "2930",
+          "shelter_type": "basic_hut"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1294388,
+          46.5822793
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 12,
+        "osm_id": 320593702,
+        "osm_type": "way",
+        "refuges_info_id": 2944,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "building": "yes",
+          "ele": "1300",
+          "fireplace": "stove",
+          "name": "Gy Louis",
+          "ref:refuges.info": "2944",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1335676,
+          46.5867803
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 13,
+        "osm_id": 320593704,
+        "osm_type": "way",
+        "refuges_info_id": 2945,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "building": "yes",
+          "fireplace": "stove",
+          "name": "Refuge du Bonnet de Police",
+          "ref:refuges.info": "2945",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1520855,
+          46.5974412
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 25,
+        "osm_id": 320593708,
+        "osm_type": "way",
+        "refuges_info_id": 3029,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "building": "yes",
+          "ele": "1330",
+          "fireplace": "stove",
+          "name": "Refuge de la Plane",
+          "ref:refuges.info": "3029",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1649688,
+          46.5774641
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 20,
+        "osm_id": 320593709,
+        "osm_type": "way",
+        "refuges_info_id": 2964,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "building": "yes",
+          "ele": "1195",
+          "fireplace": "stove",
+          "name": "La Molasse II",
+          "ref:refuges.info": "2964",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1974533,
+          46.6237721
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 41,
+        "osm_id": 320593710,
+        "osm_type": "way",
+        "refuges_info_id": 3176,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "building": "yes",
+          "fireplace": "stove",
+          "name": "La Marocaine",
+          "ref:refuges.info": "3176",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1517728,
+          46.5719503
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 18,
+        "osm_id": 320593712,
+        "osm_type": "way",
+        "refuges_info_id": 2962,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "building": "yes",
+          "fireplace": "stove",
+          "name": "Refuge des Grands Crêts",
+          "ref:refuges.info": "2962"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1935921,
+          46.613987
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 40,
+        "osm_id": 320593714,
+        "osm_type": "way",
+        "refuges_info_id": 3170,
+        "tags": {
+          "access": "permissive",
+          "amenity": "shelter",
+          "building": "yes",
+          "ele": "1255",
+          "fireplace": "stove",
+          "name": "Refuge des Chômeurs",
+          "ref:refuges.info": "3170",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1826813,
+          46.6146406
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 38,
+        "osm_id": 320593772,
+        "osm_type": "way",
+        "refuges_info_id": 3166,
+        "tags": {
+          "access": "permissive",
+          "amenity": "shelter",
+          "building": "yes",
+          "ele": "1345",
+          "fireplace": "stove",
+          "name": "refuge de la vue du Mont Blanc",
+          "ref:refuges.info": "3166",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1362345,
+          46.5819686
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 15,
+        "osm_id": 320983156,
+        "osm_type": "way",
+        "refuges_info_id": 2947,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "building": "yes",
+          "ele": "1250",
+          "fireplace": "stove",
+          "name": "Refuge du Pré à la Dame",
+          "ref:refuges.info": "2947",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1887321,
+          46.6185534
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 39,
+        "osm_id": 320991669,
+        "osm_type": "way",
+        "refuges_info_id": 3169,
+        "tags": {
+          "access": "permissive",
+          "amenity": "shelter",
+          "building": "yes",
+          "ele": "1335",
+          "fireplace": "stove",
+          "name": "La Chapelle",
+          "ref:refuges.info": "3169",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1659,
+          46.6088735
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 26,
+        "osm_id": 554987526,
+        "osm_type": "way",
+        "refuges_info_id": 3081,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "building": "yes",
+          "ele": "1350",
+          "fireplace": "stove",
+          "name": "Refuge Rendez-Vous des Sages",
+          "ref:refuges.info": "3081",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1172893,
+          46.5574715
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "shelter",
+        "link": 1,
+        "osm_id": 697121111,
+        "osm_type": "way",
+        "refuges_info_id": 1292,
+        "tags": {
+          "amenity": "shelter",
+          "building": "yes",
+          "name": "Plan de la Citerne",
+          "ref:refuges.info": "1292",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1022411,
+          46.5623094
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "wilderness_hut",
+        "link": 6,
+        "osm_id": 802162819,
+        "osm_type": "way",
+        "refuges_info_id": 2805,
+        "tags": {
+          "building": "yes",
+          "fee": "no",
+          "fireplace": "stove",
+          "name": "Abri du Grand Remblai",
+          "ref:refuges.info": "2805",
+          "tourism": "wilderness_hut"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1889413,
+          46.5463821
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "wilderness_hut",
+        "link": 31,
+        "osm_id": 875840235,
+        "osm_type": "way",
+        "refuges_info_id": 3112,
+        "tags": {
+          "beds": "4",
+          "building": "yes",
+          "fee": "no",
+          "fireplace": "stove",
+          "name": "Bois de Caboules",
+          "ref:refuges.info": "3112",
+          "tourism": "wilderness_hut"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.0861628,
+          46.6286116
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "wilderness_hut",
+        "link": 50,
+        "osm_id": 877389352,
+        "osm_type": "way",
+        "refuges_info_id": 7225,
+        "tags": {
+          "building": "yes",
+          "fee": "no",
+          "fireplace": "yes",
+          "name": "Bacu de la combe des Mailèzes",
+          "ref:refuges.info": "7225",
+          "shelter_type": "basic_hut",
+          "tourism": "wilderness_hut"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.0944688,
+          46.5451582
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "alpine_hut",
+        "link": 48,
+        "osm_id": 877983958,
+        "osm_type": "way",
+        "refuges_info_id": 5721,
+        "tags": {
+          "building": "yes",
+          "fireplace": "stove",
+          "name": "Le Chalet des Ministres",
+          "ref:refuges.info": "5721",
+          "tourism": "alpine_hut"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1464806,
+          46.5675981
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 17,
+        "osm_id": 877991718,
+        "osm_type": "way",
+        "refuges_info_id": 2961,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "building": "yes",
+          "fireplace": "stove",
+          "name": "Grands-Crêts-du-Vent",
+          "ref:refuges.info": "2961",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1425137,
+          46.5729889
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 8,
+        "osm_id": 877992976,
+        "osm_type": "way",
+        "refuges_info_id": 2931,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "building": "yes",
+          "ele": "1210",
+          "fireplace": "stove",
+          "ref:refuges.info": "2931",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1713402,
+          46.55124
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 45,
+        "osm_id": 878380398,
+        "osm_type": "way",
+        "refuges_info_id": 3641,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "building": "yes",
+          "ele": "1240",
+          "fireplace": "stove",
+          "name": "La Chuechill",
+          "ref:refuges.info": "3641",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1564162,
+          46.5737633
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 19,
+        "osm_id": 878390311,
+        "osm_type": "way",
+        "refuges_info_id": 2963,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "building": "yes",
+          "fireplace": "stove",
+          "name": "La Molasse I",
+          "ref:refuges.info": "2963",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1882642,
+          46.6000652
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 35,
+        "osm_id": 878668420,
+        "osm_type": "way",
+        "refuges_info_id": 3139,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "building": "yes",
+          "fireplace": "stove",
+          "name": "La Pierre Trouée",
+          "ref:refuges.info": "3139",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1513367,
+          46.5829964
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 16,
+        "osm_id": 878672708,
+        "osm_type": "way",
+        "refuges_info_id": 2950,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "building": "yes",
+          "fireplace": "stove",
+          "name": "La Racine",
+          "ref:refuges.info": "2950",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1652181,
+          46.5717141
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 22,
+        "osm_id": 878932902,
+        "osm_type": "way",
+        "refuges_info_id": 2967,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "building": "yes",
+          "fireplace": "stove",
+          "name": "L'Apollo",
+          "ref:refuges.info": "2967",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1810528,
+          46.5627296
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 44,
+        "osm_id": 878935829,
+        "osm_type": "way",
+        "refuges_info_id": 3640,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "building": "yes",
+          "fireplace": "yes",
+          "name": "Le Biblanc",
+          "ref:refuges.info": "3640",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1445752,
+          46.5572551
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 11,
+        "osm_id": 879389022,
+        "osm_type": "way",
+        "refuges_info_id": 2937,
+        "tags": {
+          "access": "yes",
+          "amenity": "shelter",
+          "building": "yes",
+          "ele": "1187",
+          "fee": "no",
+          "fireplace": "stove",
+          "name": "Pierre-Borel",
+          "ref:refuges.info": "2937",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1726562,
+          46.5917058
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 27,
+        "osm_id": 1190886400,
+        "osm_type": "way",
+        "refuges_info_id": 3082,
+        "tags": {
+          "access": "permissive",
+          "amenity": "shelter",
+          "building": "yes",
+          "ele": "1133",
+          "fireplace": "stove",
+          "name": "Le Bambi",
+          "ref:refuges.info": "3082",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1793423,
+          46.5990393
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 34,
+        "osm_id": 1190886401,
+        "osm_type": "way",
+        "refuges_info_id": 3138,
+        "tags": {
+          "access": "permissive",
+          "amenity": "shelter",
+          "building": "yes",
+          "ele": "1205",
+          "fireplace": "stove",
+          "name": "La Pierre-à-Pointe",
+          "ref:refuges.info": "3138",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1354459,
+          46.5683174
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "shelter",
+        "link": 9,
+        "osm_id": 1191412478,
+        "osm_type": "way",
+        "refuges_info_id": 2932,
+        "tags": {
+          "access": "permissive",
+          "amenity": "shelter",
+          "building": "yes",
+          "ele": "2462",
+          "fireplace": "stove",
+          "name": "Combe Herbée",
+          "ref:refuges.info": "2932",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1145806,
+          46.6314879
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "shelter",
+        "link": 53,
+        "osm_id": 1199411821,
+        "osm_type": "way",
+        "refuges_info_id": 7972,
+        "tags": {
+          "amenity": "shelter",
+          "building": "roof",
+          "name": "Abri de Chalotet",
+          "ref:refuges.info": "7972",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1155271,
+          46.5983665
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "bus_shelter",
+        "link": null,
+        "osm_id": 1232791990,
+        "osm_type": "way",
+        "refuges_info_id": null,
+        "tags": {
+          "amenity": "shelter",
+          "building": "yes",
+          "shelter_type": "public_transport"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.0434728,
+          46.5488931
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "bus_shelter",
+        "link": null,
+        "osm_id": 1263180153,
+        "osm_type": "way",
+        "refuges_info_id": null,
+        "tags": {
+          "amenity": "shelter",
+          "building": "yes",
+          "shelter_type": "public_transport"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1837402,
+          46.6367721
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "shelter",
+        "link": 49,
+        "osm_id": 1266738599,
+        "osm_type": "way",
+        "refuges_info_id": 6548,
+        "tags": {
+          "amenity": "shelter",
+          "building": "yes",
+          "name": "Abri de la Citadelle",
+          "ref:refuges.info": "6548",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1152032,
+          46.6724243
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "shelter",
+        "link": null,
+        "osm_id": 1376555432,
+        "osm_type": "way",
+        "refuges_info_id": null,
+        "tags": {
+          "amenity": "shelter",
+          "building": "yes"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.0743374,
+          46.6596544
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "shelter",
+        "link": null,
+        "osm_id": 1460239842,
+        "osm_type": "way",
+        "refuges_info_id": null,
+        "tags": {
+          "amenity": "shelter",
+          "building": "yes"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.0305615,
+          46.6378531
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "shelter",
+        "link": null,
+        "osm_id": 1563338961,
+        "osm_type": "way",
+        "refuges_info_id": null,
+        "tags": {
+          "amenity": "shelter",
+          "building": "yes",
+          "shelter_type": "picnic_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.0305598,
+          46.6381054
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "shelter",
+        "link": null,
+        "osm_id": 1563338962,
+        "osm_type": "way",
+        "refuges_info_id": null,
+        "tags": {
+          "amenity": "shelter",
+          "building": "yes",
+          "shelter_type": "picnic_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.0306127,
+          46.6374429
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "bus_shelter",
+        "link": null,
+        "osm_id": 1563338971,
+        "osm_type": "way",
+        "refuges_info_id": null,
+        "tags": {
+          "amenity": "shelter",
+          "building": "yes",
+          "shelter_type": "public_transport"
+        }
+      },
+      "type": "Feature"
+    }
+  ],
+  "type": "FeatureCollection"
+}

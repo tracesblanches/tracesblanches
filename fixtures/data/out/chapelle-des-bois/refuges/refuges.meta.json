@@ -1,0 +1,314 @@
+{
+  "crs": "EPSG:4326 (WGS84, longitude, latitude)",
+  "files": [
+    {
+      "count": 69,
+      "description": "points refuges.info de l'emprise (instantané hebdomadaire + mise à jour depuis=), dernier commentaire daté",
+      "licence": "CC BY-SA 2.0",
+      "name": "refuges_info.geojson",
+      "properties": {
+        "alt": "altitude, m",
+        "blankets": "couvertures",
+        "forest_100m": "forêt à moins de 100 m (« bois » : pas une réserve de bois)",
+        "id": "identifiant refuges.info",
+        "in_france": "commune française au point (geo.api.gouv.fr)",
+        "latrines": "latrines",
+        "link": "index dans links.json",
+        "missing_wall": "manque un mur",
+        "name": "nom",
+        "places": "places prévues pour dormir",
+        "places_mattress": "places sur matelas",
+        "state": "état (« Fermé au public », « Inutilisable », « Détruite »), null si ouvert ou inconnu",
+        "stove": "poêle",
+        "type_id": "type (7 cabane non gardée, 9 gîte d'étape, 10 refuge gardé, 23 point d'eau...)",
+        "type_label": "libellé du type",
+        "url": "fiche refuges.info",
+        "water_100m": "eau à moins de 100 m"
+      }
+    },
+    {
+      "count": 73,
+      "description": "refuges et abris OSM (tourism=alpine_hut, tourism=wilderness_hut, amenity=shelter, ref:refuges.info) ; centre des ways et relations",
+      "licence": "ODbL 1.0",
+      "name": "osm.geojson",
+      "properties": {
+        "in_france": "commune française au point",
+        "kind": "alpine_hut, wilderness_hut, shelter, bus_shelter (shelter_type=public_transport) ou other",
+        "link": "index dans links.json",
+        "osm_id": "identifiant OSM",
+        "osm_type": "node, way ou relation",
+        "refuges_info_id": "identifiant refuges.info (ref:refuges.info)",
+        "tags": "étiquettes retenues : name, tourism, amenity, shelter_type, building, capacity, beds, winter_room, fireplace, stove, drinking_water, toilets, opening_hours, access, fee, reservation, operator, website, contact:website, ele, ref:refuges.info, description, disused, abandoned (description filtrée ; phone et contact:phone jamais en étiquette)"
+      }
+    },
+    {
+      "count": 23,
+      "description": "cabanes (hut), abris (shelter) et gîtes Camptocamp de l'emprise, avec la capacité hors gardiennage",
+      "licence": "CC BY-SA 3.0",
+      "name": "camptocamp.geojson",
+      "properties": {
+        "attribution_url": "historique (auteurs) à citer",
+        "blanket_unstaffed": "couvertures",
+        "capacity_staffed": "places gardé",
+        "capacity_unstaffed": "places hors gardiennage (local d'hiver)",
+        "country": "pays (zone Camptocamp)",
+        "custodianship": "accessible_when_wardened, always_accessible, key_needed, no_warden",
+        "elevation": "altitude, m",
+        "gas_unstaffed": "gaz",
+        "heating_unstaffed": "chauffage",
+        "id": "document Camptocamp",
+        "in_france": "pays = France",
+        "licence": "licence du document",
+        "link": "index dans links.json",
+        "mattress_unstaffed": "matelas hors gardiennage",
+        "quality": "qualité de la fiche",
+        "title": "nom",
+        "url": "page Camptocamp",
+        "waypoint_type": "hut, shelter, gite"
+      }
+    }
+  ],
+  "generated_at": "2026-11-15T09:57:14Z",
+  "layer": "refuges",
+  "notes": [
+    "Jeu de référence des tests (fixtures/, skimap fixtures) : seuls les fichiers listés sont repris."
+  ],
+  "parameters": {
+    "bbox_south_west_north_east": [
+      46.54,
+      6.02,
+      46.68,
+      6.2
+    ],
+    "links_min_name_similarity": 0.3,
+    "links_near_m": 250.0,
+    "links_same_spot_m": 40.0,
+    "refuges_info_refresh": "instantané complet gardé 7 jours, puis requête depuis=<date de l'instantané> gardée 1 h ; commentaires gardés 1 jour"
+  },
+  "site": "chapelle-des-bois",
+  "sources": [
+    {
+      "attribution": "© les contributeurs de refuges.info (CC BY-SA 2.0)",
+      "fetched_at": "2026-11-14T22:27:54Z",
+      "licence": "CC BY-SA 2.0",
+      "name": "refuges.info /api/bbox (instantané complet)",
+      "personal_use_only": false,
+      "sha256": "f14f80d33e8fbb3c3374bbbc0529094bbd38779c90c967fefa7eeb38d56bc5b4",
+      "url": "https://www.refuges.info/api/bbox?bbox=6.02,46.54,6.2,46.68&format=geojson&detail=complet&nb_points=all&format_texte=texte"
+    },
+    {
+      "attribution": "© les contributeurs de refuges.info (CC BY-SA 2.0)",
+      "fetched_at": "2026-11-15T08:59:08Z",
+      "licence": "CC BY-SA 2.0",
+      "name": "refuges.info /api/bbox depuis= (mise à jour incrémentale)",
+      "personal_use_only": false,
+      "sha256": "d3aae217b5597c0b6a8ae14acb0abf60019b1a840a50920bcec93379d59474c6",
+      "url": "https://www.refuges.info/api/bbox?bbox=6.02,46.54,6.2,46.68&format=geojson&detail=complet&nb_points=all&format_texte=texte&depuis=1794695274"
+    },
+    {
+      "attribution": "© les contributeurs de refuges.info (CC BY-SA 2.0)",
+      "fetched_at": "2026-11-14T22:27:56Z",
+      "licence": "CC BY-SA 2.0",
+      "name": "refuges.info /api/commentaires",
+      "personal_use_only": false,
+      "sha256": "b6044c0a8e42bf18c96266079bd1e65de18c3d064a17f598359d37cbfc784e3e",
+      "url": "https://www.refuges.info/api/commentaires?id_point=1291,1292,1557,1558,2153,2154,2455,2805,2930,2931,2932,2936,2937,2944,2945,2946,2947,2950,2961,2962,2963,2964,2966,2967,2968,2969,3029,3081,3082,3083,3084,3085,3112,3126,3137,3138,3139,3159,3165,3166&format_texte=texte"
+    },
+    {
+      "attribution": "© les contributeurs de refuges.info (CC BY-SA 2.0)",
+      "fetched_at": "2026-11-14T22:27:57Z",
+      "licence": "CC BY-SA 2.0",
+      "name": "refuges.info /api/commentaires",
+      "personal_use_only": false,
+      "sha256": "31674166c4d1e968598986a21a9fcb6f0d733ac3c3e64994eac4030cd842fb89",
+      "url": "https://www.refuges.info/api/commentaires?id_point=3169,3170,3176,3178,3194,3639,3640,3641,3642,3717,3905,5721,6541,6548,6549,6679,7225,7445,7787,7972,8004,8493,8768,8769,9232,9281,9282,10203,10251&format_texte=texte"
+    },
+    {
+      "attribution": "© les contributeurs d'OpenStreetMap (ODbL)",
+      "fetched_at": "2026-11-15T01:37:18Z",
+      "licence": "ODbL 1.0",
+      "name": "OpenStreetMap (Overpass)",
+      "personal_use_only": false,
+      "sha256": "5b50c27bd42d1244ec9f3d76e1faeceaa2e0bb282b0880028ee0ce680b3a32ed",
+      "url": "https://overpass-api.de/api/interpreter"
+    },
+    {
+      "attribution": "© les contributeurs de Camptocamp.org (CC BY-SA 3.0)",
+      "fetched_at": "2026-11-14T22:28:35Z",
+      "licence": "CC BY-SA 3.0",
+      "name": "Camptocamp /waypoints",
+      "personal_use_only": false,
+      "sha256": "4dd4dc1c9480c688ef873b588910252f4d88ada6bee789f2e09b30539d2c6237",
+      "url": "https://api.camptocamp.org/waypoints?wtyp=hut,shelter,gite&bbox=670143,5867311,690181,5889997&limit=100&offset=0&pl=fr"
+    },
+    {
+      "attribution": "© les contributeurs de Camptocamp.org (CC BY-SA 3.0)",
+      "licence": "CC BY-SA 3.0",
+      "name": "Camptocamp /waypoints/<id> (23 documents)",
+      "personal_use_only": false,
+      "url": "https://api.camptocamp.org/waypoints/<id>?cook=fr"
+    },
+    {
+      "attribution": "geo.api.gouv.fr",
+      "licence": "Licence Ouverte 2.0",
+      "name": "geo.api.gouv.fr communes (en France ou non)",
+      "personal_use_only": false,
+      "url": "https://geo.api.gouv.fr/communes"
+    }
+  ],
+  "stats": {
+    "camptocamp": {
+      "by_type": {
+        "gite": {
+          "france": 2,
+          "hors_france": 0
+        },
+        "hut": {
+          "france": 1,
+          "hors_france": 0
+        },
+        "shelter": {
+          "france": 1,
+          "hors_france": 19
+        }
+      },
+      "documents": 23,
+      "in_box": 23,
+      "with_unstaffed_capacity": 1
+    },
+    "fiches": {
+      "by_kind": {
+        "abri": {
+          "france": 10,
+          "hors_france": 39
+        },
+        "gite": {
+          "france": 6,
+          "hors_france": 0
+        },
+        "non_garde": {
+          "france": 5,
+          "hors_france": 3
+        }
+      },
+      "cards": 63,
+      "phones_by_source": {
+        "camptocamp": {
+          "france": 1,
+          "hors_france": 0
+        },
+        "refuges.info": {
+          "france": 7,
+          "hors_france": 0
+        }
+      },
+      "staffed_or_gite_without_phone": [
+        "Refuge des Prés d'Haut",
+        "Les Enguenelles"
+      ],
+      "winter_access": {
+        "ferme": {
+          "france": 2,
+          "hors_france": 0
+        },
+        "inconnu": {
+          "france": 4,
+          "hors_france": 0
+        },
+        "libre": {
+          "france": 14,
+          "hors_france": 42
+        },
+        "local_hiver": {
+          "france": 1,
+          "hors_france": 0
+        }
+      },
+      "with_camptocamp": 22,
+      "with_info_date": 63,
+      "with_phone": 7,
+      "with_places_winter": 1,
+      "with_website": 7
+    },
+    "links": {
+      "by_method": {
+        "camptocamp_refuges_info_position": 22,
+        "osm_position": 3,
+        "osm_ref_refuges_info": 54
+      },
+      "places": 57,
+      "refuges_info_with_camptocamp": 22,
+      "refuges_info_with_osm": 57
+    },
+    "osm": {
+      "by_kind": {
+        "alpine_hut": {
+          "france": 7,
+          "hors_france": 0
+        },
+        "bus_shelter": {
+          "france": 4,
+          "hors_france": 0
+        },
+        "other": {
+          "france": 1,
+          "hors_france": 0
+        },
+        "shelter": {
+          "france": 15,
+          "hors_france": 40
+        },
+        "wilderness_hut": {
+          "france": 4,
+          "hors_france": 2
+        }
+      },
+      "elements": 73,
+      "with_fireplace": 42,
+      "with_opening_hours": 0,
+      "with_ref_refuges_info": 54,
+      "with_winter_room": 0
+    },
+    "refuges_info": {
+      "by_type": {
+        "cabane non gardée": {
+          "france": 15,
+          "hors_france": 42
+        },
+        "gîte d'étape": {
+          "france": 6,
+          "hors_france": 0
+        },
+        "passage délicat": {
+          "france": 1,
+          "hors_france": 0
+        },
+        "point d'eau": {
+          "france": 4,
+          "hors_france": 1
+        }
+      },
+      "incremental_points": 0,
+      "points": 69,
+      "states": {
+        "Détruite": {
+          "france": 1,
+          "hors_france": 0
+        },
+        "Fermé au public": {
+          "france": 1,
+          "hors_france": 0
+        }
+      },
+      "with_last_comment": 62,
+      "with_stove": 45
+    }
+  },
+  "tickets": [
+    "P11 (#24)",
+    "H1 (#132)"
+  ],
+  "valid_from": "2026-11-15T01:37:18Z",
+  "valid_until": null,
+  "validity": null
+}

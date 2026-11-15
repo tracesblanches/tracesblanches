@@ -1,0 +1,478 @@
+{
+  "features": [
+    {
+      "geometry": {
+        "coordinates": [
+          6.815936,
+          44.844793
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "other",
+        "link": 6,
+        "osm_id": 2953142889,
+        "osm_type": "node",
+        "refuges_info_id": 7845,
+        "tags": {
+          "access": "yes",
+          "amenity": "drinking_water",
+          "fee": "no",
+          "ref:refuges.info": "7845"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.6728739,
+          44.8332368
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "other",
+        "link": 4,
+        "osm_id": 5793745253,
+        "osm_type": "node",
+        "refuges_info_id": 5894,
+        "tags": {
+          "name": "Yourte des Ayes",
+          "ref:refuges.info": "5894"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.7847604,
+          44.8196761
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "shelter",
+        "link": null,
+        "osm_id": 5885278985,
+        "osm_type": "node",
+        "refuges_info_id": null,
+        "tags": {
+          "amenity": "shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.8285669,
+          44.8692367
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "wilderness_hut",
+        "link": 5,
+        "osm_id": 6814732646,
+        "osm_type": "node",
+        "refuges_info_id": 7811,
+        "tags": {
+          "capacity": "6",
+          "drinking_water": "no",
+          "ele": "2850",
+          "fee": "no",
+          "fireplace": "no",
+          "name": "Bivacco Corradini",
+          "ref:refuges.info": "7811",
+          "toilets": "no",
+          "tourism": "wilderness_hut"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.8379264,
+          44.9059839
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "alpine_hut",
+        "link": null,
+        "osm_id": 11139705088,
+        "osm_type": "node",
+        "refuges_info_id": null,
+        "tags": {
+          "name": "Rifugio Combe d'Imbert",
+          "tourism": "alpine_hut"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.6604671,
+          44.8423782
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "shelter",
+        "link": null,
+        "osm_id": 13127962885,
+        "osm_type": "node",
+        "refuges_info_id": null,
+        "tags": {
+          "amenity": "shelter",
+          "shelter_type": "lean_to"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.6604737,
+          44.8423587
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "shelter",
+        "link": null,
+        "osm_id": 13128014942,
+        "osm_type": "node",
+        "refuges_info_id": null,
+        "tags": {
+          "amenity": "shelter",
+          "shelter_type": "picnic_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.7327283,
+          44.7723581
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "shelter",
+        "link": null,
+        "osm_id": 72559145,
+        "osm_type": "way",
+        "refuges_info_id": null,
+        "tags": {
+          "amenity": "shelter",
+          "building": "roof",
+          "shelter_type": "lean_to"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.7352288,
+          44.7802277
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "bus_shelter",
+        "link": null,
+        "osm_id": 72559461,
+        "osm_type": "way",
+        "refuges_info_id": null,
+        "tags": {
+          "amenity": "shelter",
+          "building": "yes",
+          "drinking_water": "yes",
+          "fee": "no",
+          "shelter_type": "public_transport"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.6767502,
+          44.8254933
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "wilderness_hut",
+        "link": 0,
+        "osm_id": 74555070,
+        "osm_type": "way",
+        "refuges_info_id": 648,
+        "tags": {
+          "building": "yes",
+          "capacity": "16",
+          "ele": "2140",
+          "name": "Gite de Vers le Col",
+          "ref:refuges.info": "648",
+          "tourism": "wilderness_hut"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.8158802,
+          44.8446851
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "alpine_hut",
+        "link": 1,
+        "osm_id": 171614493,
+        "osm_type": "way",
+        "refuges_info_id": 1428,
+        "tags": {
+          "access": "yes",
+          "capacity": "62",
+          "ele": "2040",
+          "name": "Refuge des Fonts de Cervières",
+          "ref:refuges.info": "1428",
+          "tourism": "alpine_hut"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.710519,
+          44.9006212
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "wilderness_hut",
+        "link": 3,
+        "osm_id": 171758923,
+        "osm_type": "way",
+        "refuges_info_id": 5521,
+        "tags": {
+          "building": "yes",
+          "ele": "2365",
+          "name": "Cabane du Querelay",
+          "ref:refuges.info": "5521",
+          "shelter_type": "weather_shelter",
+          "tourism": "wilderness_hut"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.789551,
+          44.9027851
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "alpine_hut",
+        "link": 7,
+        "osm_id": 185982920,
+        "osm_type": "way",
+        "refuges_info_id": null,
+        "tags": {
+          "building": "yes",
+          "name": "Capanna Mautino",
+          "tourism": "alpine_hut"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.7329649,
+          44.8230108
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "alpine_hut",
+        "link": 8,
+        "osm_id": 189111723,
+        "osm_type": "way",
+        "refuges_info_id": null,
+        "tags": {
+          "amenity": "restaurant",
+          "building": "yes",
+          "name": "Refuge Napoléon",
+          "tourism": "alpine_hut"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.6733778,
+          44.9152818
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "bus_shelter",
+        "link": null,
+        "osm_id": 223346662,
+        "osm_type": "way",
+        "refuges_info_id": null,
+        "tags": {
+          "amenity": "shelter",
+          "building": "yes",
+          "shelter_type": "public_transport"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.7147211,
+          44.7730646
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "shelter",
+        "link": 2,
+        "osm_id": 248879687,
+        "osm_type": "way",
+        "refuges_info_id": 4215,
+        "tags": {
+          "amenity": "shelter",
+          "building": "yes",
+          "ele": "1800",
+          "name": "Cabane de la Gardère",
+          "ref:refuges.info": "4215",
+          "shelter_type": "weather_shelter"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.7957821,
+          44.9027854
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": false,
+        "kind": "alpine_hut",
+        "link": null,
+        "osm_id": 258840893,
+        "osm_type": "way",
+        "refuges_info_id": null,
+        "tags": {
+          "building": "yes",
+          "name": "Rifugio militare alpino \"Brigata Alpina Taurinense\"",
+          "tourism": "alpine_hut"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.7285618,
+          44.7942163
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "bus_shelter",
+        "link": null,
+        "osm_id": 1004581423,
+        "osm_type": "way",
+        "refuges_info_id": null,
+        "tags": {
+          "amenity": "shelter",
+          "shelter_type": "public_transport"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.7245773,
+          44.8704962
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "bus_shelter",
+        "link": null,
+        "osm_id": 1164687236,
+        "osm_type": "way",
+        "refuges_info_id": null,
+        "tags": {
+          "amenity": "shelter",
+          "shelter_type": "public_transport"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.7213706,
+          44.8681352
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "in_france": true,
+        "kind": "bus_shelter",
+        "link": null,
+        "osm_id": 1164687240,
+        "osm_type": "way",
+        "refuges_info_id": null,
+        "tags": {
+          "amenity": "shelter",
+          "shelter_type": "public_transport"
+        }
+      },
+      "type": "Feature"
+    }
+  ],
+  "type": "FeatureCollection"
+}

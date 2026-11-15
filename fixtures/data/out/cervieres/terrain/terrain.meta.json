@@ -1,0 +1,87 @@
+{
+  "layer": "terrain",
+  "site": "cervieres",
+  "tickets": [
+    "P5 (#18)"
+  ],
+  "generated_at": "2026-11-15T09:00:43Z",
+  "valid_from": null,
+  "valid_until": null,
+  "validity": "relief permanent (date des levés LiDAR HD, voir sources)",
+  "crs": "EPSG:2154 (Lambert-93), altitudes IGN69",
+  "sources": [
+    {
+      "name": "MNT LiDAR HD (5 m, rééchantillonné par le WMS)",
+      "producer": "IGN",
+      "url": "https://data.geopf.fr/wms-r?LAYERS=IGNF_LIDAR-HD_MNT_ELEVATION.ELEVATIONGRIDCOVERAGE.LAMB93",
+      "licence": "Licence Ouverte 2.0 (Etalab)",
+      "attribution": "IGN – MNT LiDAR HD",
+      "personal_use_only": false,
+      "edition": "Cervières : vol août 2021, édition 15/03/2025 ; Chapelle-des-Bois : vol oct.-nov. 2022, édition 21/07/2025 (rapport 07)"
+    },
+    {
+      "name": "Carte des pentes (SLOPES.MOUNTAIN), comparaison seulement",
+      "producer": "IGN",
+      "url": "https://data.geopf.fr/wmts?LAYER=GEOGRAPHICALGRIDSYSTEMS.SLOPES.MOUNTAIN",
+      "licence": "Géoplateforme IGN, sans clé ; licence d'un usage hors ligne non confirmée (features.md n° 5) : la couche n'est utilisée que pour la comparaison, rien n'en est redistribué",
+      "attribution": "IGN – Carte des pentes",
+      "personal_use_only": false
+    }
+  ],
+  "files": [
+    {
+      "name": "dem_5m.tif",
+      "description": "Altitude du terrain (MNT LiDAR HD), IGN69",
+      "unit": "m",
+      "format": "GeoTIFF Float32, Deflate",
+      "crs": "EPSG:2154",
+      "cell_size": 5.0,
+      "size_cells": [
+        3317,
+        3480
+      ],
+      "nodata": "NaN",
+      "bytes": 33881983
+    },
+    {
+      "name": "slope_5m.tif",
+      "description": "Pente (Horn 3×3)",
+      "unit": "degré",
+      "format": "GeoTIFF Float32, Deflate",
+      "crs": "EPSG:2154",
+      "cell_size": 5.0,
+      "size_cells": [
+        3317,
+        3480
+      ],
+      "nodata": "NaN",
+      "bytes": 36004428
+    },
+    {
+      "name": "aspect_5m.tif",
+      "description": "Orientation : direction vers laquelle la pente descend, degrés depuis le nord dans le sens horaire ; -1 = plat",
+      "unit": "degré",
+      "format": "GeoTIFF Float32, Deflate",
+      "crs": "EPSG:2154",
+      "cell_size": 5.0,
+      "size_cells": [
+        3317,
+        3480
+      ],
+      "nodata": "NaN",
+      "bytes": 35996470
+    },
+    {
+      "name": "slope_ign_comparison.json",
+      "description": "comparaison de la pente à la carte des pentes IGN",
+      "format": "JSON"
+    }
+  ],
+  "notes": [
+    "Grille Lambert-93 de 5 m dont l'origine est décalée de 0,25 m (grille des dalles LiDAR HD).",
+    "Le WMS rééchantillonne les dalles de 50 cm à 5 m (écart moyen de 0,11 m à la moyenne par blocs de 10 × 10 sur la dalle 0998-6426).",
+    "Hors de France (Italie, Suisse) et dans les zones masquées (ZICAD), pas de donnée : NaN.",
+    "Pente et orientation : opérateur de Horn sur 3 × 3 cellules ; bordures et voisins NaN donnent NaN.",
+    "Comparaison à la carte des pentes IGN (zoom 15) dans slope_ign_comparison.json : la carte IGN vient du RGE ALTI 5 m, la nôtre du LiDAR HD."
+  ]
+}

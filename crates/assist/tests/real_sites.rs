@@ -1,12 +1,24 @@
-//! Checks on the real layers of both sites and on the archived past days
-//! (`data/out/<site>/assist/history/`, written by the `history` example). Reads only;
+//! Checks on the real layers of both sites and on the archived past days. Reads only;
 //! writes nothing.
 //!
+//! Two categories:
+//!
+//! - fixtures (default): the redistributable layers of `fixtures/` (graph, pistes, zones,
+//!   coverage, huts, snow, exposure of Chapelle-des-Bois), without any weather: the
+//!   suggestions (A5) and the equipment list (A6) do not need it;
+//! - full data (`full_data_`, weekly job): the archived past days of
+//!   `data/out/<site>/assist/history/` (Open-Meteo historical forecasts, personal use
+//!   only, never versioned), the BERA archive and the status sources.
+//!
 //! ```sh
-//! cargo test -p skimap-assist --test real_sites -- --ignored
+//! cargo test -p skimap-assist --test real_sites
+//! cargo test -p skimap-assist --test real_sites -- --ignored full_data_
 //! ```
 
-use std::path::{Path, PathBuf};
+#[path = "../../../fixtures/support/mod.rs"]
+mod fixtures;
+
+use std::path::PathBuf;
 
 use chrono::NaiveDate;
 use skimap_assist::briefing::{self, Factor};
@@ -18,14 +30,20 @@ use skimap_assist::{alerts, best_time, equipment, synthesis, wax};
 use skimap_common::geom::LonLat;
 use skimap_common::layout::DataLayout;
 use skimap_common::site::{CERVIERES, CHAPELLE_DES_BOIS, Site};
-use skimap_core::routing::Style;
+use skimap_core::routing::{Router, Style};
 
 fn layout() -> DataLayout {
-    DataLayout::new(
-        std::env::var("SKIMAP_DATA_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data")),
-    )
+    DataLayout::new(fixtures::full_data())
+}
+
+/// Layers of the fixtures, no weather, no status, no BERA.
+fn fixture_data(site: &Site) -> SiteData {
+    let l = DataLayout::new(fixtures::data());
+    let d = SiteData::load(&l, site, &Paths::default()).unwrap();
+    assert!(d.weather.is_none() && d.status.is_none() && d.beras.is_empty());
+    assert!(d.graph.is_some() && !d.pistes.is_empty() && d.zones.is_some());
+    assert!(d.no_network.is_some(), "{:?}", d.missing);
+    d
 }
 
 fn history(site: &Site, forecast: bool, route: &str) -> SiteData {
@@ -33,7 +51,7 @@ fn history(site: &Site, forecast: bool, route: &str) -> SiteData {
     let h = l.layer_dir(site, "assist").unwrap().join("history");
     let mut paths = Paths::default();
     let mut entries: Vec<PathBuf> = std::fs::read_dir(&h)
-        .unwrap()
+        .unwrap_or_else(|e| panic!("{}: {e}", h.display()))
         .map(|e| e.unwrap().path())
         .collect();
     entries.sort();
@@ -64,8 +82,8 @@ fn date(s: &str) -> NaiveDate {
 }
 
 #[test]
-#[ignore]
-fn cervieres_january_2026_snowfall_and_cold() {
+#[ignore = "full-data: data/out/<site>/assist/history (Open-Meteo, personal use)"]
+fn full_data_cervieres_january_2026_snowfall_and_cold() {
     let d = history(&CERVIERES, false, "routes.geojson");
     assert!(d.missing.is_empty(), "{:?}", d.missing);
     let opts = briefing::Options::default();
@@ -106,8 +124,8 @@ fn cervieres_january_2026_snowfall_and_cold() {
 }
 
 #[test]
-#[ignore]
-fn cervieres_spring_2023_bera_and_softening() {
+#[ignore = "full-data: data/out/<site>/assist/history (Open-Meteo, personal use)"]
+fn full_data_cervieres_spring_2023_bera_and_softening() {
     let d = history(&CERVIERES, false, "offpiste_laus_izoard.geojson");
     let b = briefing::day(&d, date("2023-04-15"), &briefing::Options::default());
     assert_eq!(b.bera_level, Some(2));
@@ -127,8 +145,8 @@ fn cervieres_spring_2023_bera_and_softening() {
 }
 
 #[test]
-#[ignore]
-fn chapelle_february_2026_thaw() {
+#[ignore = "full-data: data/out/<site>/assist/history (Open-Meteo, personal use)"]
+fn full_data_chapelle_february_2026_thaw() {
     let d = history(&CHAPELLE_DES_BOIS, false, "offpiste_risoux_fevrier.geojson");
     let day = date("2026-02-24");
     let b = briefing::day(&d, day, &briefing::Options::default());
@@ -153,8 +171,8 @@ fn chapelle_february_2026_thaw() {
 }
 
 #[test]
-#[ignore]
-fn today_both_sites() {
+#[ignore = "full-data: data/out/<site>/assist/history (Open-Meteo, personal use)"]
+fn full_data_today_both_sites() {
     let t = date("2026-11-15");
     let d = history(&CERVIERES, true, "routes.geojson");
     let b = briefing::day(&d, t, &briefing::Options::default());
@@ -191,8 +209,8 @@ fn request(
 }
 
 #[test]
-#[ignore]
-fn suggestions_respect_time_and_report_graph_limits() {
+#[ignore = "full-data: data/out/<site>/assist/history (Open-Meteo, personal use)"]
+fn full_data_suggestions_respect_time_and_report_graph_limits() {
     let d = history(&CHAPELLE_DES_BOIS, false, "offpiste_risoux_fevrier.geojson");
     let village = LonLat::new(6.1125, 46.6032);
     let r = request(
@@ -253,8 +271,8 @@ fn suggestions_respect_time_and_report_graph_limits() {
 }
 
 #[test]
-#[ignore]
-fn best_time_equipment_and_weather_replay() {
+#[ignore = "full-data: data/out/<site>/assist/history (Open-Meteo, personal use)"]
+fn full_data_best_time_equipment_and_weather_replay() {
     let d = history(&CERVIERES, false, "routes.geojson");
     let p = d.weather.as_ref().unwrap().point("le-laus").unwrap();
     // 8 January 2026: fog from late morning at Le Laus.
@@ -296,4 +314,86 @@ fn best_time_equipment_and_weather_replay() {
         "{:?}",
         e.facts
     );
+}
+
+#[test]
+fn suggestions_on_the_fixtures_without_weather() {
+    let d = fixture_data(&CHAPELLE_DES_BOIS);
+    let village = LonLat::new(6.1125, 46.6032);
+    let r = request(
+        village,
+        "village",
+        "2026-02-22T10:00",
+        120.0,
+        Style::Skating,
+        Some(16),
+    );
+    let s = suggest::suggest(&d, &r);
+    println!("{}", s.text.join("\n"));
+    assert_eq!(s.suggestions.len(), 3, "{:?}", s.text);
+    for x in &s.suggestions {
+        assert!((90.0..=132.0).contains(&x.eta_min), "{}", x.eta_min);
+        assert!(x.arrival.time() <= chrono::NaiveTime::from_hms_opt(16, 0, 0).unwrap());
+        assert!(x.length_km > 5.0);
+    }
+    // One-way trails of the graph (C1): part of the network is out of reach, said.
+    assert!(
+        s.notes
+            .iter()
+            .any(|n| n.contains("ne sont pas atteignables")),
+        "{:?}",
+        s.notes
+    );
+    // Cervières: from Les Fonts, the Le Laus network is disconnected (18 m gap in P2).
+    let c = fixture_data(&CERVIERES);
+    let s = suggest::suggest(
+        &c,
+        &request(
+            LonLat::new(6.8161, 44.8448),
+            "Les Fonts",
+            "2026-01-09T14:30",
+            90.0,
+            Style::Classic,
+            None,
+        ),
+    );
+    println!("{}", s.text.join("\n"));
+    assert!(
+        s.notes.iter().any(|n| n.starts_with("138 nœuds sur 189")),
+        "{:?}",
+        s.notes
+    );
+    assert!(!s.suggestions.is_empty());
+}
+
+#[test]
+fn equipment_on_the_fixtures_le_laus_les_fonts() {
+    let d = fixture_data(&CERVIERES);
+    let g = d.graph.as_ref().unwrap();
+    // Le Laus → Les Fonts on the pistes (C1), 11.36 km: about 5 km without any network
+    // (report 06, ARCEP T2 2026).
+    let route = Router::new(g, skimap_core::eta::EtaModel::new(Style::Classic))
+        .route(
+            LonLat::new(6.725_006, 44.858_940),
+            LonLat::new(6.8157, 44.84465),
+            500.0,
+        )
+        .unwrap()
+        .polyline(g);
+    let o = equipment::Outing {
+        label: "Le Laus → Les Fonts".into(),
+        start: date("2026-01-05").and_hms_opt(10, 0, 0).unwrap(),
+        duration_min: 135.0,
+        route,
+        offpiste: false,
+        kick_unreliable: false,
+    };
+    let e = equipment::equipment(&d, &o);
+    println!("{}", e.text);
+    let kinds: Vec<equipment::Kind> = e.items.iter().map(|i| i.kind).collect();
+    assert!(kinds.contains(&equipment::Kind::PowerBank), "{}", e.text);
+    assert!(e.facts.no_network_km > 4.0, "{:?}", e.facts);
+    // Neither the CLPA (not redistributable) nor the exposure of Cervières is in the
+    // fixtures: nothing about avalanches may be claimed from missing data.
+    assert_eq!(e.facts.clpa_km, 0.0, "{:?}", e.facts);
 }

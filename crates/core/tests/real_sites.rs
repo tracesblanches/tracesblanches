@@ -1,8 +1,17 @@
-//! Real-data checks of C1, C2, C5 and C7 on the graph written by the pipeline
-//! (`data/out/<site>/routes/piste_graph.json`, built by
-//! `cargo run --release -p skimap-core --features pipeline --example routes`).
+//! Real-data checks of C1, C2, C5 and C7 on the trail graph of both sites
+//! (`routes/piste_graph.json`, built by `skimap routing`).
 //!
-//! Run with `cargo test -p skimap-core --test real_sites -- --ignored`.
+//! By default on the versioned reference graph (`fixtures/`, byte-identical to the
+//! pipeline output it was extracted from); the `full_data_` variants read the complete
+//! local data and run in the weekly job:
+//!
+//! ```sh
+//! cargo test -p skimap-core --test real_sites
+//! cargo test -p skimap-core --test real_sites -- --ignored full_data_
+//! ```
+
+#[path = "../../../fixtures/support/mod.rs"]
+mod fixtures;
 
 use chrono::NaiveDate;
 use skimap_common::geom::LonLat;
@@ -13,15 +22,24 @@ use skimap_core::matching::{AlertEvent, MatchParams, MatchState, ROUTE_HYSTERESI
 use skimap_core::routing::{Distance, Route, Router, Style, StylePolicy};
 use skimap_core::turnaround::{TurnaroundParams, deadline, out_and_back};
 
-fn graph(site: &str) -> PisteGraph {
-    let root = std::env::var("SKIMAP_DATA_DIR")
-        .unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../../data").to_owned());
-    let p = std::path::Path::new(&root)
-        .join("out")
-        .join(site)
-        .join("routes/piste_graph.json");
+fn load(p: std::path::PathBuf) -> PisteGraph {
     PisteGraph::from_json(&std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{p:?}: {e}")))
         .unwrap()
+}
+
+/// Reference graph of the fixtures.
+fn graph(site: &str) -> PisteGraph {
+    load(fixtures::layer_file(site, "routes", "piste_graph.json"))
+}
+
+/// Graph of the complete local data.
+fn full_graph(site: &str) -> PisteGraph {
+    load(
+        fixtures::full_data()
+            .join("out")
+            .join(site)
+            .join("routes/piste_graph.json"),
+    )
 }
 
 fn shortest(g: &PisteGraph, a: LonLat, b: LonLat) -> Route {
@@ -64,13 +82,21 @@ fn times(g: &PisteGraph, r: &Route) -> [f64; 4] {
 }
 
 #[test]
-#[ignore = "needs data/out/cervieres/routes/piste_graph.json"]
 fn cervieres_laus_fonts_and_izoard() {
-    let g = graph("cervieres");
+    laus_fonts_and_izoard(&graph("cervieres"));
+}
+
+#[test]
+#[ignore = "full-data: data/out/cervieres/routes/piste_graph.json"]
+fn full_data_cervieres_laus_fonts_and_izoard() {
+    laus_fonts_and_izoard(&full_graph("cervieres"));
+}
+
+fn laus_fonts_and_izoard(g: &PisteGraph) {
     let laus = LonLat::new(6.725_006, 44.858_940);
     let fonts = LonLat::new(6.8157, 44.84465);
-    let r = shortest(&g, laus, fonts);
-    let (up, down) = r.gain_loss(&g);
+    let r = shortest(g, laus, fonts);
+    let (up, down) = r.gain_loss(g);
     println!(
         "Laus → Fonts {:.2} km, D+ {up:.0} m, D- {down:.0} m",
         r.length_m() / 1000.0
@@ -78,23 +104,23 @@ fn cervieres_laus_fonts_and_izoard() {
     assert!((r.length_m() - 11_360.0).abs() < 100.0);
     assert!((up - 462.0).abs() < 20.0 && (down - 145.0).abs() < 20.0);
     // refuges.info: Refuge des Fonts de Cervières, 2040 m.
-    assert!((elev(&g, &r.end) - 2040.0).abs() < 10.0);
-    let [c, s, m, t] = times(&g, &r);
+    assert!((elev(g, &r.end) - 2040.0).abs() < 10.0);
+    let [c, s, m, t] = times(g, &r);
     assert!(s < c && c < t && t < m, "{c} {s} {m} {t}");
     assert!((0.09..0.14).contains(&(c / s - 1.0)));
     // Le Laus → Brunissard over the Col d'Izoard (2360 m).
     let r = shortest(
-        &g,
+        g,
         LonLat::new(6.725_143, 44.859_064),
         LonLat::new(6.7172, 44.7994),
     );
-    let top = max_elev(&g, &r);
+    let top = max_elev(g, &r);
     println!("Izoard: {:.2} km, top {top:.0} m", r.length_m() / 1000.0);
     assert!((top - 2360.0).abs() < 10.0, "{top}");
     // The two Le Laus trail ends are 18 m apart, beyond the 10 m connectors of P2.
     assert!(
         Router::new(
-            &g,
+            g,
             Distance {
                 style: Style::Classic,
                 policy: StylePolicy::default()
@@ -106,23 +132,31 @@ fn cervieres_laus_fonts_and_izoard() {
 }
 
 #[test]
-#[ignore = "needs data/out/chapelle-des-bois/routes/piste_graph.json"]
 fn chapelle_village_chalet_gaillard() {
-    let g = graph("chapelle-des-bois");
+    village_chalet_gaillard(&graph("chapelle-des-bois"));
+}
+
+#[test]
+#[ignore = "full-data: data/out/chapelle-des-bois/routes/piste_graph.json"]
+fn full_data_chapelle_village_chalet_gaillard() {
+    village_chalet_gaillard(&full_graph("chapelle-des-bois"));
+}
+
+fn village_chalet_gaillard(g: &PisteGraph) {
     let village = LonLat::new(6.1118, 46.5952);
     let gaillard = LonLat::new(6.12167, 46.56318);
-    let r = shortest(&g, village, gaillard);
+    let r = shortest(g, village, gaillard);
     println!("village → Chalet Gaillard {:.2} km", r.length_m() / 1000.0);
     assert!((r.length_m() - 12_900.0).abs() < 200.0);
     // refuges.info: Chalet Gaillard, 1232 m.
-    assert!((elev(&g, &r.end) - 1232.0).abs() < 10.0);
+    assert!((elev(g, &r.end) - 1232.0).abs() < 10.0);
     // Time routing avoids part of the climb for a slightly longer route.
-    let rt = Router::new(&g, EtaModel::new(Style::Classic))
+    let rt = Router::new(g, EtaModel::new(Style::Classic))
         .route(village, gaillard, 500.0)
         .unwrap();
     assert!(rt.length_m() >= r.length_m());
-    assert!(rt.gain_loss(&g).0 < r.gain_loss(&g).0);
-    let [c, s, m, t] = times(&g, &r);
+    assert!(rt.gain_loss(g).0 < r.gain_loss(g).0);
+    let [c, s, m, t] = times(g, &r);
     assert!(s < c && c < t && t < m, "{c} {s} {m} {t}");
     // C7: out and back from the village, 15 January 2027 at 13:00 local: the whole route
     // fits before the deadline (30 min before civil dusk).
@@ -130,11 +164,11 @@ fn chapelle_village_chalet_gaillard() {
     let p = TurnaroundParams::default();
     let dl = deadline(date, village, &p).unwrap();
     let start = date.and_hms_opt(12, 0, 0).unwrap().and_utc();
-    let ob = out_and_back(&g, &rt, &EtaModel::new(Style::Classic), start, &dl, &p).unwrap();
+    let ob = out_and_back(g, &rt, &EtaModel::new(Style::Classic), start, &dl, &p).unwrap();
     assert!(ob.whole_route && ob.arrival <= dl.deadline);
     // Starting at 14:00 it does not: turn around before the chalet.
     let late = out_and_back(
-        &g,
+        g,
         &rt,
         &EtaModel::new(Style::Classic),
         start + chrono::Duration::hours(1),
@@ -146,15 +180,23 @@ fn chapelle_village_chalet_gaillard() {
 }
 
 #[test]
-#[ignore = "needs data/out/chapelle-des-bois/routes/piste_graph.json"]
 fn chapelle_matching_under_forest_noise() {
-    let g = graph("chapelle-des-bois");
+    matching_under_forest_noise(&graph("chapelle-des-bois"));
+}
+
+#[test]
+#[ignore = "full-data: data/out/chapelle-des-bois/routes/piste_graph.json"]
+fn full_data_chapelle_matching_under_forest_noise() {
+    matching_under_forest_noise(&full_graph("chapelle-des-bois"));
+}
+
+fn matching_under_forest_noise(g: &PisteGraph) {
     let r = shortest(
-        &g,
+        g,
         LonLat::new(6.12167, 46.56318),
         LonLat::new(6.11442, 46.64122),
     );
-    let plan = r.polyline(&g);
+    let plan = r.polyline(g);
     let truth = sample_polyline(&plan, 1.0, |_| 3.5);
     let noise = Noise {
         sigma_m: 15.0,
@@ -164,7 +206,7 @@ fn chapelle_matching_under_forest_noise() {
         outlier_len_s: (2.0, 10.0),
     };
     let fixes = add_noise(&truth, &noise, &mut Rng(5));
-    let mut mon = RouteMonitor::new(&g, &plan, MatchParams::default(), ROUTE_HYSTERESIS);
+    let mut mon = RouteMonitor::new(g, &plan, MatchParams::default(), ROUTE_HYSTERESIS);
     let mut alerts = 0;
     let (mut near, mut raw_near) = (0, 0);
     for (f, t) in fixes.iter().zip(&truth) {

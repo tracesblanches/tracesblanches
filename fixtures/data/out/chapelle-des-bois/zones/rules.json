@@ -1,0 +1,388 @@
+{
+  "schema_version": 1,
+  "reviewed": "2026-11-14",
+  "rules": [
+    {
+      "id": "fr-r111-32-bivouac-consent",
+      "topic": "bivouac",
+      "effect": "consent_required",
+      "applies_to": [{ "zone": "country:fr" }],
+      "period": { "type": "all_year" },
+      "in_force": { "from": "2016-01-01" },
+      "summary": "Camping et bivouac libres seulement avec l'accord de celui qui a la jouissance du sol, sauf opposition du propriétaire, hors de l'emprise des routes et voies publiques.",
+      "conditions": "Accord de l'occupant ou du propriétaire du terrain (souvent la commune ou l'ONF en forêt publique).",
+      "interpretation": "Le code ne définit pas le bivouac ; une réponse ministérielle de 2020 renvoie à R111-32 faute de règle générale en montagne.",
+      "verification": "Article lu sur Légifrance pour le rapport 05 (réponse ministérielle AN QE 21803 lue aussi). Légifrance refuse les requêtes automatiques (403) : URL vérifiée à la main.",
+      "sources": [
+        { "url": "https://www.legifrance.gouv.fr/codes/section_lc/LEGITEXT000006074075/LEGISCTA000031719402/", "title": "Code de l'urbanisme, sous-section Camping (R111-32 à R111-35)", "kind": "law", "article": "R111-32" },
+        { "url": "https://questions.assemblee-nationale.fr/dyn/15/questions/QANR5L15QE21803.pdf", "title": "Question écrite AN n° 21803 et réponse ministérielle (2020)", "kind": "official_page", "date": "2020" }
+      ]
+    },
+    {
+      "id": "fr-r111-33-bivouac",
+      "topic": "bivouac",
+      "effect": "forbidden",
+      "applies_to": [
+        { "kind": "site_inscrit" },
+        { "kind": "site_classe" },
+        { "kind": "spr" },
+        { "kind": "monument_abords" },
+        { "kind": "monument_historique" },
+        { "kind": "captage_protection" }
+      ],
+      "period": { "type": "all_year" },
+      "in_force": { "from": "2017-04-01" },
+      "summary": "Camping pratiqué isolément interdit, sauf dérogation : sites inscrits, sites classés ou en instance de classement, sites patrimoniaux remarquables, abords des monuments historiques, 200 m autour des captages d'eau potable.",
+      "conditions": "Dérogation possible (autorité compétente selon le cas : maire, préfet).",
+      "interpretation": "Aucun texte ne dit si un bivouac d'une nuit est du « camping pratiqué isolément ». Lecture prudente : interdit. Pour les captages, la zone utilisée est le périmètre de protection (servitude AS1), pas le cercle de 200 m.",
+      "verification": "Article lu pour le rapport 05. Légifrance refuse les requêtes automatiques (403) : URL vérifiée à la main.",
+      "sources": [
+        { "url": "https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000034355031", "title": "Code de l'urbanisme, article R111-33", "kind": "law", "article": "R111-33" }
+      ]
+    },
+    {
+      "id": "fr-l131-1-fire",
+      "topic": "fire",
+      "effect": "forbidden",
+      "applies_to": [{ "zone": "country:fr" }],
+      "period": { "type": "all_year" },
+      "summary": "Interdit de porter ou d'allumer du feu sur le terrain d'autrui dans les bois et forêts et jusqu'à 200 m de ceux-ci.",
+      "conditions": "Ne s'applique pas aux propriétaires et à leurs ayants droit.",
+      "only_where": "dans les bois et forêts et à moins de 200 m de ceux-ci (pas de couche forêt dans ce calque)",
+      "interpretation": "L'article ne mentionne pas les réchauds.",
+      "verification": "Article lu pour le rapport 05 (amende de 4e classe, R163-2). Légifrance refuse les requêtes automatiques (403) : URL vérifiée à la main.",
+      "sources": [
+        { "url": "https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000025245867", "title": "Code forestier, article L131-1", "kind": "law", "article": "L131-1" },
+        { "url": "https://www.legifrance.gouv.fr/codes/section_lc/LEGITEXT000025244092/LEGISCTA000026127977/", "title": "Code forestier, sanctions R163-x", "kind": "law", "article": "R163-2" }
+      ]
+    },
+    {
+      "id": "fr-r163-11-foret-protection-camping",
+      "topic": "bivouac",
+      "effect": "forbidden",
+      "applies_to": [{ "kind": "foret_protection" }],
+      "period": { "type": "all_year" },
+      "summary": "Le camping est réprimé en forêt de protection (contravention de 5e classe).",
+      "interpretation": "Bivouac traité comme du camping.",
+      "verification": "Section lue pour le rapport 05. Aucune servitude A7 (forêt de protection) dans les deux zones d'étude.",
+      "sources": [
+        { "url": "https://www.legifrance.gouv.fr/codes/section_lc/LEGITEXT000025244092/LEGISCTA000026127977/", "title": "Code forestier, sanctions R163-x", "kind": "law", "article": "R163-11" }
+      ]
+    },
+    {
+      "id": "appb-haut-jura-leave-routes",
+      "topic": "leave_routes",
+      "effect": "forbidden",
+      "applies_to": [{ "zone": "inpn:FR3800988" }],
+      "period": { "type": "yearly", "from": "12-15", "to": "06-30" },
+      "in_force": { "from": "2019-05-27" },
+      "summary": "APPB Forêts d'altitude du Haut-Jura : pénétration interdite du 15 décembre au 30 juin, sauf sur les itinéraires de ski de fond, raquettes et randonnée cartographiés en annexe 5.",
+      "conditions": "Itinéraires autorisés : annexe 5 de l'arrêté. Exceptions : propriétaires sur leur propriété, missions de défense, police, secours et service public ; personnes à pied, seules, sans chien, du 15 mai au 30 juin.",
+      "verification": "Texte signé du 27/05/2019 non lu (INPN répond 403). Règle lue dans le projet CDNPS de mars 2019 (art. 2), confirmée par la plaquette (« sont interdits du 15/12 au 30/06 : … la randonnée, sous toutes ses formes, en dehors des itinéraires autorisés ») et la page de la préfecture du Jura.",
+      "sources": [
+        { "url": "https://www.bourgogne-franche-comte.developpement-durable.gouv.fr/IMG/pdf/projet_appb_forets_altitude_avec_annexes_consultations_cle5134bf.pdf", "title": "Projet d'APPB Forêts d'altitude du Haut-Jura (version CDNPS, mars 2019)", "kind": "draft_act", "date": "2019-03", "article": "art. 2" },
+        { "url": "https://www.jura.gouv.fr/Actions-de-l-Etat/Environnement/Nature-et-biodiversite/APPB-Forets-d-altitude-du-Haut-Jura", "title": "Préfecture du Jura, APPB Forêts d'altitude du Haut-Jura", "kind": "official_page" },
+        { "url": "https://www.bourgogne-franche-comte.developpement-durable.gouv.fr/IMG/pdf/plaquette_appb_forets_altitude_haut_jura_cle73afd4.pdf", "title": "Plaquette APPB Forêts d'altitude du Haut-Jura (arrêté du 27 mai 2019)", "kind": "leaflet" }
+      ]
+    },
+    {
+      "id": "appb-haut-jura-bivouac",
+      "topic": "bivouac",
+      "effect": "forbidden",
+      "applies_to": [{ "zone": "inpn:FR3800988" }],
+      "period": { "type": "yearly", "from": "12-15", "to": "06-30" },
+      "in_force": { "from": "2019-05-27" },
+      "summary": "APPB Forêts d'altitude du Haut-Jura : bivouac interdit, avec ou sans tente, du 15 décembre au 30 juin, en tout lieu de l'arrêté.",
+      "conditions": "Hors période, le camping en terrain privé reste soumis à l'accord du propriétaire (forêts privées ou communales).",
+      "verification": "Texte signé non lu. Règle lue dans le projet de mars 2019 (art. 7) et dans la synthèse des motivations (« Le bivouac, avec ou sans tente, est interdit du 15 décembre au 30 juin par l'arrêté préfectoral »), confirmée par la plaquette.",
+      "sources": [
+        { "url": "https://www.bourgogne-franche-comte.developpement-durable.gouv.fr/IMG/pdf/appb_motivations_cle18f7bf.pdf", "title": "APPB Forêts d'altitude du Haut-Jura, motivations de la décision", "kind": "decision_summary", "article": "7 – Autres mesures sur le dérangement" },
+        { "url": "https://www.bourgogne-franche-comte.developpement-durable.gouv.fr/IMG/pdf/projet_appb_forets_altitude_avec_annexes_consultations_cle5134bf.pdf", "title": "Projet d'APPB Forêts d'altitude du Haut-Jura (version CDNPS, mars 2019)", "kind": "draft_act", "date": "2019-03", "article": "art. 7" },
+        { "url": "https://www.bourgogne-franche-comte.developpement-durable.gouv.fr/IMG/pdf/plaquette_appb_forets_altitude_haut_jura_cle73afd4.pdf", "title": "Plaquette APPB Forêts d'altitude du Haut-Jura (arrêté du 27 mai 2019)", "kind": "leaflet" }
+      ]
+    },
+    {
+      "id": "appb-haut-jura-fire",
+      "topic": "fire",
+      "effect": "forbidden",
+      "applies_to": [{ "zone": "inpn:FR3800988" }],
+      "period": { "type": "all_year" },
+      "in_force": { "from": "2019-05-27" },
+      "summary": "APPB Forêts d'altitude du Haut-Jura : utilisation du feu interdite en dehors des lieux prévus à cet effet.",
+      "conditions": "Sauf lieux prévus à cet effet et opérations de protection sanitaire de la forêt.",
+      "interpretation": "Le texte dit « l'utilisation du feu » sans mentionner les réchauds.",
+      "verification": "Texte signé non lu. Règle lue dans le projet de mars 2019 (art. 7) ; la synthèse des motivations indique que les prescriptions concertées de l'article 7 n'ont pas été modifiées.",
+      "sources": [
+        { "url": "https://www.bourgogne-franche-comte.developpement-durable.gouv.fr/IMG/pdf/projet_appb_forets_altitude_avec_annexes_consultations_cle5134bf.pdf", "title": "Projet d'APPB Forêts d'altitude du Haut-Jura (version CDNPS, mars 2019)", "kind": "draft_act", "date": "2019-03", "article": "art. 7" },
+        { "url": "https://www.bourgogne-franche-comte.developpement-durable.gouv.fr/IMG/pdf/appb_motivations_cle18f7bf.pdf", "title": "APPB Forêts d'altitude du Haut-Jura, motivations de la décision", "kind": "decision_summary" }
+      ]
+    },
+    {
+      "id": "appb-haut-doubs-leave-routes",
+      "topic": "leave_routes",
+      "effect": "forbidden",
+      "applies_to": [{ "zone": "inpn:FR3801178" }],
+      "period": { "type": "yearly", "from": "12-15", "to": "06-30" },
+      "in_force": { "from": "2025-12-31" },
+      "summary": "APPB Forêts d'altitude du Haut-Doubs : sortie des itinéraires balisés interdite du 15 décembre au 30 juin sur tout le périmètre.",
+      "conditions": "Itinéraires balisés de l'annexe 2 de l'arrêté (ajoutés après consultation : la Jaïque, la Citadelle → Chalet Griffon). Exceptions : propriétaires et ayants droit, agriculteurs, forestiers, chasseurs en action de chasse, missions de service public.",
+      "verification": "Arrêté signé le 31/12/2025, texte final non lu. Règle lue dans le projet du 25/08/2025 (art. 2) et le motif de la décision ; signature connue par le Groupe Tétras Jura.",
+      "sources": [
+        { "url": "https://www.bourgogne-franche-comte.developpement-durable.gouv.fr/IMG/pdf/appb_forets_altitude_haut-doubs_v25-08-2025.pdf", "title": "Projet d'APPB Forêts d'altitude du Haut-Doubs (version du 25/08/2025)", "kind": "draft_act", "date": "2025-08-25", "article": "art. 2" },
+        { "url": "https://www.bourgogne-franche-comte.developpement-durable.gouv.fr/IMG/pdf/3_motif_de_la_decision_appb_forets_altitude_du_haut-doubs.pdf", "title": "APPB Forêts d'altitude du Haut-Doubs, motif de la décision", "kind": "decision_summary" },
+        { "url": "https://groupe-tetras-jura.org/2026/06/05/un-nouvel-appb-pour-les-forets-daltitude-du-haut-doubs/", "title": "Groupe Tétras Jura : un nouvel APPB pour les forêts d'altitude du Haut-Doubs", "kind": "third_party_page", "date": "2026-06-05" }
+      ]
+    },
+    {
+      "id": "appb-haut-doubs-core-access",
+      "topic": "access",
+      "effect": "forbidden",
+      "applies_to": [{ "zone": "biodiv:686" }],
+      "period": { "type": "yearly", "from": "12-15", "to": "06-30" },
+      "in_force": { "from": "2025-12-31" },
+      "summary": "APPB Haut-Doubs, zones cœur (Risol nord, Risol sud, Le Verdet) : pénétration interdite du 15 décembre au 30 juin, quel que soit le mode de locomotion.",
+      "conditions": "Sauf véhicules de défense, police, secours, service public et agents de l'ONF.",
+      "verification": "Projet du 25/08/2025 (art. 9) ; texte signé non lu. Contours des zones cœur : zone Biodiv'sports n° 686, pas l'annexe 2 de l'arrêté.",
+      "sources": [
+        { "url": "https://www.bourgogne-franche-comte.developpement-durable.gouv.fr/IMG/pdf/appb_forets_altitude_haut-doubs_v25-08-2025.pdf", "title": "Projet d'APPB Forêts d'altitude du Haut-Doubs (version du 25/08/2025)", "kind": "draft_act", "date": "2025-08-25", "article": "art. 9" },
+        { "url": "https://biodiv-sports.fr/api/v2/sensitivearea/686/?format=geojson&period=ignore", "title": "Biodiv'sports, zone 686 (contours des zones cœur)", "kind": "data_service" }
+      ]
+    },
+    {
+      "id": "appb-haut-doubs-core-night",
+      "topic": "access",
+      "effect": "forbidden",
+      "applies_to": [{ "zone": "biodiv:686" }],
+      "period": { "type": "night", "reference": { "lon": 6.3547, "lat": 46.9035 }, "place": "Pontarlier" },
+      "in_force": { "from": "2025-12-31" },
+      "summary": "APPB Haut-Doubs, zones cœur : pénétration interdite la nuit, du coucher au lever du soleil à Pontarlier, toute l'année.",
+      "conditions": "Sauf missions de défense, police, secours et service public.",
+      "verification": "Projet du 25/08/2025 (art. 6) ; texte signé non lu.",
+      "sources": [
+        { "url": "https://www.bourgogne-franche-comte.developpement-durable.gouv.fr/IMG/pdf/appb_forets_altitude_haut-doubs_v25-08-2025.pdf", "title": "Projet d'APPB Forêts d'altitude du Haut-Doubs (version du 25/08/2025)", "kind": "draft_act", "date": "2025-08-25", "article": "art. 6" }
+      ]
+    },
+    {
+      "id": "appb-haut-doubs-core-bivouac",
+      "topic": "bivouac",
+      "effect": "forbidden",
+      "applies_to": [{ "zone": "biodiv:686" }],
+      "period": { "type": "all_year" },
+      "in_force": { "from": "2025-12-31" },
+      "summary": "APPB Haut-Doubs, zones cœur : camping, bivouac et activités assimilées interdits en tout lieu et en tout temps.",
+      "verification": "Projet du 25/08/2025 (art. 11) ; texte signé non lu.",
+      "sources": [
+        { "url": "https://www.bourgogne-franche-comte.developpement-durable.gouv.fr/IMG/pdf/appb_forets_altitude_haut-doubs_v25-08-2025.pdf", "title": "Projet d'APPB Forêts d'altitude du Haut-Doubs (version du 25/08/2025)", "kind": "draft_act", "date": "2025-08-25", "article": "art. 11" }
+      ]
+    },
+    {
+      "id": "appb-haut-doubs-core-fire",
+      "topic": "fire",
+      "effect": "forbidden",
+      "applies_to": [{ "zone": "biodiv:686" }],
+      "period": { "type": "all_year" },
+      "in_force": { "from": "2025-12-31" },
+      "summary": "APPB Haut-Doubs, zones cœur : apport ou utilisation du feu interdits en tout lieu et en tout temps.",
+      "interpretation": "« L'apport ou l'utilisation du feu » vise vraisemblablement aussi les réchauds, mais le texte ne les nomme pas.",
+      "verification": "Projet du 25/08/2025 (art. 11) ; texte signé non lu.",
+      "sources": [
+        { "url": "https://www.bourgogne-franche-comte.developpement-durable.gouv.fr/IMG/pdf/appb_forets_altitude_haut-doubs_v25-08-2025.pdf", "title": "Projet d'APPB Forêts d'altitude du Haut-Doubs (version du 25/08/2025)", "kind": "draft_act", "date": "2025-08-25", "article": "art. 11" }
+      ]
+    },
+    {
+      "id": "appb-paradis-bivouac",
+      "topic": "bivouac",
+      "effect": "forbidden",
+      "applies_to": [{ "zone": "inpn:FR3800137" }],
+      "period": { "type": "all_year" },
+      "in_force": { "from": "1986-02-10" },
+      "summary": "APPB Forêt du Paradis : camping et bivouac interdits sur toute l'étendue de la réserve (caravaning aussi).",
+      "exceptions": [
+        {
+          "description": "Camping et bivouac autorisés du 1er juillet au 30 septembre sur les parcelles B 771 et B 775 de Foncine-le-Haut.",
+          "period": { "type": "yearly", "from": "07-01", "to": "09-30" },
+          "parcels": ["Foncine-le-Haut (39228) B 771", "Foncine-le-Haut (39228) B 775"],
+          "geometry_note": "Parcelles renumérotées depuis 1986 : la section B actuelle de Foncine-le-Haut (API Carto cadastre, 14/11/2026) compte 67 parcelles, sans 771 ni 775. Aucun contour fiable."
+        }
+      ],
+      "verification": "Arrêté signé lu en entier (AP n° 111 du 10/02/1986, art. 3).",
+      "sources": [
+        { "url": "https://www.bourgogne-franche-comte.developpement-durable.gouv.fr/IMG/pdf/114_39_APB_Foret_Paradis_AP_19860210_cle1da5ef.pdf", "title": "Arrêté préfectoral n° 111 du 10 février 1986 portant protection de biotope de la Forêt du Paradis", "kind": "signed_act", "date": "1986-02-10", "article": "art. 3" }
+      ]
+    },
+    {
+      "id": "appb-paradis-fire",
+      "topic": "fire",
+      "effect": "forbidden",
+      "applies_to": [{ "zone": "inpn:FR3800137" }],
+      "period": { "type": "yearly", "from": "02-15", "to": "05-31" },
+      "in_force": { "from": "1986-02-10" },
+      "summary": "APPB Forêt du Paradis : interdit de fumer, de porter ou d'allumer du feu à l'intérieur des bois, forêts, plantations et reboisements du 15 février au 31 mai.",
+      "only_where": "à l'intérieur des bois, forêts, plantations et reboisements",
+      "interpretation": "« Porter ou allumer du feu » vise vraisemblablement aussi les réchauds, mais le texte ne les nomme pas.",
+      "verification": "Arrêté signé lu en entier (art. 4, alinéa 2).",
+      "sources": [
+        { "url": "https://www.bourgogne-franche-comte.developpement-durable.gouv.fr/IMG/pdf/114_39_APB_Foret_Paradis_AP_19860210_cle1da5ef.pdf", "title": "Arrêté préfectoral n° 111 du 10 février 1986 portant protection de biotope de la Forêt du Paradis", "kind": "signed_act", "date": "1986-02-10", "article": "art. 4" }
+      ]
+    },
+    {
+      "id": "cervieres-fire",
+      "topic": "fire",
+      "effect": "forbidden",
+      "applies_to": [{ "zone": "commune:05027" }],
+      "period": { "type": "all_year" },
+      "in_force": { "from": "2022-07-08" },
+      "summary": "Cervières : usage du feu totalement interdit sur la commune, réchauds et barbecues compris.",
+      "stoves": true,
+      "verification": "Arrêté municipal du 08/07/2022 non lu. Règle connue par la page « Bivouac » du PNR du Queyras : « L'usage du feu, y compris via des réchauds et barbecues, est totalement prohibé sur la commune de Cervières (08/07/2022) » (page relue le 14/11/2026).",
+      "sources": [
+        { "url": "https://www.pnr-queyras.fr/bivouac/", "title": "PNR du Queyras, page Bivouac", "kind": "official_page", "date": "2022-07-08" }
+      ]
+    },
+    {
+      "id": "arvieux-2023-22-bivouac",
+      "topic": "bivouac",
+      "effect": "tolerated",
+      "applies_to": [{ "zone": "commune:05007" }],
+      "period": { "type": "all_year" },
+      "in_force": { "from": "2023-06-14" },
+      "summary": "Arvieux : bivouac sous tente toléré pour une randonnée itinérante, à plus d'une heure de marche du village et des hameaux.",
+      "conditions": "Une seule nuit sur un même secteur ; tente basse (pas de station debout) montée après 18 h et démontée avant 9 h, sauf force majeure (intempéries). Interdit aux abords des cabanes pastorales et chalets d'alpage sans l'accord des propriétaires ou occupants. Déchets interdits ; eaux usées à plus de 20 m des lacs, cours d'eau et zones humides.",
+      "verification": "Arrêté municipal signé lu en entier (n° 2023-22 du 14/06/2023, art. 1 à 3 ; PDF scanné, lu en image).",
+      "sources": [
+        { "url": "https://www.pnr-queyras.fr/ecmedias/2023/08/Arvieux_2023-22-Reglementat%C2%B0-du-bivouac.pdf", "title": "Arrêté municipal d'Arvieux n° 2023-22 réglementant le bivouac", "kind": "signed_act", "date": "2023-06-14", "article": "art. 1 et 2" }
+      ]
+    },
+    {
+      "id": "enj-private-land-leave-routes",
+      "topic": "leave_routes",
+      "effect": "forbidden",
+      "applies_to": [{ "zone": "dept:25" }, { "zone": "dept:39" }],
+      "period": { "type": "all_year" },
+      "summary": "Sites nordiques de l'Espace Nordique Jurassien : sur les propriétés privées traversées par les pistes, rester sur la piste.",
+      "only_where": "sur les propriétés privées traversées par les pistes d'un site nordique (pas de contour)",
+      "verification": "Consigne du dépliant ENJ (pas un texte réglementaire).",
+      "sources": [
+        { "url": "https://www.montagnes-du-jura.fr/uploads/2022/12/enj_respect_depliant_2110_web.pdf", "title": "Espace Nordique Jurassien, dépliant « Respect »", "kind": "leaflet" }
+      ]
+    },
+    {
+      "id": "enj-private-land-bivouac",
+      "topic": "bivouac",
+      "effect": "forbidden",
+      "applies_to": [{ "zone": "dept:25" }, { "zone": "dept:39" }],
+      "period": { "type": "all_year" },
+      "summary": "Sites nordiques de l'Espace Nordique Jurassien : bivouac interdit sur les propriétés privées traversées par les pistes.",
+      "only_where": "sur les propriétés privées traversées par les pistes d'un site nordique (pas de contour)",
+      "verification": "Consigne du dépliant ENJ (pas un texte réglementaire).",
+      "sources": [
+        { "url": "https://www.montagnes-du-jura.fr/uploads/2022/12/enj_respect_depliant_2110_web.pdf", "title": "Espace Nordique Jurassien, dépliant « Respect »", "kind": "leaflet" }
+      ]
+    },
+    {
+      "id": "enj-private-land-fire",
+      "topic": "fire",
+      "effect": "forbidden",
+      "applies_to": [{ "zone": "dept:25" }, { "zone": "dept:39" }],
+      "period": { "type": "all_year" },
+      "summary": "Sites nordiques de l'Espace Nordique Jurassien : feu interdit sur les propriétés privées traversées par les pistes.",
+      "only_where": "sur les propriétés privées traversées par les pistes d'un site nordique (pas de contour)",
+      "verification": "Consigne du dépliant ENJ (pas un texte réglementaire).",
+      "sources": [
+        { "url": "https://www.montagnes-du-jura.fr/uploads/2022/12/enj_respect_depliant_2110_web.pdf", "title": "Espace Nordique Jurassien, dépliant « Respect »", "kind": "leaflet" }
+      ]
+    },
+    {
+      "id": "ch-cc-699-access",
+      "topic": "access",
+      "effect": "allowed",
+      "applies_to": [{ "kind": "canton" }],
+      "period": { "type": "all_year" },
+      "summary": "Suisse : chacun a libre accès aux forêts et pâturages d'autrui ; les cantons peuvent limiter l'accès pour protéger la faune.",
+      "conditions": "Restrictions cantonales possibles (LFo art. 14) ; districts francs et zones de tranquillité à part.",
+      "verification": "Code civil art. 699 et loi sur les forêts art. 14 lus sur Fedlex pour le rapport 05.",
+      "sources": [
+        { "url": "https://fedlex.data.admin.ch/filestore/fedlex.data.admin.ch/eli/cc/24/233_245_233/20270101/fr/html/fedlex-data-admin-ch-eli-cc-24-233_245_233-20270101-fr-html-1.html", "title": "Code civil suisse", "kind": "law", "article": "art. 699" },
+        { "url": "https://fedlex.data.admin.ch/filestore/fedlex.data.admin.ch/eli/cc/1992/2521_2521_2521/20250801/fr/html/fedlex-data-admin-ch-eli-cc-1992-2521_2521_2521-20250801-fr-html-3.html", "title": "Loi fédérale sur les forêts (LFo)", "kind": "law", "article": "art. 14" }
+      ]
+    },
+    {
+      "id": "ch-vd-lccr-27-camping",
+      "topic": "bivouac",
+      "effect": "consent_required",
+      "applies_to": [{ "zone": "canton:vd" }],
+      "period": { "type": "all_year" },
+      "summary": "Vaud : le camping occasionnel n'est permis qu'avec l'assentiment du propriétaire du fonds.",
+      "conditions": "Au-delà de 4 jours, autorisation communale ; dispositions communales réservées.",
+      "verification": "Loi vaudoise LCCR 935.61, art. 27, lue pour le rapport 05.",
+      "sources": [
+        { "url": "https://www.lexfind.ch/tolv/209386/fr", "title": "Loi vaudoise sur les campings et caravanings résidentiels (LCCR, 935.61)", "kind": "law", "article": "art. 27" }
+      ]
+    },
+    {
+      "id": "ch-vd-fire-forest",
+      "topic": "fire",
+      "effect": "forbidden",
+      "applies_to": [{ "zone": "canton:vd" }],
+      "period": { "type": "all_year" },
+      "summary": "Vaud : feu interdit en forêt et à moins de 10 m des lisières, sauf aux emplacements aménagés.",
+      "only_where": "en forêt et à moins de 10 m des lisières (pas de couche forêt dans ce calque)",
+      "interpretation": "Le texte ne mentionne pas les réchauds.",
+      "verification": "Page du canton citant l'article 33 de la loi forestière vaudoise ; loi elle-même non lue.",
+      "sources": [
+        { "url": "https://www.vd.ch/themes/environnement/forets/incendies-de-foret/", "title": "Canton de Vaud, incendies de forêt", "kind": "official_page", "article": "loi forestière vaudoise art. 33" }
+      ]
+    },
+    {
+      "id": "ch-chenit-camping",
+      "topic": "bivouac",
+      "effect": "forbidden",
+      "applies_to": [{ "zone": "commune:ch-5872" }],
+      "period": { "type": "all_year" },
+      "summary": "Le Chenit : camping sauvage et bivouac non autorisés.",
+      "conditions": "Tolérances annoncées : une nuit, seul, au-dessus de la limite des forêts ; terrain privé avec l'accord du propriétaire ; urgence.",
+      "verification": "Page de la commune ; base légale non citée.",
+      "sources": [
+        { "url": "https://www.communeduchenit.ch/vie-quotidienne/informations-pratiques/camping/", "title": "Commune du Chenit, camping", "kind": "official_page" }
+      ]
+    },
+    {
+      "id": "ch-odf-camping",
+      "topic": "bivouac",
+      "effect": "forbidden",
+      "applies_to": [{ "kind": "district_franc" }],
+      "period": { "type": "all_year" },
+      "summary": "District franc fédéral : il est interdit de camper librement.",
+      "conditions": "Places de camping officielles réservées ; dérogations cantonales possibles.",
+      "verification": "Ordonnance sur les districts francs fédéraux (ODF), art. 5, al. 1, let. e, relue sur Fedlex le 14/11/2026.",
+      "sources": [
+        { "url": "https://fedlex.data.admin.ch/filestore/fedlex.data.admin.ch/eli/cc/1991/2304_2304_2304/20250201/fr/html/fedlex-data-admin-ch-eli-cc-1991-2304_2304_2304-20250201-fr-html-4.html", "title": "Ordonnance sur les districts francs fédéraux (ODF)", "kind": "law", "article": "art. 5, al. 1, let. e" }
+      ]
+    },
+    {
+      "id": "ch-odf-ski",
+      "topic": "leave_routes",
+      "effect": "forbidden",
+      "applies_to": [{ "kind": "district_franc" }],
+      "period": { "type": "all_year" },
+      "summary": "District franc fédéral : le ski pratiqué en dehors des pistes et itinéraires balisés est interdit.",
+      "verification": "ODF art. 5, al. 1, let. g, relue sur Fedlex le 14/11/2026.",
+      "sources": [
+        { "url": "https://fedlex.data.admin.ch/filestore/fedlex.data.admin.ch/eli/cc/1991/2304_2304_2304/20250201/fr/html/fedlex-data-admin-ch-eli-cc-1991-2304_2304_2304-20250201-fr-html-4.html", "title": "Ordonnance sur les districts francs fédéraux (ODF)", "kind": "law", "article": "art. 5, al. 1, let. g" }
+      ]
+    },
+    {
+      "id": "biodiv-sports-terrestre",
+      "topic": "access",
+      "effect": "avoid_recommended",
+      "applies_to": [{ "kind": "biodiv_sports", "practice": "terrestre" }],
+      "period": { "type": "zone_months" },
+      "summary": "Zone sensible Biodiv'sports pour les pratiques terrestres : à éviter pendant ses mois sensibles.",
+      "interpretation": "Biodiv'sports ne publie aucune règle (`rules` vide) : recommandation, pas une interdiction. Les éventuelles interdictions viennent des arrêtés (APPB) traités par ailleurs.",
+      "verification": "Réponses de l'API Biodiv'sports (period=ignore) ; aucune pratique « bivouac » et aucune règle dans les données.",
+      "sources": [
+        { "url": "https://biodiv-sports.fr/", "title": "Biodiv'sports", "kind": "data_service" }
+      ]
+    }
+  ]
+}

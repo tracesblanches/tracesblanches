@@ -1,0 +1,2006 @@
+{
+  "features": [
+    {
+      "geometry": {
+        "coordinates": [
+          6.12718,
+          46.57269
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1293.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 1291,
+        "in_france": false,
+        "latrines": false,
+        "link": 0,
+        "missing_wall": false,
+        "name": "Hotel d'Italie",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/1291/cabane-non-gardee/hotel-d-Italie/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.11732,
+          46.55748
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1202.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 1292,
+        "in_france": true,
+        "latrines": false,
+        "link": 1,
+        "missing_wall": false,
+        "name": "Cabane du Plan de la Citerne",
+        "places": 4,
+        "places_mattress": 0,
+        "state": null,
+        "stove": false,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/1292/cabane-non-gardee/cabane-du-Plan-de-la-Citerne/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.12167,
+          46.56318
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1232.0,
+        "blankets": null,
+        "forest_100m": null,
+        "id": 1557,
+        "in_france": true,
+        "latrines": null,
+        "link": 2,
+        "missing_wall": null,
+        "name": "Chalet Gaillard",
+        "places": 19,
+        "places_mattress": null,
+        "state": null,
+        "stove": null,
+        "type_id": 9,
+        "type_label": "gîte d'étape",
+        "url": "https://www.refuges.info/point/1557/gite-d-etape/chalet-Gaillard/",
+        "water_100m": null
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.13206,
+          46.56023
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1215.0,
+        "blankets": null,
+        "forest_100m": null,
+        "id": 1558,
+        "in_france": true,
+        "latrines": null,
+        "link": 3,
+        "missing_wall": true,
+        "name": "La Caserne",
+        "places": 0,
+        "places_mattress": null,
+        "state": "Détruite",
+        "stove": null,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/1558/cabane-non-gardee/la-Caserne/",
+        "water_100m": null
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.11982,
+          46.57193
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1278.0,
+        "blankets": null,
+        "forest_100m": null,
+        "id": 2153,
+        "in_france": false,
+        "latrines": null,
+        "link": null,
+        "missing_wall": null,
+        "name": "La Source (Les Cent Poses)",
+        "places": 0,
+        "places_mattress": null,
+        "state": null,
+        "stove": null,
+        "type_id": 23,
+        "type_label": "point d'eau",
+        "url": "https://www.refuges.info/point/2153/point-d-eau/la-Source-Les-Cent-Poses/",
+        "water_100m": null
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.11442,
+          46.64122
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1276.0,
+        "blankets": null,
+        "forest_100m": null,
+        "id": 2154,
+        "in_france": true,
+        "latrines": null,
+        "link": 4,
+        "missing_wall": null,
+        "name": "Refuge des Prés d'Haut",
+        "places": 20,
+        "places_mattress": null,
+        "state": null,
+        "stove": null,
+        "type_id": 9,
+        "type_label": "gîte d'étape",
+        "url": "https://www.refuges.info/point/2154/gite-d-etape/refuge-des-Pres-d-Haut/",
+        "water_100m": true
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.03138,
+          46.66282
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 950.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 2455,
+        "in_france": true,
+        "latrines": true,
+        "link": 5,
+        "missing_wall": false,
+        "name": "Refuge du Paradis",
+        "places": 2,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/2455/cabane-non-gardee/refuge-du-Paradis/",
+        "water_100m": true
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.10224,
+          46.56231
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1225.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 2805,
+        "in_france": true,
+        "latrines": false,
+        "link": 6,
+        "missing_wall": false,
+        "name": "Cabane du Grand Remblai",
+        "places": 5,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/2805/cabane-non-gardee/cabane-du-Grand-Remblai/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.11852,
+          46.57366
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1250.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 2930,
+        "in_france": false,
+        "latrines": false,
+        "link": 7,
+        "missing_wall": false,
+        "name": "La Gare du Nord",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/2930/cabane-non-gardee/la-Gare-du-Nord/",
+        "water_100m": true
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.14252,
+          46.57299
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1210.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 2931,
+        "in_france": false,
+        "latrines": false,
+        "link": 8,
+        "missing_wall": false,
+        "name": "La Barre",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/2931/cabane-non-gardee/la-Barre/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.13557,
+          46.56829
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1234.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 2932,
+        "in_france": false,
+        "latrines": false,
+        "link": 9,
+        "missing_wall": false,
+        "name": "La Combe Herbée",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/2932/cabane-non-gardee/la-Combe-Herbee/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.14855,
+          46.59447
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1340.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 2936,
+        "in_france": false,
+        "latrines": false,
+        "link": 10,
+        "missing_wall": false,
+        "name": "Chalet Capt",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/2936/cabane-non-gardee/chalet-Capt/",
+        "water_100m": true
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.14457,
+          46.55726
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1187.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 2937,
+        "in_france": false,
+        "latrines": false,
+        "link": 11,
+        "missing_wall": false,
+        "name": "Pierre-Borel",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/2937/cabane-non-gardee/pierre-Borel/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.12944,
+          46.58226
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1300.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 2944,
+        "in_france": false,
+        "latrines": false,
+        "link": 12,
+        "missing_wall": false,
+        "name": "Le Gy Louis",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/2944/cabane-non-gardee/le-Gy-Louis/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.13349,
+          46.58671
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1314.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 2945,
+        "in_france": false,
+        "latrines": false,
+        "link": 13,
+        "missing_wall": false,
+        "name": "Le Bonnet-de-Police",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/2945/cabane-non-gardee/le-Bonnet-de-Police/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1426,
+          46.59052
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1306.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 2946,
+        "in_france": false,
+        "latrines": false,
+        "link": 14,
+        "missing_wall": false,
+        "name": "Les Combes",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/2946/cabane-non-gardee/les-Combes/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.13625,
+          46.58197
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1250.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 2947,
+        "in_france": false,
+        "latrines": false,
+        "link": 15,
+        "missing_wall": false,
+        "name": "Le Pré-à-la-Dame",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/2947/cabane-non-gardee/le-Pre-a-la-Dame/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1513,
+          46.58302
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1195.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 2950,
+        "in_france": false,
+        "latrines": false,
+        "link": 16,
+        "missing_wall": false,
+        "name": "La Racine",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/2950/cabane-non-gardee/la-Racine/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.14649,
+          46.56759
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1250.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 2961,
+        "in_france": false,
+        "latrines": false,
+        "link": 17,
+        "missing_wall": false,
+        "name": "Grands-Crêts-du-Vent",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/2961/cabane-non-gardee/grands-Crets-du-Vent/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.15178,
+          46.57193
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1264.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 2962,
+        "in_france": false,
+        "latrines": false,
+        "link": 18,
+        "missing_wall": false,
+        "name": "Grands-Crêts-de-Bise",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/2962/cabane-non-gardee/grands-Crets-de-Bise/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.15642,
+          46.57376
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1251.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 2963,
+        "in_france": false,
+        "latrines": false,
+        "link": 19,
+        "missing_wall": false,
+        "name": "La Molasse I",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/2963/cabane-non-gardee/la-Molasse-I/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.16495,
+          46.57746
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1209.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 2964,
+        "in_france": false,
+        "latrines": false,
+        "link": 20,
+        "missing_wall": false,
+        "name": "La Molasse II",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/2964/cabane-non-gardee/la-Molasse-II/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.15205,
+          46.5547
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1100.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 2966,
+        "in_france": false,
+        "latrines": false,
+        "link": 21,
+        "missing_wall": false,
+        "name": "La Combe-des-Mines",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/2966/cabane-non-gardee/la-Combe-des-Mines/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.16523,
+          46.57167
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1200.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 2967,
+        "in_france": false,
+        "latrines": true,
+        "link": 22,
+        "missing_wall": false,
+        "name": "L'Apollo",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/2967/cabane-non-gardee/l-Apollo/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.15786,
+          46.56155
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1160.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 2968,
+        "in_france": false,
+        "latrines": false,
+        "link": 23,
+        "missing_wall": false,
+        "name": "Couvert de la Combette",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/2968/cabane-non-gardee/couvert-de-la-Combette/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.15745,
+          46.58105
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1195.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 2969,
+        "in_france": false,
+        "latrines": false,
+        "link": 24,
+        "missing_wall": false,
+        "name": "L'Ecorce",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/2969/cabane-non-gardee/l-Ecorce/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.15216,
+          46.59749
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1330.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 3029,
+        "in_france": false,
+        "latrines": false,
+        "link": 25,
+        "missing_wall": false,
+        "name": "Le Plâne",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/3029/cabane-non-gardee/le-Plane/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.16593,
+          46.60889
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1350.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 3081,
+        "in_france": false,
+        "latrines": false,
+        "link": 26,
+        "missing_wall": false,
+        "name": "Rendez-vous-des-Sages",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/3081/cabane-non-gardee/rendez-vous-des-Sages/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.17243,
+          46.59171
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1133.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 3082,
+        "in_france": false,
+        "latrines": false,
+        "link": 27,
+        "missing_wall": false,
+        "name": "Le Bambi",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/3082/cabane-non-gardee/le-Bambi/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.17582,
+          46.59392
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1203.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 3083,
+        "in_france": false,
+        "latrines": false,
+        "link": 28,
+        "missing_wall": false,
+        "name": "La Réserve",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/3083/cabane-non-gardee/la-Reserve/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.17293,
+          46.59696
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1203.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 3084,
+        "in_france": false,
+        "latrines": false,
+        "link": 29,
+        "missing_wall": false,
+        "name": "La Merminette",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/3084/cabane-non-gardee/la-Merminette/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.16351,
+          46.60032
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1276.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 3085,
+        "in_france": false,
+        "latrines": false,
+        "link": 30,
+        "missing_wall": false,
+        "name": "La Guerre",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/3085/cabane-non-gardee/la-Guerre/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.18896,
+          46.54636
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1345.0,
+        "blankets": true,
+        "forest_100m": true,
+        "id": 3112,
+        "in_france": false,
+        "latrines": false,
+        "link": 31,
+        "missing_wall": false,
+        "name": "Bois de Caboules",
+        "places": 4,
+        "places_mattress": 4,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/3112/cabane-non-gardee/bois-de-Caboules/",
+        "water_100m": true
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1673,
+          46.6038
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1320.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 3126,
+        "in_france": false,
+        "latrines": false,
+        "link": 32,
+        "missing_wall": false,
+        "name": "Belle-Combe",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/3126/cabane-non-gardee/belle-Combe/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.17639,
+          46.60265
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1253.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 3137,
+        "in_france": false,
+        "latrines": false,
+        "link": 33,
+        "missing_wall": false,
+        "name": "Refuge Pillichody",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/3137/cabane-non-gardee/refuge-Pillichody/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.17933,
+          46.59905
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1205.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 3138,
+        "in_france": false,
+        "latrines": false,
+        "link": 34,
+        "missing_wall": false,
+        "name": "La Pierre-à-Pointe",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/3138/cabane-non-gardee/la-Pierre-a-Pointe/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.18809,
+          46.60005
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1195.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 3139,
+        "in_france": false,
+        "latrines": false,
+        "link": 35,
+        "missing_wall": false,
+        "name": "La Pierre Trouée",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/3139/cabane-non-gardee/la-Pierre-Trouee/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.17924,
+          46.60854
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1295.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 3159,
+        "in_france": false,
+        "latrines": false,
+        "link": 36,
+        "missing_wall": false,
+        "name": "Villa Brun",
+        "places": 6,
+        "places_mattress": 3,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/3159/cabane-non-gardee/villa-Brun/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1901,
+          46.60741
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1210.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 3165,
+        "in_france": false,
+        "latrines": false,
+        "link": 37,
+        "missing_wall": false,
+        "name": "La Place à Fourneau",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/3165/cabane-non-gardee/la-Place-a-Fourneau/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.18266,
+          46.61464
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1345.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 3166,
+        "in_france": false,
+        "latrines": false,
+        "link": 38,
+        "missing_wall": false,
+        "name": "Le Mont Blanc",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/3166/cabane-non-gardee/le-Mont-Blanc/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.18874,
+          46.61856
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1335.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 3169,
+        "in_france": false,
+        "latrines": false,
+        "link": 39,
+        "missing_wall": false,
+        "name": "La Chapelle",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/3169/cabane-non-gardee/la-Chapelle/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1937,
+          46.61392
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1255.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 3170,
+        "in_france": false,
+        "latrines": false,
+        "link": 40,
+        "missing_wall": false,
+        "name": "Refuge des Chômeurs",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/3170/cabane-non-gardee/refuge-des-Chomeurs/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.19751,
+          46.62375
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1318.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 3176,
+        "in_france": false,
+        "latrines": false,
+        "link": 41,
+        "missing_wall": false,
+        "name": "La Marocaine",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/3176/cabane-non-gardee/la-Marocaine/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.18847,
+          46.59367
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1100.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 3178,
+        "in_france": false,
+        "latrines": false,
+        "link": null,
+        "missing_wall": true,
+        "name": "Couvert",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": false,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/3178/cabane-non-gardee/couvert/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.11353,
+          46.60152
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1090.0,
+        "blankets": null,
+        "forest_100m": null,
+        "id": 3194,
+        "in_france": true,
+        "latrines": null,
+        "link": 42,
+        "missing_wall": null,
+        "name": "La Maison du Montagnon",
+        "places": 53,
+        "places_mattress": null,
+        "state": null,
+        "stove": null,
+        "type_id": 9,
+        "type_label": "gîte d'étape",
+        "url": "https://www.refuges.info/point/3194/gite-d-etape/la-Maison-du-Montagnon/",
+        "water_100m": true
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.16175,
+          46.55059
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1065.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 3639,
+        "in_france": false,
+        "latrines": false,
+        "link": 43,
+        "missing_wall": false,
+        "name": "Le Carroz",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/3639/cabane-non-gardee/le-Carroz/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.18103,
+          46.56273
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1065.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 3640,
+        "in_france": false,
+        "latrines": false,
+        "link": 44,
+        "missing_wall": false,
+        "name": "Le Biblanc",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/3640/cabane-non-gardee/le-Biblanc/",
+        "water_100m": true
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.17119,
+          46.55133
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1240.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 3641,
+        "in_france": false,
+        "latrines": false,
+        "link": 45,
+        "missing_wall": false,
+        "name": "La Churchill",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/3641/cabane-non-gardee/la-Churchill/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.16857,
+          46.55157
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1190.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 3642,
+        "in_france": false,
+        "latrines": false,
+        "link": 46,
+        "missing_wall": false,
+        "name": "La cabane à Charly",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/3642/cabane-non-gardee/la-cabane-a-Charly/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.10349,
+          46.5769
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1141.0,
+        "blankets": null,
+        "forest_100m": null,
+        "id": 3717,
+        "in_france": true,
+        "latrines": null,
+        "link": 47,
+        "missing_wall": null,
+        "name": "Chez L'Aimé",
+        "places": null,
+        "places_mattress": null,
+        "state": "Fermé au public",
+        "stove": null,
+        "type_id": 9,
+        "type_label": "gîte d'étape",
+        "url": "https://www.refuges.info/point/3717/gite-d-etape/chez-L-Aime/",
+        "water_100m": null
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.10854,
+          46.57287
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1260.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 3905,
+        "in_france": true,
+        "latrines": false,
+        "link": null,
+        "missing_wall": true,
+        "name": "Abri de la Roche Bernard",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": false,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/3905/cabane-non-gardee/abri-de-la-Roche-Bernard/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.09467,
+          46.54512
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1223.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 5721,
+        "in_france": true,
+        "latrines": false,
+        "link": 48,
+        "missing_wall": false,
+        "name": "Chalet des Ministres",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/5721/cabane-non-gardee/chalet-des-Ministres/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.0222,
+          46.6041
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1083.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 6541,
+        "in_france": true,
+        "latrines": false,
+        "link": null,
+        "missing_wall": false,
+        "name": "Abri des Myrtilles",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/6541/cabane-non-gardee/abri-des-Myrtilles/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.18374,
+          46.63679
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1280.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 6548,
+        "in_france": true,
+        "latrines": false,
+        "link": 49,
+        "missing_wall": true,
+        "name": "Abri de la Citadelle",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": false,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/6548/cabane-non-gardee/abri-de-la-Citadelle/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.16796,
+          46.6554
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1215.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 6549,
+        "in_france": true,
+        "latrines": false,
+        "link": null,
+        "missing_wall": true,
+        "name": "Abri des Loges dessus",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": false,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/6549/cabane-non-gardee/abri-des-Loges-dessus/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1111,
+          46.5467
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1200.0,
+        "blankets": null,
+        "forest_100m": null,
+        "id": 6679,
+        "in_france": true,
+        "latrines": null,
+        "link": null,
+        "missing_wall": null,
+        "name": "Fontaine au Pitre",
+        "places": 0,
+        "places_mattress": null,
+        "state": null,
+        "stove": null,
+        "type_id": 23,
+        "type_label": "point d'eau",
+        "url": "https://www.refuges.info/point/6679/point-d-eau/fontaine-au-Pitre/",
+        "water_100m": null
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.08612,
+          46.62863
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1100.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 7225,
+        "in_france": true,
+        "latrines": false,
+        "link": 50,
+        "missing_wall": false,
+        "name": "Le Bacu",
+        "places": 1,
+        "places_mattress": 1,
+        "state": null,
+        "stove": false,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/7225/cabane-non-gardee/le-Bacu/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.16121,
+          46.63263
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1225.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 7445,
+        "in_france": true,
+        "latrines": false,
+        "link": 51,
+        "missing_wall": true,
+        "name": "Abri de la Grande Verrière",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": false,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/7445/cabane-non-gardee/abri-de-la-Grande-Verriere/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.04821,
+          46.66677
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1054.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 7787,
+        "in_france": true,
+        "latrines": true,
+        "link": 52,
+        "missing_wall": false,
+        "name": "Refuge des Arboux",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": false,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/7787/cabane-non-gardee/refuge-des-Arboux/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1146,
+          46.6315
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1213.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 7972,
+        "in_france": true,
+        "latrines": false,
+        "link": 53,
+        "missing_wall": false,
+        "name": "Abri de Chalotet",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": false,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/7972/cabane-non-gardee/abri-de-Chalotet/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.12686,
+          46.57284
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1280.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 8004,
+        "in_france": false,
+        "latrines": false,
+        "link": 54,
+        "missing_wall": false,
+        "name": "Cabane Frédy Meylan",
+        "places": null,
+        "places_mattress": null,
+        "state": null,
+        "stove": false,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/8004/cabane-non-gardee/cabane-Fredy-Meylan/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1154,
+          46.67261
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 0.0,
+        "blankets": null,
+        "forest_100m": null,
+        "id": 8493,
+        "in_france": true,
+        "latrines": null,
+        "link": null,
+        "missing_wall": null,
+        "name": "Fontaine de Chatelblanc",
+        "places": 0,
+        "places_mattress": null,
+        "state": null,
+        "stove": null,
+        "type_id": 23,
+        "type_label": "point d'eau",
+        "url": "https://www.refuges.info/point/8493/point-d-eau/fontaine-de-Chatelblanc/",
+        "water_100m": null
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.07855,
+          46.63469
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1072.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 8768,
+        "in_france": true,
+        "latrines": false,
+        "link": 55,
+        "missing_wall": false,
+        "name": "La Thieulette",
+        "places": null,
+        "places_mattress": null,
+        "state": null,
+        "stove": false,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/8768/cabane-non-gardee/la-Thieulette/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.10847,
+          46.65103
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1172.0,
+        "blankets": null,
+        "forest_100m": null,
+        "id": 8769,
+        "in_france": true,
+        "latrines": null,
+        "link": null,
+        "missing_wall": null,
+        "name": "Les Enguenelles",
+        "places": null,
+        "places_mattress": null,
+        "state": null,
+        "stove": null,
+        "type_id": 9,
+        "type_label": "gîte d'étape",
+        "url": "https://www.refuges.info/point/8769/gite-d-etape/les-Enguenelles/",
+        "water_100m": null
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.04111,
+          46.61054
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1110.0,
+        "blankets": null,
+        "forest_100m": false,
+        "id": 9232,
+        "in_france": true,
+        "latrines": false,
+        "link": null,
+        "missing_wall": false,
+        "name": "Abri des Gouilles",
+        "places": null,
+        "places_mattress": null,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/9232/cabane-non-gardee/abri-des-Gouilles/",
+        "water_100m": null
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.03045,
+          46.6377
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 800.0,
+        "blankets": null,
+        "forest_100m": null,
+        "id": 9281,
+        "in_france": true,
+        "latrines": null,
+        "link": null,
+        "missing_wall": null,
+        "name": "Bloc sanitaire",
+        "places": 0,
+        "places_mattress": null,
+        "state": null,
+        "stove": null,
+        "type_id": 23,
+        "type_label": "point d'eau",
+        "url": "https://www.refuges.info/point/9281/point-d-eau/bloc-sanitaire/",
+        "water_100m": null
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.07443,
+          46.65986
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 870.0,
+        "blankets": null,
+        "forest_100m": null,
+        "id": 9282,
+        "in_france": true,
+        "latrines": null,
+        "link": null,
+        "missing_wall": null,
+        "name": "Bloc sanitaire",
+        "places": 0,
+        "places_mattress": null,
+        "state": null,
+        "stove": null,
+        "type_id": 23,
+        "type_label": "point d'eau",
+        "url": "https://www.refuges.info/point/9282/point-d-eau/bloc-sanitaire/",
+        "water_100m": null
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.11241,
+          46.57817
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 0.0,
+        "blankets": null,
+        "forest_100m": null,
+        "id": 10203,
+        "in_france": true,
+        "latrines": null,
+        "link": null,
+        "missing_wall": null,
+        "name": "Brèche de la crête",
+        "places": 0,
+        "places_mattress": null,
+        "state": null,
+        "stove": null,
+        "type_id": 3,
+        "type_label": "passage délicat",
+        "url": "https://www.refuges.info/point/10203/passage-delicat/breche-de-la-crete/",
+        "water_100m": null
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1867,
+          46.62502
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1377.0,
+        "blankets": null,
+        "forest_100m": null,
+        "id": 10251,
+        "in_france": true,
+        "latrines": null,
+        "link": 56,
+        "missing_wall": null,
+        "name": "La Jaique",
+        "places": 6,
+        "places_mattress": null,
+        "state": null,
+        "stove": null,
+        "type_id": 9,
+        "type_label": "gîte d'étape",
+        "url": "https://www.refuges.info/point/10251/gite-d-etape/la-Jaique/",
+        "water_100m": true
+      },
+      "type": "Feature"
+    }
+  ],
+  "type": "FeatureCollection"
+}

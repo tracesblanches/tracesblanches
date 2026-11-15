@@ -1,0 +1,695 @@
+{
+  "features": [
+    {
+      "geometry": {
+        "coordinates": [
+          6.12167,
+          46.563297
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/552665/fr",
+        "blanket_unstaffed": null,
+        "capacity_staffed": 19,
+        "capacity_unstaffed": null,
+        "country": "France",
+        "custodianship": "always_accessible",
+        "elevation": 1230.0,
+        "gas_unstaffed": null,
+        "heating_unstaffed": null,
+        "id": 552665,
+        "in_france": true,
+        "licence": "CC-BY-SA-3.0",
+        "link": 2,
+        "mattress_unstaffed": null,
+        "quality": "medium",
+        "title": "Chalet Gaillard",
+        "url": "https://www.camptocamp.org/waypoints/552665",
+        "waypoint_type": "hut"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.117421,
+          46.557602
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/552667/fr",
+        "blanket_unstaffed": false,
+        "capacity_staffed": null,
+        "capacity_unstaffed": 4,
+        "country": "France",
+        "custodianship": null,
+        "elevation": 1189.0,
+        "gas_unstaffed": false,
+        "heating_unstaffed": false,
+        "id": 552667,
+        "in_france": true,
+        "licence": "CC-BY-SA-3.0",
+        "link": 1,
+        "mattress_unstaffed": false,
+        "quality": "medium",
+        "title": "Abri du Plan de la Citerne",
+        "url": "https://www.camptocamp.org/waypoints/552667",
+        "waypoint_type": "shelter"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1973984,
+          46.6238281
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/923534/fr",
+        "blanket_unstaffed": null,
+        "capacity_staffed": null,
+        "capacity_unstaffed": null,
+        "country": "Suisse",
+        "custodianship": null,
+        "elevation": 1391.0,
+        "gas_unstaffed": null,
+        "heating_unstaffed": null,
+        "id": 923534,
+        "in_france": false,
+        "licence": "CC-BY-SA-3.0",
+        "link": 41,
+        "mattress_unstaffed": null,
+        "quality": "medium",
+        "title": "La Marocaine",
+        "url": "https://www.camptocamp.org/waypoints/923534",
+        "waypoint_type": "shelter"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.134121,
+          46.624388
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/1007036/fr",
+        "blanket_unstaffed": null,
+        "capacity_staffed": 30,
+        "capacity_unstaffed": null,
+        "country": "France",
+        "custodianship": "accessible_when_wardened",
+        "elevation": 1088.0,
+        "gas_unstaffed": null,
+        "heating_unstaffed": null,
+        "id": 1007036,
+        "in_france": true,
+        "licence": "CC-BY-SA-3.0",
+        "link": null,
+        "mattress_unstaffed": null,
+        "quality": "medium",
+        "title": "Combe des Cives",
+        "url": "https://www.camptocamp.org/waypoints/1007036",
+        "waypoint_type": "gite"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.103578,
+          46.576924
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/1007102/fr",
+        "blanket_unstaffed": null,
+        "capacity_staffed": 35,
+        "capacity_unstaffed": null,
+        "country": "France",
+        "custodianship": "accessible_when_wardened",
+        "elevation": 1135.0,
+        "gas_unstaffed": null,
+        "heating_unstaffed": null,
+        "id": 1007102,
+        "in_france": true,
+        "licence": "CC-BY-SA-3.0",
+        "link": 47,
+        "mattress_unstaffed": null,
+        "quality": "draft",
+        "title": "Gîte chez l’Aimé",
+        "url": "https://www.camptocamp.org/waypoints/1007102",
+        "waypoint_type": "gite"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1652687,
+          46.5715867
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/1131686/fr",
+        "blanket_unstaffed": null,
+        "capacity_staffed": null,
+        "capacity_unstaffed": null,
+        "country": "Suisse",
+        "custodianship": null,
+        "elevation": 1241.0,
+        "gas_unstaffed": null,
+        "heating_unstaffed": null,
+        "id": 1131686,
+        "in_france": false,
+        "licence": "CC-BY-SA-3.0",
+        "link": 22,
+        "mattress_unstaffed": null,
+        "quality": "medium",
+        "title": "Refuge Apollo",
+        "url": "https://www.camptocamp.org/waypoints/1131686",
+        "waypoint_type": "shelter"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1512954,
+          46.5830159
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/1273037/fr",
+        "blanket_unstaffed": false,
+        "capacity_staffed": null,
+        "capacity_unstaffed": null,
+        "country": "Suisse",
+        "custodianship": null,
+        "elevation": 1195.0,
+        "gas_unstaffed": false,
+        "heating_unstaffed": true,
+        "id": 1273037,
+        "in_france": false,
+        "licence": "CC-BY-SA-3.0",
+        "link": 16,
+        "mattress_unstaffed": false,
+        "quality": "draft",
+        "title": "Refuge de La Racine",
+        "url": "https://www.camptocamp.org/waypoints/1273037",
+        "waypoint_type": "shelter"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1464522,
+          46.567588
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/1273098/fr",
+        "blanket_unstaffed": false,
+        "capacity_staffed": null,
+        "capacity_unstaffed": null,
+        "country": "Suisse",
+        "custodianship": null,
+        "elevation": 1240.0,
+        "gas_unstaffed": false,
+        "heating_unstaffed": true,
+        "id": 1273098,
+        "in_france": false,
+        "licence": "CC-BY-SA-3.0",
+        "link": 17,
+        "mattress_unstaffed": false,
+        "quality": "draft",
+        "title": "Refuge des Grands Crêts du vent",
+        "url": "https://www.camptocamp.org/waypoints/1273098",
+        "waypoint_type": "shelter"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1516579,
+          46.5719548
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/1273100/fr",
+        "blanket_unstaffed": false,
+        "capacity_staffed": null,
+        "capacity_unstaffed": null,
+        "country": "Suisse",
+        "custodianship": null,
+        "elevation": 1264.0,
+        "gas_unstaffed": false,
+        "heating_unstaffed": true,
+        "id": 1273100,
+        "in_france": false,
+        "licence": "CC-BY-SA-3.0",
+        "link": 18,
+        "mattress_unstaffed": false,
+        "quality": "draft",
+        "title": "Refuge des Grands Crêts de bise ",
+        "url": "https://www.camptocamp.org/waypoints/1273100",
+        "waypoint_type": "shelter"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1793178,
+          46.5990523
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/1318821/fr",
+        "blanket_unstaffed": false,
+        "capacity_staffed": null,
+        "capacity_unstaffed": null,
+        "country": "Suisse",
+        "custodianship": null,
+        "elevation": 1215.0,
+        "gas_unstaffed": false,
+        "heating_unstaffed": true,
+        "id": 1318821,
+        "in_france": false,
+        "licence": "CC-BY-SA-3.0",
+        "link": 34,
+        "mattress_unstaffed": false,
+        "quality": "medium",
+        "title": "Refuge de la Pierre à Pointe",
+        "url": "https://www.camptocamp.org/waypoints/1318821",
+        "waypoint_type": "shelter"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1763309,
+          46.6026604
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/1318823/fr",
+        "blanket_unstaffed": false,
+        "capacity_staffed": null,
+        "capacity_unstaffed": null,
+        "country": "Suisse",
+        "custodianship": null,
+        "elevation": 1252.0,
+        "gas_unstaffed": false,
+        "heating_unstaffed": true,
+        "id": 1318823,
+        "in_france": false,
+        "licence": "CC-BY-SA-3.0",
+        "link": 33,
+        "mattress_unstaffed": false,
+        "quality": "medium",
+        "title": "Refuge du Pillichody",
+        "url": "https://www.camptocamp.org/waypoints/1318823",
+        "waypoint_type": "shelter"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1659338,
+          46.6088851
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/1318825/fr",
+        "blanket_unstaffed": null,
+        "capacity_staffed": null,
+        "capacity_unstaffed": null,
+        "country": "Suisse",
+        "custodianship": null,
+        "elevation": 1350.0,
+        "gas_unstaffed": null,
+        "heating_unstaffed": null,
+        "id": 1318825,
+        "in_france": false,
+        "licence": "CC-BY-SA-3.0",
+        "link": 26,
+        "mattress_unstaffed": null,
+        "quality": "draft",
+        "title": "Refuge Rendez-vous des Sages",
+        "url": "https://www.camptocamp.org/waypoints/1318825",
+        "waypoint_type": "shelter"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1729207,
+          46.597022
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/1318828/fr",
+        "blanket_unstaffed": null,
+        "capacity_staffed": null,
+        "capacity_unstaffed": null,
+        "country": "Suisse",
+        "custodianship": null,
+        "elevation": 1235.0,
+        "gas_unstaffed": null,
+        "heating_unstaffed": null,
+        "id": 1318828,
+        "in_france": false,
+        "licence": "CC-BY-SA-3.0",
+        "link": 29,
+        "mattress_unstaffed": null,
+        "quality": "draft",
+        "title": "Refuge de la Merminette",
+        "url": "https://www.camptocamp.org/waypoints/1318828",
+        "waypoint_type": "shelter"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1758221,
+          46.5939223
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/1318830/fr",
+        "blanket_unstaffed": null,
+        "capacity_staffed": null,
+        "capacity_unstaffed": null,
+        "country": "Suisse",
+        "custodianship": null,
+        "elevation": 1205.0,
+        "gas_unstaffed": null,
+        "heating_unstaffed": null,
+        "id": 1318830,
+        "in_france": false,
+        "licence": "CC-BY-SA-3.0",
+        "link": 28,
+        "mattress_unstaffed": null,
+        "quality": "draft",
+        "title": "Refuge de la Réserve",
+        "url": "https://www.camptocamp.org/waypoints/1318830",
+        "waypoint_type": "shelter"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1425051,
+          46.5729744
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/1331156/fr",
+        "blanket_unstaffed": false,
+        "capacity_staffed": null,
+        "capacity_unstaffed": null,
+        "country": "Suisse",
+        "custodianship": null,
+        "elevation": 1210.0,
+        "gas_unstaffed": false,
+        "heating_unstaffed": true,
+        "id": 1331156,
+        "in_france": false,
+        "licence": "CC-BY-SA-3.0",
+        "link": 8,
+        "mattress_unstaffed": false,
+        "quality": "medium",
+        "title": "Refuge de la Barre",
+        "url": "https://www.camptocamp.org/waypoints/1331156",
+        "waypoint_type": "shelter"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.135512,
+          46.568258
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/1331157/fr",
+        "blanket_unstaffed": false,
+        "capacity_staffed": null,
+        "capacity_unstaffed": null,
+        "country": "Suisse",
+        "custodianship": null,
+        "elevation": 1234.0,
+        "gas_unstaffed": false,
+        "heating_unstaffed": true,
+        "id": 1331157,
+        "in_france": false,
+        "licence": "CC-BY-SA-3.0",
+        "link": 9,
+        "mattress_unstaffed": false,
+        "quality": "medium",
+        "title": "Refuge de la Combe Herbée",
+        "url": "https://www.camptocamp.org/waypoints/1331157",
+        "waypoint_type": "shelter"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.118502,
+          46.5736797
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/1331158/fr",
+        "blanket_unstaffed": false,
+        "capacity_staffed": null,
+        "capacity_unstaffed": null,
+        "country": "Suisse",
+        "custodianship": null,
+        "elevation": 1290.0,
+        "gas_unstaffed": false,
+        "heating_unstaffed": null,
+        "id": 1331158,
+        "in_france": false,
+        "licence": "CC-BY-SA-3.0",
+        "link": 7,
+        "mattress_unstaffed": false,
+        "quality": "medium",
+        "title": "Refuge de la Gare du Nord",
+        "url": "https://www.camptocamp.org/waypoints/1331158",
+        "waypoint_type": "shelter"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1335237,
+          46.5868295
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/1331159/fr",
+        "blanket_unstaffed": false,
+        "capacity_staffed": null,
+        "capacity_unstaffed": null,
+        "country": "Suisse",
+        "custodianship": null,
+        "elevation": 1310.0,
+        "gas_unstaffed": false,
+        "heating_unstaffed": true,
+        "id": 1331159,
+        "in_france": false,
+        "licence": "CC-BY-SA-3.0",
+        "link": 13,
+        "mattress_unstaffed": false,
+        "quality": "medium",
+        "title": "Refuge du Bonnet de Police",
+        "url": "https://www.camptocamp.org/waypoints/1331159",
+        "waypoint_type": "shelter"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.164926,
+          46.5775008
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/1331160/fr",
+        "blanket_unstaffed": false,
+        "capacity_staffed": null,
+        "capacity_unstaffed": null,
+        "country": "Suisse",
+        "custodianship": null,
+        "elevation": 1195.0,
+        "gas_unstaffed": false,
+        "heating_unstaffed": true,
+        "id": 1331160,
+        "in_france": false,
+        "licence": "CC-BY-SA-3.0",
+        "link": 20,
+        "mattress_unstaffed": false,
+        "quality": "draft",
+        "title": "Refuge de la Molasse 2",
+        "url": "https://www.camptocamp.org/waypoints/1331160",
+        "waypoint_type": "shelter"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1901092,
+          46.6074128
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/1357727/fr",
+        "blanket_unstaffed": false,
+        "capacity_staffed": null,
+        "capacity_unstaffed": null,
+        "country": "Suisse",
+        "custodianship": null,
+        "elevation": 1210.0,
+        "gas_unstaffed": false,
+        "heating_unstaffed": true,
+        "id": 1357727,
+        "in_france": false,
+        "licence": "CC-BY-SA-3.0",
+        "link": 37,
+        "mattress_unstaffed": false,
+        "quality": "medium",
+        "title": "Refuge de la Place à Fourneau",
+        "url": "https://www.camptocamp.org/waypoints/1357727",
+        "waypoint_type": "shelter"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1792264,
+          46.6084424
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/1357728/fr",
+        "blanket_unstaffed": false,
+        "capacity_staffed": null,
+        "capacity_unstaffed": null,
+        "country": "Suisse",
+        "custodianship": null,
+        "elevation": 1295.0,
+        "gas_unstaffed": false,
+        "heating_unstaffed": true,
+        "id": 1357728,
+        "in_france": false,
+        "licence": "CC-BY-SA-3.0",
+        "link": 36,
+        "mattress_unstaffed": false,
+        "quality": "medium",
+        "title": "Refuge de la Villa Brun",
+        "url": "https://www.camptocamp.org/waypoints/1357728",
+        "waypoint_type": "shelter"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1826648,
+          46.614647
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/1357729/fr",
+        "blanket_unstaffed": false,
+        "capacity_staffed": null,
+        "capacity_unstaffed": null,
+        "country": "Suisse",
+        "custodianship": null,
+        "elevation": 1344.0,
+        "gas_unstaffed": false,
+        "heating_unstaffed": true,
+        "id": 1357729,
+        "in_france": false,
+        "licence": "CC-BY-SA-3.0",
+        "link": 38,
+        "mattress_unstaffed": false,
+        "quality": "medium",
+        "title": "Refuge de la Vue du Mont Blanc",
+        "url": "https://www.camptocamp.org/waypoints/1357729",
+        "waypoint_type": "shelter"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.1887298,
+          46.6185488
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/1357730/fr",
+        "blanket_unstaffed": false,
+        "capacity_staffed": null,
+        "capacity_unstaffed": null,
+        "country": "Suisse",
+        "custodianship": null,
+        "elevation": 1344.0,
+        "gas_unstaffed": false,
+        "heating_unstaffed": true,
+        "id": 1357730,
+        "in_france": false,
+        "licence": "CC-BY-SA-3.0",
+        "link": 39,
+        "mattress_unstaffed": false,
+        "quality": "medium",
+        "title": "Refuge de la Chapelle",
+        "url": "https://www.camptocamp.org/waypoints/1357730",
+        "waypoint_type": "shelter"
+      },
+      "type": "Feature"
+    }
+  ],
+  "type": "FeatureCollection"
+}

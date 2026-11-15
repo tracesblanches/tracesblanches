@@ -1,0 +1,61 @@
+{
+  "site": "cervieres",
+  "release": "2026_T2",
+  "dir": "data/out/cervieres/coverage",
+  "analysed_km2": 225.59,
+  "operators": [
+    {
+      "operator": "Orange",
+      "features": 3,
+      "polygons_near": 750,
+      "covered_km2": 84.96,
+      "covered_pct": 37.66,
+      "extract_s": null,
+      "read_s": 0.081,
+      "geometry_s": 0.111
+    },
+    {
+      "operator": "SFR",
+      "features": 3,
+      "polygons_near": 478,
+      "covered_km2": 156.38,
+      "covered_pct": 69.32,
+      "extract_s": null,
+      "read_s": 0.087,
+      "geometry_s": 0.225
+    },
+    {
+      "operator": "Free",
+      "features": 19,
+      "polygons_near": 715,
+      "covered_km2": 122.38,
+      "covered_pct": 54.25,
+      "extract_s": null,
+      "read_s": 0.265,
+      "geometry_s": 0.042
+    },
+    {
+      "operator": "Bouygues",
+      "features": 3,
+      "polygons_near": 551,
+      "covered_km2": 156.62,
+      "covered_pct": 69.42,
+      "extract_s": null,
+      "read_s": 0.084,
+      "geometry_s": 0.267
+    }
+  ],
+  "any_operator_km2": 174.34,
+  "any_operator_pct": 77.28,
+  "no_network_km2": 51.25,
+  "no_network_pct": 22.72,
+  "no_network_polygons": 117,
+  "no_network_bytes": 79001,
+  "timings": {
+    "analysed_area_s": 0.024,
+    "operators_s": 0.393,
+    "union_difference_s": 0.694,
+    "write_s": 0.015,
+    "total_s": 1.126
+  }
+}

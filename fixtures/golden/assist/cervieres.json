@@ -1,0 +1,23 @@
+{
+  "equipment.laus_fonts.items": 2,
+  "equipment.laus_fonts.no_network_km": 5.08,
+  "equipment.laus_fonts.text": [
+    "Le Laus → Les Fonts — à emporter : batterie externe (5,1 km sans aucun réseau mobile, même pour le 112 (45 % de l'itinéraire)) ; prévenir un proche de l'itinéraire et de l'heure de retour (5,1 km sans aucun réseau mobile, même pour le 112 (45 % de l'itinéraire))."
+  ],
+  "missing_layers": [
+    "météo horaire",
+    "BERA",
+    "état des pistes",
+    "domaines",
+    "avalanches historiques",
+    "exposition aux avalanches"
+  ],
+  "suggest.les_fonts_90min_classic.0.eta_min": 76.0,
+  "suggest.les_fonts_90min_classic.0.length_km": 9.77,
+  "suggest.les_fonts_90min_classic.suggestions": 1,
+  "suggest.les_fonts_90min_classic.text": [
+    "90 min depuis Les Fonts le vendredi 9 janvier 2026 à 14 h 30 (heure limite de retour C7 : 17 h 12)",
+    "1. Le Chemin du Sioux – Route de la Haute Vallée – L'Aigalan (score -1,90) : 9,8 km, D+ 207 m, environ 1 h 16 (modèle C5, classique), retour prévu vers 16 h 00 [-0,32] ; 19 % du parcours en aller-retour sur le même chemin [-0,38] ; état des pistes inconnu ; neige estimée inconnue ici (hors de la carte du site ou sans tracé) : à vérifier [-1,50] ; pistes : Le Chemin du Sioux, Route de la Haute Vallée, L'Aigalan [+0,30].",
+    "Limites : 138 nœuds sur 189 (50,6 km de pistes) ne sont pas atteignables depuis Les Fonts : réseau séparé ou sens uniques dans le graphe des pistes (C1) ; 27 boucles évaluées, 8 trop courtes et 13 trop longues (hors de 75 à 110 % du temps demandé)."
+  ]
+}

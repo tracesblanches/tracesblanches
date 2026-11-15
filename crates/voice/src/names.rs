@@ -195,7 +195,12 @@ pub fn spoken_name(raw: &str) -> String {
     let words: Vec<&str> = spaced.split(' ').filter(|w| !w.is_empty()).collect();
     let mut out: Vec<String> = Vec::with_capacity(words.len());
     for (i, w) in words.iter().enumerate() {
-        let (core, tail) = split_trailing_punct(w);
+        let (core, mut tail) = split_trailing_punct(w);
+        // The period of an abbreviation goes with it ("St. Laurent" → "Saint Laurent"):
+        // `split_trailing_punct` has moved it to the tail.
+        if matches!(core, "St" | "Ste" | "Mt" | "Rte") {
+            tail = tail.strip_prefix('.').unwrap_or(tail);
+        }
         let spoken = if !core.is_empty() && core.chars().all(|c| c.is_ascii_digit()) {
             core.parse::<u32>()
                 .ok()
@@ -206,10 +211,10 @@ pub fn spoken_name(raw: &str) -> String {
             cardinal(roman_value(core), Gender::Masculine)
         } else {
             match core {
-                "St" | "St." => "Saint".to_owned(),
-                "Ste" | "Ste." => "Sainte".to_owned(),
-                "Mt" | "Mt." => "Mont".to_owned(),
-                "Rte" | "Rte." => "Route".to_owned(),
+                "St" => "Saint".to_owned(),
+                "Ste" => "Sainte".to_owned(),
+                "Mt" => "Mont".to_owned(),
+                "Rte" => "Route".to_owned(),
                 _ if ACRONYMS.contains(&core) => core.to_owned(),
                 _ if core.chars().count() >= 2
                     && core.chars().any(char::is_alphabetic)

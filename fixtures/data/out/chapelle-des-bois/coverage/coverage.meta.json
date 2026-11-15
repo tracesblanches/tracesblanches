@@ -1,0 +1,122 @@
+{
+  "layer": "coverage",
+  "site": "chapelle-des-bois",
+  "tickets": [
+    "P12 (#25)"
+  ],
+  "generated_at": "2026-11-15T08:59:32Z",
+  "valid_from": null,
+  "valid_until": null,
+  "validity": "Cartes 2G/3G voix ARCEP 2026_T2 (situation au 2026-06-30). Publication semestrielle (T2 et T4) : régénérer à chaque nouvelle publication.",
+  "crs": "EPSG:4326 (longitude, latitude), coordonnées arrondies à 1e-6° ; calculs en Lambert-93 (EPSG:2154)",
+  "sources": [
+    {
+      "name": "ARCEP, Mon Réseau Mobile, couvertures théoriques 2G/3G voix",
+      "url": "https://data.arcep.fr/mobile/couvertures_theoriques/2026_T2/Metropole/00_Metropole/2026_T2_couv_Metropole_OF_2G3G_voix.gpkg.7z https://data.arcep.fr/mobile/couvertures_theoriques/2026_T2/Metropole/00_Metropole/2026_T2_couv_Metropole_SFR0_2G3G_voix.gpkg.7z https://data.arcep.fr/mobile/couvertures_theoriques/2026_T2/Metropole/00_Metropole/2026_T2_couv_Metropole_FREE_2G3G_voix.gpkg.7z https://data.arcep.fr/mobile/couvertures_theoriques/2026_T2/Metropole/00_Metropole/2026_T2_couv_Metropole_BOUY_2G3G_voix.gpkg.7z",
+      "licence": "Licence Ouverte (data.gouv.fr, jeu « Mon Réseau Mobile », fr-lo)",
+      "attribution": "Arcep, Mon Réseau Mobile",
+      "personal_use_only": false,
+      "edition": "2026-06-30",
+      "note": "simulations des opérateurs ; résolution non documentée ; Free : pas de carte 2G depuis 2024 T4"
+    },
+    {
+      "name": "geo.api.gouv.fr, contours des communes (partie française de l'emprise)",
+      "url": "https://geo.api.gouv.fr/departements/<code>/communes?format=geojson&geometry=contour",
+      "licence": "non vérifiée (F5, #11)",
+      "attribution": "geo.api.gouv.fr (Etalab, IGN)",
+      "personal_use_only": false
+    }
+  ],
+  "files": [
+    {
+      "name": "no_network.geojson",
+      "description": "zones sans aucun réseau voix, même pour le 112 (aucun des quatre opérateurs)",
+      "count": 100,
+      "properties": {
+        "area_ha": "surface du polygone, Lambert-93 plan, hectares",
+        "kind": "no_voice_network_any_operator",
+        "release": "publication ARCEP, ex. 2026_T2"
+      }
+    },
+    {
+      "name": "analysed_area.geojson",
+      "description": "partie française de l'emprise : hors de ce contour, la couverture est inconnue",
+      "count": 1,
+      "properties": {
+        "area_km2": "surface analysée, Lambert-93 plan",
+        "kind": "analysed_area"
+      }
+    },
+    {
+      "name": "build_report.json",
+      "description": "chiffres et temps de calcul"
+    }
+  ],
+  "notes": [
+    "Le 112 peut passer par l'antenne de n'importe quel opérateur : seule l'union des quatre réseaux compte (réponse ministérielle QE 4594, JO du 20/01/2026).",
+    "Niveaux TBC, BC et CL tous comptés comme couverts ; CL = « à l'extérieur des bâtiments dans la plupart des cas ».",
+    "Cartes théoriques : une zone couverte peut ne pas l'être en forêt ou en fond de combe.",
+    "Hors de la partie française de l'emprise (Italie, Suisse), aucune information."
+  ],
+  "stats": {
+    "analysed_km2": 172.7,
+    "any_operator_km2": 155.07,
+    "any_operator_pct": 89.79,
+    "dir": "data/out/chapelle-des-bois/coverage",
+    "no_network_bytes": 74928,
+    "no_network_km2": 17.64,
+    "no_network_pct": 10.21,
+    "no_network_polygons": 100,
+    "operators": [
+      {
+        "covered_km2": 126.38,
+        "covered_pct": 73.17,
+        "extract_s": null,
+        "features": 6,
+        "geometry_s": 0.293,
+        "operator": "Orange",
+        "polygons_near": 818,
+        "read_s": 0.081
+      },
+      {
+        "covered_km2": 146.51,
+        "covered_pct": 84.83,
+        "extract_s": null,
+        "features": 6,
+        "geometry_s": 0.468,
+        "operator": "SFR",
+        "polygons_near": 499,
+        "read_s": 0.077
+      },
+      {
+        "covered_km2": 132.74,
+        "covered_pct": 76.86,
+        "extract_s": null,
+        "features": 26,
+        "geometry_s": 0.044,
+        "operator": "Free",
+        "polygons_near": 874,
+        "read_s": 0.285
+      },
+      {
+        "covered_km2": 134.1,
+        "covered_pct": 77.65,
+        "extract_s": null,
+        "features": 6,
+        "geometry_s": 0.386,
+        "operator": "Bouygues",
+        "polygons_near": 411,
+        "read_s": 0.059
+      }
+    ],
+    "release": "2026_T2",
+    "site": "chapelle-des-bois",
+    "timings": {
+      "analysed_area_s": 0.04,
+      "operators_s": 0.554,
+      "total_s": 2.614,
+      "union_difference_s": 2.01,
+      "write_s": 0.01
+    }
+  }
+}

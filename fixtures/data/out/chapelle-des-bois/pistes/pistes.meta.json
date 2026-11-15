@@ -1,0 +1,941 @@
+{
+  "layer": "pistes",
+  "site": "chapelle-des-bois",
+  "tickets": [
+    "P2 (#15)"
+  ],
+  "generated_at": "2026-11-15T08:58:57Z",
+  "valid_from": "2026-11-13T23:00:00Z",
+  "valid_until": null,
+  "validity": null,
+  "crs": "EPSG:4326 (WGS84, longitude, latitude)",
+  "sources": [
+    {
+      "name": "OpenSnowMap planet_pistes.osm.gz",
+      "url": "https://www.opensnowmap.org/download/planet_pistes.osm.gz",
+      "licence": "ODbL 1.0",
+      "attribution": "© les contributeurs d'OpenStreetMap (ODbL), extrait quotidien OpenSnowMap.org",
+      "personal_use_only": false,
+      "fetched_at": "2026-11-14T21:40:58Z",
+      "last_modified": "Sat, 14 Nov 2026 03:29:40 GMT",
+      "etag": "\"c29a951-6603427b2307e\"",
+      "sha256": "4a68841cff09076f1d361b5c8abcae3404a29e273b992a30ccf26927dc61a00b"
+    }
+  ],
+  "files": [
+    {
+      "name": "pistes.geojson",
+      "description": "ways OSM de ski nordique, raquettes et randonnée hivernale ayant au moins un sommet dans l'emprise du site, plus les ways hors de l'emprise qui ramènent le réseau dans l'emprise (chemin hors emprise le plus court, 10 km au plus, propriété in_box = false)",
+      "licence": "ODbL 1.0",
+      "count": 691,
+      "properties": {
+        "backcountry": "non damé (traces faites par les skieurs)",
+        "classic": "traces classiques",
+        "colours": "couleurs distinctes des relations",
+        "difficulty": "difficulté la plus facile parmi les relations (couleur d'abord, sinon piste:difficulty des relations, sinon celle du way) ; novice = verte, easy = bleue, intermediate = rouge, advanced = noire",
+        "difficulty_max": "difficulté la plus dure parmi les mêmes sources",
+        "difficulty_source": "relation_colour, relation_difficulty ou way",
+        "grooming": "piste:grooming brut (way, sinon relation)",
+        "in_box": "au moins un sommet dans l'emprise du site ; false : way hors de l'emprise gardé pour que le réseau y revienne (sens uniques qui sortent de l'emprise)",
+        "length_m": "longueur, m (haversine)",
+        "lit": "éclairée (piste:lit ou lit), null si inconnu",
+        "name": "nom du way (piste:name, sinon name), sinon noms des relations joints par « / »",
+        "oneway": "sens unique ; la géométrie est alors dans le sens de circulation",
+        "oneway_tag": "piste:oneway : forward, backward (géométrie inversée), no, unknown (absent, double sens)",
+        "osm_way_id": "identifiant du way OSM",
+        "relations": "relations de piste contenant le way : id, name, ref, colour (green, blue, red, black, other), colour_raw, difficulty",
+        "scooter": "damé à la motoneige",
+        "skating": "piste de skating",
+        "tagged": "le way porte lui-même piste:type (sinon il n'est piste que par une relation)",
+        "uses": "usages : nordic, hike (raquettes / piéton), snowshoe ; union du way et de ses relations",
+        "way_difficulty": "piste:difficulty du way (incohérent, gardé pour comparaison)",
+        "way_name": "nom porté par le way lui-même"
+      }
+    },
+    {
+      "name": "graph_edges.geojson",
+      "description": "graphe de routage : ways coupés aux jonctions, plus des connecteurs fermant les trous de moins de 10 m entre un cul-de-sac et une autre piste",
+      "licence": "ODbL 1.0",
+      "count": 773,
+      "properties": {
+        "backcountry": "non damé (traces faites par les skieurs)",
+        "classic": "traces classiques",
+        "colours": "couleurs distinctes des relations",
+        "difficulty": "difficulté la plus facile parmi les relations (couleur d'abord, sinon piste:difficulty des relations, sinon celle du way) ; novice = verte, easy = bleue, intermediate = rouge, advanced = noire",
+        "difficulty_max": "difficulté la plus dure parmi les mêmes sources",
+        "difficulty_source": "relation_colour, relation_difficulty ou way",
+        "edge": "index de l'arête",
+        "from": "index du nœud de départ (graph_nodes.geojson)",
+        "from_osm_node": "identifiant OSM du nœud de départ",
+        "grooming": "piste:grooming brut (way, sinon relation)",
+        "in_box": "au moins un sommet dans l'emprise du site ; false : way hors de l'emprise gardé pour que le réseau y revienne (sens uniques qui sortent de l'emprise)",
+        "kind": "piste (morceau de way) ou connector (jonction ajoutée)",
+        "length_m": "longueur de l'arête, m",
+        "lit": "éclairée (piste:lit ou lit), null si inconnu",
+        "name": "nom du way (piste:name, sinon name), sinon noms des relations joints par « / »",
+        "oneway": "circulation seulement de from vers to",
+        "oneway_tag": "piste:oneway : forward, backward (géométrie inversée), no, unknown (absent, double sens)",
+        "osm_way_id": "identifiant du way OSM",
+        "relations": "relations de piste contenant le way : id, name, ref, colour (green, blue, red, black, other), colour_raw, difficulty",
+        "scooter": "damé à la motoneige",
+        "skating": "piste de skating",
+        "tagged": "le way porte lui-même piste:type (sinon il n'est piste que par une relation)",
+        "to": "index du nœud d'arrivée",
+        "to_osm_node": "identifiant OSM du nœud d'arrivée",
+        "uses": "usages : nordic, hike (raquettes / piéton), snowshoe ; union du way et de ses relations",
+        "way_difficulty": "piste:difficulty du way (incohérent, gardé pour comparaison)",
+        "way_name": "nom porté par le way lui-même"
+      }
+    },
+    {
+      "name": "graph_nodes.geojson",
+      "description": "nœuds du graphe : jonctions, extrémités, cibles des connecteurs",
+      "licence": "ODbL 1.0",
+      "count": 649,
+      "properties": {
+        "component": "composante connexe du graphe",
+        "degree": "nombre d'arêtes incidentes",
+        "node": "index du nœud",
+        "osm_node_id": "identifiant OSM"
+      }
+    }
+  ],
+  "notes": [],
+  "parameters": {
+    "bbox_south_west_north_east": [
+      46.54,
+      6.02,
+      46.68,
+      6.2
+    ],
+    "connector_max_m": 10.0,
+    "oneway": "piste:oneway du way seulement : ni oneway=* (sens des voitures sur les routes), ni oneway=yes ni rôles forward / backward des relations (une relation aller-retour comme « Fabrice Guy » parcourt les mêmes ways dans les deux sens)",
+    "reentry_max_m": 10000.0,
+    "selection": "ways dont piste:type contient nordic, hike ou snowshoe, ou membres d'une relation de piste de ces types (ou route=ski) ; area=yes exclus ; au moins un sommet dans l'emprise"
+  },
+  "stats": {
+    "reentries": [
+      {
+        "from_osm_node": 624404366,
+        "length_m": 1659.7,
+        "osm_way_ids": [
+          49208351,
+          51567303,
+          51567300,
+          49208349,
+          1025684162
+        ],
+        "to_osm_node": 2131344004
+      },
+      {
+        "from_osm_node": 1207599252,
+        "length_m": 2759.3,
+        "osm_way_ids": [
+          429659729,
+          250233677,
+          1017008894,
+          332098906,
+          1017008893,
+          330896019,
+          908224297,
+          330896526
+        ],
+        "to_osm_node": 3379338532
+      },
+      {
+        "from_osm_node": 2271357612,
+        "length_m": 2929.9,
+        "osm_way_ids": [
+          894371649,
+          897170068,
+          894371651,
+          894371653,
+          897678688,
+          897678687,
+          897168378,
+          894509793,
+          894509794,
+          897166071,
+          894371644,
+          897678685,
+          897678686
+        ],
+        "to_osm_node": 4153693693
+      },
+      {
+        "from_osm_node": 2564388825,
+        "length_m": 1947.4,
+        "osm_way_ids": [
+          894371641,
+          897166068,
+          897168378,
+          894509793,
+          894509794,
+          897166071,
+          834541390
+        ],
+        "to_osm_node": 8338964969
+      },
+      {
+        "from_osm_node": 2564388825,
+        "length_m": 2378.4,
+        "osm_way_ids": [
+          894371641,
+          897166068,
+          897168378,
+          894509793,
+          894509794,
+          897166071,
+          894371644,
+          897678685,
+          897678686
+        ],
+        "to_osm_node": 4153693693
+      },
+      {
+        "from_osm_node": 8338964969,
+        "length_m": 2403.3,
+        "osm_way_ids": [
+          897167376,
+          897166067,
+          897167375,
+          897166068,
+          897168378,
+          894509793,
+          894509794,
+          897166071,
+          894371644,
+          897678685,
+          897678686
+        ],
+        "to_osm_node": 4153693693
+      }
+    ],
+    "relations": {
+      "10482705": {
+        "colour": "green",
+        "km_in_site": 2.8,
+        "name": "Le Petit Glacier",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12100309": {
+        "colour": "green",
+        "km_in_site": 4.29,
+        "name": "La Loge",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12100833": {
+        "colour": "blue",
+        "km_in_site": 6.04,
+        "name": "Le glacier",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12109584": {
+        "colour": "green",
+        "km_in_site": 6.44,
+        "name": "Les Tourbières",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12111626": {
+        "colour": "green",
+        "km_in_site": 1.16,
+        "name": "La Plaine",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12120524": {
+        "colour": "blue",
+        "km_in_site": 4.1,
+        "name": "Le Matin du Chemin",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12142374": {
+        "colour": "green",
+        "km_in_site": 1.79,
+        "name": "La Vigne",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12142526": {
+        "colour": "blue",
+        "km_in_site": 9.35,
+        "name": "Patrice Bailly-Salins",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12195770": {
+        "colour": "blue",
+        "km_in_site": 4.21,
+        "name": "Les Baganiers",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12195898": {
+        "colour": "green",
+        "km_in_site": 2.62,
+        "name": "La Petite Tourbières",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12206774": {
+        "colour": "red",
+        "km_in_site": 13.54,
+        "name": "Les Cernois Roz",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12206787": {
+        "colour": "blue",
+        "km_in_site": 4.08,
+        "name": "La Chaux Mourant",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12210223": {
+        "colour": "blue",
+        "km_in_site": 1.56,
+        "name": "Le Gy Large",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12210409": {
+        "colour": "blue",
+        "km_in_site": 3.21,
+        "name": "Le Maréchet",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12213419": {
+        "colour": "green",
+        "km_in_site": 3.05,
+        "name": "Le Petit Canada",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12295635": {
+        "colour": "red",
+        "km_in_site": 9.17,
+        "name": "La Chapelande",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12329052": {
+        "colour": "other",
+        "km_in_site": 0.97,
+        "name": "Liaison France",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12329053": {
+        "colour": "red",
+        "km_in_site": 1.95,
+        "name": "Chemin Saugy",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12329054": {
+        "colour": "other",
+        "km_in_site": 1.81,
+        "name": "Chemin Weibel",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12329055": {
+        "colour": "black",
+        "km_in_site": 2.19,
+        "name": "La Combette",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12329056": {
+        "colour": "blue",
+        "km_in_site": 1.81,
+        "name": "Pré-Derrière",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12329057": {
+        "colour": "other",
+        "km_in_site": 2.46,
+        "name": "La Racine",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12329058": {
+        "colour": "other",
+        "km_in_site": 0.33,
+        "name": "Apollo",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12329059": {
+        "colour": "other",
+        "km_in_site": 5.96,
+        "name": "La Mollasse",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12329060": {
+        "colour": "green",
+        "km_in_site": 3.94,
+        "name": "Thomassette Racine (Cret des Ages)",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12329061": {
+        "colour": "green",
+        "km_in_site": 1.62,
+        "name": "Thomassette - Grandes Roches (par le bas)",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12342806": {
+        "colour": "other",
+        "km_in_site": 0.89,
+        "name": "Piste JOJ",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12582011": {
+        "colour": "other",
+        "km_in_site": 1.6,
+        "name": "Liaison Morbier - Bellefontaine",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12582012": {
+        "colour": "black",
+        "km_in_site": 10.11,
+        "name": "Victor Arbez",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12582078": {
+        "colour": "blue",
+        "km_in_site": 4.87,
+        "name": "Nondance",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12582079": {
+        "colour": "black",
+        "km_in_site": 14.67,
+        "name": "Greffier",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12582141": {
+        "colour": "green",
+        "km_in_site": 1.81,
+        "name": "Beauregard",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "12582142": {
+        "colour": "blue",
+        "km_in_site": 7.51,
+        "name": "La Norbiére",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "13713709": {
+        "colour": "green",
+        "km_in_site": 0.21,
+        "name": "La racine",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "13714713": {
+        "colour": "other",
+        "km_in_site": 1.78,
+        "name": "liaison",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "13736977": {
+        "colour": "green",
+        "km_in_site": 1.53,
+        "name": "Thomassette - Grandes Roches (par le haut)",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "13736978": {
+        "colour": "red",
+        "km_in_site": 0.47,
+        "name": "Chemin Saugy2",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "13749128": {
+        "colour": "blue",
+        "km_in_site": 7.46,
+        "name": "liaison Bois d'Amont Le Brassus",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "13768885": {
+        "colour": "blue",
+        "km_in_site": 5.3,
+        "name": "Sur Les Cotes",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "13768886": {
+        "colour": "other",
+        "km_in_site": 2.39,
+        "name": "liaison chez valentin",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "13768887": {
+        "colour": "green",
+        "km_in_site": 2.03,
+        "name": "Les Isles",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "13768888": {
+        "colour": "green",
+        "km_in_site": 4.21,
+        "name": "Chauchoulet",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "13768932": {
+        "colour": "other",
+        "km_in_site": 3.93,
+        "name": "liaison rouges truites",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "13768994": {
+        "colour": "red",
+        "km_in_site": 7.0,
+        "name": "Le Chocolat",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "13769566": {
+        "colour": "red",
+        "km_in_site": 7.97,
+        "name": "Elodie Bourgeois Pin",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "13878369": {
+        "colour": "green",
+        "km_in_site": 2.28,
+        "name": "Le Paradis",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "13913563": {
+        "colour": null,
+        "km_in_site": 4.7,
+        "name": "Chalet Gaillard",
+        "uses": [
+          "hike"
+        ]
+      },
+      "13922533": {
+        "colour": null,
+        "km_in_site": 4.1,
+        "name": "Tour des Lacs",
+        "uses": [
+          "hike"
+        ]
+      },
+      "13922534": {
+        "colour": null,
+        "km_in_site": 1.98,
+        "name": "La Roche Bernard",
+        "uses": [
+          "hike"
+        ]
+      },
+      "1446600": {
+        "colour": "blue",
+        "km_in_site": 8.22,
+        "name": "La pierre Levée",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "1446602": {
+        "colour": "red",
+        "km_in_site": 5.86,
+        "name": "Le Grand Remblais",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "1461803": {
+        "colour": "blue",
+        "km_in_site": 4.04,
+        "name": "Ravier",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "1461804": {
+        "colour": "black",
+        "km_in_site": 18.58,
+        "name": "Fabrice Guy",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "1461805": {
+        "colour": "green",
+        "km_in_site": 4.04,
+        "name": "Bougaud",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "1461806": {
+        "colour": "red",
+        "km_in_site": 9.08,
+        "name": "Chalet Brulé",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "1482062": {
+        "colour": "other",
+        "km_in_site": 37.62,
+        "name": "GTJ à ski de fond",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "1645036": {
+        "colour": "blue",
+        "km_in_site": 7.35,
+        "name": "Combe des Cives",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "1645037": {
+        "colour": "green",
+        "km_in_site": 2.97,
+        "name": "La Beurrière",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "1645038": {
+        "colour": "red",
+        "km_in_site": 10.76,
+        "name": "La Citadelle",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "1645039": {
+        "colour": "red",
+        "km_in_site": 16.03,
+        "name": "Sylvain Guillaume",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "1645046": {
+        "colour": "red",
+        "km_in_site": 8.4,
+        "name": "La Faîvre",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "20135248": {
+        "colour": "blue",
+        "km_in_site": 3.14,
+        "name": "Les Baties",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "20135249": {
+        "colour": "green",
+        "km_in_site": 2.84,
+        "name": "Piste débutant",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2613839": {
+        "colour": "green",
+        "km_in_site": 1.88,
+        "name": "La Citerne",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2613840": {
+        "colour": "blue",
+        "km_in_site": 2.93,
+        "name": "La Sauge",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2613841": {
+        "colour": "green",
+        "km_in_site": 4.03,
+        "name": "La petite Verrière",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2613842": {
+        "colour": "green",
+        "km_in_site": 0.75,
+        "name": "La Passerelle",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2613843": {
+        "colour": "blue",
+        "km_in_site": 5.77,
+        "name": "Le Verdet",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2683389": {
+        "colour": "blue",
+        "km_in_site": 8.29,
+        "name": "Le Griffond",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2683390": {
+        "colour": "other",
+        "km_in_site": 0.86,
+        "name": "Liaison Petit-Landoz",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2819558": {
+        "colour": "blue",
+        "km_in_site": 8.35,
+        "name": "Combe Verte",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2819559": {
+        "colour": "blue",
+        "km_in_site": 5.4,
+        "name": "Jobez",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2819761": {
+        "colour": "red",
+        "km_in_site": 10.67,
+        "name": "Chalet Pin",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2819762": {
+        "colour": "red",
+        "km_in_site": 14.11,
+        "name": "Les Prés d'Haut",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2819763": {
+        "colour": "other",
+        "km_in_site": 0.36,
+        "name": "liaison",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2820666": {
+        "colour": "blue",
+        "km_in_site": 9.24,
+        "name": "Chaumoz",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2820667": {
+        "colour": "blue",
+        "km_in_site": 2.76,
+        "name": "La Feuillat",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2820668": {
+        "colour": "red",
+        "km_in_site": 8.85,
+        "name": "Les Lacs",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2820669": {
+        "colour": "red",
+        "km_in_site": 12.67,
+        "name": "Les Mortes",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2820670": {
+        "colour": "green",
+        "km_in_site": 1.5,
+        "name": "Les Pas de la Vie",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2820941": {
+        "colour": "other",
+        "km_in_site": 0.7,
+        "name": null,
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2822476": {
+        "colour": "black",
+        "km_in_site": 9.15,
+        "name": "La Grande Combe",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2822477": {
+        "colour": "blue",
+        "km_in_site": 3.79,
+        "name": "La Thieulette",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2822572": {
+        "colour": "red",
+        "km_in_site": 11.96,
+        "name": "Combe David",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "2822573": {
+        "colour": "blue",
+        "km_in_site": 2.87,
+        "name": "Nondance",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "4640556": {
+        "colour": "other",
+        "km_in_site": 3.67,
+        "name": "La Frontiere",
+        "uses": [
+          "nordic"
+        ]
+      },
+      "6942987": {
+        "colour": "blue",
+        "km_in_site": 6.96,
+        "name": "La Combette",
+        "uses": [
+          "nordic"
+        ]
+      }
+    },
+    "summary": {
+      "graph_components": 11,
+      "graph_connectors": 4,
+      "graph_edges": 773,
+      "graph_nodes": 649,
+      "km_hike_only": 30.9,
+      "km_nordic": 271.46,
+      "km_nordic_tagged": 270.54,
+      "km_outside_box": 9.16,
+      "km_total": 302.36,
+      "oneway_sinks": [
+        1999008075,
+        2562904859
+      ],
+      "oneway_sources": [
+        2562904873
+      ],
+      "relations": 87,
+      "ways": 659,
+      "ways_difficulty_from_colour": 489,
+      "ways_difficulty_from_relation_tag": 0,
+      "ways_difficulty_from_way": 91,
+      "ways_oneway": 206,
+      "ways_outside_box": 32,
+      "ways_relation_only": 25,
+      "ways_tagged": 634,
+      "ways_with_grooming": 575
+    }
+  }
+}
