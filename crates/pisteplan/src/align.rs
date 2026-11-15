@@ -275,7 +275,10 @@ pub fn compatible(spec: &PlanSpec, ink: usize, osm: &OsmRef, way: usize) -> bool
     if ski != nordic {
         return false;
     }
-    match (spec.inks[ink].difficulty, osm.ways[way].colour.as_deref()) {
+    match (
+        spec.inks[ink].difficulty.as_deref(),
+        osm.ways[way].colour.as_deref(),
+    ) {
         (Some(d), Some(c)) => {
             d == c
                 || osm.ways[way]

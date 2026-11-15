@@ -25,6 +25,8 @@ Téléchargés par le téléchargeur commun (sources `nordicfrance`, `enj`, cach
 5. Calage. Un RANSAC exhaustif apparie étiquettes et repères (similitude ≤ 45°, tolérance 15 pt), puis une ICP non rigide ajuste une spline plaque mince. Elle apparie les encres de ski aux voies nordiques de même couleur, avec un rayon qui décroît de 600 à 70 m. Points d'appui : jonctions du dessin et jonctions OSM nordiques, plus proches voisins mutuels, sans ambiguïté.
 6. Appariement **exact**. Il faut d'abord un nom certain : clé identique sur une couche texte, ou une lecture OCR unique (similarité ≥ 0,6 et écart ≥ 0,15). Les homonymes non reliés sont départagés par la proximité de l'encadré. Il faut ensuite que l'encre de la piste soit dessinée le long de la géométrie OSM, dans le même sens (≤ 30°), sur au moins 50 %. Cette part doit aussi dépasser celle des 16 copies décalées (400 et 800 m) : test de permutation, p ≤ 1/17. Le rayon (3, 5, 8 ou 12 pt) est choisi par validation sur les candidats. Une piste qui échoue n'est pas transcrite : elle est listée avec la raison.
 
+**Fiche automatique** (`autospec`, `register_auto`) : la fiche de lecture (`PlanSpec`) est déduite du plan seul. Résolution et source des étiquettes viennent du PDF (`pdfinfo`, `pdfimages`). Les encres sont lues sur la légende (tiret de chaque piste, mot de couleur), puis ajustées sur les lignes de la carte (pixels contrastés, même teinte). Une couleur tracée sans entrée de légende devient une encre non ski. L'épaisseur des traits donne les paramètres de ligne. Les panneaux et encadrés sont des aplats rectangulaires. La zone de carte entoure le réseau dessiné. L'emprise est l'étendue du plan une fois placé par le RANSAC, plus 3 km.
+
 ## Sorties (`data/out/<site>/plan_pistes/`)
 
 | Fichier | Contenu |
@@ -40,6 +42,7 @@ SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-pisteplan --features pip
 cargo test -p skimap-pisteplan --features pipeline
 cargo test -p skimap-pisteplan --test real_outputs -- --ignored   # lecteur sur les sorties réelles
 # diagnostics locaux (images du plan, jamais publiées) : examples inspect, register, ocr_dump
+SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-pisteplan --features pipeline --example auto_compare  # fiche auto / à la main
 ```
 
 Démo : `demo/compare.html?site=…&view=osm|plan` (style et couleurs du visualiseur, sans image du plan), à servir depuis la racine par `skimap serve`.
@@ -51,6 +54,7 @@ Démo : `demo/compare.html?site=…&view=osm|plan` (style et couleurs du visuali
 | Pistes de la légende (lignes) | 8 lues sur 9 (OCR) | 56 (59 lignes) |
 | Avec une piste OSM du même nom | 6 | 39 |
 | Transcrites (exact) | 3 (Gibera, Pinatelle, Chemin du Sioux) | 30 (54 % du plan, 77 % des candidats) |
+| Fiche automatique : transcrites (exact) | 2 sur les 3 (Chemin du Sioux : 48 % < 50 %) | 32 : les 30 + La Chaux Mourant, Le Petit Glacier (justes, vérifiées à l'écran) |
 | Couleur du plan = couleur OSM | 3 / 3 | 30 / 30 |
 | Repères appariés | 14 | 16 |
 | Voies avec flèches (sens) : même sens qu'OSM / sens absent d'OSM / opposé | sans flèches | 29 / 19 / 0 (+ 1 dans les deux sens) |

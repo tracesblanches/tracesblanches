@@ -381,7 +381,7 @@ pub fn legend_ocr(spec: &PlanSpec, lines: &[TextBox]) -> Vec<LegendEntry> {
 
 /// Splits an OCR line holding two legend entries side by side (two columns read as one
 /// line) at the second « Piste » word; the boxes are cut in proportion of the characters.
-fn split_entries(l: &TextBox) -> Vec<TextBox> {
+pub fn split_entries(l: &TextBox) -> Vec<TextBox> {
     let words: Vec<&str> = l.text.split_whitespace().collect();
     let cut = words
         .iter()
@@ -436,7 +436,7 @@ mod tests {
 
     #[test]
     fn colour_words_only_after_piste() {
-        let s = &crate::spec::CHAPELLE_DES_BOIS;
+        let s = &crate::spec::chapelle_des_bois();
         let ink = |n: &str| s.inks.iter().position(|i| i.name == n);
         assert_eq!(colour_word(s, "Combe Verte 8,4 km"), None);
         assert_eq!(colour_word(s, "Piste verte : le Gibera"), ink("green"));

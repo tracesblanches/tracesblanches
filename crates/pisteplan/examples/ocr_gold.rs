@@ -80,7 +80,7 @@ const GOLD: &[&str] = &[
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cfg = Config::from_env()?;
     let dl = Downloader::from_config(&cfg)?;
-    let spec = &spec::CERVIERES;
+    let spec = &spec::cervieres();
     let inp = input::load(spec, &cfg.layout(), &dl)?;
     let e = ocr::engine(&dl)?;
     let enhanced = ocr::enhance_text(&inp.image, OCR_TOPHAT_R, OCR_TOPHAT_GAIN);

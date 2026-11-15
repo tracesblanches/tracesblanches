@@ -16,6 +16,8 @@ pub mod align;
 #[cfg(feature = "pipeline")]
 pub mod arrows;
 #[cfg(feature = "pipeline")]
+pub mod autospec;
+#[cfg(feature = "pipeline")]
 pub mod build;
 #[cfg(feature = "pipeline")]
 pub mod image;

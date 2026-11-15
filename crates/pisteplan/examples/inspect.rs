@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dl = Downloader::from_config(&cfg)?;
     let spec = spec::plan_for(site).ok_or("no plan for this site")?;
     let t = Instant::now();
-    let inp = input::load(spec, &cfg.layout(), &dl)?;
+    let inp = input::load(&spec, &cfg.layout(), &dl)?;
     println!(
         "loaded {}x{} in {:.2} s, {} text lines",
         inp.image.w,
@@ -29,7 +29,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         inp.text.lines.len()
     );
     let t = Instant::now();
-    let labels = segment::classify(spec, &inp.image, inp.pt_per_px);
+    let labels = segment::classify(&spec, &inp.image, inp.pt_per_px);
     println!("classified in {:.2} s", t.elapsed().as_secs_f64());
     let (w, h) = (inp.image.w, inp.image.h);
     let mut img = inp.image.clone();

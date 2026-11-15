@@ -144,35 +144,67 @@ pub fn read_lines_tiled(
     overlap: usize,
     pt_per_px: f64,
 ) -> Result<Vec<TextBox>> {
-    let mut out: Vec<TextBox> = Vec::new();
+    use rayon::prelude::*;
     let step = tile.saturating_sub(overlap).max(1);
-    let mut y = 0;
-    loop {
-        let mut x = 0;
-        loop {
-            for l in read_lines(engine, img, [x, y, x + tile, y + tile], pt_per_px)? {
-                let c = l.center();
-                let hgt = (l.rect[3] - l.rect[1]).max(1.0);
-                let dup = out.iter().position(|o| {
-                    let d = o.center();
-                    (d[0] - c[0]).abs() < (o.rect[2] - o.rect[0]).max(hgt) / 2.0
-                        && (d[1] - c[1]).abs() < hgt / 2.0
-                });
-                match dup {
-                    Some(i) if out[i].text.len() < l.text.len() => out[i] = l,
-                    Some(_) => {}
-                    None => out.push(l),
-                }
-            }
-            if x + tile >= img.w {
-                break;
-            }
-            x += step;
+    let starts = |len: usize| {
+        let mut v = vec![0];
+        while v[v.len() - 1] + tile < len {
+            let next = v[v.len() - 1] + step;
+            v.push(next);
         }
-        if y + tile >= img.h {
-            break;
+        v
+    };
+    // Tiles in row-major order, read in parallel (the engine is shared read-only), then
+    // merged in that order: the result does not depend on the scheduling.
+    let tiles: Vec<(usize, usize)> = starts(img.h)
+        .into_iter()
+        .flat_map(|y| starts(img.w).into_iter().map(move |x| (x, y)))
+        .collect();
+    let read: Vec<Vec<TextBox>> = tiles
+        .par_iter()
+        .map(|&(x, y)| read_lines(engine, img, [x, y, x + tile, y + tile], pt_per_px))
+        .collect::<Result<_>>()?;
+    let mut out: Vec<TextBox> = Vec::new();
+    for l in read.into_iter().flatten() {
+        let c = l.center();
+        let hgt = (l.rect[3] - l.rect[1]).max(1.0);
+        let dup = out.iter().position(|o| {
+            let d = o.center();
+            (d[0] - c[0]).abs() < (o.rect[2] - o.rect[0]).max(hgt) / 2.0
+                && (d[1] - c[1]).abs() < hgt / 2.0
+        });
+        match dup {
+            Some(i) if out[i].text.len() < l.text.len() => out[i] = l,
+            Some(_) => {}
+            None => out.push(l),
         }
-        y += step;
     }
     Ok(out)
+}
+
+/// [`read_lines_tiled`] cached as JSON in `path` (the OCR of a large page takes a minute;
+/// the reading only depends on the image, the models and the tiling, all in the key the
+/// caller puts in the file name).
+pub fn read_lines_cached(
+    engine: &OcrEngine,
+    img: &Rgb,
+    tile: usize,
+    overlap: usize,
+    pt_per_px: f64,
+    path: &std::path::Path,
+) -> Result<Vec<TextBox>> {
+    if let Ok(bytes) = std::fs::read(path)
+        && let Ok(v) = serde_json::from_slice::<Vec<TextBox>>(&bytes)
+    {
+        return Ok(v);
+    }
+    let v = read_lines_tiled(engine, img, tile, overlap, pt_per_px)?;
+    let tmp = path.with_extension("part");
+    let json = serde_json::to_vec(&v).map_err(|e| Error::Json {
+        context: "OCR cache".into(),
+        source: e,
+    })?;
+    std::fs::write(&tmp, json).map_err(|e| Error::io(&tmp, e))?;
+    std::fs::rename(&tmp, path).map_err(|e| Error::io(path, e))?;
+    Ok(v)
 }

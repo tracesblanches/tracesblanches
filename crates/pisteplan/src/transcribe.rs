@@ -339,7 +339,7 @@ pub fn candidates(reg: &Registration, plan: &[PlanEntry]) -> Vec<Decision> {
                 entry: e.clone(),
                 ink: ink.map(|i| i.name.to_owned()),
                 kind: ink.map(|i| i.kind),
-                colour: ink.and_then(|i| i.difficulty).map(str::to_owned),
+                colour: ink.and_then(|i| i.difficulty.clone()),
                 name: e.name_read.clone(),
                 status: None,
                 method: None,

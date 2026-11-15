@@ -228,7 +228,7 @@ pub fn components(m: &Mask) -> (Vec<u32>, Vec<usize>) {
 }
 
 /// Parameters of the line extraction, in pixels of the rendering.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
 pub struct LineParams {
     /// Closing radius.
     pub close_r: i64,

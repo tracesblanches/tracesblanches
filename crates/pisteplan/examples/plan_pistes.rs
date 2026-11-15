@@ -28,12 +28,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "planet and OCR models loaded in {:.1} s",
         t.elapsed().as_secs_f64()
     );
-    for p in spec::PLANS {
-        if !sites.is_empty() && !sites.iter().any(|s| s == p.site) {
+    for p in spec::manual_plans() {
+        if !sites.is_empty() && !sites.contains(&p.site) {
             continue;
         }
         let t = Instant::now();
         let reg = register(p, &layout, &dl, &planet, Some(&engine))?;
+        let p = &reg.spec;
         let rep = transcribe_and_write(&reg, &layout, &planet.source)?;
         println!(
             "\n== {} -> {} ({:.1} s)",
