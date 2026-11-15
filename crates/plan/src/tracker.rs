@@ -20,7 +20,8 @@
 //!
 //! No allocation on that path (tested by counting the allocator). Once a minute: the
 //! condition alerts and turnaround of A8 (`alerts::Monitor`: hourly weather, minutes of
-//! delay) and the limit of the plan (return time asked or C7 deadline: a late start or a
+//! delay; with a group on the plan, the turnaround at the group's pace,
+//! `alerts::Monitor::for_group`) and the limit of the plan (return time asked or C7 deadline: a late start or a
 //! slow pace that misses it shortens the loop; with a group on the plan, its median arrival
 //! at the pace of the day) and the proposals of C11 when the group is durably later than
 //! planned ([`crate::pace`]: never imposed, answered by [`Input::Answer`]). On events only
@@ -482,8 +483,11 @@ struct Pending<'a> {
 struct Reference {
     t0: f64,
     total: Prediction,
-    /// Planned arrival, seconds (moved by an accepted proposal).
+    /// Planned arrival, seconds (moved by an accepted proposal): the time planned on
+    /// (the median; the slow side of the range with children).
     arrival: f64,
+    /// Median arrival, seconds (the delays of the proposals are on the medians).
+    median: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -492,6 +496,7 @@ struct PendingProposal {
     kind: ProposalKind,
     exit: Option<usize>,
     arrival: f64,
+    median: f64,
     delay: f64,
 }
 
@@ -559,6 +564,10 @@ pub struct Tracker<'a> {
     /// C11: the group's parameters, the terrain ratio of the model, the pace of the day.
     pace_base: PaceParams,
     ratio: f64,
+    /// Quantile of the total time planned on (0.5; the slow side with children).
+    plan_q: f64,
+    /// The slow side planned on over the median, in the morning (1 without children).
+    slow_ratio: f64,
     day: DayPace,
     pace_route: PaceRoute,
     pace_last: Option<(f64, f64)>,
@@ -594,6 +603,18 @@ impl<'a> Tracker<'a> {
         let ratio = terrain_ratio(&plan.eta);
         let pace_route = PaceRoute::of(&course, ratio);
         let pace_base = pace::base_params(plan);
+        let plan_q = plan.pace.as_ref().map_or(0.5, |p| p.plan_q);
+        let slow_ratio = match &plan.pace {
+            Some(p) if p.plan_q > 0.5 && p.prediction.median_s > 0.0 => {
+                p.prediction.quantile_s(p.plan_q) / p.prediction.median_s
+            }
+            _ => 1.0,
+        };
+        // With children, proposals sooner (C11).
+        let mut p = p;
+        if plan.pace.as_ref().is_some_and(|x| x.profile.has_children()) {
+            p.propose = p.propose.with_children();
+        }
         let day = DayPace::new(&pace_base, pace_route.total());
         let refuges = plan
             .refuges
@@ -647,6 +668,8 @@ impl<'a> Tracker<'a> {
             session_events: Vec::with_capacity(4),
             pace_base,
             ratio,
+            plan_q,
+            slow_ratio,
             day,
             pace_route,
             pace_last: None,
@@ -790,13 +813,17 @@ impl<'a> Tracker<'a> {
                     self.reference = Some(Reference {
                         t0,
                         total,
-                        arrival: t0 + total.median_s,
+                        arrival: t0 + self.planned_s(&total),
+                        median: t0 + total.median_s,
                     });
                     self.pace_last = None;
                     // The group's time when the plan has one, else the model's with the
                     // margin of C7.
                     let (said, back_s) = match &self.plan.pace {
-                        Some(_) => (total.median_s, total.median_s),
+                        Some(_) => {
+                            let s = self.planned_s(&total);
+                            (s, s)
+                        }
                         None => (model, model * TurnaroundParams::default().eta_factor),
                     };
                     let back = start + chrono::Duration::seconds(back_s as i64);
@@ -809,8 +836,10 @@ impl<'a> Tracker<'a> {
                         ev.announce(),
                         None,
                     );
+                    let p = alerts::Params::default();
                     let point: Cow<'a, WeatherPoint> = match &self.plan.weather {
                         Some(w) => Cow::Borrowed(w),
+                        // No weather: the C7 deadline at the start still holds.
                         None => Cow::Owned(WeatherPoint {
                             id: "none".into(),
                             name: "sans météo".into(),
@@ -819,12 +848,19 @@ impl<'a> Tracker<'a> {
                             hours: Vec::new(),
                         }),
                     };
-                    self.monitor = Some(alerts::Monitor::with(
-                        start,
-                        Cow::Owned(profile),
-                        point,
-                        alerts::Params::default(),
-                    ));
+                    self.monitor = Some(match &self.plan.pace {
+                        // The group of the plan (C11): the turnaround at the time it is
+                        // planned on, with its light margin.
+                        Some(pace) => alerts::Monitor::for_model(
+                            start,
+                            &profile,
+                            point,
+                            p,
+                            &pace::plan_model(pace),
+                            self.ratio,
+                        ),
+                        None => alerts::Monitor::with(start, Cow::Owned(profile), point, p),
+                    });
                 }
                 SessionEvent::Paused { t: tp } => {
                     self.speech.set_paused(true);
@@ -1403,12 +1439,12 @@ impl<'a> Tracker<'a> {
         let here = self.model_here();
         let group = self.plan.pace.is_some();
         let paused_for = self.remaining(t).1;
-        // With the group of the day (C11): its median arrival at the pace of the day; else
-        // the observed pace with the C7 margin.
+        // With the group of the day (C11): its arrival at the pace of the day (median, the
+        // slow side with children); else the observed pace with the C7 margin.
         let arrival = |i: usize, model_total: f64| {
             if group {
                 self.exit_prediction(i, paused_for)
-                    .map(|p| local(t + p.median_s))
+                    .map(|p| local(t + self.planned_s(&p)))
             } else {
                 Some(local(t + pace * f * (model_total - here)))
             }
@@ -1447,9 +1483,9 @@ impl<'a> Tracker<'a> {
         };
         let f = TurnaroundParams::default().eta_factor;
         let arrival = if self.plan.pace.is_some() {
-            // The group of the day (C11): its median arrival at the pace of the day (stops
-            // included; the C7 deadline keeps its own 30 min).
-            local(t + self.remaining(t).0.median_s)
+            // The group of the day (C11): its arrival at the pace of the day (median, the
+            // slow side with children; stops included; the C7 deadline keeps its margin).
+            local(t + self.planned_s(&self.remaining(t).0))
         } else {
             local(t + pace * f * (self.model_total() - here))
         };
@@ -1795,8 +1831,11 @@ impl<'a> Tracker<'a> {
             }
             new.next = k;
         }
-        if let Some(m) = &mut self.monitor {
-            m.replace_route(Cow::Owned(new.view().to_profile()));
+        if self.monitor.is_some() {
+            let profile = self.monitor_profile(new.view().to_profile());
+            if let Some(m) = &mut self.monitor {
+                m.replace_route(Cow::Owned(profile));
+            }
         }
         let prev = std::mem::replace(&mut self.active, new);
         if cause != Cause::Deviation {
@@ -1921,6 +1960,31 @@ impl<'a> Tracker<'a> {
     }
 
     /// The model time per terrain of the route followed (after a change of route).
+    /// The time planned on for a prediction of the day (C11): the median; with children,
+    /// the median times the morning's ratio of the slow side to the median (the day's own
+    /// spread starts wider than the morning's, its online priors being capped: its slow
+    /// side would shorten every outing at the start).
+    #[inline]
+    fn planned_s(&self, p: &Prediction) -> f64 {
+        if self.plan_q > 0.5 {
+            p.median_s * self.slow_ratio
+        } else {
+            p.median_s
+        }
+    }
+
+    /// The profile A8 follows on a route: at the time the plan's group is planned on when
+    /// it has one (C11, as `alerts::Monitor::for_model`), else the model's.
+    fn monitor_profile(
+        &self,
+        p: skimap_assist::suggest::Profile,
+    ) -> skimap_assist::suggest::Profile {
+        match &self.plan.pace {
+            Some(pace) => p.for_group_at(&pace.params, self.ratio, self.plan_q),
+            None => p,
+        }
+    }
+
     fn pace_route_again(&mut self) {
         if let Ok(c) = Course::new(self.g, &self.active.legs, &self.plan.eta) {
             self.pace_route = PaceRoute::of(&c, self.ratio);
@@ -2041,8 +2105,14 @@ impl<'a> Tracker<'a> {
             return;
         }
         let (pred, paused_for) = self.remaining(t);
-        let delay = t + pred.median_s - r.arrival;
-        let lo_delay = t + pred.lo_s - r.arrival;
+        // Late on the median of the day against the median planned; confirmed when nine
+        // chances in ten late, with children when more likely than not (sooner, C11).
+        let delay = t + pred.median_s - r.median;
+        let lo_delay = if self.plan_q > 0.5 {
+            delay
+        } else {
+            t + pred.lo_s - r.median
+        };
         let thr = pp.min_delay_s.max(pp.delay_frac * r.total.median_s);
         if delay >= thr && lo_delay > 0.0 {
             self.props.since.get_or_insert(t);
@@ -2088,16 +2158,17 @@ impl<'a> Tracker<'a> {
                 cands.push((i, p, self.plan.plans_b[i].fallback.model_s));
             }
         }
-        let loop_arr = t + pred.median_s;
+        // On the time planned on (median; the slow side with children).
+        let loop_arr = t + self.planned_s(&pred);
         let short = cands
             .iter()
-            .filter(|c| t + c.1.median_s <= r.arrival + pp.slack_s)
-            .filter(|c| loop_arr - (t + c.1.median_s) >= 600.0)
+            .filter(|c| t + self.planned_s(&c.1) <= r.arrival + pp.slack_s)
+            .filter(|c| loop_arr - (t + self.planned_s(&c.1)) >= 600.0)
             .max_by(|a, b| a.2.total_cmp(&b.2));
         let nearest = cands
             .iter()
-            .min_by(|a, b| a.1.median_s.total_cmp(&b.1.median_s))
-            .filter(|c| loop_arr - (t + c.1.median_s) >= pp.min_saving_s);
+            .min_by(|a, b| self.planned_s(&a.1).total_cmp(&self.planned_s(&b.1)))
+            .filter(|c| loop_arr - (t + self.planned_s(&c.1)) >= pp.min_saving_s);
         let (kind, pick) = match (short, nearest) {
             (Some(c), _) => (ProposalKind::ShortLoop, Some(c)),
             (None, Some(c)) => (ProposalKind::NearestExit, Some(c)),
@@ -2125,8 +2196,12 @@ impl<'a> Tracker<'a> {
         let elapsed = (t - r.t0).max(1.0);
         let slower_pct =
             (((1.0 - expected_elapsed / elapsed) * 100.0 / 5.0).round() * 5.0).clamp(0.0, 95.0);
-        let (arr, lo, hi) = (local(t + p.median_s), local(t + p.lo_s), local(t + p.hi_s));
-        let saved = pick.map(|c| (pred.median_s - c.1.median_s) / 60.0);
+        let (arr, lo, hi) = (
+            local(t + self.planned_s(&p)),
+            local(t + p.lo_s),
+            local(t + p.hi_s),
+        );
+        let saved = pick.map(|c| (self.planned_s(&pred) - self.planned_s(&c.1)) / 60.0);
         self.props.count += 1;
         let proposal = Proposal {
             id: self.props.count,
@@ -2163,7 +2238,8 @@ impl<'a> Tracker<'a> {
             t,
             kind,
             exit: pick.map(|c| c.0),
-            arrival: t + p.median_s,
+            arrival: t + self.planned_s(&p),
+            median: t + p.median_s,
             delay,
         });
     }
@@ -2214,6 +2290,7 @@ impl<'a> Tracker<'a> {
             if applied && let Some(r) = &mut self.reference {
                 // The new return time is the plan now.
                 r.arrival = pd.arrival;
+                r.median = pd.median;
                 self.props.last_delay = None;
             }
         } else {
@@ -2239,8 +2316,11 @@ impl<'a> Tracker<'a> {
         let Some(pd) = self.pending.take() else {
             return;
         };
-        if let Some(m) = &mut self.monitor {
-            m.replace_route(Cow::Owned(pd.prev.view().to_profile()));
+        if self.monitor.is_some() {
+            let profile = self.monitor_profile(pd.prev.view().to_profile());
+            if let Some(m) = &mut self.monitor {
+                m.replace_route(Cow::Owned(profile));
+            }
         }
         self.speech.withdraw("switch");
         self.active = pd.prev;
