@@ -135,6 +135,16 @@ pub fn sun_position(at: DateTime<Utc>, place: LonLat) -> SunPosition {
 mod tests {
     use super::*;
 
+    #[test]
+    fn last_sundays_including_december() {
+        let d = |y, m, day| NaiveDate::from_ymd_opt(y, m, day).unwrap();
+        assert_eq!(last_sunday(2027, 3), d(2027, 3, 28));
+        assert_eq!(last_sunday(2027, 10), d(2027, 10, 31));
+        // December: the next month is January of the next year.
+        assert_eq!(last_sunday(2026, 12), d(2026, 12, 27));
+        assert_eq!(last_sunday(2027, 12), d(2027, 12, 26));
+    }
+
     /// astral 3.2 (`astral.sun.sunset`, `dusk(depression=6)`, observer at sea level),
     /// run in a virtual environment outside the repository (script in the C7 issue).
     /// Place, date, sunrise, sunset, civil dawn, civil dusk (UTC).

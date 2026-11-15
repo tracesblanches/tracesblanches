@@ -717,6 +717,61 @@ mod tests {
     }
 
     #[test]
+    fn night_rules_start_at_sunset() {
+        let rules = RuleSet::embedded().unwrap();
+        let mut core = zone(
+            "biodiv:686",
+            ZoneKind::BiodivSports,
+            BBox::new(46.72, 6.14, 46.79, 6.20),
+        );
+        core.props.months = Some(Months::from_numbers([12, 1, 2, 3, 4, 5, 6]).unwrap());
+        core.props.practices = vec!["terrestre".into()];
+        let layer = ZoneLayer {
+            zones: vec![
+                zone(
+                    "country:fr",
+                    ZoneKind::Country,
+                    BBox::new(46.0, 6.0, 47.0, 7.0),
+                ),
+                zone(
+                    "inpn:FR3801178",
+                    ZoneKind::Appb,
+                    BBox::new(46.6, 6.1, 46.8, 6.25),
+                ),
+                core,
+            ],
+        };
+        let id = "appb-haut-doubs-core-night";
+        let rule = rules.rules.iter().find(|r| r.id == id).unwrap();
+        let Period::Night { reference, .. } = &rule.period else {
+            panic!("{id}: not a night rule")
+        };
+        let date = NaiveDate::from_ymd_opt(2027, 7, 15).unwrap();
+        let (rise, set) = sun_times(date, *reference).unwrap();
+        let p = LonLat::new(6.17, 46.75);
+        let state = |at| {
+            evaluate(&layer, &rules, p, at)
+                .rules
+                .iter()
+                .find(|r| r.rule == id)
+                .unwrap()
+                .inactive
+        };
+        // Night from sunset (included) to sunrise (excluded).
+        assert_eq!(state(set), None);
+        assert_eq!(
+            state(set - chrono::Duration::seconds(1)),
+            Some(Inactive::Daytime)
+        );
+        assert_eq!(state(rise), Some(Inactive::Daytime));
+        assert_eq!(state(rise - chrono::Duration::seconds(1)), None);
+        let e = evaluate(&layer, &rules, p, set);
+        assert!(e.active_rules().any(|r| r.rule == id));
+        assert!(e.active_rules().all(|r| r.active()));
+        assert!(e.active_rules().count() < e.rules.len());
+    }
+
+    #[test]
     fn paradis_parcel_exception_is_a_note() {
         let rules = RuleSet::embedded().unwrap();
         let layer = ZoneLayer {
@@ -743,6 +798,12 @@ mod tests {
             .unwrap();
         assert_eq!(hit.exception_notes.len(), 1);
         assert!(hit.exception_notes[0].contains("B 771"));
+        // The parcel list is appended to the description of the exception.
+        assert!(
+            hit.exception_notes[0].contains(" Parcelles : "),
+            "{}",
+            hit.exception_notes[0]
+        );
         let feb = evaluate(&layer, &rules, p, utc("2027-02-20T10:00:00Z"));
         let hit = feb
             .rules

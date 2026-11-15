@@ -26,6 +26,7 @@ thiserror.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+tempfile.workspace = true
 # Benchmarks (Q5, #105): instruction counts under Valgrind, gzipped inputs in benches/data.
 gungraun.workspace = true
 flate2.workspace = true
