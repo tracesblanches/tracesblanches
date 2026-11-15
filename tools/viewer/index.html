@@ -403,7 +403,7 @@ function buildPanel() {
   }
   $("attrib").innerHTML = m.attributions.map((a) => `<li>${esc(a)}</li>`).join("") +
     m.layers.flatMap((l) => l.sources.map((s) => `<li class="small"><b>${esc(l.title)}</b> : ${esc(s.name)}${s.licence ? " — " + esc(s.licence) : ""}${s.personal_use_only ? " — usage personnel" : ""}</li>`)).join("") +
-    m.basemaps.flatMap((b) => b.sources.map((s) => `<li class="small"><b>${esc(b.title)}</b> : ${esc(s.name)} — ${esc(s.licence || "")}</li>`)).join("");
+    m.basemaps.flatMap((b) => b.sources.map((s) => `<li class="small"><b>${esc(b.title)}</b> : ${esc(s.name)} — ${esc(s.licence || "")}${s.edition ? " — mise à jour du " + esc(s.edition) : ""}</li>`)).join("");
   $("missing").innerHTML = (m.missing || []).map((x) => `<li><b>${esc(x.id)}</b> : ${esc(x.reason)}</li>`).join("") || "<li>aucune</li>";
 }
 
