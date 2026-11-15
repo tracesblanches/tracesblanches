@@ -12,7 +12,7 @@ Jamais « sans danger » : chaque sortie dit ce qu'elle ne sait pas (couche abse
 |---|---|---|
 | `layers` | — | lecteurs typés des couches : météo horaire (P19, plusieurs fichiers fusionnés), BERA (P8), état des pistes (P13 : ENJ, Nordic France, mairie), domaines (P3), pistes (P2), carte d'enneigement (P6), avalanches historiques (P20), zones sans réseau (P12), zones et règles (P9, P10), itinéraire prévu |
 | `inputs` | — | `SiteData::load` : toutes les couches d'un site, avec remplacement des fichiers datés (`Paths`) pour rejouer un jour passé |
-| `sun` | A3 | position du soleil (formules de l'Astronomical Almanac, écart à astral 3.2 < 0,01°), rayonnement de ciel clair sur une pente, nuages ; heure légale et lever / coucher : `skimap_core::ephemeris` |
+| `sun` | A3 | rayonnement de ciel clair sur une pente, nuages ; position du soleil (`skimap_core::ephemeris::sun_position`, formules de l'Astronomical Almanac, écart à astral 3.2 < 0,01°), heure légale et lever / coucher : `skimap_core::ephemeris` |
 | `snow_quality` | A3 | qualité de neige heure par heure par classe de pente et d'orientation, meilleur créneau, meilleur versant |
 | `wax` | A2 | fartage classique (retenue et glisse) et skating (glisse), tables Swix et Toko citées |
 | `briefing` | A1 | classement des domaines et des itinéraires du jour et des jours suivants, chaque raison avec ses points |

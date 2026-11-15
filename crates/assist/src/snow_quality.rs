@@ -351,7 +351,7 @@ fn simulate_hours(
         prev = Some(h.time);
         // Sun at the middle of the hour.
         let mid = sun::local_to_utc(h.time + Duration::minutes(30));
-        let sp = sun::position(mid, place);
+        let sp = skimap_core::ephemeris::sun_position(mid, place);
         let mut energy = 0.0;
         if let Some(t) = h.temperature_c {
             step(&mut s, h, t, sp, class, elevation_m, p, &mut energy);

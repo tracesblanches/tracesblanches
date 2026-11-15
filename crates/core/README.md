@@ -13,7 +13,7 @@ La crate ne contient aucune pile HTTP (`cargo tree -p skimap-core -e normal` : n
 | `routing` | C1 | coûts enfichables (`CostModel`), préférences de style, Dijkstra entre deux points rattachés, sorties GeoJSON, `build(site, &layout)` |
 | `eta` | C5 | modèle physique de temps, Munter, Tobler |
 | `matching` | C2 | rattachement HMM (Viterbi en ligne), détection d'écart avec hystérésis, mode couloir hors piste, traces synthétiques |
-| `ephemeris` | C7, C8 | coucher du soleil, crépuscule civil, heure légale (code tiré de `zone_eval`, partagé) |
+| `ephemeris` | C7, C8, A3 | coucher du soleil, crépuscule civil, heure légale (code tiré de `zone_eval`, partagé), position du soleil (`sun_position`, reprise de l'assistant) |
 | `turnaround` | C7 | heure limite de retour, heure de demi-tour, point de demi-tour d'un aller-retour |
 | `offpiste` | C3, C4 | routage hors piste sur grille de coût de 5 m (rasters SKR1, politique de zones à une date, A*) ; `offpiste::prepare` (fonction `pipeline`) prépare les rasters |
 | `zone_eval` | C8 | zones et règles à une position et une date |
