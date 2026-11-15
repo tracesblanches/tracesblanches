@@ -6,7 +6,9 @@
 //!   real traces under forest.
 //! - [`offpiste`]: C3 (#35) off-piste routing on a cost grid; C4 (#36) benchmark on the
 //!   Pixel 8.
-//! - [`eta`]: C5 (#37) estimated time model; C6 (#38) personal calibration.
+//! - [`eta`]: C5 (#37) estimated time model.
+//! - [`calibration`]: C11 (#130) pace learned per group (moving pace by terrain, stops,
+//!   detours; offline and online Bayesian update), base of C6 (#38).
 //! - [`turnaround`]: C7 (#39) turnaround time before nightfall.
 //! - [`zone_eval`]: C8 (#40) zones and rules active at a position and a date.
 //! - [`battery`]: C9 (#41) battery forecast model.
@@ -19,6 +21,7 @@
 //! no dependency on the `download` feature of `skimap-common`.
 
 pub mod battery;
+pub mod calibration;
 #[cfg(feature = "pipeline")]
 pub mod dem;
 pub mod ephemeris;

@@ -1,6 +1,8 @@
 //! E1 (#125): the tracker allocates nothing for a fix where all goes well. A counting
 //! global allocator (the only `unsafe` of the crate, test only) counts the allocations of
-//! every `Tracker::push` while a normal outing of each site is replayed.
+//! every `Tracker::push` while a normal outing of each site is replayed, and a slow family
+//! outing with stops and detours on a plan with the family's profile (C11 #130: the pace
+//! of the day updated on every fix, the arrival and the proposals checked every minute).
 //!
 //! Reads `data/out/<site>/` (fails if absent; `fixtures/` once Q1 is merged).
 
@@ -11,9 +13,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use skimap_common::layout::DataLayout;
 use skimap_common::site::{CERVIERES, CHAPELLE_DES_BOIS, Site};
+use skimap_core::calibration::{GroupProfile, ProfileModel};
+use skimap_plan::pace;
 use skimap_plan::plan;
 use skimap_plan::presets;
-use skimap_plan::scenario::{self, Scenario, Step};
+use skimap_plan::scenario::{self, Behaviour, Scenario, Step};
 use skimap_plan::track::TrackView;
 use skimap_plan::tracker::{Input, Output, Tracker, TrackerParams};
 
@@ -42,7 +46,7 @@ unsafe impl GlobalAlloc for Counting {
 #[global_allocator]
 static GLOBAL: Counting = Counting;
 
-fn site_counts(site: &'static Site) -> (usize, usize, usize, usize) {
+fn site_counts(site: &'static Site, family: bool) -> (usize, usize, usize, usize) {
     let root = std::env::var("SKIMAP_DATA_DIR")
         .unwrap_or_else(|_| format!("{}/../../data", env!("CARGO_MANIFEST_DIR")));
     let layout = DataLayout::new(root);
@@ -57,8 +61,12 @@ fn site_counts(site: &'static Site) -> (usize, usize, usize, usize) {
     let (mut data, ctx) = presets::load(&layout, site).expect("layers");
     let req = presets::requests(site, presets::past_day(site))[0].clone();
     let m = plan::morning(&data, &req);
-    let p = plan::build(&mut data, &m, 0, &ctx).expect("plan");
+    let mut p = plan::build(&mut data, &m, 0, &ctx).expect("plan");
     let g = data.graph.take().expect("graph");
+    if family {
+        let model = ProfileModel::new(GroupProfile::family(2, &[6, 9], req.style));
+        pace::with_pace(&mut p, &g, &model).expect("pace");
+    }
     let bytes = plan::track(&p, &g).expect("track").to_bytes();
     let view = TrackView::new(&bytes).unwrap();
     let sc = Scenario {
@@ -70,6 +78,7 @@ fn site_counts(site: &'static Site) -> (usize, usize, usize, usize) {
         forest: true,
         seed: 3,
         tail_s: 300.0,
+        behaviour: family.then(Behaviour::family),
     };
     let run = scenario::run(&sc, &p, view, &g, TrackerParams::default()).expect("run");
     let mut tr = Tracker::new(&p, view, &g, None, TrackerParams::default()).unwrap();
@@ -95,16 +104,22 @@ fn site_counts(site: &'static Site) -> (usize, usize, usize, usize) {
         }
     }
     println!(
-        "{}: {fixes} fixes, {quiet} sans rien à dire ni décider ({quiet_alloc} allocations), {eventful} avec une sortie ou une annonce proposée",
-        site.id
+        "{}{}: {fixes} fixes, {quiet} sans rien à dire ni décider ({quiet_alloc} allocations), {eventful} avec une sortie ou une annonce proposée",
+        site.id,
+        if family { ", famille" } else { "" }
     );
     (fixes, quiet, quiet_alloc, eventful)
 }
 
 #[test]
 fn a_quiet_fix_allocates_nothing() {
-    for site in [&CERVIERES, &CHAPELLE_DES_BOIS] {
-        let (fixes, quiet, allocs, _) = site_counts(site);
+    for (site, family) in [
+        (&CERVIERES, false),
+        (&CHAPELLE_DES_BOIS, false),
+        (&CERVIERES, true),
+        (&CHAPELLE_DES_BOIS, true),
+    ] {
+        let (fixes, quiet, allocs, _) = site_counts(site, family);
         assert!(quiet > fixes * 9 / 10, "{quiet} of {fixes}");
         assert_eq!(
             allocs, 0,

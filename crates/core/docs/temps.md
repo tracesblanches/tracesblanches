@@ -27,3 +27,5 @@ Comparaison sur les mêmes itinéraires (classique et skating au modèle par dé
 | Chalet des Ministres → Citadelle | 3h23 | 3h02 | 2h13 | 6h46 | 5h01 | 7h59 |
 
 Munter, Tobler et Skitourenguru sont des formules de randonnée ou de ski de randonnée : plus lentes que le ski de fond damé, sans distinction de technique. L'erreur sur des traces réelles reste à mesurer (critère du ticket, quand T1 sera disponible).
+
+Temps d'arrêt, rythme propre à chaque groupe et apprentissage sur ses sorties : [C11, temps appris par groupe](groupes.md).

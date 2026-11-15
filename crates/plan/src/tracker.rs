@@ -1,6 +1,6 @@
-//! Following the plan during the outing (J2 #111, J3 #112, J4 #113, E1 #125): fixes and
-//! events in, what to say, which route to follow and which GPS mode to use out. Nothing to
-//! touch when all goes well.
+//! Following the plan during the outing (J2 #111, J3 #112, J4 #113, E1 #125, C11 #130):
+//! fixes and events in, what to say, which route to follow and which GPS mode to use out.
+//! Nothing to touch when all goes well.
 //!
 //! Everything that does not depend on the position or the real time is in the plan's flat
 //! table ([`crate::track`], computed on the workstation). For each fix the phone only:
@@ -14,17 +14,22 @@
 //!    obvious, zones without network, avalanche paths);
 //! 4. decides the GPS mode ([`crate::gps::decide`]) from the distance to the next decision
 //!    point;
-//! 5. asks the speech policy ([`crate::speech`]) whether something is due.
+//! 5. asks the speech policy ([`crate::speech`]) whether something is due;
+//! 6. while moving, adds the time and the model time progressed per terrain to the pace of
+//!    the day (C11, [`DayPace`]); stops are counted when the skier moves again.
 //!
 //! No allocation on that path (tested by counting the allocator). Once a minute: the
 //! condition alerts and turnaround of A8 (`alerts::Monitor`: hourly weather, minutes of
 //! delay) and the limit of the plan (return time asked or C7 deadline: a late start or a
-//! slow pace that misses it shortens the loop). On events only (allocating): off the route for
-//! [`TrackerParams::reroute_after_s`] → a new route on the trail graph to the junction
-//! ahead that costs the least extra time (or the finish); a closed trail → the plan B of
-//! the morning that goes around it, else a route computed then, else « no other way
-//! known »; fog or rising wind → the exit saving the most time; late → the longest exit
-//! that still ends in time (shortened loop); no time left → the fastest way home (safety).
+//! slow pace that misses it shortens the loop; with a group on the plan, its median arrival
+//! at the pace of the day) and the proposals of C11 when the group is durably later than
+//! planned ([`crate::pace`]: never imposed, answered by [`Input::Answer`]). On events only
+//! (allocating): off the route for [`TrackerParams::reroute_after_s`] → a new route on the
+//! trail graph to the junction ahead that costs the least extra time (or the finish); a
+//! closed trail → the plan B of the morning that goes around it, else a route computed
+//! then, else « no other way known »; fog or rising wind → the exit saving the most time;
+//! late → the longest exit that still ends in time (shortened loop); no time left → the
+//! fastest way home (safety).
 //! A refusal (one gesture) or skiing on along the previous route past the divergence puts
 //! the previous route back; the same cause does not switch again.
 
@@ -37,6 +42,9 @@ use skimap_assist::alerts;
 use skimap_assist::layers::WeatherPoint;
 use skimap_assist::suggest::{loop_voice, node_snap};
 use skimap_common::geom::LonLat;
+use skimap_core::calibration::{
+    DayPace, OutingObs, PaceParams, Prediction, Terrain, terrain_ratio,
+};
 use skimap_core::graph::{LocalPlane, PisteGraph, Snap};
 use skimap_core::matching::{AlertEvent, DeviationDetector, Hysteresis, ROUTE_HYSTERESIS};
 use skimap_core::turnaround::TurnaroundParams;
@@ -50,6 +58,10 @@ use crate::fallback::{self, FallbackKind};
 use crate::gps::{self, GpsInput, GpsParams, GpsRequest, GpsState};
 use crate::guidance::{self, Junction};
 use crate::line::turn_deg;
+use crate::pace::{
+    self, PaceReason, PaceRoute, Proposal, ProposalKind, ProposeParams, proposal_announcement,
+    proposal_text,
+};
 use crate::phrases::{self, Voice};
 use crate::plan::{self, DayPlan, PlannedAnnouncement, Trigger};
 use crate::session::{Activity, End, Phase, Session, SessionEvent, SessionParams};
@@ -115,6 +127,9 @@ pub struct TrackerParams {
     pub refuse_m: f64,
     /// A8 and the return time are checked this often, seconds.
     pub slow_every_s: f64,
+    /// Proposals when the group is durably slower than planned (C11).
+    #[serde(default)]
+    pub propose: ProposeParams,
 }
 
 impl Default for TrackerParams {
@@ -135,6 +150,7 @@ impl Default for TrackerParams {
             accept_m: 150.0,
             refuse_m: 150.0,
             slow_every_s: 60.0,
+            propose: ProposeParams::default(),
         }
     }
 }
@@ -176,6 +192,13 @@ pub enum Input {
         /// Time.
         t: DateTime<Utc>,
     },
+    /// The skier answers the last proposal (C11): accept or refuse, one gesture.
+    Answer {
+        /// Time.
+        t: DateTime<Utc>,
+        /// Accepted.
+        accept: bool,
+    },
 }
 
 impl Input {
@@ -186,7 +209,8 @@ impl Input {
             | Input::Activity { t, .. }
             | Input::Screen { t, .. }
             | Input::Closed { t, .. }
-            | Input::Refuse { t } => *t,
+            | Input::Refuse { t }
+            | Input::Answer { t, .. } => *t,
         }
     }
 }
@@ -223,6 +247,8 @@ pub enum Cause {
     Deviation,
     /// No time left before the deadline.
     NoTime,
+    /// A proposal accepted (C11: slower than planned).
+    Pace,
 }
 
 impl Cause {
@@ -355,6 +381,45 @@ pub enum Output {
         /// Recap.
         recap: Recap,
     },
+    /// A proposal (C11), to accept or refuse ([`Input::Answer`]).
+    Proposal {
+        /// Time.
+        t: DateTime<Utc>,
+        /// Proposal.
+        proposal: Box<Proposal>,
+    },
+    /// The answer to a proposal.
+    Answered {
+        /// Time.
+        t: DateTime<Utc>,
+        /// What was proposed.
+        kind: ProposalKind,
+        /// Accepted.
+        accept: bool,
+        /// Applied (an accepted exit already passed is not).
+        applied: bool,
+    },
+}
+
+/// The estimated arrival at the pace of the day (C11), from the last fix.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Eta {
+    /// Time of the estimate (local).
+    pub at: NaiveDateTime,
+    /// Arrival, median (local).
+    pub arrival: NaiveDateTime,
+    /// 10 % quantile.
+    pub arrival_lo: NaiveDateTime,
+    /// 90 % quantile.
+    pub arrival_hi: NaiveDateTime,
+    /// Arrival planned for the group.
+    pub planned: NaiveDateTime,
+    /// What remains.
+    pub remaining: Prediction,
+    /// Progress pace of the day on the flat, relative to C5.
+    pub pace: f64,
+    /// Stops so far and their total, seconds.
+    pub stops: (u32, f64),
 }
 
 impl Output {
@@ -367,7 +432,9 @@ impl Output {
             | Output::Switched { t, .. }
             | Output::Reverted { t, .. }
             | Output::Gps { t, .. }
-            | Output::Recap { t, .. } => *t,
+            | Output::Recap { t, .. }
+            | Output::Proposal { t, .. }
+            | Output::Answered { t, .. } => *t,
         }
     }
 }
@@ -408,6 +475,37 @@ struct Pending<'a> {
     prev_cursor: f64,
     cause: Cause,
     s_div: f64,
+}
+
+/// The arrival planned for the group, from the start.
+#[derive(Debug, Clone, Copy)]
+struct Reference {
+    t0: f64,
+    total: Prediction,
+    /// Planned arrival, seconds (moved by an accepted proposal).
+    arrival: f64,
+}
+
+#[derive(Debug, Clone)]
+struct PendingProposal {
+    t: f64,
+    kind: ProposalKind,
+    exit: Option<usize>,
+    arrival: f64,
+    delay: f64,
+}
+
+#[derive(Debug, Clone, Default)]
+struct Proposals {
+    /// Every 5 min of moving time: (moving time, progress), a ring.
+    marks: [(f64, f64); 6],
+    mark_n: usize,
+    since: Option<f64>,
+    last_t: Option<f64>,
+    count: u32,
+    /// Delay of the last proposal not accepted.
+    last_delay: Option<f64>,
+    pending: Option<PendingProposal>,
 }
 
 fn secs_of(t: DateTime<Utc>) -> f64 {
@@ -458,6 +556,18 @@ pub struct Tracker<'a> {
     refuges: Vec<String>,
     live_key: Option<(String, f64)>,
     session_events: Vec<SessionEvent>,
+    /// C11: the group's parameters, the terrain ratio of the model, the pace of the day.
+    pace_base: PaceParams,
+    ratio: f64,
+    day: DayPace,
+    pace_route: PaceRoute,
+    pace_last: Option<(f64, f64)>,
+    progress_total: f64,
+    stops_s: Vec<f64>,
+    reference: Option<Reference>,
+    props: Proposals,
+    /// A switch other than a reroute happened (no more proposals).
+    switched_other: bool,
 }
 
 impl<'a> Tracker<'a> {
@@ -481,6 +591,10 @@ impl<'a> Tracker<'a> {
             return Err(Error::Invalid("track of another plan".into()));
         }
         let finish = course.line().point_at(course.length_m());
+        let ratio = terrain_ratio(&plan.eta);
+        let pace_route = PaceRoute::of(&course, ratio);
+        let pace_base = pace::base_params(plan);
+        let day = DayPace::new(&pace_base, pace_route.total());
         let refuges = plan
             .refuges
             .iter()
@@ -531,6 +645,16 @@ impl<'a> Tracker<'a> {
             refuges: Vec::new(),
             live_key: None,
             session_events: Vec::with_capacity(4),
+            pace_base,
+            ratio,
+            day,
+            pace_route,
+            pace_last: None,
+            progress_total: 0.0,
+            stops_s: Vec::with_capacity(64),
+            reference: None,
+            props: Proposals::default(),
+            switched_other: false,
             p,
         })
     }
@@ -627,6 +751,7 @@ impl<'a> Tracker<'a> {
             }
             Input::Closed { ways, .. } => self.closure(t, ways, out),
             Input::Refuse { .. } => self.revert(t, false, out),
+            Input::Answer { accept, .. } => self.answer(t, *accept, out),
         }
         if let Some(s) = self.speech.tick(t) {
             self.spoken += 1;
@@ -661,11 +786,21 @@ impl<'a> Tracker<'a> {
                         )
                     };
                     let start = local(t0);
-                    let back = start
-                        + chrono::Duration::seconds(
-                            (model * TurnaroundParams::default().eta_factor) as i64,
-                        );
-                    let ev = loop_voice(length / 1000.0, model, back);
+                    let total = self.pace_base.predict(self.pace_route.total());
+                    self.reference = Some(Reference {
+                        t0,
+                        total,
+                        arrival: t0 + total.median_s,
+                    });
+                    self.pace_last = None;
+                    // The group's time when the plan has one, else the model's with the
+                    // margin of C7.
+                    let (said, back_s) = match &self.plan.pace {
+                        Some(_) => (total.median_s, total.median_s),
+                        None => (model, model * TurnaroundParams::default().eta_factor),
+                    };
+                    let back = start + chrono::Duration::seconds(back_s as i64);
+                    let ev = loop_voice(length / 1000.0, said, back);
                     self.offer(
                         t,
                         Priority::Comfort,
@@ -691,13 +826,23 @@ impl<'a> Tracker<'a> {
                         alerts::Params::default(),
                     ));
                 }
-                SessionEvent::Paused { .. } => self.speech.set_paused(true),
+                SessionEvent::Paused { t: tp } => {
+                    self.speech.set_paused(true);
+                    // Its beginning was counted as moving.
+                    self.day.unmove(t - tp);
+                    self.pace_last = None;
+                }
                 SessionEvent::Refuge { name, .. } => {
                     if !self.refuges.contains(&name) {
                         self.refuges.push(name);
                     }
                 }
-                SessionEvent::Resumed { .. } => self.speech.set_paused(false),
+                SessionEvent::Resumed { paused_s, .. } => {
+                    self.speech.set_paused(false);
+                    self.day.stop(paused_s);
+                    self.stops_s.push(paused_s);
+                    self.pace_last = None;
+                }
                 SessionEvent::NearFinish { .. } => {
                     if let Some(a) = self
                         .plan
@@ -883,6 +1028,9 @@ impl<'a> Tracker<'a> {
             return;
         }
         let paused = self.session.paused();
+        if !paused {
+            self.pace_fix(t);
+        }
         // Pending switch: accepted, or refused by skiing on.
         if let Some(pd) = &self.pending {
             let d_old = {
@@ -961,6 +1109,7 @@ impl<'a> Tracker<'a> {
                 self.a8(t, a, out);
             }
             self.return_time(t, out);
+            self.pace_check(t, out);
         }
         // 6. GPS mode.
         self.gps_mode(t, out);
@@ -1252,12 +1401,23 @@ impl<'a> Tracker<'a> {
         let pace = self.pace(t).unwrap_or(1.0).max(1.0);
         let f = TurnaroundParams::default().eta_factor;
         let here = self.model_here();
-        let arrival = |model_total: f64| local(t + pace * f * (model_total - here));
+        let group = self.plan.pace.is_some();
+        let paused_for = self.remaining(t).1;
+        // With the group of the day (C11): its median arrival at the pace of the day; else
+        // the observed pace with the C7 margin.
+        let arrival = |i: usize, model_total: f64| {
+            if group {
+                self.exit_prediction(i, paused_for)
+                    .map(|p| local(t + p.median_s))
+            } else {
+                Some(local(t + pace * f * (model_total - here)))
+            }
+        };
         let pick = self
             .exits_ahead()
             .into_iter()
             .map(|i| (i, self.plan.plans_b[i].fallback.model_s))
-            .filter(|(_, m)| arrival(*m) <= limit)
+            .filter(|(i, m)| arrival(*i, *m).is_some_and(|a| a <= limit))
             .max_by(|a, b| a.1.total_cmp(&b.1));
         if let Some((i, _)) = pick {
             self.switch_plan_b(t, i, cause, Fixed::PlanShortened, Priority::Schedule, out);
@@ -1286,7 +1446,13 @@ impl<'a> Tracker<'a> {
             _ => 1.0,
         };
         let f = TurnaroundParams::default().eta_factor;
-        let arrival = local(t + pace * f * (self.model_total() - here));
+        let arrival = if self.plan.pace.is_some() {
+            // The group of the day (C11): its median arrival at the pace of the day (stops
+            // included; the C7 deadline keeps its own 30 min).
+            local(t + self.remaining(t).0.median_s)
+        } else {
+            local(t + pace * f * (self.model_total() - here))
+        };
         if arrival <= limit {
             return;
         }
@@ -1633,6 +1799,10 @@ impl<'a> Tracker<'a> {
             m.replace_route(Cow::Owned(new.view().to_profile()));
         }
         let prev = std::mem::replace(&mut self.active, new);
+        if cause != Cause::Deviation {
+            self.switched_other = true;
+        }
+        self.props.pending = None;
         self.pending = Some(Pending {
             prev,
             prev_cursor: self.cursor,
@@ -1641,6 +1811,7 @@ impl<'a> Tracker<'a> {
         });
         self.cursor = cursor;
         self.cursor_t = self.last_fix.map_or(f64::NEG_INFINITY, |(t, _)| t);
+        self.pace_route_again();
         self.detector = DeviationDetector::new(self.hysteresis());
         self.deviating_since = None;
         self.switches += 1;
@@ -1726,6 +1897,344 @@ impl<'a> Tracker<'a> {
         self.offer(t, priority, "switch", kind, a, None);
     }
 
+    /// Installs plan B `i` (no announcement); false if it cannot be followed.
+    fn install_plan_b(&mut self, t: f64, i: usize, cause: Cause, out: &mut Vec<Output>) -> bool {
+        let Some(view) = self.track.find(i as i32 + 1) else {
+            return false;
+        };
+        let legs = self.full(&self.plan.plans_b[i]);
+        let junctions = match Course::new(self.g, &legs, &self.plan.eta) {
+            Ok(c) => guidance::junctions(self.g, &c),
+            Err(_) => return false,
+        };
+        let new = Active {
+            rf: RouteRef::PlanB(i),
+            geo: Geo::Table(view),
+            legs,
+            own: Vec::new(),
+            junctions,
+            next: 0,
+        };
+        let s_div = self.plan.plans_b[i].fallback.s_div;
+        self.install(t, new, cause, s_div, out);
+        true
+    }
+
+    /// The model time per terrain of the route followed (after a change of route).
+    fn pace_route_again(&mut self) {
+        if let Ok(c) = Course::new(self.g, &self.active.legs, &self.plan.eta) {
+            self.pace_route = PaceRoute::of(&c, self.ratio);
+        }
+        self.pace_last = self.last_fix.map(|(t, _)| (t, self.cursor));
+    }
+
+    /// A fix while moving: the pace of the day (no allocation).
+    #[inline]
+    fn pace_fix(&mut self, t: f64) {
+        let c = self.cursor;
+        if let Some((t0, s0)) = self.pace_last {
+            let (dt, ds) = (t - t0, c - s0);
+            // A long gap without progress is not moving (GNSS off, a stop not decided).
+            if dt > 0.0 && ds >= 0.0 && !(dt > 60.0 && ds < 30.0) {
+                let d = self.pace_route.between(s0, c);
+                self.day.moving(dt, d);
+                self.progress_total += ds;
+            }
+        }
+        self.pace_last = Some((t, c));
+    }
+
+    /// Remaining time on plan B `i` from the cursor at the pace of the day (allocates: an
+    /// event).
+    fn exit_prediction(&self, i: usize, paused_for: Option<f64>) -> Option<Prediction> {
+        let legs = self.full(&self.plan.plans_b[i]);
+        let c = Course::new(self.g, &legs, &self.plan.eta).ok()?;
+        let rest = PaceRoute::of(&c, self.ratio).rest(self.cursor);
+        Some(self.day.predict(rest, paused_for))
+    }
+
+    /// The pace of the day.
+    pub fn day_pace(&self) -> &DayPace {
+        &self.day
+    }
+
+    /// What the outing tells about the group so far (for the learning, C11).
+    pub fn pace_observation(&self) -> OutingObs {
+        let tot = self.session.totals();
+        let end = tot
+            .finished
+            .or(self.last_fix.map(|(t, _)| t))
+            .unwrap_or(0.0);
+        let elapsed = tot.started.map_or(0.0, |s| (end - s).max(0.0));
+        self.day
+            .observation(self.progress_total, tot.distance_m, &self.stops_s, elapsed)
+    }
+
+    /// Remaining time at the pace of the day from the last fix (no allocation).
+    fn remaining(&self, t: f64) -> (Prediction, Option<f64>) {
+        let paused_for = match self.session.phase() {
+            Phase::Paused { since, .. } => Some((t - since).max(0.0)),
+            _ => None,
+        };
+        let rem = self.pace_route.rest(self.cursor);
+        (self.day.predict(rem, paused_for), paused_for)
+    }
+
+    /// The estimated arrival at the pace of the day (C11), once the outing started.
+    pub fn eta(&self) -> Option<Eta> {
+        let r = self.reference?;
+        let (t, _) = self.last_fix?;
+        if !self.session.running() {
+            return None;
+        }
+        let (p, _) = self.remaining(t);
+        Some(Eta {
+            at: local(t),
+            arrival: local(t + p.median_s),
+            arrival_lo: local(t + p.lo_s),
+            arrival_hi: local(t + p.hi_s),
+            planned: local(r.arrival),
+            remaining: p,
+            pace: self.day.pace(Terrain::Flat),
+            stops: self.day.stops(),
+        })
+    }
+
+    /// Once a minute: a proposal when the group is durably late on its plan (C11).
+    fn pace_check(&mut self, t: f64, out: &mut Vec<Output>) {
+        let pp = self.p.propose;
+        if self
+            .props
+            .pending
+            .as_ref()
+            .is_some_and(|p| t - p.t >= pp.ttl_s)
+        {
+            self.props.pending = None;
+        }
+        let Some(r) = self.reference else { return };
+        let moving = self.day.moving_total_s();
+        let last_mark = match self.props.mark_n {
+            0 => None,
+            n => Some(self.props.marks[(n - 1) % self.props.marks.len()].0),
+        };
+        if last_mark.is_none_or(|m| moving - m >= 300.0) {
+            let k = self.props.mark_n % self.props.marks.len();
+            self.props.marks[k] = (moving, self.progress_total);
+            self.props.mark_n += 1;
+        }
+        // Progress over the last `recent_moving_s` of moving (the newest mark that old).
+        let recent = self
+            .props
+            .marks
+            .iter()
+            .take(self.props.mark_n.min(self.props.marks.len()))
+            .filter(|(m, _)| moving - m >= pp.recent_moving_s)
+            .max_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, p)| self.progress_total - p);
+        if !pp.enabled
+            || !self.session.running()
+            || self.session.paused()
+            || self.props.pending.is_some()
+            || self.pending.is_some()
+            || self.switched_other
+        {
+            return;
+        }
+        let (pred, paused_for) = self.remaining(t);
+        let delay = t + pred.median_s - r.arrival;
+        let lo_delay = t + pred.lo_s - r.arrival;
+        let thr = pp.min_delay_s.max(pp.delay_frac * r.total.median_s);
+        if delay >= thr && lo_delay > 0.0 {
+            self.props.since.get_or_insert(t);
+        } else if delay < pp.clear_frac * thr {
+            self.props.since = None;
+        }
+        let Some(since) = self.props.since else {
+            return;
+        };
+        if t - since < pp.durable_s
+            || t - r.t0 < pp.min_elapsed_s
+            || self.progress_total < pp.min_progress_m
+            || recent.is_none_or(|p| p < pp.recent_progress_m)
+            || self.props.count >= pp.max
+            || self.props.last_t.is_some_and(|l| t - l < pp.spacing_s)
+            || self
+                .props
+                .last_delay
+                .is_some_and(|d| delay < d + pp.worse_s)
+            || pred.median_s < pp.min_rest_s
+            || delay < thr
+        {
+            return;
+        }
+        self.propose(t, r, pred, paused_for, delay, out);
+    }
+
+    fn propose(
+        &mut self,
+        t: f64,
+        r: Reference,
+        pred: Prediction,
+        paused_for: Option<f64>,
+        delay: f64,
+        out: &mut Vec<Output>,
+    ) {
+        let pp = self.p.propose;
+        let here = self.cursor;
+        // The exits of the morning ahead, at the pace of the day.
+        let mut cands: Vec<(usize, Prediction, f64)> = Vec::new();
+        for i in self.exits_ahead() {
+            if let Some(p) = self.exit_prediction(i, paused_for) {
+                cands.push((i, p, self.plan.plans_b[i].fallback.model_s));
+            }
+        }
+        let loop_arr = t + pred.median_s;
+        let short = cands
+            .iter()
+            .filter(|c| t + c.1.median_s <= r.arrival + pp.slack_s)
+            .filter(|c| loop_arr - (t + c.1.median_s) >= 600.0)
+            .max_by(|a, b| a.2.total_cmp(&b.2));
+        let nearest = cands
+            .iter()
+            .min_by(|a, b| a.1.median_s.total_cmp(&b.1.median_s))
+            .filter(|c| loop_arr - (t + c.1.median_s) >= pp.min_saving_s);
+        let (kind, pick) = match (short, nearest) {
+            (Some(c), _) => (ProposalKind::ShortLoop, Some(c)),
+            (None, Some(c)) => (ProposalKind::NearestExit, Some(c)),
+            (None, None) => (ProposalKind::Keep, None),
+        };
+        let p = pick.map_or(pred, |c| c.1);
+        // Why: moving slower than the group's pace, more stops than its rate.
+        let base = self.pace_base;
+        let done = self.pace_route.at(here);
+        let expected_moving: f64 = (0..done.len())
+            .map(|c| done[c] * (-base.pace[c].m).exp())
+            .sum();
+        let moving = self.day.moving_total_s().max(1.0);
+        let (_, stopped) = self.day.stops();
+        let stopped = stopped + paused_for.unwrap_or(0.0);
+        let expected_stop = base.stops.mean() * moving / 3600.0 * base.stop_mean_s();
+        let more_pauses = stopped - expected_stop >= 300.0 && stopped >= 1.5 * expected_stop;
+        let slower = expected_moving / moving < 0.85;
+        let reason = match (slower, more_pauses) {
+            (true, true) => PaceReason::SlowerAndPauses,
+            (false, true) => PaceReason::Pauses,
+            _ => PaceReason::Slower,
+        };
+        let expected_elapsed = base.predict(done).median_s;
+        let elapsed = (t - r.t0).max(1.0);
+        let slower_pct =
+            (((1.0 - expected_elapsed / elapsed) * 100.0 / 5.0).round() * 5.0).clamp(0.0, 95.0);
+        let (arr, lo, hi) = (local(t + p.median_s), local(t + p.lo_s), local(t + p.hi_s));
+        let saved = pick.map(|c| (pred.median_s - c.1.median_s) / 60.0);
+        self.props.count += 1;
+        let proposal = Proposal {
+            id: self.props.count,
+            kind,
+            reason,
+            route: pick.map(|c| RouteRef::PlanB(c.0)),
+            slower_pct,
+            stops_min: ((stopped / 60.0).round(), (expected_stop / 60.0).round()),
+            planned: local(r.arrival),
+            loop_arrival: local(loop_arr),
+            arrival: arr,
+            arrival_lo: lo,
+            arrival_hi: hi,
+            delay_min: (delay / 60.0).round(),
+            text: proposal_text(reason, slower_pct, kind, (arr, lo, hi), saved),
+            announcement: proposal_announcement(reason, kind, arr),
+        };
+        self.offer(
+            t,
+            Priority::Schedule,
+            "proposal",
+            "proposal",
+            proposal.announcement.clone(),
+            Some(pp.ttl_s),
+        );
+        out.push(Output::Proposal {
+            t: utc_of(t),
+            proposal: Box::new(proposal),
+        });
+        self.props.last_t = Some(t);
+        // The next one only if it gets worse (an acceptance clears it).
+        self.props.last_delay = Some(delay);
+        self.props.pending = Some(PendingProposal {
+            t,
+            kind,
+            exit: pick.map(|c| c.0),
+            arrival: t + p.median_s,
+            delay,
+        });
+    }
+
+    fn answer(&mut self, t: f64, accept: bool, out: &mut Vec<Output>) {
+        let Some(pd) = self.props.pending.take() else {
+            return;
+        };
+        self.speech.withdraw("proposal");
+        let mut applied = false;
+        if accept {
+            match pd.exit {
+                Some(i)
+                    if self.active.rf == RouteRef::Plan
+                        && self.pending.is_none()
+                        && self.plan.plans_b[i].fallback.s_div >= self.cursor =>
+                {
+                    let s_div = self.plan.plans_b[i].fallback.s_div;
+                    if self.install_plan_b(t, i, Cause::Pace, out) {
+                        applied = true;
+                        let mut a = pace::pending_announcement("fix.plan-proposal-accepted");
+                        if let Some(e) = self.first_turn_event(s_div) {
+                            a = a.then(e.announce());
+                        }
+                        self.offer(
+                            t,
+                            Priority::Direction,
+                            "switch",
+                            "proposal_accepted",
+                            a,
+                            None,
+                        );
+                    }
+                }
+                Some(_) => {}
+                None => {
+                    applied = true;
+                    self.offer(
+                        t,
+                        Priority::Schedule,
+                        "proposal",
+                        "proposal_accepted",
+                        pace::pending_announcement("fix.plan-proposal-accepted"),
+                        Some(60.0),
+                    );
+                }
+            }
+            if applied && let Some(r) = &mut self.reference {
+                // The new return time is the plan now.
+                r.arrival = pd.arrival;
+                self.props.last_delay = None;
+            }
+        } else {
+            self.props.last_delay = Some(pd.delay);
+            self.offer(
+                t,
+                Priority::Direction,
+                "proposal",
+                "kept",
+                phrases::announce(Fixed::PlanKept),
+                Some(60.0),
+            );
+        }
+        out.push(Output::Answered {
+            t: utc_of(t),
+            kind: pd.kind,
+            accept,
+            applied,
+        });
+    }
+
     fn revert(&mut self, t: f64, implicit: bool, out: &mut Vec<Output>) {
         let Some(pd) = self.pending.take() else {
             return;
@@ -1737,6 +2246,7 @@ impl<'a> Tracker<'a> {
         self.active = pd.prev;
         self.cursor = pd.prev_cursor;
         self.cursor_t = f64::NEG_INFINITY;
+        self.pace_route_again();
         // Decisions passed meanwhile on the previous route are not said late.
         let next = {
             let v = self.active.view();

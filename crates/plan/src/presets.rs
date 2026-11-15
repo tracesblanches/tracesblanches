@@ -85,6 +85,21 @@ pub fn requests(site: &Site, date: NaiveDate) -> Vec<PlanRequest> {
     }
 }
 
+/// A short loop for a family (C11): the start of the site's first request, 75 min of model
+/// time from 9 h, classic, green and blue pistes, no return time.
+pub fn family_request(site: &Site, date: NaiveDate) -> PlanRequest {
+    let base = requests(site, date).remove(0);
+    PlanRequest {
+        label: "famille, 1 h 15 au modèle, classique, vertes et bleues, départ 9 h".into(),
+        start_time: Some(NaiveTime::from_hms_opt(9, 0, 0).expect("time")),
+        budget_min: 75.0,
+        style: Style::Classic,
+        return_before: None,
+        max_difficulty: Some(Difficulty::Easy),
+        ..base
+    }
+}
+
 /// Layers of a site with the archived past days (`skimap_assist::presets::history_paths`)
 /// and the plan's context (refuges, clips).
 pub fn load(layout: &DataLayout, site: &Site) -> Result<(SiteData, Context)> {

@@ -15,12 +15,15 @@ use std::sync::{Arc, Mutex, OnceLock};
 use chrono::NaiveTime;
 use skimap_common::layout::DataLayout;
 use skimap_common::site::{CERVIERES, CHAPELLE_DES_BOIS, Site};
+use skimap_core::calibration::{self, GroupProfile};
 use skimap_core::graph::PisteGraph;
+use skimap_core::routing::Style;
 use skimap_plan::gps::GpsMode;
+use skimap_plan::pace::{self, PaceReason, ProposalKind};
 use skimap_plan::phrases::never_safe;
 use skimap_plan::plan::{self, DayPlan, PlanRequest};
 use skimap_plan::presets;
-use skimap_plan::scenario::{self, Run, Scenario, Step};
+use skimap_plan::scenario::{self, Behaviour, Run, Scenario, Step};
 use skimap_plan::session::{End, SessionEvent};
 use skimap_plan::speech::Priority;
 use skimap_plan::track::TrackView;
@@ -95,6 +98,7 @@ fn scen(b: &Built, name: &str, steps: Vec<Step>) -> Scenario {
         forest: true,
         seed: 7,
         tail_s: 300.0,
+        behaviour: None,
     }
 }
 
@@ -141,6 +145,10 @@ enum M {
     Switched(&'static str),
     Reverted(bool),
     Gps(GpsMode),
+    /// A proposal (C11), of this kind if given.
+    Proposal(Option<ProposalKind>),
+    /// The answer to a proposal: accepted and applied (true) or refused.
+    Answered(bool),
 }
 
 fn cause_tag(c: &Cause) -> &'static str {
@@ -150,6 +158,7 @@ fn cause_tag(c: &Cause) -> &'static str {
         Cause::Conditions(_) => "conditions",
         Cause::Deviation => "deviation",
         Cause::NoTime => "no_time",
+        Cause::Pace => "pace",
     }
 }
 
@@ -176,6 +185,13 @@ fn is(o: &Output, m: &M) -> bool {
         (Output::Switched { cause, .. }, M::Switched(c)) => cause_tag(cause) == *c,
         (Output::Reverted { implicit, .. }, M::Reverted(i)) => implicit == i,
         (Output::Gps { request, .. }, M::Gps(g)) => request.mode == *g,
+        (Output::Proposal { proposal, .. }, M::Proposal(k)) => k.is_none_or(|k| proposal.kind == k),
+        (
+            Output::Answered {
+                accept, applied, ..
+            },
+            M::Answered(a),
+        ) => (*accept && *applied) == *a,
         _ => false,
     }
 }
@@ -317,6 +333,7 @@ fn normal(b: &Built, name: &str) -> Run {
             M::Switched("closure"),
             M::Switched("deviation"),
             M::Switched("late"),
+            M::Proposal(None),
         ],
     );
     let said_turns = count(&run, &M::Said("turn"));
@@ -1095,4 +1112,364 @@ fn q9_21_gps_modes_follow_the_decision_points() {
         run.batches
     );
     assert!((run.fixes as f64) < 0.6 * secs);
+}
+
+// ---------------------------------------------------------------------------------------
+// C11 (#130): the pace of the group, proposals never imposed.
+
+fn group(b: &Built, name: &str, bh: Behaviour, steps: Vec<Step>) -> Run {
+    let mut sc = scen(b, name, steps);
+    sc.behaviour = Some(bh);
+    play(b, &sc, TrackerParams::default())
+}
+
+fn proposals(run: &Run) -> Vec<(f64, pace::Proposal)> {
+    run.outputs
+        .iter()
+        .filter_map(|o| match o {
+            Output::Proposal { t, proposal } => {
+                Some((scenario::rel(run, *t), (**proposal).clone()))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// Rules of every proposal: at most 3, 30 min apart, not before 20 min of outing plus
+/// 10 min of lasting delay, never « sans danger », said as schedule (not safety).
+fn proposal_rules(run: &Run, t0: f64) -> Vec<(f64, pace::Proposal)> {
+    let ps = proposals(run);
+    assert!(ps.len() <= 3, "{}: {} proposals", run.scenario, ps.len());
+    for w in ps.windows(2) {
+        assert!(
+            w[1].0 - w[0].0 >= 1800.0 - 1.0,
+            "{}: {} then {}",
+            run.scenario,
+            w[0].0,
+            w[1].0
+        );
+    }
+    for (t, p) in &ps {
+        assert!(*t - t0 >= 1200.0, "{}: proposal at {t}", run.scenario);
+        assert!(never_safe(&p.text) && never_safe(&p.announcement.text()));
+        println!("{} : proposition à {:.0} s : {}", run.scenario, t, p.text);
+    }
+    for o in &run.outputs {
+        if let Output::Spoken { spoken, .. } = o
+            && spoken.items.iter().any(|c| c.kind == "proposal")
+        {
+            assert!(
+                spoken
+                    .items
+                    .iter()
+                    .filter(|c| c.kind == "proposal")
+                    .all(|c| c.priority == Priority::Schedule)
+            );
+        }
+    }
+    ps
+}
+
+fn arrival_rel(run: &Run) -> f64 {
+    let o = run
+        .outputs
+        .iter()
+        .find(|o| is(o, &M::Finished(End::Arrived)))
+        .unwrap_or_else(|| panic!("{}: not arrived", run.scenario));
+    event_time(run, o)
+}
+
+#[test]
+fn q9_24_cervieres_family_on_an_adult_plan() {
+    // A family (children of 6 and 9) on the 3 h loop planned for an adult, from 10 h: about
+    // half the C5 pace, 4 stops an hour, detours. Proposed, not imposed: nobody answers,
+    // the loop goes on.
+    let b = built(&CERVIERES, "3h-10h", |r| {
+        r.start_time = NaiveTime::from_hms_opt(10, 0, 0)
+    });
+    let run = group(
+        &b,
+        "Cervières, famille sur un plan d'adulte, sans réponse",
+        Behaviour::family(),
+        vec![Step::WaitAtStart { secs: 60.0 }],
+    );
+    no_manipulation(&run);
+    let t0 = group_started(&run);
+    expect(
+        &run,
+        &[
+            (M::Started, t0, t0),
+            (M::Proposal(None), t0 + 1800.0, t0 + 3600.0),
+            (M::Said("proposal"), t0 + 1800.0, t0 + 4500.0),
+        ],
+    );
+    let ps = proposal_rules(&run, t0);
+    let p = &ps[0].1;
+    assert!(
+        matches!(p.reason, PaceReason::Slower | PaceReason::SlowerAndPauses),
+        "{:?}",
+        p.reason
+    );
+    assert!(p.slower_pct >= 30.0, "{}", p.slower_pct);
+    assert!(p.route.is_some(), "an exit of the morning: {p:?}");
+    assert!(p.arrival < p.loop_arrival);
+    // Not answered: no switch for the pace.
+    never(&run, &[M::Switched("pace"), M::Answered(true)]);
+}
+
+#[test]
+fn q9_25_chapelle_family_accepts_the_short_loop() {
+    let b = chapelle();
+    let run = group(
+        &b,
+        "Chapelle-des-Bois, famille, proposition acceptée",
+        Behaviour::family(),
+        vec![Step::Answer {
+            accept: true,
+            after_s: 20.0,
+        }],
+    );
+    let t0 = group_started(&run);
+    let ps = proposal_rules(&run, t0);
+    let (tp, p) = ps.first().cloned().expect("a proposal");
+    expect(
+        &run,
+        &[
+            (M::Proposal(None), tp, tp),
+            (M::Switched("pace"), tp + 20.0, tp + 81.0),
+            (M::Answered(true), tp + 20.0, tp + 81.0),
+            (M::Said("proposal_accepted"), tp + 20.0, tp + 100.0),
+            (M::Finished(End::Arrived), tp, 1e6),
+        ],
+    );
+    let to = run.outputs.iter().find_map(|o| match o {
+        Output::Switched {
+            to,
+            cause: Cause::Pace,
+            ..
+        } => Some(*to),
+        _ => None,
+    });
+    assert_eq!(to, p.route, "the exit proposed");
+    // Back well before the loop would have been, about when proposed: the plan has no
+    // group (a lone adult expected), the stops still to come are those of an adult (the
+    // statistics over many days: example `pace_eval`).
+    let back = run.t0 + chrono::Duration::seconds(arrival_rel(&run) as i64);
+    let back = scenario::local(back);
+    println!(
+        "proposé {} ({}–{}), la boucle {}, arrivée {}",
+        p.arrival.format("%H:%M"),
+        p.arrival_lo.format("%H:%M"),
+        p.arrival_hi.format("%H:%M"),
+        p.loop_arrival.format("%H:%M"),
+        back.format("%H:%M")
+    );
+    assert!(back < p.loop_arrival - chrono::Duration::minutes(60));
+    assert!((back - p.arrival).num_minutes().abs() <= 30);
+    // Accepted: nothing else proposed, no other switch.
+    assert_eq!(ps.len(), 1);
+    never(&run, &[M::Switched("late")]);
+}
+
+#[test]
+fn q9_26_chapelle_family_refuses() {
+    let b = chapelle();
+    let run = group(
+        &b,
+        "Chapelle-des-Bois, famille, proposition refusée",
+        Behaviour::family(),
+        vec![Step::Answer {
+            accept: false,
+            after_s: 15.0,
+        }],
+    );
+    let t0 = group_started(&run);
+    let ps = proposal_rules(&run, t0);
+    let tp = ps[0].0;
+    expect(
+        &run,
+        &[
+            (M::Proposal(None), tp, tp),
+            (M::Answered(false), tp + 15.0, tp + 76.0),
+            (M::Said("kept"), tp + 15.0, tp + 100.0),
+            (M::Finished(End::Arrived), tp, 1e6),
+        ],
+    );
+    never(&run, &[M::Switched("pace")]);
+    // Proposed again only when the delay grew by 20 min.
+    for w in ps.windows(2) {
+        assert!(
+            w[1].1.delay_min >= w[0].1.delay_min + 20.0,
+            "{} then {}",
+            w[0].1.delay_min,
+            w[1].1.delay_min
+        );
+    }
+}
+
+#[test]
+fn q9_27_cervieres_fast_adult() {
+    let b = cervieres();
+    let run = group(
+        &b,
+        "Cervières, adulte rapide",
+        Behaviour::fast_adult(),
+        vec![Step::WaitAtStart { secs: 60.0 }],
+    );
+    no_manipulation(&run);
+    let t0 = group_started(&run);
+    never(&run, &[M::Proposal(None), M::Switched("late")]);
+    let back = arrival_rel(&run) - t0;
+    println!(
+        "arrivée après {:.0} min (modèle {:.0})",
+        back / 60.0,
+        model_s(&b) / 60.0
+    );
+    assert!(back < 0.9 * model_s(&b));
+}
+
+#[test]
+fn q9_28_chapelle_normal_adult() {
+    let b = chapelle();
+    let run = group(
+        &b,
+        "Chapelle-des-Bois, adulte au rythme du modèle avec pauses",
+        Behaviour::normal_adult(),
+        vec![Step::WaitAtStart { secs: 60.0 }],
+    );
+    no_manipulation(&run);
+    group_started(&run);
+    never(&run, &[M::Proposal(None)]);
+    expect(&run, &[(M::Finished(End::Arrived), 0.0, 1e6)]);
+}
+
+#[test]
+fn q9_29_chapelle_family_with_its_learned_profile() {
+    // The same family after four outings learned (other days, other seeds): the plan
+    // expects it, nothing to propose.
+    let b = chapelle();
+    let view = TrackView::new(&b.track).unwrap();
+    let quiet = TrackerParams {
+        propose: pace::ProposeParams {
+            enabled: false,
+            ..Default::default()
+        },
+        ..TrackerParams::default()
+    };
+    let mut past = Vec::new();
+    for k in 0..4 {
+        let mut sc = scen(&b, "passé", vec![]);
+        sc.behaviour = Some(Behaviour::family().day(k));
+        sc.seed = 100 + k;
+        let run = scenario::run(&sc, &b.plan, view, &b.graph, quiet.clone()).unwrap();
+        past.push(pace::digest(&b.plan, view, &b.graph, &run.inputs).unwrap());
+    }
+    let profile = GroupProfile::family(2, &[6, 9], Style::Skating);
+    let prior = calibration::ProfileModel::new(profile.clone());
+    let model = calibration::fit(profile, &past);
+    let mut plan_prior = b.plan.clone();
+    pace::with_pace(&mut plan_prior, &b.graph, &prior).unwrap();
+    let mut plan = b.plan.clone();
+    pace::with_pace(&mut plan, &b.graph, &model).unwrap();
+    let (pp, pl) = (plan_prior.pace.clone().unwrap(), plan.pace.clone().unwrap());
+    println!("{}\n{}", pp.text, pl.text);
+    assert!(pp.range, "a new profile shows a range");
+    assert!(pl.prediction.spread() < pp.prediction.spread());
+    assert!(plan.text_fr().contains(&pl.text));
+    let fam = Built {
+        plan,
+        track: b.track.clone(),
+        graph: b.graph.clone(),
+    };
+    let mut sc = scen(
+        &fam,
+        "Chapelle-des-Bois, famille avec son profil appris",
+        vec![],
+    );
+    sc.behaviour = Some(Behaviour::family().day(4));
+    sc.seed = 104;
+    let run = play(&fam, &sc, TrackerParams::default());
+    no_manipulation(&run);
+    let t0 = group_started(&run);
+    // The same day on the plan without the group: proposed earlier and more.
+    let mut plain_sc = sc.clone();
+    plain_sc.name = "Chapelle-des-Bois, la même famille sans son profil".into();
+    let plain = play(&b, &plain_sc, TrackerParams::default());
+    let (with, without) = (
+        proposal_rules(&run, t0),
+        proposal_rules(&plain, group_started(&plain)),
+    );
+    println!(
+        "propositions : {} avec le profil appris, {} sans (première à {:?} s)",
+        with.len(),
+        without.len(),
+        without.first().map(|p| p.0.round())
+    );
+    assert!(!without.is_empty(), "the plain plan expects an adult");
+    // With its profile: no change of route proposed (at most a new return time, a bad
+    // day), and fewer proposals, later.
+    assert!(
+        with.iter().all(|(_, p)| p.kind == ProposalKind::Keep),
+        "{with:?}"
+    );
+    assert!(with.len() < without.len() || with.first().map(|p| p.0) > without.first().map(|p| p.0));
+    // The departure summary says the group's time.
+    let summary = run
+        .outputs
+        .iter()
+        .find_map(|o| match o {
+            Output::Spoken { spoken, .. }
+                if spoken.items.iter().any(|c| c.kind == "loop_summary") =>
+            {
+                Some(spoken.announcement.text())
+            }
+            _ => None,
+        })
+        .unwrap();
+    println!("{summary}");
+    let back = arrival_rel(&run) - t0;
+    println!(
+        "arrivée après {:.0} min ; prévu {:.0} min ({:.0} à {:.0}), modèle C5 {:.0} min",
+        back / 60.0,
+        pl.prediction.median_s / 60.0,
+        pl.prediction.lo_s / 60.0,
+        pl.prediction.hi_s / 60.0,
+        model_s(&fam) / 60.0
+    );
+    assert!((pl.prediction.lo_s - 900.0..=pl.prediction.hi_s + 900.0).contains(&back));
+}
+
+#[test]
+fn q9_30_chapelle_more_pauses_than_planned() {
+    // An adult at the C5 pace stopping 3 times an hour for 12 min: the stops, not the
+    // speed.
+    let b = chapelle();
+    let bh = Behaviour {
+        speed: [1.0; 3],
+        stops_per_h: 3.0,
+        stop_median_s: 720.0,
+        stop_sigma: 0.3,
+        detours_per_h: 0.0,
+        detour_m: 0.0,
+        seed: 9,
+    };
+    let run = group(&b, "Chapelle-des-Bois, pauses longues", bh, vec![]);
+    let t0 = group_started(&run);
+    let ps = proposal_rules(&run, t0);
+    let p = &ps.first().expect("a proposal").1;
+    assert_eq!(p.reason, PaceReason::Pauses, "{p:?}");
+    assert!(p.text.starts_with("Vous faites plus de pauses que prévu"));
+    assert!(p.stops_min.0 > p.stops_min.1 + 5.0, "{:?}", p.stops_min);
+}
+
+/// The start of a group: a family potters at the start (stops, back and forth), so within
+/// 10 min of the first movement rather than 60 s.
+fn group_started(run: &Run) -> f64 {
+    let tm = t_move(run);
+    let s = expect(run, &[(M::Started, tm, tm + 600.0)])[0];
+    println!(
+        "{} : premier mouvement {tm:.0} s, départ décidé daté de {s:.0} s",
+        run.scenario
+    );
+    s
 }

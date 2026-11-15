@@ -586,6 +586,10 @@ pub struct DayPlan {
     pub notes: Vec<String>,
     /// [`NEVER_SAFE`].
     pub never_safe: String,
+    /// Estimated time for the group of the day (C11), when one was chosen
+    /// ([`crate::pace::with_pace`]).
+    #[serde(default)]
+    pub pace: Option<crate::pace::PlanPace>,
 }
 
 fn hhmm(t: NaiveDateTime) -> String {
@@ -1095,6 +1099,10 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
     for p in PLAN_PHRASES {
         runtime.push(phrases::announce(p));
     }
+    // Proposals (C11): phrases not in the bank yet.
+    for (id, _) in crate::pace::PROPOSAL_PHRASES {
+        runtime.push(crate::pace::pending_announcement(id));
+    }
     for a in &runtime {
         check(a);
     }
@@ -1249,6 +1257,7 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
         clips,
         notes,
         never_safe: NEVER_SAFE.into(),
+        pace: None,
     };
     debug_assert!(never_safe(&plan.text_fr()));
     Ok(plan)
@@ -1342,6 +1351,9 @@ impl DayPlan {
                 .map(|d| format!(" ; retour demandé avant {}", hhmm(d)))
                 .unwrap_or_default()
         ));
+        if let Some(p) = &self.pace {
+            t.push(p.text.clone());
+        }
         t.push(match ta.latest_turnaround {
             Some(x) => format!("Demi-tour au plus tard à {} au rythme prévu (A8)", hhmm(x)),
             None => "La boucle finit avant la limite de lumière au rythme prévu : pas d'heure de demi-tour imposée".into(),

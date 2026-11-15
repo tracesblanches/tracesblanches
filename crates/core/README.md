@@ -1,6 +1,6 @@
 # skimap-core
 
-Noyau d'algorithmes partagé serveur / téléphone : routage, rattachement, hors piste, temps estimé, demi-tour, zones, batterie. Tickets : C1 (#33) à C10 (#42).
+Noyau d'algorithmes partagé serveur / téléphone : routage, rattachement, hors piste, temps estimé, demi-tour, zones, batterie. Tickets : C1 (#33) à C11 (#130).
 
 La crate ne contient aucune pile HTTP (`cargo tree -p skimap-core -e normal` : ni `reqwest`, ni `rustls`, ni `hyper`). La fonction `pipeline` (désactivée par défaut, côté pipeline seulement) ajoute la lecture des GeoTIFF par `skimap_common::geotiff` (MNT, neige ; `tiff`, sans réseau) : `routing::build` et `offpiste::prepare::prepare`.
 
@@ -12,6 +12,7 @@ La crate ne contient aucune pile HTTP (`cargo tree -p skimap-core -e normal` : n
 | `dem` (fonction `pipeline`) | C1 | lecture de `terrain/dem_5m.tif` (P5) et profil d'altitude de chaque arête tous les 10 m |
 | `routing` | C1 | coûts enfichables (`CostModel`), préférences de style, Dijkstra entre deux points rattachés, sorties GeoJSON, `build(site, &layout)` |
 | `eta` | C5 | modèle physique de temps, Munter, Tobler |
+| `calibration` | C11, C6 | temps appris par groupe : rythme en mouvement par terrain, arrêts, détours ; a priori par groupe (enfants selon l'âge), ajustement bayésien conjugué robuste hors ligne et en ligne (sans allocation), fourchette à 80 % |
 | `matching` | C2 | rattachement HMM (Viterbi en ligne), détection d'écart avec hystérésis, mode couloir hors piste, traces synthétiques |
 | `ephemeris` | C7, C8, A3 | coucher du soleil, crépuscule civil, heure légale (code tiré de `zone_eval`, partagé), position du soleil (`sun_position`, reprise de l'assistant) |
 | `turnaround` | C7 | heure limite de retour, heure de demi-tour, point de demi-tour d'un aller-retour |
@@ -42,6 +43,7 @@ cargo test -p skimap-core --test real_sites -- --ignored  # données réelles
 
 - [C1 : graphe et routage](docs/routage.md) : sens unique, coût, style, chiffres et itinéraires de preuve, limites des données P2
 - [C5 : temps estimé](docs/temps.md) : modèle physique, paramètres et sources, comparaison à Munter, Tobler, Skitourenguru
+- [C11 : temps appris par groupe](docs/groupes.md) : modèle, a priori et sources, apprentissage hors ligne et en ligne, erreurs comparées à C5 seul sur les deux sites
 - [C3, C4 : routage hors piste](docs/horspiste.md) : rasters préparés, zones à une date, coût, preuves, cas qui domine
 - [C2 : rattachement et écart](docs/rattachement.md) : HMM, hystérésis, mode couloir, traces synthétiques et mesures
 - [C7 : demi-tour](docs/demi-tour.md) : limite de lumière, marge, heure et point de demi-tour
