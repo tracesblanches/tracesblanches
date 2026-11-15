@@ -274,6 +274,62 @@ fn cases() -> Vec<(Event, &'static str)> {
             Event::BatteryLow,
             "Batterie faible. Gardez de la réserve pour un appel d'urgence.",
         ),
+        (
+            Event::Briefing(Briefing::AvalancheOffline),
+            "Bulletin d'avalanche non disponible hors ligne. Consultez-le avant de partir.",
+        ),
+        (
+            Event::Briefing(Briefing::AvalanchesPossible),
+            "Des avalanches restent possibles sur les pentes raides.",
+        ),
+        (
+            Event::Briefing(Briefing::RouteAvalancheAreas),
+            "Votre itinéraire traverse des zones d'avalanche connues.",
+        ),
+        (
+            Event::Briefing(Briefing::RouteProtectedZone),
+            "Votre itinéraire traverse une zone protégée.",
+        ),
+        (
+            Event::Briefing(Briefing::RouteNoNetwork),
+            "Une partie de l'itinéraire est sans aucun réseau, même pour les appels d'urgence.",
+        ),
+        (
+            Event::Briefing(Briefing::FireStovesForbidden),
+            "Feu interdit sur la commune, réchauds compris.",
+        ),
+        (
+            Event::Briefing(Briefing::Snow(Snow::ColdDry)),
+            "Neige froide et sèche.",
+        ),
+        (
+            Event::LoopSummary {
+                km: 12.8,
+                seconds: 118.0 * 60.0,
+                back: Clock {
+                    hour: 12,
+                    minute: 13,
+                },
+            },
+            "Boucle de treize kilomètres, environ deux heures, retour vers midi et quart.",
+        ),
+        (
+            Event::LoopSummary {
+                km: 1.2,
+                seconds: 25.0 * 60.0,
+                back: Clock {
+                    hour: 15,
+                    minute: 50,
+                },
+            },
+            "Boucle d'un kilomètre, environ vingt-cinq minutes, retour vers seize heures moins le quart.",
+        ),
+        (
+            Event::Equipment {
+                items: vec![Item::SunProtection, Item::FaceProtection, Item::Waxless],
+            },
+            "À emporter. Des lunettes de soleil et de la crème, le ciel sera dégagé. Des moufles et une protection du visage, il fera très froid. Des skis à écailles ou des peaux, le fart de retenue tiendra mal.",
+        ),
     ]
 }
 
@@ -408,9 +464,16 @@ fn clip_set_size_and_ids() {
                 .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-'),
             "{id}"
         );
-        assert!(text.ends_with('.') && !text.contains("  "), "{id}: {text}");
-        assert!(
+        assert!(!text.contains("  "), "{id}: {text}");
+        // Loop summaries are one sentence in three clips: the first two continue it
+        // (comma), the last two start in lower case.
+        let continues = id.starts_with("loop.km.") || id.starts_with("loop.about.");
+        assert_eq!(text.ends_with(','), continues, "{id}: {text}");
+        assert!(continues || text.ends_with('.'), "{id}: {text}");
+        let lower = id.starts_with("loop.about.") || id.starts_with("loop.back.");
+        assert_eq!(
             text.chars().next().is_some_and(char::is_uppercase),
+            !lower,
             "{id}: {text}"
         );
     }

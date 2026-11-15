@@ -17,3 +17,5 @@ Points : écart au temps demandé (−2 × écart relatif), part d'aller-retour 
 Limites du graphe, dites et non masquées : nœuds non atteignables depuis le départ (Cervières : 65 nœuds sur 189, 26,8 km, depuis Le Laus et 138 depuis Les Fonts, la « Liaison Le Laus - Les Fonts » et les pistes du Cancel s'arrêtant à 18 m l'une de l'autre ; Chapelle-des-Bois : 33 nœuds sur 649, 14,5 km, à cause des sens uniques), points de demi-tour sans retour possible.
 
 Temps : 0,78 s pour trois demandes à Chapelle-des-Bois (649 nœuds : un itinéraire vers chaque nœud et retour, 40 précalculs de coûts), 0,1 s à Cervières.
+
+Voix : chaque boucle porte `voice`, `Event::LoopSummary` (« Boucle de treize kilomètres, environ deux heures, retour vers midi et quart. » : longueur au kilomètre, temps du modèle C5 sur la grille des durées, retour au quart d'heure le plus proche, dit comme on le dit), trois clips du pack.

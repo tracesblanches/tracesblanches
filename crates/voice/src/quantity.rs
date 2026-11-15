@@ -175,6 +175,26 @@ impl Clock {
         }
     }
 
+    /// The time as people say it: "midi et quart", "treize heures et demie", "seize heures
+    /// moins le quart", "minuit", other minutes as [`Clock::words`] ("quinze heures dix").
+    pub fn spoken(self) -> String {
+        let name = |h: u32| match h % 24 {
+            0 => "minuit".to_owned(),
+            12 => "midi".to_owned(),
+            h => format!("{} heure{}", cardinal(h, Gender::Feminine), plural(h)),
+        };
+        let h = u32::from(self.hour);
+        let noon_or_midnight = h % 12 == 0;
+        match self.minute {
+            0 => name(h),
+            15 => format!("{} et quart", name(h)),
+            30 if noon_or_midnight => format!("{} et demi", name(h)),
+            30 => format!("{} et demie", name(h)),
+            45 => format!("{} moins le quart", name(h + 1)),
+            m => format!("{} {}", name(h), cardinal(u32::from(m), Gender::Feminine)),
+        }
+    }
+
     /// Stable key, e.g. `1545`.
     pub fn key(self) -> String {
         format!("{:02}{:02}", self.hour, self.minute)
@@ -187,6 +207,20 @@ pub const CLOCK_HOURS: (u8, u8) = (6, 21);
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn spoken_times() {
+        let c = |hour, minute| Clock { hour, minute };
+        assert_eq!(c(12, 15).spoken(), "midi et quart");
+        assert_eq!(c(12, 30).spoken(), "midi et demi");
+        assert_eq!(c(11, 45).spoken(), "midi moins le quart");
+        assert_eq!(c(13, 0).spoken(), "treize heures");
+        assert_eq!(c(14, 30).spoken(), "quatorze heures et demie");
+        assert_eq!(c(15, 45).spoken(), "seize heures moins le quart");
+        assert_eq!(c(1, 15).spoken(), "une heure et quart");
+        assert_eq!(c(23, 45).spoken(), "minuit moins le quart");
+        assert_eq!(c(9, 10).spoken(), "neuf heures dix");
+    }
 
     #[test]
     fn distance_rounding() {

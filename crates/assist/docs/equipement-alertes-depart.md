@@ -4,7 +4,7 @@
 
 ## A6 — liste d'équipement
 
-`equipment::equipment(&SiteData, &Outing)` ; sortie `equipment_<date>.json` et `.txt` ; voix `Event::Equipment`. Chaque élément porte le fait qui l'a déclenché :
+`equipment::equipment(&SiteData, &Outing)` ; sortie `equipment_<date>.json` et `.txt` ; voix `Event::Equipment` : chaque élément a sa phrase, dont « Des lunettes de soleil et de la crème, le ciel sera dégagé. », « Des moufles et une protection du visage, il fera très froid. » et « Des skis à écailles ou des peaux, le fart de retenue tiendra mal. ». Chaque élément porte le fait qui l'a déclenché :
 
 | Élément | Quand |
 |---|---|

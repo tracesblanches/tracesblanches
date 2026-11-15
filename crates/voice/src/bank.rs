@@ -214,6 +214,8 @@ pub enum Snow {
     Windblown,
     /// Icy patches.
     Icy,
+    /// Cold, dry snow.
+    ColdDry,
 }
 
 /// Expected crowd (A4).
@@ -244,6 +246,12 @@ pub enum Item {
     TellSomeone,
     /// Compass: fog forecast.
     Compass,
+    /// Sunglasses and sunscreen: clear sky.
+    SunProtection,
+    /// Mittens and face protection: very cold.
+    FaceProtection,
+    /// Waxless skis or skins: grip wax unreliable.
+    Waxless,
 }
 
 /// Kick wax (A2, classic).
@@ -341,6 +349,18 @@ pub enum Briefing {
     Snow(Snow),
     /// Expected crowd.
     Crowd(Crowd),
+    /// The BERA of the day could not be read offline.
+    AvalancheOffline,
+    /// Avalanches remain possible on steep slopes (after the level or « no bulletin »).
+    AvalanchesPossible,
+    /// The planned route crosses historic avalanche paths.
+    RouteAvalancheAreas,
+    /// The planned route crosses a protected area.
+    RouteProtectedZone,
+    /// Part of the planned route has no network at all.
+    RouteNoNetwork,
+    /// Fire forbidden by the commune, stoves included.
+    FireStovesForbidden,
 }
 
 /// An event of the core that is announced.
@@ -438,6 +458,16 @@ pub enum Event {
     },
     /// Daily briefing line.
     Briefing(Briefing),
+    /// Summary of a suggested loop (A5): « Boucle de treize kilomètres, environ deux
+    /// heures, retour vers midi et quart. »
+    LoopSummary {
+        /// Length, km (rounded; 1 to 60 km have clips).
+        km: f64,
+        /// Estimated time, seconds (duration grid).
+        seconds: f64,
+        /// Return time (to the quarter hour).
+        back: Clock,
+    },
     /// Equipment list (A6).
     Equipment {
         /// Items with their reasons.
@@ -614,6 +644,22 @@ impl Event {
                 }
             }
             Event::Briefing(b) => briefing(&mut a, b),
+            Event::LoopSummary { km, seconds, back } => {
+                let k = if km.is_finite() {
+                    (km.round().max(1.0)) as u32
+                } else {
+                    1
+                };
+                a.push(clips::loop_length(k), Short);
+                match round_duration(*seconds) {
+                    Some(m) => a.push(clips::loop_about(m), Short),
+                    None => a.push(clips::loop_about(1), Short),
+                }
+                a.push(
+                    clips::loop_back(Clock::nearest_quarter(back.hour, back.minute)),
+                    Short,
+                );
+            }
             Event::Equipment { items } => {
                 a.push(Fixed::EquipmentIntro.clip(), Short);
                 for i in items {
@@ -624,6 +670,9 @@ impl Event {
                         Item::PowerBank => Fixed::ItemPowerBank,
                         Item::TellSomeone => Fixed::ItemTellSomeone,
                         Item::Compass => Fixed::ItemCompass,
+                        Item::SunProtection => Fixed::ItemSunProtection,
+                        Item::FaceProtection => Fixed::ItemFaceProtection,
+                        Item::Waxless => Fixed::ItemWaxless,
                     };
                     a.push(f.clip(), Short);
                 }
@@ -734,6 +783,12 @@ fn briefing(a: &mut Announcement, b: &Briefing) {
             a.push(Fixed::BestTime.clip(), Short);
             a.push(clips::clock(*at), Short);
         }
+        Briefing::AvalancheOffline => a.push(Fixed::AvalancheOffline.clip(), Short),
+        Briefing::AvalanchesPossible => a.push(Fixed::AvalanchesPossible.clip(), Short),
+        Briefing::RouteAvalancheAreas => a.push(Fixed::RouteAvalancheAreas.clip(), Short),
+        Briefing::RouteProtectedZone => a.push(Fixed::RouteProtectedZone.clip(), Short),
+        Briefing::RouteNoNetwork => a.push(Fixed::RouteNoNetwork.clip(), Short),
+        Briefing::FireStovesForbidden => a.push(Fixed::FireStovesForbidden.clip(), Short),
         Briefing::Snow(s) => {
             let f = match s {
                 Snow::Fresh => Fixed::SnowFresh,
@@ -742,6 +797,7 @@ fn briefing(a: &mut Announcement, b: &Briefing) {
                 Snow::Wet => Fixed::SnowWet,
                 Snow::Windblown => Fixed::SnowWindblown,
                 Snow::Icy => Fixed::SnowIcy,
+                Snow::ColdDry => Fixed::SnowColdDry,
             };
             a.push(f.clip(), Short);
         }

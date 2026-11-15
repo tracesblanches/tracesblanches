@@ -459,6 +459,58 @@ fixed_phrases! {
     Autonomy = "autonomy" => "Autonomie restante.",
     /// Battery low.
     BatteryLow = "battery-low" => "Batterie faible. Gardez de la réserve pour un appel d'urgence.",
+    /// The BERA of the day could not be read offline (A7).
+    AvalancheOffline = "avalanche-offline" => "Bulletin d'avalanche non disponible hors ligne. Consultez-le avant de partir.",
+    /// Reminder after « no bulletin » or the BERA level (A7).
+    AvalanchesPossible = "avalanches-possible" => "Des avalanches restent possibles sur les pentes raides.",
+    /// The planned route crosses historic avalanche paths (A7, P20).
+    RouteAvalancheAreas = "route-avalanche-areas" => "Votre itinéraire traverse des zones d'avalanche connues.",
+    /// The planned route crosses a protected area (A7, C8).
+    RouteProtectedZone = "route-protected-zone" => "Votre itinéraire traverse une zone protégée.",
+    /// Part of the planned route has no network at all (A7, P12).
+    RouteNoNetwork = "route-no-network" => "Une partie de l'itinéraire est sans aucun réseau, même pour les appels d'urgence.",
+    /// Fire forbidden by the commune, stoves included (A7, P10).
+    FireStovesForbidden = "fire-stoves-forbidden" => "Feu interdit sur la commune, réchauds compris.",
+    /// Cold, dry snow (A3).
+    SnowColdDry = "snow-cold-dry" => "Neige froide et sèche.",
+    /// Sunglasses and sunscreen: clear sky (A6).
+    ItemSunProtection = "item-sun-protection" => "Des lunettes de soleil et de la crème, le ciel sera dégagé.",
+    /// Mittens and face protection: very cold (A6).
+    ItemFaceProtection = "item-face-protection" => "Des moufles et une protection du visage, il fera très froid.",
+    /// Waxless skis or skins: grip wax unreliable (A6, A2).
+    ItemWaxless = "item-waxless" => "Des skis à écailles ou des peaux, le fart de retenue tiendra mal.",
+}
+
+/// Lengths of a suggested loop announced, kilometres.
+pub const LOOP_KM: (u32, u32) = (1, 60);
+
+/// "Boucle de treize kilomètres," (first part of a loop summary, A5).
+pub fn loop_length(km: u32) -> Clip {
+    Clip::new(
+        format!("loop.km.{km}"),
+        if km == 1 {
+            "Boucle d'un kilomètre,".to_owned()
+        } else {
+            format!("Boucle de {} kilomètres,", cardinal(km, Gender::Masculine))
+        },
+    )
+}
+
+/// "environ deux heures," (second part of a loop summary).
+pub fn loop_about(minutes: u32) -> Clip {
+    Clip::new(
+        format!("loop.about.{minutes}"),
+        format!("environ {},", duration_words(minutes)),
+    )
+}
+
+/// "retour vers midi et quart." (last part of a loop summary): the time said as people
+/// say it, to the quarter hour.
+pub fn loop_back(c: Clock) -> Clip {
+    Clip::new(
+        format!("loop.back.{}", c.key()),
+        format!("retour vers {}.", c.spoken()),
+    )
 }
 
 #[cfg(test)]

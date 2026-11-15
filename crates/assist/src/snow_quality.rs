@@ -183,7 +183,7 @@ impl Quality {
         }
     }
 
-    /// Phrase of the voice bank, when one exists (old dry snow has none yet).
+    /// Phrase of the voice bank (old dry snow: « Neige froide et sèche. »).
     pub fn voice(self) -> Option<skimap_voice::bank::Snow> {
         use skimap_voice::bank::Snow;
         Some(match self {
@@ -193,7 +193,7 @@ impl Quality {
             Quality::Wet | Quality::Slush => Snow::Wet,
             Quality::Hard => Snow::Hard,
             Quality::Icy => Snow::Icy,
-            Quality::OldDry => return None,
+            Quality::OldDry => Snow::ColdDry,
         })
     }
 

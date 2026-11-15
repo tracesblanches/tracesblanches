@@ -92,7 +92,9 @@ impl Kind {
             Kind::PowerBank => Item::PowerBank,
             Kind::TellSomeone => Item::TellSomeone,
             Kind::Compass => Item::Compass,
-            Kind::FaceProtection | Kind::SunProtection | Kind::WaxlessSkis => return None,
+            Kind::FaceProtection => Item::FaceProtection,
+            Kind::SunProtection => Item::SunProtection,
+            Kind::WaxlessSkis => Item::Waxless,
         })
     }
 }
@@ -451,7 +453,9 @@ mod tests {
         let Event::Equipment { items } = e.voice() else {
             panic!()
         };
-        assert_eq!(items.len(), 5);
+        // Every item of the list has its phrase now (face protection, waxless skis too).
+        assert_eq!(items.len(), 7);
+        assert!(items.contains(&Item::FaceProtection) && items.contains(&Item::Waxless));
         // Morning, mild, no fog: no headlamp, no layer, no compass.
         let o2 = Outing {
             start: o.start - Duration::hours(4),

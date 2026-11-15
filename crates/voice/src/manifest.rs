@@ -117,6 +117,13 @@ pub fn manifest(names: &PackNames) -> Manifest {
     }
     for c in Clock::quarters(CLOCK_HOURS.0, CLOCK_HOURS.1) {
         m.add(ClipKind::Value, clips::clock(c));
+        m.add(ClipKind::Value, clips::loop_back(c));
+    }
+    for k in clips::LOOP_KM.0..=clips::LOOP_KM.1 {
+        m.add(ClipKind::Value, clips::loop_length(k));
+    }
+    for g in duration_grid().into_iter().filter(|g| *g <= 720) {
+        m.add(ClipKind::Value, clips::loop_about(g));
     }
     for t in TURNAROUND_MINUTES {
         m.add(ClipKind::Value, clips::turnaround_in(t));

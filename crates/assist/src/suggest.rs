@@ -107,6 +107,9 @@ pub struct Suggestion {
     pub score: f64,
     /// Reasons.
     pub reasons: Vec<Reason>,
+    /// Spoken summary (voice bank): « Boucle de treize kilomètres, environ deux heures,
+    /// retour vers midi et quart. »
+    pub voice: skimap_voice::Event,
     /// Geometry.
     #[serde(skip)]
     pub line: Vec<LonLat>,
@@ -652,6 +655,7 @@ pub fn suggest(data: &SiteData, req: &Request) -> Suggestions {
             );
         }
         let score = reasons.iter().map(|r| r.points).sum();
+        let voice = loop_voice(len_km, b.total_s, arrival);
         loops.push(Suggestion {
             label,
             names,
@@ -667,6 +671,7 @@ pub fn suggest(data: &SiteData, req: &Request) -> Suggestions {
             exposure_km: exp,
             score,
             reasons,
+            voice,
             line,
             edges: legs.iter().map(|l| l.edge).collect(),
             profile: Profile::of(&eta, &pieces),
@@ -811,9 +816,33 @@ pub fn features(s: &Suggestions) -> Vec<serde_json::Value> {
         .collect()
 }
 
+/// Spoken summary of a loop: length, model time, planned return.
+pub fn loop_voice(length_km: f64, model_s: f64, arrival: NaiveDateTime) -> skimap_voice::Event {
+    skimap_voice::Event::LoopSummary {
+        km: length_km,
+        seconds: model_s,
+        back: skimap_voice::quantity::Clock {
+            hour: arrival.hour() as u8,
+            minute: arrival.minute() as u8,
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn loop_summary_is_spoken() {
+        let at = NaiveDate::from_ymd_opt(2026, 1, 5)
+            .unwrap()
+            .and_hms_opt(12, 14, 0)
+            .unwrap();
+        assert_eq!(
+            loop_voice(12.8, 118.0 * 60.0, at).announce().text(),
+            "Boucle de treize kilomètres, environ deux heures, retour vers midi et quart."
+        );
+    }
     use skimap_common::site::CHAPELLE_DES_BOIS;
     use skimap_core::graph::{Edge, EdgeKind, GraphData, Node};
 

@@ -20,9 +20,11 @@
 //!    the facts but not said (a day outing). Then the length of
 //!    the route without any mobile network (P12), or the share of the site.
 //!
-//! The voice uses the events of the phrase bank that exist (BERA level, no bulletin,
-//! weather, protected zone ahead); the phrases it lacks are listed in the README (requests
-//! to the orchestrator).
+//! The voice uses the phrase bank: BERA level, or « no bulletin » then « avalanches remain
+//! possible on steep slopes », or « bulletin not available offline »; « your route crosses
+//! known avalanche paths »; the weather; « your route crosses a protected area » (without
+//! a route: the protected zones with their rules); « fire forbidden in the commune,
+//! stoves included »; « part of the route has no network at all ».
 
 use chrono::{Duration, NaiveDate};
 use serde::Serialize;
@@ -550,13 +552,37 @@ pub fn synthesise(data: &SiteData, date: NaiveDate) -> Synthesis {
     match (facts.bera_status, facts.bera_level) {
         (_, Some(l)) => voice.push(Event::Briefing(Line::Avalanche { level: Some(l) })),
         (Some(BeraStatus::NoBera), _) => {
-            voice.push(Event::Briefing(Line::Avalanche { level: None }))
+            voice.push(Event::Briefing(Line::Avalanche { level: None }));
+            voice.push(Event::Briefing(Line::AvalanchesPossible));
         }
-        _ if !data.site.has_bera => voice.push(Event::Briefing(Line::Avalanche { level: None })),
-        _ => {}
+        _ if !data.site.has_bera => {
+            voice.push(Event::Briefing(Line::Avalanche { level: None }));
+            voice.push(Event::Briefing(Line::AvalanchesPossible));
+        }
+        // A massif with a bulletin that could not be read offline.
+        _ => voice.push(Event::Briefing(Line::AvalancheOffline)),
+    }
+    if facts.clpa_km.is_some_and(|km| km >= 0.05) {
+        voice.push(Event::Briefing(Line::RouteAvalancheAreas));
     }
     voice.extend(weather_ev);
-    voice.extend(zone_events);
+    if data.route.is_some() {
+        // On a planned route: one sentence for the protected areas crossed, then the
+        // commune fire rule and the stretch without network.
+        if facts.rules.iter().any(|r| r.protected && !r.night_only) {
+            voice.push(Event::Briefing(Line::RouteProtectedZone));
+        }
+    } else {
+        voice.extend(zone_events);
+    }
+    if facts.rules.iter().any(|r| {
+        r.topic == Topic::Fire && !r.protected && !r.night_only && r.verdict.contains("réchauds")
+    }) {
+        voice.push(Event::Briefing(Line::FireStovesForbidden));
+    }
+    if facts.no_network_km.is_some_and(|km| km >= 0.05) {
+        voice.push(Event::Briefing(Line::RouteNoNetwork));
+    }
     Synthesis {
         date,
         sentences: vec![s1, s2, s3],
