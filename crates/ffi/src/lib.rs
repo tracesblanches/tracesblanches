@@ -22,6 +22,7 @@ pub mod card;
 pub mod card_map;
 pub mod catalog;
 pub mod fees;
+pub mod group;
 pub mod info;
 pub mod style;
 pub mod sync;

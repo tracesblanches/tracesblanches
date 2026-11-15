@@ -19,6 +19,8 @@ skimap-assist.workspace = true
 skimap-core.workspace = true
 skimap-common.workspace = true
 skimap-voice.workspace = true
+# Group mode (N2, #128): frames, table, alerts; no radio, no network.
+skimap-group = { path = "../group" }
 chrono.workspace = true
 geojson.workspace = true
 serde.workspace = true
