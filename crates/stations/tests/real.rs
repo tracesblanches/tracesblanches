@@ -1,4 +1,5 @@
-//! Checks on the real census and on a real build (data directory): ignored by default.
+//! Checks on the live sources and the real census (network, data directory): ignored by
+//! default.
 //!
 //! ```sh
 //! SKIMAP_DATA_DIR=$PWD/data cargo test -p skimap-stations --test real -- --ignored --nocapture
@@ -7,81 +8,55 @@
 use std::collections::BTreeSet;
 
 use skimap_common::config::Config;
-use skimap_stations::{catalogue, domains, titres};
+use skimap_common::download::Downloader;
+use skimap_stations::{domains, titres};
 
-fn census() -> Vec<domains::Domain> {
+fn setup() -> (Vec<domains::Domain>, Downloader) {
     let cfg = Config::from_env().unwrap();
     let dir = cfg.layout().france_layer_dir("domaines").unwrap();
-    domains::load(&dir).unwrap().0
+    (
+        domains::load(&dir).unwrap().0,
+        Downloader::from_config(&cfg).unwrap(),
+    )
 }
 
-/// Re-reads every cited source (network; personal use) and requires every quote to be
-/// found and every PDF to be unchanged.
+/// Reads every issuer page, requires them all to parse, prints every title with its
+/// members and domains, and checks the Jura: Chapelle-des-Bois is covered by the national
+/// pass, the Montagnes du Jura pass and the Haut-Doubs site pass; every domain of the
+/// Ain, the Doubs and the Jura is printed as member or not of the ENJ.
 #[test]
-#[ignore = "network"]
-fn sources_still_say_the_same() {
-    let cfg = Config::from_env().unwrap();
-    let dl = skimap_common::download::Downloader::from_config(&cfg).unwrap();
-    let (checks, _) = titres::check_sources(&dl);
-    for c in &checks {
-        println!("{} : {} {:?} {:?}", c.id, c.status, c.missing, c.error);
-    }
-    assert!(checks.iter().all(|c| c.status == "ok"), "{checks:#?}");
-}
-
-/// Every hand-checked domain id exists in the census; every Jura, Doubs or Ain domain is
-/// either an ENJ member or listed as not a member (the Jura check of H2); prints the
-/// coverage of each title for the review.
-#[test]
-#[ignore = "data directory"]
-fn coverage_against_census() {
-    let ds = census();
-    let ids: BTreeSet<&str> = ds.iter().map(|d| d.id.as_str()).collect();
-    for m in catalogue::national_members() {
-        for d in m.domains {
-            assert!(ids.contains(d), "{d} ({}) not in the census", m.label);
+#[ignore = "network and data directory"]
+fn titles_from_live_sources() {
+    let (ds, dl) = setup();
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let read = titres::read_titles(&dl, &today);
+    for d in &read.docs {
+        if d.status != "ok" {
+            println!("SOURCE {} : {} {:?}", d.id, d.status, d.error);
         }
     }
-    for d in catalogue::JURA_NOT_MEMBERS {
-        assert!(ids.contains(d), "{d} not in the census");
-    }
-    let enj: BTreeSet<&str> = catalogue::ENJ_MEMBERS
-        .iter()
-        .flat_map(|m| m.domains.iter().copied())
-        .collect();
-    for d in ds
-        .iter()
-        .filter(|d| ["01", "25", "39"].contains(&d.departement.as_str()))
-    {
-        let member = enj.contains(d.id.as_str());
-        let not = catalogue::JURA_NOT_MEMBERS.contains(&d.id.as_str());
-        assert!(
-            member ^ not,
-            "{} {} : membre ENJ {member}, hors ENJ {not}",
-            d.id,
-            d.name
-        );
-    }
-    for max in [(0.35, 0.5), (0.5, 0.7), (0.7, 1.0), (1.0, 1.4)] {
-        let cl = skimap_stations::pois::clusters_with(&ds, max);
-        let area: f64 = cl
-            .iter()
-            .map(|(b, _)| (b.north - b.south) * (b.east - b.west))
-            .sum();
-        println!(
-            "== groupes Overpass {max:?} : {} requêtes, {area:.2} degrés carrés",
-            cl.len()
-        );
-    }
-    let covs = titres::coverages(&ds);
+    assert!(read.missing.is_empty(), "{:?}", read.missing);
     let name = |id: &str| {
         ds.iter()
             .find(|d| d.id == id)
             .map(|d| d.name.clone())
             .unwrap_or_default()
     };
-    for c in &covs {
-        println!("== {} : {} domaines", c.titre, c.domains.len());
+    let mut covered: Vec<(String, BTreeSet<String>)> = Vec::new();
+    for t in &read.titres {
+        let c = titres::coverage(t, &ds, &today);
+        println!(
+            "== {} : {} domaines, {} prix",
+            t.id,
+            c.domains.len(),
+            t.prices.len()
+        );
+        for p in &t.prices {
+            println!(
+                "  prix {} {} {} € {} {:?}..{:?} ({})",
+                p.product, p.category, p.eur, p.tier, p.from, p.until, p.season
+            );
+        }
         for m in &c.members {
             let names: Vec<String> = m
                 .domains
@@ -93,30 +68,66 @@ fn coverage_against_census() {
                 m.confidence,
                 m.label,
                 if names.is_empty() {
-                    "AUCUN".to_owned()
+                    "AUCUN".into()
                 } else {
                     names.join(" ; ")
                 }
             );
         }
+        covered.push((t.id.clone(), c.domains));
     }
-    let national = covs
+    for p in &read.site_pages {
+        let m = titres::match_site_page(p, &ds, &today);
+        println!(
+            "== page {} [{}] -> {:?} ; {} prix ({:?}) ; {} téléphones",
+            p.name,
+            m.confidence,
+            m.domains,
+            p.prices.len(),
+            p.season,
+            p.phones.len()
+        );
+    }
+    let has = |t: &str, d: &str| covered.iter().any(|(id, s)| id == t && s.contains(d));
+    let cdb = "site-13681086";
+    assert!(has("nordic-pass-national", cdb));
+    assert!(has("enj-montagnes-du-jura-saison", cdb));
+    assert!(
+        covered.iter().any(|(id, s)| id.starts_with("enj-site-")
+            && s.contains(cdb)
+            && s.contains("site-2783351")),
+        "Haut-Doubs site pass"
+    );
+    let enj: BTreeSet<String> = covered
         .iter()
-        .find(|c| c.titre == "nordic-pass-national")
+        .find(|(id, _)| id == "enj-montagnes-du-jura-saison")
+        .map(|(_, s)| s.clone())
         .unwrap();
-    let outside: Vec<String> = ds
+    println!("== Jura : membres ENJ {}", enj.len());
+    for d in ds
         .iter()
-        .filter(|d| !national.domains.contains(&d.id))
-        .map(|d| {
-            format!(
-                "{} {} ({}, {} km)",
-                d.id, d.name, d.departement, d.km_nordic
-            )
-        })
+        .filter(|d| ["01", "25", "39"].contains(&d.departement.as_str()))
+    {
+        println!(
+            "  {} {} {} : {}",
+            d.departement,
+            d.id,
+            d.name,
+            if enj.contains(&d.id) {
+                "membre"
+            } else {
+                "HORS ENJ"
+            }
+        );
+    }
+    let all: BTreeSet<&String> = covered
+        .iter()
+        .filter(|(id, _)| !id.starts_with("enj-site-"))
+        .flat_map(|(_, s)| s.iter())
         .collect();
     println!(
-        "== hors Nordic Pass national : {}\n  {}",
-        outside.len(),
-        outside.join("\n  ")
+        "== domaines couverts par un titre de massif ou national : {} sur {}",
+        all.len(),
+        ds.len()
     );
 }

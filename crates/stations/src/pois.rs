@@ -4,11 +4,12 @@
 //! the shared downloader, cached a day), then each point is attached to the domains whose
 //! footprint is close enough for its category.
 
+use std::cell::Cell;
 use std::collections::BTreeMap;
 
 use serde::Serialize;
 use serde_json::Value;
-use skimap_common::download::{Downloader, Fetched, Request};
+use skimap_common::download::{CachePolicy, Downloader, Fetched, Request};
 use skimap_common::geom::{BBox, LonLat};
 use skimap_refuges::privacy::{self, Phone};
 
@@ -17,16 +18,60 @@ use crate::error::{Result, StationsError};
 
 /// Downloader source name.
 pub const SOURCE: &str = "overpass";
-/// Public Overpass endpoint.
-pub const ENDPOINT: &str = "https://overpass-api.de/api/interpreter";
+/// Public Overpass instances (list of the OSM wiki « Overpass API »), in order of use: the
+/// main instance, then the VK Maps mirror. On 15/11/2026 both were overloaded (the main
+/// one refused connections for an hour, then answered « at capacity »; the mirror cut
+/// requests at about 50 s): an instance that refuses is skipped for the run, an answer
+/// with an HTTP error is retried on the other one ([`ROUNDS`] passes).
+pub const ENDPOINTS: &[&str] = &[
+    "https://overpass-api.de/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+];
 /// Licence.
 pub const LICENCE: &str = "ODbL 1.0";
 /// Attribution.
 pub const ATTRIBUTION: &str = "© les contributeurs d'OpenStreetMap (ODbL)";
 /// Margin around each domain footprint for the query, degrees (about 6 km).
 pub const QUERY_MARGIN_DEG: f64 = 0.055;
+/// Age under which a cached Overpass answer is used without request, s (the policy of
+/// the `overpass` source).
+pub const CACHE_DAY_S: u64 = 86_400;
+/// Passes on the instances before giving up (each request is already retried 4 times by
+/// the downloader).
+pub const ROUNDS: usize = 4;
 /// Largest cluster box, degrees of latitude and longitude.
 pub const CLUSTER_MAX_DEG: (f64, f64) = (0.7, 1.0);
+/// Margin of the name search around each footprint, degrees (about 1.3 km).
+pub const NAMES_MARGIN_DEG: f64 = 0.012;
+/// Largest box of the name search, degrees.
+pub const NAMES_MAX_DEG: (f64, f64) = (0.25, 0.35);
+/// Small boxes of the name search per request, at most.
+pub const NEAR_BATCH: usize = 6;
+/// Total area of the boxes of one name-search request, at most, square degrees: dense
+/// areas take longer than the mirrors' time limit (about 50 s) beyond that.
+pub const NEAR_BATCH_AREA: f64 = 0.02;
+
+/// Groups consecutive small boxes into requests of at most [`NEAR_BATCH`] boxes and
+/// [`NEAR_BATCH_AREA`] square degrees (a bigger box alone).
+pub fn batches(boxes: &[(BBox, Vec<usize>)]) -> Vec<Vec<(BBox, Vec<usize>)>> {
+    let area = |b: &BBox| (b.north - b.south) * (b.east - b.west);
+    let mut out: Vec<Vec<(BBox, Vec<usize>)>> = Vec::new();
+    let mut cur: Vec<(BBox, Vec<usize>)> = Vec::new();
+    let mut cur_area = 0.0;
+    for x in boxes {
+        let a = area(&x.0);
+        if !cur.is_empty() && (cur.len() == NEAR_BATCH || cur_area + a > NEAR_BATCH_AREA) {
+            out.push(std::mem::take(&mut cur));
+            cur_area = 0.0;
+        }
+        cur_area += a;
+        cur.push(x.clone());
+    }
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    out
+}
 
 /// Category of a point.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -221,33 +266,58 @@ pub fn classify(t: &BTreeMap<String, String>) -> Option<(Category, &'static str)
     None
 }
 
-/// Overpass QL of one box.
+/// Overpass QL of the far categories of one box (reach beyond the near margin): mountain
+/// rescue, ambulances, fire and rescue centres, tourist offices, ski schools (by tag ; the
+/// ski schools found by name are in the near query: a name search over a big box
+/// exceeds the time limit of the mirrors).
 pub fn query(b: &BBox) -> String {
     let bb = b.overpass();
     format!(
         "[out:json][timeout:240];(\
-nwr[\"emergency\"~\"^(mountain_rescue|ambulance_station|first_aid|rescue_station|defibrillator|phone|access_point)$\"]({bb});\
-nwr[\"amenity\"~\"^(mountain_rescue|first_aid|ski_school|parking)$\"]({bb});\
+nwr[\"emergency\"~\"^(mountain_rescue|ambulance_station)$\"]({bb});\
+nwr[\"amenity\"~\"^(mountain_rescue|fire_station|ski_school)$\"]({bb});\
+nwr[\"tourism\"=\"information\"][\"information\"=\"office\"]({bb});\
+nwr[\"office\"=\"ski_school\"]({bb});\
+);out center tags;"
+    )
+}
+
+/// Overpass QL of the near categories of one small box (footprint + about 1.3 km): first
+/// aid and patrol posts, defibrillators, emergency phones, rescue meeting points, pass
+/// sale points, car parks, and the name search (lodges, ticket desks, patrol posts named
+/// but not tagged as such). Scanning every named element is the slow part: the boxes are
+/// kept small, the mirrors cut a request after about 50 s.
+pub fn query_names(boxes: &[BBox]) -> String {
+    let mut q = String::from("[out:json][timeout:240];(");
+    for b in boxes {
+        let bb = b.overpass();
+        q.push_str(&format!(
+            "nwr[\"emergency\"~\"^(first_aid|rescue_station|defibrillator|phone|access_point)$\"]({bb});\
+nwr[\"amenity\"~\"^(first_aid|parking)$\"]({bb});\
 nwr[\"healthcare\"=\"first_aid\"]({bb});\
 nwr[\"shop\"=\"ticket\"]({bb});\
 nwr[\"vending\"~\"ski\"]({bb});\
-nwr[\"tourism\"=\"information\"][\"information\"=\"office\"]({bb});\
-nwr[\"office\"=\"ski_school\"]({bb});\
-nwr[\"name\"~\"foyer|caisse|billetterie|point de vente|accueil nordique|secours|pisteur|^ESF|cole d[ue] ski\",i]({bb});\
-);out center tags;"
-    )
+nwr[\"name\"~\"foyer|caisse|billetterie|point de vente|accueil nordique|secours|pisteur|^ESF|cole d[ue] ski\",i]({bb});"
+        ));
+    }
+    q.push_str(");out center tags;");
+    q
 }
 
 /// Boxes covering every domain plus [`QUERY_MARGIN_DEG`], neighbouring boxes merged
 /// while the merged box stays within [`CLUSTER_MAX_DEG`]. Returns the boxes and, for
 /// each, the domain indices it covers.
 pub fn clusters(domains: &[Domain]) -> Vec<(BBox, Vec<usize>)> {
-    clusters_with(domains, CLUSTER_MAX_DEG)
+    clusters_with(domains, CLUSTER_MAX_DEG, QUERY_MARGIN_DEG)
 }
 
 /// [`clusters`] with another largest box (degrees of latitude, longitude).
-pub fn clusters_with(domains: &[Domain], max_deg: (f64, f64)) -> Vec<(BBox, Vec<usize>)> {
-    let m = QUERY_MARGIN_DEG;
+pub fn clusters_with(
+    domains: &[Domain],
+    max_deg: (f64, f64),
+    margin_deg: f64,
+) -> Vec<(BBox, Vec<usize>)> {
+    let m = margin_deg;
     let mut cl: Vec<(BBox, Vec<usize>)> = domains
         .iter()
         .enumerate()
@@ -421,24 +491,128 @@ pub struct Fetch {
     pub clusters: usize,
 }
 
+/// Overpass error reported inside a 200 answer (`remark`: « runtime error: Query timed
+/// out », « out of memory »): the elements are then incomplete.
+pub fn overpass_error(v: &Value) -> Option<String> {
+    v.get("remark")
+        .and_then(Value::as_str)
+        .filter(|r| r.contains("error"))
+        .map(str::to_owned)
+}
+
+/// Runs an Overpass query on the public instances in order ([`ENDPOINTS`]): the next one
+/// is tried when an instance is unreachable or answers an error. An incomplete answer
+/// already cached is fetched again (`Reload`).
+///
+/// A complete answer of any instance younger than a day is used first, without request;
+/// an instance that failed is skipped for the rest of the run (`dead`).
+pub fn overpass(dl: &Downloader, q: &str, dead: &Cell<usize>) -> Result<(Fetched, Value)> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or_default();
+    for url in ENDPOINTS {
+        let req = Request::post_form(SOURCE, url, &[("data", q)]).cache(CachePolicy::Offline);
+        if let Ok(f) = dl.fetch(&req)
+            && now.saturating_sub(f.meta.fetched_at_unix) < CACHE_DAY_S
+            && let Ok(v) = f.json::<Value>()
+            && overpass_error(&v).is_none()
+        {
+            return Ok((f, v));
+        }
+    }
+    let mut last = None;
+    for round in 0..ROUNDS {
+        if (0..ENDPOINTS.len()).all(|i| dead.get() & (1 << i) != 0) {
+            break;
+        }
+        if round > 0 {
+            tracing::info!(
+                round = round + 1,
+                of = ROUNDS,
+                "overpass: new round on the instances"
+            );
+        }
+        match overpass_round(dl, q, dead) {
+            Ok(x) => return Ok(x),
+            Err(e) => last = Some(e),
+        }
+    }
+    Err(last.unwrap_or_else(|| StationsError::format(SOURCE, "no endpoint")))
+}
+
+/// One pass on the live instances (see [`overpass`]).
+fn overpass_round(dl: &Downloader, q: &str, dead: &Cell<usize>) -> Result<(Fetched, Value)> {
+    let mut last = None;
+    for (i, url) in ENDPOINTS.iter().enumerate() {
+        if dead.get() & (1 << i) != 0 {
+            continue;
+        }
+        let req = Request::post_form(SOURCE, url, &[("data", q)]);
+        let mut answer = dl
+            .fetch(&req)
+            .and_then(|f| f.json::<Value>().map(|v| (f, v)));
+        if let Ok((_, v)) = &answer
+            && overpass_error(v).is_some()
+        {
+            answer = dl
+                .fetch(&req.cache(CachePolicy::Reload))
+                .and_then(|f| f.json::<Value>().map(|v| (f, v)));
+        }
+        match answer {
+            Ok((f, v)) => match overpass_error(&v) {
+                None => return Ok((f, v)),
+                Some(e) => {
+                    tracing::warn!(endpoint = url, error = %e, "overpass answer incomplete");
+                    last = Some(StationsError::format(SOURCE, e));
+                }
+            },
+            Err(e) => {
+                // Refused connection: the instance is down or bans us, skip it. An HTTP
+                // status (429, 504 of a loaded gateway): try again in the next round.
+                let refused = !e.to_string().contains("HTTP status");
+                tracing::warn!(endpoint = url, error = %e, refused, "overpass instance failed");
+                if refused {
+                    dead.set(dead.get() | (1 << i));
+                }
+                last = Some(e.into());
+            }
+        }
+    }
+    Err(last.unwrap_or_else(|| StationsError::format(SOURCE, "no endpoint")))
+}
+
 /// Queries the points of every cluster and attaches them to the domains.
 pub fn fetch(dl: &Downloader, domains: &[Domain]) -> Result<Fetch> {
     let cl = clusters(domains);
+    // The name search only needs the footprints plus the reach of a lodge or a patrol
+    // post (1 km): small boxes, each well under the mirrors' time limit.
+    let cl_names = clusters_with(domains, NAMES_MAX_DEG, NAMES_MARGIN_DEG);
+    let dead = Cell::new(0);
     let mut all: BTreeMap<(String, i64), Poi> = BTreeMap::new();
-    let mut answers = Vec::with_capacity(cl.len());
-    for (i, (b, ds)) in cl.iter().enumerate() {
-        tracing::info!(
-            cluster = i + 1,
-            of = cl.len(),
-            domains = ds.len(),
-            "overpass"
-        );
-        let f = dl.fetch(&Request::post_form(
-            SOURCE,
-            ENDPOINT,
-            &[("data", &query(b))],
-        ))?;
-        for p in parse(&f.json()?)? {
+    let mut answers = Vec::with_capacity(cl.len() + cl_names.len());
+    // Several small boxes per request: one wait in the queue of the instance for many
+    // small searches.
+    let near: Vec<(String, usize, &str)> = batches(&cl_names)
+        .iter()
+        .map(|c| {
+            let boxes: Vec<BBox> = c.iter().map(|(b, _)| *b).collect();
+            (
+                query_names(&boxes),
+                c.iter().map(|(_, ds)| ds.len()).sum(),
+                "near",
+            )
+        })
+        .collect();
+    let n = cl.len() + near.len();
+    let jobs = cl
+        .iter()
+        .map(|(b, ds)| (query(b), ds.len(), "far"))
+        .chain(near);
+    for (i, (q, nd, kind)) in jobs.enumerate() {
+        tracing::info!(query = i + 1, of = n, domains = nd, kind, "overpass");
+        let (f, v) = overpass(dl, &q, &dead)?;
+        for p in parse(&v)? {
             all.entry((p.osm_type.clone(), p.osm_id)).or_insert(p);
         }
         answers.push(f);
@@ -448,7 +622,7 @@ pub fn fetch(dl: &Downloader, domains: &[Domain]) -> Result<Fetch> {
     Ok(Fetch {
         pois,
         answers,
-        clusters: cl.len(),
+        clusters: n,
     })
 }
 
@@ -516,6 +690,35 @@ mod tests {
     }
 
     #[test]
+    fn batching() {
+        let b = |s: f64, d: f64| (BBox::new(s, 6.0, s + d, 6.0 + d), vec![0]);
+        // Area caps a batch; a box bigger than the cap goes alone.
+        let v = vec![
+            b(45.0, 0.09),
+            b(45.2, 0.09),
+            b(45.4, 0.2),
+            b(45.7, 0.01),
+            b(45.8, 0.01),
+        ];
+        let g = batches(&v);
+        assert_eq!(g.iter().map(Vec::len).collect::<Vec<_>>(), vec![2, 1, 2]);
+        let many: Vec<_> = (0..13).map(|i| b(40.0 + i as f64, 0.01)).collect();
+        assert_eq!(
+            batches(&many).iter().map(Vec::len).collect::<Vec<_>>(),
+            vec![6, 6, 1]
+        );
+    }
+
+    #[test]
+    fn incomplete_answers() {
+        use serde_json::json;
+        let bad = json!({"elements": [], "remark": "runtime error: Query timed out in \"query\" at line 1 after 241 seconds."});
+        assert!(overpass_error(&bad).is_some());
+        assert!(overpass_error(&json!({"elements": []})).is_none());
+        assert!(overpass_error(&json!({"elements": [], "remark": "note"})).is_none());
+    }
+
+    #[test]
     fn query_text() {
         let q = query(&BBox::new(46.5, 6.0, 46.7, 6.2));
         assert!(
@@ -523,5 +726,15 @@ mod tests {
             "{q}"
         );
         assert!(q.ends_with("out center tags;"));
+        let q = query_names(&[
+            BBox::new(46.5, 6.0, 46.7, 6.2),
+            BBox::new(45.0, 6.5, 45.1, 6.6),
+        ]);
+        assert!(
+            q.contains("foyer")
+                && q.contains("(45,6.5,45.1,6.6)")
+                && q.ends_with("out center tags;"),
+            "{q}"
+        );
     }
 }

@@ -170,12 +170,8 @@ pub fn fetch(dl: &Downloader, domains: &[Domain], census_dir: &Path) -> Result<F
         .collect::<Vec<_>>()
         .join(",");
     let q = format!("[out:json][timeout:120];rel(id:{ids});out tags;");
-    let f = dl.fetch(&Request::post_form(
-        crate::pois::SOURCE,
-        crate::pois::ENDPOINT,
-        &[("data", &q)],
-    ))?;
-    let rel_tags = parse_relations(&f.json()?);
+    let (f, v) = crate::pois::overpass(dl, &q, &std::cell::Cell::new(0))?;
+    let rel_tags = parse_relations(&v);
     sources.push((
         "OpenStreetMap (Overpass), relations site=piste des domaines".to_owned(),
         crate::pois::LICENCE.to_owned(),

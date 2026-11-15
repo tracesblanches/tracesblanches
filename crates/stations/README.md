@@ -1,49 +1,39 @@
 # skimap-stations
 
-Fiches pratiques des stations nordiques (H1, #132), titres de redevance et zones de validité (H2, #133). Pipeline, échelle nationale : les 219 domaines du recensement (P3, `data/out/france/domaines/`).
+Fiches pratiques des stations nordiques (H1, #132), titres de redevance et zones de validité (H2, #133), pour les 219 domaines du recensement (P3, `data/out/france/domaines/`), **rafraîchis depuis leurs sources** par une tâche planifiée.
 
-API : `skimap_stations::build(&layout, &downloader, personal_sources)`. Exemple : `SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-stations --example stations`.
+API : `refresh(&layout, &downloader, personal_sources, now, force)` (tâche planifiée du serveur, idempotente) ; `build(&layout, &downloader, personal_sources)` (tout, tout de suite). Exemple : `SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-stations --example stations`.
 
-## Sources
+## Sources (relues à chaque rafraîchissement)
 
 | Source | Accès | Licence | Ce qu'on garde |
 |---|---|---|---|
-| OpenStreetMap | Overpass public (source `overpass`, 1 requête / 5 s, cache 1 jour) : 42 requêtes, une par groupe de domaines voisins (emprises + 6 km, boîte de 0,7° × 1° au plus) ; relations `site=piste` des domaines | ODbL | secours (`emergency=*`, `amenity=first_aid`, `mountain_rescue`, centres de secours, noms « poste de secours », « pisteur »), vente (`shop=ticket`, foyers, caisses, billetteries nordiques, distributeurs), offices de tourisme, écoles de ski, parkings ; téléphones, sites, horaires |
-| OpenSkiMap `ski_areas.csv` | source `openskimap` (même requête que le recensement) | ODbL | `websites` des domaines OpenSkiMap qui recouvrent le domaine |
-| SkiRadar geo-feed | source `skiradar` (mêmes requêtes que le recensement) | « réutilisables avec attribution « skiradar.fr » et lien vers la fiche » | site officiel, école de ski (nom, site), lien vers la fiche |
-| Nordic France, ENJ, Haute-Savoie Nordic, Nordic Alpes du Sud, Nordic Isère | pages et grilles lues à la main le 15/11/2026 (`catalogue.rs`), relues à chaque construction | aucune licence de réutilisation : **usage personnel** (`personal_sources`) | titres, validité citée, prix datés, listes de domaines membres |
+| OpenStreetMap | Overpass (source `overpass`) : overpass-api.de, puis le miroir VK Maps ; requêtes « loin » (secours en montagne, ambulances, centres de secours, offices de tourisme, écoles de ski : emprises + 6 km) et « près » (emprises + 1,3 km, 6 petites boîtes par requête : premiers secours, postes de pisteurs, défibrillateurs, téléphones d'urgence, points de rencontre des secours, vente, parkings, recherche par nom) ; relations `site=piste` | ODbL | catégorie, nom, téléphones, site, horaires, capacité |
+| OpenSkiMap `ski_areas.csv`, SkiRadar | mêmes requêtes que le recensement | ODbL ; « réutilisables avec attribution « skiradar.fr » » | sites de la station, école de ski, fiche SkiRadar |
+| Nordic France, ENJ, Haute-Savoie Nordic, Nordic Alpes du Sud, Nordic Isère | pages lues et **analysées** à chaque fois (`sources.rs`) | aucune licence : **usage personnel** (`personal_sources`) | titres, validité citée, prix datés, listes de membres, groupes de sites de la boutique ENJ, pages de domaine (prix journée, téléphones) |
 
-Rattachement d'un point OSM à un domaine : distance à l'emprise du domaine (0 dedans) au plus 1 km pour un poste de secours ou un point de vente, 3 km pour secours en montagne, ambulance, centre de secours, 500 m pour un défibrillateur, 200 m pour un téléphone d'urgence, 100 m pour un point de rencontre des secours, 300 m pour un parking (sauf privé) ; offices de tourisme et écoles de ski : les 2 plus proches à moins de 6 km. Un « foyer » ne compte comme point de vente que si son nom parle de ski, de fond, de nordique, de pistes, de caisse ou de billetterie (pas un foyer rural).
+Rattachement d'un point OSM : à moins de 1 km de l'emprise (poste de secours, point de vente), 3 km (secours en montagne, ambulance, centre de secours), 500 m (défibrillateur), 200 m (téléphone d'urgence), 100 m (point de rencontre), 300 m (parking) ; offices de tourisme et écoles de ski : les 2 plus proches à moins de 6 km.
+
+Membres → domaines : mots de chaque partie du libellé dans le nom, le nom OpenSkiMap ou la commune d'un domaine du département ; sinon nom complet unique en France. Compléments manuels **minimaux** (`catalogue.rs`) : 26 rattachements qu'aucune source ne nomme (Agy = Saint-Sigismond, Lacs et Montagnes du Haut-Doubs…) et les prix de la grille PDF de l'ENJ (pas de lecteur PDF), chacun avec sa raison, sa date et une **date d'expiration** ; le test `complements_not_expired` échoue après expiration ; la grille PDF est épinglée par son SHA-256 : si elle change, ses prix sont retirés et la source signalée.
+
+## Rafraîchissement
+
+- Fiches : chaque semaine. Titres, prix, membres : chaque jour du 1er novembre au 30 avril, chaque semaine sinon. Une deuxième exécution le même jour ne refait rien.
+- `journal.jsonl` : changements entre deux passages (fiche, titre, page de domaine, état d'une source) ; chaque fiche et chaque titre portent `checked_at` et `changed_at`, chaque prix son `checked_at`.
+- `status.json` : état de chaque partie et de chaque source (`ok`, `unreachable`, `broken` : la page ne contient plus ce que l'analyseur attend, `changed` : PDF modifié). Un titre dont la source échoue garde ses valeurs marquées `stale` ; après 14 jours ses prix sont retirés (`perime`) plutôt qu'affichés faux.
 
 ## Sorties (`data/out/france/stations/`, WGS84)
 
-- `stations.geojson` : une fiche par domaine (point représentatif) : `secours.numbers` (**112 toujours en premier**, puis 15 et 114), `secours.posts`, `vente`, `links` (station, école de ski, fiche SkiRadar), `phones`, `operator`, `offices_tourisme`, `ecoles_ski`, `parkings`, `has` ; licence ODbL, attribution SkiRadar.
-- `pois.geojson` : les points OSM et leurs domaines (ODbL).
-- Avec `personal_sources` seulement (sinon ces fichiers sont supprimés) :
-  - `titres.json` : titres (portée, émetteur, validité citée, notes, validité à l'étranger), prix (produit, catégorie, âges, montant, palier prévente / plein tarif, dates, **saison**, source, date de lecture, citation, `confirmed_now`), membres et domaines (confiance `verifie`, `partiel`, `probable`, `auto`), contrôle de chaque source ;
-  - `titres.geojson` : emprise de chaque titre (réunion des emprises de ses domaines) ;
-  - `couverture.json` : titres valables sur chaque domaine, règle et prix du titre de site, ways OSM de chaque titre (jointure avec `domaines_ways.json` pour colorer les pistes).
-- `stations.meta.json` : sources, licences, propriétés, chiffres.
+- `stations.geojson` : une fiche par domaine : `secours.numbers` (**112 toujours en premier**, puis 15 et 114), `secours.posts`, `vente`, `links`, `phones`, `operator`, `offices_tourisme`, `ecoles_ski`, `parkings`, `has`, `checked_at`, `changed_at` (ODbL, attribution SkiRadar). `pois.geojson` : les points OSM et leurs domaines.
+- Avec `personal_sources` seulement (sinon supprimés) : `titres.json` (titres, prix, membres, pages de domaine, documents, compléments), `titres.geojson` (emprise de chaque titre), `couverture.json` (titres de chaque domaine, règle et prix du titre de site, ways OSM de chaque titre).
+- `status.json`, `journal.jsonl`, `refresh_state.json`, `stations.meta.json`.
 
-Un prix n'est écrit qu'avec sa saison, sa source et sa date de lecture ; `titres::check_sources` relit chaque source (citation retrouvée dans le HTML, SHA-256 inchangé pour un PDF) et le dit dans `documents[].check` et `prices[].confirmed_now`.
+## Jura (hypothèse de l'utilisateur)
 
-## Titres au 15/11/2026
-
-| Titre | Validité (citée) | Adulte | Jeune |
-|---|---|---|---|
-| Nordic Pass national (Nordic France) | « valable sur tous les sites nordiques adhérents » ; pas les nocturnes ni la neige de culture avant le 15/12 ; gratuit en Suisse romande | 214 € jusqu'au 15/11, 255 € | 79 €, 94 € (5-15 ans) |
-| Pass saison Montagnes du Jura (ENJ) | « accès à tous les sites nordiques de l'Ain, du Doubs et du Jura, ainsi qu'en Suisse Romande » | 112 / 135 / 173 € | 45 / 50 / 70 € |
-| Pass hebdo Montagnes du Jura (ENJ) | « valable sur TOUS les sites nordiques du massif du Jura » | 51 € | 33 € |
-| Nordic Pass 74 (Haute-Savoie Nordic) | « les 25 domaines nordiques de Haute-Savoie » | 142 € en prévente, 178 € | 44 €, 52 € |
-| Pass Isère-Drôme (Nordic Isère) | « 23 sites de l'Isère et de la Drôme » | 160 € (13-31/10), 175 € | 57 €, 62 € |
-| Pass saison et semaine Alpes du Sud | domaines de Nordic Alpes du Sud (déduit) | 143 / 205 € ; semaine 77 € | 72 / 87 € ; 49 € |
-| Cervières, titre de site (hiver 2025-2026) | le site | journée 15 €, 3 h 11 €, saison 75 € | 8 €, 6 €, 60 € |
-
-**Jura (hypothèse de l'utilisateur)** : vraie pour les titres saison et hebdo Montagnes du Jura (et le Pass national), fausse pour la journée : « Le Pass séance est valable uniquement sur le site d'achat du Pass. Une réciprocité existe quand plusieurs domaines peuvent être reliés ski aux pieds. Cette règle est la même pour les Pass pluri journaliers (de 2 à 5 jours). » (FAQ de l'ENJ, pass.espacenordiquejurassien.com/faq). Les 48 domaines du recensement dans l'Ain, le Doubs et le Jura sont classés à la main : 39 membres de l'ENJ, 9 hors ENJ (`JURA_NOT_MEMBERS`, vérifié par le test réel).
+Vraie pour les Pass saison et hebdo Montagnes du Jura, fausse pour la journée : « Le Pass séance est valable uniquement sur le site d'achat du Pass. Une réciprocité existe quand plusieurs domaines peuvent être reliés ski aux pieds. » (FAQ de l'ENJ, lue à chaque rafraîchissement). 39 des 48 domaines de l'Ain, du Doubs et du Jura sont membres de l'ENJ.
 
 ## Limites
 
-- Points de vente : seulement ceux qu'OSM décrit ; offices de tourisme, mairies et commerces qui vendent les pass saison ne sont pas tous étiquetés.
-- Prix journée : seulement Cervières (page Nordic Alpes du Sud, hiver 2025-2026) ; les autres sites publient leurs prix dans des pages dynamiques ou des PDF propres à chaque domaine.
-- Membres rattachés automatiquement (`auto`) : vérifiés sur la liste imprimée par `tests/real.rs`, pas un par un sur le terrain.
-- Savoie Nordic, Montagnes du Massif Central, Alsace, Vosges, Pyrénées : pas de titre régional relevé (pages illisibles ou sans tarif) ; seul le Pass national les couvre.
+- Points de vente : seulement ceux qu'OSM décrit.
+- Prix journée : seulement quand la page de domaine écrit la saison (Cervières, hiver 2025-2026) ; un prix sans saison n'est jamais publié.
+- Pas de titre régional relevé pour la Savoie, le Massif central, l'Alsace, les Vosges, les Pyrénées (pages sans tarif lisible) : seul le Pass national les couvre.
