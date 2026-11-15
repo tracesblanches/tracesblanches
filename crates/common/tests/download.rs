@@ -797,3 +797,59 @@ fn range_ignored_by_the_server_is_an_error() {
         Err(Error::NotCached { .. })
     ));
 }
+
+#[test]
+fn invalid_bodies_are_fetched_again_and_never_kept() {
+    // The Géoplateforme once answered a WFS request with the Prometheus metrics of a JVM
+    // (status 200), and the WMS with a 400 for a tile served a minute later (15/11/2026).
+    let srv = TestServer::start(|_, n| match n {
+        1 => Reply::ok("# HELP jvm_threads_current"),
+        2 => Reply::status(400),
+        _ => Reply::ok("{\"type\":\"FeatureCollection\"}"),
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let dl = downloader(dir.path(), policy("t"));
+    let req = Request::get("t", &srv.url("/wfs"));
+    let check = |f: &skimap_common::download::Fetched| {
+        let t = f.text().map_err(|e| e.to_string())?;
+        if t.starts_with('{') {
+            Ok(t)
+        } else {
+            Err(format!("not JSON: {t}"))
+        }
+    };
+    let t = dl
+        .fetch_checked(&req, 4, Duration::from_millis(5), &[400], check)
+        .unwrap();
+    assert_eq!(t, "{\"type\":\"FeatureCollection\"}");
+    assert_eq!(srv.count(), 3);
+    // The good body replaced the bad one in the cache: no request now.
+    let again = dl
+        .fetch_checked(&req, 4, Duration::from_millis(5), &[400], check)
+        .unwrap();
+    assert_eq!(again, t);
+    assert_eq!(srv.count(), 3);
+}
+
+#[test]
+fn invalid_bodies_give_up_after_the_attempts() {
+    let srv = TestServer::start(|_, _| Reply::ok("<html>maintenance</html>"));
+    let dir = tempfile::tempdir().unwrap();
+    let dl = downloader(dir.path(), policy("t"));
+    let req = Request::get("t", &srv.url("/x"));
+    let err = dl
+        .fetch_checked(&req, 3, Duration::from_millis(1), &[], |_| {
+            Err::<(), _>("bad".to_owned())
+        })
+        .unwrap_err();
+    assert!(matches!(err, Error::Invalid { attempts: 3, .. }), "{err}");
+    assert_eq!(srv.count(), 3);
+    // A status not listed is not retried.
+    let srv = TestServer::start(|_, _| Reply::status(403));
+    let req = Request::get("t", &srv.url("/y"));
+    let err = dl
+        .fetch_checked(&req, 3, Duration::from_millis(1), &[400], |_| Ok(()))
+        .unwrap_err();
+    assert!(matches!(err, Error::Status { status: 403, .. }), "{err}");
+    assert_eq!(srv.count(), 1);
+}

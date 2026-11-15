@@ -91,6 +91,19 @@ pub enum Error {
         wait: Duration,
     },
 
+    /// The server kept answering a body that is not what was asked for (an error page or
+    /// another service's output with status 200, a raster without georeferencing), after
+    /// every reload of [`crate::download::Downloader::fetch_checked`].
+    #[error("invalid answer from {url} after {attempts} attempts: {message}")]
+    Invalid {
+        /// Public URL (without secrets).
+        url: String,
+        /// Attempts made.
+        attempts: u32,
+        /// Why the last body was refused.
+        message: String,
+    },
+
     /// Offline (cache-only) request for an entry that is not cached.
     #[error("not in cache (offline mode): {url}")]
     NotCached {

@@ -14,10 +14,10 @@
 //! tree cells in the 3 × 3 window around it (15 m), in percent. Both choices are ours and
 //! not calibrated; they are recorded in the layer metadata.
 
-use skimap_common::download::{CachePolicy, Downloader, Request};
+use skimap_common::download::{Downloader, Request};
 use skimap_common::grid::{GeoTransform, Grid};
 use skimap_terrain::dem::{self, Extent, TileId};
-use tracing::{debug, warn};
+use tracing::debug;
 
 use super::raster::Raster;
 use crate::error::{Error, Result};
@@ -28,7 +28,6 @@ pub const MNH_LAYER: &str = "IGNF_LIDAR-HD_MNH_ELEVATION.ELEVATIONGRIDCOVERAGE.L
 pub const TREE_HEIGHT_M: f32 = 3.0;
 /// Half side of the cover window, cells (1 = 3 × 3 = 15 m at 5 m).
 pub const COVER_RADIUS: usize = 1;
-const EXCEPTION_ATTEMPTS: u32 = 4;
 
 /// WMS GetMap URL of one MNH tile resampled to 5 m (same grid as the terrain model).
 pub fn mnh_url(t: TileId) -> String {
@@ -46,56 +45,45 @@ pub fn mnh_url(t: TileId) -> String {
     )
 }
 
-/// Downloads (or reads from cache) one MNH tile.
+/// Downloads (or reads from cache) one MNH tile. Same WMS-R as the terrain model, same
+/// unreliable answers (a 400, a GeoTIFF without `ModelPixelScaleTag` or with incomplete
+/// geokeys, 15/11/2026): refused and fetched again, never kept in the cache
+/// (`skimap_terrain::dem::fetch_tile`).
 fn fetch_tile(t: TileId, dl: &Downloader) -> Result<Grid<f32>> {
     let url = mnh_url(t);
-    let mut policy = CachePolicy::Normal;
-    let mut last = None;
-    for attempt in 0..EXCEPTION_ATTEMPTS {
-        // Cache lifetime: the source policy of the shared downloader (same source as the
-        // terrain model tiles).
-        let f = match dl.fetch(&Request::get(dem::SOURCE, &url).cache(policy)) {
-            Ok(f) => f,
-            // Under load the WMS answered 400 for a valid tile that then succeeded with
-            // the same URL (15/11/2026, tile 0995-6423); the downloader does not retry
-            // 4xx, so retry here, like the terrain crate does for its transient 404.
-            Err(skimap_common::Error::Status { status, .. })
-                if (status == 400 || status == 404) && attempt + 1 < EXCEPTION_ATTEMPTS =>
+    // Cache lifetime: the source policy of the shared downloader (same source as the
+    // terrain model tiles).
+    dl.fetch_checked(
+        &Request::get(dem::SOURCE, &url),
+        dem::TILE_ATTEMPTS,
+        dem::TILE_BACKOFF,
+        &[400, 404],
+        |f| {
+            let bytes = f.bytes().map_err(|e| e.to_string())?;
+            let g = skimap_common::geotiff::decode_f32(&bytes).map_err(|e| {
+                let head = if bytes.starts_with(b"II*\0") || bytes.starts_with(b"MM\0*") {
+                    "TIFF".to_owned()
+                } else {
+                    String::from_utf8_lossy(&bytes[..bytes.len().min(200)]).to_string()
+                };
+                format!("{e}; body starts with {head:?}")
+            })?;
+            let gt = g.transform();
+            let (x0, y1) = t.origin();
+            if g.width() != dem::TILE_PX
+                || g.height() != dem::TILE_PX
+                || (gt.origin_x - x0).abs() > 1e-6
+                || (gt.origin_y - y1).abs() > 1e-6
             {
-                warn!(tile = %t.name(), attempt, status, "MNH tile request failed, retrying");
-                std::thread::sleep(std::time::Duration::from_secs(2 << attempt));
-                continue;
+                return Err("unexpected MNH tile georeferencing".to_owned());
             }
-            Err(e) => return Err(e.into()),
-        };
-        let bytes = f.bytes()?;
-        match skimap_common::geotiff::decode_f32(&bytes) {
-            Ok(g) => {
-                let gt = g.transform();
-                let (x0, y1) = t.origin();
-                if g.width() != dem::TILE_PX
-                    || g.height() != dem::TILE_PX
-                    || (gt.origin_x - x0).abs() > 1e-6
-                    || (gt.origin_y - y1).abs() > 1e-6
-                {
-                    return Err(Error::format(url, "unexpected MNH tile georeferencing"));
-                }
-                return Ok(g);
-            }
-            Err(e) if bytes.starts_with(b"II*\0") || bytes.starts_with(b"MM\0*") => {
-                return Err(Error::format(url, e.to_string()));
-            }
-            Err(e) => {
-                // Same transient `ServiceException` as the terrain model (report 07).
-                let head = String::from_utf8_lossy(&bytes[..bytes.len().min(200)]).to_string();
-                warn!(tile = %t.name(), attempt, %head, "MNH answer is not a GeoTIFF, reloading");
-                last = Some(Error::format(url.clone(), format!("{e}; body {head:?}")));
-                policy = CachePolicy::Reload;
-                std::thread::sleep(std::time::Duration::from_secs(1 << attempt));
-            }
-        }
-    }
-    Err(last.expect("at least one attempt"))
+            Ok(g)
+        },
+    )
+    .map_err(|e| match e {
+        skimap_common::Error::Invalid { url, message, .. } => Error::format(url, message),
+        e => e.into(),
+    })
 }
 
 /// Canopy height (m) at 5 m over `e`, on the grid of `skimap_terrain::dem::fetch_dem`

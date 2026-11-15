@@ -534,6 +534,54 @@ impl Downloader {
         out
     }
 
+    /// Fetches `req` and checks the body with `check`. A body the check refuses (an
+    /// error page or another service's output served with status 200, a raster without
+    /// georeferencing: Géoplateforme WMS-R and WFS, 15/11/2026) is fetched again,
+    /// bypassing the cache, so it never stays there once a good one is served; a status
+    /// listed in `retry_status` (on top of the retries of [`Downloader::fetch`]) is
+    /// retried the same way. At most `attempts` requests, `backoff` × 2ⁿ apart.
+    pub fn fetch_checked<T>(
+        &self,
+        req: &Request,
+        attempts: u32,
+        backoff: Duration,
+        retry_status: &[u16],
+        check: impl Fn(&Fetched) -> std::result::Result<T, String>,
+    ) -> Result<T> {
+        let attempts = attempts.max(1);
+        let mut policy = req.cache;
+        let mut last = String::new();
+        for attempt in 0..attempts {
+            if attempt > 0 {
+                self.clock
+                    .sleep(backoff.saturating_mul(1u32 << (attempt - 1).min(16)));
+            }
+            let r = req.clone().cache(policy);
+            match self.fetch(&r) {
+                Ok(f) => match check(&f) {
+                    Ok(v) => return Ok(v),
+                    Err(m) => {
+                        tracing::warn!(source = %req.source, url = %req.url, attempt = attempt + 1, error = %m, "invalid answer, fetched again");
+                        last = m;
+                    }
+                },
+                Err(Error::Status { status, .. }) if retry_status.contains(&status) => {
+                    tracing::warn!(source = %req.source, url = %req.url, attempt = attempt + 1, status, "status retried");
+                    last = format!("HTTP status {status}");
+                }
+                Err(e) => return Err(e),
+            }
+            if policy != CachePolicy::Offline {
+                policy = CachePolicy::Reload;
+            }
+        }
+        Err(Error::Invalid {
+            url: req.url.clone(),
+            attempts,
+            message: last,
+        })
+    }
+
     fn fetch_locked(
         &self,
         req: &Request,

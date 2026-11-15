@@ -33,16 +33,60 @@ pub struct RawZone {
     pub geometry: MultiPolygon<f64>,
 }
 
-/// Downloads a JSON document.
-pub(crate) fn fetch_json(dl: &Downloader, source: &str, url: &str) -> Result<serde_json::Value> {
-    Ok(dl.fetch(&Request::get(source, url))?.json()?)
+/// Requests of one document when the answer is not the document asked for: on
+/// 15/11/2026 the Géoplateforme WFS answered `patrinat_*` requests with status 200 and the
+/// Prometheus metrics of one of its JVMs (`# HELP jmx_exporter_build_info…`), and the
+/// same URL gave the features later.
+pub const FETCH_ATTEMPTS: u32 = 5;
+/// First delay between two requests of a document (then doubled).
+pub const FETCH_BACKOFF: std::time::Duration = std::time::Duration::from_secs(2);
+
+fn head(f: &skimap_common::download::Fetched) -> String {
+    let b = f.bytes().unwrap_or_default();
+    String::from_utf8_lossy(&b[..b.len().min(120)]).to_string()
 }
 
-/// Downloads a GeoJSON FeatureCollection.
+fn invalid(e: skimap_common::Error) -> Error {
+    match e {
+        skimap_common::Error::Invalid { url, message, .. } => Error::data(&url, message),
+        e => e.into(),
+    }
+}
+
+/// Downloads a JSON document (an answer that is not JSON is fetched again, never kept).
+pub(crate) fn fetch_json(dl: &Downloader, source: &str, url: &str) -> Result<serde_json::Value> {
+    dl.fetch_checked(
+        &Request::get(source, url),
+        FETCH_ATTEMPTS,
+        FETCH_BACKOFF,
+        &[],
+        |f| {
+            f.json::<serde_json::Value>()
+                .map_err(|e| format!("not JSON: {e}; body starts with {:?}", head(f)))
+        },
+    )
+    .map_err(invalid)
+}
+
+/// Downloads a GeoJSON FeatureCollection (an answer that is not one is fetched again,
+/// never kept).
 pub(crate) fn fetch_fc(dl: &Downloader, source: &str, url: &str) -> Result<FeatureCollection> {
-    let text = dl.fetch(&Request::get(source, url))?.text()?;
-    text.parse::<FeatureCollection>()
-        .map_err(|e| Error::data(url, format!("not a GeoJSON FeatureCollection: {e}")))
+    dl.fetch_checked(
+        &Request::get(source, url),
+        FETCH_ATTEMPTS,
+        FETCH_BACKOFF,
+        &[],
+        |f| {
+            let text = f.text().map_err(|e| e.to_string())?;
+            text.parse::<FeatureCollection>().map_err(|e| {
+                format!(
+                    "not a GeoJSON FeatureCollection: {e}; body starts with {:?}",
+                    head(f)
+                )
+            })
+        },
+    )
+    .map_err(invalid)
 }
 
 /// Géoplateforme WFS endpoint.
