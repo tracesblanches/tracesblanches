@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Android lint runs with warningsAsErrors: no warning is tolerated. -->
+<lint>
+    <!-- Generated UniFFI bindings (build/generated/uniffi): not our code. -->
+    <issue id="all">
+        <ignore path="build/generated/**" />
+    </issue>
+    <!-- Timber is only a transitive dependency of MapLibre; the app logs two timing lines
+         with android.util.Log and does not use Timber. -->
+    <issue id="LogNotTimber" severity="ignore" />
+</lint>

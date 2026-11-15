@@ -1,0 +1,4 @@
+# UniFFI binding options (library mode reads this file from the crate root).
+[bindings.kotlin]
+package_name = "fr.skimap.core"
+cdylib_name = "skimap_ffi"

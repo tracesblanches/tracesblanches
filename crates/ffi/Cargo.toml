@@ -1,0 +1,35 @@
+[package]
+name = "skimap-ffi"
+description = "Bibliothèque Android du noyau (UniFFI) : ouverture d'un pack, style de carte MapLibre, symboles et légende de l'app (K1)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+# cdylib: libskimap_ffi.so loaded by the Android app (JNA); lib: tests and examples.
+crate-type = ["cdylib", "lib"]
+name = "skimap_ffi"
+
+[dependencies]
+skimap-pack = { workspace = true }
+geojson.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+# Not in [workspace.dependencies] (only this crate uses it). Same version as the binding
+# generator of the app (android/uniffi-bindgen), outside the workspace.
+uniffi = "=0.32.2"
+
+[dev-dependencies]
+# Test pack generator (example `test_pack`): the pack builder of the pipeline, offline.
+skimap-pack = { workspace = true, features = ["pipeline"] }
+skimap-common = { workspace = true, features = ["download"] }
+pmtiles.workspace = true
+geo.workspace = true
+chrono.workspace = true
+flate2.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

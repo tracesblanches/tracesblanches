@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="launcher_background">#FF0B3A8C</color>
+    <!-- Window background before Compose draws: snow white, night black. -->
+    <color name="window_background">#FFFFFFFF</color>
+</resources>
