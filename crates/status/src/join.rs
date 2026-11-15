@@ -11,6 +11,12 @@
 //!   ([`skimap_common::names::name_score`]); a row that designates no widget piste is
 //!   joined to OSM itself, any practice.
 //! - Names joined to no way are reported ([`JoinReport`]), never guessed.
+//! - The ENJ itineraries have their own geometry: [`ways_along`] gives the OSM ways that
+//!   run along it (at least [`ALONG_SHARE`] of the way within [`ALONG_DISTANCE_M`]), so
+//!   that every source names the OSM ways it gives a state to (`osm_way_ids`).
+//! - Every feature carries `state_at`, the date of the state as the source publishes it
+//!   ([`day_month_date`] for the widget's « Mise à jour »), and `osm_practice`
+//!   (`nordic`, `foot`, `any`).
 
 use std::path::Path;
 
@@ -125,6 +131,145 @@ pub fn ways_for<'a>(name: &str, practice: Practice, ways: &'a [OsmWay]) -> Vec<&
     ways.iter()
         .filter(|w| suits(w, practice) && w.way_name.as_deref().is_some_and(|n| same_name(n, name)))
         .collect()
+}
+
+/// Greatest distance (m) from an ENJ itinerary of the points of an OSM way running along
+/// it: the ENJ geometry is drawn by hand on a basemap (report 02), a few metres to ten
+/// metres off the OSM track.
+pub const ALONG_DISTANCE_M: f64 = 20.0;
+/// Least share of the sample points of an OSM way within [`ALONG_DISTANCE_M`] of an
+/// itinerary for the way to belong to it.
+pub const ALONG_SHARE: f64 = 0.8;
+/// Spacing of the sample points along an OSM way (m).
+const SAMPLE_M: f64 = 10.0;
+
+/// Local metric projection around a reference latitude (equirectangular).
+fn local(lon: f64, lat: f64, lat0: f64) -> (f64, f64) {
+    (lon * 111_320.0 * lat0.to_radians().cos(), lat * 110_540.0)
+}
+
+fn lines_of(geometry: &Value) -> Vec<Vec<(f64, f64)>> {
+    let pts = |v: &Value| -> Vec<(f64, f64)> {
+        v.as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|p| Some((p.get(0)?.as_f64()?, p.get(1)?.as_f64()?)))
+            .collect()
+    };
+    match geometry["type"].as_str() {
+        Some("LineString") => vec![pts(&geometry["coordinates"])],
+        Some("MultiLineString") => geometry["coordinates"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(pts)
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn seg_dist(p: (f64, f64), a: (f64, f64), b: (f64, f64)) -> f64 {
+    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+    let l2 = dx * dx + dy * dy;
+    let t = if l2 == 0.0 {
+        0.0
+    } else {
+        (((p.0 - a.0) * dx + (p.1 - a.1) * dy) / l2).clamp(0.0, 1.0)
+    };
+    let (x, y) = (a.0 + t * dx, a.1 + t * dy);
+    ((p.0 - x).powi(2) + (p.1 - y).powi(2)).sqrt()
+}
+
+/// Segments of a line by grid cell.
+type SegmentGrid = std::collections::HashMap<(i64, i64), Vec<((f64, f64), (f64, f64))>>;
+
+/// Points every [`SAMPLE_M`] along a polyline (ends included).
+fn samples(line: &[(f64, f64)]) -> Vec<(f64, f64)> {
+    let mut out = Vec::new();
+    for s in line.windows(2) {
+        let (a, b) = (s[0], s[1]);
+        let len = ((b.0 - a.0).powi(2) + (b.1 - a.1).powi(2)).sqrt();
+        let n = (len / SAMPLE_M).ceil().max(1.0) as usize;
+        for k in 0..n {
+            let t = k as f64 / n as f64;
+            out.push((a.0 + t * (b.0 - a.0), a.1 + t * (b.1 - a.1)));
+        }
+    }
+    if let Some(l) = line.last() {
+        out.push(*l);
+    }
+    out
+}
+
+/// OSM ways suiting `practice` that run along the line geometry `geometry` (GeoJSON
+/// `LineString` or `MultiLineString`, WGS84), sorted by identifier.
+pub fn ways_along<'a>(geometry: &Value, practice: Practice, ways: &'a [OsmWay]) -> Vec<&'a OsmWay> {
+    let lines = lines_of(geometry);
+    let Some(lat0) = lines.iter().flatten().map(|p| p.1).next() else {
+        return Vec::new();
+    };
+    // Segments of the itinerary in a grid of cells of 2 × the distance.
+    let cell = 2.0 * ALONG_DISTANCE_M;
+    let key = |p: (f64, f64)| ((p.0 / cell).floor() as i64, (p.1 / cell).floor() as i64);
+    let mut grid: SegmentGrid = std::collections::HashMap::new();
+    for l in &lines {
+        let pl: Vec<(f64, f64)> = l.iter().map(|p| local(p.0, p.1, lat0)).collect();
+        for s in pl.windows(2) {
+            let (a, b) = (s[0], s[1]);
+            let (k0, k1) = (key(a), key(b));
+            for x in k0.0.min(k1.0)..=k0.0.max(k1.0) {
+                for y in k0.1.min(k1.1)..=k0.1.max(k1.1) {
+                    grid.entry((x, y)).or_default().push((a, b));
+                }
+            }
+        }
+    }
+    let near = |p: (f64, f64)| {
+        let (kx, ky) = key(p);
+        (kx - 1..=kx + 1).any(|x| {
+            (ky - 1..=ky + 1).any(|y| {
+                grid.get(&(x, y)).is_some_and(|v| {
+                    v.iter()
+                        .any(|&(a, b)| seg_dist(p, a, b) <= ALONG_DISTANCE_M)
+                })
+            })
+        })
+    };
+    let mut out: Vec<&OsmWay> = ways
+        .iter()
+        .filter(|w| suits(w, practice))
+        .filter(|w| {
+            let line: Vec<(f64, f64)> =
+                lines_of(&json!({"type": "LineString", "coordinates": w.coords}))
+                    .into_iter()
+                    .flatten()
+                    .map(|p| local(p.0, p.1, lat0))
+                    .collect();
+            let s = samples(&line);
+            !s.is_empty()
+                && s.iter().filter(|p| near(**p)).count() as f64 >= ALONG_SHARE * s.len() as f64
+        })
+        .collect();
+    out.sort_by_key(|w| w.osm_way_id);
+    out
+}
+
+/// The date (`AAAA-MM-JJ`) of a « JJ/MM » published without year: the latest such day
+/// not after the poll date (`polled_at`, RFC 3339).
+pub fn day_month_date(dm: &str, polled_at: &str) -> Option<String> {
+    let (d, m) = dm.trim().split_once('/')?;
+    let (d, m): (u32, u32) = (d.trim().parse().ok()?, m.trim().parse().ok()?);
+    let poll = chrono::DateTime::parse_from_rfc3339(polled_at)
+        .ok()?
+        .date_naive();
+    let y = chrono::Datelike::year(&poll);
+    let this = chrono::NaiveDate::from_ymd_opt(y, m, d)?;
+    let date = if this <= poll {
+        this
+    } else {
+        chrono::NaiveDate::from_ymd_opt(y - 1, m, d)?
+    };
+    Some(date.to_string())
 }
 
 /// Open / closed / unknown, from a widget modifier (`closed`, `open`, `partially_open`) or
@@ -260,6 +405,8 @@ pub fn features(
                 "comment": p.comment,
                 "mairie": row.map(mairie_json),
                 "conflict": conflict,
+                "state_at": nf.updated.as_deref().and_then(|u| day_month_date(u, polled_at)),
+                "osm_practice": practice,
                 "osm_way_ids": ids,
                 "osm_length_m": len,
                 "polled_at": polled_at,
@@ -285,6 +432,8 @@ pub fn features(
                 "state": state_of(&r.state),
                 "state_label": r.state,
                 "mairie": mairie_json(r),
+                "state_at": page.and_then(|p| p.modified_time.clone()),
+                "osm_practice": Practice::Any,
                 "osm_way_ids": ids,
                 "osm_length_m": len,
                 "polled_at": polled_at,
@@ -459,5 +608,46 @@ mod tests {
             r.conflicts,
             vec!["L'Izoard : Nordic France open, mairie closed"]
         );
+    }
+
+    #[test]
+    fn day_month_dates_take_the_year_of_the_poll() {
+        assert_eq!(
+            day_month_date("06/04", "2026-11-15T01:45:36Z").as_deref(),
+            Some("2026-04-06")
+        );
+        assert_eq!(
+            day_month_date("20/12", "2026-11-15T01:45:36Z").as_deref(),
+            Some("2025-12-20")
+        );
+        assert_eq!(day_month_date("x", "2026-11-15T01:45:36Z"), None);
+    }
+
+    #[test]
+    fn ways_along_an_itinerary() {
+        // A way 10 m north of a 1.1 km itinerary, another 200 m away, a third along it
+        // but for walking only.
+        let mut near = way(1, &[], None, true, false);
+        near.coords = json!([[6.700, 44.80009], [6.710, 44.80009]]);
+        let mut far = way(2, &[], None, true, false);
+        far.coords = json!([[6.700, 44.8018], [6.710, 44.8018]]);
+        let mut foot = way(3, &[], None, false, true);
+        foot.coords = json!([[6.700, 44.8], [6.710, 44.8]]);
+        let ws = vec![near, far, foot];
+        let g = json!({"type": "LineString", "coordinates": [[6.699, 44.8], [6.712, 44.8]]});
+        let ids: Vec<i64> = ways_along(&g, Practice::Nordic, &ws)
+            .iter()
+            .map(|w| w.osm_way_id)
+            .collect();
+        assert_eq!(ids, vec![1]);
+        let any: Vec<i64> = ways_along(&g, Practice::Any, &ws)
+            .iter()
+            .map(|w| w.osm_way_id)
+            .collect();
+        assert_eq!(any, vec![1, 3]);
+        // Half of a way along the itinerary is not enough.
+        let mut half = way(4, &[], None, true, false);
+        half.coords = json!([[6.706, 44.8], [6.718, 44.8]]);
+        assert!(ways_along(&g, Practice::Nordic, &[half]).is_empty());
     }
 }
