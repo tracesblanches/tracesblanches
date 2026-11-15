@@ -144,6 +144,9 @@ fn overlaps(a: &Rect<f64>, b: &Rect<f64>) -> bool {
         && b.min().y <= a.max().y
 }
 
+/// Margin of the box the operator polygons are cut to, metres.
+const CLIP_MARGIN_M: f64 = 1000.0;
+
 /// Coverage of one operator over the area (Lambert-93).
 fn operator_coverage(
     dl: &Downloader,
@@ -168,13 +171,35 @@ fn operator_coverage(
     let read_t = t0.elapsed();
     let t1 = Instant::now();
     let mut near = 0;
+    // A polygon reaching beyond the area's box by more than CLIP_MARGIN_M is cut to the
+    // box grown by that margin: ARCEP polygons span whole départements with thousands of
+    // holes, and their union took 43 GB and minutes around Autrans (Vercors, G2). The
+    // grown box strictly contains the area, so `area - union` is unchanged and the area
+    // boundary is still computed once (see below).
+    let clip_rect = Rect::new(
+        (rect.min().x - CLIP_MARGIN_M, rect.min().y - CLIP_MARGIN_M),
+        (rect.max().x + CLIP_MARGIN_M, rect.max().y + CLIP_MARGIN_M),
+    );
+    let clip = MultiPolygon::new(vec![clip_rect.to_polygon()]);
     let pieces: Vec<MultiPolygon<f64>> = feats
         .par_iter()
         .map(|(_, mp)| {
             let polys: Vec<Polygon<f64>> =
                 mp.0.iter()
                     .filter(|p| p.bounding_rect().is_some_and(|r| overlaps(&r, &rect)))
-                    .cloned()
+                    .flat_map(|p| {
+                        let inside = p.bounding_rect().is_some_and(|r| {
+                            r.min().x >= clip_rect.min().x
+                                && r.min().y >= clip_rect.min().y
+                                && r.max().x <= clip_rect.max().x
+                                && r.max().y <= clip_rect.max().y
+                        });
+                        if inside {
+                            vec![p.clone()]
+                        } else {
+                            MultiPolygon::new(vec![p.clone()]).intersection(&clip).0
+                        }
+                    })
                     .collect();
             let n = polys.len();
             (n, MultiPolygon::new(polys))
