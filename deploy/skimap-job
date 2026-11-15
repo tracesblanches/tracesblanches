@@ -9,6 +9,9 @@
 #   skimap-job bera      cervieres                     # daily: avalanche bulletin
 #   skimap-job status    chapelle-des-bois             # trail status (personal sources)
 #   skimap-job meteo     cervieres chapelle-des-bois   # hourly weather (personal sources)
+#   skimap-job refresh   cervieres chapelle-des-bois   # station cards and titles of France
+#                                                      # (once), huts of each site; daily
+#                                                      # 1 Nov-30 Apr, weekly otherwise
 #
 # Environment: SKIMAP_DATA_DIR (pipeline data), SKIMAP_STORE (published store),
 # METEOFRANCE_API_KEY and the other keys of the pipeline.
@@ -26,6 +29,13 @@ step() {
   "$@" || { rc=$?; echo "FAILED ($rc): $*"; return 1; }
 }
 
+# France-wide part of `refresh`, once for all the sites; when a source is broken it fails
+# (previous values kept, data/out/france/refresh/status.json) and the packs are still
+# rebuilt and published: the job then ends non-zero.
+if [ "$task" = refresh ]; then
+  step skimap refresh "$@"
+fi
+
 for site in "$@"; do
   case "$task" in
     build-all) step skimap build-all "$site" ;;
@@ -33,6 +43,7 @@ for site in "$@"; do
     bera) step skimap bera "$site" && step skimap build-pack "$site" ;;
     status) step skimap status-poll "$site" && step skimap build-pack "$site" ;;
     meteo) step skimap meteo "$site" && step skimap build-pack "$site" ;;
+    refresh) step skimap build-pack "$site" ;;
     *) echo "unknown task $task" >&2; exit 2 ;;
   esac
   if [ -f "$SKIMAP_DATA_DIR/out/$site/pack/manifest.json" ]; then

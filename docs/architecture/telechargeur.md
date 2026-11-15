@@ -20,7 +20,9 @@ TLS : rustls avec le fournisseur `ring` et les racines Mozilla (`webpki-roots`),
 - requêtes conditionnelles `If-None-Match` / `If-Modified-Since`, réponse 304 servie depuis le cache ;
 - politique de cache par requête : `Normal` (aucune requête tant que l'entrée a moins de `max_age`), `Revalidate`, `Reload`, `Offline` ;
 - limites de débit par source en fenêtre glissante, persistées dans `data/cache/<source>/ratelimit.json` (un quota journalier survit à un redémarrage) ; une requête est inscrite avant l'envoi (un arrêt brutal ne l'efface pas du quota), puis datée de la fin de sa réponse : le serveur ne voit jamais deux requêtes plus proches que la fenêtre, quel que soit le temps passé entre l'inscription et l'envoi (écriture de l'état avec `fsync`, connexion, machine chargée) ; une attente au-delà de `max_wait` donne l'erreur `RateLimited` sans requête ;
-- une seule requête en vol par source ; sources différentes en parallèle ;
+- requêtes en vol par source bornées pour tout le processus (`SourcePolicy::max_in_flight` : 1 par défaut, 16 pour `ign`, 8 pour `ign-lidar-wms`, 4 pour `geo-api`, sources dont la latence et non le quota borne le débit) ; deux appels simultanés de la même requête n'en envoient qu'une ; sources différentes en parallèle ;
+- `fetch_all(items, threads, f)` : applique `f` sur des fils dédiés (pas le pool rayon : ils attendent le réseau), garde l'ordre, s'arrête à la première erreur ; `FETCH_THREADS` = 16 pour les tuiles ; le téléchargeur borne toujours les requêtes en vol ;
+- sources à usage personnel (`SourcePolicy::personal_use_only` : `biodiv-sports`, `enj`, `geoide`, `open-meteo`, `nordicfrance`, `cervieres-mairie`) refusées sans `personal_sources` (`Error::PersonalSourceRefused`), cache compris : rien n'est lu ni envoyé ;
 - reprises avec attente exponentielle sur erreur réseau, 408, 429, 5xx, en respectant `Retry-After` ;
 - User-Agent générique `skimap/<version> (offline nordic ski map data pipeline)`, sans donnée personnelle ;
 - clés d'API passées par `secret_query` / `secret_header` : jamais dans la clé de cache, les métadonnées, les journaux ni les erreurs.
@@ -37,7 +39,7 @@ Définis dans `download::known_sources`, modifiables par `SKIMAP_RATE_LIMIT_<SOU
 | `skitour` | 1/s et 1000/jour | ticket P1 |
 | `overpass` | 1/5 s et 10 000/jour | consignes de l'instance publique |
 | `meteofrance` | 50/min | annoncé, à confirmer |
-| `ign` | 20/s | CGU : 400/s par IP pour le TMS |
+| `ign` | 20/s, 16 requêtes en vol, cache 30 jours | CGU : 400/s par IP pour le TMS |
 | `geo-api` | 10/s | prudence |
 | `opensnowmap` | 1/min | extrait quotidien |
 | `open-meteo` | 1/s et 10 000/jour, cache 1 h | conditions d'Open-Meteo (rapport 03) |
@@ -47,4 +49,4 @@ Définis dans `download::known_sources`, modifiables par `SKIMAP_RATE_LIMIT_<SOU
 | `nordicfrance`, `cervieres-mairie` | 1/min, cache 3 h | prudence, non sourcé (HTML sans conditions) |
 | `meteofrance-archive` | 1/s, cache 1 jour | prudence, non sourcé |
 | `geoide` | 1/s, cache 30 jours | prudence, non sourcé (jeu statique) |
-| `biodiv-sports`, `refuges-info`, `camptocamp`, `enj`, `datagouv`, toute autre source | 1/s | aucun quota publié, à confirmer |
+| `biodiv-sports`, `refuges-info`, `camptocamp`, `datagouv`, `enj`, `haute-savoie-nordic`, `nordicalpesdusud`, `nordic-isere` (pages des titres, H2), toute autre source | 1/s | aucun quota publié, à confirmer |

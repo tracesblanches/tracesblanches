@@ -15,7 +15,11 @@ Toutes les crates sont dans `crates/`, nommées `skimap-<dossier>` (bibliothèqu
 | `meteo` | API Météo-France : BERA, AROME | pipeline | P8 #21, P19 #32 |
 | `zones` | zones protégées, règles de bivouac et d'accès | pipeline | P9 #22, P10 #23 |
 | `coverage` | zones sans aucun réseau (ARCEP) | pipeline | P12 #25 |
-| `refuges` | refuges et abris | pipeline | P11 #24 |
+| `refuges` | refuges et abris (refuges.info, OSM, Camptocamp), fiches pratiques filtrées des données personnelles, rafraîchissement planifié (`refresh`) ; voir `crates/refuges/README.md` | pipeline | P11 #24, H1 #132 |
+| `stations` | fiches des 219 stations nordiques (secours, 112 en tête ; points de vente ; contacts ; parkings), titres de redevance, prix datés et zones de validité lus sur les pages des émetteurs (usage personnel), rafraîchissement planifié, `data/out/france/stations/` ; voir `crates/stations/README.md` | pipeline | H1 #132, H2 #133 |
+| `srn` | domaines de jeu et traversées du ski de randonnée nordique hors stations damées, `data/out/france/srn/` ; voir `crates/srn/README.md` | pipeline | G5 #131 |
+| `srndiff` | difficulté d'un tracé SRN dans les deux sens (facile à très difficile), raisons classées et conseils ; profils le long du tracé avec la fonction `pipeline` ; voir `crates/srndiff/README.md` | les deux | SR1 #134 |
+| `pisteplan` | plan des pistes officiel transcrit sur nos géométries OSM (nom, couleur, départs, boucle), jamais redistribué ; lecteur de la transcription sans fonction, construction avec la fonction `pipeline` | les deux | P22 #121 |
 | `status` | état des pistes ENJ | pipeline | P13 #26 |
 | `avalanche` | exposition aux avalanches (oracle, Rust, validation) | pipeline | P16 #29, P17 #30, P18 #31 |
 | `pack` | fond de carte, format de pack, visualiseur | les deux | P4 #17, P14 #27, P15 #28 |
@@ -23,13 +27,15 @@ Toutes les crates sont dans `crates/`, nommées `skimap-<dossier>` (bibliothèqu
 | `assist` | briefing, fartage, qualité de neige, affluence, suggestions, équipement, synthèse, alertes, meilleur moment, bilan, questions (un module par ticket) | téléphone | A1 #88 à A11 #98 |
 | `voice` | banque de phrases, clips pré-générés | les deux | VO2 #84, VO3 #85 |
 | `plan` | plan de journée (matin : boucle, heures de passage, demi-tour, annonces prévues, plans B), suivi sans manipulation (départ, pause, refuge, fin, écart, bascule sur un plan B, modes GPS), politique de parole, banc de scénarios ; voir `crates/plan/README.md` | téléphone | J1 #110 à J4 #113, Q9 #109, E1 #125 |
+| `styles` | styles MapLibre par pratique (fond, SRN, guidage), générés et validés contre les tuiles et couches des packs | outil | K15 #123 |
+| `ffi` | bibliothèque Android du noyau (UniFFI) : packs, styles instanciés sur les packs, synchro des packs, fiches FR / EN, catalogue des domaines, zones de redevance | téléphone | K1 #51, K2 #52, K15 #123, H2 #133, VO6 #129 |
 | `server` | catalogue et paquets immuables des packs, mises à jour différentielles, minuterie de non-retour facultative, échange OAuth Strava ; voir `crates/server/README.md` et `deploy/README.md` | serveur | S0 #50, S1 #62, S2 #60 |
-| `cli` | binaire `skimap` : une sous-commande par constructeur, `build-all` d'un site ou de toute la France (`batch.rs`), registre des sites et catalogue de la France (`france.rs`), seuil de relief de l'exposition (`relief.rs`) ; voir [compiler.md](compiler.md#ligne-de-commande) | outil | F1 #1, F4 #4, G2 #118 |
+| `cli` | binaire `skimap` : une sous-commande par constructeur, `build-all` d'un site ou de toute la France (`batch.rs`), registre des sites et catalogue de la France (`france.rs`), rafraîchissement planifié (`refresh.rs`), seuil de relief de l'exposition (`relief.rs`) ; voir [compiler.md](compiler.md#ligne-de-commande) | outil | F1 #1, F4 #4, G2 #118, H1 #132, H2 #133 |
 | `deps` | dépend de toutes les dépendances externes : `Cargo.lock` les fixe déjà, la CI prouve qu'elles compilent | outil | F1 #1 (orchestrateur) |
 
 Les crates « téléphone » (`core`, `assist`, `voice`, `plan`, lecteur de `pack`) dépendent de `skimap-common` **sans** la fonction `download` : elles n'embarquent aucune pile HTTP (`cargo tree -p skimap-core` le montre). Les crates du pipeline l'activent : `skimap-common = { workspace = true, features = ["download"] }` (plus `"geotiff"` pour terrain et snow).
 
-Dépendances entre crates du pipeline : `snow` → `terrain` (dalles et pente) ; `status` lit la couche `pistes` (géométrie des pistes de Cervières) ; `avalanche` → `meteo` (BERA du jour) ; `refuges` → `osm` (comparaison de noms) ; `coverage` → `zones` (partie française de l'emprise) ; `core` → `zones` (schéma). Les métadonnées et l'écriture des couches passent par `common`, pas par une autre crate.
+Dépendances entre crates du pipeline : `snow` → `terrain` (dalles et pente) ; `status` lit la couche `pistes` (géométrie des pistes de Cervières) ; `avalanche` → `meteo` (BERA du jour) ; `refuges` → `osm` (comparaison de noms) ; `stations` → `osm`, `refuges` (journal des changements, saison) et le recensement P3 sur disque ; `srn` → `osm` ; `coverage` → `zones` (partie française de l'emprise) ; `core` → `zones` (schéma). Les métadonnées et l'écriture des couches passent par `common`, pas par une autre crate.
 
 ## Règle de propriété
 
@@ -51,6 +57,6 @@ Déclarées une fois dans `[workspace.dependencies]` du `Cargo.toml` racine :
 - temps : `chrono`, `httpdate` ; calcul : `rayon` ;
 - HTTP : `reqwest` (bloquant, sans fonctions par défaut), `rustls` (ring), `webpki-roots`, `sha2`, `hex` ;
 - ligne de commande : `clap` ; tests : `approx`, `tempfile`, `tiny_http` ;
-- crates internes : `skimap-common`, `skimap-osm`, …, `skimap-voice`, `skimap-plan` (chemins locaux).
+- crates internes : `skimap-common`, `skimap-osm`, …, `skimap-plan`, `skimap-srn`, `skimap-stations` (chemins locaux ; `srndiff`, `pisteplan`, `styles`, `ffi` et `server` n'y figurent pas : aucune autre crate n'en dépend).
 
 Copies corrigées de crates de crates.io dans `vendor/` (hors du workspace), branchées par `[patch.crates-io]` : `pmtiles` 0.28.1 (`leaf_offset` nul sans répertoire de feuilles, refusé par `pmtiles verify` ; voir `vendor/pmtiles/VENDOR.md`).

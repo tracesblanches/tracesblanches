@@ -8,7 +8,8 @@
 data/                      racine, $SKIMAP_DATA_DIR ou ./data (seul /data est ignoré par git)
   cache/<source>/          cache du téléchargeur
   out/<site>/<couche>/     produits du pipeline par site
-  out/france/<couche>/     produits nationaux (recensement des domaines, P3)
+  out/france/<couche>/     produits nationaux : domaines (P3), sites (registre), srn (G5),
+                           stations (H1, H2), refresh (résumé du rafraîchissement), catalog.json
 ```
 
 Chemins fournis par `common::layout::DataLayout` (`cache_dir`, `out_dir`, `layer_dir`, `france_layer_dir`) ; `layout::FRANCE` (`france`) n'est l'identifiant d'aucun site.
@@ -29,7 +30,7 @@ Variables d'environnement lues par `common::config::Config::from_env` :
 
 Les clés sont des `Secret` qui s'affichent `***` : elles n'apparaissent dans aucun journal, aucun message d'erreur, aucun fichier du cache.
 
-`personal_sources` est désactivé par défaut parce que ces sources n'autorisent pas la redistribution : widget Nordic France et page de la mairie de Cervières (HTML sans licence), état ENJ (aucune licence affichée, L1), API gratuite d'Open-Meteo (usage non commercial). Sans l'option, `meteo` et `status-poll` refusent de tourner et le recensement (P3) ignore Nordic France ; avec, chaque source concernée porte `personal_use_only: true` dans les métadonnées.
+`personal_sources` est désactivé par défaut parce que ces sources n'autorisent pas la redistribution : widget Nordic France et page de la mairie de Cervières (HTML sans licence), état ENJ (aucune licence affichée, L1), API gratuite d'Open-Meteo (usage non commercial). Sans l'option, `meteo` et `status-poll` refusent de tourner, le recensement (P3) ignore Nordic France et `stations` n'écrit ni titres ni prix (pages des émetteurs sans licence) ; avec, chaque source concernée porte `personal_use_only: true` dans les métadonnées.
 
 ## Métadonnées des couches
 
@@ -45,14 +46,22 @@ GeoTIFF : `common::geotiff` (fonction `geotiff`) : Float32 en lecture et écritu
 
 ## Sites
 
-Définis dans `common::site` :
+Registre `common::site::Registry`, lu par toutes les sous-commandes depuis `data/out/france/sites/sites.json` (écrit par `skimap domaines`, G2 #118 ; sans lui, seuls les deux sites d'évaluation existent). Au 15/11/2026 : **272 sites**, dont 268 construits par `build-all` (les 4 autres sont découpés en tronçons) :
 
-- Cervières (05), INSEE 05027, emprise 44.77,6.66,44.92,6.86 ; massif Météo-France 17 Queyras (100 % de la commune) ; BERA disponible.
-- Chapelle-des-Bois (25), INSEE 25121, emprise 46.54,6.02,46.68,6.20 ; massifs 55 Haut-Doubs (93,2 % de la commune et le village) puis 56 Haut-Jura (côté Risoux, 6,0 %) ; pas de BERA dans le Jura.
+| Type (`kind`) | Sites | Origine |
+|---|---|---|
+| `nordic_station` | 219 | un par domaine du recensement P3 (`data/out/france/domaines/`) |
+| `srn_area` | 42 : 40 domaines de jeu, 2 tronçons | zones SRN hors stations, `skimap srn` (G5 #131) |
+| `traverse` | 11 : 3 traversées, 8 tronçons | traversées SRN (GTJ, Vercors) |
 
-Rattachement vérifié par P6 (#19) sur les polygones snowtools (`UMR-CNRM/snowtools`, `massifs.shp`) et le contour de la commune : `MassifStatus::Verified` pour les deux sites.
+Chaque fiche (`SiteRecord`) : `id` (nom sans accents, `site::slug` ; chiffres du recensement pour les homonymes), `name`, `kind`, `census_id`, `department`, `insee`, `commune`, `bbox` (WGS84 : enveloppe + 2 km comptés en Lambert-93), `envelope_bbox`, `massifs` (code, nom, part), `massif_status` (`verified` 264, `outside` 6, `assumed` 2), `has_bera` (156), `status_source` (rapport 08), `km_nordic`, `sections` / `parent` (au-delà de 25 km de côté, tronçons recouvrants de 1 km). Règles détaillées : [france.md](france.md).
 
-Les emprises débordent sur l'Italie et la Suisse : les crates qui ne veulent que la France découpent avec les contours des communes.
+Données propres à un site dans des tables : `crates/common/data/sites.json` (les deux sites d'évaluation : emprise, commune et massifs vérifiés, sources d'état, départs, jour archivé, demandes de plan) et `crates/common/data/status_sources.json` (source d'état de chaque domaine) :
+
+- Cervières (05), INSEE 05027, emprise 44.77,6.66,44.92,6.86 ; massif 17 Queyras (100 % de la commune) ; BERA ;
+- Chapelle-des-Bois (25), INSEE 25121, emprise 46.54,6.02,46.68,6.20 ; massifs 55 Haut-Doubs (93,2 %) puis 56 Haut-Jura (6,0 %) ; pas de BERA dans le Jura.
+
+Rattachement vérifié sur les polygones snowtools (`UMR-CNRM/snowtools`, `massifs.shp`) et le contour des communes. Les emprises débordent sur l'Italie et la Suisse : les crates qui ne veulent que la France découpent avec les contours des communes.
 
 ## Projections et grilles
 

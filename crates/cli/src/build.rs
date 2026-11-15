@@ -80,6 +80,18 @@ impl Ctx {
         Ok(skimap_srn::build_from(&self.layout, &self.dl, planet)?)
     }
 
+    /// H1, H2: station cards and access titles of France, `data/out/france/stations/`
+    /// (needs the census): the parts that are due now, every part with `force`.
+    pub fn stations(&self, force: bool) -> Result<skimap_stations::RefreshReport> {
+        Ok(skimap_stations::refresh(
+            &self.layout,
+            &self.dl,
+            self.cfg.personal_sources,
+            Utc::now(),
+            force,
+        )?)
+    }
+
     /// P5: terrain layer.
     pub fn terrain(&self, site: &Site) -> Result<skimap_terrain::TerrainBuild> {
         Ok(skimap_terrain::build(site, &self.layout, &self.dl)?)
@@ -90,9 +102,15 @@ impl Ctx {
         Ok(skimap_snow::build(site, &self.layout, &self.dl, date)?)
     }
 
-    /// P11: huts and shelters.
-    pub fn refuges(&self, site: &Site) -> Result<skimap_refuges::RefugesOutput> {
-        Ok(skimap_refuges::build(site, &self.layout, &self.dl)?)
+    /// P11, H1: huts and shelters, rebuilt now through the scheduled refresh so that the
+    /// cards keep their `changed_at` and the changes reach `journal.jsonl` (a bare
+    /// `skimap_refuges::build` would reset them). Key figures of the build.
+    pub fn refuges(&self, site: &Site) -> Result<serde_json::Value> {
+        let r = skimap_refuges::refresh(site, &self.layout, &self.dl, Utc::now(), true)?;
+        if let Some(e) = r.error {
+            bail!("{e} (fichiers précédents gardés)");
+        }
+        Ok(r.stats)
     }
 
     /// P9, P10: zones and rules.
@@ -372,6 +390,12 @@ impl Ctx {
                 }
             ))
         });
+        // France layer: a batch refreshes it once before its sites (`Shared::stations_once`).
+        if !shared.stations_once {
+            run.step("stations", &["domaines"], || {
+                Ok(describe_stations(&self.stations(shared.force_stations)?))
+            });
+        }
         run.step("terrain", &[], || {
             let t = self.terrain(site)?;
             let r07 = t.report07.as_ref().map_or_else(String::new, |r| {
@@ -406,7 +430,7 @@ impl Ctx {
             ))
         });
         run.step("refuges", &[], || {
-            let st = self.refuges(site)?.stats;
+            let st = self.refuges(site)?;
             Ok(format!(
                 "refuges.info {} points, OSM {} éléments, Camptocamp {} dans l'emprise, {} lieux reliés",
                 st["refuges_info"]["points"],
@@ -710,6 +734,45 @@ pub struct Shared<'a> {
     pub census: Option<&'a CensusOutput>,
     /// SRN areas of France (G5).
     pub srn: Option<&'a skimap_srn::SrnOutput>,
+    /// The stations layer of France (H1, H2) is refreshed once by the batch, not by the
+    /// `build-all` of each site.
+    pub stations_once: bool,
+    /// Refresh every part of the stations layer, due or not (`build-all --force`).
+    pub force_stations: bool,
+}
+
+/// French line of a refresh of the stations layer: parts run, cards, changes, failures.
+pub fn describe_stations(r: &skimap_stations::RefreshReport) -> String {
+    let list = |v: &[String]| {
+        if v.is_empty() {
+            "aucune".to_owned()
+        } else {
+            v.join(", ")
+        }
+    };
+    let mut s = format!(
+        "France : {} fiches de domaine ; parties refaites : {} ; à jour : {} ; {} changements",
+        r.stats["domains"],
+        list(&r.ran),
+        list(&r.skipped),
+        r.changes
+    );
+    if let Some(n) = r.stats["personal"]["titres"].as_object().map(|t| t.len()) {
+        s.push_str(&format!(" ; {n} titres (usage personnel)"));
+    }
+    if !r.broken_sources.is_empty() {
+        s.push_str(&format!(
+            " ; sources en échec : {}",
+            r.broken_sources.join(", ")
+        ));
+    }
+    if !r.stale_titres.is_empty() {
+        s.push_str(&format!(
+            " ; titres périmés ou anciens : {}",
+            r.stale_titres.join(", ")
+        ));
+    }
+    s
 }
 
 /// A step that does not apply to the site (reason in French).

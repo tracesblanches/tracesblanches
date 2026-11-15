@@ -11,6 +11,7 @@ mod fixtures;
 mod france;
 mod history;
 mod plan;
+mod refresh;
 mod relief;
 mod route;
 /// Test support of the reference data set (Q1, Q2), shared with the other crates.
@@ -87,6 +88,17 @@ enum Command {
     /// SRN areas of France outside groomed domains, `data/out/france/srn/` (G5, #131);
     /// needs the census (`skimap domaines`).
     Srn,
+    /// Station cards (rescue, sale points, contacts) and access titles of France (H1 #132,
+    /// H2 #133), `data/out/france/stations/`: every part now; needs the census. Titles,
+    /// prices and validity zones only with `SKIMAP_PERSONAL_SOURCES`.
+    Stations,
+    /// Scheduled refresh (H1, H2): the due parts of the stations layer, then the hut layer
+    /// of each site; idempotent (a second run the same day does nothing); summary in
+    /// `data/out/france/refresh/status.json`, non-zero exit when a source is broken.
+    Refresh {
+        /// Sites whose hut layer is refreshed (default: every site with a `refuges` layer).
+        sites: Vec<String>,
+    },
     /// Catalogue of France, `data/out/france/catalog.json` and `catalog.geojson`: every
     /// site with its box, centre, km and the state of its pack (G2).
     Catalog,
@@ -313,7 +325,7 @@ struct BuildAllArgs {
     /// source for all of them).
     #[arg(long, default_value_t = 4)]
     jobs: usize,
-    /// Rebuild the sites that are up to date.
+    /// Rebuild the sites that are up to date, and every part of the stations layer.
     #[arg(long)]
     force: bool,
     /// A successful build older than this is redone, hours.
@@ -471,7 +483,7 @@ fn not_implemented(name: &str, tickets: &str) -> Result<()> {
 fn build_all(cfg: &Config, registry: &Registry, a: BuildAllArgs) -> Result<()> {
     let c = build::Ctx::new(cfg)?;
     if let Some(id) = &a.site {
-        return batch::build_single(&c, registry, registry.get(id)?);
+        return batch::build_single(&c, registry, registry.get(id)?, a.force);
     }
     let sites: Vec<&'static Site> = if a.all {
         registry.buildable()
@@ -502,6 +514,9 @@ fn build_all(cfg: &Config, registry: &Registry, a: BuildAllArgs) -> Result<()> {
     );
     if summary.failed > 0 {
         anyhow::bail!("build-all : {} sites en échec", summary.failed);
+    }
+    if summary.stations.state == build::StepState::Failed {
+        anyhow::bail!("build-all : stations en échec : {}", summary.stations.line);
     }
     Ok(())
 }
@@ -560,6 +575,37 @@ fn run(cli: Cli) -> Result<()> {
             println!("{} zones SRN hors stations", out.areas.len());
             print_json(&out.stats)
         }
+        Command::Stations => {
+            let c = ctx()?;
+            let t = std::time::Instant::now();
+            let out = skimap_stations::build(&c.layout, &c.dl, cfg.personal_sources)?;
+            println!(
+                "stations -> {} ({:.1} s, personal_sources = {})",
+                out.dir.display(),
+                t.elapsed().as_secs_f64(),
+                cfg.personal_sources
+            );
+            print_json(&out.stats)
+        }
+        Command::Refresh { sites } => {
+            let c = ctx()?;
+            let sites: Vec<&Site> = if sites.is_empty() {
+                refresh::default_sites(&c.layout, &registry.buildable())
+            } else {
+                sites.iter().map(|s| site(s)).collect::<Result<_>>()?
+            };
+            let summary = refresh::refresh(&c, &sites, chrono::Utc::now())?;
+            for l in refresh::describe(&summary) {
+                println!("{l}");
+            }
+            if !summary.ok {
+                anyhow::bail!(
+                    "refresh : {} sources ou parties en échec (valeurs précédentes gardées)",
+                    summary.failures.len()
+                );
+            }
+            Ok(())
+        }
         Command::Catalog => {
             let c = france::write_catalog(&cfg.layout(), &registry)?;
             print_json(&c)
@@ -588,7 +634,7 @@ fn run(cli: Cli) -> Result<()> {
         }
         Command::Refuges(a) => {
             let s = site(&a.site)?;
-            print_json(&ctx()?.refuges(s)?.stats)
+            print_json(&ctx()?.refuges(s)?)
         }
         Command::Zones(a) => {
             let s = site(&a.site)?;
@@ -916,6 +962,12 @@ mod tests {
             Cli::try_parse_from(["skimap", cmd, "cervieres"]).unwrap();
         }
         Cli::try_parse_from(["skimap", "domaines"]).unwrap();
+        Cli::try_parse_from(["skimap", "stations"]).unwrap();
+        let cli =
+            Cli::try_parse_from(["skimap", "refresh", "cervieres", "chapelle-des-bois"]).unwrap();
+        assert!(matches!(cli.command, Command::Refresh { ref sites } if sites.len() == 2));
+        let cli = Cli::try_parse_from(["skimap", "refresh"]).unwrap();
+        assert!(matches!(cli.command, Command::Refresh { ref sites } if sites.is_empty()));
     }
 
     #[test]

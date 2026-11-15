@@ -3,7 +3,8 @@
 //!
 //! - One downloader for every site: its per-source lock (one request in flight per
 //!   source) and its rate limits are global, not per site.
-//! - The planet extract and the census are read once.
+//! - The planet extract and the census are read once; the stations layer of France (H1,
+//!   H2) is refreshed once, before the sites (its due parts, every part with `--force`).
 //! - A site whose last build succeeded with the same inputs (site record, `skimap`
 //!   version, `personal_sources`) less than `max_age` ago is not rebuilt; a failed one is.
 //! - Each site writes `data/out/<site>/build-all.log` (step lines) and `build-all.json`
@@ -22,7 +23,7 @@ use skimap_common::layout::DataLayout;
 use skimap_common::meta::now_rfc3339;
 use skimap_common::site::{Registry, Site};
 
-use crate::build::{BuildOutcome, Ctx, Shared, StepState};
+use crate::build::{BuildOutcome, Ctx, Shared, StepRecord, StepState};
 use crate::france::{self, BuildInputs, BuildRecord};
 
 /// Options of a batch.
@@ -125,6 +126,8 @@ pub struct BatchSummary {
     pub downloads: BTreeMap<String, CacheDelta>,
     /// Peak resident memory of the process, MB (all parallel sites together).
     pub peak_rss_mb: Option<f64>,
+    /// Refresh of the stations layer of France, once for the batch.
+    pub stations: StepRecord,
     /// Per site.
     pub results: Vec<SiteResult>,
 }
@@ -240,6 +243,7 @@ pub fn build_many(
         opts.jobs
     );
     let mut built: Vec<(String, BuildOutcome)> = Vec::new();
+    let mut stations = None;
     if n > 0 {
         let t = Instant::now();
         let planet = skimap_osm::extract::load_planet(&ctx.dl)?;
@@ -252,10 +256,13 @@ pub fn build_many(
         );
         let srn = ctx.srn(&planet)?;
         println!("{} zones SRN hors stations", srn.areas.len());
+        stations = Some(stations_step(ctx, opts.force));
         let shared = Shared {
             planet: Some(&planet),
             census: Some(&census),
             srn: Some(&srn),
+            stations_once: true,
+            force_stations: opts.force,
         };
         let queue = Mutex::new(todo);
         let done = Mutex::new(Vec::new());
@@ -326,6 +333,8 @@ pub fn build_many(
             }
         }
     }
+    // Every site up to date: the census on disk is the input of the stations layer.
+    let stations = stations.unwrap_or_else(|| stations_step(ctx, opts.force));
     let started: std::collections::BTreeSet<&str> = results
         .iter()
         .map(|r| r.site.as_str())
@@ -377,6 +386,12 @@ pub fn build_many(
             }
         }
     }
+    if stations.state == StepState::Failed {
+        failure_causes
+            .entry(cause(&stations.name, &stations.line))
+            .or_default()
+            .push(skimap_common::layout::FRANCE.to_owned());
+    }
     let mut step_seconds: Vec<(String, f64)> = step_seconds.into_iter().collect();
     step_seconds.sort_by(|a, b| b.1.total_cmp(&a.1));
     let cache_after = cache_inventory(&ctx.layout.cache_root());
@@ -413,6 +428,7 @@ pub fn build_many(
         export_bytes: built.iter().filter_map(|(_, o)| o.export_bytes).sum(),
         downloads,
         peak_rss_mb: crate::build::peak_rss_mb(),
+        stations,
         results,
     };
     let dir = ctx.layout.france_dir().join("build-all");
@@ -421,6 +437,26 @@ pub fn build_many(
     skimap_common::output::write_json(&dir.join(format!("summary_{stamp}.json")), &summary)?;
     skimap_common::output::write_json(&dir.join("summary.json"), &summary)?;
     Ok(summary)
+}
+
+/// Refreshes the stations layer of France once, printed and recorded like a step.
+fn stations_step(ctx: &Ctx, force: bool) -> StepRecord {
+    let t = Instant::now();
+    let (state, line) = match ctx.stations(force) {
+        Ok(r) => (StepState::Ok, crate::build::describe_stations(&r)),
+        Err(e) => (StepState::Failed, format!("{e:#}")),
+    };
+    let seconds = t.elapsed().as_secs_f64();
+    match state {
+        StepState::Ok => println!("stations : {line} ({seconds:.1} s)"),
+        _ => println!("stations : ÉCHEC ({seconds:.1} s) : {line}"),
+    }
+    StepRecord {
+        name: "stations".into(),
+        state,
+        seconds,
+        line,
+    }
 }
 
 fn build_one(
@@ -450,10 +486,19 @@ fn build_one(
 
 /// `build-all <site>`: the steps printed on stdout, the record written as in a batch
 /// (`build-all.json`, read by the catalogue and by the up-to-date test of `--all`).
-pub fn build_single(ctx: &Ctx, registry: &Registry, site: &'static Site) -> Result<()> {
+pub fn build_single(
+    ctx: &Ctx,
+    registry: &Registry,
+    site: &'static Site,
+    force: bool,
+) -> Result<()> {
     let inp = inputs(ctx, registry, site)?;
     let started_at = now_rfc3339();
-    let o = ctx.build_all_with(site, &Shared::default(), &mut std::io::stdout());
+    let shared = Shared {
+        force_stations: force,
+        ..Shared::default()
+    };
+    let o = ctx.build_all_with(site, &shared, &mut std::io::stdout());
     let rec = BuildRecord {
         inputs: inp,
         started_at,
@@ -478,6 +523,16 @@ pub fn describe(s: &BatchSummary) -> Vec<String> {
         s.export_bytes as f64 / 1e6,
         s.peak_rss_mb
             .map_or("?".to_owned(), |m| format!("{m:.0} Mo"))
+    ));
+    l.push(format!(
+        "stations (France, une fois) : {}{} ({:.1} s)",
+        if s.stations.state == StepState::Failed {
+            "ÉCHEC : "
+        } else {
+            ""
+        },
+        first_line(&s.stations.line, 300),
+        s.stations.seconds
     ));
     l.push("temps par étape (somme sur les sites construits) :".into());
     for (k, v) in &s.step_seconds {

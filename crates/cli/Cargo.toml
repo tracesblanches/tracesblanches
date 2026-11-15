@@ -27,6 +27,7 @@ skimap-voice.workspace = true
 skimap-assist.workspace = true
 skimap-plan.workspace = true
 skimap-srn.workspace = true
+skimap-stations.workspace = true
 skimap-pack = { workspace = true, features = ["pipeline"] }
 anyhow.workspace = true
 chrono.workspace = true
