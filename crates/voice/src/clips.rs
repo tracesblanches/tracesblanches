@@ -509,6 +509,8 @@ fixed_phrases! {
     PlanProposeKeep = "plan-propose-keep" => "Je vous propose de garder la boucle,",
     /// A proposal was accepted (C11).
     PlanProposalAccepted = "plan-proposal-accepted" => "Proposition acceptée.",
+    /// The pace observed fits another group profile better: choose it? (X14, one gesture.)
+    PlanProfileMismatch = "plan-profile-mismatch" => "Votre rythme ressemble à celui d'un autre profil. Voulez-vous le choisir ?",
 }
 
 impl Fixed {
@@ -623,8 +625,10 @@ mod tests {
                     || b == b'.'
                     || b == b'-')
             );
-            let end = if f.continued() { ',' } else { '.' };
-            assert!(c.text.ends_with(end), "{}", c.text);
+            let end = if f.continued() { "," } else { "." };
+            // A question asks for one gesture (X14).
+            let question = *f == Fixed::PlanProfileMismatch && c.text.ends_with(" ?");
+            assert!(c.text.ends_with(end) || question, "{}", c.text);
         }
     }
 }
