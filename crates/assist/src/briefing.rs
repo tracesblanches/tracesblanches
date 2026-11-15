@@ -1209,7 +1209,7 @@ mod tests {
             osm_way_ids: Vec::new(),
         };
         SiteData {
-            site: CHAPELLE_DES_BOIS,
+            site: *CHAPELLE_DES_BOIS,
             weather: Some(Weather {
                 points: vec![point("a", a, 20.0), point("b", b, gust_b)],
                 files: vec![],

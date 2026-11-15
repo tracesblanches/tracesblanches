@@ -137,9 +137,12 @@ pub struct CatalogSite {
     pub first_download_bytes: u64,
 }
 
+/// Site identifiers of the pipeline (`skimap_common::site::slug`); up to 128 bytes: SRN
+/// areas keep the identifier of their first itinerary
+/// (`srn-traversee-datatourisme-6-80785b47-…`, 66 bytes, plus a section suffix).
 fn valid_site(s: &str) -> bool {
     !s.is_empty()
-        && s.len() <= 64
+        && s.len() <= 128
         && s.bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
@@ -383,6 +386,42 @@ impl Store {
         now: DateTime<Utc>,
         retention: Retention,
     ) -> Result<PublishReport> {
+        self.publish_with(pack_dir, now, retention, true)
+    }
+
+    /// Publishes many packs (every domain of France): each as [`Store::publish`], but the
+    /// catalog and the removal of unreferenced contents run once at the end instead of
+    /// after each pack (both read every site of the store). A pack that fails does not stop
+    /// the others; the reports come in the order of `packs`.
+    pub fn publish_many(
+        &self,
+        packs: &[PathBuf],
+        now: DateTime<Utc>,
+        retention: Retention,
+    ) -> Result<Vec<Result<PublishReport>>> {
+        let reports: Vec<Result<PublishReport>> = packs
+            .iter()
+            .map(|p| self.publish_with(p, now, retention, false))
+            .collect();
+        if reports
+            .iter()
+            .any(|r| r.as_ref().is_ok_and(|r| r.status == "published"))
+        {
+            let lock_file = fs::File::create(self.root.join(".lock"))?;
+            lock_file.lock()?;
+            self.write_catalog()?;
+            self.collect_garbage()?;
+        }
+        Ok(reports)
+    }
+
+    fn publish_with(
+        &self,
+        pack_dir: &Path,
+        now: DateTime<Utc>,
+        retention: Retention,
+        finish: bool,
+    ) -> Result<PublishReport> {
         let t0 = std::time::Instant::now();
         let pack = Pack::open(pack_dir)?;
         let problems = pack.verify()?;
@@ -595,11 +634,12 @@ impl Store {
             fs::copy(&index_path, self.site_dir(&site).join("index.prev.json"))?;
         }
         write_atomic(&index_path, &serde_json::to_vec_pretty(&index)?)?;
-        self.write_catalog()?;
-
-        let (n, bytes) = self.collect_garbage()?;
-        report.files_removed = n;
-        report.bytes_removed = bytes;
+        if finish {
+            self.write_catalog()?;
+            let (n, bytes) = self.collect_garbage()?;
+            report.files_removed = n;
+            report.bytes_removed = bytes;
+        }
         report.status = "published".into();
         report.latest = new.pack_version.clone();
         report.base = base.version;
@@ -722,6 +762,10 @@ mod tests {
     #[test]
     fn names() {
         assert!(valid_site("chapelle-des-bois"));
+        assert!(valid_site(
+            "srn-traversee-datatourisme-6-80785b47-1e6c-37be-99fc-d401c59b1fb7-1"
+        ));
+        assert!(!valid_site(&"a".repeat(129)));
         assert!(!valid_site("../x") && !valid_site("A") && !valid_site(""));
         assert!(valid_version("20261115T014538Z"));
         assert!(!valid_version("../x") && !valid_version("a/b"));

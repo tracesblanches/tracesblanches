@@ -35,11 +35,15 @@ enum Command {
         addr: Option<String>,
     },
     /// Publishes pipeline packs (data/out/<site>/pack/) into the store; prints a JSON
-    /// report per pack.
+    /// report per pack. With `--all-in data/out`, every site pack found there (every domain
+    /// of France); the catalog is written once at the end.
     Publish {
         /// Pack directories.
-        #[arg(required = true)]
+        #[arg(required_unless_present = "all_in")]
         packs: Vec<PathBuf>,
+        /// Publish every `<dir>/<site>/pack/` holding a `manifest.json`.
+        #[arg(long)]
+        all_in: Option<PathBuf>,
         /// Store directory (overrides SKIMAP_STORE).
         #[arg(long)]
         store: Option<PathBuf>,
@@ -104,18 +108,46 @@ fn serve(cfg: Config, addr: Option<String>) -> Result<()> {
     Ok(())
 }
 
+/// Every `<root>/<site>/pack/` with a `manifest.json`, by site.
+fn site_packs(root: &std::path::Path) -> Result<Vec<PathBuf>> {
+    let mut out = Vec::new();
+    for e in std::fs::read_dir(root).with_context(|| format!("{}", root.display()))? {
+        let p = e?.path().join("pack");
+        if p.join("manifest.json").is_file() {
+            out.push(p);
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
 fn run(cli: Cli) -> Result<()> {
     let cfg = Config::from_env()?;
     match cli.command {
         Command::Serve { addr } => serve(cfg, addr),
-        Command::Publish { packs, store } => {
+        Command::Publish {
+            mut packs,
+            all_in,
+            store,
+        } => {
             let store = Store::open(store.unwrap_or(cfg.store.clone()))?;
             let retention: Retention = cfg.retention;
-            for p in packs {
-                let r = store
-                    .publish(&p, chrono::Utc::now(), retention)
-                    .with_context(|| format!("publishing {}", p.display()))?;
-                println!("{}", serde_json::to_string(&r)?);
+            if let Some(root) = all_in {
+                packs.extend(site_packs(&root)?);
+            }
+            let reports = store.publish_many(&packs, chrono::Utc::now(), retention)?;
+            let mut failed = 0;
+            for (p, r) in packs.iter().zip(reports) {
+                match r {
+                    Ok(r) => println!("{}", serde_json::to_string(&r)?),
+                    Err(e) => {
+                        failed += 1;
+                        eprintln!("publishing {} : {e:#}", p.display());
+                    }
+                }
+            }
+            if failed > 0 {
+                anyhow::bail!("{failed} of {} packs not published", packs.len());
             }
             Ok(())
         }

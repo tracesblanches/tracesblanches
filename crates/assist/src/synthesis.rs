@@ -132,7 +132,7 @@ fn loc_fr(loc: &str) -> String {
 
 fn avalanche_sentence(data: &SiteData, date: NaiveDate, facts: &mut Facts) -> String {
     let bera = data.bera_for(date);
-    let massif = data.site.primary_massif().name;
+    let massif = data.site.main_massif().map_or("du massif", |m| m.name);
     let mut s = match bera {
         Some(b) if b.status == BeraStatus::Bulletin && b.level().is_some() => {
             let bl = b.bulletin.as_ref().expect("bulletin");
@@ -624,7 +624,7 @@ mod tests {
 
     #[test]
     fn bera_level_uses_the_voice_bank() {
-        let mut d = empty(CERVIERES);
+        let mut d = empty(*CERVIERES);
         d.beras = vec![Bera {
             site: "cervieres".into(),
             date: "2023-04-15".into(),
@@ -672,7 +672,7 @@ mod tests {
 
     #[test]
     fn jura_without_bera_is_never_safe() {
-        let d = empty(CHAPELLE_DES_BOIS);
+        let d = empty(*CHAPELLE_DES_BOIS);
         let s = synthesise(&d, NaiveDate::from_ymd_opt(2026, 2, 25).unwrap());
         assert!(s.sentences[0].starts_with("Pas de bulletin d'avalanche pour ce massif"));
         assert!(s.sentences[0].contains("restent possibles"));

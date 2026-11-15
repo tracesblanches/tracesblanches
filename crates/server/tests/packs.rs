@@ -302,3 +302,52 @@ fn publish_and_sync() {
 
     server.stop();
 }
+
+#[test]
+fn publish_many_sites_writes_one_catalog() {
+    let t = tempfile::tempdir().unwrap();
+    let store = Store::open(t.path().join("store")).unwrap();
+    let retention = Retention {
+        recent_versions: 2,
+        rebase_fraction: 0.10,
+    };
+    let ids = ["cervieres", "gerardmer", "les-rousses-478721195"];
+    let mut packs = Vec::new();
+    for id in ids {
+        let dir = t.path().join(format!("out/{id}/pack"));
+        make_pack(&dir, "v01", &files(b"{\"risk\":1}", b"1", BASEMAP));
+        // Same contents under another site identifier.
+        let path = dir.join("manifest.json");
+        let mut m: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        m["site"]["id"] = id.into();
+        std::fs::write(&path, serde_json::to_vec_pretty(&m).unwrap()).unwrap();
+        packs.push(dir);
+    }
+    // A directory without a pack fails alone.
+    packs.push(t.path().join("out/absent/pack"));
+    let now = Utc.with_ymd_and_hms(2026, 11, 15, 2, 0, 0).unwrap();
+    let reports = store.publish_many(&packs, now, retention).unwrap();
+    assert_eq!(reports.len(), 4);
+    for r in &reports[..3] {
+        assert_eq!(r.as_ref().unwrap().status, "published");
+    }
+    assert!(reports[3].is_err());
+    assert_eq!(store.sites().unwrap(), ids);
+    let catalog: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(store.catalog_path()).unwrap()).unwrap();
+    let listed: Vec<&str> = catalog["sites"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["site"]["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(listed, ids);
+    // Nothing changed: nothing published again.
+    let again = store.publish_many(&packs[..3], now, retention).unwrap();
+    assert!(
+        again
+            .iter()
+            .all(|r| r.as_ref().unwrap().status == "unchanged")
+    );
+}

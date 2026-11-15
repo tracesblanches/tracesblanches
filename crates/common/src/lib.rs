@@ -3,7 +3,7 @@
 //! Owned tickets: F1 (#1) workspace foundation, P1 (#14) shared downloader.
 //! Changes to this crate go through the orchestrator (see `docs/architecture.md`).
 //!
-//! - [`site`]: the two evaluation sites (Cervières, Chapelle-des-Bois).
+//! - [`site`]: sites (registry of every domain of France, evaluation sites, data tables).
 //! - [`geom`]: WGS84 positions and bounding boxes.
 //! - [`crs`]: WGS84 / Lambert-93 / Web Mercator conversions (pure Rust) and XYZ tiles.
 //! - [`grid`]: georeferenced raster grid.

@@ -3,9 +3,10 @@
 //! with exponential backoff, a generic User-Agent.
 //!
 //! Model: **blocking** (`reqwest::blocking`). Requests to one source are serialised (one
-//! in flight at a time, which also keeps us polite); different sources may be fetched in
-//! parallel from different threads (`std::thread::scope`, rayon). See
-//! `docs/architecture.md`.
+//! in flight at a time, which also keeps us polite) unless its policy allows more
+//! ([`SourcePolicy::max_in_flight`], latency-bound sources only); concurrent fetches of
+//! the same request always send one request. Different sources may be fetched in parallel
+//! from different threads (`std::thread::scope`, rayon). See `docs/architecture.md`.
 //!
 //! ```no_run
 //! use skimap_common::config::Config;
@@ -275,9 +276,17 @@ pub struct DownloaderBuilder {
     overrides: BTreeMap<String, Vec<RateLimit>>,
     clock: Arc<dyn Clock>,
     offline: bool,
+    personal_sources: bool,
 }
 
 impl DownloaderBuilder {
+    /// Allows the personal-use-only sources ([`SourcePolicy::personal_use_only`]); off by
+    /// default, set from [`Config::personal_sources`] by [`Downloader::from_config`].
+    pub fn personal_sources(mut self, allowed: bool) -> Self {
+        self.personal_sources = allowed;
+        self
+    }
+
     /// Adds or replaces the policy of a source.
     pub fn policy(mut self, p: SourcePolicy) -> Self {
         self.policies.retain(|q| q.name != p.name);
@@ -328,6 +337,7 @@ impl DownloaderBuilder {
             states: Mutex::new(HashMap::new()),
             clock: self.clock,
             offline: self.offline,
+            personal_sources: self.personal_sources,
         })
     }
 }
@@ -357,9 +367,56 @@ pub struct Downloader {
     cache_root: PathBuf,
     client: reqwest::blocking::Client,
     policies: HashMap<String, SourcePolicy>,
-    states: Mutex<HashMap<String, Arc<Mutex<Limiter>>>>,
+    states: Mutex<HashMap<String, Arc<SourceState>>>,
     clock: Arc<dyn Clock>,
     offline: bool,
+    personal_sources: bool,
+}
+
+/// Shared state of one source: rate limiter, in-flight slots, one lock per request key.
+struct SourceState {
+    limiter: Mutex<Limiter>,
+    in_flight: Mutex<usize>,
+    slot_freed: std::sync::Condvar,
+    max_in_flight: usize,
+    keys: Mutex<HashMap<String, Arc<Mutex<()>>>>,
+}
+
+/// An in-flight slot of a source, given back on drop.
+struct Slot<'a>(&'a SourceState);
+
+impl SourceState {
+    fn slot(&self) -> Slot<'_> {
+        let mut n = lock(&self.in_flight);
+        while *n >= self.max_in_flight {
+            n = self.slot_freed.wait(n).unwrap_or_else(|p| p.into_inner());
+        }
+        *n += 1;
+        Slot(self)
+    }
+
+    fn key_lock(&self, key: &str) -> Arc<Mutex<()>> {
+        lock(&self.keys)
+            .entry(key.to_owned())
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone()
+    }
+
+    /// Forgets the lock of `key` when nobody else holds it.
+    fn release_key(&self, key: &str, held: Arc<Mutex<()>>) {
+        let mut keys = lock(&self.keys);
+        // The map and `held` are the two remaining references.
+        if Arc::strong_count(&held) == 2 {
+            keys.remove(key);
+        }
+    }
+}
+
+impl Drop for Slot<'_> {
+    fn drop(&mut self) {
+        *lock(&self.0.in_flight) -= 1;
+        self.0.slot_freed.notify_one();
+    }
 }
 
 /// Outcome of one attempt.
@@ -382,6 +439,7 @@ impl Downloader {
             overrides: BTreeMap::new(),
             clock: Arc::new(SystemClock),
             offline: false,
+            personal_sources: false,
         }
     }
 
@@ -389,6 +447,7 @@ impl Downloader {
     pub fn from_config(cfg: &Config) -> Result<Self> {
         Self::builder(cfg.layout().cache_root())
             .rate_limit_overrides(cfg.rate_limits.clone())
+            .personal_sources(cfg.personal_sources)
             .build()
     }
 
@@ -405,13 +464,19 @@ impl Downloader {
         &self.cache_root
     }
 
-    fn limiter(&self, policy: &SourcePolicy, dir: &Path) -> Result<Arc<Mutex<Limiter>>> {
+    fn source_state(&self, policy: &SourcePolicy, dir: &Path) -> Result<Arc<SourceState>> {
         let mut states = lock(&self.states);
         if let Some(s) = states.get(&policy.name) {
             return Ok(s.clone());
         }
         let l = Limiter::load(policy.limits.clone(), Some(dir.join("ratelimit.json")))?;
-        let s = Arc::new(Mutex::new(l));
+        let s = Arc::new(SourceState {
+            limiter: Mutex::new(l),
+            in_flight: Mutex::new(0),
+            slot_freed: std::sync::Condvar::new(),
+            max_in_flight: policy.max_in_flight.max(1),
+            keys: Mutex::new(HashMap::new()),
+        });
         states.insert(policy.name.clone(), s.clone());
         Ok(s)
     }
@@ -424,6 +489,11 @@ impl Downloader {
     pub fn fetch(&self, req: &Request) -> Result<Fetched> {
         check_source_name(&req.source)?;
         let policy = self.policy(&req.source);
+        // Root guard of `personal_sources`: not even the cache of such a source is read.
+        if policy.personal_use_only && !self.personal_sources {
+            tracing::warn!(source = %req.source, "personal-use-only source refused");
+            return Err(Error::PersonalSourceRefused(req.source.clone()));
+        }
         let dir = self.cache_root.join(&req.source);
         std::fs::create_dir_all(&dir).map_err(|e| Error::io(&dir, e))?;
         let key = cache::key(
@@ -449,11 +519,29 @@ impl Downloader {
             return Ok(self.done(req, &entry, meta, Origin::Cache));
         }
 
-        // One request in flight per source: the lock covers the freshness check, the rate
-        // limiter, the request and the retries.
-        let state = self.limiter(&policy, &dir)?;
-        let mut limiter = lock(&state);
+        // One lock per request (concurrent fetches of the same request send one request:
+        // the others then find it in the cache), then an in-flight slot of the source (one
+        // by default) held for the freshness check, the request and the retries; the rate
+        // limiter is shared by every slot.
+        let state = self.source_state(&policy, &dir)?;
+        let key_lock = state.key_lock(&key);
+        let out = {
+            let _same_request = lock(&key_lock);
+            let _slot = state.slot();
+            self.fetch_locked(req, &policy, &state, &entry, mode)
+        };
+        state.release_key(&key, key_lock);
+        out
+    }
 
+    fn fetch_locked(
+        &self,
+        req: &Request,
+        policy: &SourcePolicy,
+        state: &SourceState,
+        entry: &Entry,
+        mode: CachePolicy,
+    ) -> Result<Fetched> {
         let cached = entry.load()?;
         let max_age = req.max_age.unwrap_or(policy.max_age);
         if mode == CachePolicy::Normal
@@ -461,7 +549,7 @@ impl Downloader {
             && self.now_unix().saturating_sub(meta.validated_at_unix) < max_age.as_secs()
         {
             let meta = meta.clone();
-            return Ok(self.done(req, &entry, meta, Origin::Cache));
+            return Ok(self.done(req, entry, meta, Origin::Cache));
         }
         let conditional = if mode == CachePolicy::Reload {
             None
@@ -471,9 +559,10 @@ impl Downloader {
 
         let mut attempt = 0u32;
         loop {
-            let sent = limiter.acquire(&req.source, self.clock.as_ref(), policy.max_wait)?;
-            let outcome = self.attempt(req, &policy, conditional.as_ref(), &entry);
-            limiter.finish(sent, unix_ms(self.clock.now()))?;
+            let sent =
+                lock(&state.limiter).acquire(&req.source, self.clock.as_ref(), policy.max_wait)?;
+            let outcome = self.attempt(req, policy, conditional.as_ref(), entry);
+            lock(&state.limiter).finish(sent, unix_ms(self.clock.now()))?;
             match outcome {
                 Attempt::Done(f) => return Ok(f),
                 Attempt::Fatal(e) => return Err(e),
@@ -662,6 +751,60 @@ fn parse_retry_after(v: &str, now: SystemTime) -> Option<Duration> {
     Some(at.duration_since(now).unwrap_or(Duration::ZERO))
 }
 
+/// Threads used by [`fetch_all`] callers for tile downloads: enough to fill the
+/// in-flight slots of the IGN sources ([`SourcePolicy::max_in_flight`]).
+pub const FETCH_THREADS: usize = 16;
+
+/// Maps `f` over `items` on `threads` scoped threads (not the rayon pool: these threads
+/// mostly wait for the network), keeping the order; the first error stops the others
+/// and is returned. The downloader bounds the requests in flight per source whatever
+/// the number of threads.
+pub fn fetch_all<T, R, E, F>(items: &[T], threads: usize, f: F) -> Result<Vec<R>, E>
+where
+    T: Sync,
+    R: Send,
+    E: Send,
+    F: Fn(&T) -> Result<R, E> + Sync,
+{
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    let next = AtomicUsize::new(0);
+    let failed = AtomicBool::new(false);
+    let slots: Vec<Mutex<Option<Result<R, E>>>> = items.iter().map(|_| Mutex::new(None)).collect();
+    std::thread::scope(|s| {
+        for _ in 0..threads.clamp(1, items.len().max(1)) {
+            s.spawn(|| {
+                loop {
+                    if failed.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    let i = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(item) = items.get(i) else { break };
+                    let r = f(item);
+                    if r.is_err() {
+                        failed.store(true, Ordering::Relaxed);
+                    }
+                    *lock(&slots[i]) = Some(r);
+                }
+            });
+        }
+    });
+    let mut out = Vec::with_capacity(items.len());
+    let mut first_err = None;
+    for slot in slots {
+        match slot.into_inner().unwrap_or_else(|p| p.into_inner()) {
+            Some(Ok(r)) => out.push(r),
+            Some(Err(e)) => {
+                first_err.get_or_insert(e);
+            }
+            None => {}
+        }
+    }
+    match first_err {
+        Some(e) => Err(e),
+        None => Ok(out),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -695,6 +838,27 @@ mod tests {
             Some(Duration::from_secs(30))
         );
         assert_eq!(parse_retry_after("soon", now), None);
+    }
+
+    #[test]
+    fn fetch_all_keeps_order_and_stops_on_error() {
+        let items: Vec<u32> = (0..100).collect();
+        let out = fetch_all(&items, 8, |&i| Ok::<_, Error>(i * 2)).unwrap();
+        assert_eq!(out, items.iter().map(|i| i * 2).collect::<Vec<_>>());
+        let e = fetch_all(&items, 8, |&i| {
+            if i == 37 {
+                Err(Error::Config("bad tile".into()))
+            } else {
+                Ok(i)
+            }
+        })
+        .unwrap_err();
+        assert!(e.to_string().contains("bad tile"));
+        assert!(
+            fetch_all(&[] as &[u32], 4, |&i| Ok::<_, Error>(i))
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]

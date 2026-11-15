@@ -36,6 +36,13 @@ pub enum Error {
     #[error("configuration error: {0}")]
     Config(String),
 
+    /// Request to a personal-use-only source while `personal_sources` is off
+    /// ([`crate::download::SourcePolicy::personal_use_only`]).
+    #[error(
+        "source `{0}` is personal use only: refused without personal_sources (SKIMAP_PERSONAL_SOURCES=1)"
+    )]
+    PersonalSourceRefused(String),
+
     /// Unknown site identifier.
     #[error("unknown site `{0}`")]
     UnknownSite(String),

@@ -5,10 +5,13 @@
 //! remaining placeholders name the ticket that will provide it.
 
 mod assist;
+mod batch;
 mod build;
 mod fixtures;
+mod france;
 mod history;
 mod plan;
+mod relief;
 mod route;
 /// Test support of the reference data set (Q1, Q2), shared with the other crates.
 #[cfg(test)]
@@ -25,7 +28,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use skimap_common::config::Config;
 use skimap_common::crs::{Crs, project_bbox};
 use skimap_common::download::{CachePolicy, Downloader, Request};
-use skimap_common::site::{MassifStatus, SITES, Site};
+use skimap_common::site::{MassifStatus, Registry, Site};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -48,7 +51,8 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Command {
-    /// List the evaluation sites.
+    /// List the sites of the registry (every census domain once `skimap domaines` has run,
+    /// otherwise the evaluation sites).
     Sites {
         /// JSON output.
         #[arg(long)]
@@ -73,12 +77,19 @@ enum Command {
     },
     /// Nordic trails and routing graph of a site from OpenSnowMap (P2, #15).
     Pistes(SiteArg),
-    /// Census of the French cross-country ski areas, `data/out/france/domaines/`, and the
-    /// domain layer of the given sites (all by default) (P3, #16).
+    /// Census of the French cross-country ski areas, `data/out/france/domaines/`, the site
+    /// registry `data/out/france/sites/sites.json` (one site per domain, G2) and the
+    /// domain layer of the given sites (P3, #16).
     Domaines {
-        /// Sites whose domain layer is written (default: all).
+        /// Sites whose domain layer is written (default: every site of the registry).
         sites: Vec<String>,
     },
+    /// SRN areas of France outside groomed domains, `data/out/france/srn/` (G5, #131);
+    /// needs the census (`skimap domaines`).
+    Srn,
+    /// Catalogue of France, `data/out/france/catalog.json` and `catalog.geojson`: every
+    /// site with its box, centre, km and the state of its pack (G2).
+    Catalog,
     /// IGN LiDAR HD terrain model, slope and aspect of a site (P5, #18).
     Terrain(SiteArg),
     /// Estimated snow cover of a site (P6, #19); needs the terrain tiles.
@@ -248,8 +259,9 @@ enum Command {
         #[arg(long)]
         request: Option<usize>,
     },
-    /// Every available builder of a site, in dependency order, timed.
-    BuildAll(SiteArg),
+    /// Every available builder of a site, in dependency order, timed; with `--all` or
+    /// `--domains`, many sites in parallel (resumable, log per site, summary, catalogue).
+    BuildAll(BuildAllArgs),
     /// Fetch every source of a site (P2, P5, P6, P8, P9, P11, P12, P13, P19).
     Fetch(Placeholder),
     /// Build the offline pack of a site from the pipeline outputs (P14, #27).
@@ -283,6 +295,33 @@ enum Command {
 struct SiteArg {
     /// Site identifier (`skimap sites`).
     site: String,
+}
+
+/// Arguments of `build-all`.
+#[derive(clap::Args, Debug)]
+struct BuildAllArgs {
+    /// Site identifier (one site, steps printed).
+    #[arg(conflicts_with_all = ["all", "domains"], required_unless_present_any = ["all", "domains"])]
+    site: Option<String>,
+    /// Every site of the registry.
+    #[arg(long)]
+    all: bool,
+    /// These sites, comma separated.
+    #[arg(long, value_delimiter = ',')]
+    domains: Vec<String>,
+    /// Sites built in parallel (network sources are shared: one request in flight per
+    /// source for all of them).
+    #[arg(long, default_value_t = 4)]
+    jobs: usize,
+    /// Rebuild the sites that are up to date.
+    #[arg(long)]
+    force: bool,
+    /// A successful build older than this is redone, hours.
+    #[arg(long, default_value_t = 24.0)]
+    max_age_hours: f64,
+    /// Start no site after this many minutes (running ones finish; run again to resume).
+    #[arg(long)]
+    stop_after_min: Option<f64>,
 }
 
 /// Arguments of a subcommand not implemented yet.
@@ -333,13 +372,26 @@ fn site_json(s: &Site) -> Result<serde_json::Value> {
     Ok(v)
 }
 
-fn print_sites(json: bool) -> Result<()> {
+fn print_sites(registry: &Registry, json: bool) -> Result<()> {
     if json {
-        let all = SITES.iter().map(site_json).collect::<Result<Vec<_>>>()?;
+        let all = registry
+            .all()
+            .iter()
+            .map(|s| site_json(s))
+            .collect::<Result<Vec<_>>>()?;
         println!("{}", serde_json::to_string_pretty(&all)?);
         return Ok(());
     }
-    for s in SITES {
+    println!(
+        "{} sites ({}), {} construits par build-all (les autres en tronçons)",
+        registry.all().len(),
+        registry.source().map_or(
+            "sites d'évaluation : `skimap domaines` pour toute la France".to_owned(),
+            |p| p.display().to_string()
+        ),
+        registry.buildable().len()
+    );
+    for (s, r) in registry.all().iter().zip(registry.records()) {
         let (w, h) = s.bbox.size_m();
         let (x0, y0, x1, y1) = project_bbox(s.bbox, Crs::Lambert93, 32)?;
         let massifs = s
@@ -352,10 +404,17 @@ fn print_sites(json: bool) -> Result<()> {
             MassifStatus::Verified => "vérifié sur les polygones snowtools",
             MassifStatus::Assumed => "supposé",
             MassifStatus::ToConfirm => "à confirmer",
+            MassifStatus::Outside => "hors des massifs snowtools",
         };
         println!(
-            "{:<18} {} ({}, INSEE {})",
-            s.id, s.name, s.department, s.insee
+            "{:<34} {} ({}, {}, INSEE {}){}",
+            s.id,
+            s.name,
+            s.kind.label_fr(),
+            s.department,
+            s.insee,
+            r.km_nordic
+                .map_or(String::new(), |k| format!(", {k} km nordiques"))
         );
         println!(
             "  emprise WGS84 s,w,n,e : {}  ({:.1} x {:.1} km)",
@@ -368,6 +427,9 @@ fn print_sites(json: bool) -> Result<()> {
             "  massif Météo-France   : {massifs} ({status}) ; BERA : {}",
             if s.has_bera { "oui" } else { "non" }
         );
+        if !r.sections.is_empty() {
+            println!("  tronçons              : {}", r.sections.join(", "));
+        }
     }
     Ok(())
 }
@@ -406,8 +468,42 @@ fn not_implemented(name: &str, tickets: &str) -> Result<()> {
     anyhow::bail!("`{name}` n'est pas encore implémenté (ticket(s) {tickets})")
 }
 
-fn site(id: &str) -> Result<&'static Site> {
-    Ok(skimap_common::site::site(id)?)
+fn build_all(cfg: &Config, registry: &Registry, a: BuildAllArgs) -> Result<()> {
+    let c = build::Ctx::new(cfg)?;
+    if let Some(id) = &a.site {
+        return batch::build_single(&c, registry, registry.get(id)?);
+    }
+    let sites: Vec<&'static Site> = if a.all {
+        registry.buildable()
+    } else {
+        a.domains
+            .iter()
+            .map(|s| Ok(registry.get(s.trim())?))
+            .collect::<Result<_>>()?
+    };
+    let opts = batch::BatchOptions {
+        jobs: a.jobs.max(1),
+        force: a.force,
+        max_age: Duration::from_secs_f64(a.max_age_hours.max(0.0) * 3600.0),
+        stop_after: a
+            .stop_after_min
+            .map(|m| Duration::from_secs_f64(m.max(0.0) * 60.0)),
+    };
+    let summary = batch::build_many(&c, registry, &sites, &opts)?;
+    for l in batch::describe(&summary) {
+        println!("{l}");
+    }
+    let cat = france::write_catalog(&c.layout, registry)?;
+    println!(
+        "catalogue : {} ({} sites, {:?})",
+        cat.path.display(),
+        cat.sites,
+        cat.by_state
+    );
+    if summary.failed > 0 {
+        anyhow::bail!("build-all : {} sites en échec", summary.failed);
+    }
+    Ok(())
 }
 
 fn print_json<T: serde::Serialize>(v: &T) -> Result<()> {
@@ -421,8 +517,10 @@ fn run(cli: Cli) -> Result<()> {
         cfg.data_dir = d;
     }
     let ctx = || build::Ctx::new(&cfg);
+    let registry = Registry::load(&cfg.layout())?;
+    let site = |id: &str| -> Result<&'static Site> { Ok(registry.get(id)?) };
     match cli.command {
-        Command::Sites { json } => print_sites(json),
+        Command::Sites { json } => print_sites(&registry, json),
         Command::FetchUrl {
             url,
             source,
@@ -435,18 +533,36 @@ fn run(cli: Cli) -> Result<()> {
             print_json(&ctx()?.pistes(s, None)?.stats)
         }
         Command::Domaines { sites } => {
-            let sites: Vec<&Site> = if sites.is_empty() {
-                SITES.iter().collect()
-            } else {
-                sites.iter().map(|s| site(s)).collect::<Result<_>>()?
-            };
             let c = ctx()?;
             let planet = skimap_osm::extract::load_planet(&c.dl)?;
             let census = c.census(&planet)?;
+            let srn = c.srn(&planet)?;
+            println!("{} zones SRN hors stations", srn.areas.len());
+            let summary = france::build_registry(&c)?;
+            println!("{}", serde_json::to_string_pretty(&summary)?);
+            let registry = Registry::load(&c.layout)?;
+            let sites: Vec<&Site> = if sites.is_empty() {
+                registry.buildable()
+            } else {
+                sites
+                    .iter()
+                    .map(|s| Ok(registry.get(s)?))
+                    .collect::<Result<_>>()?
+            };
             for s in sites {
                 c.domaines_site(s, &planet, &census)?;
             }
             print_json(&census.stats)
+        }
+        Command::Srn => {
+            let c = ctx()?;
+            let out = skimap_srn::build(&c.layout, &c.dl)?;
+            println!("{} zones SRN hors stations", out.areas.len());
+            print_json(&out.stats)
+        }
+        Command::Catalog => {
+            let c = france::write_catalog(&cfg.layout(), &registry)?;
+            print_json(&c)
         }
         Command::Terrain(a) => {
             let s = site(&a.site)?;
@@ -581,12 +697,17 @@ fn run(cli: Cli) -> Result<()> {
         Command::Voice(a) => {
             let s = site(&a.site)?;
             let (b, names) = ctx()?.voice(s)?;
-            println!(
-                "noms : {} pistes, {} lieux, {} dates",
-                names.pistes.len(),
-                names.places.len(),
-                names.dates.len()
-            );
+            for (what, n) in [
+                ("publiables", &names.public),
+                ("usage personnel", &names.personal),
+            ] {
+                println!(
+                    "noms {what} : {} pistes, {} lieux, {} dates",
+                    n.pistes.len(),
+                    n.places.len(),
+                    n.dates.len()
+                );
+            }
             print_json(&b)
         }
         Command::Assist {
@@ -630,10 +751,7 @@ fn run(cli: Cli) -> Result<()> {
             }
             Ok(())
         }
-        Command::BuildAll(a) => {
-            let s = site(&a.site)?;
-            ctx()?.build_all(s)
-        }
+        Command::BuildAll(a) => build_all(&cfg, &registry, a),
         Command::Fetch(_) => not_implemented(
             "fetch",
             "P2 #15, P5 #18, P6 #19, P8 #21, P9 #22, P11 #24, P12 #25, P13 #26, P19 #32",
@@ -802,7 +920,7 @@ mod tests {
 
     #[test]
     fn sites_json_has_lambert93_bbox() {
-        let v = site_json(&SITES[0]).unwrap();
+        let v = site_json(&skimap_common::site::SITES[0]).unwrap();
         assert_eq!(v["id"], "cervieres");
         assert!(v["bbox_lambert93"]["min_x"].as_f64().unwrap() > 980_000.0);
     }

@@ -27,7 +27,7 @@ fn pct(v: &mut [f64], p: f64) -> f64 {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let layout =
         DataLayout::new(std::env::var("SKIMAP_DATA_DIR").unwrap_or_else(|_| "data".into()));
-    for site in SITES {
+    for site in SITES.iter() {
         let (mut data, ctx) = presets::load(&layout, site)?;
         let req = presets::requests(site, presets::past_day(site))[0].clone();
         let t = Instant::now();

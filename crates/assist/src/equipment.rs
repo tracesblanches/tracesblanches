@@ -389,7 +389,7 @@ mod tests {
             .collect();
         let sq = serde_json::json!({"type":"Polygon","coordinates":[[[6.70,44.84],[6.80,44.84],[6.80,44.86],[6.70,44.86],[6.70,44.84]]]});
         SiteData {
-            site: CERVIERES,
+            site: *CERVIERES,
             weather: Some(Weather {
                 points: vec![WeatherPoint {
                     id: "p".into(),

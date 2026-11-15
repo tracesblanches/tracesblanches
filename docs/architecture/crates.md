@@ -8,7 +8,7 @@ Toutes les crates sont dans `crates/`, nommées `skimap-<dossier>` (bibliothèqu
 
 | Crate | Rôle | Côté | Tickets |
 |---|---|---|---|
-| `common` | sites, géométrie, grilles, projections, arborescence `data/`, configuration, erreurs, schéma `<couche>.meta.json` (`meta`), écrivains atomiques JSON / GeoJSON (`output`), comparaison des noms de pistes entre sources (`names`) ; téléchargeur (fonction `download`), GeoTIFF Float32 (fonction `geotiff`) | les deux | F1 #1, P1 #14 |
+| `common` | sites (registre de tous les domaines `site::Registry`, tables de données `crates/common/data/sites.json` et `status_sources.json`, types de site, tronçons), géométrie, grilles, projections, arborescence `data/`, configuration, erreurs, schéma `<couche>.meta.json` (`meta`), écrivains atomiques JSON / GeoJSON (`output`), comparaison des noms de pistes entre sources (`names`) ; téléchargeur (fonction `download`), GeoTIFF Float32 (fonction `geotiff`) | les deux | F1 #1, P1 #14 |
 | `osm` | pistes nordiques OSM, domaines de fond | pipeline | P2 #15, P3 #16 |
 | `terrain` | relief IGN, pente, orientation | pipeline | P5 #18 |
 | `snow` | carte d'enneigement estimée, validation | pipeline | P6 #19, P7 #20 |
@@ -24,7 +24,7 @@ Toutes les crates sont dans `crates/`, nommées `skimap-<dossier>` (bibliothèqu
 | `voice` | banque de phrases, clips pré-générés | les deux | VO2 #84, VO3 #85 |
 | `plan` | plan de journée (matin : boucle, heures de passage, demi-tour, annonces prévues, plans B), suivi sans manipulation (départ, pause, refuge, fin, écart, bascule sur un plan B, modes GPS), politique de parole, banc de scénarios ; voir `crates/plan/README.md` | téléphone | J1 #110 à J4 #113, Q9 #109, E1 #125 |
 | `server` | catalogue et paquets immuables des packs, mises à jour différentielles, minuterie de non-retour facultative, échange OAuth Strava ; voir `crates/server/README.md` et `deploy/README.md` | serveur | S0 #50, S1 #62, S2 #60 |
-| `cli` | binaire `skimap` : une sous-commande par constructeur, `build-all` (voir [compiler.md](compiler.md#ligne-de-commande)) | outil | F1 #1, F4 #4 |
+| `cli` | binaire `skimap` : une sous-commande par constructeur, `build-all` d'un site ou de toute la France (`batch.rs`), registre des sites et catalogue de la France (`france.rs`), seuil de relief de l'exposition (`relief.rs`) ; voir [compiler.md](compiler.md#ligne-de-commande) | outil | F1 #1, F4 #4, G2 #118 |
 | `deps` | dépend de toutes les dépendances externes : `Cargo.lock` les fixe déjà, la CI prouve qu'elles compilent | outil | F1 #1 (orchestrateur) |
 
 Les crates « téléphone » (`core`, `assist`, `voice`, `plan`, lecteur de `pack`) dépendent de `skimap-common` **sans** la fonction `download` : elles n'embarquent aucune pile HTTP (`cargo tree -p skimap-core` le montre). Les crates du pipeline l'activent : `skimap-common = { workspace = true, features = ["download"] }` (plus `"geotiff"` pour terrain et snow).

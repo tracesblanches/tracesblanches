@@ -88,37 +88,50 @@ pub struct ForecastPoint {
     pub provenance: &'static str,
 }
 
-/// Forecast points of a site: the starts of the nordic sectors.
+/// Forecast points of an evaluation site: the starts of its nordic sectors, from the
+/// site table of `skimap-common` (`skimap_common::site::local`); empty for another site
+/// (see [`points`]).
 pub fn forecast_points(site_id: &str) -> &'static [ForecastPoint] {
-    const CERVIERES: &[ForecastPoint] = &[
-        ForecastPoint {
-            id: "le-laus",
-            name: "Le Laus (secteur Le Laus - Izoard)",
-            lat: 44.8552,
-            lon: 6.7269,
-            provenance: "OSM node place=hamlet « Le Laus » (Overpass, 14/11/2026)",
-        },
-        ForecastPoint {
-            id: "les-fonts",
-            name: "Les Fonts (secteur Les Fonts)",
-            lat: 44.8448,
-            lon: 6.8161,
-            provenance: "OSM node place=hamlet « Les Fonts » (Overpass, 14/11/2026)",
-        },
-    ];
-    const CHAPELLE: &[ForecastPoint] = &[ForecastPoint {
-        id: "depart-des-pistes",
-        name: "Départ des pistes de Chapelle-des-Bois",
-        lat: 46.6032,
-        lon: 6.1125,
-        provenance: "premier point des itinéraires ENJ partant du village (API Geotrek, \
-                     « Départ des pistes (25240 Chapelle des Bois) »)",
-    }];
-    match site_id {
-        "cervieres" => CERVIERES,
-        "chapelle-des-bois" => CHAPELLE,
-        _ => &[],
+    static TABLE: std::sync::LazyLock<BTreeMap<String, Vec<ForecastPoint>>> =
+        std::sync::LazyLock::new(|| {
+            skimap_common::site::evaluation_records()
+                .iter()
+                .filter_map(|r| {
+                    let starts = &r.local.as_ref()?.starts;
+                    let pts = starts
+                        .iter()
+                        .map(|s| ForecastPoint {
+                            id: s.id.as_str(),
+                            name: s.name.as_str(),
+                            lat: s.lat,
+                            lon: s.lon,
+                            provenance: s.provenance.as_str(),
+                        })
+                        .collect();
+                    Some((r.id.clone(), pts))
+                })
+                .collect()
+        });
+    TABLE.get(site_id).map_or(&[], Vec::as_slice)
+}
+
+/// Forecast points of any site: [`forecast_points`], or else one point at the site centre
+/// (`skimap_common::site::starts`: representative point of a census domain).
+pub fn points(site: &Site) -> Vec<ForecastPoint> {
+    let pts = forecast_points(site.id);
+    if !pts.is_empty() {
+        return pts.to_vec();
     }
+    skimap_common::site::starts(site)
+        .into_iter()
+        .map(|s| ForecastPoint {
+            id: Box::leak(s.id.into_boxed_str()),
+            name: Box::leak(s.name.into_boxed_str()),
+            lat: s.lat,
+            lon: s.lon,
+            provenance: Box::leak(s.provenance.into_boxed_str()),
+        })
+        .collect()
 }
 
 /// Request of one model for one point.
@@ -407,7 +420,7 @@ pub fn build(
     if !personal_sources {
         return Err(Error::PersonalSourcesDisabled(SOURCE));
     }
-    let pts = forecast_points(site.id);
+    let pts = points(site);
     if pts.is_empty() {
         return Err(Error::format(
             "site",
@@ -415,7 +428,7 @@ pub fn build(
         ));
     }
     let mut points = Vec::new();
-    for p in pts {
+    for p in &pts {
         let mf = Series::from_json(
             &dl.fetch(&request(p, "meteofrance_seamless", MF_VARIABLES))?
                 .bytes()?,
@@ -523,7 +536,7 @@ pub fn history(
     if last < first {
         return Err(Error::format("dates", format!("{last} before {first}")));
     }
-    let pts = forecast_points(site.id);
+    let pts = points(site);
     if pts.is_empty() {
         return Err(Error::format(
             "site",
@@ -533,7 +546,7 @@ pub fn history(
     let start = first - chrono::Duration::days(HISTORY_LEAD_DAYS);
     let today = chrono::Utc::now().date_naive();
     let mut points = Vec::new();
-    for p in pts {
+    for p in &pts {
         let fetch = |model: &str, vars: &[&str]| -> Result<Series> {
             Series::from_json(
                 &dl.fetch(&history_request(p, model, vars, start, last, today))?

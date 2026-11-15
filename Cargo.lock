@@ -2714,6 +2714,7 @@ dependencies = [
  "skimap-plan",
  "skimap-refuges",
  "skimap-snow",
+ "skimap-srn",
  "skimap-status",
  "skimap-terrain",
  "skimap-voice",
@@ -2934,10 +2935,12 @@ dependencies = [
 name = "skimap-refuges"
 version = "0.1.0"
 dependencies = [
+ "geo",
  "serde",
  "serde_json",
  "skimap-common",
  "skimap-osm",
+ "skimap-zones",
  "thiserror",
  "tracing",
  "tracing-subscriber",

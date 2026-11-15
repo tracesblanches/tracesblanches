@@ -625,13 +625,13 @@ pub const IGN_SLOPES_ZOOMS: (u8, u8) = (11, 15);
 pub fn ign_slopes(bbox: BBox, dl: &Downloader, root: &Path) -> Result<Layer> {
     let (minz, maxz) = IGN_SLOPES_ZOOMS;
     let list = tiles_covering(bbox, minz, maxz);
-    let mut tiles = Vec::with_capacity(list.len());
-    for (z, x, y) in list {
-        tiles.push((
-            (z, x, y),
-            skimap_terrain::ign_slopes::fetch_tile(dl, z, x, y)?,
-        ));
-    }
+    // Tiles fetched on several threads (the downloader bounds the requests in flight).
+    let bodies = skimap_common::download::fetch_all(
+        &list,
+        skimap_common::download::FETCH_THREADS,
+        |&(z, x, y)| skimap_terrain::ign_slopes::fetch_tile(dl, z, x, y),
+    )?;
+    let tiles: Vec<_> = list.into_iter().zip(bodies).collect();
     let id = "ign-slopes";
     let file = format!("rasters/{id}.pmtiles");
     let classes = slope_classes();

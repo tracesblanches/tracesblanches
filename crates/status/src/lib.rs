@@ -326,7 +326,7 @@ pub fn poll(
         FileMeta::new("<source>/history.json", "fréquence de mise à jour observée"),
     ];
 
-    if let Some(city) = enj::city_id(site.id) {
+    if let Some(city) = enj::city_id(site) {
         // OSM ways of the itineraries, when the pistes layer was built.
         let pistes_path = layout.layer_dir(site, "pistes")?.join("pistes.geojson");
         let ways = if pistes_path.is_file() {
@@ -354,7 +354,7 @@ pub fn poll(
             "itinéraires ENJ (WGS84) et leur état",
         ));
     }
-    if let Some(station) = nordicfrance::station_id(site.id) {
+    if let Some(station) = nordicfrance::station_id(site) {
         let url = nordicfrance::station_url(station);
         let page = PageSource {
             source: nordicfrance::SOURCE,
@@ -385,26 +385,31 @@ pub fn poll(
             "aucune licence, HTML seulement : usage personnel, faible fréquence",
             "Nordic France",
         ));
-        let page = PageSource {
-            source: mairie::SOURCE,
-            url: mairie::URL,
-            min_interval: mairie::MIN_INTERVAL,
-            stamps: mairie::stamps,
-        };
-        let (mut p, mv) = poll_page(&dir, dl, &page, now, mairie::parse, &mut latest)?;
-        p.summary = format!(
-            "{} secteurs, page modifiée {}, « {} »",
-            mv["sectors"].as_array().map_or(0, Vec::len),
-            mv["modified_time"].as_str().unwrap_or("?"),
-            mv["message"].as_str().unwrap_or("")
-        );
-        sources.push(p);
-        refs.push(source_ref(
-            "Mairie de Cervières, page Info damage",
-            mairie::URL,
-            "aucune licence affichée : usage personnel, faible fréquence",
-            "Commune de Cervières",
-        ));
+        // Town hall page of the site table (`status.town_hall_page`: Cervières only).
+        let mut mairie_value = None;
+        if let Some(town_hall) = site.status.town_hall_page {
+            let page = PageSource {
+                source: mairie::SOURCE,
+                url: town_hall,
+                min_interval: mairie::MIN_INTERVAL,
+                stamps: mairie::stamps,
+            };
+            let (mut p, mv) = poll_page(&dir, dl, &page, now, mairie::parse, &mut latest)?;
+            p.summary = format!(
+                "{} secteurs, page modifiée {}, « {} »",
+                mv["sectors"].as_array().map_or(0, Vec::len),
+                mv["modified_time"].as_str().unwrap_or("?"),
+                mv["message"].as_str().unwrap_or("")
+            );
+            sources.push(p);
+            refs.push(source_ref(
+                &format!("Mairie de {}, page Info damage", site.name),
+                town_hall,
+                "aucune licence affichée : usage personnel, faible fréquence",
+                &format!("Commune de {}", site.name),
+            ));
+            mairie_value = Some(mv);
+        }
 
         // Geometry: the OSM pistes of the site joined by name.
         let pistes_dir = layout.layer_dir(site, "pistes")?;
@@ -415,9 +420,13 @@ pub fn poll(
         let ways = join::read_pistes(&pistes_path)?;
         let station: nordicfrance::NfStation = serde_json::from_value(v)
             .map_err(|e| skimap_common::Error::json(nordicfrance::SOURCE, e))?;
-        let page: mairie::MairiePage = serde_json::from_value(mv)
-            .map_err(|e| skimap_common::Error::json(mairie::SOURCE, e))?;
-        let (features, report) = join::features(&station, Some(&page), &ways, &rfc3339(now));
+        let page: Option<mairie::MairiePage> = mairie_value
+            .map(|mv| {
+                serde_json::from_value(mv)
+                    .map_err(|e| skimap_common::Error::json(mairie::SOURCE, e))
+            })
+            .transpose()?;
+        let (features, report) = join::features(&station, page.as_ref(), &ways, &rfc3339(now));
         write_json(
             &dir.join("status.geojson"),
             &json!({ "type": "FeatureCollection", "features": features }),

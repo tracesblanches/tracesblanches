@@ -247,7 +247,7 @@ mod tests {
 
     #[test]
     fn report07_areas_are_inside_sites() {
-        for s in SITES {
+        for s in SITES.iter() {
             let (a, f) = super::report07_reference(s).unwrap();
             let e = super::Extent::from_bbox(s.bbox).unwrap();
             assert!(
