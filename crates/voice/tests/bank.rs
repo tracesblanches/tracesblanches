@@ -3,7 +3,7 @@
 use skimap_voice::bank::{
     Briefing, Change, Crowd, Event, Glide, Item, Kick, Name, Side, Snow, ZoneRule,
 };
-use skimap_voice::clips::{DayMonth, Direction};
+use skimap_voice::clips::{DayMonth, Direction, Fixed};
 use skimap_voice::manifest::{ClipKind, PackNames, manifest};
 use skimap_voice::names::{Colour, PisteName};
 use skimap_voice::quantity::Clock;
@@ -466,8 +466,13 @@ fn clip_set_size_and_ids() {
         );
         assert!(!text.contains("  "), "{id}: {text}");
         // Loop summaries are one sentence in three clips: the first two continue it
-        // (comma), the last two start in lower case.
-        let continues = id.starts_with("loop.km.") || id.starts_with("loop.about.");
+        // (comma), the last two start in lower case; so do the proposals of C11 (« Je
+        // propose la boucle courte, » then « retour vers… »).
+        let continues = id.starts_with("loop.km.")
+            || id.starts_with("loop.about.")
+            || Fixed::ALL
+                .iter()
+                .any(|f| f.continued() && f.clip().id == *id);
         assert_eq!(text.ends_with(','), continues, "{id}: {text}");
         assert!(continues || text.ends_with('.'), "{id}: {text}");
         let lower = id.starts_with("loop.about.") || id.starts_with("loop.back.");

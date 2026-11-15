@@ -495,6 +495,32 @@ fixed_phrases! {
     PlanHomeNow = "plan-home-now" => "Il faut rentrer maintenant par le plus court, afin d'arriver avant la nuit.",
     /// End of the outing (J3).
     PlanFinished = "plan-finished" => "Sortie terminée.",
+    /// Proposal reason: the group moves slower than planned (C11).
+    PlanPaceSlower = "plan-pace-slower" => "Vous allez moins vite que prévu.",
+    /// Proposal reason: slower and more stops (C11).
+    PlanPaceSlowerPauses = "plan-pace-slower-pauses" => "Vous allez moins vite que prévu, avec plus de pauses.",
+    /// Proposal reason: more stops than planned (C11).
+    PlanPacePauses = "plan-pace-pauses" => "Vous faites plus de pauses que prévu.",
+    /// Proposal, first part (then `loop.back.*`): the short loop (C11).
+    PlanProposeShort = "plan-propose-short" => "Je propose la boucle courte,",
+    /// Proposal, first part (then `loop.back.*`): the nearest exit (C11).
+    PlanProposeExit = "plan-propose-exit" => "Je propose la sortie la plus proche,",
+    /// Proposal, first part (then `loop.back.*`): keep the loop, new return time (C11).
+    PlanProposeKeep = "plan-propose-keep" => "Je propose de garder la boucle,",
+    /// A proposal was accepted (C11).
+    PlanProposalAccepted = "plan-proposal-accepted" => "Proposition acceptée.",
+}
+
+impl Fixed {
+    /// Whether the phrase is the first part of a sentence that a value clip ends
+    /// (« Je propose la boucle courte, » then « retour vers quinze heures et quart. »): it
+    /// ends with a comma instead of a full stop.
+    pub fn continued(self) -> bool {
+        matches!(
+            self,
+            Fixed::PlanProposeShort | Fixed::PlanProposeExit | Fixed::PlanProposeKeep
+        )
+    }
 }
 
 /// Lengths of a suggested loop announced, kilometres.
@@ -597,7 +623,8 @@ mod tests {
                     || b == b'.'
                     || b == b'-')
             );
-            assert!(c.text.ends_with('.'), "{}", c.text);
+            let end = if f.continued() { ',' } else { '.' };
+            assert!(c.text.ends_with(end), "{}", c.text);
         }
     }
 }

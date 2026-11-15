@@ -2184,7 +2184,7 @@ impl<'a> Tracker<'a> {
                     let s_div = self.plan.plans_b[i].fallback.s_div;
                     if self.install_plan_b(t, i, Cause::Pace, out) {
                         applied = true;
-                        let mut a = pace::pending_announcement("fix.plan-proposal-accepted");
+                        let mut a = phrases::announce(Fixed::PlanProposalAccepted);
                         if let Some(e) = self.first_turn_event(s_div) {
                             a = a.then(e.announce());
                         }
@@ -2206,7 +2206,7 @@ impl<'a> Tracker<'a> {
                         Priority::Schedule,
                         "proposal",
                         "proposal_accepted",
-                        pace::pending_announcement("fix.plan-proposal-accepted"),
+                        phrases::announce(Fixed::PlanProposalAccepted),
                         Some(60.0),
                     );
                 }
