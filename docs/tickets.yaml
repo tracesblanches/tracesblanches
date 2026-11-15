@@ -1153,3 +1153,15 @@ tickets:
     Contributions bienvenues, contributions assistées par IA bienvenues : CONTRIBUTING (tests et références dorées obligatoires, exception boutiques acceptée par chaque contributeur, IA autorisée avec relecture humaine et preuves), modèles d'issues et de PR, code de conduite.
     Textes publics : règles d'écriture de l'utilisateur (voix active, faits vérifiés, pas d'autopromotion).
     Critère : org créée par l'utilisateur, site en ligne, dépôt transféré et public.
+
+- key: E1
+  title: "Budget d'énergie du code : précalculs serveur, noyau et Kotlin sobres"
+  milestone: M3 Client v1
+  labels: [infra, pendant]
+  deps: [J1, K1]
+  body: |
+    Le téléphone ne calcule que ce qui dépend de la position et de l'heure ; tout le reste est précalculé côté serveur et livré dans le pack ou le plan : graphe simplifié, index spatial de rattachement, temps de parcours par arête et par pratique, points de décision, plans B, séquences de clips, géométries par zoom.
+    Noyau Rust : suivi par fix sans allocation, coût mesuré en instructions par fix et en CI (Q5). Données lues sans copie (mmap, formats à plat).
+    Kotlin : rien ne tourne écran éteint hors du service de localisation et de l'audio ; aucune scrutation ni minuterie de fond ; coroutines sur le bon dispatcher ; Compose stable (recompositions comptées), R8, profils de référence, aucune allocation dans le chemin d'un fix ; appel du noyau par lots plutôt que par fix si les fixes arrivent par lots.
+    Mesure : Macrobenchmark et Microbenchmark Jetpack, Perfetto avec les rails d'énergie (ODPM) du Pixel 8, budget par heure de sortie écran éteint, régression bloquante en CI quand elle est mesurable.
+    Critère : budget d'énergie par mode (poche, approche, interaction, pause) mesuré sur le Pixel, comparé au coût du GPS seul.
