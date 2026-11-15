@@ -32,7 +32,7 @@ import org.robolectric.annotation.GraphicsMode
  */
 @RunWith(AndroidJUnit4::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(qualifiers = "w412dp-h915dp-hdpi")
+@Config(qualifiers = "fr-w412dp-h915dp-hdpi")
 class DayScreenshotTest {
     @get:Rule
     val rule = createComposeRule()

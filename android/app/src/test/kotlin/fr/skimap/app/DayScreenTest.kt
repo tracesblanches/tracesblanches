@@ -48,7 +48,7 @@ import org.robolectric.annotation.GraphicsMode
 /** The morning, the plan and the guidance overlay: actions, texts, sizes. */
 @RunWith(AndroidJUnit4::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(qualifiers = "w412dp-h915dp-xxhdpi")
+@Config(qualifiers = "fr-w412dp-h915dp-xxhdpi")
 class DayScreenTest {
     @get:Rule
     val rule = createComposeRule()
