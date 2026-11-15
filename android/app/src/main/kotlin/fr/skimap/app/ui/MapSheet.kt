@@ -152,6 +152,12 @@ fun MapSheetContent(
             // A suggestion, never forced: light reads best on snow in full sun.
             Text(stringResource(R.string.appearance_sun_hint), style = MaterialTheme.typography.bodyMedium)
         }
+        actions.openSport?.let { open ->
+            SectionTitle(stringResource(R.string.sheet_sport))
+            OutlinedButton(onClick = open, modifier = Modifier.fillMaxWidth().heightIn(min = GloveTarget)) {
+                Text(stringResource(R.string.sheet_sport_open), style = MaterialTheme.typography.labelLarge)
+            }
+        }
         SectionTitle(stringResource(R.string.sheet_updates))
         SwitchRow(stringResource(R.string.auto_update), checked = autoUpdate) { actions.setAutoUpdate(it) }
         Button(onClick = onClose, modifier = Modifier.fillMaxWidth().heightIn(min = GloveTarget)) {

@@ -39,6 +39,8 @@ import fr.skimap.app.guidance.GuidanceBar
 import fr.skimap.app.ui.theme.GloveTarget
 import fr.skimap.core.DayPlanView
 import fr.skimap.core.KeyPointView
+import fr.skimap.sport.Queued
+import fr.skimap.sport.SendOuting
 import fr.skimap.tracking.TrackingState
 import java.util.Locale
 
@@ -61,6 +63,8 @@ data class PlanActions(
     val newDay: () -> Unit = {},
     val answer: (Boolean) -> Unit = {},
     val refuseSwitch: () -> Unit = {},
+    /** « Envoyer » of the recap (K11): Health Connect, Strava. */
+    val sendOuting: () -> Unit = {},
 )
 
 /**
@@ -75,6 +79,8 @@ fun PlanScreen(
     tracking: TrackingState,
     actions: PlanActions,
     modifier: Modifier = Modifier,
+    /** The outing ended and sent: where it is (K11). */
+    sent: Queued? = null,
 ) {
     var confirmStop by rememberSaveable { mutableStateOf(false) }
     if (confirmStop) {
@@ -113,7 +119,7 @@ fun PlanScreen(
             }
         }
         item { PlanSummary(plan) }
-        item { PlanButtons(tracking, actions, onStop = { confirmStop = true }) }
+        item { PlanButtons(tracking, actions, sent, onStop = { confirmStop = true }) }
         item { PlanList(stringResource(R.string.plan_key_points), plan.keyPoints.map(::keyPointText), MaterialTheme.typography.bodyMedium) }
         if (plan.plansB.isNotEmpty()) {
             item { PlanList(stringResource(R.string.plan_plans_b), plan.plansB.map { "· $it" }, MaterialTheme.typography.bodySmall) }
@@ -161,6 +167,7 @@ private fun PlanSummary(plan: DayPlanView) {
 private fun PlanButtons(
     tracking: TrackingState,
     actions: PlanActions,
+    sent: Queued?,
     onStop: () -> Unit,
 ) {
     val emergency = stringResource(R.string.plan_emergency_description)
@@ -192,6 +199,9 @@ private fun PlanButtons(
             }
 
             is TrackingState.Ended -> {
+                // The recap, and « Envoyer » (Health Connect, Strava) when there is a trace.
+                tracking.recap?.let { Text(it.text, style = MaterialTheme.typography.bodyLarge) }
+                if (tracking.gpx != null) SendOuting(sent, onSend = actions.sendOuting)
                 OutlinedButton(onClick = actions.newDay, modifier = big.fillMaxWidth()) { Text(stringResource(R.string.plan_new_day)) }
             }
 

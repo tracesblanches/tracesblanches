@@ -3,8 +3,9 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Offline first: a pack is displayed without any network request. INTERNET comes
-         from the module :sync only (pack download and update, K2; its manifest says why);
-         MapLibre is kept offline (MapLibre.setConnected(false), file:// styles). -->
+         from the module :sync (pack download and update, K2) and from the module :sport
+         (Strava, K11, on the user's request); their manifests say why. MapLibre is kept
+         offline (MapLibre.setConnected(false), file:// styles). -->
 
     <!-- One coarse position, on request, for "Domaines les plus proches". No tracking. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
@@ -30,6 +31,38 @@
         <activity
             android:name=".day.DayActivity"
             android:exported="false" />
+        <!-- « Envoyer mes sorties » (K11), module :sport. singleTask: the Strava sign-in
+             comes back here (skimap-server redirects to skimap://strava/callback) and the
+             browser tab above it is closed. Health Connect opens it for the rationale
+             (what is written, never read). -->
+        <activity
+            android:name=".guidance.AppSportActivity"
+            android:exported="true"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:host="strava"
+                    android:path="/callback"
+                    android:scheme="skimap" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+        </activity>
+        <!-- Health Connect on Android 14+: the rationale through the permission usage screen. -->
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE"
+            android:targetActivity=".guidance.AppSportActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
         <!-- The one location service of an outing (K4, report 09), module :tracking. -->
         <service
             android:name=".guidance.SkiTrackingService"
