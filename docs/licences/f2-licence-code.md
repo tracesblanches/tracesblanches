@@ -49,3 +49,13 @@ Texte : https://interoperable-europe.ec.europa.eu/collection/eupl/eupl-text-eupl
 > - les sources réservées à l'usage personnel (ENJ, Nordic France, mairie, EPA, CLPA d'INRAE, API gratuite d'Open-Meteo dans une version payante) ne sont jamais dans un pack publié (`personal_sources` désactivé).
 
 Le dépôt ne contient pas de données tierces sauf deux BERA de test (`crates/meteo/tests/fixtures/`, LO 2.0, à attribuer à Météo-France) : `research/raw/` et `/data` sont dans `.gitignore`.
+
+## Décision du 15/11/2026 : GPL-3.0-or-later avec exception pour les boutiques d'applications
+
+Choix de l'utilisateur, à la place de la recommandation EUPL-1.2 ci-dessus.
+- **Code de skimap** : GPL-3.0-or-later, plus une permission additionnelle (GPLv3 section 7) qui autorise la diffusion par les boutiques d'applications (App Store d'Apple, Google Play, etc.) malgré leurs conditions d'usage. Google Play n'en a pas besoin ; l'App Store, oui.
+- **Portée de l'exception** : seulement le code dont l'auteur du dépôt détient les droits. Toute contribution extérieure doit l'accepter explicitement (`CONTRIBUTING`, accord de contributeur).
+- **`crates/avalanche`** (portage de com4FlowPy, EUPL-1.2) : reste sous EUPL-1.2. On ne peut pas y ajouter l'exception. Vérifié le 15/11/2026 : seule `crates/cli` (pipeline) en dépend, et aucune crate embarquée sur le téléphone (`common`, `core`, `pack`, `assist`, `voice`) ; l'app ne reçoit que la couche calculée, qui est une donnée et non du code.
+- **Dépendances tierces** : toutes permissives, compatibles avec la GPLv3.
+- **Données produites** : inchangé (section suivante) ; la licence du code ne s'applique pas aux packs.
+- **À faire** : `LICENSE` (GPL-3.0), `LICENSE-EXCEPTION` (texte de l'exception), `license = "GPL-3.0-or-later"` dans `[workspace.package]` et `license = "EUPL-1.2"` dans `crates/avalanche`, en-têtes, `THIRD-PARTY.md`, règle cargo-deny qui interdit qu'une crate embarquée dépende de `crates/avalanche`.
