@@ -1,6 +1,8 @@
 //! No orphan layer: every layer of a style draws at least one feature of the real packs
 //! (one of them suffices: avalanche areas exist at Cervières only). Filters are evaluated
-//! on every feature of every tile at the zooms where the layer is visible.
+//! on every feature of every tile at the zooms where the layer is visible. A pack without
+//! the file of a source (optional sources, `metadata.skimap:optional_sources`) counts no
+//! feature for its layers.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -27,6 +29,14 @@ pub fn matches(style: &Value, dirs: &[&Path]) -> Result<BTreeMap<String, u64>> {
                 continue;
             };
             let def = &style["sources"][src];
+            let file = def["data"].as_str().or_else(|| {
+                def["url"]
+                    .as_str()
+                    .map(|u| u.trim_start_matches("pmtiles://"))
+            });
+            if file.is_some_and(|f| !dir.join(f).is_file()) {
+                continue;
+            }
             match def["type"].as_str() {
                 Some("vector") => {
                     let path = def["url"]

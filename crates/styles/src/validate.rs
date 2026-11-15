@@ -1,7 +1,11 @@
 //! Static validation of a style against what the packs offer ([`Inventory`]).
 //!
 //! Checked: MapLibre structure; every source points to a file of every pack (or is a
-//! declared runtime source); no source without layer; every `source-layer` exists in the
+//! declared runtime source), except the sources the style declares optional
+//! (`metadata.skimap:optional_sources`: the app and the viewer leave them out with their
+//! layers when a pack lacks them), which are checked against the packs that have them
+//! (or against the schema their producer declares, [`declared_layer`]); no source without
+//! layer; every `source-layer` exists in the
 //! tiles at the zooms where the layer is visible; every property read exists, every value
 //! compared exists; geometry types fit the layer types; fonts and sprite icons are in the
 //! pack; only the expression subset of [`crate::expr::OPERATORS`]; rasters sharp and under
@@ -11,7 +15,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value;
 
-use crate::declared::declared_values;
+use crate::declared::{declared_layer, declared_values};
 use crate::expr::{LITERAL_ARRAYS, OPERATORS, walk};
 use crate::inventory::{Inventory, Key, Layer, number_text};
 
@@ -40,17 +44,44 @@ pub enum Source {
 /// Validates a style against the inventories of the packs (all must offer every file;
 /// properties and values are looked up in their union). Returns the problems found.
 pub fn validate(style: &Value, packs: &[Inventory]) -> Vec<String> {
+    validate_with(style, packs, &[])
+}
+
+/// Validates a style against `packs` (each must offer every required file, its fonts and
+/// icons), looking properties and values up in the union of `packs` and `reference`: a
+/// single public pack checked with the proof packs as reference (a value compared by a
+/// layer need not occur in every pack).
+pub fn validate_with(style: &Value, packs: &[Inventory], reference: &[Inventory]) -> Vec<String> {
     let mut v = Validator {
         errors: Vec::new(),
         packs,
+        reference,
+        unchecked: BTreeSet::new(),
     };
     v.style(style);
     v.errors
 }
 
+/// Optional sources of a style absent from every pack given and without a declared
+/// schema: their layers cannot be checked against data (the app leaves them out).
+pub fn unchecked_sources(style: &Value, packs: &[Inventory]) -> BTreeSet<String> {
+    let mut v = Validator {
+        errors: Vec::new(),
+        packs,
+        reference: &[],
+        unchecked: BTreeSet::new(),
+    };
+    v.sources(style);
+    v.unchecked
+}
+
 struct Validator<'a> {
     errors: Vec<String>,
     packs: &'a [Inventory],
+    /// More packs for the schemas only.
+    reference: &'a [Inventory],
+    /// Optional sources absent from every pack, without declared schema.
+    unchecked: BTreeSet<String>,
 }
 
 impl Validator<'_> {
@@ -149,6 +180,23 @@ impl Validator<'_> {
             return out;
         };
         let runtime = &s["metadata"]["skimap:runtime_sources"];
+        let mut optional = BTreeSet::new();
+        match &s["metadata"]["skimap:optional_sources"] {
+            Value::Null => {}
+            Value::Array(a) => {
+                for o in a {
+                    match o.as_str() {
+                        Some(id) if m.contains_key(id) => {
+                            optional.insert(id.to_string());
+                        }
+                        _ => self.err(format!(
+                            "metadata skimap:optional_sources: {o} is not a source of the style"
+                        )),
+                    }
+                }
+            }
+            _ => self.err("metadata skimap:optional_sources must be an array".into()),
+        }
         for (id, src) in m {
             let url = src["url"]
                 .as_str()
@@ -181,6 +229,7 @@ impl Validator<'_> {
                     continue;
                 }
             };
+            let mut found = 0;
             for p in self.packs {
                 let present = match &source {
                     Source::Vector(path) => p.vector.contains_key(path),
@@ -188,9 +237,16 @@ impl Validator<'_> {
                     Source::GeoJson(path) => p.geojson.contains_key(path),
                     Source::Runtime(_) => true,
                 };
-                if !present {
+                if present {
+                    found += 1;
+                } else if !optional.contains(id) {
                     self.err(format!("source {id}: file absent from the {} pack", p.site));
                 }
+            }
+            let declared =
+                matches!(&source, Source::GeoJson(path) if declared_layer(path).is_some());
+            if found == 0 && optional.contains(id) && !declared {
+                self.unchecked.insert(id.clone());
             }
             out.insert(id.clone(), source);
         }
@@ -205,10 +261,13 @@ impl Validator<'_> {
     ) -> Option<(Layer, Option<(u8, u8)>)> {
         let mut found: Option<Layer> = None;
         let mut archive_zoom = None;
-        for p in self.packs {
+        for p in self.packs.iter().chain(self.reference) {
             let l = match src {
                 Source::Vector(path) => {
-                    let a = p.vector.get(path)?;
+                    // An optional archive a pack lacks: the others give the schema.
+                    let Some(a) = p.vector.get(path) else {
+                        continue;
+                    };
                     archive_zoom = Some((a.zooms.minzoom, a.zooms.maxzoom));
                     a.layers.get(source_layer?)
                 }
@@ -222,6 +281,13 @@ impl Validator<'_> {
                     Some(acc) => union(acc, l),
                 });
             }
+        }
+        if found.is_none()
+            && let Source::GeoJson(path) = src
+        {
+            return declared_layer(path)
+                .and_then(|v| runtime_layer(&v))
+                .map(|l| (l, None));
         }
         found.map(|l| (l, archive_zoom))
     }
@@ -261,6 +327,10 @@ impl Validator<'_> {
             self.err(format!("layer {id}: unknown source {src_id}"));
             return;
         };
+        if self.unchecked.contains(src_id) {
+            // Optional source absent from every pack given: left out by the app.
+            return;
+        }
         let source_layer = l["source-layer"].as_str();
         match (src, ty, source_layer) {
             (Source::Raster(_), "raster", None) => {

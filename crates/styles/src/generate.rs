@@ -73,8 +73,6 @@ fn empty() -> Value {
 /// Every source a style may use; [`style`] keeps only those its layers reference.
 fn all_sources() -> Map<String, Value> {
     let geojson = |file: &str| json!({"type": "geojson", "data": file});
-    let raster =
-        |file: &str| json!({"type": "raster", "url": format!("pmtiles://{file}"), "tileSize": 256});
     let runtime = || json!({"type": "geojson", "data": empty()});
     let mut m = Map::new();
     m.insert(
@@ -96,14 +94,15 @@ fn all_sources() -> Map<String, Value> {
         "refuges-info",
         "refuges-osm",
         "refuges-camptocamp",
+        "piste-labels",
+        "srn-areas",
+        "srn-routes",
+        "fee-zones",
     ] {
         m.insert(id.into(), geojson(&format!("layers/{id}.geojson")));
     }
-    for id in ["snow-groomed", "snow-srn"] {
-        m.insert(id.into(), raster(&format!("rasters/{id}.pmtiles")));
-    }
     // Class polygons of the pack (vector tiles), drawn in the colours of the theme.
-    for id in ["slope", "avalanche-exposure"] {
+    for id in ["slope", "avalanche-exposure", "snow-groomed", "snow-srn"] {
         m.insert(
             id.into(),
             json!({"type": "vector", "url": format!("pmtiles://layers/{id}.pmtiles")}),
@@ -114,6 +113,25 @@ fn all_sources() -> Map<String, Value> {
     }
     m
 }
+
+/// Sources a pack may lack: the app and the viewer then leave out the source and its
+/// layers (`metadata.skimap:optional_sources`). Layers of personal-use sources (CLPA,
+/// and the exposure fused with it at Cervières), layers only some sites have (SRN areas
+/// and itineraries, snow outside the simulated massifs, avalanche exposure outside the
+/// mountains), layers added after older packs were built (piste name lines) and the
+/// trail-pass zones (no producer yet). The basemaps, pistes, zones, network, huts and
+/// slope are in every pack: their absence is an error.
+pub const OPTIONAL_SOURCES: [&str; 9] = [
+    "avalanche-areas",
+    "avalanche-segments",
+    "avalanche-exposure",
+    "snow-groomed",
+    "snow-srn",
+    "srn-areas",
+    "srn-routes",
+    "piste-labels",
+    "fee-zones",
+];
 
 /// Properties the app writes in the runtime sources (checked by the validator like the
 /// properties of the pack layers).
@@ -619,6 +637,11 @@ fn localities(p: &Palette, size: f64, hamlets_from: f64, small_from: Option<f64>
 /// Summits, passes, ridges and combes. The IGN types them by zoom band: `ORO_SOMMET_n`,
 /// `ORO_COL_n` up to z11, `ORO_RELIEF_n` at z12, `TYPO_G_n` from z13 (4 = most important).
 /// `all`: every one (SRN), else the main ones only.
+///
+/// One layer per band, shown only at the zooms of its band: a map that still shows the
+/// tile of the zoom below or above while the new one loads (MapLibre Native keeps them
+/// on screen) would otherwise draw a summit twice, once per band (« PIC DE ROCHEBRUNE »
+/// of z12 next to « Pic de Rochebrune » of z13).
 fn oronyms(p: &Palette, all: bool) -> Vec<Value> {
     let (main, more): (Vec<&str>, Vec<&str>) = if all {
         (
@@ -653,8 +676,8 @@ fn oronyms(p: &Palette, all: bool) -> Vec<Value> {
             vec![],
         )
     };
-    let label = |id: &str, list: &[&str], minzoom: f64, s: f64| {
-        ign(
+    let label = |id: &str, list: &[&str], minzoom: f64, maxzoom: Option<f64>, s: f64| {
+        let mut l = ign(
             id,
             "symbol",
             "toponyme_oro_ponc",
@@ -662,12 +685,33 @@ fn oronyms(p: &Palette, all: bool) -> Vec<Value> {
                    "layout": {"text-field": ["get", "texte"], "text-font": [ITALIC], "text-size": s,
                               "text-max-width": 8, "text-padding": 4},
                    "paint": text_paint(p.text_soft, p.halo, 2.0)}),
-        )
+        );
+        if let Some(z) = maxzoom {
+            l["maxzoom"] = json!(z);
+        }
+        l
     };
-    let mut v = vec![label("ign-oro-main", &main, 11.0, 13.5)];
+    // (prefix of the IGN class, id suffix, minzoom, maxzoom) of each band.
+    let bands: [(&[&str], &str, f64, Option<f64>); 3] = [
+        (&["ORO_SOMMET", "ORO_COL"], "-z11", 11.0, Some(12.0)),
+        (&["ORO_RELIEF"], "-z12", 12.0, Some(13.0)),
+        (&["TYPO_G"], "", 13.0, None),
+    ];
+    let mut v = Vec::new();
+    for (base, list, size) in [("ign-oro-main", &main, 13.5), ("ign-oro", &more, 12.0)] {
+        for (prefixes, suffix, z0, z1) in bands {
+            let band: Vec<&str> = list
+                .iter()
+                .copied()
+                .filter(|c| prefixes.iter().any(|p| c.starts_with(p)))
+                .collect();
+            if !band.is_empty() {
+                v.push(label(&format!("{base}{suffix}"), &band, z0, z1, size));
+            }
+        }
+    }
     if !more.is_empty() {
-        v.push(label("ign-oro", &more, 11.0, 12.0));
-        v.push(label("ign-oro-minor", &["TYPO_G_8"], 15.0, 11.5));
+        v.push(label("ign-oro-minor", &["TYPO_G_8"], 15.0, None, 11.5));
     }
     v
 }
@@ -688,7 +732,13 @@ fn pistes(p: &Palette, primary: bool) -> Vec<Value> {
             zl(&[(10.0, 1.0), (13.0, 1.6), (16.0, 3.5)]),
         )
     };
-    let groomed = groomed_json();
+    let groomed = json!(["all", groomed_json(), known_state()]);
+    let unknown = json!(["all", groomed_json(), ["!", known_state()]]);
+    let w_core = if primary {
+        zl(&[(10.0, 1.2), (12.0, 1.6), (14.0, 2.6), (16.0, 3.8)])
+    } else {
+        zl(&[(10.0, 0.6), (13.0, 0.9), (16.0, 1.6)])
+    };
     let backcountry = json!(["all", nordic(), ["==", ["get", "grooming"], "backcountry"]]);
     let mut v = vec![
         layer(
@@ -704,8 +754,29 @@ fn pistes(p: &Palette, primary: bool) -> Vec<Value> {
             "pistes-casing",
             "line",
             Some("pistes"),
-            json!({"filter": nordic(), "layout": {"line-cap": "round", "line-join": "round"},
-                   "paint": {"line-color": piste_casing(p), "line-width": w_casing}}),
+            json!({"filter": ["all", nordic(), ["any", known_state(), ["==", ["get", "grooming"], "backcountry"]]],
+                   "layout": {"line-cap": "round", "line-join": "round"},
+                   "paint": {"line-color": piste_casing(p), "line-width": w_casing.clone()}}),
+        ),
+        // State unknown: a neutral band with a thin core of the difficulty colour, never
+        // the full colour of an open piste.
+        layer(
+            "pistes-unknown-casing",
+            "line",
+            Some("pistes"),
+            json!({"filter": unknown.clone(), "layout": {"line-cap": "round", "line-join": "round"},
+                   "paint": {"line-color": ["match", ["coalesce", ["get", "difficulty"], ""], "advanced", p.unknown_black, p.unknown],
+                             "line-width": w_casing}}),
+        ),
+        contrast(
+            layer(
+                "pistes-unknown",
+                "line",
+                Some("pistes"),
+                json!({"filter": unknown, "layout": {"line-cap": "round", "line-join": "round"},
+                       "paint": {"line-color": piste_color(p), "line-width": w_core}}),
+            ),
+            "pistes-unknown-casing",
         ),
         contrast(
             layer(
@@ -744,6 +815,17 @@ fn pistes(p: &Palette, primary: bool) -> Vec<Value> {
 
 fn groomed_json() -> Value {
     json!(["all", nordic(), ["!=", ["get", "grooming"], "backcountry"]])
+}
+
+/// The state of the piste is known (`open` or `closed`); a piste without the field (pack
+/// without trail status) is unknown.
+fn known_state() -> Value {
+    one_of_coalesced("state", &["open", "closed"])
+}
+
+/// `["match", ["coalesce", ["get", key], ""], [values], true, false]`.
+fn one_of_coalesced(key: &str, values: &[&str]) -> Value {
+    json!(["match", ["coalesce", ["get", key], ""], values, true, false])
 }
 
 /// Closed pistes (field `state` of the pistes layer, joined way by way from the trail
@@ -801,15 +883,17 @@ fn oneway_arrows(p: &Palette, theme: Theme) -> Value {
     )
 }
 
+/// Piste names along the lines merged by itinerary (`piste-labels` of the pack): the
+/// OSM ways are too short for most names.
 fn piste_labels(p: &Palette, minzoom: f64, size: f64) -> Value {
     layer(
         "pistes-label",
         "symbol",
-        Some("pistes"),
-        json!({"minzoom": minzoom, "filter": ["all", nordic(), ["has", "name"]],
+        Some("piste-labels"),
+        json!({"minzoom": minzoom, "filter": ["has", "name"],
                "layout": {"symbol-placement": "line", "text-field": ["get", "name"],
-                          "text-font": [SEMIBOLD], "text-size": size, "symbol-spacing": 350,
-                          "text-max-angle": 30, "text-padding": 8},
+                          "text-font": [SEMIBOLD], "text-size": size, "symbol-spacing": 300,
+                          "text-max-angle": 35, "text-padding": 6},
                "paint": text_paint(p.text, p.halo, 2.5)}),
     )
 }
@@ -1132,15 +1216,125 @@ fn class_fills(
         .collect()
 }
 
-/// Raster classes of the pack (palette PNG): pixels kept sharp, under every line.
-fn raster(id: &str, opacity: Value, visible: bool) -> Value {
+/// Estimated snow classes of a practice (`snow-groomed`, `snow-srn`: 0 insufficient, 1
+/// borderline, 2 sufficient), vector polygons in the colours of the theme, hidden until
+/// asked for (`metadata.skimap:optional_layers`).
+fn snow(p: &Palette, source: &str) -> Vec<Value> {
+    let mut v = class_fills(
+        source,
+        source,
+        &[(0, p.snow[0]), (1, p.snow[1]), (2, p.snow[2])],
+        json!(p.snow_opacity),
+        None,
+        None,
+    );
+    for l in &mut v {
+        l["layout"] = json!({"visibility": "none"});
+    }
+    v
+}
+
+/// SRN play areas and itineraries outside the groomed domains (`srn-areas`,
+/// `srn-routes`). SRN style: a faint tint and a dashed outline for the areas, the
+/// itineraries of SRN or easy ski touring in a solid line of their own hue with their
+/// names, snowshoe and other ski touring itineraries attached to the areas dotted. Fond:
+/// the SRN itineraries only, thin, dashed, no names (`primary` false).
+fn srn_layers(p: &Palette, primary: bool) -> Vec<Value> {
+    let skiable = one_of("activity", &["srn", "easy_ski_touring"]);
+    if !primary {
+        return vec![layer(
+            "srn-routes-line",
+            "line",
+            Some("srn-routes"),
+            json!({"minzoom": 11, "filter": skiable,
+                   "layout": {"line-cap": "butt", "line-join": "round"},
+                   "paint": {"line-color": p.srn, "line-width": zl(&[(11.0, 1.0), (16.0, 2.2)]),
+                             "line-dasharray": [3, 2], "line-opacity": 0.8}}),
+        )];
+    }
+    vec![
+        layer(
+            "srn-areas-fill",
+            "fill",
+            Some("srn-areas"),
+            json!({"paint": {"fill-color": p.srn, "fill-opacity": zl(&[(9.0, 0.10), (13.0, 0.05)])}}),
+        ),
+        contrast(
+            layer(
+                "srn-areas-line",
+                "line",
+                Some("srn-areas"),
+                json!({"paint": {"line-color": p.srn, "line-width": zl(&[(9.0, 0.8), (15.0, 1.6)]),
+                                 "line-dasharray": [4, 3], "line-opacity": 0.7}}),
+            ),
+            "background",
+        ),
+        layer(
+            "srn-routes-other",
+            "line",
+            Some("srn-routes"),
+            json!({"minzoom": 12, "filter": ["!", skiable.clone()], "layout": {"line-cap": "round"},
+                   "paint": {"line-color": p.srn, "line-width": zl(&[(12.0, 1.0), (16.0, 2.0)]),
+                             "line-dasharray": [0.5, 2]}}),
+        ),
+        layer(
+            "srn-routes-casing",
+            "line",
+            Some("srn-routes"),
+            json!({"filter": skiable.clone(), "layout": {"line-cap": "round", "line-join": "round"},
+                   "paint": {"line-color": p.halo, "line-width": zl(&[(9.0, 3.0), (13.0, 5.0), (16.0, 8.0)])}}),
+        ),
+        contrast(
+            layer(
+                "srn-routes-line",
+                "line",
+                Some("srn-routes"),
+                json!({"filter": skiable, "layout": {"line-cap": "round", "line-join": "round"},
+                       "paint": {"line-color": p.srn, "line-width": zl(&[(9.0, 1.6), (13.0, 2.8), (16.0, 4.5)])}}),
+            ),
+            "background",
+        ),
+    ]
+}
+
+/// Names of the SRN itineraries along their line (SRN style).
+fn srn_labels(p: &Palette) -> Value {
     layer(
-        id,
-        "raster",
-        Some(id),
-        json!({"layout": {"visibility": if visible { "visible" } else { "none" }},
-               "paint": {"raster-opacity": opacity, "raster-resampling": "nearest", "raster-fade-duration": 0}}),
+        "srn-routes-label",
+        "symbol",
+        Some("srn-routes"),
+        json!({"minzoom": 12, "filter": ["all", one_of("activity", &["srn", "easy_ski_touring"]), ["has", "name"]],
+               "layout": {"symbol-placement": "line", "text-field": ["get", "name"], "text-font": [SEMIBOLD],
+                          "text-size": 12, "symbol-spacing": 400, "text-max-angle": 35, "text-padding": 6,
+                          "text-offset": [0, 0.9]},
+               "paint": text_paint(p.text, p.halo, 2.5)}),
     )
+}
+
+/// Trail-pass validity zones (`fee-zones`, schema of `android/docs/telechargement.md`):
+/// a thin discreet outline of the zones of a site or a group of sites (the regional and
+/// national passes cover everything, no outline), the pass name along it from z13.
+fn fee_zones(p: &Palette) -> Vec<Value> {
+    let local = one_of("kind", &["site", "groupement", "departement"]);
+    vec![
+        layer(
+            "fee-zones-line",
+            "line",
+            Some("fee-zones"),
+            json!({"minzoom": 10, "filter": local.clone(),
+                   "paint": {"line-color": p.fee, "line-width": zl(&[(10.0, 0.8), (16.0, 1.6)]),
+                             "line-dasharray": [1, 2.5]}}),
+        ),
+        layer(
+            "fee-zones-label",
+            "symbol",
+            Some("fee-zones"),
+            json!({"minzoom": 13, "filter": ["all", local, ["has", "name"]],
+                   "layout": {"symbol-placement": "line", "text-field": ["get", "name"], "text-font": [ITALIC],
+                              "text-size": 11, "symbol-spacing": 600, "text-max-angle": 30, "text-offset": [0, 0.8]},
+                   "paint": text_paint(p.text_soft, p.halo, 2.0)}),
+        ),
+    ]
 }
 
 /// Position of the skier (runtime source): accuracy disc and dot.
@@ -1184,12 +1378,14 @@ fn fond(theme: Theme) -> Vec<Value> {
     let p = theme.palette();
     let mut v = vec![background(p)];
     v.extend(ground_cover(p, false));
-    v.push(raster("snow-groomed", json!(0.6), false));
+    v.extend(snow(p, "snow-groomed"));
     v.extend(water(p, 13.0));
     v.extend(contours(p, false));
     v.extend(roads(p, false, 11.0));
     v.push(buildings(p));
     v.push(lifts(p));
+    v.extend(fee_zones(p));
+    v.extend(srn_layers(p, false));
     v.push(exposure_segments(p, 3, true));
     v.extend(pistes(p, true));
     v.extend(status_closed(p, true));
@@ -1207,21 +1403,23 @@ fn srn(theme: Theme) -> Vec<Value> {
     let p = theme.palette();
     let mut v = vec![background(p)];
     v.extend(ground_cover(p, true));
-    // Snow (optional raster) first: rasters go under every vector layer.
-    v.push(raster("snow-srn", json!(0.6), false));
-    // Exposure at the scale of the domain, slope classes when zoomed in.
+    v.extend(snow(p, "snow-srn"));
+    // One reading at a time (X6, #140): the avalanche exposure at the scale of the
+    // domain (z11 to 13), the slope classes from z13 (fade between 12.5 and 13.5, never
+    // both at full strength); near steep ground the exposure stays on the pistes
+    // (striped band) and the known avalanche paths keep their own outline.
     v.extend(class_fills(
         "avalanche-exposure",
         "exposure",
         &[(2, p.exposure_fill[0]), (3, p.exposure_fill[1])],
         zl(&[
             (11.0, 0.0),
-            (12.0, p.exposure_opacity),
-            (13.0, p.exposure_opacity),
-            (14.0, 0.0),
+            (11.5, p.exposure_opacity),
+            (12.5, p.exposure_opacity),
+            (13.0, 0.0),
         ]),
         Some(11.0),
-        Some(14.0),
+        Some(13.0),
     ));
     v.extend(class_fills(
         "slope",
@@ -1232,10 +1430,11 @@ fn srn(theme: Theme) -> Vec<Value> {
             (3, p.slope[2]),
             (4, p.slope[3]),
         ],
-        zl(&[(13.0, 0.0), (14.0, p.slope_opacity)]),
+        zl(&[(13.0, 0.0), (13.5, p.slope_opacity)]),
         Some(13.0),
         None,
     ));
+    v.extend(srn_layers(p, true).into_iter().take(2));
     v.extend(water(p, 12.0));
     v.push(ign(
         "ign-rock-line",
@@ -1262,11 +1461,13 @@ fn srn(theme: Theme) -> Vec<Value> {
     v.push(exposure_segments(p, 2, false));
     v.extend(pistes(p, false));
     v.extend(status_closed(p, false));
+    v.extend(srn_layers(p, true).into_iter().skip(2));
     v.extend(access_points(p, false));
     v.extend(hut_extras(p));
     v.extend(huts(p, theme, 10.0, 13.0, 13.0, false));
     v.push(contour_labels(p));
-    v.push(piste_labels(p, 15.0, 12.0));
+    v.push(srn_labels(p));
+    v.push(piste_labels(p, 14.0, 12.0));
     v.push(ign(
         "ign-spot-height",
         "symbol",
@@ -1377,7 +1578,7 @@ pub struct Group {
 }
 
 /// Every group, in menu order.
-pub const GROUPS: [Group; 13] = [
+pub const GROUPS: [Group; 15] = [
     Group {
         id: "fond",
         title: "Fond de carte (relief, forêt, eau, routes)",
@@ -1443,6 +1644,16 @@ pub const GROUPS: [Group; 13] = [
         title: "Neige estimée",
         toggleable: true,
     },
+    Group {
+        id: "srn",
+        title: "Itinéraires et domaines SRN (hors stations)",
+        toggleable: true,
+    },
+    Group {
+        id: "redevance",
+        title: "Zones de redevance",
+        toggleable: true,
+    },
 ];
 
 /// Group of a layer, from its identifier.
@@ -1485,6 +1696,10 @@ pub fn group_of(id: &str) -> Option<&'static str> {
             "reseau"
         } else if starts(&["snow"]) {
             "neige"
+        } else if starts(&["srn-areas", "srn-routes"]) {
+            "srn"
+        } else if starts(&["fee-zones"]) {
+            "redevance"
         } else if starts(&["route", "decision"]) {
             "itineraire"
         } else if starts(&["position"]) {
@@ -1529,6 +1744,11 @@ pub fn style(kind: Kind, theme: Theme) -> Value {
         .filter(|(id, _)| used.contains(id.as_str()))
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
+    let optional: Vec<&str> = OPTIONAL_SOURCES
+        .iter()
+        .copied()
+        .filter(|id| used.contains(id))
+        .collect();
     let toggles: Vec<&str> = layers
         .iter()
         .filter(|l| l["layout"]["visibility"] == "none")
@@ -1544,6 +1764,7 @@ pub fn style(kind: Kind, theme: Theme) -> Value {
             "skimap:relative_urls": true,
             "skimap:runtime_sources": runtime,
             "skimap:optional_layers": toggles,
+            "skimap:optional_sources": optional,
             "skimap:groups": groups
         },
         "glyphs": GLYPHS,

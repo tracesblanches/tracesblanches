@@ -606,6 +606,7 @@
       }
     ],
     "skimap:optional_layers": [],
+    "skimap:optional_sources": [],
     "skimap:relative_urls": true,
     "skimap:runtime_sources": {
       "decision": {

@@ -81,7 +81,15 @@
       "type": "fill"
     },
     {
-      "id": "snow-groomed",
+      "filter": [
+        "==",
+        [
+          "get",
+          "class"
+        ],
+        0
+      ],
+      "id": "snow-groomed-0",
       "layout": {
         "visibility": "none"
       },
@@ -89,12 +97,63 @@
         "skimap:group": "neige"
       },
       "paint": {
-        "raster-fade-duration": 0,
-        "raster-opacity": 0.6,
-        "raster-resampling": "nearest"
+        "fill-antialias": true,
+        "fill-color": "#a0522d",
+        "fill-opacity": 0.45
       },
       "source": "snow-groomed",
-      "type": "raster"
+      "source-layer": "snow-groomed",
+      "type": "fill"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "class"
+        ],
+        1
+      ],
+      "id": "snow-groomed-1",
+      "layout": {
+        "visibility": "none"
+      },
+      "metadata": {
+        "skimap:group": "neige"
+      },
+      "paint": {
+        "fill-antialias": true,
+        "fill-color": "#7fb6e6",
+        "fill-opacity": 0.45
+      },
+      "source": "snow-groomed",
+      "source-layer": "snow-groomed",
+      "type": "fill"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "class"
+        ],
+        2
+      ],
+      "id": "snow-groomed-2",
+      "layout": {
+        "visibility": "none"
+      },
+      "metadata": {
+        "skimap:group": "neige"
+      },
+      "paint": {
+        "fill-antialias": true,
+        "fill-color": "#1f5fbf",
+        "fill-opacity": 0.45
+      },
+      "source": "snow-groomed",
+      "source-layer": "snow-groomed",
+      "type": "fill"
     },
     {
       "filter": [
@@ -483,6 +542,148 @@
     },
     {
       "filter": [
+        "match",
+        [
+          "get",
+          "kind"
+        ],
+        [
+          "site",
+          "groupement",
+          "departement"
+        ],
+        true,
+        false
+      ],
+      "id": "fee-zones-line",
+      "metadata": {
+        "skimap:group": "redevance"
+      },
+      "minzoom": 10,
+      "paint": {
+        "line-color": "#6d6875",
+        "line-dasharray": [
+          1,
+          2.5
+        ],
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          10.0,
+          0.8,
+          16.0,
+          1.6
+        ]
+      },
+      "source": "fee-zones",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "all",
+        [
+          "match",
+          [
+            "get",
+            "kind"
+          ],
+          [
+            "site",
+            "groupement",
+            "departement"
+          ],
+          true,
+          false
+        ],
+        [
+          "has",
+          "name"
+        ]
+      ],
+      "id": "fee-zones-label",
+      "layout": {
+        "symbol-placement": "line",
+        "symbol-spacing": 600,
+        "text-field": [
+          "get",
+          "name"
+        ],
+        "text-font": [
+          "Source Sans Pro Italic"
+        ],
+        "text-max-angle": 30,
+        "text-offset": [
+          0,
+          0.8
+        ],
+        "text-size": 11
+      },
+      "metadata": {
+        "skimap:group": "redevance"
+      },
+      "minzoom": 13,
+      "paint": {
+        "text-color": "#5a4632",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 2.0
+      },
+      "source": "fee-zones",
+      "type": "symbol"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "activity"
+        ],
+        [
+          "srn",
+          "easy_ski_touring"
+        ],
+        true,
+        false
+      ],
+      "id": "srn-routes-line",
+      "layout": {
+        "line-cap": "butt",
+        "line-join": "round"
+      },
+      "metadata": {
+        "skimap:group": "srn"
+      },
+      "minzoom": 11,
+      "paint": {
+        "line-color": "#00838f",
+        "line-dasharray": [
+          3,
+          2
+        ],
+        "line-opacity": 0.8,
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          11.0,
+          1.0,
+          16.0,
+          2.2
+        ]
+      },
+      "source": "srn-routes",
+      "type": "line"
+    },
+    {
+      "filter": [
         ">=",
         [
           "coalesce",
@@ -610,17 +811,48 @@
     },
     {
       "filter": [
-        "in",
-        "nordic",
+        "all",
         [
-          "coalesce",
+          "in",
+          "nordic",
           [
-            "get",
-            "uses"
+            "coalesce",
+            [
+              "get",
+              "uses"
+            ],
+            [
+              "literal",
+              []
+            ]
+          ]
+        ],
+        [
+          "any",
+          [
+            "match",
+            [
+              "coalesce",
+              [
+                "get",
+                "state"
+              ],
+              ""
+            ],
+            [
+              "open",
+              "closed"
+            ],
+            true,
+            false
           ],
           [
-            "literal",
-            []
+            "==",
+            [
+              "get",
+              "grooming"
+            ],
+            "backcountry"
           ]
         ]
       ],
@@ -672,27 +904,242 @@
       "filter": [
         "all",
         [
-          "in",
-          "nordic",
+          "all",
+          [
+            "in",
+            "nordic",
+            [
+              "coalesce",
+              [
+                "get",
+                "uses"
+              ],
+              [
+                "literal",
+                []
+              ]
+            ]
+          ],
+          [
+            "!=",
+            [
+              "get",
+              "grooming"
+            ],
+            "backcountry"
+          ]
+        ],
+        [
+          "!",
+          [
+            "match",
+            [
+              "coalesce",
+              [
+                "get",
+                "state"
+              ],
+              ""
+            ],
+            [
+              "open",
+              "closed"
+            ],
+            true,
+            false
+          ]
+        ]
+      ],
+      "id": "pistes-unknown-casing",
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "metadata": {
+        "skimap:group": "pistes"
+      },
+      "paint": {
+        "line-color": [
+          "match",
           [
             "coalesce",
             [
               "get",
-              "uses"
+              "difficulty"
             ],
+            ""
+          ],
+          "advanced",
+          "#c3c8cd",
+          "#dadee2"
+        ],
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          10.0,
+          4.0,
+          12.0,
+          6.0,
+          14.0,
+          9.0,
+          16.0,
+          13.0
+        ]
+      },
+      "source": "pistes",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "all",
+        [
+          "all",
+          [
+            "in",
+            "nordic",
             [
-              "literal",
-              []
+              "coalesce",
+              [
+                "get",
+                "uses"
+              ],
+              [
+                "literal",
+                []
+              ]
             ]
+          ],
+          [
+            "!=",
+            [
+              "get",
+              "grooming"
+            ],
+            "backcountry"
           ]
         ],
         [
-          "!=",
+          "!",
           [
-            "get",
-            "grooming"
+            "match",
+            [
+              "coalesce",
+              [
+                "get",
+                "state"
+              ],
+              ""
+            ],
+            [
+              "open",
+              "closed"
+            ],
+            true,
+            false
+          ]
+        ]
+      ],
+      "id": "pistes-unknown",
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "metadata": {
+        "skimap:contrast": "pistes-unknown-casing",
+        "skimap:group": "pistes"
+      },
+      "paint": {
+        "line-color": [
+          "match",
+          [
+            "coalesce",
+            [
+              "get",
+              "difficulty"
+            ],
+            ""
           ],
-          "backcountry"
+          "novice",
+          "#008c45",
+          "easy",
+          "#0062c4",
+          "intermediate",
+          "#d81e1e",
+          "advanced",
+          "#111111",
+          "#6b6b6b"
+        ],
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          10.0,
+          1.2,
+          12.0,
+          1.6,
+          14.0,
+          2.6,
+          16.0,
+          3.8
+        ]
+      },
+      "source": "pistes",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "all",
+        [
+          "all",
+          [
+            "in",
+            "nordic",
+            [
+              "coalesce",
+              [
+                "get",
+                "uses"
+              ],
+              [
+                "literal",
+                []
+              ]
+            ]
+          ],
+          [
+            "!=",
+            [
+              "get",
+              "grooming"
+            ],
+            "backcountry"
+          ]
+        ],
+        [
+          "match",
+          [
+            "coalesce",
+            [
+              "get",
+              "state"
+            ],
+            ""
+          ],
+          [
+            "open",
+            "closed"
+          ],
+          true,
+          false
         ]
       ],
       "id": "pistes-line",
@@ -1466,31 +1913,13 @@
     },
     {
       "filter": [
-        "all",
-        [
-          "in",
-          "nordic",
-          [
-            "coalesce",
-            [
-              "get",
-              "uses"
-            ],
-            [
-              "literal",
-              []
-            ]
-          ]
-        ],
-        [
-          "has",
-          "name"
-        ]
+        "has",
+        "name"
       ],
       "id": "pistes-label",
       "layout": {
         "symbol-placement": "line",
-        "symbol-spacing": 350,
+        "symbol-spacing": 300,
         "text-field": [
           "get",
           "name"
@@ -1498,8 +1927,8 @@
         "text-font": [
           "Source Sans Pro Semibold"
         ],
-        "text-max-angle": 30,
-        "text-padding": 8,
+        "text-max-angle": 35,
+        "text-padding": 6,
         "text-size": 14.0
       },
       "metadata": {
@@ -1511,7 +1940,7 @@
         "text-halo-color": "#ffffff",
         "text-halo-width": 2.5
       },
-      "source": "pistes",
+      "source": "piste-labels",
       "type": "symbol"
     },
     {
@@ -1737,8 +2166,86 @@
         ],
         [
           "ORO_SOMMET_1",
-          "ORO_SOMMET_2",
-          "ORO_RELIEF_2_T",
+          "ORO_SOMMET_2"
+        ],
+        true,
+        false
+      ],
+      "id": "ign-oro-main-z11",
+      "layout": {
+        "text-field": [
+          "get",
+          "texte"
+        ],
+        "text-font": [
+          "Source Sans Pro Italic"
+        ],
+        "text-max-width": 8,
+        "text-padding": 4,
+        "text-size": 13.5
+      },
+      "maxzoom": 12.0,
+      "metadata": {
+        "skimap:group": "noms"
+      },
+      "minzoom": 11.0,
+      "paint": {
+        "text-color": "#5a4632",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 2.0
+      },
+      "source": "ign",
+      "source-layer": "toponyme_oro_ponc",
+      "type": "symbol"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "txt_typo"
+        ],
+        [
+          "ORO_RELIEF_2_T"
+        ],
+        true,
+        false
+      ],
+      "id": "ign-oro-main-z12",
+      "layout": {
+        "text-field": [
+          "get",
+          "texte"
+        ],
+        "text-font": [
+          "Source Sans Pro Italic"
+        ],
+        "text-max-width": 8,
+        "text-padding": 4,
+        "text-size": 13.5
+      },
+      "maxzoom": 13.0,
+      "metadata": {
+        "skimap:group": "noms"
+      },
+      "minzoom": 12.0,
+      "paint": {
+        "text-color": "#5a4632",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 2.0
+      },
+      "source": "ign",
+      "source-layer": "toponyme_oro_ponc",
+      "type": "symbol"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "txt_typo"
+        ],
+        [
           "TYPO_G_4",
           "TYPO_G_5"
         ],
@@ -1761,7 +2268,7 @@
       "metadata": {
         "skimap:group": "noms"
       },
-      "minzoom": 11.0,
+      "minzoom": 13.0,
       "paint": {
         "text-color": "#5a4632",
         "text-halo-color": "#ffffff",
@@ -1880,10 +2387,29 @@
         "id": "neige",
         "title": "Neige estimée",
         "toggleable": true
+      },
+      {
+        "id": "srn",
+        "title": "Itinéraires et domaines SRN (hors stations)",
+        "toggleable": true
+      },
+      {
+        "id": "redevance",
+        "title": "Zones de redevance",
+        "toggleable": true
       }
     ],
     "skimap:optional_layers": [
-      "snow-groomed"
+      "snow-groomed-0",
+      "snow-groomed-1",
+      "snow-groomed-2"
+    ],
+    "skimap:optional_sources": [
+      "avalanche-segments",
+      "snow-groomed",
+      "srn-routes",
+      "piste-labels",
+      "fee-zones"
     ],
     "skimap:relative_urls": true,
     "skimap:runtime_sources": {
@@ -1903,6 +2429,10 @@
       "data": "layers/avalanche-segments.geojson",
       "type": "geojson"
     },
+    "fee-zones": {
+      "data": "layers/fee-zones.geojson",
+      "type": "geojson"
+    },
     "ign": {
       "attribution": "© IGN Plan IGN v2",
       "type": "vector",
@@ -1912,6 +2442,10 @@
       "attribution": "Protomaps © OpenStreetMap",
       "type": "vector",
       "url": "pmtiles://basemap/osm.pmtiles"
+    },
+    "piste-labels": {
+      "data": "layers/piste-labels.geojson",
+      "type": "geojson"
     },
     "pistes": {
       "data": "layers/pistes.geojson",
@@ -1929,9 +2463,12 @@
       "type": "geojson"
     },
     "snow-groomed": {
-      "tileSize": 256,
-      "type": "raster",
-      "url": "pmtiles://rasters/snow-groomed.pmtiles"
+      "type": "vector",
+      "url": "pmtiles://layers/snow-groomed.pmtiles"
+    },
+    "srn-routes": {
+      "data": "layers/srn-routes.geojson",
+      "type": "geojson"
     }
   },
   "sprite": "basemap/plan-ign/sprite/PlanIgn",

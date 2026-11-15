@@ -12,7 +12,7 @@ use skimap_styles::orphan;
 use skimap_styles::palette::Theme;
 use skimap_styles::schema::{SITES, Snapshot};
 use skimap_styles::styles_dir;
-use skimap_styles::validate::validate;
+use skimap_styles::validate::{unchecked_sources, validate, validate_with};
 
 fn all() -> Vec<(String, Value)> {
     Kind::ALL
@@ -66,11 +66,15 @@ fn every_style_has_its_content() {
         let guidage = ids(Kind::Guidage, t);
         for id in [
             "pistes-line",
+            "pistes-unknown",
             "pistes-closed",
             "pistes-oneway",
             "pistes-label",
             "osm-parking",
             "osm-centre",
+            "srn-routes-line",
+            "fee-zones-line",
+            "snow-groomed-2",
             "position-dot",
         ] {
             assert!(fond.contains(&id.to_string()), "fond {}: {id}", t.name());
@@ -89,6 +93,11 @@ fn every_style_has_its_content() {
             "huts-dot-info",
             "no-network-fill",
             "pistes-line",
+            "pistes-unknown",
+            "srn-areas-line",
+            "srn-routes-line",
+            "srn-routes-label",
+            "snow-srn-0",
         ] {
             assert!(srn.contains(&id.to_string()), "srn {}: {id}", t.name());
         }
@@ -120,6 +129,126 @@ fn every_style_has_its_content() {
         assert!(width(Kind::Srn, "pistes-line") < width(Kind::Fond, "pistes-line"));
         // Guidage is minimal; fond lighter than SRN.
         assert!(guidage.len() < fond.len() && fond.len() < srn.len());
+    }
+}
+
+/// X6 (#140): in SRN, the avalanche exposure and the slope classes are never both drawn
+/// at full strength at one zoom: exposure up to z13, slope from z13 (fade 12.5 to 13.5).
+#[test]
+fn srn_draws_exposure_and_slope_at_different_zooms() {
+    // Opacity of an `interpolate linear zoom` expression at zoom z.
+    fn at(e: &Value, z: f64) -> f64 {
+        let a = e.as_array().unwrap();
+        let stops: Vec<(f64, f64)> = a[3..]
+            .chunks(2)
+            .map(|c| (c[0].as_f64().unwrap(), c[1].as_f64().unwrap()))
+            .collect();
+        if z <= stops[0].0 {
+            return stops[0].1;
+        }
+        for w in stops.windows(2) {
+            let ((z0, v0), (z1, v1)) = (w[0], w[1]);
+            if z <= z1 {
+                return v0 + (v1 - v0) * (z - z0) / (z1 - z0);
+            }
+        }
+        stops.last().unwrap().1
+    }
+    for t in Theme::ALL {
+        let s = style(Kind::Srn, t);
+        let get = |id: &str| s["layers"][layer_index(&s, id)].clone();
+        let (e, sl) = (get("exposure-3"), get("slope-4"));
+        let full_e = t.palette().exposure_opacity;
+        let full_s = t.palette().slope_opacity;
+        for k in 100..=180 {
+            let z = f64::from(k) / 10.0;
+            let ev = if z < e["minzoom"].as_f64().unwrap() || z >= e["maxzoom"].as_f64().unwrap() {
+                0.0
+            } else {
+                at(&e["paint"]["fill-opacity"], z) / full_e
+            };
+            let sv = if z < sl["minzoom"].as_f64().unwrap() {
+                0.0
+            } else {
+                at(&sl["paint"]["fill-opacity"], z) / full_s
+            };
+            assert!(
+                ev + sv <= 1.0 + 1e-9,
+                "{} z{z}: exposure {ev}, slope {sv}",
+                t.name()
+            );
+        }
+    }
+}
+
+/// X7 (#141): a piste whose state is unknown is never drawn like an open piste: the full
+/// colour line and its casing exclude it, the neutral band draws it.
+#[test]
+fn unknown_state_is_never_drawn_as_open() {
+    for k in [Kind::Fond, Kind::Srn] {
+        for t in Theme::ALL {
+            let s = style(k, t);
+            let get = |id: &str| s["layers"][layer_index(&s, id)].clone();
+            let known = json!([
+                "match",
+                ["coalesce", ["get", "state"], ""],
+                ["open", "closed"],
+                true,
+                false
+            ]);
+            for id in ["pistes-line", "pistes-casing"] {
+                let f = get(id)["filter"].to_string();
+                assert!(f.contains(&known.to_string()), "{id}: {f}");
+            }
+            for id in ["pistes-unknown", "pistes-unknown-casing"] {
+                let f = get(id)["filter"].to_string();
+                assert!(f.contains(&json!(["!", known]).to_string()), "{id}: {f}");
+            }
+            // The neutral band is grey in both themes.
+            let band = get("pistes-unknown-casing")["paint"]["line-color"][4]
+                .as_str()
+                .unwrap()
+                .to_string();
+            assert_eq!(band, t.palette().unknown);
+        }
+    }
+}
+
+/// Sources a pack may lack are declared, and each one is checked against at least one pack
+/// of the snapshot or a declared schema (no layer goes unchecked in CI).
+#[test]
+fn optional_sources_are_declared_and_checked() {
+    let snapshot = Snapshot::load().expect("styles/pack-schema.json");
+    for (name, s) in all() {
+        let declared: Vec<&str> = s["metadata"]["skimap:optional_sources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        for id in ["avalanche-areas", "avalanche-exposure"] {
+            if s["sources"].get(id).is_some() {
+                assert!(declared.contains(&id), "{name}: {id} not optional");
+            }
+        }
+        for id in ["pistes", "ign", "zones"] {
+            assert!(!declared.contains(&id), "{name}: {id} optional");
+        }
+        let unchecked = unchecked_sources(&s, &snapshot.packs);
+        assert!(unchecked.is_empty(), "{name}: unchecked {unchecked:?}");
+    }
+    // A public pack (no avalanche-areas, no avalanche-exposure, no SRN layers): valid with
+    // the layers of the absent sources left out.
+    let public: Vec<_> = snapshot
+        .packs
+        .iter()
+        .filter(|p| p.site.starts_with("srn-"))
+        .cloned()
+        .collect();
+    assert_eq!(public.len(), 1);
+    for (name, s) in all() {
+        let errors = validate_with(&s, &public, &snapshot.packs);
+        assert!(errors.is_empty(), "{name}:\n{}", errors.join("\n"));
     }
 }
 
@@ -239,16 +368,34 @@ fn the_validator_refuses_broken_styles() {
         (
             "raster-resampling nearest",
             Box::new(|s| {
-                let i = layer_index(s, "snow-groomed");
+                add_raster(s);
+                let i = layer_index(s, "snow-raster");
                 s["layers"][i]["paint"]["raster-resampling"] = json!("linear");
             }),
         ),
         (
             "rasters go under lines",
             Box::new(|s| {
-                let i = layer_index(s, "snow-groomed");
+                add_raster(s);
+                let i = layer_index(s, "snow-raster");
                 let r = s["layers"].as_array_mut().unwrap().remove(i);
                 s["layers"].as_array_mut().unwrap().push(r);
+            }),
+        ),
+        (
+            "is not a source of the style",
+            Box::new(|s| {
+                s["metadata"]["skimap:optional_sources"]
+                    .as_array_mut()
+                    .unwrap()
+                    .push(json!("nowhere"));
+            }),
+        ),
+        (
+            "source pistes: file absent from the srn-domaine",
+            Box::new(|s| {
+                // pistes is required: a pack without it is refused.
+                s["sources"]["pistes"]["data"] = json!("layers/pistes-absent.geojson");
             }),
         ),
         (
@@ -292,15 +439,31 @@ fn the_validator_refuses_broken_styles() {
             }),
         ),
     ];
+    let mut packs = snapshot.packs.clone();
+    for p in &mut packs {
+        p.raster
+            .insert("rasters/snow-raster.pmtiles".into(), Default::default());
+    }
     for (expected, break_it) in cases {
         let mut s = base.clone();
         break_it(&mut s);
-        let errors = validate(&s, &snapshot.packs);
+        let errors = validate(&s, &packs);
         assert!(
             errors.iter().any(|e| e.contains(expected)),
             "expected an error containing {expected:?}, got {errors:#?}"
         );
     }
+}
+
+/// A palette raster source and layer, right above the background (the styles draw no
+/// raster since the snow became polygons; the validator still checks rasters).
+fn add_raster(s: &mut Value) {
+    s["sources"]["snow-raster"] =
+        json!({"type": "raster", "url": "pmtiles://rasters/snow-raster.pmtiles", "tileSize": 256});
+    let l = json!({"id": "snow-raster", "type": "raster", "source": "snow-raster",
+                   "metadata": {"skimap:group": "neige"},
+                   "paint": {"raster-resampling": "nearest"}});
+    s["layers"].as_array_mut().unwrap().insert(1, l);
 }
 
 fn pack_dir(site: &str) -> PathBuf {
@@ -328,9 +491,16 @@ fn styles_are_valid_against_the_real_packs() {
             "{name}: {} layers, features drawn per layer: {counts:?}",
             s["layers"].as_array().unwrap().len()
         );
+        // The trail-pass zones have no producer yet: their layers are checked against
+        // the declared schema, and on the test pack of the app by the `check_packs`
+        // example (styles/README.md).
+        let unexpected: Vec<&String> = orphans
+            .iter()
+            .filter(|o| !o.starts_with("fee-zones"))
+            .collect();
         assert!(
-            orphans.is_empty(),
-            "{name}: layers drawing nothing: {orphans:?}"
+            unexpected.is_empty(),
+            "{name}: layers drawing nothing: {unexpected:?}"
         );
     }
 }

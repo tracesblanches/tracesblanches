@@ -1143,6 +1143,77 @@
               }
             }
           }
+        },
+        "layers/snow-depth.pmtiles": {
+          "zooms": {
+            "minzoom": 10,
+            "maxzoom": 13
+          },
+          "tiles": 58,
+          "layers": {
+            "snow-depth": {
+              "minzoom": 10,
+              "maxzoom": 13,
+              "features": 236,
+              "geometry": [
+                "Polygon"
+              ],
+              "keys": {
+                "class": null,
+                "label": null
+              }
+            }
+          }
+        },
+        "layers/snow-groomed.pmtiles": {
+          "zooms": {
+            "minzoom": 10,
+            "maxzoom": 13
+          },
+          "tiles": 58,
+          "layers": {
+            "snow-groomed": {
+              "minzoom": 10,
+              "maxzoom": 13,
+              "features": 127,
+              "geometry": [
+                "Polygon"
+              ],
+              "keys": {
+                "class": {
+                  "0": 10,
+                  "1": 10,
+                  "2": 10
+                },
+                "label": null
+              }
+            }
+          }
+        },
+        "layers/snow-srn.pmtiles": {
+          "zooms": {
+            "minzoom": 10,
+            "maxzoom": 13
+          },
+          "tiles": 58,
+          "layers": {
+            "snow-srn": {
+              "minzoom": 10,
+              "maxzoom": 13,
+              "features": 117,
+              "geometry": [
+                "Polygon"
+              ],
+              "keys": {
+                "class": {
+                  "0": 10,
+                  "1": 10,
+                  "2": 10
+                },
+                "label": null
+              }
+            }
+          }
         }
       },
       "geojson": {
@@ -1278,6 +1349,20 @@
             "area_ha": null,
             "kind": null,
             "release": null
+          }
+        },
+        "layers/piste-labels.geojson": {
+          "minzoom": 0,
+          "maxzoom": 24,
+          "features": 41,
+          "geometry": [
+            "LineString"
+          ],
+          "keys": {
+            "difficulty": null,
+            "length_m": null,
+            "name": null,
+            "ways": null
           }
         },
         "layers/pistes-graph-edges.geojson": {
@@ -1417,6 +1502,7 @@
             "licence": null,
             "link": null,
             "mattress_unstaffed": null,
+            "phones": null,
             "quality": null,
             "title": null,
             "url": null,
@@ -1424,7 +1510,8 @@
               "\"gite\"": 0,
               "\"hut\"": 0,
               "\"shelter\"": 0
-            }
+            },
+            "website": null
           }
         },
         "layers/refuges-info.geojson": {
@@ -1449,6 +1536,7 @@
             "modified": null,
             "name": null,
             "owner": null,
+            "phones": null,
             "places": null,
             "places_mattress": null,
             "remark": null,
@@ -1488,8 +1576,10 @@
             "link": null,
             "osm_id": null,
             "osm_type": null,
+            "phones": null,
             "refuges_info_id": null,
-            "tags": null
+            "tags": null,
+            "url": null
           }
         },
         "layers/route-offpiste-bourget-italie.geojson": {
@@ -1632,20 +1722,7 @@
           }
         }
       },
-      "raster": {
-        "rasters/snow-depth.pmtiles": {
-          "minzoom": 9,
-          "maxzoom": 13
-        },
-        "rasters/snow-groomed.pmtiles": {
-          "minzoom": 9,
-          "maxzoom": 13
-        },
-        "rasters/snow-srn.pmtiles": {
-          "minzoom": 9,
-          "maxzoom": 13
-        }
-      },
+      "raster": {},
       "fonts": {
         "basemap/osm/fonts": [
           "Noto Sans Italic",
@@ -1819,7 +1896,7 @@
             "landuse": {
               "minzoom": 2,
               "maxzoom": 15,
-              "features": 21163,
+              "features": 21164,
               "geometry": [
                 "Polygon"
               ],
@@ -2891,6 +2968,73 @@
               }
             }
           }
+        },
+        "layers/snow-depth.pmtiles": {
+          "zooms": {
+            "minzoom": 10,
+            "maxzoom": 13
+          },
+          "tiles": 53,
+          "layers": {
+            "snow-depth": {
+              "minzoom": 10,
+              "maxzoom": 13,
+              "features": 53,
+              "geometry": [
+                "Polygon"
+              ],
+              "keys": {
+                "class": null,
+                "label": null
+              }
+            }
+          }
+        },
+        "layers/snow-groomed.pmtiles": {
+          "zooms": {
+            "minzoom": 10,
+            "maxzoom": 13
+          },
+          "tiles": 53,
+          "layers": {
+            "snow-groomed": {
+              "minzoom": 10,
+              "maxzoom": 13,
+              "features": 53,
+              "geometry": [
+                "Polygon"
+              ],
+              "keys": {
+                "class": {
+                  "0": 10
+                },
+                "label": null
+              }
+            }
+          }
+        },
+        "layers/snow-srn.pmtiles": {
+          "zooms": {
+            "minzoom": 10,
+            "maxzoom": 13
+          },
+          "tiles": 53,
+          "layers": {
+            "snow-srn": {
+              "minzoom": 10,
+              "maxzoom": 13,
+              "features": 53,
+              "geometry": [
+                "Polygon"
+              ],
+              "keys": {
+                "class": {
+                  "0": 10
+                },
+                "label": null
+              }
+            }
+          }
         }
       },
       "geojson": {
@@ -3001,6 +3145,20 @@
             "area_ha": null,
             "kind": null,
             "release": null
+          }
+        },
+        "layers/piste-labels.geojson": {
+          "minzoom": 0,
+          "maxzoom": 24,
+          "features": 218,
+          "geometry": [
+            "LineString"
+          ],
+          "keys": {
+            "difficulty": null,
+            "length_m": null,
+            "name": null,
+            "ways": null
           }
         },
         "layers/pistes-graph-edges.geojson": {
@@ -3144,6 +3302,7 @@
             "licence": null,
             "link": null,
             "mattress_unstaffed": null,
+            "phones": null,
             "quality": null,
             "title": null,
             "url": null,
@@ -3151,7 +3310,8 @@
               "\"gite\"": 0,
               "\"hut\"": 0,
               "\"shelter\"": 0
-            }
+            },
+            "website": null
           }
         },
         "layers/refuges-info.geojson": {
@@ -3176,6 +3336,7 @@
             "modified": null,
             "name": null,
             "owner": null,
+            "phones": null,
             "places": null,
             "places_mattress": null,
             "remark": null,
@@ -3192,7 +3353,8 @@
               "\"point d'eau\"": 0
             },
             "url": null,
-            "water_100m": null
+            "water_100m": null,
+            "website": null
           }
         },
         "layers/refuges-osm.geojson": {
@@ -3214,8 +3376,10 @@
             "link": null,
             "osm_id": null,
             "osm_type": null,
+            "phones": null,
             "refuges_info_id": null,
-            "tags": null
+            "tags": null,
+            "url": null
           }
         },
         "layers/route-offpiste-risoux-aout.geojson": {
@@ -3363,20 +3527,1623 @@
           }
         }
       },
-      "raster": {
-        "rasters/snow-depth.pmtiles": {
-          "minzoom": 9,
-          "maxzoom": 13
+      "raster": {},
+      "fonts": {
+        "basemap/osm/fonts": [
+          "Noto Sans Italic",
+          "Noto Sans Medium",
+          "Noto Sans Regular"
+        ],
+        "basemap/plan-ign/fonts": [
+          "Source Sans Pro",
+          "Source Sans Pro Bold",
+          "Source Sans Pro Italic",
+          "Source Sans Pro Regular",
+          "Source Sans Pro Semibold"
+        ]
+      },
+      "sprites": {
+        "basemap/osm/sprites/light": [
+          "NL:S-road-1char",
+          "NL:S-road-2char",
+          "NL:S-road-3char",
+          "NL:S-road-4char",
+          "NL:S-road-5char",
+          "US:I-1char",
+          "US:I-2char",
+          "US:I-3char",
+          "US:I-4char",
+          "US:I-5char",
+          "aerodrome",
+          "animal",
+          "arrow",
+          "artwork",
+          "attraction",
+          "bar",
+          "beach",
+          "beauty",
+          "bench",
+          "books",
+          "building",
+          "bus_stop",
+          "cafe",
+          "capital",
+          "clothes",
+          "convenience",
+          "drinking_water",
+          "electronics",
+          "fast_food",
+          "ferry_terminal",
+          "forest",
+          "garden",
+          "generic_shield-1char",
+          "generic_shield-2char",
+          "generic_shield-3char",
+          "generic_shield-4char",
+          "generic_shield-5char",
+          "library",
+          "marina",
+          "museum",
+          "park",
+          "peak",
+          "post_office",
+          "restaurant",
+          "school",
+          "stadium",
+          "supermarket",
+          "theatre",
+          "toilets",
+          "townspot",
+          "train_station",
+          "university",
+          "zoo"
+        ],
+        "basemap/plan-ign/sprite/PlanIgn": [
+          "Abri",
+          "Aerodrome",
+          "Aeroport",
+          "Balise",
+          "Barrage",
+          "Barriere",
+          "Cimetiere",
+          "ConstrSpeciale",
+          "Ecluse",
+          "Eolienne",
+          "Feu",
+          "Gare",
+          "Glacier",
+          "Gravier",
+          "GravierSec",
+          "Hopital",
+          "Localite",
+          "Marais",
+          "MaraisSalant",
+          "Metro",
+          "Phare",
+          "Pompage",
+          "Refugegard",
+          "Refugenongard",
+          "Reservoir",
+          "Rien",
+          "RocherHydro",
+          "Sable",
+          "SableHumide",
+          "Silo"
+        ]
+      }
+    },
+    {
+      "site": "srn-domaine-geotrek-geo-pnr-vercors-fr-29403-1",
+      "vector": {
+        "basemap/osm.pmtiles": {
+          "zooms": {
+            "minzoom": 0,
+            "maxzoom": 15
+          },
+          "tiles": 1038,
+          "layers": {
+            "boundaries": {
+              "minzoom": 0,
+              "maxzoom": 15,
+              "features": 721,
+              "geometry": [
+                "LineString"
+              ],
+              "keys": {
+                "brk_a3": null,
+                "disputed": null,
+                "kind": null,
+                "kind_detail": null,
+                "sort_rank": null
+              }
+            },
+            "buildings": {
+              "minzoom": 11,
+              "maxzoom": 15,
+              "features": 12202,
+              "geometry": [
+                "Point",
+                "Polygon"
+              ],
+              "keys": {
+                "addr_housenumber": null,
+                "height": null,
+                "kind": null,
+                "kind_detail": null,
+                "layer": null,
+                "sort_rank": null
+              }
+            },
+            "earth": {
+              "minzoom": 0,
+              "maxzoom": 15,
+              "features": 44011,
+              "geometry": [
+                "LineString",
+                "Point",
+                "Polygon"
+              ],
+              "keys": {
+                "kind": null,
+                "min_zoom": null,
+                "name": null
+              }
+            },
+            "landcover": {
+              "minzoom": 0,
+              "maxzoom": 7,
+              "features": 64,
+              "geometry": [
+                "Polygon"
+              ],
+              "keys": {
+                "kind": null
+              }
+            },
+            "landuse": {
+              "minzoom": 2,
+              "maxzoom": 15,
+              "features": 27669,
+              "geometry": [
+                "Polygon"
+              ],
+              "keys": {
+                "kind": null,
+                "sort_rank": null
+              }
+            },
+            "places": {
+              "minzoom": 1,
+              "maxzoom": 15,
+              "features": 4543,
+              "geometry": [
+                "Point"
+              ],
+              "keys": {
+                "capital": null,
+                "kind": null,
+                "kind_detail": null,
+                "min_zoom": null,
+                "name": null,
+                "name2": null,
+                "name3": null,
+                "name:fr": null,
+                "population": null,
+                "population_rank": null,
+                "ref": null,
+                "ref:catasto": null,
+                "script": null,
+                "script2": null,
+                "script3": null,
+                "sort_key": null,
+                "wikidata": null
+              }
+            },
+            "pois": {
+              "minzoom": 6,
+              "maxzoom": 15,
+              "features": 4591,
+              "geometry": [
+                "Point"
+              ],
+              "keys": {
+                "elevation": null,
+                "kind": null,
+                "kind_detail": null,
+                "min_zoom": null,
+                "name": null,
+                "name:fr": null
+              }
+            },
+            "roads": {
+              "minzoom": 3,
+              "maxzoom": 15,
+              "features": 8264,
+              "geometry": [
+                "LineString"
+              ],
+              "keys": {
+                "access": null,
+                "is_bridge": null,
+                "is_link": null,
+                "is_tunnel": null,
+                "kind": null,
+                "kind_detail": null,
+                "min_zoom": null,
+                "name": null,
+                "network": null,
+                "network_1": null,
+                "network_2": null,
+                "network_3": null,
+                "oneway": null,
+                "ref": null,
+                "route": null,
+                "service": null,
+                "shield_text": null,
+                "shield_text_1": null,
+                "shield_text_2": null,
+                "shield_text_3": null,
+                "sort_rank": null
+              }
+            },
+            "water": {
+              "minzoom": 0,
+              "maxzoom": 15,
+              "features": 2258,
+              "geometry": [
+                "LineString",
+                "Point",
+                "Polygon"
+              ],
+              "keys": {
+                "kind": null,
+                "kind_detail": null,
+                "layer": null,
+                "min_zoom": null,
+                "name": null,
+                "name:fr": null,
+                "sort_rank": null
+              }
+            }
+          }
         },
-        "rasters/snow-groomed.pmtiles": {
-          "minzoom": 9,
-          "maxzoom": 13
+        "basemap/plan-ign.pmtiles": {
+          "zooms": {
+            "minzoom": 0,
+            "maxzoom": 16
+          },
+          "tiles": 3858,
+          "layers": {
+            "bati_lin": {
+              "minzoom": 10,
+              "maxzoom": 16,
+              "features": 2967,
+              "geometry": [
+                "LineString"
+              ],
+              "keys": {
+                "niveau": null,
+                "symbo": {
+                  "\"BARRAGE_LIN\"": 13,
+                  "\"DIGUE\"": 12,
+                  "\"LIGNE_ELECTRIQUE\"": 12,
+                  "\"MUR\"": 13,
+                  "\"MUR_PARAVALANCHE\"": 13,
+                  "\"MUR_PIERRES_SECHES\"": 13,
+                  "\"MUR_SOUTENEMENT\"": 13,
+                  "\"PISTE_LUGE\"": 13,
+                  "\"REMONTEE_MEC\"": 10,
+                  "\"RUINE_LIN\"": 13
+                },
+                "territoire": null
+              }
+            },
+            "bati_ponc": {
+              "minzoom": 3,
+              "maxzoom": 16,
+              "features": 3082,
+              "geometry": [
+                "Point"
+              ],
+              "keys": {
+                "niveau": null,
+                "rotation": null,
+                "symbo": null,
+                "territoire": null
+              }
+            },
+            "bati_surf": {
+              "minzoom": 12,
+              "maxzoom": 16,
+              "features": 35891,
+              "geometry": [
+                "Polygon"
+              ],
+              "keys": {
+                "alti_sol": null,
+                "hauteur": null,
+                "isole": null,
+                "niveau": null,
+                "symbo": null,
+                "territoire": null
+              }
+            },
+            "bati_zai": {
+              "minzoom": 13,
+              "maxzoom": 16,
+              "features": 526,
+              "geometry": [
+                "Polygon"
+              ],
+              "keys": {
+                "nature": null,
+                "niveau": null,
+                "territoire": null
+              }
+            },
+            "bati_zone_surf": {
+              "minzoom": 3,
+              "maxzoom": 14,
+              "features": 6334,
+              "geometry": [
+                "Polygon"
+              ],
+              "keys": {
+                "niveau": null,
+                "symbo": {
+                  "\"ZONE_BATI\"": 3,
+                  "\"ZONE_INDUS_ACTI\"": 10
+                },
+                "territoire": null
+              }
+            },
+            "ferre": {
+              "minzoom": 10,
+              "maxzoom": 16,
+              "features": 614,
+              "geometry": [
+                "LineString"
+              ],
+              "keys": {
+                "niveau": null,
+                "symbo": null,
+                "territoire": null
+              }
+            },
+            "ferre_sou": {
+              "minzoom": 10,
+              "maxzoom": 16,
+              "features": 108,
+              "geometry": [
+                "LineString"
+              ],
+              "keys": {
+                "niveau": null,
+                "symbo": null,
+                "territoire": null
+              }
+            },
+            "ferre_sup": {
+              "minzoom": 10,
+              "maxzoom": 16,
+              "features": 282,
+              "geometry": [
+                "LineString"
+              ],
+              "keys": {
+                "niveau": null,
+                "symbo": null,
+                "territoire": null
+              }
+            },
+            "fond_opaque": {
+              "minzoom": 0,
+              "maxzoom": 16,
+              "features": 3858,
+              "geometry": [
+                "Polygon"
+              ],
+              "keys": {}
+            },
+            "hydro_ponc": {
+              "minzoom": 10,
+              "maxzoom": 16,
+              "features": 1804,
+              "geometry": [
+                "Point"
+              ],
+              "keys": {
+                "niveau": null,
+                "symbo": null,
+                "territoire": null
+              }
+            },
+            "hydro_reseau": {
+              "minzoom": 0,
+              "maxzoom": 16,
+              "features": 33670,
+              "geometry": [
+                "LineString"
+              ],
+              "keys": {
+                "niveau": null,
+                "symbo": {
+                  "\"CANAL\"": 13,
+                  "\"COURS_D_EAU\"": 0,
+                  "\"COURS_D_EAU_LAR\"": 7,
+                  "\"COURS_D_EAU_MOY\"": 7,
+                  "\"COURS_D_EAU_TEMP\"": 12,
+                  "\"COURS_D_EAU_TEMP_MOY\"": 12
+                },
+                "territoire": null,
+                "toponyme": null
+              }
+            },
+            "hydro_reseau_sou": {
+              "minzoom": 10,
+              "maxzoom": 16,
+              "features": 17,
+              "geometry": [
+                "LineString"
+              ],
+              "keys": {
+                "niveau": null,
+                "symbo": null,
+                "territoire": null
+              }
+            },
+            "hydro_reseau_sup": {
+              "minzoom": 13,
+              "maxzoom": 16,
+              "features": 11,
+              "geometry": [
+                "LineString"
+              ],
+              "keys": {
+                "niveau": null,
+                "symbo": null,
+                "territoire": null
+              }
+            },
+            "hydro_surf": {
+              "minzoom": 0,
+              "maxzoom": 16,
+              "features": 1572,
+              "geometry": [
+                "Polygon"
+              ],
+              "keys": {
+                "niveau": null,
+                "symbo": {
+                  "\"BASSIN\"": 13,
+                  "\"SURFACE_D_EAU\"": 0,
+                  "\"SURFACE_D_EAU_TEMP\"": 13,
+                  "\"ZONE_MARINE\"": 0
+                },
+                "territoire": null,
+                "toponyme": null
+              }
+            },
+            "limite_lin": {
+              "minzoom": 0,
+              "maxzoom": 16,
+              "features": 14857,
+              "geometry": [
+                "LineString"
+              ],
+              "keys": {
+                "niveau": null,
+                "symbo": null,
+                "territoire": null
+              }
+            },
+            "limite_ponc": {
+              "minzoom": 10,
+              "maxzoom": 11,
+              "features": 3,
+              "geometry": [
+                "Point"
+              ],
+              "keys": {
+                "niveau": null,
+                "symbo": null,
+                "territoire": null
+              }
+            },
+            "ocs_lin": {
+              "minzoom": 13,
+              "maxzoom": 16,
+              "features": 830,
+              "geometry": [
+                "LineString"
+              ],
+              "keys": {
+                "niveau": null,
+                "symbo": {
+                  "\"BARRE_ROCH_ISOLEE\"": 13,
+                  "\"COULEE_EBOULIS\"": 13,
+                  "\"LIGNE_DESC_ZONE_ROCHEUSE\"": 13
+                },
+                "territoire": null
+              }
+            },
+            "ocs_nature_sol_surf": {
+              "minzoom": 10,
+              "maxzoom": 16,
+              "features": 381,
+              "geometry": [
+                "Polygon"
+              ],
+              "keys": {
+                "niveau": null,
+                "symbo": {
+                  "\"FOND_CUVETTE_HUMIDE\"": 13,
+                  "\"ZONE_EBOULIS\"": 13,
+                  "\"ZONE_RAVINEE\"": 13,
+                  "\"ZONE_ROCHEUSE\"": 12,
+                  "\"ZONE_SABLE_HUMIDE\"": 10
+                },
+                "territoire": null
+              }
+            },
+            "ocs_vegetation_surf": {
+              "minzoom": 7,
+              "maxzoom": 16,
+              "features": 48589,
+              "geometry": [
+                "Polygon"
+              ],
+              "keys": {
+                "niveau": null,
+                "symbo": {
+                  "\"ZONE_BOISEE\"": 7,
+                  "\"ZONE_FORET_FERMEE_CONI\"": 13,
+                  "\"ZONE_FORET_FERMEE_FEUIL\"": 13,
+                  "\"ZONE_FORET_FERMEE_MIXTE\"": 13,
+                  "\"ZONE_FORET_OUVERTE\"": 13,
+                  "\"ZONE_LANDE_LIGNEUSE\"": 12,
+                  "\"ZONE_MARAIS\"": 10,
+                  "\"ZONE_VERGER\"": 13,
+                  "\"ZONE_VIGNE\"": 13
+                },
+                "territoire": null
+              }
+            },
+            "oro_courbe": {
+              "minzoom": 10,
+              "maxzoom": 16,
+              "features": 58687,
+              "geometry": [
+                "LineString"
+              ],
+              "keys": {
+                "hors_zone": null,
+                "niveau": null,
+                "symbo": {
+                  "\"CNV_MAITRESSE\"": 10,
+                  "\"CNV_NORMALE\"": 10,
+                  "\"CNV_ROCHER_MAITRESSE\"": 12,
+                  "\"CNV_ROCHER_NORMALE\"": 12,
+                  "\"CUVETTE_MAITRESSE\"": 13,
+                  "\"CUVETTE_NORMALE\"": 13
+                },
+                "territoire": null,
+                "texte": null
+              }
+            },
+            "oro_lin": {
+              "minzoom": 13,
+              "maxzoom": 16,
+              "features": 1521,
+              "geometry": [
+                "LineString"
+              ],
+              "keys": {
+                "niveau": null,
+                "symbo": null,
+                "territoire": null
+              }
+            },
+            "oro_ponc": {
+              "minzoom": 10,
+              "maxzoom": 16,
+              "features": 3042,
+              "geometry": [
+                "Point"
+              ],
+              "keys": {
+                "niveau": null,
+                "symbo": {
+                  "\"AVEN\"": 13,
+                  "\"BLOC_ROCHEUX_ISOLE\"": 13,
+                  "\"GOUFFRE\"": 13,
+                  "\"GROTTE\"": 10,
+                  "\"POINT_COTE\"": 12,
+                  "\"POINT_COTE_TOPO\"": 10,
+                  "\"POINT_RBF\"": 12
+                },
+                "territoire": null,
+                "texte": null
+              }
+            },
+            "oro_relief": {
+              "minzoom": 0,
+              "maxzoom": 6,
+              "features": 9644,
+              "geometry": [
+                "Polygon"
+              ],
+              "keys": {
+                "niveau": null,
+                "symbo": null,
+                "territoire": null
+              }
+            },
+            "routier_chemin": {
+              "minzoom": 11,
+              "maxzoom": 16,
+              "features": 37995,
+              "geometry": [
+                "LineString"
+              ],
+              "keys": {
+                "niveau": null,
+                "sens_circu": null,
+                "symbo": {
+                  "\"CHEMIN\"": 11,
+                  "\"ESCALIER\"": 13,
+                  "\"PISTE_CYCLABLE\"": 13,
+                  "\"RUE_PIETONNE\"": 13,
+                  "\"SENTIER\"": 13
+                },
+                "territoire": null
+              }
+            },
+            "routier_chemin_sou": {
+              "minzoom": 13,
+              "maxzoom": 16,
+              "features": 13,
+              "geometry": [
+                "LineString"
+              ],
+              "keys": {
+                "niveau": null,
+                "sens_circu": null,
+                "symbo": null,
+                "territoire": null
+              }
+            },
+            "routier_chemin_sup": {
+              "minzoom": 12,
+              "maxzoom": 16,
+              "features": 198,
+              "geometry": [
+                "LineString"
+              ],
+              "keys": {
+                "niveau": null,
+                "sens_circu": null,
+                "symbo": null,
+                "territoire": null
+              }
+            },
+            "routier_liaison": {
+              "minzoom": 7,
+              "maxzoom": 16,
+              "features": 1275,
+              "geometry": [
+                "LineString"
+              ],
+              "keys": {
+                "niveau": null,
+                "symbo": null,
+                "territoire": null
+              }
+            },
+            "routier_ponc": {
+              "minzoom": 7,
+              "maxzoom": 16,
+              "features": 423,
+              "geometry": [
+                "Point"
+              ],
+              "keys": {
+                "niveau": null,
+                "rotation": null,
+                "symbo": null,
+                "territoire": null
+              }
+            },
+            "routier_route": {
+              "minzoom": 3,
+              "maxzoom": 16,
+              "features": 36967,
+              "geometry": [
+                "LineString"
+              ],
+              "keys": {
+                "fictif": null,
+                "niveau": null,
+                "rond_point": null,
+                "sens_circu": null,
+                "symbo": {
+                  "\"AUTOROU_LIBRE\"": 7,
+                  "\"AUTOROU_PEAGE\"": 3,
+                  "\"BRET_AUTO_PEAGE_1\"": 13,
+                  "\"BRET_LOCALE\"": 12,
+                  "\"LOCALE_1\"": 9,
+                  "\"LOCALE_2\"": 11,
+                  "\"NON_CLASSEE\"": 13,
+                  "\"NON_CLASSEE_RESTREINT\"": 13,
+                  "\"NON_REVETUE_CARRO\"": 11,
+                  "\"NON_REVETUE_CARRO_RESTREINT\"": 13,
+                  "\"PRINCIPALE_1\"": 7,
+                  "\"PRINCIPALE_2\"": 7,
+                  "\"PRINCIPALE_3\"": 7,
+                  "\"PRINCIPALE_4\"": 3,
+                  "\"PRINCIPALE_CONSTR\"": 7,
+                  "\"REGIONALE_1\"": 8,
+                  "\"REGIONALE_2\"": 8,
+                  "\"REGIONALE_3\"": 8,
+                  "\"REGIONALE_4\"": 3
+                },
+                "terminaison": null,
+                "territoire": null
+              }
+            },
+            "routier_route_sou": {
+              "minzoom": 7,
+              "maxzoom": 16,
+              "features": 104,
+              "geometry": [
+                "LineString"
+              ],
+              "keys": {
+                "fictif": null,
+                "niveau": null,
+                "rond_point": null,
+                "sens_circu": null,
+                "symbo": null,
+                "territoire": null
+              }
+            },
+            "routier_route_sup": {
+              "minzoom": 7,
+              "maxzoom": 16,
+              "features": 888,
+              "geometry": [
+                "LineString"
+              ],
+              "keys": {
+                "fictif": null,
+                "niveau": null,
+                "rond_point": null,
+                "sens_circu": null,
+                "symbo": {
+                  "\"AUTOROU_LIBRE_SUP\"": 7,
+                  "\"AUTOROU_PEAGE_SUP\"": 10,
+                  "\"BRET_AUTO_PEAGE_1_SUP\"": 13,
+                  "\"LOCALE_1_SUP\"": 11,
+                  "\"LOCALE_2_SUP\"": 13,
+                  "\"NON_CLASSEE_RESTREINT_SUP\"": 13,
+                  "\"NON_CLASSEE_SUP\"": 13,
+                  "\"NON_REVETUE_CARRO_RESTREINT_SUP\"": 13,
+                  "\"NON_REVETUE_CARRO_SUP\"": 12,
+                  "\"PRINCIPALE_1_SUP\"": 7,
+                  "\"PRINCIPALE_2_SUP\"": 7,
+                  "\"PRINCIPALE_3_SUP\"": 7,
+                  "\"PRINCIPALE_4_SUP\"": 7,
+                  "\"REGIONALE_1_SUP\"": 8,
+                  "\"REGIONALE_2_SUP\"": 8
+                },
+                "territoire": null
+              }
+            },
+            "routier_surf": {
+              "minzoom": 13,
+              "maxzoom": 16,
+              "features": 284,
+              "geometry": [
+                "Polygon"
+              ],
+              "keys": {
+                "niveau": null,
+                "symbo": null,
+                "territoire": null
+              }
+            },
+            "toponyme_bati_ponc": {
+              "minzoom": 10,
+              "maxzoom": 16,
+              "features": 540,
+              "geometry": [
+                "Point"
+              ],
+              "keys": {
+                "designation": null,
+                "niveau": null,
+                "symbo": null,
+                "territoire": null,
+                "texte": null,
+                "txt_typo": null
+              }
+            },
+            "toponyme_ferre_lin": {
+              "minzoom": 12,
+              "maxzoom": 12,
+              "features": 1,
+              "geometry": [
+                "LineString"
+              ],
+              "keys": {
+                "niveau": null,
+                "territoire": null,
+                "texte": null,
+                "txt_typo": null
+              }
+            },
+            "toponyme_hydro_lin": {
+              "minzoom": 7,
+              "maxzoom": 16,
+              "features": 5479,
+              "geometry": [
+                "LineString"
+              ],
+              "keys": {
+                "niveau": null,
+                "territoire": null,
+                "texte": null,
+                "txt_typo": null
+              }
+            },
+            "toponyme_hydro_ponc": {
+              "minzoom": 0,
+              "maxzoom": 16,
+              "features": 728,
+              "geometry": [
+                "Point"
+              ],
+              "keys": {
+                "niveau": null,
+                "rotation": null,
+                "symbo": null,
+                "territoire": null,
+                "texte": null,
+                "txt_typo": null
+              }
+            },
+            "toponyme_limite_ponc": {
+              "minzoom": 7,
+              "maxzoom": 11,
+              "features": 49,
+              "geometry": [
+                "Point"
+              ],
+              "keys": {
+                "niveau": null,
+                "territoire": null,
+                "texte": null,
+                "txt_typo": null
+              }
+            },
+            "toponyme_localite_ponc": {
+              "minzoom": 0,
+              "maxzoom": 16,
+              "features": 18678,
+              "geometry": [
+                "Point"
+              ],
+              "keys": {
+                "niveau": null,
+                "symbo": {
+                  "\"COMMUNE_CHEF_LIEU\"": 13,
+                  "\"COMMUNE_FUSIONNEE\"": 13,
+                  "\"LIEU-DIT-HABITE\"": 13,
+                  "\"N_A\"": 0,
+                  "\"QUARTIER\"": 13
+                },
+                "territoire": null,
+                "texte": null,
+                "txt_typo": {
+                  "\"BAT_CHEF_LIEU_COM\"": 10,
+                  "\"BAT_CHEF_LIEU_COM_T\"": 10,
+                  "\"BAT_COMMUNE_3\"": 10,
+                  "\"BAT_COMMUNE_3_T\"": 12,
+                  "\"BAT_COMMUNE_4\"": 10,
+                  "\"BAT_COMMUNE_4_T\"": 10,
+                  "\"BAT_COMMUNE_5\"": 10,
+                  "\"BAT_COMMUNE_5_T\"": 10,
+                  "\"BAT_COMMUNE_ASSOCIEE\"": 10,
+                  "\"BAT_HAMEAU\"": 10,
+                  "\"BAT_HAMEAU_T\"": 12,
+                  "\"BAT_MAIRIE\"": 12,
+                  "\"TYPO_A_1\"": 7,
+                  "\"TYPO_A_10\"": 13,
+                  "\"TYPO_A_2\"": 7,
+                  "\"TYPO_A_3\"": 7,
+                  "\"TYPO_A_4\"": 7,
+                  "\"TYPO_A_5\"": 7,
+                  "\"TYPO_A_6\"": 13,
+                  "\"TYPO_A_7\"": 13,
+                  "\"TYPO_A_8\"": 13,
+                  "\"TYPO_A_9\"": 13,
+                  "\"TYPO_E_GE\"": 13,
+                  "\"commune 1\"": 0,
+                  "\"commune 2 capitale\"": 0,
+                  "\"commune 2\"": 0,
+                  "\"commune 3 capitale\"": 0,
+                  "\"commune 3\"": 0,
+                  "\"continent\"": 0,
+                  "\"pays 1\"": 0,
+                  "\"pays 2\"": 0,
+                  "\"pays 3\"": 0,
+                  "\"pays 4\"": 0
+                }
+              }
+            },
+            "toponyme_ocs_lin": {
+              "minzoom": 10,
+              "maxzoom": 12,
+              "features": 16,
+              "geometry": [
+                "LineString"
+              ],
+              "keys": {
+                "niveau": null,
+                "territoire": null,
+                "texte": null,
+                "txt_typo": null
+              }
+            },
+            "toponyme_ocs_ponc": {
+              "minzoom": 12,
+              "maxzoom": 16,
+              "features": 1634,
+              "geometry": [
+                "Point"
+              ],
+              "keys": {
+                "niveau": null,
+                "rotation": null,
+                "symbo": {
+                  "\"BOIS\"": 13,
+                  "\"FORET\"": 12,
+                  "\"LIEU-DIT_NON_HABITE\"": 13
+                },
+                "territoire": null,
+                "texte": null,
+                "txt_typo": null
+              }
+            },
+            "toponyme_oro_lin": {
+              "minzoom": 10,
+              "maxzoom": 12,
+              "features": 46,
+              "geometry": [
+                "LineString"
+              ],
+              "keys": {
+                "niveau": null,
+                "territoire": null,
+                "texte": null,
+                "txt_typo": null
+              }
+            },
+            "toponyme_oro_ponc": {
+              "minzoom": 3,
+              "maxzoom": 16,
+              "features": 3125,
+              "geometry": [
+                "Point"
+              ],
+              "keys": {
+                "niveau": null,
+                "rotation": null,
+                "territoire": null,
+                "texte": null,
+                "txt_typo": {
+                  "\"GROTTE\"": 10,
+                  "\"Geoarea\"": 3,
+                  "\"ORO_CAP_3\"": 10,
+                  "\"ORO_COL_1\"": 10,
+                  "\"ORO_COL_2\"": 10,
+                  "\"ORO_COURBE\"": 12,
+                  "\"ORO_COURBE_ROCHER\"": 12,
+                  "\"ORO_GORGE_1\"": 10,
+                  "\"ORO_GORGE_2\"": 10,
+                  "\"ORO_RELIEF_3\"": 12,
+                  "\"ORO_RELIEF_3_T\"": 12,
+                  "\"ORO_RELIEF_4\"": 12,
+                  "\"ORO_RELIEF_4_T\"": 12,
+                  "\"ORO_SOMMET_2\"": 10,
+                  "\"ORO_SOMMET_3\"": 10,
+                  "\"Plain\"": 3,
+                  "\"Plateau\"": 3,
+                  "\"Range/mtn\"": 3,
+                  "\"TYPO_E_GE_marron\"": 13,
+                  "\"TYPO_G_2\"": 13,
+                  "\"TYPO_G_3\"": 7,
+                  "\"TYPO_G_4\"": 7,
+                  "\"TYPO_G_5\"": 7,
+                  "\"TYPO_G_6\"": 13,
+                  "\"TYPO_G_7\"": 13,
+                  "\"TYPO_G_8\"": 13
+                }
+              }
+            },
+            "toponyme_routier_liaison_lin": {
+              "minzoom": 7,
+              "maxzoom": 12,
+              "features": 12,
+              "geometry": [
+                "LineString"
+              ],
+              "keys": {
+                "niveau": null,
+                "territoire": null,
+                "texte": null,
+                "txt_typo": null
+              }
+            },
+            "toponyme_routier_numero_lin": {
+              "minzoom": 7,
+              "maxzoom": 16,
+              "features": 1879,
+              "geometry": [
+                "LineString"
+              ],
+              "keys": {
+                "niveau": null,
+                "territoire": null,
+                "texte": null,
+                "txt_typo": null
+              }
+            },
+            "toponyme_routier_odonyme_lin": {
+              "minzoom": 15,
+              "maxzoom": 16,
+              "features": 4362,
+              "geometry": [
+                "LineString"
+              ],
+              "keys": {
+                "niveau": null,
+                "nom_desabrege": null,
+                "nom_gauche": null,
+                "territoire": null
+              }
+            }
+          }
         },
-        "rasters/snow-srn.pmtiles": {
-          "minzoom": 9,
-          "maxzoom": 13
+        "layers/avalanche-exposure.pmtiles": {
+          "zooms": {
+            "minzoom": 10,
+            "maxzoom": 13
+          },
+          "tiles": 96,
+          "layers": {
+            "avalanche-exposure": {
+              "minzoom": 10,
+              "maxzoom": 13,
+              "features": 276,
+              "geometry": [
+                "Polygon"
+              ],
+              "keys": {
+                "class": {
+                  "1": 10,
+                  "2": 10,
+                  "3": 10
+                },
+                "label": null
+              }
+            }
+          }
+        },
+        "layers/slope.pmtiles": {
+          "zooms": {
+            "minzoom": 10,
+            "maxzoom": 13
+          },
+          "tiles": 96,
+          "layers": {
+            "slope": {
+              "minzoom": 10,
+              "maxzoom": 13,
+              "features": 379,
+              "geometry": [
+                "Polygon"
+              ],
+              "keys": {
+                "class": {
+                  "1": 10,
+                  "2": 10,
+                  "3": 10,
+                  "4": 10
+                },
+                "label": null
+              }
+            }
+          }
+        },
+        "layers/snow-depth.pmtiles": {
+          "zooms": {
+            "minzoom": 10,
+            "maxzoom": 13
+          },
+          "tiles": 96,
+          "layers": {
+            "snow-depth": {
+              "minzoom": 10,
+              "maxzoom": 13,
+              "features": 101,
+              "geometry": [
+                "Polygon"
+              ],
+              "keys": {
+                "class": null,
+                "label": null
+              }
+            }
+          }
+        },
+        "layers/snow-groomed.pmtiles": {
+          "zooms": {
+            "minzoom": 10,
+            "maxzoom": 13
+          },
+          "tiles": 96,
+          "layers": {
+            "snow-groomed": {
+              "minzoom": 10,
+              "maxzoom": 13,
+              "features": 96,
+              "geometry": [
+                "Polygon"
+              ],
+              "keys": {
+                "class": {
+                  "0": 10
+                },
+                "label": null
+              }
+            }
+          }
+        },
+        "layers/snow-srn.pmtiles": {
+          "zooms": {
+            "minzoom": 10,
+            "maxzoom": 13
+          },
+          "tiles": 96,
+          "layers": {
+            "snow-srn": {
+              "minzoom": 10,
+              "maxzoom": 13,
+              "features": 96,
+              "geometry": [
+                "Polygon"
+              ],
+              "keys": {
+                "class": {
+                  "0": 10
+                },
+                "label": null
+              }
+            }
+          }
         }
       },
+      "geojson": {
+        "layers/assist-suggestions.geojson": {
+          "minzoom": 0,
+          "maxzoom": 24,
+          "features": 0,
+          "geometry": [],
+          "keys": {}
+        },
+        "layers/avalanche-segments.geojson": {
+          "minzoom": 0,
+          "maxzoom": 24,
+          "features": 206,
+          "geometry": [
+            "LineString"
+          ],
+          "keys": {
+            "exposure": {
+              "1": 0,
+              "2": 0,
+              "3": 0
+            },
+            "label": null,
+            "length_m": null,
+            "name": null,
+            "network": null,
+            "osm_way_id": null,
+            "relations": null,
+            "run": null,
+            "way_length_m": null,
+            "way_max_exposure": null
+          }
+        },
+        "layers/coverage-area.geojson": {
+          "minzoom": 0,
+          "maxzoom": 24,
+          "features": 1,
+          "geometry": [
+            "Polygon"
+          ],
+          "keys": {
+            "area_km2": null,
+            "kind": null
+          }
+        },
+        "layers/domaines.geojson": {
+          "minzoom": 0,
+          "maxzoom": 24,
+          "features": 2,
+          "geometry": [
+            "Polygon"
+          ],
+          "keys": {
+            "alt_names": null,
+            "commune": null,
+            "id": null,
+            "km_hike_only": null,
+            "km_nordic": null,
+            "lat": null,
+            "lon": null,
+            "merged": null,
+            "name": null,
+            "name_source": null,
+            "openskimap": null,
+            "parent_sites": null,
+            "piste_names": null,
+            "ways": null
+          }
+        },
+        "layers/no-network.geojson": {
+          "minzoom": 0,
+          "maxzoom": 24,
+          "features": 318,
+          "geometry": [
+            "Polygon"
+          ],
+          "keys": {
+            "area_ha": null,
+            "kind": null,
+            "release": null
+          }
+        },
+        "layers/piste-labels.geojson": {
+          "minzoom": 0,
+          "maxzoom": 24,
+          "features": 14,
+          "geometry": [
+            "LineString"
+          ],
+          "keys": {
+            "difficulty": null,
+            "length_m": null,
+            "name": null,
+            "ways": null
+          }
+        },
+        "layers/pistes-graph-edges.geojson": {
+          "minzoom": 0,
+          "maxzoom": 24,
+          "features": 91,
+          "geometry": [
+            "LineString"
+          ],
+          "keys": {
+            "backcountry": null,
+            "classic": null,
+            "colours": null,
+            "difficulty": null,
+            "difficulty_max": null,
+            "difficulty_source": null,
+            "edge": null,
+            "from": null,
+            "from_osm_node": null,
+            "grooming": null,
+            "in_box": null,
+            "kind": null,
+            "length_m": null,
+            "lit": null,
+            "name": null,
+            "oneway": null,
+            "oneway_tag": null,
+            "osm_way_id": null,
+            "relations": null,
+            "scooter": null,
+            "skating": null,
+            "tagged": null,
+            "to": null,
+            "to_osm_node": null,
+            "uses": null,
+            "way_difficulty": null,
+            "way_name": null
+          }
+        },
+        "layers/pistes-graph-nodes.geojson": {
+          "minzoom": 0,
+          "maxzoom": 24,
+          "features": 72,
+          "geometry": [
+            "Point"
+          ],
+          "keys": {
+            "component": null,
+            "degree": null,
+            "node": null,
+            "osm_node_id": null
+          }
+        },
+        "layers/pistes.geojson": {
+          "minzoom": 0,
+          "maxzoom": 24,
+          "features": 78,
+          "geometry": [
+            "LineString"
+          ],
+          "keys": {
+            "backcountry": null,
+            "classic": {
+              "true": 0
+            },
+            "colour_source": null,
+            "colours": null,
+            "difficulty": {
+              "\"advanced\"": 0,
+              "\"easy\"": 0,
+              "\"expert\"": 0,
+              "\"intermediate\"": 0,
+              "\"novice\"": 0
+            },
+            "difficulty_max": null,
+            "difficulty_source": null,
+            "grooming": {
+              "\"classic+skating\"": 0
+            },
+            "in_box": null,
+            "length_m": null,
+            "lit": null,
+            "name": null,
+            "name_source": null,
+            "oneway": {
+              "false": 0
+            },
+            "oneway_tag": null,
+            "osm_way_id": null,
+            "relations": null,
+            "scooter": null,
+            "skating": {
+              "true": 0
+            },
+            "state": {
+              "\"unknown\"": 0
+            },
+            "state_itineraries": null,
+            "tagged": null,
+            "uses": {
+              "[\"nordic\"]": 0
+            },
+            "way_difficulty": null,
+            "way_name": null
+          }
+        },
+        "layers/refuges-camptocamp.geojson": {
+          "minzoom": 0,
+          "maxzoom": 24,
+          "features": 19,
+          "geometry": [
+            "Point"
+          ],
+          "keys": {
+            "access_period": null,
+            "attribution_url": null,
+            "blanket_unstaffed": null,
+            "capacity_staffed": null,
+            "capacity_unstaffed": null,
+            "country": null,
+            "custodianship": null,
+            "elevation": null,
+            "gas_unstaffed": null,
+            "heating_unstaffed": null,
+            "id": null,
+            "in_france": null,
+            "licence": null,
+            "link": null,
+            "mattress_unstaffed": null,
+            "quality": null,
+            "title": null,
+            "url": null,
+            "waypoint_type": {
+              "\"gite\"": 0,
+              "\"hut\"": 0,
+              "\"shelter\"": 0
+            }
+          }
+        },
+        "layers/refuges-info.geojson": {
+          "minzoom": 0,
+          "maxzoom": 24,
+          "features": 142,
+          "geometry": [
+            "Point"
+          ],
+          "keys": {
+            "access": null,
+            "alt": null,
+            "blankets": null,
+            "fireplace": null,
+            "forest_100m": null,
+            "id": null,
+            "in_france": null,
+            "last_comment": null,
+            "latrines": null,
+            "link": null,
+            "missing_wall": null,
+            "modified": null,
+            "name": null,
+            "owner": null,
+            "places": null,
+            "places_mattress": null,
+            "remark": null,
+            "state": {
+              "\"Clés à récupérer\"": 0,
+              "\"Débit intermittent\"": 0,
+              "\"Détruite\"": 0,
+              "\"Fermé au public\"": 0,
+              "\"Fermée\"": 0,
+              "\"Inutilisable\"": 0,
+              "\"Ouverture sur contact préalable\"": 0,
+              "\"Tari définitivement\"": 0
+            },
+            "stove": null,
+            "type_id": null,
+            "type_label": {
+              "\"bâtiment à investiguer\"": 0,
+              "\"cabane non gardée\"": 0,
+              "\"gîte d'étape\"": 0,
+              "\"passage délicat\"": 0,
+              "\"point d'eau\"": 0
+            },
+            "url": null,
+            "water_100m": null
+          }
+        },
+        "layers/refuges-osm.geojson": {
+          "minzoom": 0,
+          "maxzoom": 24,
+          "features": 114,
+          "geometry": [
+            "Point"
+          ],
+          "keys": {
+            "in_france": null,
+            "kind": {
+              "\"alpine_hut\"": 0,
+              "\"bus_shelter\"": 0,
+              "\"other\"": 0,
+              "\"shelter\"": 0,
+              "\"wilderness_hut\"": 0
+            },
+            "link": null,
+            "osm_id": null,
+            "osm_type": null,
+            "refuges_info_id": null,
+            "tags": null
+          }
+        },
+        "layers/srn-areas.geojson": {
+          "minzoom": 0,
+          "maxzoom": 24,
+          "features": 5,
+          "geometry": [
+            "Polygon"
+          ],
+          "keys": {
+            "area_km2": null,
+            "attached": null,
+            "commune": null,
+            "crosses": null,
+            "evidence": null,
+            "id": null,
+            "kind": null,
+            "km_attached": null,
+            "km_routes": null,
+            "lat": null,
+            "length_km": null,
+            "licences": null,
+            "lon": null,
+            "massif": null,
+            "name": null,
+            "name_source": null,
+            "providers": null,
+            "published_length_km": null,
+            "route_names": null,
+            "routes": null,
+            "stations": null
+          }
+        },
+        "layers/srn-routes.geojson": {
+          "minzoom": 0,
+          "maxzoom": 24,
+          "features": 5,
+          "geometry": [
+            "LineString"
+          ],
+          "keys": {
+            "activity": {
+              "\"easy_ski_touring\"": 0,
+              "\"ski_touring\"": 0,
+              "\"srn\"": 0
+            },
+            "areas": null,
+            "ascent_m": null,
+            "attribution": null,
+            "difficulty": null,
+            "groomed_share": null,
+            "id": null,
+            "length_km": null,
+            "licence": null,
+            "name": null,
+            "provider": null,
+            "published_length_km": null,
+            "publisher": null,
+            "shape": null,
+            "stations": null,
+            "url": null
+          }
+        },
+        "layers/zones.geojson": {
+          "minzoom": 0,
+          "maxzoom": 24,
+          "features": 32,
+          "geometry": [
+            "Polygon"
+          ],
+          "keys": {
+            "access": {
+              "\"unknown\"": 0
+            },
+            "access_rules": null,
+            "area_ha": null,
+            "bivouac": {
+              "\"consent_required\"": 0,
+              "\"forbidden\"": 0
+            },
+            "bivouac_rules": null,
+            "clipped": null,
+            "designated": null,
+            "id": null,
+            "kind": {
+              "\"country\"": 0,
+              "\"department\"": 0,
+              "\"monument_abords\"": 0,
+              "\"monument_historique\"": 0,
+              "\"natura2000_sic\"": 0,
+              "\"natura2000_zps\"": 0,
+              "\"parc_naturel_regional\"": 0,
+              "\"reserve_biologique\"": 0,
+              "\"reserve_naturelle_nationale\"": 0,
+              "\"site_classe\"": 0,
+              "\"site_inscrit\"": 0,
+              "\"spr\"": 0
+            },
+            "name": null,
+            "note": null,
+            "practices": null,
+            "rules": null,
+            "rules_text": null,
+            "source": null,
+            "url": null
+          }
+        }
+      },
+      "raster": {},
       "fonts": {
         "basemap/osm/fonts": [
           "Noto Sans Italic",
