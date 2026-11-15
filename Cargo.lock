@@ -2349,6 +2349,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "skimap-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "hex",
+ "reqwest",
+ "rusqlite",
+ "rustls",
+ "serde",
+ "serde_json",
+ "sha2",
+ "skimap-common",
+ "skimap-pack",
+ "tempfile",
+ "tiny_http",
+ "tracing",
+ "tracing-subscriber",
+ "webpki-roots",
+]
+
+[[package]]
 name = "skimap-snow"
 version = "0.1.0"
 dependencies = [
