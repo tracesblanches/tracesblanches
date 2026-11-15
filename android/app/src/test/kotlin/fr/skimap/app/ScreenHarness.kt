@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
+import fr.skimap.app.data.PackProblem
 import fr.skimap.app.ui.MapActions
 import fr.skimap.app.ui.MapScreen
 import fr.skimap.app.ui.MapUiState
@@ -20,17 +21,21 @@ import java.time.ZoneId
 val TODAY: LocalDate = LocalDate.of(2026, 11, 15)
 val PARIS: ZoneId = ZoneId.of("Europe/Paris")
 
-fun readyState(error: String? = null) =
-    MapUiState.Ready(
-        packs =
-            listOf(
-                Fixtures.entry(Fixtures.CERVIERES, "Cervières"),
-                Fixtures.entry(Fixtures.CHAPELLE, "Chapelle-des-Bois"),
-            ),
-        opened = Fixtures.opened(),
-        openMillis = 196,
-        error = error,
-    )
+fun readyState(
+    error: PackProblem? = null,
+    free: Boolean = false,
+) = MapUiState.Ready(
+    packs =
+        listOf(
+            Fixtures.entry(Fixtures.CERVIERES, "Cervières"),
+            Fixtures.entry(Fixtures.CHAPELLE, "Chapelle-des-Bois"),
+        ),
+    opened = Fixtures.opened(),
+    openMillis = 196,
+    error = error,
+    hidden = setOf("neige"),
+    free = free,
+)
 
 /** Stand-in for the MapLibre map (native, not available on the JVM): snow white. */
 @Composable

@@ -1,53 +1,128 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- English: the language of the app on a phone that is not in French (VO6 #129).
+     French in values-fr. -->
 <resources>
-    <string name="app_name">skimap</string>
-    <string name="map_shown">Carte de %1$s, %2$s, affichée</string>
-    <string name="map_loading">Carte de %1$s, %2$s, en cours d\'affichage</string>
-    <string name="map_drawing">Affichage de la carte…</string>
-    <string name="credits">Sources et licences des données</string>
-    <string name="recenter">Vue auto : recentrer sur %1$s</string>
-    <string name="map_and_legend">Carte et légende</string>
-    <string name="sheet_title">Carte et légende</string>
-    <string name="sheet_site">Domaine</string>
-    <string name="choose_domain">Choisir un domaine en France</string>
-    <string name="mode_free">Tout afficher (mode libre)</string>
-    <string name="mode_area">Un domaine : %1$s</string>
-    <string name="domains_title">Domaines nordiques de France</string>
-    <string name="domains_search">Rechercher un domaine ou une commune</string>
-    <string name="domains_nearest">Domaines les plus proches</string>
-    <string name="domains_locating">Recherche de la position…</string>
-    <string name="domains_no_position">Position indisponible : autorisez la localisation ou cherchez par nom.</string>
-    <string name="domain_installed">Pack installé : toucher pour l\'ouvrir</string>
-    <string name="domain_available">Pack disponible au téléchargement (bientôt)</string>
-    <string name="domain_not_built">Pack pas encore construit</string>
-    <string name="domain_distance">à %1$s km</string>
-    <string name="domain_km">%1$s km de pistes</string>
-    <string name="sheet_basemap">Fond de carte</string>
-    <string name="sheet_legend">Légende</string>
-    <string name="sheet_layers">Couches</string>
-    <string name="card_call">Appeler : %1$s, %2$s</string>
-    <string name="card_source_dated">Source : %1$s · information du %2$s</string>
-    <string name="layers_always">Toujours affichés, pour la sécurité : pistes, difficulté, sens unique et état (fermée, ouverte).</string>
-    <string name="sheet_sources">Licences des données</string>
-    <string name="sheet_pack">Pack %1$s · ouvert en %2$d ms · %3$s</string>
-    <string name="close">Fermer</string>
-    <string name="loading">Ouverture du pack…</string>
-    <string name="no_pack_title">Aucun pack sur ce téléphone</string>
-    <string name="no_pack_body">Copiez le dossier d\'un pack avec adb depuis l\'ordinateur, puis touchez « Chercher à nouveau ».</string>
-    <string name="no_pack_dir">Dossier des packs :</string>
-    <string name="unreadable_pack">Pack illisible : %1$s</string>
-    <string name="retry">Chercher à nouveau</string>
-    <string name="failed_title">Ce pack ne s\'ouvre pas</string>
-    <string name="choose_other">Ouvrir un autre pack</string>
-    <string name="personal_sources">Ce pack contient des données à usage personnel (état des pistes, météo) : ne le partagez pas.</string>
+    <string name="app_name" translatable="false">skimap</string>
+    <string name="map_shown">Map of %1$s, %2$s, shown</string>
+    <string name="map_loading">Map of %1$s, %2$s, loading</string>
+    <string name="map_drawing">Drawing the map…</string>
+    <string name="credits">Data sources and licences</string>
+    <string name="recenter">Auto view: back to %1$s</string>
+    <string name="map_and_legend">Map and legend</string>
+    <string name="sheet_title">Map and legend</string>
+    <string name="sheet_site">Area</string>
+    <string name="choose_domain">Areas of France and downloads</string>
+    <string name="mode_free">Everything installed (free mode)</string>
+    <string name="mode_area">One area: %1$s</string>
+    <string name="free_mode_name">All installed areas</string>
+    <string name="sheet_practice">Activity</string>
+    <string name="practice_fond">Cross-country skiing on groomed pistes</string>
+    <string name="practice_srn">Nordic backcountry skiing, off piste</string>
+    <string name="practice_guiding">Guidance map while a day plan is followed</string>
+    <string name="sheet_layers">Layers</string>
+    <string name="layers_always">Always shown, for safety: pistes and their state, avalanche hazards, regulated areas, position.</string>
+    <string name="sheet_legend">Legend</string>
+    <string name="sheet_updates">Updates</string>
+    <string name="auto_update">Update packs automatically (Wi-Fi for large ones, never on low battery)</string>
+    <string name="sheet_sources">Data licences</string>
+    <string name="sheet_pack">Pack %1$s · opened in %2$d ms · %3$s</string>
+    <string name="personal_sources">This pack holds data for personal use only (piste status, weather): do not share it.</string>
+    <string name="close">Close</string>
+
+    <string name="group_fond">Basemap (relief, forest, water, roads)</string>
+    <string name="group_pistes">Pistes and their state</string>
+    <string name="group_dangers">Avalanches and tricky passages</string>
+    <string name="group_reglementation">Regulated areas and bivouac</string>
+    <string name="group_itineraire">Route and next decision</string>
+    <string name="group_position">Position</string>
+    <string name="group_pentes">Slopes</string>
+    <string name="group_refuges">Huts and shelters</string>
+    <string name="group_points_eau">Water points</string>
+    <string name="group_acces">Parking and nordic centres</string>
+    <string name="group_noms">Place names, peaks, spot heights</string>
+    <string name="group_reseau">Areas without any network</string>
+    <string name="group_neige">Estimated snow</string>
+
+    <string name="legend_group_pistes">Pistes</string>
+    <string name="legend_group_pentes">Slopes</string>
+    <string name="legend_group_dangers">Avalanche exposure</string>
+    <string name="legend_novice">Green: very easy</string>
+    <string name="legend_easy">Blue: easy</string>
+    <string name="legend_intermediate">Red: difficult</string>
+    <string name="legend_advanced">Black: very difficult</string>
+    <string name="legend_unknown">Grey: difficulty unknown</string>
+    <string name="legend_closed">Closed: faded, white dashes</string>
+    <string name="legend_backcountry">Dashes: marked off-piste trail</string>
+    <string name="legend_hike">Dots: snowshoes and walkers</string>
+    <string name="legend_slope_1">30 to 35°</string>
+    <string name="legend_slope_2">35 to 40°</string>
+    <string name="legend_slope_3">40 to 45°</string>
+    <string name="legend_slope_4">45° and steeper</string>
+    <string name="legend_exposure_2">Exposed</string>
+    <string name="legend_exposure_3">Very exposed</string>
+
+    <string name="validity_valid">Valid until %1$s</string>
+    <string name="validity_last_day">Last day of validity: %1$s</string>
+    <string name="validity_expired">Out of date since %1$s: update the pack</string>
+    <string name="validity_unknown">Validity unknown</string>
+    <plurals name="status_open">
+        <item quantity="one">%d open</item>
+        <item quantity="other">%d open</item>
+    </plurals>
+    <plurals name="status_closed">
+        <item quantity="one">%d closed</item>
+        <item quantity="other">%d closed</item>
+    </plurals>
+    <plurals name="status_unknown">
+        <item quantity="one">%d without status</item>
+        <item quantity="other">%d without status</item>
+    </plurals>
+    <string name="status_absent_short">no piste status</string>
+    <string name="status_absent">No piste status in this pack</string>
+    <string name="status_text">Pistes: %1$s</string>
+    <string name="status_polled">%1$s · checked on %2$s at %3$s</string>
+
+    <string name="domains_title">Nordic areas of France</string>
+    <string name="domains_search">Search an area or a town</string>
+    <string name="domains_nearest">Nearest areas</string>
+    <string name="domains_locating">Finding the position…</string>
+    <string name="domains_no_position">Position unavailable: allow location or search by name.</string>
+    <string name="domains_offline">Offline: the server list is the last one read. Downloads start with a network.</string>
+    <string name="domain_installed">Pack installed: touch to open</string>
+    <string name="domain_update_available">A newer pack is published</string>
+    <string name="domain_available">Pack ready to download</string>
+    <string name="domain_not_built">No pack published yet</string>
+    <string name="domain_distance">%1$s km away</string>
+    <string name="domain_km">%1$s km of pistes</string>
+    <string name="domain_download">Download · %1$s</string>
+    <string name="domain_update">Update</string>
+    <string name="domain_delete">Delete</string>
+    <string name="domain_cancel">Cancel</string>
+    <string name="domain_waiting_wifi">Waiting for Wi-Fi (large pack)</string>
+    <string name="domain_waiting_network">Waiting for a network</string>
+    <string name="domain_mobile_data">Use mobile data</string>
+    <string name="domain_progress">Downloading: %1$s of %2$s</string>
+    <string name="domain_failed">Download failed: %1$s</string>
     <plurals name="domains_count">
-        <item quantity="one">%1$d domaine affiché sur %2$d</item>
-        <item quantity="many">%1$d domaines affichés sur %2$d</item>
-        <item quantity="other">%1$d domaines affichés sur %2$d</item>
+        <item quantity="one">%1$d area shown of %2$d</item>
+        <item quantity="other">%1$d areas shown of %2$d</item>
     </plurals>
     <plurals name="domains_map">
-        <item quantity="one">Carte de France de %1$d domaine nordique : carrés, packs installés ; points, autres domaines</item>
-        <item quantity="many">Carte de France des %1$d domaines nordiques : carrés, packs installés ; points, autres domaines</item>
-        <item quantity="other">Carte de France des %1$d domaines nordiques : carrés, packs installés ; points, autres domaines</item>
+        <item quantity="one">Map of France with %1$d nordic area: squares, packs installed; discs, packs to download; dots, other areas. Touch the map to list the nearest areas.</item>
+        <item quantity="other">Map of France with %1$d nordic areas: squares, packs installed; discs, packs to download; dots, other areas. Touch the map to list the nearest areas.</item>
     </plurals>
+
+    <string name="card_call">Call: %1$s, %2$s</string>
+    <string name="card_source_dated">Source: %1$s · information of %2$s</string>
+
+    <string name="loading">Opening the packs…</string>
+    <string name="no_pack_title">No pack on this phone</string>
+    <string name="no_pack_body">Download the pack of an area: its map then works without any network.</string>
+    <string name="no_pack_dir">Packs folder (copy with adb, for developers):</string>
+    <string name="unreadable_pack">Unreadable pack: %1$s</string>
+    <string name="retry">Look again</string>
+    <string name="failed_title">This pack does not open</string>
+    <string name="choose_other">Open another pack</string>
+    <string name="error_no_pack">No pack in %1$s</string>
+    <string name="error_invalid_pack">Invalid pack: %1$s</string>
 </resources>

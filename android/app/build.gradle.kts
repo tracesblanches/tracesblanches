@@ -93,6 +93,63 @@ abstract class CargoTask : DefaultTask() {
     }
 }
 
+/**
+ * Copies the map styles validated by the user (the JSON files of `styles/`, K15 #123) into the assets
+ * of the app, unchanged: `assets/styles/<style>-<theme>.json`. The app instantiates them
+ * on the packs through the Rust core; it has no style of its own.
+ */
+@CacheableTask
+abstract class StyleAssetsTask : DefaultTask() {
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val styles: ConfigurableFileCollection
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun run() {
+        val out = outputDir.get().asFile.resolve("styles")
+        outputDir.get().asFile.deleteRecursively()
+        out.mkdirs()
+        val copied = styles.files.filter { it.name != "pack-schema.json" }
+        // fond, srn, guidage, each light (clair) and dark (sombre).
+        check(copied.size == 6) { "expected 6 styles in styles/, found ${copied.map { it.name }}" }
+        copied.forEach { it.copyTo(out.resolve(it.name), overwrite = true) }
+    }
+}
+
+/**
+ * Publishes packs, in order, into a fresh skimap-server store (`skimap-server publish`):
+ * the store the download tests serve (K2), as the production server would publish it.
+ */
+abstract class PublishTask : DefaultTask() {
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val server: RegularFileProperty
+
+    /** Pack directories, published in this order (versions 1 then 2: a delta). */
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val packs: ConfigurableFileCollection
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @get:Inject
+    abstract val exec: ExecOperations
+
+    @TaskAction
+    fun run() {
+        val out = outputDir.get().asFile
+        out.deleteRecursively()
+        exec.exec {
+            executable = server.get().asFile.absolutePath
+            args(listOf("publish", "--store", out.absolutePath) + packs.files.map { it.absolutePath })
+        }
+    }
+}
+
 /** Generates the Kotlin bindings of the Rust library (UniFFI, library mode). */
 @CacheableTask
 abstract class UniffiBindgenTask : DefaultTask() {
@@ -259,6 +316,13 @@ val uniffiBindings =
         outputDir.set(layout.buildDirectory.dir("generated/uniffi/kotlin"))
     }
 
+val styleAssets =
+    tasks.register<StyleAssetsTask>("styleAssets") {
+        description = "Copies the validated map styles of styles/ into the app assets."
+        styles.from(fileTree(repoRoot.resolve("styles")) { include("*.json") })
+        outputDir.set(layout.buildDirectory.dir("generated/styleAssets"))
+    }
+
 val testPack =
     tasks.register<CargoTask>("testPack") {
         description = "Writes the synthetic test pack (crates/ffi/examples/test_pack.rs)."
@@ -272,10 +336,61 @@ val testPack =
         outputDir.set(layout.buildDirectory.dir("generated/testPack"))
     }
 
+val cargoServer =
+    tasks.register<CargoTask>("cargoServer") {
+        description = "Builds skimap-server for this machine (download tests against the real server)."
+        sources.from(rustSources)
+        workspace.set(repoRoot)
+        arguments.set(listOf("build", "--release", "--locked", "-p", "skimap-server"))
+        environment.set(emptyMap())
+        products.set(listOf("target/release/skimap-server"))
+        outputDir.set(layout.buildDirectory.dir("rust/server"))
+    }
+
+val testPackV2 =
+    tasks.register<CargoTask>("testPackV2") {
+        description = "Writes version 2 of the test pack (a delta from version 1)."
+        sources.from(rustSources)
+        workspace.set(repoRoot)
+        arguments.set(
+            listOf("run", "--release", "--locked", "-p", "skimap-ffi", "--example", "test_pack", "--", "@OUT@/testpack", "2"),
+        )
+        environment.set(emptyMap())
+        products.set(emptyList())
+        outputDir.set(layout.buildDirectory.dir("generated/testPackV2"))
+    }
+
+val testVoicePack =
+    tasks.register<CargoTask>("testVoicePack") {
+        description = "Writes the English voice pack of the test site (VO6)."
+        sources.from(rustSources)
+        workspace.set(repoRoot)
+        arguments.set(
+            listOf("run", "--release", "--locked", "-p", "skimap-ffi", "--example", "test_pack", "--", "@OUT@/voice-en", "voice-en"),
+        )
+        environment.set(emptyMap())
+        products.set(emptyList())
+        outputDir.set(layout.buildDirectory.dir("generated/testVoicePack"))
+    }
+
+/** The store of the download tests: test pack v1 then v2, and the English voice pack. */
+val testStore =
+    tasks.register<PublishTask>("testStore") {
+        description = "Publishes the test packs into a skimap-server store (build/generated/testStore)."
+        server.set(cargoServer.flatMap { it.outputDir.file("skimap-server") })
+        packs.from(
+            testPack.map { it.outputDir.dir("testpack") },
+            testPackV2.map { it.outputDir.dir("testpack") },
+            testVoicePack.map { it.outputDir.dir("voice-en") },
+        )
+        outputDir.set(layout.buildDirectory.dir("generated/testStore"))
+    }
+
 androidComponents {
     onVariants { variant ->
         variant.sources.kotlin?.addGeneratedSourceDirectory(uniffiBindings, UniffiBindgenTask::outputDir)
         variant.sources.jniLibs?.addGeneratedSourceDirectory(cargoNdk, CargoTask::outputDir)
+        variant.sources.assets?.addGeneratedSourceDirectory(styleAssets, StyleAssetsTask::outputDir)
         variant.deviceTests.values.forEach { test ->
             test.sources.assets?.addGeneratedSourceDirectory(testPack, CargoTask::outputDir)
         }
@@ -285,13 +400,27 @@ androidComponents {
 tasks.withType<Test>().configureEach {
     val host = cargoHost.flatMap { it.outputDir }
     val pack = testPack.flatMap { it.outputDir }
+    val store = testStore.flatMap { it.outputDir }
+    val serverBin = cargoServer.flatMap { it.outputDir.file("skimap-server") }
     inputs.dir(host).withPathSensitivity(PathSensitivity.NONE)
     inputs.dir(pack).withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.dir(store).withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.file(serverBin).withPathSensitivity(PathSensitivity.NONE)
+    inputs.dir(repoRoot.resolve("styles")).withPathSensitivity(PathSensitivity.RELATIVE)
     val hostPath = host.map { it.asFile.absolutePath }
     val packPath = pack.map { it.asFile.resolve("testpack").absolutePath }
+    val storePath = store.map { it.asFile.absolutePath }
+    val serverPath = serverBin.map { it.asFile.absolutePath }
+    val stylesPath = repoRoot.resolve("styles").absolutePath
     jvmArgumentProviders.add(
         CommandLineArgumentProvider {
-            listOf("-Djna.library.path=${hostPath.get()}", "-Dskimap.testPack=${packPath.get()}")
+            listOf(
+                "-Djna.library.path=${hostPath.get()}",
+                "-Dskimap.testPack=${packPath.get()}",
+                "-Dskimap.styles=$stylesPath",
+                "-Dskimap.store=${storePath.get()}",
+                "-Dskimap.server=${serverPath.get()}",
+            )
         },
     )
 }
@@ -335,6 +464,9 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.maplibre.android)
     implementation(libs.jna) { artifact { type = "aar" } }
+    // Pack download and update (K2): the network module and WorkManager.
+    implementation(project(":sync"))
+    implementation(libs.androidx.work.runtime)
     // Installs the Baseline Profile (benchmark module) on devices without Play.
     implementation(libs.androidx.profileinstaller)
     baselineProfile(project(":benchmark"))

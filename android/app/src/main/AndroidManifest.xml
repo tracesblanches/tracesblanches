@@ -2,12 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Offline first: a pack is displayed without any network request. MapLibre asks for
-         INTERNET; it is removed so that the app cannot reach the network at all. Pack
-         download (K2) will bring it back. -->
-    <uses-permission
-        android:name="android.permission.INTERNET"
-        tools:node="remove" />
+    <!-- Offline first: a pack is displayed without any network request. INTERNET comes
+         from the module :sync only (pack download and update, K2; its manifest says why);
+         MapLibre is kept offline (MapLibre.setConnected(false), file:// styles). -->
 
     <!-- One coarse position, on request, for "Domaines les plus proches". No tracking. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />

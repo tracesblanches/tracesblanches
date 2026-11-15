@@ -2,6 +2,7 @@ package fr.skimap.app.ui
 
 import androidx.activity.compose.ReportDrawnWhen
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +27,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -45,6 +48,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import fr.skimap.app.R
+import fr.skimap.app.data.PackProblem
+import fr.skimap.app.data.Practice
 import fr.skimap.app.ui.domains.DomainPickerDialog
 import fr.skimap.app.ui.domains.DomainsViewModel
 import fr.skimap.app.ui.map.MapController
@@ -73,9 +78,14 @@ object Tags {
 fun SkimapApp(
     viewModel: MapViewModel,
     domains: DomainsViewModel,
+    autoUpdate: Boolean = true,
+    onAutoUpdate: (Boolean) -> Unit = {},
 ) {
     var pickerOpen by rememberSaveable { mutableStateOf(false) }
     var card by remember { mutableStateOf<Card?>(null) }
+    // The style follows the light or dark theme of the system, without a gesture.
+    val dark = isSystemInDarkTheme()
+    LaunchedEffect(dark) { viewModel.setDark(dark) }
     card?.let { CardSheet(it, onDismiss = { card = null }) }
     if (pickerOpen) {
         DomainPickerDialog(domains, onPick = viewModel::selectPack, onClose = { pickerOpen = false })
@@ -110,7 +120,7 @@ fun SkimapApp(
         is MapUiState.Ready -> {
             val controller = remember { MapController() }
             val moved by controller.moved.collectAsStateWithLifecycle()
-            // The map lambda captures only the opened pack: an error message or the sheet
+            // The map lambda captures only the opened packs: an error message or the sheet
             // does not recompose the map (counted in MapScreenTest).
             val opened = s.opened
             val hidden = s.hidden
@@ -120,13 +130,15 @@ fun SkimapApp(
                 zone = zone,
                 mapShown = mapShownFor == styleName(opened),
                 mapMoved = moved,
+                autoUpdate = autoUpdate,
                 actions =
                     MapActions(
                         recenter = controller::recenter,
                         setLayerVisible = viewModel::setLayerVisible,
                         chooseDomain = { pickerOpen = true },
                         selectFree = viewModel::selectFree,
-                        selectBasemap = viewModel::selectBasemap,
+                        selectPractice = viewModel::selectPractice,
+                        setAutoUpdate = onAutoUpdate,
                     ),
             ) {
                 if (engineReady) {
@@ -136,6 +148,8 @@ fun SkimapApp(
                         modifier = Modifier.fillMaxSize(),
                         hidden = hidden,
                         onCard = { card = it },
+                        lastCamera = viewModel.lastCamera,
+                        onLeave = viewModel::saveCamera,
                     )
                 }
             }
@@ -148,17 +162,18 @@ data class MapActions(
     val recenter: () -> Unit = {},
     val chooseDomain: () -> Unit = {},
     val selectFree: () -> Unit = {},
-    val selectBasemap: (String) -> Unit = {},
+    val selectPractice: (Practice) -> Unit = {},
     val setLayerVisible: (String, Boolean) -> Unit = { _, _ -> },
+    val setAutoUpdate: (Boolean) -> Unit = {},
 )
 
 /**
  * Main screen: the map first, edge to edge. A one-line status chip at the top, and in the
  * bottom corners small semi-transparent controls of standard Material size (48 dp
  * targets): the map and legend sheet (primary action), "Vue auto" only once the user has
- * moved the map, and a small ⓘ that opens the full data attributions. The map takes the
- * usual gestures (pinch, double tap, double tap and slide with one finger); with gloves,
- * the automatic view, physical controls (K13) and voice replace big on-screen buttons.
+ * moved the map, and a small ⓘ that opens the data attributions. The map takes the usual
+ * gestures (pinch, double tap, double tap and slide with one finger); with gloves, the
+ * automatic view, physical controls (K13) and voice replace big on-screen buttons.
  */
 @Composable
 fun MapScreen(
@@ -170,22 +185,20 @@ fun MapScreen(
     mapShown: Boolean = true,
     mapMoved: Boolean = false,
     initialSheetOpen: Boolean = false,
+    autoUpdate: Boolean = true,
     map: @Composable () -> Unit,
 ) {
     var sheetOpen by rememberSaveable { mutableStateOf(initialSheetOpen) }
     var creditsOpen by rememberSaveable { mutableStateOf(false) }
+    val texts = PackTexts(LocalResources.current)
     val info = state.opened.info
+    val siteName = texts.siteName(info, state.free)
     Box(modifier.fillMaxSize()) {
-        val basemapTitle =
-            info.basemaps
-                .firstOrNull { it.id == state.opened.style.basemap }
-                ?.title
-                .orEmpty()
         val mapDescription =
             stringResource(
                 if (mapShown) R.string.map_shown else R.string.map_loading,
-                info.siteName,
-                basemapTitle,
+                siteName,
+                practiceLabel(state),
             )
         Box(Modifier.fillMaxSize().testTag(Tags.MAP).semantics { contentDescription = mapDescription }) { map() }
         // Status bar over the light map: a band of the theme surface keeps its icons
@@ -208,7 +221,7 @@ fun MapScreen(
                 .windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(8.dp),
         ) {
-            StatusChip(info, today, state.error, Modifier.align(Alignment.TopStart))
+            StatusChip(info, siteName, texts, today, state.error, Modifier.align(Alignment.TopStart))
             Column(
                 Modifier.align(Alignment.BottomEnd),
                 horizontalAlignment = Alignment.End,
@@ -217,7 +230,7 @@ fun MapScreen(
                 if (mapMoved) {
                     SmallControl(
                         painterResource(R.drawable.ic_recenter),
-                        stringResource(R.string.recenter, info.siteName),
+                        stringResource(R.string.recenter, siteName),
                         actions.recenter,
                         Modifier.testTag(Tags.RECENTER),
                     )
@@ -252,33 +265,59 @@ fun MapScreen(
             state = state,
             today = today,
             zone = zone,
-            onChooseDomain = {
-                sheetOpen = false
-                actions.chooseDomain()
-            },
-            onSelectFree = actions.selectFree,
-            onSelectBasemap = actions.selectBasemap,
-            onSetLayerVisible = actions.setLayerVisible,
+            autoUpdate = autoUpdate,
+            actions =
+                actions.copy(chooseDomain = {
+                    sheetOpen = false
+                    actions.chooseDomain()
+                }),
             onDismiss = { sheetOpen = false },
         )
     }
     if (creditsOpen) {
-        AlertDialog(
-            onDismissRequest = { creditsOpen = false },
-            confirmButton = { TextButton(onClick = { creditsOpen = false }) { Text(stringResource(R.string.close)) } },
-            title = { Text(stringResource(R.string.sheet_sources)) },
-            text = {
-                Column(
-                    Modifier.verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    state.opened.style.attributions
-                        .forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
-                }
-            },
-        )
+        CreditsDialog(state, onDismiss = { creditsOpen = false })
     }
 }
+
+/** ⓘ: every attribution of what the map shows, and the pack versions. */
+@Composable
+private fun CreditsDialog(
+    state: MapUiState.Ready,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) } },
+        title = { Text(stringResource(R.string.sheet_sources)) },
+        text = {
+            Column(
+                Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                state.opened.style.attributions
+                    .forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                if (state.opened.info.personalSources) {
+                    Text(stringResource(R.string.personal_sources), style = MaterialTheme.typography.bodyMedium)
+                }
+                Text(
+                    stringResource(R.string.sheet_pack, state.opened.info.packVersion, state.openMillis, state.opened.coreVersion),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        },
+    )
+}
+
+/** Words of the style shown (practice, or guidance), for the description of the map. */
+@Composable
+private fun practiceLabel(state: MapUiState.Ready): String =
+    stringResource(
+        when {
+            state.choice.guiding -> R.string.practice_guiding
+            state.choice.practice == Practice.SRN -> R.string.practice_srn
+            else -> R.string.practice_fond
+        },
+    )
 
 /** Translucent rounded surface of the map overlays. */
 @Composable
@@ -300,8 +339,10 @@ private fun Chip(
 @Composable
 private fun StatusChip(
     info: PackInfo,
+    siteName: String,
+    texts: PackTexts,
     today: LocalDate,
-    error: String?,
+    error: PackProblem?,
     modifier: Modifier = Modifier,
 ) {
     val validity = PackTexts.validity(info, today)
@@ -309,14 +350,14 @@ private fun StatusChip(
     Column(modifier.testTag(Tags.HEADER), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Chip {
             Text(
-                "${info.siteName} · ${PackTexts.statusShort(info.status)}",
+                "$siteName · ${texts.statusShort(info.status)}",
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.semantics { heading() },
             )
         }
-        val alert = error ?: if (warn) PackTexts.validityText(info, today) else null
+        val alert = error?.let(texts::problem) ?: if (warn) texts.validityText(info, today) else null
         if (alert != null) {
             Chip(color = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer) {
                 Text(alert, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)

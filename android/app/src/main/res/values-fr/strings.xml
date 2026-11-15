@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Français : la langue de l'app sur un téléphone en français (VO6 #129). -->
+<resources>
+    <string name="map_shown">Carte de %1$s, %2$s, affichée</string>
+    <string name="map_loading">Carte de %1$s, %2$s, en cours d\'affichage</string>
+    <string name="map_drawing">Affichage de la carte…</string>
+    <string name="credits">Sources et licences des données</string>
+    <string name="recenter">Vue auto : recentrer sur %1$s</string>
+    <string name="map_and_legend">Carte et légende</string>
+    <string name="sheet_title">Carte et légende</string>
+    <string name="sheet_site">Domaine</string>
+    <string name="choose_domain">Domaines de France et téléchargements</string>
+    <string name="mode_free">Tout afficher (mode libre)</string>
+    <string name="mode_area">Un domaine : %1$s</string>
+    <string name="free_mode_name">Tous les domaines installés</string>
+    <string name="sheet_practice">Pratique</string>
+    <string name="practice_fond">Ski de fond sur pistes damées</string>
+    <string name="practice_srn">Ski de randonnée nordique, hors piste</string>
+    <string name="practice_guiding">Carte de guidage pendant une journée planifiée</string>
+    <string name="sheet_layers">Couches</string>
+    <string name="layers_always">Toujours affichés, pour la sécurité : pistes et leur état, dangers d\'avalanche, zones réglementées, position.</string>
+    <string name="sheet_legend">Légende</string>
+    <string name="sheet_updates">Mises à jour</string>
+    <string name="auto_update">Mettre à jour les packs automatiquement (Wi-Fi pour les gros, jamais batterie faible)</string>
+    <string name="sheet_sources">Licences des données</string>
+    <string name="sheet_pack">Pack %1$s · ouvert en %2$d ms · %3$s</string>
+    <string name="personal_sources">Ce pack contient des données à usage personnel (état des pistes, météo) : ne le partagez pas.</string>
+    <string name="close">Fermer</string>
+
+    <string name="group_fond">Fond de carte (relief, forêt, eau, routes)</string>
+    <string name="group_pistes">Pistes et leur état</string>
+    <string name="group_dangers">Avalanches et passages délicats</string>
+    <string name="group_reglementation">Zones réglementées et bivouac</string>
+    <string name="group_itineraire">Itinéraire et prochaine décision</string>
+    <string name="group_position">Position</string>
+    <string name="group_pentes">Pentes</string>
+    <string name="group_refuges">Refuges et abris</string>
+    <string name="group_points_eau">Points d\'eau</string>
+    <string name="group_acces">Parkings et accueils</string>
+    <string name="group_noms">Noms de lieux, sommets, cotes</string>
+    <string name="group_reseau">Zones sans aucun réseau</string>
+    <string name="group_neige">Neige estimée</string>
+
+    <string name="legend_group_pistes">Pistes</string>
+    <string name="legend_group_pentes">Pentes</string>
+    <string name="legend_group_dangers">Exposition aux avalanches</string>
+    <string name="legend_novice">Verte : très facile</string>
+    <string name="legend_easy">Bleue : facile</string>
+    <string name="legend_intermediate">Rouge : difficile</string>
+    <string name="legend_advanced">Noire : très difficile</string>
+    <string name="legend_unknown">Grise : difficulté inconnue</string>
+    <string name="legend_closed">Fermée : voilée, tirets blancs</string>
+    <string name="legend_backcountry">Tirets : hors piste balisé</string>
+    <string name="legend_hike">Pointillés : raquettes et piétons</string>
+    <string name="legend_slope_1">30 à 35°</string>
+    <string name="legend_slope_2">35 à 40°</string>
+    <string name="legend_slope_3">40 à 45°</string>
+    <string name="legend_slope_4">45° et plus</string>
+    <string name="legend_exposure_2">Exposé</string>
+    <string name="legend_exposure_3">Très exposé</string>
+
+    <string name="validity_valid">Valable jusqu\'au %1$s</string>
+    <string name="validity_last_day">Dernier jour de validité : %1$s</string>
+    <string name="validity_expired">Périmé depuis le %1$s : mettez le pack à jour</string>
+    <string name="validity_unknown">Validité inconnue</string>
+    <plurals name="status_open">
+        <item quantity="one">%d ouverte</item>
+        <item quantity="many">%d ouvertes</item>
+        <item quantity="other">%d ouvertes</item>
+    </plurals>
+    <plurals name="status_closed">
+        <item quantity="one">%d fermée</item>
+        <item quantity="many">%d fermées</item>
+        <item quantity="other">%d fermées</item>
+    </plurals>
+    <plurals name="status_unknown">
+        <item quantity="one">%d sans état</item>
+        <item quantity="many">%d sans état</item>
+        <item quantity="other">%d sans état</item>
+    </plurals>
+    <string name="status_absent_short">état des pistes absent</string>
+    <string name="status_absent">État des pistes absent de ce pack</string>
+    <string name="status_text">Pistes : %1$s</string>
+    <string name="status_polled">%1$s · relevé le %2$s à %3$s</string>
+
+    <string name="domains_title">Domaines nordiques de France</string>
+    <string name="domains_search">Rechercher un domaine ou une commune</string>
+    <string name="domains_nearest">Domaines les plus proches</string>
+    <string name="domains_locating">Recherche de la position…</string>
+    <string name="domains_no_position">Position indisponible : autorisez la localisation ou cherchez par nom.</string>
+    <string name="domains_offline">Hors ligne : liste du serveur lue la dernière fois. Les téléchargements partiront avec le réseau.</string>
+    <string name="domain_installed">Pack installé : toucher pour l\'ouvrir</string>
+    <string name="domain_update_available">Une version plus récente est publiée</string>
+    <string name="domain_available">Pack prêt à télécharger</string>
+    <string name="domain_not_built">Pas encore de pack publié</string>
+    <string name="domain_distance">à %1$s km</string>
+    <string name="domain_km">%1$s km de pistes</string>
+    <string name="domain_download">Télécharger · %1$s</string>
+    <string name="domain_update">Mettre à jour</string>
+    <string name="domain_delete">Supprimer</string>
+    <string name="domain_cancel">Annuler</string>
+    <string name="domain_waiting_wifi">En attente du Wi-Fi (gros pack)</string>
+    <string name="domain_waiting_network">En attente de réseau</string>
+    <string name="domain_mobile_data">Utiliser les données mobiles</string>
+    <string name="domain_progress">Téléchargement : %1$s sur %2$s</string>
+    <string name="domain_failed">Échec du téléchargement : %1$s</string>
+    <plurals name="domains_count">
+        <item quantity="one">%1$d domaine affiché sur %2$d</item>
+        <item quantity="many">%1$d domaines affichés sur %2$d</item>
+        <item quantity="other">%1$d domaines affichés sur %2$d</item>
+    </plurals>
+    <plurals name="domains_map">
+        <item quantity="one">Carte de France de %1$d domaine nordique : carrés, packs installés ; disques, packs à télécharger ; points, autres domaines. Toucher la carte liste les domaines les plus proches.</item>
+        <item quantity="many">Carte de France des %1$d domaines nordiques : carrés, packs installés ; disques, packs à télécharger ; points, autres domaines. Toucher la carte liste les domaines les plus proches.</item>
+        <item quantity="other">Carte de France des %1$d domaines nordiques : carrés, packs installés ; disques, packs à télécharger ; points, autres domaines. Toucher la carte liste les domaines les plus proches.</item>
+    </plurals>
+
+    <string name="card_call">Appeler : %1$s, %2$s</string>
+    <string name="card_source_dated">Source : %1$s · information du %2$s</string>
+
+    <string name="loading">Ouverture des packs…</string>
+    <string name="no_pack_title">Aucun pack sur ce téléphone</string>
+    <string name="no_pack_body">Téléchargez le pack d\'un domaine : sa carte fonctionne ensuite sans aucun réseau.</string>
+    <string name="no_pack_dir">Dossier des packs (copie par adb, pour les développeurs) :</string>
+    <string name="unreadable_pack">Pack illisible : %1$s</string>
+    <string name="retry">Chercher à nouveau</string>
+    <string name="failed_title">Ce pack ne s\'ouvre pas</string>
+    <string name="choose_other">Ouvrir un autre pack</string>
+    <string name="error_no_pack">Aucun pack dans %1$s</string>
+    <string name="error_invalid_pack">Pack invalide : %1$s</string>
+</resources>

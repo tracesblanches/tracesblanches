@@ -4,6 +4,7 @@ import fr.skimap.core.Catalog
 import fr.skimap.core.Domain
 import fr.skimap.core.DomainDistance
 import fr.skimap.core.PackEntry
+import fr.skimap.core.ServerSite
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -11,8 +12,9 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
- * The nordic areas of France (census, 219 areas) and whether their pack is on the phone.
- * Search and distances run in the Rust core; one call per query.
+ * The nordic areas of France (census, 219 areas), whether their pack is on the phone and
+ * whether the server publishes it. Search and distances run in the Rust core; one call
+ * per query.
  */
 interface DomainCatalog {
     /** Outline of metropolitan France: rings of `[lon, lat, lon, lat, ...]`. */
@@ -22,6 +24,7 @@ interface DomainCatalog {
     suspend fun search(
         query: String,
         packs: List<PackEntry>,
+        server: List<ServerSite> = emptyList(),
     ): List<Domain>
 
     /** Areas nearest to a position. */
@@ -29,6 +32,7 @@ interface DomainCatalog {
         lon: Double,
         lat: Double,
         packs: List<PackEntry>,
+        server: List<ServerSite> = emptyList(),
     ): List<DomainDistance>
 }
 
@@ -53,18 +57,20 @@ class RustDomainCatalog(
     override suspend fun search(
         query: String,
         packs: List<PackEntry>,
+        server: List<ServerSite>,
     ): List<Domain> {
         val c = catalog()
-        return withContext(io) { c.search(query, packs, MAX_RESULTS) }
+        return withContext(io) { c.search(query, packs, server, MAX_RESULTS) }
     }
 
     override suspend fun nearest(
         lon: Double,
         lat: Double,
         packs: List<PackEntry>,
+        server: List<ServerSite>,
     ): List<DomainDistance> {
         val c = catalog()
-        return withContext(io) { c.nearest(lon, lat, packs, NEAREST) }
+        return withContext(io) { c.nearest(lon, lat, packs, server, NEAREST) }
     }
 
     private companion object {

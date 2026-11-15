@@ -16,7 +16,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
-/** Full-screen area picker; asks for the coarse location only when "nearest" is touched. */
+/** Full-screen area picker and downloads; asks for the coarse location only when "nearest" is touched. */
 @Composable
 fun DomainPickerDialog(
     viewModel: DomainsViewModel,
@@ -34,20 +34,27 @@ fun DomainPickerDialog(
         Surface(Modifier.fillMaxSize()) {
             DomainPicker(
                 state = state,
-                onQuery = viewModel::search,
-                onNearest = {
-                    val coarse = Manifest.permission.ACCESS_COARSE_LOCATION
-                    if (ContextCompat.checkSelfPermission(context, coarse) == PackageManager.PERMISSION_GRANTED) {
-                        viewModel.nearest()
-                    } else {
-                        permission.launch(coarse)
-                    }
-                },
-                onPick = { dir ->
-                    onPick(dir)
-                    onClose()
-                },
-                onClose = onClose,
+                actions =
+                    DomainActions(
+                        onQuery = viewModel::search,
+                        onNearest = {
+                            val coarse = Manifest.permission.ACCESS_COARSE_LOCATION
+                            if (ContextCompat.checkSelfPermission(context, coarse) == PackageManager.PERMISSION_GRANTED) {
+                                viewModel.nearest()
+                            } else {
+                                permission.launch(coarse)
+                            }
+                        },
+                        onPick = { dir ->
+                            onPick(dir)
+                            onClose()
+                        },
+                        onClose = onClose,
+                        onDownload = viewModel::download,
+                        onCancel = viewModel::cancel,
+                        onRemove = viewModel::remove,
+                        onMapTouch = viewModel::pickOnMap,
+                    ),
             )
         }
     }
