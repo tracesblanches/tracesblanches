@@ -45,7 +45,7 @@ cargo run --release -p skimap-server --example phone_sync -- http://127.0.0.1:80
 | `SKIMAP_PUBLIC_URL` | `https://skimap.warnier.net` | cité dans les messages |
 | `SKIMAP_CONTACT_EMAIL` (obligatoire pour `serve`), `SKIMAP_CONTROLLER` | — | contact et responsable cités par la page de confidentialité (fixés dans le manifeste) |
 | `SKIMAP_RECENT_VERSIONS` | 8 | versions gardées en plus de la base (départs des paquets différentiels) |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_TLS` (`starttls`, `implicit`, `none` sur la boucle locale seulement), `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`, `MAIL_FROM_NAME` | port 587, STARTTLS | relais d'envoi des alertes ; sans `SMTP_HOST`, les messages attendent dans la file |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_TLS` (`starttls`, `implicit`, `none` sur la boucle locale seulement), `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`, `MAIL_FROM_NAME` | port 587, STARTTLS | relais d'envoi des alertes ; sans `SMTP_HOST`, l'alerte est désactivée : `/v1/trips` répond 503 (journal : `alerts disabled`) |
 | `SKIMAP_ALERT_DAILY_CAP` | 400 | plafond d'envois sur 24 h (sous les 500 destinataires par jour de Gmail) |
 | `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`, `STRAVA_SCOPE`, `STRAVA_APP_REDIRECT`, `STRAVA_BASE_URL` | `activity:write`, `skimap://strava/callback`, `https://www.strava.com` | échange Strava ; sans identifiants : 503 |
 

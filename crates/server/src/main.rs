@@ -70,10 +70,23 @@ fn serve(cfg: Config, addr: Option<String>) -> Result<()> {
         .context("SKIMAP_CONTACT_EMAIL must be the contact address of the privacy page")?;
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
     let store = Store::open(&cfg.store)?;
-    let mut alerts = Alerts::open(&cfg.db, mailer(&cfg)?, Arc::clone(&clock), &cfg.public_url)?;
-    alerts.daily_cap = cfg.alert_daily_cap;
-    let alerts = Arc::new(alerts);
-    tracing::info!(mailer = %alerts.mailer(), "alerts");
+    // Without a relay no alert could ever leave: the service is off (`/v1/trips` answers
+    // 503) rather than accepting plans whose alerts would wait in the outbox forever.
+    let alerts = match &cfg.smtp {
+        Some(_) => {
+            let mut a = Alerts::open(&cfg.db, mailer(&cfg)?, Arc::clone(&clock), &cfg.public_url)?;
+            a.daily_cap = cfg.alert_daily_cap;
+            let a = Arc::new(a);
+            tracing::info!(mailer = %a.mailer(), "alerts");
+            Some(a)
+        }
+        None => {
+            tracing::warn!(
+                "alerts disabled: no SMTP relay (SMTP_HOST unset), /v1/trips answers 503"
+            );
+            None
+        }
+    };
     let strava = match &cfg.strava {
         Some(s) => Some((Strava::new(s.clone())?, s.clone())),
         None => None,
@@ -81,7 +94,7 @@ fn serve(cfg: Config, addr: Option<String>) -> Result<()> {
     tracing::info!(configured = strava.is_some(), "strava");
     let mut app = App::new(
         store,
-        Some(Arc::clone(&alerts)),
+        alerts.clone(),
         strava,
         &cfg.public_url,
         &contact,
@@ -94,16 +107,18 @@ fn serve(cfg: Config, addr: Option<String>) -> Result<()> {
     let running = skimap_server::http::serve(&addr, cfg.workers, Arc::new(app))?;
     tracing::info!(addr = %running.addr, workers = cfg.workers, store = %cfg.store.display(), "listening");
     // The timer of the alerts.
-    std::thread::spawn(move || {
-        loop {
-            match alerts.tick() {
-                Ok(r) if r != Default::default() => tracing::info!(?r, "alert tick"),
-                Ok(_) => {}
-                Err(e) => tracing::error!(error = %format!("{e:#}"), "alert tick"),
+    if let Some(alerts) = alerts {
+        std::thread::spawn(move || {
+            loop {
+                match alerts.tick() {
+                    Ok(r) if r != Default::default() => tracing::info!(?r, "alert tick"),
+                    Ok(_) => {}
+                    Err(e) => tracing::error!(error = %format!("{e:#}"), "alert tick"),
+                }
+                std::thread::sleep(Duration::from_secs(15));
             }
-            std::thread::sleep(Duration::from_secs(15));
-        }
-    });
+        });
+    }
     running.join();
     Ok(())
 }

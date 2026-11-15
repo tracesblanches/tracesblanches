@@ -244,5 +244,16 @@ fn strava_down_or_not_configured() {
         post(server.addr, "/v1/strava/token", json!({"code": "c"})).status,
         503
     );
+    // No alert service either (serve without SMTP_HOST): plans are refused, not queued.
+    let r = post(
+        server.addr,
+        "/v1/trips",
+        json!({"contacts": ["a@example.org"]}),
+    );
+    assert_eq!(
+        (r.status, r.json()["error"].as_str()),
+        (503, Some("unavailable"))
+    );
+    assert_eq!(get(server.addr, "/healthz").status, 200);
     server.stop();
 }

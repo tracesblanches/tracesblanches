@@ -53,7 +53,7 @@ Réponse 201 : `{"id", "token", "trip"}`. Le jeton (64 caractères hexadécimaux
 | `POST /v1/trips/<id>/checkin` | retour confirmé ; après une alerte, les contacts déjà prévenus reçoivent « rentré(e), alerte levée » et les alertes pas encore parties sont annulées |
 | `POST /v1/trips/<id>/cancel` ou `DELETE /v1/trips/<id>` | annule avant l'alerte (409 après : confirmer le retour) |
 
-Minuterie : toutes les 15 s, toute sortie active dont l'échéance plus le délai de grâce est passée part en alerte, un message par contact ; échec d'envoi : nouvel essai après 1, 2, 4, 8, 16 puis toutes les 30 minutes, abandon après 24 h (`failed`). Les sorties sont effacées 7 jours après leur fin.
+Minuterie : toutes les 15 s, toute sortie active dont l'échéance plus le délai de grâce est passée part en alerte, un message par contact ; échec d'envoi : nouvel essai après 1, 2, 4, 8, 16 puis toutes les 30 minutes, abandon après 24 h (`failed`). Les sorties sont effacées 7 jours après leur fin. Service non configuré (aucun relais SMTP sur le serveur) : 503 `unavailable` pour tous les appels `/v1/trips` ; l'app s'en remet alors à l'alerte par SMS du téléphone.
 
 ## Strava (S1)
 
