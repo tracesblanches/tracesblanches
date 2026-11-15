@@ -95,6 +95,7 @@ fn scen(b: &Built, name: &str, steps: Vec<Step>) -> Scenario {
         forest: true,
         seed: 7,
         tail_s: 300.0,
+        behaviour: None,
     }
 }
 
@@ -150,6 +151,7 @@ fn cause_tag(c: &Cause) -> &'static str {
         Cause::Conditions(_) => "conditions",
         Cause::Deviation => "deviation",
         Cause::NoTime => "no_time",
+        Cause::Pace => "pace",
     }
 }
 

@@ -70,6 +70,7 @@ fn site_counts(site: &'static Site) -> (usize, usize, usize, usize) {
         forest: true,
         seed: 3,
         tail_s: 300.0,
+        behaviour: None,
     };
     let run = scenario::run(&sc, &p, view, &g, TrackerParams::default()).expect("run");
     let mut tr = Tracker::new(&p, view, &g, None, TrackerParams::default()).unwrap();

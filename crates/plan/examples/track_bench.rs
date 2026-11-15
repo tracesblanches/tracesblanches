@@ -49,6 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             forest: true,
             seed: 11,
             tail_s: 300.0,
+            behaviour: None,
         };
         let run = scenario::run(&sc, &p, view, &g, TrackerParams::default())?;
         // Every fix at 1 Hz too (the approach mode everywhere): the worst case per hour.

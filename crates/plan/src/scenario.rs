@@ -4,9 +4,14 @@
 //! - **The skier** moves along a course of the graph at the C5 model pace divided by a
 //!   slowdown (one step per simulated second), with scripted events ([`Step`]): wait at
 //!   the start, arrive by car, take a wrong branch and come back or ski on, stop (at a
-//!   refuge or not), leave in a vehicle, turn back on foot, lose the GPS. Obedient by
-//!   default: when the tracker switches route, the skier takes the new one; a scripted
-//!   refusal keeps the previous one.
+//!   refuge or not), leave in a vehicle, turn back on foot, lose the GPS, answer a
+//!   proposal. Obedient by default: when the tracker switches route, the skier takes the
+//!   new one; a scripted refusal keeps the previous one.
+//! - **A group** (C11, [`Behaviour`]): its own speed per terrain relative to C5, random
+//!   stops (Poisson in moving time, log-normal durations) and detours (back along the
+//!   route and forward again: distance skied without progress, the phone stays with the
+//!   adult on the trail), drawn from its own seed; [`Behaviour::day`] varies them from
+//!   day to day.
 //! - **The GPS**: the true position plus the noise of C2 (`matching::synth`: Gauss–Markov
 //!   error per axis and forest outliers), drawn once per second from a seed.
 //! - **The client** applies the tracker's GPS requests ([`crate::gps`]): fix interval,
@@ -21,6 +26,8 @@ use serde::{Deserialize, Serialize};
 use skimap_common::geom::LonLat;
 use skimap_core::graph::{HalfEdge, LocalPlane, PisteGraph};
 use skimap_core::matching::synth::{Noise, Rng, Truth, add_noise};
+
+use skimap_core::calibration::{TERRAINS, Terrain, terrain_ratio};
 
 use crate::course::{Course, PlanLeg};
 use crate::error::{Error, Result};
@@ -93,6 +100,92 @@ pub enum Step {
         /// Seconds.
         secs: f64,
     },
+    /// Answers the next proposal of the tracker after a delay (in order of the steps).
+    Answer {
+        /// Accepts.
+        accept: bool,
+        /// Seconds after the proposal.
+        after_s: f64,
+    },
+}
+
+/// How a group skis (C11): the truth of a simulated outing.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Behaviour {
+    /// Moving speed relative to C5 per terrain (uphill, flat, downhill).
+    pub speed: [f64; TERRAINS],
+    /// Stops (of any length) per hour of moving.
+    pub stops_per_h: f64,
+    /// Median stop, seconds.
+    pub stop_median_s: f64,
+    /// Standard deviation of the log stop duration.
+    pub stop_sigma: f64,
+    /// Detours (back along the route and forward again) per hour of moving.
+    pub detours_per_h: f64,
+    /// Mean way back of a detour, metres (exponential).
+    pub detour_m: f64,
+    /// Seed of the stops and detours.
+    pub seed: u64,
+}
+
+impl Behaviour {
+    /// A family with children of 6 and 9: 0.55 to 0.65 of the C5 speed (slower uphill and
+    /// downhill: snowplough), 3 stops an hour of 4 min (median), 4 detours an hour of 30 m
+    /// back.
+    pub fn family() -> Self {
+        Self {
+            speed: [0.55, 0.65, 0.55],
+            stops_per_h: 3.0,
+            stop_median_s: 240.0,
+            stop_sigma: 0.7,
+            detours_per_h: 4.0,
+            detour_m: 30.0,
+            seed: 1,
+        }
+    }
+
+    /// A trained adult: 25 % faster than C5 (10 % downhill), one short stop in three hours.
+    pub fn fast_adult() -> Self {
+        Self {
+            speed: [1.3, 1.25, 1.1],
+            stops_per_h: 0.3,
+            stop_median_s: 150.0,
+            stop_sigma: 0.5,
+            detours_per_h: 0.0,
+            detour_m: 0.0,
+            seed: 2,
+        }
+    }
+
+    /// An adult at the C5 pace, a stop of 4 min every hour and a half.
+    pub fn normal_adult() -> Self {
+        Self {
+            speed: [1.0, 1.0, 1.0],
+            stops_per_h: 0.6,
+            stop_median_s: 240.0,
+            stop_sigma: 0.5,
+            detours_per_h: 0.5,
+            detour_m: 20.0,
+            seed: 3,
+        }
+    }
+
+    /// The same group on day `k`: speed × e^(0.1 N), stops × e^(0.3 N), median stop ×
+    /// e^(0.2 N), detours × e^(0.3 N), a seed of its own.
+    pub fn day(&self, k: u64) -> Self {
+        let mut r = Rng(self.seed.wrapping_mul(0x9E37_79B9_7F4A_7C15)
+            ^ (k + 1).wrapping_mul(0xBF58_476D_1CE4_E5B9));
+        let f = (0.1 * r.normal()).exp();
+        Self {
+            speed: self.speed.map(|v| v * f),
+            stops_per_h: self.stops_per_h * (0.3 * r.normal()).exp(),
+            stop_median_s: self.stop_median_s * (0.2 * r.normal()).exp(),
+            stop_sigma: self.stop_sigma,
+            detours_per_h: self.detours_per_h * (0.3 * r.normal()).exp(),
+            detour_m: self.detour_m,
+            seed: r.next_u64(),
+        }
+    }
 }
 
 /// A scenario.
@@ -114,6 +207,10 @@ pub struct Scenario {
     pub seed: u64,
     /// Simulated time after the end of the course, seconds.
     pub tail_s: f64,
+    /// The group's behaviour (C11); `None`: the C5 pace divided by `slowdown`, no stop or
+    /// detour but those scripted.
+    #[serde(default)]
+    pub behaviour: Option<Behaviour>,
 }
 
 /// A run: everything given to the tracker and everything it said.
@@ -239,18 +336,63 @@ struct Skier {
     course: Course,
     /// Distance along it.
     s: f64,
+    /// Terrain of each piece of the course's profile.
+    terrain: Vec<Terrain>,
+    /// Out of a detour: metres still to go back, metres behind the progress.
+    back_left: f64,
+    back: f64,
 }
 
 impl Skier {
-    /// Moves `dt` seconds at the model pace divided by `slow`.
-    fn step(&mut self, dt: f64, slow: f64) {
+    fn new(course: Course, ratio: f64) -> Self {
+        let mut sk = Self {
+            course,
+            s: 0.0,
+            terrain: Vec::new(),
+            back_left: 0.0,
+            back: 0.0,
+        };
+        sk.set_course(sk.course.clone(), ratio);
+        sk
+    }
+
+    fn set_course(&mut self, c: Course, ratio: f64) {
+        let p = c.profile();
+        self.terrain = (1..p.dist_m.len())
+            .map(|i| {
+                Terrain::of_times(
+                    p.out_s[i] - p.out_s[i - 1],
+                    p.back_s[i] - p.back_s[i - 1],
+                    ratio,
+                )
+            })
+            .collect();
+        self.course = c;
+    }
+
+    /// Terrain and model speed (m/s along the route) here.
+    fn here(&self) -> (Terrain, f64) {
+        let p = self.course.profile();
+        let d = self.course.profile_at(self.s);
+        let i = p.index_at(d).min(self.terrain.len().saturating_sub(1));
+        let t = self.terrain.get(i).copied().unwrap_or(Terrain::Flat);
+        let dt = p.out_s.get(i + 1).map_or(0.0, |x| x - p.out_s[i]);
+        let dd = p.dist_m.get(i + 1).map_or(0.0, |x| x - p.dist_m[i]);
+        let scale = self.course.profile_at(1.0).max(1e-9);
+        (t, if dt > 0.0 { dd / dt / scale } else { 1.0 })
+    }
+
+    /// Moves `dt` seconds at the model pace times `speed` on the terrain here, divided by
+    /// `slow`.
+    fn step(&mut self, dt: f64, slow: f64, speed: [f64; TERRAINS]) {
         let p = self.course.profile();
         let scale = if self.course.length_m() > 0.0 {
             p.length_m() / self.course.length_m()
         } else {
             1.0
         };
-        let tau = self.course.model_s_at(self.s) + dt / slow;
+        let k = speed[self.here().0 as usize];
+        let tau = self.course.model_s_at(self.s) + dt * k / slow;
         // Inverse of the profile: distance at model time tau.
         let i = p
             .out_s
@@ -271,7 +413,7 @@ impl Skier {
     }
 
     fn pos(&self) -> LonLat {
-        self.course.line().point_at(self.s)
+        self.course.line().point_at((self.s - self.back).max(0.0))
     }
 
     fn done(&self) -> bool {
@@ -299,10 +441,21 @@ pub fn run(
             legs = wrong_turn(plan, g, *junction, *length_m, *back)?;
         }
     }
-    let mut sk = Skier {
-        course: Course::new(g, &legs, &plan.eta)?,
-        s: 0.0,
-    };
+    let ratio = terrain_ratio(&plan.eta);
+    let mut sk = Skier::new(Course::new(g, &legs, &plan.eta)?, ratio);
+    let bh = sc.behaviour;
+    let speed = bh.map_or([1.0; TERRAINS], |b| b.speed);
+    let mut grng = Rng(bh.map_or(0, |b| b.seed));
+    let mut answers: Vec<(bool, f64)> = sc
+        .steps
+        .iter()
+        .filter_map(|s| match s {
+            Step::Answer { accept, after_s } => Some((*accept, *after_s)),
+            _ => None,
+        })
+        .collect();
+    answers.reverse();
+    let mut answer_at: Option<(f64, bool)> = None;
     let start_pos = sk.pos();
     let plane = LocalPlane::new(start_pos);
     // Noise of C2, one draw per second for the whole outing.
@@ -396,8 +549,10 @@ pub fn run(
                     let back = reversed(&l);
                     l.extend(back);
                     let s = sk.s;
-                    sk.course = Course::new(g, &l, &plan.eta)?;
+                    sk.set_course(Course::new(g, &l, &plan.eta)?, ratio);
                     sk.s = s;
+                    sk.back = 0.0;
+                    sk.back_left = 0.0;
                     true
                 }
                 Step::Gap { at_s, secs } if sk.s >= *at_s => {
@@ -420,9 +575,10 @@ pub fn run(
                     ignore_next = true;
                     true
                 }
-                Step::WaitAtStart { .. } | Step::ArriveByCar { .. } | Step::WrongTurn { .. } => {
-                    true
-                }
+                Step::WaitAtStart { .. }
+                | Step::ArriveByCar { .. }
+                | Step::WrongTurn { .. }
+                | Step::Answer { .. } => true,
                 _ => false,
             };
             if !fire {
@@ -430,6 +586,12 @@ pub fn run(
             }
         }
         steps = keep;
+        if let Some((at_t, accept)) = answer_at
+            && t >= at_t
+        {
+            events.push(Input::Answer { t: at(t), accept });
+            answer_at = None;
+        }
         // Motion.
         let mut pos = sk.pos();
         let mut moving = false;
@@ -460,7 +622,26 @@ pub fn run(
                 stop_until = None;
             }
         } else if !sk.done() {
-            sk.step(1.0, sc.slowdown);
+            let (_, v) = sk.here();
+            let v = v * speed[sk.here().0 as usize] / sc.slowdown;
+            if sk.back_left > 0.0 {
+                // A detour: back along the route…
+                sk.back_left -= v;
+                sk.back += v;
+            } else if sk.back > 0.0 {
+                // …and forward again to where it left.
+                sk.back = (sk.back - v).max(0.0);
+            } else {
+                sk.step(1.0, sc.slowdown, speed);
+                if let Some(b) = bh {
+                    if grng.unit() < b.stops_per_h / 3600.0 {
+                        let d = (b.stop_median_s.ln() + b.stop_sigma * grng.normal()).exp();
+                        stop_until = Some(t + d);
+                    } else if grng.unit() < b.detours_per_h / 3600.0 {
+                        sk.back_left = -b.detour_m * (1.0 - grng.unit()).max(1e-9).ln();
+                    }
+                }
+            }
             pos = sk.pos();
             moving = true;
         }
@@ -545,6 +726,11 @@ pub fn run(
                         fired = false;
                     }
                 }
+                Output::Proposal { .. } => {
+                    if let Some((accept, after)) = answers.pop() {
+                        answer_at = Some((t + after, accept));
+                    }
+                }
                 Output::Switched { .. } => {
                     if steps.iter().any(|s| matches!(s, Step::RefuseNext { .. }))
                         && refuse_at.is_none()
@@ -570,8 +756,10 @@ pub fn run(
                             .filter(|(_, d)| *d < 60.0)
                             .or_else(|| new.line().project(here, 0.0, new.length_m()))
                             .map_or(cur, |(s, _)| s);
-                        sk.course = new;
+                        sk.set_course(new, ratio);
                         sk.s = s;
+                        sk.back = 0.0;
+                        sk.back_left = 0.0;
                     }
                 }
                 Output::Session {
@@ -667,6 +855,25 @@ pub fn timeline(run: &Run) -> Vec<String> {
                     )
                 }
                 Output::Recap { recap, .. } => format!("bilan : {}", recap.text),
+                Output::Proposal { proposal, .. } => format!(
+                    "proposition {} {:?} ({:?}, {:?}) : {}",
+                    proposal.id, proposal.kind, proposal.route, proposal.reason, proposal.text
+                ),
+                Output::Answered {
+                    kind,
+                    accept,
+                    applied,
+                    ..
+                } => format!(
+                    "réponse {:?} : {}{}",
+                    kind,
+                    if *accept { "acceptée" } else { "refusée" },
+                    if *accept && !*applied {
+                        " (sans effet)"
+                    } else {
+                        ""
+                    }
+                ),
             };
             format!("{:>6.0} s  {}  {what}", s, local(o.t()).format("%H:%M:%S"))
         })

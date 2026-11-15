@@ -1,4 +1,4 @@
-//! Day plan (J1 to J4, Q9, E1): the morning choices turned into a plan the phone follows
+//! Day plan (J1 to J4, Q9, E1, C11): the morning choices turned into a plan the phone follows
 //! without any manipulation when all goes well.
 //!
 //! - [`plan`] (J1): [`plan::morning`] gathers the briefing (A1), best time (A9), wax (A2),
@@ -16,6 +16,10 @@
 //! - [`speech`] (J4): hierarchy, rate, grouping; safety never lost.
 //! - [`scenario`] (Q9): synthetic outings on the real graphs replayed with a simulated
 //!   clock, in closed loop with the GPS modes and the switches.
+//! - [`pace`] (C11): the estimated time learned per group on the plan's routes (morning
+//!   range, the proposals of the tracker when the group is durably slower, the digest of a
+//!   past outing for the learning); [`pace_eval`]: its errors against C5 alone on
+//!   synthetic outings.
 //!
 //! Shared: [`course`] (a route followed), [`guidance`] (junctions, turns, obvious ways),
 //! [`line`] (geometry along a route), [`phrases`] (what the plan says), [`presets`]
@@ -29,6 +33,8 @@ pub mod fallback;
 pub mod gps;
 pub mod guidance;
 pub mod line;
+pub mod pace;
+pub mod pace_eval;
 pub mod phrases;
 pub mod plan;
 pub mod presets;
