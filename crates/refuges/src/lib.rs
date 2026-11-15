@@ -50,8 +50,18 @@ pub struct RefugesOutput {
     pub stats: Value,
 }
 
-/// Whether a point lies in France (a commune is found there).
-fn in_france(dl: &Downloader, cache: &mut HashMap<(i64, i64), bool>, p: LonLat) -> Result<bool> {
+/// Whether a point lies in France: inside the French part of the site box (union of the
+/// commune outlines of geo.api.gouv.fr, the same requests as the zones layer, cached),
+/// else a commune is looked for at the point (box edges, foreign side).
+fn in_france(
+    dl: &Downloader,
+    cache: &mut HashMap<(i64, i64), bool>,
+    french: Option<&geo::MultiPolygon<f64>>,
+    p: LonLat,
+) -> Result<bool> {
+    if french.is_some_and(|f| geo::Contains::contains(f, &geo::Point::new(p.lon, p.lat))) {
+        return Ok(true);
+    }
     let key = ((p.lon * 1e5).round() as i64, (p.lat * 1e5).round() as i64);
     if let Some(v) = cache.get(&key) {
         return Ok(*v);
@@ -97,13 +107,17 @@ pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<Refuge
     let links = links::link(&ri.points, &huts, &c2c.waypoints);
 
     let mut fr_cache = HashMap::new();
+    // One point query per hut otherwise (about 100 per site, 1 s each on geo.api.gouv.fr):
+    // the bottleneck of building every domain of France (G2). A box without any French
+    // commune keeps the point queries.
+    let french = skimap_zones::sources::jurisdiction::france_part(dl, site.bbox).ok();
     let mut ri_fr = Vec::with_capacity(ri.points.len());
     for p in &ri.points {
-        ri_fr.push(in_france(dl, &mut fr_cache, p.pos)?);
+        ri_fr.push(in_france(dl, &mut fr_cache, french.as_ref(), p.pos)?);
     }
     let mut osm_fr = Vec::with_capacity(huts.len());
     for h in &huts {
-        osm_fr.push(in_france(dl, &mut fr_cache, h.pos)?);
+        osm_fr.push(in_france(dl, &mut fr_cache, french.as_ref(), h.pos)?);
     }
 
     let mut link_of_ri: HashMap<u64, usize> = HashMap::new();

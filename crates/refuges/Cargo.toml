@@ -9,6 +9,9 @@ publish.workspace = true
 [dependencies]
 skimap-common = { workspace = true, features = ["download"] }
 skimap-osm.workspace = true
+# French part of the site box (communes of geo.api.gouv.fr), shared with the zones layer.
+skimap-zones = { workspace = true, features = ["pipeline"] }
+geo.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 serde.workspace = true
