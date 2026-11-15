@@ -21,6 +21,7 @@
 pub mod card;
 pub mod card_map;
 pub mod catalog;
+pub mod community;
 pub mod fees;
 pub mod info;
 pub mod style;

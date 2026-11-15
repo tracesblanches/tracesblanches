@@ -15,11 +15,20 @@
 //!   [`track`], feature `phone`); the outings feed the calibration (C11 `OutingObs`).
 
 pub mod jpeg;
+pub mod osm_note;
 pub mod rules;
 
 #[cfg(feature = "server")]
 pub mod store;
 
+#[cfg(feature = "phone")]
+pub mod challenges;
+#[cfg(feature = "phone")]
+pub mod fit;
+#[cfg(feature = "phone")]
+pub mod strava_export;
+#[cfg(feature = "phone")]
+pub mod track;
 
 /// Name of this crate.
 pub const CRATE: &str = env!("CARGO_PKG_NAME");
