@@ -5,6 +5,8 @@
   (PMTiles; python3 -m http.server does not), then open this page:
     cargo run --release -p skimap-pack --features pipeline --example serve -- <repo> 127.0.0.1:8765
     google-chrome "http://127.0.0.1:8765/tools/viewer/index.html?pack=../../data/out/cervieres/pack/"
+  Styles by practice (K15, #123): ../../styles/<fond|srn|guidage>-<clair|sombre>.json, the same
+  files as the app; ?style=srn&theme=sombre&panel=0&focus=decision for screenshots.
   See tools/viewer/README.md (phone: adb reverse).
 -->
 <html lang="fr">
@@ -45,6 +47,9 @@
   .note { font-size: 12px; background: #fff8e1; border-left: 3px solid #f0b400; padding: 6px 8px; margin: 6px 0; }
   .warn { font-size: 12px; background: #fdecea; border-left: 3px solid #d73027; padding: 6px 8px; margin: 6px 0; }
   .opacity { margin: 0 0 6px 28px; }
+  .seg { display: flex; gap: 6px; margin: 4px 0 2px; }
+  .seg button { flex: 1; min-height: 40px; font-size: 15px; border: 1px solid #bbb; border-radius: 6px; background: #fff; cursor: pointer; }
+  .seg button.on { background: #1d1d1f; color: #fff; border-color: #1d1d1f; }
   #attrib li, #missing li { font-size: 12px; margin: 3px 0; }
   .maplibregl-popup-content { max-width: min(420px, 86vw); max-height: 55vh; overflow-y: auto; padding: 10px 12px; font-size: 13px; }
   .maplibregl-popup-content h3 { margin: 0 0 4px; font-size: 14px; }
@@ -65,8 +70,10 @@
   <h1>skimap — visualiseur</h1>
   <select id="packSelect" aria-label="Pack"></select>
   <div id="packInfo" class="small"></div>
-  <h2>Fond de carte</h2>
-  <div id="basemaps"></div>
+  <h2>Style</h2>
+  <div id="styles"></div>
+  <div class="seg" id="themes"><button data-theme="clair">Clair</button><button data-theme="sombre">Sombre</button></div>
+  <div id="styleNote" class="small"></div>
   <h2>Couches</h2>
   <div id="layers"></div>
   <h2>Infos du pack</h2>
@@ -94,7 +101,7 @@ const DIFF_COLORS = ["match", ["get", "difficulty"],
 const ZONE_COLORS = ["match", ["get", "kind"],
   "biodiv_sports", "#e06c00", "parc_naturel_regional", "#4d9221", "parc_national", "#1b7837",
   "reserve_naturelle_nationale", "#00441b", "reserve_naturelle_regionale", "#00441b",
-  "reserve_biologique", "#006d2c", "apb", "#c51b7d", "natura2000_sic", "#3182bd", "natura2000_zps", "#08519c",
+  "reserve_biologique", "#006d2c", "appb", "#c51b7d", "natura2000_sic", "#3182bd", "natura2000_zps", "#08519c",
   "site_classe", "#8073ac", "site_inscrit", "#b2abd2", "monument_historique", "#8c510a", "monument_abords", "#bf812d",
   "spr", "#dfc27d", "district_franc", "#c51b7d", "#41ab5d"];
 function swatchColor(id) {
@@ -169,7 +176,16 @@ function derive(id, p) {
 
 // ---------------------------------------------------------------------------------
 // State
-const state = { base: null, manifest: null, basemap: null, visible: {}, opacity: {}, data: {}, styles: {} };
+// Styles by practice (styles/ at the repository root, shared with the app), then the two
+// basemaps of the pack in their own styles, for comparison.
+const STYLES = [
+  { id: "fond", title: "Fond — pistes damées" },
+  { id: "srn", title: "SRN — hors piste" },
+  { id: "guidage", title: "Guidage" },
+];
+const STYLE_DIR = new URL("../../styles/", location.href).href;
+const state = { base: null, manifest: null, basemap: null, visible: {}, opacity: {}, data: {}, styles: {},
+                mode: "style", style: "fond", theme: "clair", srcVisible: {}, srcPack: {}, srcLayer: {}, runtime: {}, current: null };
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const abs = (rel) => state.base + rel;
@@ -178,13 +194,29 @@ const fmtBytes = (n) => n >= 1e6 ? (n / 1e6).toFixed(1).replace(".", ",") + " Mo
 function showError(msg) { const e = $("error"); e.innerHTML = msg; e.style.display = "block"; }
 
 const protocol = new pmtiles.Protocol();
-maplibregl.addProtocol("pmtiles", protocol.tile);
+// The rasters of the pack are sparse (no tile where there is no data). For a raster tile
+// absent from the archive the PMTiles client answers `data: null`, and MapLibre GL JS
+// 5.24 then leaves the tile loading for ever (the map never becomes idle): answer a
+// transparent 1 × 1 PNG instead. Missing vector tiles come back empty and are fine.
+const NO_RASTER_TILE = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="),
+                                       (c) => c.charCodeAt(0));
+maplibregl.addProtocol("pmtiles", async (params, abort) => {
+  const r = await protocol.tile(params, abort);
+  return r.data === null || r.data === undefined ? Object.assign({}, r, { data: NO_RASTER_TILE.slice() }) : r;
+});
 
 const map = new maplibregl.Map({ container: "map", style: { version: 8, sources: {}, layers: [] }, hash: true,
                                  attributionControl: { compact: true }, maxPitch: 0 });
 map.addControl(new maplibregl.NavigationControl({ showCompass: true }), "top-right");
 map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-right");
-map.addControl(new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true }), "top-right");
+const geolocate = new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true,
+                                                    showUserLocation: false, showAccuracyCircle: false });
+map.addControl(geolocate, "top-right");
+// The styles draw the position themselves (runtime source `position`, as in the app).
+geolocate.on("geolocate", (e) => {
+  setRuntime("position", [{ type: "Feature", geometry: { type: "Point", coordinates: [e.coords.longitude, e.coords.latitude] },
+                            properties: { accuracy_m: e.coords.accuracy } }]);
+});
 
 // ---------------------------------------------------------------------------------
 // Style composition: basemap style (URLs made absolute) + pack layers on top.
@@ -204,6 +236,110 @@ async function basemapStyle(b) {
   return s;
 }
 
+// A style of styles/: URLs relative to the pack made absolute, GeoJSON loaded by the viewer
+// (feature index for the popups), runtime sources filled with the demo or the GPS.
+async function practiceStyle() {
+  const name = `${state.style}-${state.theme}.json`;
+  if (!state.styles[name]) {
+    const r = await fetch(STYLE_DIR + name);
+    if (!r.ok) throw new Error(`style ${name}: HTTP ${r.status}`);
+    state.styles[name] = await r.json();
+  }
+  const s = structuredClone(state.styles[name]);
+  s.glyphs = abs(s.glyphs);
+  s.sprite = abs(s.sprite);
+  const runtime = (s.metadata || {})["skimap:runtime_sources"] || {};
+  state.srcPack = {};
+  state.srcLayer = {};
+  for (const [id, src] of Object.entries(s.sources)) {
+    const file = typeof src.data === "string" ? src.data : src.url && src.url.startsWith("pmtiles://") ? src.url.slice(10) : null;
+    const packLayer = file && state.manifest.layers.find((x) => x.file === file);
+    if (packLayer) state.srcLayer[id] = packLayer;
+    if (src.url && src.url.startsWith("pmtiles://")) src.url = "pmtiles://" + abs(src.url.slice(10));
+    if (typeof src.data === "string") {
+      const l = state.manifest.layers.find((x) => x.file === src.data);
+      if (!l) throw new Error(`style ${name}: ${src.data} absent du pack`);
+      src.data = await loadData(l);
+      state.srcPack[id] = l.id;
+    } else if (runtime[id]) {
+      src.data = { type: "FeatureCollection", features: state.runtime[id] || [] };
+    }
+  }
+  for (const l of s.layers) {
+    if (!l.source || !(l.source in state.srcVisible)) continue;
+    l.layout = Object.assign({}, l.layout, { visibility: state.srcVisible[l.source] ? "visible" : "none" });
+  }
+  return s;
+}
+
+// Pack sources of a style that the panel can switch (GeoJSON and rasters of the pack).
+function styleGroups(s) {
+  const groups = [];
+  for (const id of Object.keys(s.sources)) {
+    const l = state.srcLayer[id];
+    if (!l) continue;
+    const layers = s.layers.filter((x) => x.source === id);
+    const shown = layers.some((x) => (x.layout || {}).visibility !== "none");
+    groups.push({ id, layer: l, shown });
+  }
+  return groups;
+}
+
+function setRuntime(id, features) {
+  state.runtime[id] = features;
+  const src = map.getSource(id);
+  if (src) src.setData({ type: "FeatureCollection", features });
+}
+
+// Demo of the guidance: first proof route of the pack (layer `routes`), skier at 35 % of it,
+// next junction of the piste graph ahead with the turn to take.
+const toRad = (d) => d * Math.PI / 180;
+function dist(a, b) {
+  const dLat = toRad(b[1] - a[1]), dLon = toRad(b[0] - a[0]);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a[1])) * Math.cos(toRad(b[1])) * Math.sin(dLon / 2) ** 2;
+  return 2 * 6371008.8 * Math.asin(Math.sqrt(h));
+}
+function bearing(a, b) {
+  const y = Math.sin(toRad(b[0] - a[0])) * Math.cos(toRad(b[1]));
+  const x = Math.cos(toRad(a[1])) * Math.sin(toRad(b[1])) - Math.sin(toRad(a[1])) * Math.cos(toRad(b[1])) * Math.cos(toRad(b[0] - a[0]));
+  return Math.atan2(y, x) * 180 / Math.PI;
+}
+async function demoRuntime() {
+  const m = state.manifest;
+  const routes = m.layers.find((l) => l.id === "routes");
+  const nodesLayer = m.layers.find((l) => l.id === "pistes-graph-nodes");
+  if (!routes || !nodesLayer) return;
+  const r = (await loadData(routes)).features.find((f) => f.properties.kind === "route" && f.geometry.type === "LineString");
+  if (!r) return;
+  const c = r.geometry.coordinates;
+  const d = [0];
+  for (let i = 1; i < c.length; i++) d.push(d[i - 1] + dist(c[i - 1], c[i]));
+  const at = d[d.length - 1] * 0.35;
+  const k = d.findIndex((x) => x >= at);
+  const t = (at - d[k - 1]) / (d[k] - d[k - 1] || 1);
+  const pos = [c[k - 1][0] + t * (c[k][0] - c[k - 1][0]), c[k - 1][1] + t * (c[k][1] - c[k - 1][1])];
+  const line = (coords, part) => ({ type: "Feature", geometry: { type: "LineString", coordinates: coords }, properties: { part } });
+  setRuntime("route", [line([...c.slice(0, k), pos], "done"), line([pos, ...c.slice(k)], "ahead")]);
+  setRuntime("position", [{ type: "Feature", geometry: { type: "Point", coordinates: pos }, properties: { accuracy_m: 12 } }]);
+  const junctions = (await loadData(nodesLayer)).features.filter((f) => f.properties.degree >= 3).map((f) => f.geometry.coordinates);
+  for (let j = k; j < c.length - 1; j++) {
+    if (d[j] - at < 80 || !junctions.some((n) => dist(n, c[j]) < 8)) continue;
+    // Turn from the bearings 30 m before and after the junction.
+    let a = j, b = j;
+    while (a > 0 && d[j] - d[a] < 30) a--;
+    while (b < c.length - 1 && d[b] - d[j] < 30) b++;
+    let turn = bearing(c[j], c[b]) - bearing(c[a], c[j]);
+    turn = ((turn + 540) % 360) - 180;
+    const word = Math.abs(turn) < 25 ? "Tout droit" : turn > 0 ? "À droite" : "À gauche";
+    const meters = d[j] - at;
+    const away = meters >= 1000 ? `${(meters / 1000).toFixed(1).replace(".", ",")} km` : `${Math.round(meters / 10) * 10} m`;
+    setRuntime("decision", [{ type: "Feature", geometry: { type: "Point", coordinates: c[j] }, properties: { label: `${word} dans ${away}` } }]);
+    state.demo = { position: pos, decision: c[j] };
+    return;
+  }
+  state.demo = { position: pos, decision: null };
+}
+
 function fontFor(b) { return !b ? null : b.id === "plan-ign" ? "Source Sans Pro Regular" : "Noto Sans Regular"; }
 
 async function loadData(l) {
@@ -217,6 +353,15 @@ async function loadData(l) {
 }
 
 async function render() {
+  window.__skimapIdle = false;
+  if (state.mode === "style") {
+    const s = await practiceStyle();
+    state.current = s;
+    map.setStyle(s, { diff: false });
+    map.once("idle", () => { window.__skimapIdle = true; });
+    return;
+  }
+  state.current = null;
   const m = state.manifest;
   const b = m.basemaps.find((x) => x.id === state.basemap) || null;
   const style = await basemapStyle(b);
@@ -238,6 +383,7 @@ async function render() {
     });
   }
   map.setStyle(style, { diff: false });
+  map.once("idle", () => { window.__skimapIdle = true; });
 }
 
 // ---------------------------------------------------------------------------------
@@ -317,10 +463,10 @@ function popupHtml(id, p, title) {
 map.on("click", (e) => {
   const r = 8;
   const feats = map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]])
-    .filter((f) => f.layer.metadata && f.layer.metadata.pack_layer);
+    .filter((f) => packLayerOf(f));
   const seen = new Set(); const parts = [];
   for (const f of feats) {
-    const id = f.layer.metadata.pack_layer; const key = id + ":" + f.properties._i;
+    const id = packLayerOf(f); const key = id + ":" + f.properties._i;
     if (seen.has(key)) continue; seen.add(key);
     const orig = state.data[id].features[f.properties._i].properties;
     parts.push(popupHtml(id, orig, state.manifest.layers.find((l) => l.id === id).title));
@@ -328,8 +474,12 @@ map.on("click", (e) => {
   }
   if (parts.length) new maplibregl.Popup({ maxWidth: "none" }).setLngLat(e.lngLat).setHTML(parts.join("<hr>")).addTo(map);
 });
+function packLayerOf(f) {
+  if (state.mode === "style") return f.properties._i !== undefined ? state.srcPack[f.source] : undefined;
+  return f.layer.metadata && f.layer.metadata.pack_layer;
+}
 map.on("mousemove", (e) => {
-  const f = map.queryRenderedFeatures(e.point).some((f) => f.layer.metadata && f.layer.metadata.pack_layer);
+  const f = map.queryRenderedFeatures(e.point).some((f) => packLayerOf(f));
   map.getCanvas().style.cursor = f ? "pointer" : "";
 });
 
@@ -353,16 +503,51 @@ function buildPanel() {
   const m = state.manifest;
   $("packInfo").innerHTML = `${esc(m.site.name)} — pack ${esc(m.pack_version)}, ${fmtBytes(m.total_bytes)}, format v${m.format_version}` +
     (m.personal_sources ? ` <span class="note">sources à usage personnel incluses</span>` : "");
-  const bm = $("basemaps"); bm.innerHTML = "";
-  const opts = m.basemaps.map((b) => ({ id: b.id, title: `${b.title} (z${b.minzoom}-${b.maxzoom}, ${fmtBytes(b.bytes)})` }));
-  opts.push({ id: "", title: "aucun" });
+  const st = $("styles"); st.innerHTML = "";
+  const opts = [...STYLES.map((x) => ({ mode: "style", id: x.id, title: x.title })),
+    ...m.basemaps.map((b) => ({ mode: "basemap", id: b.id, title: `${b.title}, style d'origine (comparaison)` })),
+    { mode: "basemap", id: "", title: "aucun fond" }];
   for (const o of opts) {
+    const on = state.mode === o.mode && (o.mode === "style" ? state.style === o.id : (state.basemap || "") === o.id);
     const lab = document.createElement("label"); lab.className = "row";
-    lab.innerHTML = `<input type="radio" name="basemap" value="${esc(o.id)}" ${state.basemap === o.id || (!state.basemap && !o.id) ? "checked" : ""}> ${esc(o.title)}`;
-    lab.querySelector("input").onchange = () => { state.basemap = o.id || null; render().catch(err); };
-    bm.appendChild(lab);
+    lab.innerHTML = `<input type="radio" name="style" ${on ? "checked" : ""}> ${esc(o.title)}`;
+    lab.querySelector("input").onchange = () => {
+      state.mode = o.mode;
+      if (o.mode === "style") { state.style = o.id; state.srcVisible = {}; } else state.basemap = o.id || null;
+      syncUrl(); buildPanel(); render().then(buildLayers).catch(err);
+    };
+    st.appendChild(lab);
   }
+  for (const b of $("themes").querySelectorAll("button")) {
+    b.classList.toggle("on", b.dataset.theme === state.theme);
+    b.disabled = state.mode !== "style";
+    b.onclick = () => { state.theme = b.dataset.theme; syncUrl(); buildPanel(); render().then(buildLayers).catch(err); };
+  }
+  $("styleNote").textContent = state.mode === "style"
+    ? `styles/${state.style}-${state.theme}.json : mêmes fichiers que l'app, mêmes tuiles du pack.`
+    : "Style d'origine du fond, avec les couches du visualiseur par-dessus.";
+  buildLayers();
+  buildInfos();
+}
+
+function buildLayers() {
+  const m = state.manifest;
   const box = $("layers"); box.innerHTML = "";
+  if (state.mode === "style") {
+    if (!state.current) return;
+    for (const g of styleGroups(state.current)) {
+      const lab = document.createElement("label"); lab.className = "row";
+      lab.innerHTML = `<input type="checkbox" ${g.shown ? "checked" : ""}> <span>${esc(g.layer.title)}</span>`;
+      lab.querySelector("input").onchange = (ev) => {
+        state.srcVisible[g.id] = ev.target.checked;
+        for (const l of map.getStyle().layers.filter((x) => x.source === g.id)) map.setLayoutProperty(l.id, "visibility", ev.target.checked ? "visible" : "none");
+        state.current.layers.filter((x) => x.source === g.id).forEach((x) => { x.layout = Object.assign({}, x.layout, { visibility: ev.target.checked ? "visible" : "none" }); });
+      };
+      box.appendChild(lab);
+      if (g.layer.raster) box.insertAdjacentHTML("beforeend", legendHtml(g.layer));
+    }
+    return;
+  }
   const shown = [...m.layers.filter((l) => l.kind === "vector").reverse(), ...m.layers.filter((l) => l.kind === "raster").reverse()];
   for (const l of shown) {
     const lab = document.createElement("label"); lab.className = "row";
@@ -381,6 +566,10 @@ function buildPanel() {
       box.appendChild(d);
     }
   }
+}
+
+function buildInfos() {
+  const m = state.manifest;
   // Infos: validity, BERA, avalanche summary, voice.
   const inf = [];
   inf.push(`<div class="note">${esc(m.valid_for.note)}</div>`);
@@ -422,13 +611,26 @@ async function openPack(url) {
   const m = await r.json();
   if (m.format !== "skimap-pack" || m.format_version > 1) { showError(`format ${esc(m.format)} v${m.format_version} non lu par ce visualiseur`); return; }
   state.manifest = m; state.data = {}; state.styles = {};
-  state.visible = {}; for (const l of m.layers) state.visible[l.id] = !!l.visible;
+  state.visible = {}; for (const l of m.layers) state.visible[l.id] = !!l.visible && params.get("layers") !== "none";
   state.basemap = (m.basemaps[0] || {}).id || null;
+  const want = params.get("style");
+  if (want && STYLES.some((x) => x.id === want)) { state.mode = "style"; state.style = want; }
+  else if (want === "none" || m.basemaps.some((b) => b.id === want)) { state.mode = "basemap"; state.basemap = want === "none" ? null : want; }
+  if (["clair", "sombre"].includes(params.get("theme"))) state.theme = params.get("theme");
+  state.srcVisible = {}; state.runtime = {};
+  await demoRuntime().catch((e) => console.warn("démo du guidage :", e));
   buildPanel();
   await render();
+  buildLayers();
   if (!OPENED_WITH_POSITION || state.fitted) {
     const [w, s, e, n] = m.site.bbox;
     map.fitBounds([[w, s], [e, n]], { padding: 20, duration: 0 });
+    if (params.get("focus") === "decision" && state.demo && state.demo.decision) {
+      const [p, q] = [state.demo.position, state.demo.decision];
+      map.fitBounds([[Math.min(p[0], q[0]), Math.min(p[1], q[1])], [Math.max(p[0], q[0]), Math.max(p[1], q[1])]],
+                    // Room on the right for the label, anchored to the right of the disc.
+                    { padding: { top: 120, bottom: 120, left: 60, right: 250 }, maxZoom: 16, duration: 0 });
+    }
   }
   state.fitted = true;
   document.title = `skimap — ${m.site.name}`;
@@ -441,9 +643,14 @@ const packs = [...KNOWN_PACKS];
 if (params.get("pack") && !packs.some((p) => p.url === params.get("pack"))) packs.unshift({ name: params.get("pack"), url: params.get("pack") });
 for (const p of packs) sel.insertAdjacentHTML("beforeend", `<option value="${esc(p.url)}">${esc(p.name)}</option>`);
 sel.value = params.get("pack") || packs[0].url;
-sel.onchange = () => { params.set("pack", sel.value); history.replaceState(null, "", "?" + params.toString()); openPack(sel.value).catch(err); };
+sel.onchange = () => { params.set("pack", sel.value); history.replaceState(null, "", "?" + params.toString() + location.hash); openPack(sel.value).catch(err); };
+function syncUrl() {
+  params.set("style", state.mode === "style" ? state.style : state.basemap || "none");
+  if (state.mode === "style") params.set("theme", state.theme);
+  history.replaceState(null, "", "?" + params.toString() + location.hash);
+}
 $("toggle").onclick = () => { $("panel").classList.toggle("closed"); setTimeout(() => map.resize(), 250); };
-if (window.innerWidth < 700) $("panel").classList.add("closed");
+if (window.innerWidth < 700 || params.get("panel") === "0") $("panel").classList.add("closed");
 openPack(sel.value).catch(err);
 </script>
 </body>
