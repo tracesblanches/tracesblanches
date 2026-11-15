@@ -329,9 +329,10 @@ class DayFlowTest {
                 Intent(target, MainActivity::class.java).putExtra(MainActivity.EXTRA_PACK, "chapelle-des-bois"),
             )
         // Software rendering on the emulator: the first frame of the map takes a while.
-        val mapUntil = SystemClock.uptimeMillis() + 60_000
-        while (SystemClock.uptimeMillis() < mapUntil && fr.skimap.app.ui.map.MapProbe.rendered.value == null) Thread.sleep(500)
-        Thread.sleep(3000)
+        // (the Compose clock is the test's: waiting must let the map screen run).
+        runCatching { rule.waitUntil(90_000) { fr.skimap.app.ui.map.MapProbe.rendered.value != null } }
+        rule.waitForIdle()
+        Thread.sleep(2000)
         shot("06-map-guidance")
         map.close()
 
