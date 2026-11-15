@@ -1,0 +1,12 @@
+# Build context of deploy/Dockerfile: the workspace sources only.
+.git
+.claude
+target
+data
+research
+android
+tools
+docs
+fixtures
+**/*.pmtiles
+**/*.tif
