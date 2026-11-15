@@ -462,7 +462,7 @@ fixed_phrases! {
     /// The BERA of the day could not be read offline (A7).
     AvalancheOffline = "avalanche-offline" => "Bulletin d'avalanche non disponible hors ligne. Consultez-le avant de partir.",
     /// Reminder after « no bulletin » or the BERA level (A7).
-    AvalanchesPossible = "avalanches-possible" => "Des avalanches restent possibles sur les pentes raides.",
+    AvalanchesPossible = "avalanches-possible" => "Des avalanches restent possibles sur les fortes pentes.",
     /// The planned route crosses historic avalanche paths (A7, P20).
     RouteAvalancheAreas = "route-avalanche-areas" => "Votre itinéraire traverse des zones d'avalanche connues.",
     /// The planned route crosses a protected area (A7, C8).

@@ -156,7 +156,7 @@ fn avalanche_sentence(data: &SiteData, date: NaiveDate, facts: &mut Facts) -> St
             s
         }
         Some(b) if b.status == BeraStatus::NoBera => format!(
-            "{} (Jura) : des avalanches restent possibles sur les pentes raides, le bulletin \
+            "{} (Jura) : des avalanches restent possibles sur les fortes pentes, le bulletin \
              du SLF couvre le Jura suisse voisin",
             clause(&clips::Fixed::NoBulletin.clip().text)
         ),
@@ -165,7 +165,7 @@ fn avalanche_sentence(data: &SiteData, date: NaiveDate, facts: &mut Facts) -> St
              de partir, le risque d'avalanche n'est jamais nul en montagne"
         ),
         None if !data.site.has_bera => format!(
-            "{} : des avalanches restent possibles sur les pentes raides",
+            "{} : des avalanches restent possibles sur les fortes pentes",
             clause(&clips::Fixed::NoBulletin.clip().text)
         ),
         None => format!(

@@ -280,7 +280,7 @@ fn cases() -> Vec<(Event, &'static str)> {
         ),
         (
             Event::Briefing(Briefing::AvalanchesPossible),
-            "Des avalanches restent possibles sur les pentes raides.",
+            "Des avalanches restent possibles sur les fortes pentes.",
         ),
         (
             Event::Briefing(Briefing::RouteAvalancheAreas),
