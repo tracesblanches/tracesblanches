@@ -1,10 +1,14 @@
 package fr.skimap.app
 
+import fr.skimap.app.data.DownloadState
+import fr.skimap.app.data.PackProblem
+import fr.skimap.app.data.Practice
 import fr.skimap.app.ui.MapUiState
 import fr.skimap.app.ui.MapViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -29,61 +33,107 @@ class MapViewModelTest {
 
     private fun ready(vm: MapViewModel) = vm.state.value as MapUiState.Ready
 
+    private fun TestScope.vm(
+        repo: FakeRepository = FakeRepository(),
+        settings: MemorySettings = MemorySettings(),
+        styles: FakeStyles = FakeStyles(),
+        preferred: String? = null,
+        dark: Boolean = false,
+        downloads: FakeDownloads? = null,
+        nanoTime: () -> Long = System::nanoTime,
+    ) = MapViewModel(repo, settings, styles, preferred, dark, downloads, nanoTime, dispatcher).also { advanceUntilIdle() }
+
     @Test
-    fun freeModeByDefaultAndRemembered() =
+    fun freeModeByDefaultWithTheValidatedStyle() =
         runTest(dispatcher) {
             val repo = FakeRepository()
             val last = MemorySettings()
+            val styles = FakeStyles()
             var t = 0L
-            val vm = MapViewModel(repo, last, nanoTime = { t.also { t += 7_000_000 } }, io = dispatcher)
-            assertEquals(MapUiState.Loading, vm.state.value)
-            advanceUntilIdle()
+            val vm = vm(repo, last, styles, nanoTime = { t.also { t += 7_000_000 } })
             val s = ready(vm)
-            // Every installed pack at once, in one call.
+            // Every installed pack at once, in one call, in the style of the practice.
             assertTrue(s.free)
             assertEquals(listOf(Fixtures.CERVIERES + "+" + Fixtures.CHAPELLE), repo.opened)
-            assertEquals("Tous les domaines installés", s.opened.info.siteName)
-            assertEquals("plan-ign", s.opened.style.basemap)
+            assertEquals(listOf("styles/fond-clair.json"), styles.read)
+            assertEquals("skimap libre fond-clair", s.opened.style.name)
+            assertEquals(Practice.FOND, s.choice.practice)
             assertEquals(2, s.packs.size)
+            assertEquals(2, s.opened.packBounds.size)
             assertEquals(7L, s.openMillis)
             assertEquals("libre", last.value)
+            // Snow is hidden by default (optional layers of the style), the rest shown.
+            assertEquals(setOf("neige"), s.hidden)
+        }
+
+    @Test
+    fun darkSystemThemeAtStartIsOneLoad() =
+        runTest(dispatcher) {
+            val repo = FakeRepository()
+            val styles = FakeStyles()
+            val vm = vm(repo, styles = styles, dark = true)
+            assertEquals("skimap libre fond-sombre", ready(vm).opened.style.name)
+            assertEquals(listOf("fond-sombre"), repo.styles)
+            // The system switches to light: one restyle, no reopening.
+            vm.setDark(false)
+            advanceUntilIdle()
+            assertEquals("skimap libre fond-clair", ready(vm).opened.style.name)
+            assertEquals(1, repo.opened.size)
+            vm.setDark(false)
+            advanceUntilIdle()
+            assertEquals(listOf("fond-sombre", "fond-clair"), repo.styles)
+        }
+
+    @Test
+    fun practiceAndGuidanceChooseTheStyle() =
+        runTest(dispatcher) {
+            val repo = FakeRepository()
+            val settings = MemorySettings()
+            val vm = vm(repo, settings)
+            vm.selectPractice(Practice.SRN)
+            // The menu shows the choice at once.
+            assertEquals(Practice.SRN, ready(vm).choice.practice)
+            advanceUntilIdle()
+            assertEquals("skimap libre srn-clair", ready(vm).opened.style.name)
+            assertEquals("srn", settings.practiceValue)
+            assertEquals(setOf("neige"), ready(vm).hidden)
+            vm.setGuiding(true)
+            advanceUntilIdle()
+            assertEquals("skimap libre guidage-clair", ready(vm).opened.style.name)
+            vm.setGuiding(false)
+            advanceUntilIdle()
+            assertEquals("skimap libre srn-clair", ready(vm).opened.style.name)
+            // Same practice again: nothing.
+            vm.selectPractice(Practice.SRN)
+            advanceUntilIdle()
+            assertEquals(listOf("fond-clair", "srn-clair", "guidage-clair", "srn-clair"), repo.styles)
+            // Next launch: the practice is remembered.
+            val vm2 = vm(FakeRepository(), settings)
+            assertEquals("skimap libre srn-clair", ready(vm2).opened.style.name)
         }
 
     @Test
     fun preferredThenLastPack() =
         runTest(dispatcher) {
             val repo = FakeRepository()
-            val vm = MapViewModel(repo, MemorySettings(Fixtures.CHAPELLE), io = dispatcher)
-            advanceUntilIdle()
+            val vm = vm(repo, MemorySettings(Fixtures.CHAPELLE))
             assertEquals(Fixtures.CHAPELLE, ready(vm).opened.info.dir)
             assertFalse(ready(vm).free)
 
-            val vm2 = MapViewModel(repo, MemorySettings(Fixtures.CHAPELLE), preferredPack = "cervieres", io = dispatcher)
-            advanceUntilIdle()
+            val vm2 = vm(repo, MemorySettings(Fixtures.CHAPELLE), preferred = "cervieres")
             assertEquals(Fixtures.CERVIERES, ready(vm2).opened.info.dir)
 
             // A preferred or remembered pack that is gone falls back to the free mode.
-            val vm3 = MapViewModel(repo, MemorySettings("/packs/gone"), preferredPack = "gone2", io = dispatcher)
-            advanceUntilIdle()
+            val vm3 = vm(repo, MemorySettings("/packs/gone"), preferred = "gone2")
             assertTrue(ready(vm3).free)
         }
 
     @Test
-    fun switchesPackAndBasemap() =
+    fun switchesPackAndFreeMode() =
         runTest(dispatcher) {
             val repo = FakeRepository()
             val last = MemorySettings()
-            val vm = MapViewModel(repo, last, io = dispatcher)
-            advanceUntilIdle()
-            vm.selectBasemap("osm")
-            advanceUntilIdle()
-            assertEquals("osm", ready(vm).opened.style.basemap)
-            assertEquals(listOf("osm"), repo.styles)
-            // Same basemap again: nothing to do.
-            vm.selectBasemap("osm")
-            advanceUntilIdle()
-            assertEquals(listOf("osm"), repo.styles)
-
+            val vm = vm(repo, last)
             vm.selectPack(Fixtures.CHAPELLE)
             advanceUntilIdle()
             assertEquals("Chapelle-des-Bois", ready(vm).opened.info.siteName)
@@ -92,7 +142,6 @@ class MapViewModelTest {
             // The current pack again: not reopened.
             vm.selectPack(Fixtures.CHAPELLE)
             advanceUntilIdle()
-            // Back to the free mode.
             vm.selectFree()
             advanceUntilIdle()
             assertTrue(ready(vm).free)
@@ -112,65 +161,90 @@ class MapViewModelTest {
         runTest(dispatcher) {
             val repo =
                 FakeRepository(
-                    entries =
-                        listOf(
-                            Fixtures.entry(Fixtures.CERVIERES, "Cervières"),
-                            Fixtures.entry("/packs/bad", "Bad"),
-                        ),
+                    entries = listOf(Fixtures.entry(Fixtures.CERVIERES, "Cervières"), Fixtures.entry("/packs/bad", "Bad")),
                     broken = setOf("/packs/bad"),
                 )
-            val vm = MapViewModel(repo, MemorySettings(), io = dispatcher)
-            advanceUntilIdle()
-            vm.selectBasemap("missing")
-            advanceUntilIdle()
-            assertEquals("Fond de carte « missing » absent du pack", ready(vm).error)
+            val vm = vm(repo)
             vm.selectPack("/packs/bad")
             advanceUntilIdle()
             val s = ready(vm)
             assertTrue("the free mode stays", s.free)
-            assertEquals("Pack invalide : manifest.json: EOF", s.error)
-            vm.selectBasemap("osm")
+            assertEquals(PackProblem(PackProblem.Kind.INVALID, "manifest.json: EOF"), s.error)
+            vm.selectPractice(Practice.SRN)
             advanceUntilIdle()
             assertNull(ready(vm).error)
         }
 
     @Test
-    fun layerSwitchesAreKeptPerStyle() =
+    fun layerGroupsAreKeptPerStyleFamily() =
         runTest(dispatcher) {
             val settings = MemorySettings()
-            val vm = MapViewModel(FakeRepository(), settings, io = dispatcher)
-            advanceUntilIdle()
-            // Defaults of the core: zones without network hidden, the rest shown.
-            assertEquals(setOf("no-network"), ready(vm).hidden)
+            val vm = vm(settings = settings)
             vm.setLayerVisible("refuges", false)
             advanceUntilIdle()
-            assertEquals(setOf("no-network", "refuges"), ready(vm).hidden)
-            assertEquals(setOf("no-network", "refuges"), settings.hidden["plan-ign"])
-            // Unknown switch: ignored. Same value again: nothing stored.
+            assertEquals(setOf("neige", "refuges"), ready(vm).hidden)
+            assertEquals(setOf("neige", "refuges"), settings.hidden["fond"])
+            // Safety groups and unknown groups: ignored.
             vm.setLayerVisible("pistes", false)
-            assertEquals(setOf("no-network", "refuges"), ready(vm).hidden)
-            // Another style has its own choice; coming back restores the first one.
-            vm.selectBasemap("osm")
+            vm.setLayerVisible("dangers", false)
+            vm.setLayerVisible("nothing", false)
+            assertEquals(setOf("neige", "refuges"), ready(vm).hidden)
+            // SRN has its own choice; coming back to fond restores the first one.
+            vm.selectPractice(Practice.SRN)
             advanceUntilIdle()
-            assertEquals(setOf("no-network"), ready(vm).hidden)
-            vm.setLayerVisible("no-network", true)
+            assertEquals(setOf("neige"), ready(vm).hidden)
+            vm.setLayerVisible("pentes", false)
+            vm.setLayerVisible("neige", true)
             advanceUntilIdle()
-            vm.selectBasemap("plan-ign")
+            assertEquals(setOf("pentes"), settings.hidden["srn"])
+            vm.selectPractice(Practice.FOND)
             advanceUntilIdle()
-            assertEquals(setOf("no-network", "refuges"), ready(vm).hidden)
-            assertEquals(emptySet<String>(), settings.hidden["osm"])
+            assertEquals(setOf("neige", "refuges"), ready(vm).hidden)
             // A new view model (next launch) reads the stored choice.
-            val vm2 = MapViewModel(FakeRepository(), settings, io = dispatcher)
+            val vm2 = vm(settings = settings)
+            assertEquals(setOf("neige", "refuges"), ready(vm2).hidden)
+        }
+
+    @Test
+    fun aFinishedDownloadReopensThePacks() =
+        runTest(dispatcher) {
+            val repo = FakeRepository()
+            val downloads = FakeDownloads()
+            downloads.states.value = mapOf("old" to DownloadState.Done)
+            val vm = vm(repo, downloads = downloads)
+            assertEquals(1, repo.opened.size)
+            // A download running, then installed: one reopening, the map kept meanwhile.
+            downloads.states.value = mapOf("old" to DownloadState.Done, "les-rousses" to DownloadState.Running(1, 2))
             advanceUntilIdle()
-            assertEquals(setOf("no-network", "refuges"), ready(vm2).hidden)
+            assertEquals(1, repo.opened.size)
+            repo.entries = repo.entries + Fixtures.entry("/packs/les-rousses", "Les Rousses")
+            downloads.states.value = mapOf("old" to DownloadState.Done, "les-rousses" to DownloadState.Done)
+            advanceUntilIdle()
+            assertEquals(2, repo.opened.size)
+            assertEquals(3, ready(vm).packs.size)
+            assertTrue(repo.opened.last().contains("/packs/les-rousses"))
+        }
+
+    @Test
+    fun cameraIsKeptForTheNextLaunch() =
+        runTest(dispatcher) {
+            val settings = MemorySettings()
+            val vm = vm(settings = settings)
+            assertNull(vm.lastCamera)
+            vm.saveCamera(
+                fr.skimap.app.data
+                    .CameraSpot(46.6, 6.1, 13.0),
+            )
+            advanceUntilIdle()
+            assertEquals(13.0, settings.cameraSpot!!.zoom, 0.0)
+            assertEquals(46.6, vm(settings = settings).lastCamera!!.lat, 0.0)
         }
 
     @Test
     fun noReadablePack() =
         runTest(dispatcher) {
             val repo = FakeRepository(entries = listOf(Fixtures.entry("/packs/x", "x", error = "JSON error")))
-            val vm = MapViewModel(repo, MemorySettings(), io = dispatcher)
-            advanceUntilIdle()
+            val vm = vm(repo)
             val s = vm.state.value as MapUiState.NoPack
             assertEquals("/packs", s.packsDir)
             assertEquals(1, s.unreadable.size)
@@ -190,8 +264,7 @@ class MapViewModelTest {
                     broken = setOf("/packs/bad"),
                 )
             // The remembered area does not open.
-            val vm = MapViewModel(repo, MemorySettings("/packs/bad"), io = dispatcher)
-            advanceUntilIdle()
+            val vm = vm(repo, MemorySettings("/packs/bad"))
             val f = vm.state.value as MapUiState.Failed
             assertEquals("/packs/bad", f.dir)
             vm.selectPack(Fixtures.CHAPELLE)

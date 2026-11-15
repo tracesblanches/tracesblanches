@@ -23,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -64,7 +65,7 @@ private fun MessageScreen(
     }
 }
 
-/** No pack yet: how to copy one with adb (pack download is K2). */
+/** No pack yet: download one from the areas of France (K2), or copy one with adb. */
 @Composable
 fun NoPackScreen(
     state: MapUiState.NoPack,
@@ -74,7 +75,10 @@ fun NoPackScreen(
 ) {
     MessageScreen(stringResource(R.string.no_pack_title), modifier) {
         Text(stringResource(R.string.no_pack_body), style = MaterialTheme.typography.bodyLarge)
-        Text(stringResource(R.string.no_pack_dir), style = MaterialTheme.typography.bodyLarge)
+        Button(onClick = onChooseDomain, modifier = Modifier.fillMaxWidth().heightIn(min = GloveTarget)) {
+            Text(stringResource(R.string.choose_domain), style = MaterialTheme.typography.labelLarge)
+        }
+        Text(stringResource(R.string.no_pack_dir), style = MaterialTheme.typography.bodyMedium)
         SelectionContainer {
             Text("${state.packsDir}/<site>/manifest.json", style = CommandTextStyle)
         }
@@ -88,11 +92,8 @@ fun NoPackScreen(
                 color = MaterialTheme.colorScheme.error,
             )
         }
-        Button(onClick = onRetry, modifier = Modifier.fillMaxWidth().heightIn(min = GloveTarget)) {
+        OutlinedButton(onClick = onRetry, modifier = Modifier.fillMaxWidth().heightIn(min = GloveTarget)) {
             Text(stringResource(R.string.retry), style = MaterialTheme.typography.labelLarge)
-        }
-        OutlinedButton(onClick = onChooseDomain, modifier = Modifier.fillMaxWidth().heightIn(min = GloveTarget)) {
-            Text(stringResource(R.string.choose_domain), style = MaterialTheme.typography.labelLarge)
         }
     }
 }
@@ -106,7 +107,7 @@ fun FailedScreen(
     modifier: Modifier = Modifier,
 ) {
     MessageScreen(stringResource(R.string.failed_title), modifier) {
-        SelectionContainer { Text(state.message, style = CommandTextStyle) }
+        SelectionContainer { Text(PackTexts(LocalResources.current).problem(state.problem), style = CommandTextStyle) }
         state.packs.filter { it.error == null && it.dir != state.dir }.forEach { p ->
             OutlinedButton(onClick = { onSelectPack(p.dir) }, modifier = Modifier.fillMaxWidth().heightIn(min = GloveTarget)) {
                 Text("${stringResource(R.string.choose_other)} : ${p.siteName}", style = MaterialTheme.typography.labelLarge)

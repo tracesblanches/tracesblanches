@@ -9,6 +9,9 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.takahirom.roborazzi.captureRoboImage
+import fr.skimap.app.data.Practice
+import fr.skimap.app.data.StyleChoice
+import fr.skimap.app.ui.MapActions
 import fr.skimap.app.ui.MapSheetContent
 import fr.skimap.app.ui.MapUiState
 import fr.skimap.app.ui.NoPackScreen
@@ -21,17 +24,21 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * Screen captures compared with the reference images in `src/test/screenshots`
  * (Roborazzi): `./gradlew :app:verifyRoborazziDebug` fails on any visual change,
- * `recordRoborazziDebug` records new references. Light, dark and large font (×2).
- * The map itself (MapLibre, native) is replaced by a snow-white surface.
+ * `recordRoborazziDebug` records new references. French (light, dark, large font ×2) and
+ * English. The map itself (MapLibre, native) is replaced by a snow-white surface; the
+ * map drawn with the validated styles is captured on the emulator (README).
  */
 @RunWith(AndroidJUnit4::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(qualifiers = "w412dp-h915dp-hdpi")
+@Config(qualifiers = "fr-w412dp-h915dp-hdpi")
 class ScreenshotTest {
     @get:Rule
     val rule = createComposeRule()
 
     private fun capture(name: String) = rule.onRoot().captureRoboImage("src/test/screenshots/$name.png")
+
+    private fun srn() =
+        readyState().let { it.copy(opened = it.opened.copy(style = Fixtures.style("srn")), choice = StyleChoice(Practice.SRN)) }
 
     @Test
     fun mapLight() {
@@ -47,7 +54,7 @@ class ScreenshotTest {
 
     @Test
     fun mapMovedLight() {
-        rule.setContent { Themed { TestMapScreen(readyState(), mapMoved = true) } }
+        rule.setContent { Themed { TestMapScreen(readyState(free = true), mapMoved = true) } }
         capture("map_moved_light")
     }
 
@@ -59,25 +66,31 @@ class ScreenshotTest {
 
     @Test
     fun sheetLight() {
-        rule.setContent { Themed { Surface(Modifier.fillMaxSize()) { MapSheetContent(readyState(), {}, {}, {}, TODAY, PARIS) } } }
+        rule.setContent { Themed { Surface(Modifier.fillMaxSize()) { MapSheetContent(readyState(), MapActions(), {}, TODAY, PARIS) } } }
         capture("sheet_light")
     }
 
     @Test
     fun sheetLayers() {
-        val state = readyState().copy(hidden = setOf("no-network", "refuges"))
-        rule.setContent { Themed { Surface(Modifier.fillMaxSize()) { MapSheetContent(state, {}, {}, {}, TODAY, PARIS) } } }
+        val state = srn().copy(hidden = setOf("reseau", "refuges"))
+        rule.setContent { Themed { Surface(Modifier.fillMaxSize()) { MapSheetContent(state, MapActions(), {}, TODAY, PARIS) } } }
         rule.onNodeWithText("Couches").performScrollTo()
         capture("sheet_layers")
     }
 
     @Test
+    fun sheetLegendSrn() {
+        rule.setContent { Themed { Surface(Modifier.fillMaxSize()) { MapSheetContent(srn(), MapActions(), {}, TODAY, PARIS) } } }
+        rule.onNodeWithText("Très exposé").performScrollTo()
+        capture("sheet_legend_srn")
+    }
+
+    @Test
     fun sheetDarkLargeFont() {
         rule.setContent {
-            Themed(
-                dark = true,
-                fontScale = 2f,
-            ) { Surface(Modifier.fillMaxSize()) { MapSheetContent(readyState(), {}, {}, {}, TODAY, PARIS) } }
+            Themed(dark = true, fontScale = 2f) {
+                Surface(Modifier.fillMaxSize()) { MapSheetContent(readyState(), MapActions(), {}, TODAY, PARIS) }
+            }
         }
         capture("sheet_dark_large_font")
     }
@@ -96,5 +109,26 @@ class ScreenshotTest {
             }
         }
         capture("no_pack")
+    }
+}
+
+/** English captures (VO6): the app on a phone that is not in French. */
+@RunWith(AndroidJUnit4::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(qualifiers = "en-w412dp-h915dp-hdpi")
+class EnglishScreenshotTest {
+    @get:Rule
+    val rule = createComposeRule()
+
+    @Test
+    fun mapEnglish() {
+        rule.setContent { Themed { TestMapScreen(readyState(free = true)) } }
+        rule.onRoot().captureRoboImage("src/test/screenshots/map_en.png")
+    }
+
+    @Test
+    fun sheetEnglish() {
+        rule.setContent { Themed { Surface(Modifier.fillMaxSize()) { MapSheetContent(readyState(), MapActions(), {}, TODAY, PARIS) } } }
+        rule.onRoot().captureRoboImage("src/test/screenshots/sheet_en.png")
     }
 }

@@ -3,6 +3,8 @@ package fr.skimap.app
 import androidx.compose.material3.ColorScheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import fr.skimap.app.ui.PackTexts
 import fr.skimap.app.ui.Validity
 import fr.skimap.app.ui.theme.SkiDarkColors
@@ -11,9 +13,14 @@ import fr.skimap.core.StatusSummary
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
 
-/** Contrast of the colour schemes (WCAG) and French texts of the header. */
+/** Contrast of the colour schemes (WCAG) and texts of the header, French and English. */
+@RunWith(AndroidJUnit4::class)
 class ThemeAndTextsTest {
+    private fun texts() = PackTexts(ApplicationProvider.getApplicationContext<android.content.Context>().resources)
+
     private fun contrast(
         a: Color,
         b: Color,
@@ -48,22 +55,37 @@ class ThemeAndTextsTest {
     }
 
     @Test
+    @Config(qualifiers = "fr")
     fun validity() {
         val info = Fixtures.info(validUntil = "2026-11-17")
         assertEquals(Validity.VALID, PackTexts.validity(info, TODAY))
         assertEquals(Validity.LAST_DAY, PackTexts.validity(info, TODAY.plusDays(2)))
         assertEquals(Validity.EXPIRED, PackTexts.validity(info, TODAY.plusDays(3)))
         assertEquals(Validity.UNKNOWN, PackTexts.validity(Fixtures.info(validUntil = null), TODAY))
-        assertEquals("Valable jusqu'au 17 novembre 2026", PackTexts.validityText(info, TODAY))
-        assertEquals("Dernier jour de validité : 17 novembre 2026", PackTexts.validityText(info, TODAY.plusDays(2)))
+        assertEquals("Valable jusqu'au 17 novembre 2026", texts().validityText(info, TODAY))
+        assertEquals("Dernier jour de validité : 17 novembre 2026", texts().validityText(info, TODAY.plusDays(2)))
     }
 
     @Test
+    @Config(qualifiers = "fr")
     fun status() {
         // 01:46 UTC is 02:46 in Paris in November.
         val s = StatusSummary(2u, 40u, 0u, "2026-11-15T01:46:00Z")
-        assertEquals("Pistes : 2 ouvertes, 40 fermées · relevé le 15/11 à 02:46", PackTexts.statusText(s, PARIS))
-        assertEquals("Pistes : 1 ouverte, 0 fermée, 3 sans état", PackTexts.statusText(StatusSummary(1u, 0u, 3u, "x"), PARIS))
-        assertEquals("État des pistes absent de ce pack", PackTexts.statusText(null, PARIS))
+        assertEquals("Pistes : 2 ouvertes, 40 fermées · relevé le 15/11 à 02:46", texts().statusText(s, PARIS))
+        assertEquals("Pistes : 1 ouverte, 0 fermée, 3 sans état", texts().statusText(StatusSummary(1u, 0u, 3u, "x"), PARIS))
+        assertEquals("État des pistes absent de ce pack", texts().statusText(null, PARIS))
+    }
+
+    @Test
+    @Config(qualifiers = "en")
+    fun englishTexts() {
+        val info = Fixtures.info(validUntil = "2026-11-17")
+        assertEquals("Valid until November 17, 2026", texts().validityText(info, TODAY))
+        assertEquals("Out of date since November 17, 2026: update the pack", texts().validityText(info, TODAY.plusDays(3)))
+        val s = StatusSummary(2u, 1u, 0u, "2026-11-15T01:46:00Z")
+        assertEquals("Pistes: 2 open, 1 closed · checked on Nov 15 at 02:46", texts().statusText(s, PARIS))
+        assertEquals("No piste status in this pack", texts().statusText(null, PARIS))
+        assertEquals("All installed areas", texts().siteName(info, free = true))
+        assertEquals("Cervières", texts().siteName(info, free = false))
     }
 }

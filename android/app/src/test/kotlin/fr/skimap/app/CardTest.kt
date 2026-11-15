@@ -14,6 +14,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.takahirom.roborazzi.captureRoboImage
 import fr.skimap.app.ui.CardContent
 import fr.skimap.core.Card
+import fr.skimap.core.Lang
 import fr.skimap.core.featureCard
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -26,7 +27,7 @@ import org.robolectric.annotation.GraphicsMode
 /** Cards of touched features: built by the Rust core from the map properties, shown here. */
 @RunWith(AndroidJUnit4::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(qualifiers = "w412dp-h915dp-hdpi")
+@Config(qualifiers = "fr-w412dp-h915dp-hdpi")
 class CardTest {
     @get:Rule
     val rule = createComposeRule()
@@ -39,6 +40,7 @@ class CardTest {
                 """{"kind":"alpine_hut","osm_type":"way","osm_id":171614493,
                    "tags":{"name":"Refuge de la Blanche","phone":"+33 4 00 00 72 52","website":"https://example.org/blanche",
                            "beds":"30","ele":"2499","fireplace":"yes"}}""",
+                Lang.FR,
             ),
         )
 

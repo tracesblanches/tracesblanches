@@ -3,10 +3,9 @@
 use std::path::Path;
 
 use skimap_pack::Pack;
-use skimap_pack::manifest::{LayerKind, MANIFEST_FILE};
+use skimap_pack::manifest::MANIFEST_FILE;
 
 use crate::PackError;
-use crate::style::OVERLAY_LAYERS;
 
 /// A pack directory found by [`crate::list_packs`].
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -51,19 +50,6 @@ pub struct BasemapInfo {
     pub maxzoom: u8,
 }
 
-/// A pack layer drawn by the map style.
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
-pub struct OverlayInfo {
-    /// Pack layer identifier (`pistes`, `status`, `refuges-info`...).
-    pub id: String,
-    /// Title, French.
-    pub title: String,
-    /// Number of features in the layer file.
-    pub features: u64,
-    /// Whether a source of the layer is personal-use only.
-    pub personal_use_only: bool,
-}
-
 /// Piste status (layer `status`), counted per itinerary.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct StatusSummary {
@@ -104,8 +90,6 @@ pub struct PackInfo {
     pub center_lat: f64,
     /// Basemaps, in pack order (the first is the default).
     pub basemaps: Vec<BasemapInfo>,
-    /// Pack layers the map draws, in drawing order.
-    pub overlays: Vec<OverlayInfo>,
     /// Piste status, when the pack has the `status` layer.
     pub status: Option<StatusSummary>,
     /// Whether personal-use-only sources were included in the pack.
@@ -120,7 +104,13 @@ pub(crate) fn list_packs(root: &Path) -> Vec<PackEntry> {
     };
     let mut dirs: Vec<_> = rd
         .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.join(MANIFEST_FILE).is_file())
+        // Hidden directories are the work of an update (`.<site>.new`, `.<site>.old`,
+        // downloads in progress), never a pack to show.
+        .filter(|p| {
+            !p.file_name()
+                .is_some_and(|n| n.to_string_lossy().starts_with('.'))
+                && p.join(MANIFEST_FILE).is_file()
+        })
         .collect();
     dirs.sort();
     let mut out: Vec<PackEntry> = dirs
@@ -167,18 +157,7 @@ pub(crate) fn list_packs(root: &Path) -> Vec<PackEntry> {
 pub(crate) fn summarise(pack: &Pack) -> Result<PackInfo, PackError> {
     let m = pack.manifest();
     let [west, south, east, north] = m.site.bbox;
-    let overlays = OVERLAY_LAYERS
-        .iter()
-        .filter_map(|id| m.layer(id))
-        .filter(|l| l.kind == LayerKind::Vector && l.format == "geojson")
-        .map(|l| OverlayInfo {
-            id: l.id.clone(),
-            title: l.title.clone(),
-            features: l.features.unwrap_or(0),
-            personal_use_only: l.personal_use_only,
-        })
-        .collect::<Vec<_>>();
-    let status = if overlays.iter().any(|o| o.id == "status") {
+    let status = if m.layer("status").is_some() {
         Some(status_summary(pack)?)
     } else {
         None
@@ -210,7 +189,6 @@ pub(crate) fn summarise(pack: &Pack) -> Result<PackInfo, PackError> {
                 maxzoom: b.maxzoom,
             })
             .collect(),
-        overlays,
         status,
         personal_sources: m.personal_sources,
         attributions: m.attributions.clone(),
@@ -245,7 +223,7 @@ fn status_summary(pack: &Pack) -> Result<StatusSummary, PackError> {
 }
 
 /// Summary of several packs shown together (free mode): bounds and status added up, the
-/// earliest validity, basemaps common to all, layers and attributions of any.
+/// earliest validity, basemaps common to all, attributions of any.
 pub fn merge(infos: &[PackInfo], id: &str) -> PackInfo {
     let mut out = infos[0].clone();
     out.dir = String::new();
@@ -267,15 +245,6 @@ pub fn merge(infos: &[PackInfo], id: &str) -> PackInfo {
         };
         out.basemaps
             .retain(|b| i.basemaps.iter().any(|c| c.id == b.id));
-        for o in &i.overlays {
-            match out.overlays.iter_mut().find(|x| x.id == o.id) {
-                Some(x) => {
-                    x.features += o.features;
-                    x.personal_use_only |= o.personal_use_only;
-                }
-                None => out.overlays.push(o.clone()),
-            }
-        }
         out.status = match (out.status.take(), i.status.clone()) {
             (Some(a), Some(b)) => Some(StatusSummary {
                 open: a.open + b.open,

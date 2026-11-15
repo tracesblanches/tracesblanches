@@ -1,29 +1,38 @@
 package fr.skimap.app.ui.domains
 
+import android.text.format.Formatter
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,6 +42,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -42,27 +54,28 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import fr.skimap.app.R
+import fr.skimap.app.data.DownloadState
 import fr.skimap.app.ui.theme.GloveTarget
 import fr.skimap.core.Domain
 import fr.skimap.core.PackStatus
-import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.min
 
 /**
- * Area picker: the nordic areas of France on a map (dots; installed packs as squares),
- * search by name or commune, nearest areas, and the state of each pack. Only installed
- * packs open today; download is K2.
+ * Area picker: the nordic areas of France on a map (squares: installed; discs: published
+ * by the server; dots: others), search by name or commune, nearest areas, and the
+ * download of each published pack (K2): size, waiting for a network or Wi-Fi, progress,
+ * update, delete. Touching the map lists the areas nearest to the touch.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DomainPicker(
     state: DomainsState,
-    onQuery: (String) -> Unit,
-    onNearest: () -> Unit,
-    onPick: (String) -> Unit,
-    onClose: () -> Unit,
+    actions: DomainActions,
     modifier: Modifier = Modifier,
 ) {
+    val list = rememberLazyListState()
+    LaunchedEffect(state.selected, state.results) { if (state.selected != null) list.scrollToItem(0) }
     Column(
         modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -73,18 +86,18 @@ fun DomainPicker(
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f).semantics { heading() },
             )
-            TextButton(onClick = onClose, modifier = Modifier.heightIn(min = GloveTarget)) {
+            TextButton(onClick = actions.onClose, modifier = Modifier.heightIn(min = GloveTarget)) {
                 Text(stringResource(R.string.close), style = MaterialTheme.typography.labelLarge)
             }
         }
         OutlinedTextField(
             value = state.query,
-            onValueChange = onQuery,
+            onValueChange = actions.onQuery,
             label = { Text(stringResource(R.string.domains_search)) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth().heightIn(min = GloveTarget).testTag(DomainTags.SEARCH),
         )
-        OutlinedButton(onClick = onNearest, modifier = Modifier.fillMaxWidth().heightIn(min = GloveTarget)) {
+        OutlinedButton(onClick = actions.onNearest, modifier = Modifier.fillMaxWidth().heightIn(min = GloveTarget)) {
             Text(
                 stringResource(if (state.locating) R.string.domains_locating else R.string.domains_nearest),
                 style = MaterialTheme.typography.labelLarge,
@@ -93,14 +106,18 @@ fun DomainPicker(
         if (state.noPosition) {
             Text(stringResource(R.string.domains_no_position), color = MaterialTheme.colorScheme.error)
         }
-        FranceMap(state, Modifier.fillMaxWidth().height(220.dp))
+        if (state.offline) {
+            Text(stringResource(R.string.domains_offline), style = MaterialTheme.typography.bodyMedium)
+        }
+        // While typing, the keyboard takes the bottom of the screen: the list keeps the rest.
+        if (!WindowInsets.isImeVisible) FranceMap(state, actions.onMapTouch, Modifier.fillMaxWidth().height(220.dp))
         Text(
             pluralStringResource(R.plurals.domains_count, state.results.size, state.results.size, state.all.size),
             style = MaterialTheme.typography.bodySmall,
         )
-        LazyColumn(Modifier.weight(1f).testTag(DomainTags.LIST)) {
+        LazyColumn(Modifier.weight(1f).testTag(DomainTags.LIST), state = list) {
             items(state.results, key = { it.id }) { d ->
-                DomainRow(d, state.distances[d.id], onPick)
+                DomainRow(d, state, actions)
                 HorizontalDivider()
             }
         }
@@ -108,47 +125,136 @@ fun DomainPicker(
 }
 
 @Composable
+private fun size(bytes: Long): String = Formatter.formatShortFileSize(LocalContext.current, bytes)
+
+@Composable
 private fun DomainRow(
     d: Domain,
-    km: Double?,
-    onPick: (String) -> Unit,
+    state: DomainsState,
+    actions: DomainActions,
 ) {
     val dir = d.packDir
+    val site = d.serverSite
+    val download = site?.let { state.downloads[it] }
     val status =
         stringResource(
-            when (d.status) {
-                PackStatus.INSTALLED -> R.string.domain_installed
-                PackStatus.AVAILABLE -> R.string.domain_available
-                PackStatus.NOT_BUILT -> R.string.domain_not_built
+            when {
+                d.status == PackStatus.INSTALLED && site in state.updates -> R.string.domain_update_available
+                d.status == PackStatus.INSTALLED -> R.string.domain_installed
+                d.status == PackStatus.AVAILABLE -> R.string.domain_available
+                else -> R.string.domain_not_built
             },
         )
+    val km = state.distances[d.id]
+    val locale = LocalConfiguration.current.locales[0]
     val details =
         buildList {
-            if (km != null) add(stringResource(R.string.domain_distance, String.format(Locale.FRENCH, "%.0f", km)))
+            if (km != null) add(stringResource(R.string.domain_distance, String.format(locale, "%.0f", km)))
             add(d.place)
-            add(stringResource(R.string.domain_km, String.format(Locale.FRENCH, "%.0f", d.kmNordic)))
+            add(stringResource(R.string.domain_km, String.format(locale, "%.0f", d.kmNordic)))
         }.joinToString(" · ")
     val row =
         Modifier
             .fillMaxWidth()
             .heightIn(min = GloveTarget)
-            .let { if (dir != null) it.clickable(role = Role.Button) { onPick(dir) } else it }
+            .let { if (dir != null) it.clickable(role = Role.Button) { actions.onPick(dir) } else it }
             .padding(vertical = 8.dp)
-    Row(row, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        StatusMark(d.status, Modifier.size(20.dp))
-        Column(Modifier.weight(1f)) {
-            Text(d.name, style = MaterialTheme.typography.titleMedium)
-            Text(details, style = MaterialTheme.typography.bodyMedium)
+            .testTag(DomainTags.row(d.id))
+    Column(Modifier.fillMaxWidth()) {
+        Row(row, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            StatusMark(d.status, Modifier.size(20.dp))
+            Column(Modifier.weight(1f)) {
+                Text(d.name, style = MaterialTheme.typography.titleMedium)
+                Text(details, style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    status,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (dir != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        if (site != null) DownloadControls(d, site, download, site in state.updates, actions)
+    }
+}
+
+/** Download state and buttons of a published pack. */
+@Composable
+private fun DownloadControls(
+    d: Domain,
+    site: String,
+    download: DownloadState?,
+    update: Boolean,
+    actions: DomainActions,
+) {
+    val button = Modifier.heightIn(min = GloveTarget)
+    when (download) {
+        is DownloadState.Waiting -> {
             Text(
-                status,
+                stringResource(if (download.unmetered) R.string.domain_waiting_wifi else R.string.domain_waiting_network),
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (dir != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (download.unmetered) {
+                    OutlinedButton(onClick = { actions.onDownload(site, true) }, modifier = button) {
+                        Text(stringResource(R.string.domain_mobile_data), style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+                TextButton(onClick = { actions.onCancel(site) }, modifier = button) {
+                    Text(stringResource(R.string.domain_cancel), style = MaterialTheme.typography.labelLarge)
+                }
+            }
+        }
+
+        is DownloadState.Running -> {
+            Text(
+                stringResource(R.string.domain_progress, size(download.done), size(download.total)),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            LinearProgressIndicator(
+                progress = { if (download.total > 0) download.done.toFloat() / download.total else 0f },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            )
+            TextButton(onClick = { actions.onCancel(site) }, modifier = button) {
+                Text(stringResource(R.string.domain_cancel), style = MaterialTheme.typography.labelLarge)
+            }
+        }
+
+        else -> {
+            if (download is DownloadState.Failed) {
+                Text(
+                    stringResource(R.string.domain_failed, download.message),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
+                when {
+                    d.status != PackStatus.INSTALLED -> {
+                        Button(onClick = { actions.onDownload(site, false) }, modifier = button) {
+                            Text(
+                                stringResource(R.string.domain_download, size(d.downloadBytes.toLong())),
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                        }
+                    }
+
+                    else -> {
+                        if (update) {
+                            Button(onClick = { actions.onDownload(site, false) }, modifier = button) {
+                                Text(stringResource(R.string.domain_update), style = MaterialTheme.typography.labelLarge)
+                            }
+                        }
+                        TextButton(onClick = { actions.onRemove(site) }, modifier = button) {
+                            Text(stringResource(R.string.domain_delete), style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
-/** Square: installed; ring: not on the phone. Shape and word, never colour alone. */
+/** Square: installed; disc: to download; ring: not published. Shape and word, never colour alone. */
 @Composable
 private fun StatusMark(
     status: PackStatus,
@@ -157,10 +263,10 @@ private fun StatusMark(
     val primary = MaterialTheme.colorScheme.primary
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Canvas(modifier) {
-        if (status == PackStatus.INSTALLED) {
-            drawRect(primary)
-        } else {
-            drawCircle(muted, radius = size.minDimension / 2 - 2.dp.toPx(), style = Stroke(2.dp.toPx()))
+        when (status) {
+            PackStatus.INSTALLED -> drawRect(primary)
+            PackStatus.AVAILABLE -> drawCircle(primary, radius = size.minDimension / 2 - 2.dp.toPx())
+            PackStatus.NOT_BUILT -> drawCircle(muted, radius = size.minDimension / 2 - 2.dp.toPx(), style = Stroke(2.dp.toPx()))
         }
     }
 }
@@ -169,6 +275,7 @@ private fun StatusMark(
 @Composable
 private fun FranceMap(
     state: DomainsState,
+    onTouch: (Double, Double) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val border = MaterialTheme.colorScheme.outlineVariant
@@ -178,16 +285,17 @@ private fun FranceMap(
     val description = pluralStringResource(R.plurals.domains_map, state.all.size, state.all.size)
     val highlighted =
         remember(state.results, state.all) {
-            if (state.results.size ==
-                state.all.size
-            ) {
-                emptySet()
-            } else {
-                state.results.map { it.id }.toSet()
-            }
+            if (state.results.size == state.all.size) emptySet() else state.results.map { it.id }.toSet()
         }
     Box(modifier.semantics { contentDescription = description }.testTag(DomainTags.MAP)) {
-        Canvas(Modifier.fillMaxSize()) {
+        Canvas(
+            Modifier.fillMaxSize().pointerInput(Unit) {
+                detectTapGestures { p ->
+                    val (lon, lat) = Projection(Size(size.width.toFloat(), size.height.toFloat())).inverse(p)
+                    onTouch(lon, lat)
+                }
+            },
+        ) {
             drawRect(bg)
             val proj = Projection(size)
             for (ring in state.outline) {
@@ -205,7 +313,8 @@ private fun FranceMap(
                 val p = proj(d.lon, d.lat)
                 when {
                     d.status == PackStatus.INSTALLED -> drawInstalled(p, hit)
-                    d.id in highlighted -> drawCircle(hit, radius = 4.dp.toPx(), center = p)
+                    d.id == state.selected || d.id in highlighted -> drawCircle(hit, radius = 5.dp.toPx(), center = p)
+                    d.status == PackStatus.AVAILABLE -> drawCircle(hit.copy(alpha = 0.8f), radius = 3.5.dp.toPx(), center = p)
                     else -> drawCircle(dot.copy(alpha = 0.6f), radius = 2.dp.toPx(), center = p)
                 }
             }
@@ -223,7 +332,7 @@ private fun DrawScope.drawInstalled(
     drawRect(color, topLeft = Offset(p.x - s / 2, p.y - s / 2), size = Size(s, s))
 }
 
-/** Longitude and latitude to canvas pixels over metropolitan France. */
+/** Longitude and latitude to canvas pixels over metropolitan France, and back. */
 private class Projection(
     size: Size,
 ) {
@@ -236,6 +345,8 @@ private class Projection(
         lon: Double,
         lat: Double,
     ) = Offset((dx + (lon - WEST) * kx * scale).toFloat(), (dy + (NORTH - lat) * scale).toFloat())
+
+    fun inverse(p: Offset): Pair<Double, Double> = (WEST + (p.x - dx) / (kx * scale)) to (NORTH - (p.y - dy) / scale)
 
     private companion object {
         const val WEST = -5.2

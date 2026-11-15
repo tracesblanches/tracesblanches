@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Pack download and update (K2 #52), the only use of the network: the server
+         catalog, a site index (one request of a few hundred bytes, 304 when nothing
+         changed) and the bundles of a new version. Everything the app shows is read from
+         the packs on the phone, so the app works in airplane mode. The requests happen on a
+         user action (download, update) or in a WorkManager job with constraints (network,
+         unmetered for large packs, battery not low); never anything else. MapLibre is kept
+         offline (MapLibre.setConnected(false)) and its styles only hold file:// URLs. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+</manifest>

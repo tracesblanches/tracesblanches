@@ -12,6 +12,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isToggleable
@@ -23,6 +24,9 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import fr.skimap.app.data.PackProblem
+import fr.skimap.app.data.Practice
+import fr.skimap.app.data.StyleChoice
 import fr.skimap.app.ui.MapActions
 import fr.skimap.app.ui.MapSheetContent
 import fr.skimap.app.ui.MapUiState
@@ -37,10 +41,10 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-/** Compose tests of the screens: actions, texts, 72 dp targets, recompositions. */
+/** Compose tests of the screens, in French: actions, texts, 72 dp targets, recompositions. */
 @RunWith(AndroidJUnit4::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(qualifiers = "w412dp-h915dp-xxhdpi")
+@Config(qualifiers = "fr-w412dp-h915dp-xxhdpi")
 class MapScreenTest {
     @get:Rule
     val rule = createComposeRule()
@@ -80,6 +84,13 @@ class MapScreenTest {
         // Small controls: the map keeps the screen.
         val primary = rule.onNodeWithTag(Tags.PRIMARY).fetchSemanticsNode()
         assertTrue(with(rule.density) { primary.size.width.toDp() } <= 56.dp)
+        rule.onNodeWithContentDescription("Carte de Cervières, Ski de fond sur pistes damées, affichée").assertExists()
+    }
+
+    @Test
+    fun freeModeIsNamedInTheLanguageOfTheApp() {
+        rule.setContent { Themed { TestMapScreen(readyState(free = true)) } }
+        rule.onNodeWithText("Tous les domaines installés · 0 ouverte, 8 fermées").assertIsDisplayed()
     }
 
     @Test
@@ -88,6 +99,7 @@ class MapScreenTest {
         rule.onNodeWithContentDescription("Sources et licences des données").performClick()
         rule.onNodeWithText("Licences des données").assertIsDisplayed()
         rule.onNodeWithText("© IGN – Plan IGN v2, mise à jour du 2026-10-08, Licence Ouverte Etalab 2.0").assertIsDisplayed()
+        rule.onNodeWithText("Pack 20261115T014538Z · ouvert en 196 ms · skimap-ffi 0.1.0").assertExists()
         rule.onNodeWithText("Fermer").performClick()
         rule.onNodeWithText("Licences des données").assertDoesNotExist()
     }
@@ -111,68 +123,102 @@ class MapScreenTest {
     }
 
     @Test
-    fun primaryActionOpensTheSheet() {
+    fun primaryActionOpensTheSheetWithThePractice() {
         val chosen = mutableListOf<String>()
         rule.setContent {
-            Themed { TestMapScreen(readyState(), MapActions(selectBasemap = { chosen += it }, chooseDomain = { chosen += "domains" })) }
+            Themed {
+                TestMapScreen(
+                    readyState(),
+                    MapActions(selectPractice = { chosen += it.style }, chooseDomain = { chosen += "domains" }),
+                )
+            }
         }
         rule.onNodeWithTag(Tags.PRIMARY).performClick()
         rule.onNodeWithTag(Tags.SHEET).assertIsDisplayed()
-        rule.onNodeWithText("OpenStreetMap (Protomaps)").performScrollTo().performClick()
+        rule.onNodeWithText("Ski de fond sur pistes damées").performScrollTo().assertIsSelected()
+        rule.onNodeWithText("Ski de randonnée nordique, hors piste").performScrollTo().performClick()
         // No list of sites in the menu: the areas of France are in the picker.
         rule.onNodeWithText("Chapelle-des-Bois").assertDoesNotExist()
-        rule.onNodeWithText("Choisir un domaine en France").performScrollTo().performClick()
-        assertEquals(listOf("osm", "domains"), chosen)
+        rule.onNodeWithText("Domaines de France et téléchargements").performScrollTo().performClick()
+        assertEquals(listOf("srn", "domains"), chosen)
     }
 
     @Test
-    fun sheetContentTargetsAndLegendText() {
-        rule.setContent { Themed { MapSheetContent(readyState(), {}, {}, {}, TODAY, PARIS) } }
-        // Colour is never alone: every difficulty has its name in words.
-        listOf("Verte : très facile", "Bleue : facile", "Rouge : difficile", "Noire : très difficile").forEach {
-            rule.onNodeWithText(it).performScrollTo().assertIsDisplayed()
-        }
-        rule.onNodeWithText("Croix : itinéraire fermé").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Pack 20261115T014538Z · ouvert en 196 ms · skimap-ffi 0.1.0").performScrollTo()
+    fun sheetContentTargetsAndLegendFromTheStyle() {
+        val srn =
+            readyState().let {
+                it.copy(opened = it.opened.copy(style = Fixtures.style("srn")), choice = StyleChoice(Practice.SRN))
+            }
+        rule.setContent { Themed { MapSheetContent(srn, MapActions(), {}, TODAY, PARIS) } }
+        // Colour is never alone: every row of the legend has its words.
+        listOf(
+            "Verte : très facile",
+            "Bleue : facile",
+            "Rouge : difficile",
+            "Noire : très difficile",
+            "Grise : difficulté inconnue",
+            "Fermée : voilée, tirets blancs",
+            "Pointillés : raquettes et piétons",
+            "30 à 35°",
+            "45° et plus",
+            "Très exposé",
+        ).forEach { rule.onNodeWithText(it).performScrollTo().assertIsDisplayed() }
+        rule.onNodeWithText("Ski de randonnée nordique, hors piste").performScrollTo().assertIsSelected()
         rule.onAllNodes(hasClickAction()).assertTargetsAtLeast(72)
     }
 
     @Test
-    fun layerSwitchesInTheSheet() {
+    fun layerSwitchesAreTheGroupsOfTheStyle() {
         val changes = mutableListOf<Pair<String, Boolean>>()
-        val state = readyState().copy(hidden = setOf("no-network"))
+        var auto = mutableListOf<Boolean>()
+        val state = readyState()
         rule.setContent {
-            Themed { MapSheetContent(state, {}, {}, {}, TODAY, PARIS, onSetLayerVisible = { id, v -> changes += id to v }) }
+            Themed {
+                MapSheetContent(
+                    state,
+                    MapActions(setLayerVisible = { id, v -> changes += id to v }, setAutoUpdate = { auto += it }),
+                    {},
+                    TODAY,
+                    PARIS,
+                )
+            }
         }
         rule.onNodeWithText("Couches").performScrollTo().assertIsDisplayed()
         rule
-            .onNodeWithText("Refuges, cabanes et abris")
+            .onNodeWithText("Refuges et abris")
             .performScrollTo()
             .assertIsOn()
             .performClick()
         rule
-            .onNodeWithText("Zones sans réseau mobile (112 compris)")
+            .onNodeWithText("Neige estimée")
             .performScrollTo()
             .assertIsOff()
             .performClick()
-        assertEquals(listOf("refuges" to false, "no-network" to true), changes)
-        // Pistes and their status are never offered as a switch.
+        assertEquals(listOf("refuges" to false, "neige" to true), changes)
+        // Safety groups are never offered as a switch: 4 groups of fond + automatic updates.
         val switches = rule.onAllNodes(isToggleable(), useUnmergedTree = false).fetchSemanticsNodes()
-        assertEquals(4, switches.size)
+        assertEquals(5, switches.size)
         rule.onAllNodes(isToggleable() and hasText("Piste", substring = true, ignoreCase = true)).assertCountEquals(0)
+        rule.onAllNodes(isToggleable() and hasText("Avalanche", substring = true, ignoreCase = true)).assertCountEquals(0)
         rule.onNodeWithText("Toujours affichés", substring = true).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Mettre à jour les packs automatiquement", substring = true).performScrollTo().performClick()
+        assertEquals(listOf(false), auto)
         rule.onAllNodes(hasClickAction()).assertTargetsAtLeast(72)
     }
 
     @Test
-    fun noPackScreenTargets() {
+    fun noPackScreenOffersTheDownloads() {
         var retries = 0
+        var domains = 0
         rule.setContent {
-            Themed { NoPackScreen(MapUiState.NoPack("/sdcard/packs", emptyList()), onRetry = { retries++ }) }
+            Themed {
+                NoPackScreen(MapUiState.NoPack("/sdcard/packs", emptyList()), onRetry = { retries++ }, onChooseDomain = { domains++ })
+            }
         }
         rule.onAllNodes(hasClickAction()).assertTargetsAtLeast(72)
-        rule.onNodeWithText("Chercher à nouveau").performClick()
-        assertEquals(1, retries)
+        rule.onNodeWithText("Domaines de France et téléchargements").performClick()
+        rule.onNodeWithText("Chercher à nouveau").performScrollTo().performClick()
+        assertEquals(1 to 1, retries to domains)
     }
 
     @Test
@@ -198,9 +244,9 @@ class MapScreenTest {
         rule.waitForIdle()
         assertEquals(1, mapCompositions)
 
-        headerState = readyState(error = "Fond de carte « x » absent du pack")
+        headerState = readyState(error = PackProblem(PackProblem.Kind.INVALID, "style JSON: EOF"))
         rule.waitForIdle()
-        rule.onNodeWithText("Fond de carte « x » absent du pack").assertIsDisplayed()
+        rule.onNodeWithText("Pack invalide : style JSON: EOF").assertIsDisplayed()
         val withStatus =
             headerState.let { s ->
                 s.copy(opened = s.opened.copy(info = s.opened.info.copy(status = StatusSummary(2u, 6u, 0u, null))))
@@ -212,5 +258,33 @@ class MapScreenTest {
         rule.onNodeWithTag(Tags.PRIMARY).performClick()
         rule.waitForIdle()
         assertEquals("map recomposed by header, status or sheet", 1, mapCompositions)
+    }
+}
+
+/** The same screens in English, the language of the app outside French phones (VO6). */
+@RunWith(AndroidJUnit4::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(qualifiers = "en-w412dp-h915dp-xxhdpi")
+class MapScreenEnglishTest {
+    @get:Rule
+    val rule = createComposeRule()
+
+    @Test
+    fun englishTexts() {
+        rule.setContent { Themed { TestMapScreen(readyState(free = true)) } }
+        rule.onNodeWithText("All installed areas · 0 open, 8 closed").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Data sources and licences").performClick()
+        rule.onNodeWithText("Data licences").assertIsDisplayed()
+    }
+
+    @Test
+    fun englishSheet() {
+        val state = readyState().let { it.copy(opened = it.opened.copy(info = Fixtures.info(validUntil = "2026-11-17"))) }
+        rule.setContent { Themed { MapSheetContent(state, MapActions(), {}, TODAY, PARIS) } }
+        rule.onNodeWithText("Pistes: 0 open, 8 closed · checked on Nov 15 at 02:45").assertIsDisplayed()
+        rule.onNodeWithText("Valid until November 17, 2026").assertIsDisplayed()
+        rule.onNodeWithText("Cross-country skiing on groomed pistes").performScrollTo().assertIsSelected()
+        rule.onNodeWithText("Huts and shelters").performScrollTo().assertIsOn()
+        rule.onNodeWithText("Blue: easy").performScrollTo().assertIsDisplayed()
     }
 }

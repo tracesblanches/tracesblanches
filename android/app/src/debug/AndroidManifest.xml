@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only: a skimap-server on the development machine (10.0.2.2 from the
+     emulator, a private address), for the instrumented download tests. Release builds
+     speak HTTPS to the public server only (platform default, no local network). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Android 17 local network protection: an app targeting API 37 reaches a private
+         address only with this permission (granted by the instrumented test). -->
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
+
+    <application android:networkSecurityConfig="@xml/network_security_config" />
+</manifest>

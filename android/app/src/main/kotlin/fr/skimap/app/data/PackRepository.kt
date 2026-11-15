@@ -1,8 +1,7 @@
 package fr.skimap.app.data
 
-import fr.skimap.core.LegendEntry
+import fr.skimap.core.Bounds
 import fr.skimap.core.MapStyle
-import fr.skimap.core.MapSymbol
 import fr.skimap.core.PackEntry
 import fr.skimap.core.PackException
 import fr.skimap.core.PackInfo
@@ -16,15 +15,14 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 
-/** A pack opened by the Rust core, with the style of one of its basemaps. */
+/** Packs opened by the Rust core, with a validated style instantiated on them. */
 data class OpenedPack(
     val info: PackInfo,
     val style: MapStyle,
-    val legend: List<LegendEntry>,
-    /** Images the style refers to (drawn by the app, defined by the core). */
-    val symbols: List<MapSymbol>,
-    /** Version of the Rust core that opened the pack. */
+    /** Version of the Rust core that opened the packs. */
     val coreVersion: String,
+    /** Bounds of each pack shown, in order (free mode: the automatic view is one of them). */
+    val packBounds: List<Bounds> = emptyList(),
 )
 
 /** Packs stored on the phone. Every read goes through the Rust reader (crates/ffi). */
@@ -36,21 +34,22 @@ interface PackRepository {
     suspend fun list(): List<PackEntry>
 
     /**
-     * Opens the packs in [dirs] together (free mode: all of them; area mode: one) with
-     * [basemap] (`null`: the first basemap of the first pack).
+     * Opens the packs in [dirs] together (free mode: all of them; area mode: one) and
+     * instantiates [styleJson] (a style of `styles/`) on them.
      */
     suspend fun open(
         dirs: List<String>,
-        basemap: String?,
+        styleJson: String,
+        free: Boolean,
     ): OpenedPack
 
-    /** Style of the currently opened pack with another basemap. */
-    suspend fun style(basemap: String): MapStyle
+    /** [styleJson] instantiated on the packs opened last. */
+    suspend fun style(styleJson: String): MapStyle
 }
 
 /**
  * [PackRepository] backed by the Rust core through UniFFI. Calls run on [io]: the core
- * reads files. One FFI call per pack opened and per basemap switch. Keeps one pack handle
+ * reads files. One FFI call per opening and per style switch. Keeps one set of packs
  * open and frees the previous one.
  */
 class RustPackRepository(
@@ -72,31 +71,39 @@ class RustPackRepository(
 
     override suspend fun open(
         dirs: List<String>,
-        basemap: String?,
+        styleJson: String,
+        free: Boolean,
     ): OpenedPack =
         withContext(io) {
             mutex.withLock {
-                // One call across the FFI: summary, style, legend and symbols together.
-                val view = openPacks(dirs, basemap)
+                // One call across the FFI: summary and style together.
+                val view = openPacks(dirs, styleJson, free)
                 current?.destroy()
                 current = view.set
-                OpenedPack(view.info, view.style, view.legend, view.symbols, view.coreVersion)
+                OpenedPack(view.info, view.style, view.coreVersion)
             }
         }
 
-    override suspend fun style(basemap: String): MapStyle =
+    override suspend fun style(styleJson: String): MapStyle =
         withContext(io) {
             mutex.withLock {
-                val handle = checkNotNull(current) { "no pack opened" }
-                handle.mapStyle(basemap)
+                val set = checkNotNull(current) { "no pack opened" }
+                set.mapStyle(styleJson)
             }
         }
 }
 
-/** French message of a core error, for the screen. */
-fun PackException.describe(): String =
+/** An error of the core, worded on screen in the language of the app (UI layer). */
+data class PackProblem(
+    val kind: Kind,
+    /** Path or technical detail, as the core gives it. */
+    val detail: String,
+) {
+    enum class Kind { NOT_FOUND, INVALID }
+}
+
+fun PackException.problem(): PackProblem =
     when (this) {
-        is PackException.NotFound -> "Aucun pack dans $path"
-        is PackException.Invalid -> "Pack invalide : $detail"
-        is PackException.UnknownBasemap -> "Fond de carte « $id » absent du pack"
+        is PackException.NotFound -> PackProblem(PackProblem.Kind.NOT_FOUND, path)
+        is PackException.Invalid -> PackProblem(PackProblem.Kind.INVALID, detail)
     }

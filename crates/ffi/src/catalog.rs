@@ -1,7 +1,8 @@
 //! Catalogue of the nordic ski areas of France (census P3: `data/out/france/domaines/`),
 //! embedded in the app as a small JSON resource (`examples/catalog.rs` writes it): pick an
 //! area on a map of France, by name or by distance, and know whether its pack is on the
-//! phone. No network: pack download is K2.
+//! phone or published by the server (K2: the server catalog, [`crate::sync::ServerSite`],
+//! read by the app when the picker opens and kept for offline use).
 
 use std::sync::Arc;
 
@@ -9,6 +10,7 @@ use serde::Deserialize;
 
 use crate::PackError;
 use crate::info::{Bounds, PackEntry};
+use crate::sync::ServerSite;
 
 /// Version of the catalogue resource read by this library.
 pub const CATALOG_FORMAT: u32 = 1;
@@ -18,9 +20,9 @@ pub const CATALOG_FORMAT: u32 = 1;
 pub enum PackStatus {
     /// A pack on the phone covers the area.
     Installed,
-    /// Built by the pipeline, to download (K2: not yet possible).
+    /// Published by the server: to download.
     Available,
-    /// No pack built for this area yet.
+    /// No pack published for this area yet.
     NotBuilt,
 }
 
@@ -43,6 +45,10 @@ pub struct Domain {
     pub status: PackStatus,
     /// Directory of the pack on the phone when installed.
     pub pack_dir: Option<String>,
+    /// Server site whose pack covers the area (download or update), if any.
+    pub server_site: Option<String>,
+    /// Size of a first download of that pack.
+    pub download_bytes: u64,
 }
 
 /// An area and its distance to a position.
@@ -75,9 +81,6 @@ struct RawDomain {
     lon: f64,
     lat: f64,
     km: f64,
-    /// Built by the pipeline (from `catalog.json` of the pipeline, later).
-    #[serde(default)]
-    built: bool,
 }
 
 /// The catalogue, parsed once.
@@ -118,6 +121,10 @@ fn inside(b: &Bounds, lon: f64, lat: f64) -> bool {
     lon >= b.west && lon <= b.east && lat >= b.south && lat <= b.north
 }
 
+fn inside_bbox(b: &[f64], lon: f64, lat: f64) -> bool {
+    matches!(b, [w, s, e, n] if lon >= *w && lon <= *e && lat >= *s && lat <= *n)
+}
+
 impl Catalog {
     /// Parses the catalogue resource.
     pub fn parse(json: &str) -> Result<Self, PackError> {
@@ -143,16 +150,17 @@ impl Catalog {
         Ok(Self { file, keys })
     }
 
-    fn domain(&self, i: usize, packs: &[PackEntry]) -> Domain {
+    fn domain(&self, i: usize, packs: &[PackEntry], server: &[ServerSite]) -> Domain {
         let d = &self.file.domains[i];
         let pack = packs
             .iter()
             .filter(|p| p.error.is_none())
             .find(|p| p.bounds.as_ref().is_some_and(|b| inside(b, d.lon, d.lat)));
-        let status = match (pack, d.built) {
+        let site = server.iter().find(|s| inside_bbox(&s.bbox, d.lon, d.lat));
+        let status = match (pack, site) {
             (Some(_), _) => PackStatus::Installed,
-            (None, true) => PackStatus::Available,
-            (None, false) => PackStatus::NotBuilt,
+            (None, Some(_)) => PackStatus::Available,
+            (None, None) => PackStatus::NotBuilt,
         };
         Domain {
             id: d.id.clone(),
@@ -163,6 +171,8 @@ impl Catalog {
             km_nordic: d.km,
             status,
             pack_dir: pack.map(|p| p.dir.clone()),
+            server_site: site.map(|s| s.site_id.clone()),
+            download_bytes: site.map_or(0, |s| s.first_download_bytes),
         }
     }
 }
@@ -185,10 +195,12 @@ impl Catalog {
         self.file.domains.is_empty()
     }
 
-    /// Every area, installed ones first, then by name; `packs`: the packs on the phone.
-    pub fn domains(&self, packs: Vec<PackEntry>) -> Vec<Domain> {
+    /// Every area, installed ones first, then by name; `packs`: the packs on the phone,
+    /// `server`: the sites published by the server (last catalog read; empty offline
+    /// before any).
+    pub fn domains(&self, packs: Vec<PackEntry>, server: Vec<ServerSite>) -> Vec<Domain> {
         let mut v: Vec<Domain> = (0..self.file.domains.len())
-            .map(|i| self.domain(i, &packs))
+            .map(|i| self.domain(i, &packs, &server))
             .collect();
         v.sort_by_cached_key(|d| (d.status != PackStatus::Installed, normalise(&d.name)));
         v
@@ -196,11 +208,17 @@ impl Catalog {
 
     /// Areas whose name, other names or commune contain every word of `query` (accents
     /// and case ignored); names starting with the query first.
-    pub fn search(&self, query: String, packs: Vec<PackEntry>, limit: u32) -> Vec<Domain> {
+    pub fn search(
+        &self,
+        query: String,
+        packs: Vec<PackEntry>,
+        server: Vec<ServerSite>,
+        limit: u32,
+    ) -> Vec<Domain> {
         let q = normalise(query.trim());
         let words: Vec<&str> = q.split_whitespace().collect();
         if words.is_empty() {
-            let mut all = self.domains(packs);
+            let mut all = self.domains(packs, server);
             all.truncate(limit as usize);
             return all;
         }
@@ -220,7 +238,7 @@ impl Catalog {
         hits.sort();
         hits.into_iter()
             .take(limit as usize)
-            .map(|(_, _, i)| self.domain(i, &packs))
+            .map(|(_, _, i)| self.domain(i, &packs, &server))
             .collect()
     }
 
@@ -230,6 +248,7 @@ impl Catalog {
         lon: f64,
         lat: f64,
         packs: Vec<PackEntry>,
+        server: Vec<ServerSite>,
         limit: u32,
     ) -> Vec<DomainDistance> {
         let mut v: Vec<(f64, usize)> = self
@@ -243,7 +262,7 @@ impl Catalog {
         v.into_iter()
             .take(limit as usize)
             .map(|(km, i)| DomainDistance {
-                domain: self.domain(i, &packs),
+                domain: self.domain(i, &packs, &server),
                 km,
             })
             .collect()
@@ -271,7 +290,7 @@ mod tests {
         {"id": "a", "name": "Chapelle-des-Bois", "commune": "Chapelle-des-Bois", "dep": "25",
          "lon": 6.11, "lat": 46.6, "km": 120.5},
         {"id": "b", "name": "Les Rousses", "alt_names": ["Station des Rousses"], "commune": "Les Rousses",
-         "dep": "39", "lon": 6.06, "lat": 46.48, "km": 200.0, "built": true},
+         "dep": "39", "lon": 6.06, "lat": 46.48, "km": 200.0},
         {"id": "c", "name": "Cervières", "commune": "Cervières", "dep": "05",
          "lon": 6.77, "lat": 44.86, "km": 40.0},
         {"id": "d", "name": "Plateau de Retord", "commune": "Le Grand-Abergement", "dep": "01",
@@ -294,6 +313,20 @@ mod tests {
         }
     }
 
+    fn server_site(id: &str, bbox: [f64; 4], bytes: u64) -> ServerSite {
+        ServerSite {
+            site_id: id.into(),
+            name: id.into(),
+            bbox: bbox.to_vec(),
+            index_url: format!("/v1/sites/{id}/index.json"),
+            latest_version: "v".into(),
+            published_at: String::new(),
+            first_download_bytes: bytes,
+            pack_bytes: bytes,
+            voice: Vec::new(),
+        }
+    }
+
     #[test]
     fn accents_and_case() {
         assert_eq!(normalise("Cervières"), "cervieres");
@@ -305,48 +338,62 @@ mod tests {
         let c = Catalog::parse(JSON).unwrap();
         assert_eq!(c.len(), 4);
         let packs = vec![pack("/p/cervieres", 6.66, 44.77, 6.86, 44.92)];
+        // The server publishes Les Rousses (and Cervières, installed already).
+        let server = vec![
+            server_site("les-rousses", [5.9, 46.4, 6.2, 46.6], 40_000_000),
+            server_site("cervieres", [6.66, 44.77, 6.86, 44.92], 43_000_000),
+        ];
         let names = |v: Vec<Domain>| v.into_iter().map(|d| d.name).collect::<Vec<_>>();
         assert_eq!(
-            names(c.search("cervieres".into(), packs.clone(), 10)),
+            names(c.search("cervieres".into(), packs.clone(), server.clone(), 10)),
             ["Cervières"]
         );
         assert_eq!(
-            names(c.search("ROUSSES".into(), packs.clone(), 10)),
+            names(c.search("ROUSSES".into(), packs.clone(), server.clone(), 10)),
             ["Les Rousses"]
         );
         assert_eq!(
-            names(c.search("station".into(), packs.clone(), 10)),
+            names(c.search("station".into(), packs.clone(), server.clone(), 10)),
             ["Les Rousses"]
         );
         assert_eq!(
-            names(c.search("abergement".into(), packs.clone(), 10)),
+            names(c.search("abergement".into(), packs.clone(), server.clone(), 10)),
             ["Plateau de Retord"]
         );
         // Every word must match; name prefixes first.
         assert!(
-            c.search("rousses chapelle".into(), packs.clone(), 10)
+            c.search("rousses chapelle".into(), packs.clone(), server.clone(), 10)
                 .is_empty()
         );
-        let ce = c.search("c".into(), packs.clone(), 10);
+        let ce = c.search("c".into(), packs.clone(), server.clone(), 10);
         assert_eq!(names(ce), ["Cervières", "Chapelle-des-Bois"]);
-        // Status: installed (pack bounds), available (built), not built.
-        let all = c.domains(packs.clone());
+        // Status: installed (pack bounds), available (published by the server), not built.
+        let all = c.domains(packs.clone(), server.clone());
         assert_eq!(all[0].name, "Cervières");
         assert_eq!(all[0].status, PackStatus::Installed);
         assert_eq!(all[0].pack_dir.as_deref(), Some("/p/cervieres"));
         let rousses = all.iter().find(|d| d.id == "b").unwrap();
         assert_eq!(rousses.status, PackStatus::Available);
+        assert_eq!(rousses.server_site.as_deref(), Some("les-rousses"));
+        assert_eq!(rousses.download_bytes, 40_000_000);
+        assert_eq!(all[0].server_site.as_deref(), Some("cervieres"));
+        // Offline before any server catalog: installed or not built.
+        let offline = c.domains(packs.clone(), Vec::new());
+        assert_eq!(
+            offline.iter().find(|d| d.id == "b").unwrap().status,
+            PackStatus::NotBuilt
+        );
         let retord = all.iter().find(|d| d.id == "d").unwrap();
         assert_eq!(retord.status, PackStatus::NotBuilt);
         assert_eq!(retord.place, "Le Grand-Abergement (01)");
         // Nearest to Mouthe (6.19, 46.71): Chapelle-des-Bois, then Les Rousses.
-        let n = c.nearest(6.19, 46.71, packs, 2);
+        let n = c.nearest(6.19, 46.71, packs, server, 2);
         assert_eq!(n[0].domain.id, "a");
         assert_eq!(n[1].domain.id, "b");
         assert!((n[0].km - 14.6).abs() < 1.0, "{}", n[0].km);
         assert_eq!(c.outline().len(), 1);
         // An empty query lists everything, installed first.
-        assert_eq!(c.search("  ".into(), vec![], 2).len(), 2);
+        assert_eq!(c.search("  ".into(), vec![], vec![], 2).len(), 2);
         assert!(Catalog::parse(r#"{"format": 2, "domains": [], "outline": []}"#).is_err());
     }
 }

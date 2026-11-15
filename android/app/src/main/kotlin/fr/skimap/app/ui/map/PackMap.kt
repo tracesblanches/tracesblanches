@@ -14,22 +14,23 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import fr.skimap.app.data.CameraSpot
 import fr.skimap.app.data.OpenedPack
 import fr.skimap.core.Bounds
 import fr.skimap.core.Card
+import fr.skimap.core.Lang
+import fr.skimap.core.MapStyle
 import fr.skimap.core.featureCard
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.withContext
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
@@ -43,7 +44,7 @@ import kotlin.coroutines.suspendCoroutine
 
 /** A map style fully rendered for the first time (logcat, instrumented test). */
 data class MapRendered(
-    /** `name` of the style (`skimap <site> <basemap>`). */
+    /** `name` of the style (`skimap <site or libre> <style>-<theme>`). */
     val styleName: String,
     /** From `setStyle` to the first fully rendered frame. */
     val sinceStyleMs: Long,
@@ -60,7 +61,7 @@ object MapProbe {
     var map: MapLibreMap? = null
         internal set
 
-    /** Number of `setStyle` calls since the process started: only a pack or basemap change. */
+    /** Number of `setStyle` calls since the process started: only a pack or style change. */
     @Volatile
     var styleLoads: Int = 0
         private set
@@ -135,10 +136,10 @@ private const val TAG = "skimap"
 private const val TOUCH_RADIUS_DP = 24f
 
 /**
- * MapLibre Native map of an opened pack: the style composed by the Rust core (basemap
- * PMTiles read from the pack, pack layers on top), the symbols drawn by [SymbolBitmaps].
- * Rotation and tilt are off: the map stays north up, and no gesture is required since
- * [controller] zooms and recentres.
+ * MapLibre Native map of the opened packs, in a style validated by the user (`styles/`)
+ * instantiated on them by the Rust core: every tile, glyph and icon is read from the
+ * packs. Rotation and tilt are off: the map stays north up, and no gesture is required
+ * since [controller] zooms and recentres.
  */
 @Composable
 fun PackMap(
@@ -147,11 +148,15 @@ fun PackMap(
     modifier: Modifier = Modifier,
     hidden: Set<String> = emptySet(),
     onCard: (Card) -> Unit = {},
+    /** Where the map was when the app was last left (free mode starts there). */
+    lastCamera: CameraSpot? = null,
+    /** The camera when the app goes to the background (saved once, not while moving). */
+    onLeave: (CameraSpot) -> Unit = {},
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val density = LocalDensity.current.density
-    val resources = LocalResources.current
+    val lang = cardLang(LocalConfiguration.current.locales[0])
     val timer = remember { RenderTimer() }
     var loaded by remember { mutableStateOf<Style?>(null) }
     val mapView =
@@ -164,17 +169,9 @@ fun PackMap(
                 addOnDidFinishRenderingMapListener { fully -> if (fully) timer.rendered() }
             }
         }
+    val currentOnLeave by rememberUpdatedState(onLeave)
     DisposableEffect(lifecycle, mapView) {
-        val observer =
-            LifecycleEventObserver { _, event ->
-                when (event) {
-                    Lifecycle.Event.ON_START -> mapView.onStart()
-                    Lifecycle.Event.ON_RESUME -> mapView.onResume()
-                    Lifecycle.Event.ON_PAUSE -> mapView.onPause()
-                    Lifecycle.Event.ON_STOP -> mapView.onStop()
-                    else -> Unit
-                }
-            }
+        val observer = lifecycleObserver(mapView) { currentOnLeave(it) }
         lifecycle.addObserver(observer)
         onDispose {
             lifecycle.removeObserver(observer)
@@ -188,59 +185,123 @@ fun PackMap(
     val style = opened.style
     LaunchedEffect(style.json) {
         val map = mapView.awaitMap()
-        val dpi = resources.displayMetrics.densityDpi
-        // Symbol bitmaps off the main thread; only setStyle runs on it.
-        val images = withContext(Dispatchers.Default) { opened.symbols.map { it.id to SymbolBitmaps.draw(it, density, dpi) } }
-        val builder = Style.Builder().fromJson(style.json)
-        images.forEach { (id, bitmap) -> builder.withImage(id, bitmap) }
-        timer.start(styleName(opened))
+        timer.start(style.name)
         loaded = null
-        map.setStyle(builder) { loaded = it }
+        map.setStyle(Style.Builder().fromJson(style.json)) { loaded = it }
         MapProbe.styleLoaded()
         MapProbe.map = map
     }
-    // Panel "Couches": layer visibility only, the style is not reloaded.
-    LaunchedEffect(loaded, hidden) {
-        val s = loaded ?: return@LaunchedEffect
-        for (t in style.toggles) {
-            val v = if (t.id in hidden) Property.NONE else Property.VISIBLE
-            t.styleLayers.forEach { id -> s.getLayer(id)?.setProperties(PropertyFactory.visibility(v)) }
-        }
-    }
+    // Panel "Couches": layer visibility of the groups of the style, no reload.
+    LaunchedEffect(loaded, hidden) { loaded?.let { showGroups(it, style, hidden) } }
     // Touch on a refuge: its card. One query per touch, around the finger (24 dp).
     val currentOpened by rememberUpdatedState(opened)
     val currentOnCard by rememberUpdatedState(onCard)
+    val currentLang by rememberUpdatedState(lang)
     LaunchedEffect(mapView) {
         val map = mapView.awaitMap()
         val radius = TOUCH_RADIUS_DP * density
         map.addOnMapClickListener { latLng ->
-            val p = map.projection.toScreenLocation(latLng)
-            val box = RectF(p.x - radius, p.y - radius, p.x + radius, p.y + radius)
-            val hit =
-                currentOpened.style.overlays
-                    .asSequence()
-                    .filter { it.packLayer.startsWith("refuges-") }
-                    .flatMap { o -> o.styleLayers.asSequence().map { o.packLayer to it } }
-                    .firstNotNullOfOrNull { (packLayer, layer) ->
-                        map.queryRenderedFeatures(box, layer).firstOrNull()?.let { packLayer to it }
-                    }
-            val card = hit?.let { (packLayer, f) -> featureCard(packLayer, f.properties()?.toString() ?: "{}") }
+            val card = cardAt(map, latLng, radius, currentOpened.style, currentLang)
             if (card != null) currentOnCard(card)
             card != null
         }
     }
-    LaunchedEffect(opened.info.dir) {
+    LaunchedEffect(opened.info.siteId, opened.info.bounds) {
         val map = mapView.awaitMap()
         val b = opened.info.bounds
-        controller.attach(map, b)
-        // Keep the camera over the site: no getting lost by a stray swipe of a glove.
+        // Free mode: the automatic view is the area the user was in, else the first pack;
+        // the camera may go anywhere over the installed packs.
+        val spot = lastCamera?.takeIf { it.isIn(b) }
+        val auto = if (spot != null) packBoundsAround(opened, spot) ?: b else firstBounds(opened) ?: b
+        controller.attach(map, auto)
+        // Keep the camera over the packs: no getting lost by a stray swipe of a glove.
         map.setLatLngBoundsForCameraTarget(b.toLatLngBounds())
-        map.moveCamera(CameraUpdateFactory.newLatLngBounds(b.toLatLngBounds(), MapController.FIT_PADDING_PX))
+        if (spot != null) {
+            map.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(spot.lat, spot.lon), spot.zoom))
+        } else {
+            map.moveCamera(CameraUpdateFactory.newLatLngBounds(auto.toLatLngBounds(), MapController.FIT_PADDING_PX))
+        }
     }
 }
 
-/** Name of the style of [opened], as the Rust core writes it (`skimap <site> <basemap>`). */
-fun styleName(opened: OpenedPack): String = "skimap ${opened.info.siteId} ${opened.style.basemap ?: "blank"}"
+/** Forwards the lifecycle to [mapView]; [onLeave] gets the camera when the app is left. */
+private fun lifecycleObserver(
+    mapView: MapView,
+    onLeave: (CameraSpot) -> Unit,
+) = LifecycleEventObserver { _, event ->
+    when (event) {
+        Lifecycle.Event.ON_START -> {
+            mapView.onStart()
+        }
+
+        Lifecycle.Event.ON_RESUME -> {
+            mapView.onResume()
+        }
+
+        Lifecycle.Event.ON_PAUSE -> {
+            mapView.onPause()
+        }
+
+        Lifecycle.Event.ON_STOP -> {
+            MapProbe.map?.cameraPosition?.let { c ->
+                c.target?.let { t -> onLeave(CameraSpot(t.latitude, t.longitude, c.zoom)) }
+            }
+            mapView.onStop()
+        }
+
+        else -> {
+            Unit
+        }
+    }
+}
+
+/** Panel "Couches": visibility of the switchable groups of [style], without reloading it. */
+private fun showGroups(
+    loaded: Style,
+    style: MapStyle,
+    hidden: Set<String>,
+) {
+    for (g in style.groups.filter { it.toggleable }) {
+        val v = if (g.id in hidden) Property.NONE else Property.VISIBLE
+        g.styleLayers.forEach { id -> loaded.getLayer(id)?.setProperties(PropertyFactory.visibility(v)) }
+    }
+}
+
+/** Card of the refuge or station under the finger ([radius] pixels around [latLng]), if any. */
+private fun cardAt(
+    map: MapLibreMap,
+    latLng: LatLng,
+    radius: Float,
+    style: MapStyle,
+    lang: Lang,
+): Card? {
+    val p = map.projection.toScreenLocation(latLng)
+    val box = RectF(p.x - radius, p.y - radius, p.x + radius, p.y + radius)
+    val hit =
+        style.overlays
+            .asSequence()
+            .filter { it.packLayer.startsWith("refuges-") || it.packLayer == "stations" }
+            .flatMap { o -> o.styleLayers.asSequence().map { o.packLayer to it } }
+            .firstNotNullOfOrNull { (packLayer, layer) ->
+                map.queryRenderedFeatures(box, layer).firstOrNull()?.let { packLayer to it }
+            }
+    return hit?.let { (packLayer, f) -> featureCard(packLayer, f.properties()?.toString() ?: "{}", lang) }
+}
+
+/** Bounds of the installed pack around [spot] (free mode), if one contains it. */
+private fun packBoundsAround(
+    opened: OpenedPack,
+    spot: CameraSpot,
+): Bounds? = opened.packBounds.firstOrNull { spot.isIn(it) }
+
+/** Bounds of the first pack of the set. */
+private fun firstBounds(opened: OpenedPack): Bounds? = opened.packBounds.firstOrNull()
+
+/** Name of the style of [opened], as the Rust core writes it (`skimap <site> <style>-<theme>`). */
+fun styleName(opened: OpenedPack): String = opened.style.name
+
+/** Language of the cards: French on a French phone, English otherwise (VO6). */
+fun cardLang(locale: java.util.Locale): Lang = if (locale.language == "fr") Lang.FR else Lang.EN
 
 /** Time from `setStyle` to the first fully rendered frame of that style. */
 private class RenderTimer {

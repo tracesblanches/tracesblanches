@@ -1,6 +1,6 @@
 [package]
 name = "skimap-ffi"
-description = "Bibliothèque Android du noyau (UniFFI) : ouverture d'un pack, style de carte MapLibre, symboles et légende de l'app (K1)."
+description = "Bibliothèque Android du noyau (UniFFI) : packs, styles validés instanciés sur les packs, synchro des packs, fiches FR/EN, catalogue des domaines, zones de redevance (K1, K15, K2, H2, VO6)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

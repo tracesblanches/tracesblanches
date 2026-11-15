@@ -1,7 +1,9 @@
 package fr.skimap.app
 
+import fr.skimap.app.data.PackProblem
 import fr.skimap.app.data.RustPackRepository
-import fr.skimap.app.data.describe
+import fr.skimap.app.data.StyleChoice
+import fr.skimap.app.data.problem
 import fr.skimap.core.PackException
 import fr.skimap.core.coreVersion
 import kotlinx.coroutines.Dispatchers
@@ -18,12 +20,16 @@ import java.io.File
 
 /**
  * The data layer on the JVM with the real Rust core (host build of crates/ffi, loaded by
- * JNA from `jna.library.path`) and the synthetic test pack written by
- * `crates/ffi/examples/test_pack.rs` (Gradle task `testPack`).
+ * JNA from `jna.library.path`), the synthetic test pack written by
+ * `crates/ffi/examples/test_pack.rs` (Gradle task `testPack`) and the validated styles
+ * of `styles/` (what the app embeds as assets).
  */
 class RustPackRepositoryTest {
     @get:Rule
     val tmp = TemporaryFolder()
+
+    private fun style(choice: StyleChoice): String =
+        File(checkNotNull(System.getProperty("skimap.styles")), choice.asset.removePrefix("styles/")).readText()
 
     private fun packsWithTestPack(): File {
         val src = File(checkNotNull(System.getProperty("skimap.testPack")) { "skimap.testPack not set" })
@@ -35,7 +41,7 @@ class RustPackRepositoryTest {
     }
 
     @Test
-    fun listsOpensAndComposesTheStyle() =
+    fun opensTheTestPackInEveryValidatedStyle() =
         runTest {
             val packs = packsWithTestPack()
             val repo = RustPackRepository({ packs }, Dispatchers.Unconfined)
@@ -46,29 +52,28 @@ class RustPackRepositoryTest {
             assertTrue(list[0].error!!.contains("JSON"))
             assertNull(list[1].error)
 
-            val opened = repo.open(listOf(list[1].dir), null)
+            val opened = repo.open(listOf(list[1].dir), style(StyleChoice()), free = false)
             assertEquals("Pack de test", opened.info.siteName)
-            val overlays = opened.info.overlays.map { it.id }
-            assertEquals(listOf("status", "pistes", "refuges-camptocamp", "refuges-osm", "refuges-info"), overlays)
             assertEquals(1u, opened.info.status!!.open)
             assertEquals(1u, opened.info.status!!.closed)
-            assertEquals(10, opened.symbols.size)
-            assertEquals(listOf("refuges", "water"), opened.style.toggles.map { it.id })
-            assertTrue(opened.legend.any { it.label == "Rouge : difficile" })
-
-            val style = JSONObject(opened.style.json)
-            assertEquals("skimap test test", style.getString("name"))
-            val url = style.getJSONObject("sources").getJSONObject("test").getString("url")
-            assertEquals("pmtiles://file://${File(packs, "test/basemap/test.pmtiles").absolutePath}", url)
-            val pistes = style.getJSONObject("sources").getJSONObject("skimap-pistes").getString("data")
+            assertEquals("skimap test fond-clair", opened.style.name)
+            val json = JSONObject(opened.style.json)
+            val url = json.getJSONObject("sources").getJSONObject("ign").getString("url")
+            assertEquals("pmtiles://file://${File(packs, "test/basemap/plan-ign.pmtiles").absolutePath}", url)
+            val pistes = json.getJSONObject("sources").getJSONObject("pistes").getString("data")
             assertTrue(File(pistes.removePrefix("file://")).isFile)
+            // The test pack has no OSM basemap and no snow raster: no empty group.
+            assertEquals(
+                listOf("refuges", "noms"),
+                opened.style.groups
+                    .filter { it.toggleable }
+                    .map { it.id },
+            )
+            assertTrue(opened.style.legend.any { it.key == "intermediate" })
 
-            assertEquals("test", repo.style("test").basemap)
-            try {
-                repo.style("plan-ign")
-                fail("unknown basemap accepted")
-            } catch (e: PackException.UnknownBasemap) {
-                assertEquals("Fond de carte « plan-ign » absent du pack", e.describe())
+            for (choice in listOf(StyleChoice(dark = true), StyleChoice(fr.skimap.app.data.Practice.SRN), StyleChoice(guiding = true))) {
+                val st = repo.style(style(choice))
+                assertEquals("skimap test ${choice.family}-${if (choice.dark) "sombre" else "clair"}", st.name)
             }
         }
 
@@ -78,19 +83,20 @@ class RustPackRepositoryTest {
             val packs = packsWithTestPack()
             val repo = RustPackRepository({ packs }, Dispatchers.Unconfined)
             try {
-                repo.open(listOf(File(packs, "broken").absolutePath), null)
+                repo.open(listOf(File(packs, "broken").absolutePath), style(StyleChoice()), free = false)
                 fail("broken pack opened")
             } catch (e: PackException.Invalid) {
-                assertTrue(e.describe(), e.describe().startsWith("Pack invalide : "))
+                assertEquals(PackProblem.Kind.INVALID, e.problem().kind)
             }
             try {
-                repo.open(listOf(File(packs, "nowhere").absolutePath), null)
+                repo.open(listOf(File(packs, "nowhere").absolutePath), style(StyleChoice()), free = false)
                 fail("missing pack opened")
             } catch (e: PackException.NotFound) {
                 assertTrue(e.path.endsWith("nowhere"))
+                assertEquals(PackProblem.Kind.NOT_FOUND, e.problem().kind)
             }
             try {
-                repo.style("test")
+                repo.style(style(StyleChoice()))
                 fail("style without an open pack")
             } catch (_: IllegalStateException) {
             }

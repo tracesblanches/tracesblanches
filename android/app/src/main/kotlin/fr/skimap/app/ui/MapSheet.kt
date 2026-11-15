@@ -1,7 +1,6 @@
 package fr.skimap.app.ui
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,15 +28,13 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -46,25 +43,24 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.toColorInt
 import fr.skimap.app.R
-import fr.skimap.app.ui.map.SymbolBitmaps
+import fr.skimap.app.data.Practice
 import fr.skimap.app.ui.theme.GloveTarget
+import fr.skimap.core.LayerGroup
 import fr.skimap.core.LegendEntry
-import fr.skimap.core.MapSymbol
+import fr.skimap.core.LegendKind
 import java.time.LocalDate
 import java.time.ZoneId
 
-/** The primary action: site, basemap, legend and sources, in a bottom sheet. */
+/** The primary action: area, practice, layers, legend and updates, in a bottom sheet. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MapSheet(
     state: MapUiState.Ready,
     today: LocalDate,
     zone: ZoneId,
-    onChooseDomain: () -> Unit,
-    onSelectBasemap: (String) -> Unit,
-    onSetLayerVisible: (String, Boolean) -> Unit,
+    actions: MapActions,
     onDismiss: () -> Unit,
-    onSelectFree: () -> Unit = {},
+    autoUpdate: Boolean = true,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
@@ -74,16 +70,7 @@ fun MapSheet(
         // The handle is a touch target too: 64 dp wide instead of 32 (accessibility check).
         dragHandle = { BottomSheetDefaults.DragHandle(width = 64.dp) },
     ) {
-        MapSheetContent(
-            state,
-            onChooseDomain,
-            onSelectBasemap,
-            onDismiss,
-            today = today,
-            zone = zone,
-            onSetLayerVisible = onSetLayerVisible,
-            onSelectFree = onSelectFree,
-        )
+        MapSheetContent(state, actions, onDismiss, today, zone, autoUpdate = autoUpdate)
     }
 }
 
@@ -91,15 +78,14 @@ fun MapSheet(
 @Composable
 fun MapSheetContent(
     state: MapUiState.Ready,
-    onChooseDomain: () -> Unit,
-    onSelectBasemap: (String) -> Unit,
+    actions: MapActions,
     onClose: () -> Unit,
     today: LocalDate,
     zone: ZoneId,
     modifier: Modifier = Modifier,
-    onSetLayerVisible: (String, Boolean) -> Unit = { _, _ -> },
-    onSelectFree: () -> Unit = {},
+    autoUpdate: Boolean = true,
 ) {
+    val texts = PackTexts(LocalResources.current)
     val info = state.opened.info
     val style = state.opened.style
     Column(
@@ -115,48 +101,66 @@ fun MapSheetContent(
             modifier = Modifier.semantics { heading() },
         )
         // Pack: piste status with its time, validity.
-        Text(PackTexts.statusText(info.status, zone), style = MaterialTheme.typography.bodyLarge)
-        Text(PackTexts.validityText(info, today), style = MaterialTheme.typography.bodyMedium)
+        Text(texts.statusText(info.status, zone), style = MaterialTheme.typography.bodyLarge)
+        Text(texts.validityText(info, today), style = MaterialTheme.typography.bodyMedium)
         SectionTitle(stringResource(R.string.sheet_site))
         Column(Modifier.selectableGroup()) {
-            ChoiceRow(stringResource(R.string.mode_free), selected = state.free) { onSelectFree() }
+            ChoiceRow(stringResource(R.string.mode_free), selected = state.free) { actions.selectFree() }
             if (!state.free) ChoiceRow(stringResource(R.string.mode_area, info.siteName), selected = true) {}
         }
-        OutlinedButton(onClick = onChooseDomain, modifier = Modifier.fillMaxWidth().heightIn(min = GloveTarget)) {
+        OutlinedButton(onClick = actions.chooseDomain, modifier = Modifier.fillMaxWidth().heightIn(min = GloveTarget)) {
             Text(stringResource(R.string.choose_domain), style = MaterialTheme.typography.labelLarge)
         }
-        if (info.basemaps.isNotEmpty()) {
-            SectionTitle(stringResource(R.string.sheet_basemap))
-            Column(Modifier.selectableGroup()) {
-                info.basemaps.forEach { b ->
-                    ChoiceRow(b.title, selected = b.id == style.basemap) { onSelectBasemap(b.id) }
-                }
+        SectionTitle(stringResource(R.string.sheet_practice))
+        Column(Modifier.selectableGroup()) {
+            ChoiceRow(stringResource(R.string.practice_fond), selected = state.choice.practice == Practice.FOND) {
+                actions.selectPractice(Practice.FOND)
+            }
+            ChoiceRow(stringResource(R.string.practice_srn), selected = state.choice.practice == Practice.SRN) {
+                actions.selectPractice(Practice.SRN)
             }
         }
-        if (style.toggles.isNotEmpty()) {
+        if (state.choice.guiding) Text(stringResource(R.string.practice_guiding), style = MaterialTheme.typography.bodyMedium)
+        val switches = style.groups.filter { it.toggleable }
+        if (switches.isNotEmpty()) {
             SectionTitle(stringResource(R.string.sheet_layers))
-            style.toggles.forEach { t ->
-                SwitchRow(t.label, checked = t.id !in state.hidden) { onSetLayerVisible(t.id, it) }
+            switches.forEach { g ->
+                SwitchRow(groupTitle(g), checked = g.id !in state.hidden) { actions.setLayerVisible(g.id, it) }
             }
-            // Safety elements cannot be hidden: a piste closed or one-way must stay visible.
+            // Safety groups cannot be hidden: a closed piste or an avalanche zone stays.
             Text(stringResource(R.string.layers_always), style = MaterialTheme.typography.bodyMedium)
         }
-        SectionTitle(stringResource(R.string.sheet_legend))
-        Legend(state.opened.legend, state.opened.symbols)
-        SectionTitle(stringResource(R.string.sheet_sources))
-        style.attributions.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
-        if (info.personalSources) {
-            Text(stringResource(R.string.personal_sources), style = MaterialTheme.typography.bodyMedium)
+        if (style.legend.isNotEmpty()) {
+            SectionTitle(stringResource(R.string.sheet_legend))
+            Legend(style.legend)
         }
-        Text(
-            stringResource(R.string.sheet_pack, info.packVersion, state.openMillis, state.opened.coreVersion),
-            style = MaterialTheme.typography.bodySmall,
-        )
+        SectionTitle(stringResource(R.string.sheet_updates))
+        SwitchRow(stringResource(R.string.auto_update), checked = autoUpdate) { actions.setAutoUpdate(it) }
         Button(onClick = onClose, modifier = Modifier.fillMaxWidth().heightIn(min = GloveTarget)) {
             Text(stringResource(R.string.close), style = MaterialTheme.typography.labelLarge)
         }
     }
 }
+
+/** Title of a layer group in the language of the app (the style's French title otherwise). */
+@Composable
+fun groupTitle(g: LayerGroup): String =
+    when (g.id) {
+        "fond" -> stringResource(R.string.group_fond)
+        "pistes" -> stringResource(R.string.group_pistes)
+        "dangers" -> stringResource(R.string.group_dangers)
+        "reglementation" -> stringResource(R.string.group_reglementation)
+        "itineraire" -> stringResource(R.string.group_itineraire)
+        "position" -> stringResource(R.string.group_position)
+        "pentes" -> stringResource(R.string.group_pentes)
+        "refuges" -> stringResource(R.string.group_refuges)
+        "points-eau" -> stringResource(R.string.group_points_eau)
+        "acces" -> stringResource(R.string.group_acces)
+        "noms" -> stringResource(R.string.group_noms)
+        "reseau" -> stringResource(R.string.group_reseau)
+        "neige" -> stringResource(R.string.group_neige)
+        else -> g.title
+    }
 
 @Composable
 private fun SectionTitle(text: String) {
@@ -203,46 +207,84 @@ private fun SwitchRow(
     }
 }
 
+/** Words of a legend row (colour is never alone). */
 @Composable
-private fun Legend(
-    entries: List<LegendEntry>,
-    symbols: List<MapSymbol>,
-) {
-    val density = LocalDensity.current
-    val dpi = (density.density * BASE_DPI).toInt()
-    val images =
-        remember(symbols, density.density) {
-            symbols.associate { it.id to SymbolBitmaps.draw(it, density.density, dpi).asImageBitmap() }
-        }
+private fun legendLabel(e: LegendEntry): String =
+    when (e.key) {
+        "novice" -> stringResource(R.string.legend_novice)
+        "easy" -> stringResource(R.string.legend_easy)
+        "intermediate" -> stringResource(R.string.legend_intermediate)
+        "advanced" -> stringResource(R.string.legend_advanced)
+        "closed" -> stringResource(R.string.legend_closed)
+        "backcountry" -> stringResource(R.string.legend_backcountry)
+        "hike" -> stringResource(R.string.legend_hike)
+        "slope-1" -> stringResource(R.string.legend_slope_1)
+        "slope-2" -> stringResource(R.string.legend_slope_2)
+        "slope-3" -> stringResource(R.string.legend_slope_3)
+        "slope-4" -> stringResource(R.string.legend_slope_4)
+        "exposure-2" -> stringResource(R.string.legend_exposure_2)
+        "exposure-3" -> stringResource(R.string.legend_exposure_3)
+        else -> stringResource(R.string.legend_unknown)
+    }
+
+@Composable
+private fun legendGroup(group: String): String =
+    when (group) {
+        "pentes" -> stringResource(R.string.legend_group_pentes)
+        "dangers" -> stringResource(R.string.legend_group_dangers)
+        else -> stringResource(R.string.legend_group_pistes)
+    }
+
+/** Legend of the style shown: its own colours, a sample and words for each row. */
+@Composable
+private fun Legend(entries: List<LegendEntry>) {
     var group: String? = null
     entries.forEach { e ->
         if (e.group != group) {
             group = e.group
-            Text(e.group, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 4.dp))
+            Text(legendGroup(e.group), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 4.dp))
         }
         Row(Modifier.fillMaxWidth().heightIn(min = 40.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(72.dp), contentAlignment = Alignment.Center) {
-                e.lineColor?.let { LineSample(Color(it.toColorInt()), e.lineDashed) }
-                e.symbol?.let { id -> images[id]?.let { Image(it, contentDescription = null) } }
+                Sample(Color(e.color.toColorInt()), e.kind)
             }
-            Text(e.label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 8.dp))
+            Text(legendLabel(e), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 8.dp))
         }
     }
 }
 
 @Composable
-private fun LineSample(
+private fun Sample(
     color: Color,
-    dashed: Boolean,
+    kind: LegendKind,
 ) {
+    val casing = MaterialTheme.colorScheme.surface
+    val outline = MaterialTheme.colorScheme.outlineVariant
     Canvas(Modifier.size(width = 64.dp, height = 20.dp)) {
+        if (kind == LegendKind.AREA) {
+            drawRect(color.copy(alpha = AREA_ALPHA))
+            drawRect(
+                outline,
+                style =
+                    androidx.compose.ui.graphics.drawscope
+                        .Stroke(1.dp.toPx()),
+            )
+            return@Canvas
+        }
         val y = size.height / 2
-        val effect = if (dashed) PathEffect.dashPathEffect(floatArrayOf(DASH_ON, DASH_OFF)) else null
-        drawLine(Color.White, Offset(0f, y), Offset(size.width, y), strokeWidth = 14f, cap = StrokeCap.Round)
+        val effect =
+            when (kind) {
+                LegendKind.DASHED -> PathEffect.dashPathEffect(floatArrayOf(DASH_ON, DASH_OFF))
+                LegendKind.DOTTED -> PathEffect.dashPathEffect(floatArrayOf(DOT_ON, DOT_OFF))
+                else -> null
+            }
+        drawLine(casing, Offset(0f, y), Offset(size.width, y), strokeWidth = 14f, cap = StrokeCap.Round)
         drawLine(color, Offset(0f, y), Offset(size.width, y), strokeWidth = 8f, cap = StrokeCap.Round, pathEffect = effect)
     }
 }
 
-private const val BASE_DPI = 160f
 private const val DASH_ON = 14f
 private const val DASH_OFF = 10f
+private const val DOT_ON = 4f
+private const val DOT_OFF = 8f
+private const val AREA_ALPHA = 0.7f
