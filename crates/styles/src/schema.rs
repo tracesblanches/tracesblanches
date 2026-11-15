@@ -18,8 +18,15 @@ use crate::{Error, Result, styles_dir};
 /// File name of the snapshot in `styles/`.
 pub const FILE: &str = "pack-schema.json";
 
-/// Sites of the proof packs.
-pub const SITES: [&str; 2] = ["cervieres", "chapelle-des-bois"];
+/// Sites of the proof packs: the two evaluation sites (built with the personal sources)
+/// and a public pack of an SRN area (Hauts-Plateaux du Vercors 1/2, with the Corrençon -
+/// Col de Rousset traverse): SRN areas and itineraries of every kind (SRN, easy and other
+/// ski touring), none of the personal-use layers.
+pub const SITES: [&str; 3] = [
+    "cervieres",
+    "chapelle-des-bois",
+    "srn-domaine-geotrek-geo-pnr-vercors-fr-29403-1",
+];
 
 /// Inventories of the packs, values pruned to the compared properties.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

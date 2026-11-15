@@ -12,6 +12,7 @@ pub mod osm;
 pub mod pistes;
 pub mod plan_ign;
 pub mod raster;
+pub mod stations;
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -192,6 +193,15 @@ fn build_into(
             layers::Outcome::Missing(m) => missing.push(m),
         }
     }
+    if let Some(l) = piste_labels(root, &layers)? {
+        layers.push(l);
+    }
+    for o in stations::include(layout, site.bbox, root, opts.personal_sources)? {
+        match o {
+            layers::Outcome::Included(l) => layers.push(*l),
+            layers::Outcome::Missing(m) => missing.push(m),
+        }
+    }
     timings.push((
         "vector and data layers".to_owned(),
         t.elapsed().as_secs_f64(),
@@ -293,6 +303,40 @@ fn build_into(
         missing,
         timings,
     })
+}
+
+/// The piste name lines ([`pistes::labels`]) derived from the `pistes` layer of the
+/// pack, as written (enriched, coordinates rounded): same sources, dates and use
+/// restrictions as `pistes`, hidden from the viewer's raw layer list by default.
+fn piste_labels(root: &Path, layers: &[Layer]) -> Result<Option<Layer>> {
+    let Some(p) = layers.iter().find(|l| l.id == "pistes") else {
+        return Ok(None);
+    };
+    let src = root.join(&p.file);
+    let text = std::fs::read_to_string(&src).map_err(|e| Error::io(&src, e))?;
+    let v: Value = serde_json::from_str(&text).map_err(|e| Error::json(&p.file, e))?;
+    let fc = pistes::labels(&v);
+    let n = fc["features"].as_array().map_or(0, Vec::len) as u64;
+    let file = format!("layers/{}.geojson", pistes::LABELS_LAYER);
+    let bytes = serde_json::to_vec(&fc).map_err(|e| Error::json(&file, e))?;
+    let size = write_bytes(&root.join(&file), &bytes)?;
+    let mut l = p.clone();
+    l.id = pistes::LABELS_LAYER.to_owned();
+    l.title = "Noms des pistes (lignes fusionnées par itinéraire)".to_owned();
+    l.file = file;
+    l.origin = format!("{} (pack)", p.file);
+    l.bytes = size;
+    l.features = Some(n);
+    l.geometry_types = if n > 0 {
+        vec!["LineString".to_owned()]
+    } else {
+        Vec::new()
+    };
+    l.visible = false;
+    l.notes = vec![
+        "Une ligne par itinéraire (relation OSM, sinon noms du plan des pistes, sinon nom de la voie), voies jointes bout à bout là où deux voies de l'itinéraire seulement se touchent ; pour placer les noms le long des pistes. Propriétés : `name`, `difficulty`, `length_m`, `ways`.".to_owned(),
+    ];
+    Ok(Some(l))
 }
 
 /// Earliest explicit `valid_until` date among the layers.

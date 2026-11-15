@@ -541,15 +541,14 @@ fn refuge_items(layer: &str, fc: &geojson::FeatureCollection) -> Vec<Item> {
                 yes_no(f, "fireplace", "Cheminée", &mut desc);
                 yes_no(f, "blankets", "Couvertures", &mut desc);
                 yes_no(f, "water_100m", "Eau à moins de 100 m", &mut desc);
-                if let Some(c) = prop(f, "last_comment") {
-                    let date = c
-                        .get("date")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .get(..10)
-                        .unwrap_or("");
-                    let text = c.get("text").and_then(Value::as_str).unwrap_or("");
-                    desc.push(format!("Dernier commentaire ({date}) : {text}"));
+                // `last_comment` is `{id, point, date, photo}`: the date only (the
+                // refuges crate no longer copies the text nor the author).
+                if let Some(date) = prop(f, "last_comment")
+                    .and_then(|c| c.get("date"))
+                    .and_then(Value::as_str)
+                    .and_then(|d| d.get(..10))
+                {
+                    desc.push(format!("Dernier commentaire sur refuges.info : {date}"));
                 }
                 if let Some(u) = prop_str(f, "url") {
                     desc.push(u);

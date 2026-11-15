@@ -56,8 +56,8 @@ fn fixture(root: &Path) {
     write(
         &out.join("refuges/refuges_info.geojson"),
         &json!({"type": "FeatureCollection", "features": [{
-            "type": "Feature", "properties": {"name": "Cabane", "type_label": "cabane non gardée", "places": 6,
-              "last_comment": {"date": "2026-06-07 18:44", "text": "Bois & briquet <ok>"}},
+            "type": "Feature", "properties": {"name": "Cabane Bois & briquet <ok>", "type_label": "cabane non gardée", "places": 6,
+              "last_comment": {"id": 54639, "point": 648, "date": "2026-06-07 18:44:00.749223+02", "photo": true}},
             "geometry": {"type": "Point", "coordinates": [6.75, 44.85]}}]}),
     );
     write(&out.join("refuges/refuges.meta.json"), &meta(false));
@@ -221,7 +221,9 @@ fn build_read_export() {
     }
     let gpx =
         std::fs::read_to_string(tmp.path().join("export/gpx/refuges-refuges-info.gpx")).unwrap();
-    assert!(gpx.contains("Dernier commentaire (2026-06-07) : Bois &amp; briquet &lt;ok&gt;"));
+    // The comment is a date only (no text, no author: refuges crate, privacy).
+    assert!(gpx.contains("Dernier commentaire sur refuges.info : 2026-06-07"));
+    assert!(gpx.contains("Cabane Bois &amp; briquet &lt;ok&gt;"));
     let c = rusqlite::Connection::open(tmp.path().join("export/osmand/pentes.sqlitedb")).unwrap();
     let (minz, maxz): (u8, u8) = c
         .query_row("SELECT min(z), max(z) FROM tiles", [], |r| {

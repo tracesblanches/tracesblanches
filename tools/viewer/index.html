@@ -105,6 +105,8 @@
   <div id="styleNote" class="small"></div>
   <h2>Couches</h2>
   <div id="layers"></div>
+  <h2>Stations</h2>
+  <div id="stations"></div>
   <h2>Infos du pack</h2>
   <div id="infos"></div>
   <h2>Licences des données</h2>
@@ -180,6 +182,17 @@ function vectorLayers(id, font) {
                  "line-width": lineW(2, 6), "line-opacity": 0.7 } },
       { type: "circle", filter: ["==", ["get", "kind"], "endpoint"], paint: { "circle-radius": 6, "circle-color": "#006da8", "circle-stroke-color": "#fff", "circle-stroke-width": 2 } }];
     case "pistes-graph-nodes": return [{ type: "circle", paint: { "circle-radius": 2.5, "circle-color": "#ff00ff" } }];
+    case "srn-areas": return [{ type: "fill", paint: { "fill-color": "#00838f", "fill-opacity": 0.08 } },
+                              { type: "line", paint: { "line-color": "#00838f", "line-width": 1.2, "line-dasharray": [4, 3] } }];
+    case "srn-routes": return [{ type: "line", layout: { "line-cap": "round" }, paint: { "line-color": "#00838f", "line-width": lineW(2, 5) } }];
+    case "fee-zones": return [{ type: "line", paint: { "line-color": "#6d6875", "line-width": 1.2, "line-dasharray": [1, 2.5] } }];
+    case "refuges": return [{ type: "circle", paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 4, 16, 8],
+                                                        "circle-color": "#6a3d9a", "circle-stroke-color": "#fff", "circle-stroke-width": 1.5 } }];
+    case "stations": return [{ type: "circle", paint: { "circle-radius": 7, "circle-color": "#00796b", "circle-stroke-color": "#fff", "circle-stroke-width": 2 } }];
+    case "stations-pois": return [{ type: "circle", paint: { "circle-radius": 5, "circle-color": ["match", ["get", "category"], "secours", "#d50000", "vente", "#00796b", "#777"],
+                                                              "circle-stroke-color": "#fff", "circle-stroke-width": 1.5 } }];
+    case "piste-labels": return font ? [{ type: "symbol", layout: { "symbol-placement": "line", "text-field": ["get", "name"], "text-font": [font], "text-size": 12 },
+                                           paint: { "text-color": "#222", "text-halo-color": "#fff", "text-halo-width": 2 } }] : [];
     default:
       if (id.startsWith("route-offpiste-")) return [
         { type: "line", filter: ["==", ["get", "kind"], "route"], layout: { "line-cap": "round" },
@@ -241,8 +254,17 @@ maplibregl.addProtocol("pmtiles", async (params, abort) => {
 
 // No zoom buttons (pinch, wheel, double tap); the compass and the position only, at the
 // standard size in one corner; the credits behind a small ⓘ.
-const map = new maplibregl.Map({ container: "map", style: { version: 8, sources: {}, layers: [] }, hash: true,
-                                 attributionControl: false, maxPitch: 0 });
+// Without WebGL (headless browser without GPU nor SwiftShader, disabled WebGL) MapLibre
+// throws here: say it on the page rather than leave it blank.
+let map;
+try {
+  map = new maplibregl.Map({ container: "map", style: { version: 8, sources: {}, layers: [] }, hash: true,
+                             attributionControl: false, maxPitch: 0 });
+} catch (e) {
+  showError(`Carte impossible : WebGL indisponible dans ce navigateur (${esc(e.message || e)}). ` +
+            `En Chrome sans tête : <code>--use-angle=swiftshader --enable-unsafe-swiftshader</code>.`);
+  throw e;
+}
 map.addControl(new maplibregl.NavigationControl({ showZoom: false, showCompass: true }), "top-right");
 map.addControl(new maplibregl.ScaleControl({ unit: "metric", maxWidth: 80 }), "bottom-left");
 const geolocate = new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true,
@@ -287,6 +309,22 @@ async function practiceStyle() {
   const runtime = (s.metadata || {})["skimap:runtime_sources"] || {};
   state.srcPack = {};
   state.srcLayer = {};
+  // Sources the style declares optional (metadata skimap:optional_sources) that the pack
+  // lacks: left out with their layers, as the app does (public pack without the CLPA,
+  // site without SRN itineraries, older pack without the piste name lines). Any other
+  // absent file is an error.
+  const optional = new Set((s.metadata || {})["skimap:optional_sources"] || []);
+  const fileOf = (src) => typeof src.data === "string" ? src.data : src.url && src.url.startsWith("pmtiles://") ? src.url.slice(10) : null;
+  const inPack = (f) => state.manifest.layers.some((x) => x.file === f) || state.manifest.basemaps.some((b) => b.tiles === f);
+  state.leftOut = [];
+  for (const [id, src] of Object.entries(s.sources)) {
+    const f = fileOf(src);
+    if (f && optional.has(id) && !inPack(f)) {
+      delete s.sources[id];
+      state.leftOut.push(id);
+    }
+  }
+  s.layers = s.layers.filter((l) => !l.source || l.source in s.sources);
   for (const [id, src] of Object.entries(s.sources)) {
     const file = typeof src.data === "string" ? src.data : src.url && src.url.startsWith("pmtiles://") ? src.url.slice(10) : null;
     const packLayer = file && state.manifest.layers.find((x) => x.file === file);
@@ -383,7 +421,7 @@ async function loadData(l) {
   const r = await fetch(abs(l.file));
   if (!r.ok) throw new Error(`${l.file}: HTTP ${r.status}`);
   const fc = await r.json();
-  fc.features.forEach((f, i) => { f.properties = f.properties || {}; derive(l.id, f.properties); f.properties._i = i; });
+  (fc.features || []).forEach((f, i) => { f.properties = f.properties || {}; derive(l.id, f.properties); f.properties._i = i; });
   state.data[l.id] = fc;
   return fc;
 }
@@ -393,8 +431,10 @@ async function render() {
   if (state.mode === "style") {
     const s = await practiceStyle();
     state.current = s;
+    buildInfos();
     map.setStyle(s, { diff: false });
     map.once("styledata", applyGroups);
+    map.once("idle", applyFeeTitle);
     setGuiding(state.style === "guidage");
     map.once("idle", () => { window.__skimapIdle = true; });
     return;
@@ -465,6 +505,42 @@ function genericRows(p) {
     row(k, typeof v === "object" && v !== null ? `<span class="pre">${esc(JSON.stringify(v, null, 1))}</span>` : esc(v)));
 }
 
+// Station sheets of the pack (layer `stations`), by domain identifier.
+function stations() { return (state.data.stations || { features: [] }).features.map((f) => f.properties); }
+function stationName(id) { const s = stations().find((x) => x.id === id); return s ? s.name : id; }
+function stationOfPoi(p) {
+  const ids = (p.domains || []).map((d) => (typeof d === "string" ? d : d.id));
+  return stations().find((x) => ids.includes(x.id)) || null;
+}
+// Rescue numbers of a station sheet, 112 always first (secours.numbers[0]), as tel: links.
+function rescueNumbers(st) {
+  const nums = ((st && st.secours && st.secours.numbers) || []).slice();
+  if (!nums.length || nums[0].number !== "112") nums.unshift({ number: "112", label: "urgences, numéro européen" });
+  return `<div class="warn">${nums.map((n) => `<a href="tel:${esc(n.number)}"><b>${esc(n.number)}</b></a> ${esc(n.label)}`).join("<br>")}</div>`;
+}
+// Freshness (layer `stations-status`): a sheet read more than policy.stale_max_days ago
+// is outdated and said so.
+function sheetStale(p) {
+  const st = state.data["stations-status"];
+  const days = st && st.policy && st.policy.stale_max_days ? st.policy.stale_max_days : 14;
+  const at = Date.parse(p.checked_at || "");
+  return Number.isFinite(at) && (Date.now() - at) / 86400000 > days;
+}
+function feeStale(p) { return p.status && p.status !== "ok"; }
+function stationHtml(h, p) {
+  const tel = (ph) => `<a href="tel:${esc(ph.e164 || ph.display)}">${esc(ph.display || ph.e164)}</a>${ph.label ? ` <span class="small">${esc(ph.label)}</span>` : ""}`;
+  const posts = ((p.secours || {}).posts || []).map((x) => `${esc(x.name || x.kind)}${(x.phones || []).length ? " : " + x.phones.map(tel).join(", ") : ""}`);
+  const vente = (p.vente || []).map((x) => `${esc(x.name || x.kind || "point de vente")}${(x.phones || []).length ? " : " + x.phones.map(tel).join(", ") : ""}`);
+  const links = (p.links || []).map((l) => `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label || l.role || l.url)}</a>`);
+  return h + rescueNumbers(p) + `<h3>${esc(p.name)}</h3>` +
+    (sheetStale(p) ? `<div class="warn">Fiche périmée : lue le ${esc((p.checked_at || "").slice(0, 10))}, à vérifier.</div>` : "") + table([
+    row("Postes de secours", posts.join("<br>")), row("Vente de la redevance", vente.join("<br>")),
+    row("Téléphones", (p.phones || []).map(tel).join("<br>")), row("Exploitant", esc(p.operator)),
+    row("Liens", links.join("<br>")), row("Parkings", (p.parkings || []).length ? `${p.parkings.length}` : ""),
+    row("Fiche lue le", esc((p.checked_at || "").slice(0, 10)))]) +
+    `<div class="small">© les contributeurs d'OpenStreetMap (ODbL) ; skiradar.fr. Information seulement, pas d'achat.</div>`;
+}
+
 function popupHtml(id, p, title) {
   const link = (u) => u ? `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a>` : "";
   let h = `<div class="layer">${esc(title)}</div>`;
@@ -474,7 +550,9 @@ function popupHtml(id, p, title) {
         row("Difficulté", esc(DIFF_FR[p.difficulty] || p.difficulty || "inconnue")),
         row("La plus dure", p.difficulty_max !== p.difficulty ? esc(DIFF_FR[p.difficulty_max] || p.difficulty_max) : ""),
         row("Damage", esc(p.grooming)), row("Usage", esc((p.uses || []).join(", "))),
-        row("État", p.state && p.state !== "unknown" ? `<b>${p.state === "open" ? "ouvert" : "fermé"}</b>${p.state_at ? " (" + esc(p.state_at) + ", " + esc(p.state_source) + ")" : ""}` : "inconnu"),
+        row("État", p.state === "open" || p.state === "closed"
+          ? `<b>${p.state === "open" ? "ouverte" : "fermée"}</b>${p.state_at ? " (" + esc(p.state_at) + ", " + esc(p.state_source) + ")" : ""}`
+          : `<b>état inconnu</b> <span class="small">— aucune source ne publie l'état de cette piste : ni ouverte ni fermée, à vérifier sur place (trait neutre sur la carte)</span>`),
         row("Sens unique", p.oneway ? `oui${p.oneway_source === "plan" ? " (plan des pistes)" : ""}` : ""),
         row("Pistes du plan", esc((p.plan_pistes || []).join(", "))),
         row("Longueur", p.length_m ? `${Math.round(p.length_m)} m` : ""),
@@ -495,8 +573,34 @@ function popupHtml(id, p, title) {
         row("Altitude", p.alt ? `${Math.round(p.alt)} m` : ""), row("Poêle", p.stove === true ? "oui" : p.stove === false ? "non" : ""),
         row("Cheminée", p.fireplace === true ? "oui" : p.fireplace === false ? "non" : ""),
         row("Couvertures", p.blankets === true ? "oui" : p.blankets === false ? "non" : ""),
-        row("Dernier commentaire", c ? `<b>${esc((c.date || "").slice(0, 10))}</b> ${esc(c.text)}` : ""),
+        row("Dernier commentaire", c && c.date ? `${esc(c.date.slice(0, 10))} sur refuges.info${c.photo ? " (avec photo)" : ""}` : ""),
         row("Fiche", link(p.url))]);
+    }
+    case "refuges": {
+      const tel = (ph) => `<a href="tel:${esc(ph.e164 || ph.display)}">${esc(ph.display || ph.e164)}</a>${ph.label ? ` <span class="small">${esc(ph.label)}</span>` : ""}`;
+      const c2c = (p.camptocamp || []).map((c) => link(c.url)).join("<br>");
+      return h + `<h3>${esc(p.name)}</h3>` + table([
+        row("Type", esc(p.kind_label || p.kind)), row("Accès en hiver", esc(p.winter_access_text)),
+        row("Places", p.places_winter !== undefined && p.places_winter !== null && p.places_winter !== p.places
+          ? `${esc(p.places)} (hiver : ${esc(p.places_winter)})` : esc(p.places)),
+        row("Altitude", p.alt ? `${Math.round(p.alt)} m` : ""), row("Gardiennage", esc(p.wardened_period)),
+        row("Téléphone", (p.phones || []).map(tel).join("<br>")), row("Site", link(p.website)),
+        row("refuges.info", link(p.refuges_info_url)), row("Camptocamp", c2c),
+        row("Dernier commentaire", p.last_comment_date ? esc(p.last_comment_date) : ""),
+        row("Vérifié", esc((p.checked_at || "").slice(0, 10)))]) +
+        `<div class="small">${esc(p.attribution)}${p.licence ? " — " + esc(p.licence) : ""}</div>`;
+    }
+    case "stations": return stationHtml(h, p);
+    case "stations-pois": {
+      const st = stationOfPoi(p);
+      const tel = (ph) => `<a href="tel:${esc(ph.e164 || ph.display)}">${esc(ph.display || ph.e164)}</a>`;
+      const CAT = { secours: "Secours", vente: "Point de vente de la redevance", office_tourisme: "Office de tourisme", ecole_ski: "École de ski", parking: "Parking" };
+      const head = p.category === "secours" ? rescueNumbers(st) : "";
+      return h + head + `<h3>${esc(p.name || CAT[p.category] || p.kind)}</h3>` + table([
+        row("Type", esc(CAT[p.category] || p.category) + (p.kind ? ` (${esc(p.kind)})` : "")),
+        row("Téléphone", (p.phones || []).map(tel).join("<br>")), row("Horaires", esc(p.opening_hours)),
+        row("Site", link(p.website || p.url)), row("Domaine", esc(st ? st.name : ""))]) +
+        `<div class="small">© les contributeurs d'OpenStreetMap (ODbL)</div>`;
     }
     case "refuges-osm":
       return h + `<h3>${esc((p.tags || {}).name || p.kind)}</h3>` + table([row("Type", esc(p.kind)),
@@ -521,6 +625,30 @@ function popupHtml(id, p, title) {
         row("Temps skating", p.eta_skating_s ? `${Math.floor(p.eta_skating_s / 3600)} h ${String(Math.round(p.eta_skating_s % 3600 / 60)).padStart(2, "0")}` : ""),
         row("Pistes", esc((p.names || []).join(", ")))]);
       return h + table(genericRows(p));
+    case "srn-routes": {
+      const ACT = { srn: "ski de randonnée nordique", easy_ski_touring: "ski de randonnée facile (compatible SRN)", snowshoe: "raquettes", ski_touring: "ski de randonnée" };
+      const SHAPE = { loop: "boucle", out_and_back: "aller-retour", traverse: "traversée", network: "réseau balisé" };
+      return h + `<h3>${esc(p.name || "Itinéraire sans nom")}</h3>` + table([
+        row("Pratique", esc(ACT[p.activity] || p.activity)), row("Forme", esc(SHAPE[p.shape] || p.shape)),
+        row("Difficulté", esc(p.difficulty)), row("Longueur", p.length_km ? `${p.length_km.toFixed(1)} km` : ""),
+        row("Dénivelé", p.ascent_m ? `${Math.round(p.ascent_m)} m` : ""),
+        row("Part damée", p.groomed_share !== undefined && p.groomed_share !== null ? `${Math.round(100 * p.groomed_share)} %` : ""),
+        row("Éditeur", esc(p.publisher || p.provider)), row("Licence", esc(p.licence)), row("Fiche", link(p.url))]);
+    }
+    case "srn-areas":
+      return h + `<h3>${esc(p.name || "Domaine SRN")}</h3>` + table([
+        row("Type", esc({ domaine: "domaine de jeu", traversee: "traversée" }[p.kind] || p.kind)),
+        row("Preuve", esc({ srn: "itinéraire SRN publié", compatible: "itinéraire compatible (ski de randonnée facile)" }[p.evidence] || p.evidence)),
+        row("Itinéraires", esc((p.route_names || []).join(", "))), row("Kilomètres", p.km_routes ? `${p.km_routes.toFixed(1)} km` : ""),
+        row("Surface", p.area_km2 ? `${p.area_km2.toFixed(1)} km²` : ""), row("Massif", esc(p.massif)),
+        row("Commune", esc(p.commune && p.commune.name)), row("Sources", esc((p.providers || []).join(", ")))]);
+    case "fee-zones":
+      return h + `<h3>${esc(p.name)}</h3>` + (feeStale(p) ? `<div class="warn">Information périmée : la source du titre ne répond plus (${esc(p.status)}), prix et validité à vérifier.</div>` : "") +
+        (state.feeTitle ? `<div class="note">${p.fee_id === state.feeTitle ? "Valable avec ton titre" : "Autre redevance que ton titre"}</div>` : "") + table([
+        row("Titre vendu par", esc(p.issuer)), row("Étendue", esc({ site: "domaine", groupement: "groupement de domaines", departement: "département", region: "région", national: "national" }[p.kind] || p.kind)),
+        row("Prix indicatifs", esc((p.prices || []).map((x) => `${x.label} ${x.price_eur} €${x.date ? " (" + x.date + ")" : ""}`).join(" ; "))),
+        row("Saison", esc(p.season)), row("Domaines de l'emprise", esc((p.domains || []).map(stationName).join(", ")))]) +
+        `<div class="small">Usage personnel (pages des vendeurs sans licence de réutilisation).</div>`;
     case "no-network":
       return h + `<h3>Aucun réseau mobile, 112 compris</h3>` + table([row("Surface", p.area_ha ? `${p.area_ha.toFixed(1)} ha` : ""),
         row("Cartes ARCEP", esc(p.release))]);
@@ -535,27 +663,60 @@ function popupHtml(id, p, title) {
 
 map.on("click", (e) => {
   const r = 8;
-  const feats = map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]])
+  let feats = map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]])
     .filter((f) => packLayerOf(f));
+  // Wide areas (pass zones, SRN areas) only when nothing else is under the finger.
+  const AREAS = new Set(["fee-zones", "srn-areas"]);
+  if (feats.some((f) => !AREAS.has(packLayerOf(f)))) feats = feats.filter((f) => !AREAS.has(packLayerOf(f)));
   const seen = new Set(); const parts = [];
   for (const f of feats) {
     const id = packLayerOf(f); const key = id + ":" + f.properties._i;
     if (seen.has(key)) continue; seen.add(key);
     const orig = state.data[id].features[f.properties._i].properties;
-    parts.push(popupHtml(id, orig, state.manifest.layers.find((l) => l.id === id).title));
+    const merged = id.startsWith("refuges-") ? mergedHut(id, orig, e.lngLat) : null;
+    if (merged) {
+      const k = "refuges:" + merged._i;
+      if (seen.has(k)) continue; seen.add(k);
+      parts.push(popupHtml("refuges", merged, state.manifest.layers.find((l) => l.id === "refuges").title));
+    } else parts.push(popupHtml(id, orig, state.manifest.layers.find((l) => l.id === id).title));
     if (parts.length >= 6) break;
   }
   if (parts.length) new maplibregl.Popup({ maxWidth: "none" }).setLngLat(e.lngLat).setHTML(parts.join("<hr>")).addTo(map);
 });
+// The merged sheet (layer `refuges`) of a hut drawn from refuges.info, OSM or
+// Camptocamp: by identifier, else the nearest within 150 m.
+function mergedHut(id, p, at) {
+  const fc = state.data.refuges;
+  if (!fc) return null;
+  const byId = fc.features.find((f) => {
+    const q = f.properties;
+    if (id === "refuges-info") return q.refuges_info_id === p.id;
+    if (id === "refuges-camptocamp") return (q.camptocamp || []).some((c) => c.id === p.id);
+    return p.refuges_info_id && q.refuges_info_id === p.refuges_info_id;
+  });
+  if (byId) return byId.properties;
+  let best = null;
+  for (const f of fc.features) {
+    const d = dist([at.lng, at.lat], f.geometry.coordinates);
+    if (d < 150 && (!best || d < best[0])) best = [d, f.properties];
+  }
+  return best ? best[1] : null;
+}
 function packLayerOf(f) {
-  if (state.mode === "style") return f.properties._i !== undefined ? state.srcPack[f.source] : undefined;
+  if (state.mode === "style") {
+    const id = f.properties._i !== undefined ? state.srcPack[f.source] : undefined;
+    return id === "piste-labels" ? undefined : id;
+  }
   return f.layer.metadata && f.layer.metadata.pack_layer;
 }
 // Class polygons (vector tiles): class and label only.
 map.on("click", (e) => {
-  const f = map.queryRenderedFeatures(e.point).find((x) => x.sourceLayer && ["slope", "avalanche-exposure"].includes(x.sourceLayer));
+  const CLASS_TITLES = { slope: "Pente", "avalanche-exposure": "Exposition aux avalanches (modèle, jamais « sûr »)",
+    "snow-groomed": "Neige estimée pour piste damée (simulation, pas une mesure)", "snow-srn": "Neige estimée pour le hors piste (simulation, pas une mesure)",
+    "snow-depth": "Hauteur de neige estimée (simulation, pas une mesure)" };
+  const f = map.queryRenderedFeatures(e.point).find((x) => x.sourceLayer && x.sourceLayer in CLASS_TITLES);
   if (!f || map.queryRenderedFeatures([[e.point.x - 8, e.point.y - 8], [e.point.x + 8, e.point.y + 8]]).some((x) => packLayerOf(x))) return;
-  const t = f.sourceLayer === "slope" ? "Pente" : "Exposition aux avalanches (modèle, jamais « sûr »)";
+  const t = CLASS_TITLES[f.sourceLayer];
   new maplibregl.Popup().setLngLat(e.lngLat).setHTML(`<div class="layer">${esc(t)}</div><h3>${esc(f.properties.label)}</h3>`).addTo(map);
 });
 map.on("mousemove", (e) => {
@@ -577,6 +738,7 @@ function legendHtml(l) {
 
 function swatchFor(l) {
   const c = { pistes: "#d73027", zones: "#41ab5d", "no-network": "#4a1486", "avalanche-areas": "#e41a1c", "avalanche-crossings": "#e41a1c",
+              "srn-areas": "#00838f", "srn-routes": "#00838f", "fee-zones": "#6d6875", "piste-labels": "#222",
               status: "#1a9850", domaines: "#2b6cb0", "coverage-area": "#555", routes: "#006da8" }[l.id] || REFUGE_COLORS[l.id] || swatchColor(l.id) || "#ff00ff";
   return `<span class="swatch" style="background:${c}"></span>`;
 }
@@ -610,6 +772,7 @@ function buildPanel() {
     : "Style d'origine du fond, avec les couches du visualiseur par-dessus.";
   buildLayers();
   buildInfos();
+  buildStations();
 }
 
 function buildLayers() {
@@ -678,6 +841,45 @@ function applyGroups() {
   }
 }
 
+function buildStations() {
+  const box = $("stations"); box.innerHTML = "";
+  for (const st of stations()) {
+    const b = document.createElement("button");
+    b.textContent = st.name + (sheetStale(st) ? " (fiche périmée)" : "");
+    b.onclick = () => {
+      const f = state.data.stations.features.find((x) => x.properties.id === st.id);
+      new maplibregl.Popup({ maxWidth: "none" }).setLngLat(f.geometry.coordinates)
+        .setHTML(popupHtml("stations", st, "Fiche de la station")).addTo(map);
+    };
+    box.appendChild(b);
+  }
+  // Trail passes of the pack (layer fee-zones, personal sources): the chosen one marks
+  // its zones « valable avec ton titre », the others « autre redevance » (feature state
+  // `valid`, as the app does).
+  const fz = state.manifest.layers.find((x) => x.id === "fee-zones");
+  if (!fz || state.mode !== "style") return;
+  loadData(fz).then((fc) => {
+    const sel = document.createElement("select");
+    sel.setAttribute("aria-label", "Mon titre de redevance");
+    sel.innerHTML = `<option value="">Mon titre : aucun</option>` +
+      fc.features.map((f) => `<option value="${esc(f.properties.fee_id)}" ${state.feeTitle === f.properties.fee_id ? "selected" : ""}>${esc(f.properties.name)}${feeStale(f.properties) ? " (périmé)" : ""}</option>`).join("");
+    sel.onchange = () => { state.feeTitle = sel.value || null; applyFeeTitle(); };
+    box.appendChild(sel);
+  });
+}
+async function applyFeeTitle() {
+  const l = state.manifest && state.manifest.layers.find((x) => x.id === "fee-zones");
+  if (!l || !map.getSource("fee-zones")) return;
+  const fc = await loadData(l);
+  for (const f of fc.features) {
+    const id = f.properties.fee_id;
+    if (state.feeTitle) map.setFeatureState({ source: "fee-zones", id }, { valid: id === state.feeTitle });
+    else map.removeFeatureState({ source: "fee-zones", id });
+  }
+  map.once("idle", () => { window.__skimapIdle = true; });
+  map.triggerRepaint();
+}
+
 function buildInfos() {
   const m = state.manifest;
   // Infos: validity, BERA, avalanche summary, voice.
@@ -703,7 +905,9 @@ function buildInfos() {
   $("attrib").innerHTML = m.attributions.map((a) => `<li>${esc(a)}</li>`).join("") +
     m.layers.flatMap((l) => l.sources.map((s) => `<li class="small"><b>${esc(l.title)}</b> : ${esc(s.name)}${s.licence ? " — " + esc(s.licence) : ""}${s.personal_use_only ? " — usage personnel" : ""}</li>`)).join("") +
     m.basemaps.flatMap((b) => b.sources.map((s) => `<li class="small"><b>${esc(b.title)}</b> : ${esc(s.name)} — ${esc(s.licence || "")}${s.edition ? " — mise à jour du " + esc(s.edition) : ""}</li>`)).join("");
-  $("missing").innerHTML = (m.missing || []).map((x) => `<li><b>${esc(x.id)}</b> : ${esc(x.reason)}</li>`).join("") || "<li>aucune</li>";
+  const leftOut = state.mode === "style" ? (state.leftOut || []) : [];
+  $("missing").innerHTML = ((m.missing || []).map((x) => `<li><b>${esc(x.id)}</b> : ${esc(x.reason)}</li>`).join("") +
+    leftOut.map((id) => `<li class="small">style ${esc(state.style)} : source facultative <b>${esc(id)}</b> absente du pack, couches retirées</li>`).join("")) || "<li>aucune</li>";
   buildCredits();
 }
 
@@ -729,7 +933,11 @@ async function openPack(url) {
   if (want && STYLES.some((x) => x.id === want)) { state.mode = "style"; state.style = want; }
   else if (want === "none" || m.basemaps.some((b) => b.id === want)) { state.mode = "basemap"; state.basemap = want === "none" ? null : want; }
   if (["clair", "sombre"].includes(params.get("theme"))) state.theme = params.get("theme");
-  state.srcVisible = {}; state.runtime = {};
+  state.srcVisible = {}; state.runtime = {}; state.feeTitle = null;
+  for (const id of ["stations", "refuges", "stations-status"]) {
+    const l = m.layers.find((x) => x.id === id);
+    if (l) await loadData(l).catch((e) => console.warn(id, e));
+  }
   await demoRuntime().catch((e) => console.warn("démo du guidage :", e));
   buildPanel();
   await render();

@@ -577,6 +577,7 @@
     }
   ],
   "metadata": {
+    "skimap:feature_states": {},
     "skimap:generator": "crates/styles (cargo run -p skimap-styles --example write_styles)",
     "skimap:groups": [
       {
@@ -606,6 +607,7 @@
       }
     ],
     "skimap:optional_layers": [],
+    "skimap:optional_sources": [],
     "skimap:relative_urls": true,
     "skimap:runtime_sources": {
       "decision": {

@@ -277,6 +277,14 @@ pub fn catalog() -> Vec<Spec> {
             "refuges.meta.json",
             true,
         ),
+        vector(
+            "refuges",
+            "Refuges et abris (fiches fusionnées)",
+            "refuges",
+            "refuges.geojson",
+            "refuges.meta.json",
+            false,
+        ),
         data(
             "refuges-links",
             "Liens entre les trois sources de refuges",

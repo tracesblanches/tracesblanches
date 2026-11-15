@@ -22,7 +22,27 @@ cargo run --release -p skimap-styles --example write_styles -- --schema   # + pa
 - **SRN** : courbes marquées et cotées, points cotés, forêt fermée et ouverte, rochers, chemins et pistes forestières ; exposition aux avalanches à l'échelle du domaine (polygones « exposé » et « très exposé », z11-14), classes de pente IGN de près (polygones 30-35, 35-40, 40-45, 45° et plus, dès z13-14) ; couloirs d'avalanche connus (CLPA) ; zones dont les règles restreignent le ski (champ `access` dérivé des règles : accès interdit, itinéraires balisés seulement, à éviter pour la faune) et réserves, parc national ; interdictions de bivouac (champ `bivouac` = `forbidden`) ; refuges, cabanes, abris, points d'eau, passages délicats ; zones sans réseau ; pistes en second plan, étroites.
 - **Guidage** : fond minimal (forêt pâle, eau, grandes routes, communes), pistes en gris de contexte, itinéraire du jour (déjà parcouru en gris), prochaine décision (disque jaune cerclé, texte de 20 px), position.
 
-Neige (`snow-groomed` dans fond, `snow-srn` dans SRN) : couches présentes mais masquées (`metadata.skimap:optional_layers`), à afficher sur demande.
+Neige (`snow-groomed-0..2` dans fond, `snow-srn-0..2` dans SRN) : polygones vectoriels (pack, `build::class_tiles`, cellules de 25 m sans lissage) aux couleurs du thème (insuffisant, limite, suffisant), masqués (`metadata.skimap:optional_layers`), à afficher sur demande.
+
+## Sources facultatives (packs publics)
+
+`metadata.skimap:optional_sources` liste les sources qu'un pack peut ne pas avoir : `avalanche-areas` (CLPA, usage personnel), `avalanche-exposure` (fusionnée avec la CLPA à Cervières), `avalanche-segments`, `snow-groomed`, `snow-srn`, `srn-areas`, `srn-routes`, `piste-labels` (packs antérieurs), `fee-zones` (usage personnel), `stations-pois`. L'app et le visualiseur retirent alors la source et ses couches. Les fonds, `pistes`, `zones`, `no-network`, les trois couches de refuges et `slope` sont requis : leur absence est une erreur. Le validateur vérifie une source facultative sur les packs qui l'ont (ou sur le schéma déclaré de `fee-zones`, `src/declared.rs`) ; `validate_with` contrôle un pack seul contre l'instantané :
+
+```sh
+cargo run --release -p skimap-styles --example check_packs -- <dossier de pack>...
+```
+
+## État inconnu, SRN, redevance, secours
+
+- Pistes dont l'état est inconnu (ou packs sans état) : bande neutre grise (`pistes-unknown-casing`) et âme fine de la couleur de difficulté (`pistes-unknown`), jamais comme une piste ouverte ; la fiche dit « état inconnu ».
+- SRN hors stations : `srn-areas-fill`, `srn-areas-line`, `srn-routes-casing`, `srn-routes-line` (SRN et randonnée facile), `srn-routes-other` (raquettes, randonnée), `srn-routes-label` ; dans fond, `srn-routes-line` seul, fin et tireté. Groupe désactivable `srn`.
+- Zones de redevance (`fee-zones`, `promoteId: fee_id`) : contour neutre ; l'app pose l'état `valid` (`metadata.skimap:feature_states`) : `true` teinte et contour verts (« valable avec ton titre »), `false` contour ambre (« autre redevance »). Groupe désactivable `redevance`.
+- Secours (`stations-pois`, catégorie `secours`) : disque rouge à croix blanche dès z12 (`secours-post`, groupe non désactivable `secours`) ; points de vente (`sale-point`, groupe `acces`).
+- Noms des pistes sur `piste-labels` (une ligne par itinéraire) ; sommets par bande de zoom (`ign-oro-main-z11`, `-z12`, `ign-oro-main`) : jamais deux étiquettes d'un même sommet.
+
+## Pente et exposition près des pentes raides (X6, #140)
+
+SRN : exposition seule en vue large (z11 à 13), classes de pente seules de près (dès z13, fondu 12,5-13,5) : jamais les deux à pleine intensité (test `srn_draws_exposure_and_slope_at_different_zooms`). De près, l'exposition reste sur les pistes (bande rayée) et les couloirs CLPA ont leur propre teinte (bleu nuit en clair, cyan pâle en sombre), distincte des rouges des pentes.
 
 ## Pente et exposition en vecteur
 
@@ -83,7 +103,5 @@ Comme les styles des fonds du pack, toutes les adresses sont relatives à la rac
 
 ## Limites
 
-- Une voie sans état connu (`unknown`) est dessinée comme une piste ouverte : seules les pistes fermées sont voilées.
 - Un tronçon partagé par des pistes de couleurs différentes est dessiné dans la plus facile (règle de la couche `pistes`) ; la fiche liste toutes ses pistes.
-- Neige : rasters à 25 m, masqués par défaut.
 - Captures avant / après (raster contre vecteur, clair et sombre) : `vector-shots/planches/` du poste (rapport de #123).

@@ -85,6 +85,10 @@ pub struct Palette {
     pub hike: &'static str,
     /// Closed piste overlay (state).
     pub closed: &'static str,
+    /// Band of a piste whose state is unknown (neutral: never drawn like an open piste).
+    pub unknown: &'static str,
+    /// Band of a black piste whose state is unknown (contrast with its black core).
+    pub unknown_black: &'static str,
     /// Avalanche exposure on pistes: exposed, very exposed.
     pub exposure: [&'static str; 2],
     /// Avalanche exposure polygons: exposed, very exposed.
@@ -95,8 +99,25 @@ pub struct Palette {
     pub slope: [&'static str; 4],
     /// Opacity of the slope polygons.
     pub slope_opacity: f64,
-    /// Historic avalanche areas (CLPA).
+    /// Historic avalanche areas (CLPA): outline in a hue of its own, apart from the reds
+    /// of the slope classes it crosses.
     pub avalanche_area: &'static str,
+    /// SRN itineraries and play areas outside the groomed domains.
+    pub srn: &'static str,
+    /// Snow classes: insufficient, borderline, sufficient.
+    pub snow: [&'static str; 3],
+    /// Opacity of the snow polygons.
+    pub snow_opacity: f64,
+    /// Trail-pass validity zones (outline, discreet).
+    pub fee: &'static str,
+    /// Zone where the pass of the user is valid (feature state `valid` true).
+    pub fee_valid: &'static str,
+    /// Zone of another pass (feature state `valid` false).
+    pub fee_other: &'static str,
+    /// Rescue post marker.
+    pub rescue: &'static str,
+    /// Sale point of the trail pass.
+    pub sale: &'static str,
     /// Protected zones relevant in winter (quiet zones, APPB, reserves).
     pub zone: &'static str,
     /// Bivouac forbidden outline.
@@ -156,12 +177,22 @@ pub static CLAIR: Palette = Palette {
     piste_black_casing: "#ffffff",
     hike: "#6a5f55",
     closed: "#ffffff",
+    unknown: "#dadee2",
+    unknown_black: "#c3c8cd",
     exposure: ["#d06a00", "#c4001a"],
     exposure_fill: ["#f59628", "#c81e1e"],
     exposure_opacity: 0.3,
     slope: ["#f2e500", "#f39419", "#f00000", "#c889bb"],
     slope_opacity: 0.55,
-    avalanche_area: "#c4001a",
+    avalanche_area: "#1d2b64",
+    srn: "#00838f",
+    snow: ["#a0522d", "#7fb6e6", "#1f5fbf"],
+    snow_opacity: 0.45,
+    fee: "#6d6875",
+    fee_valid: "#2e7d32",
+    fee_other: "#a15c00",
+    rescue: "#d50000",
+    sale: "#00796b",
     zone: "#c24e00",
     bivouac: "#7b2d9b",
     no_network: "#5b2a86",
@@ -206,12 +237,22 @@ pub static SOMBRE: Palette = Palette {
     piste_black_casing: "#e0e0e0",
     hike: "#b9ab9c",
     closed: "#11151a",
+    unknown: "#3a3f46",
+    unknown_black: "#9aa0a6",
     exposure: ["#ff9f1c", "#ff3b4e"],
     exposure_fill: ["#ff9f1c", "#ff2d44"],
     exposure_opacity: 0.38,
     slope: ["#e6d200", "#ff8c1a", "#ff3b3b", "#c98bff"],
     slope_opacity: 0.78,
-    avalanche_area: "#ff3b4e",
+    avalanche_area: "#9fe7ff",
+    srn: "#3fd0e0",
+    snow: ["#c98a5a", "#3d7fc4", "#a9d4ff"],
+    snow_opacity: 0.6,
+    fee: "#b8b0c4",
+    fee_valid: "#66bb6a",
+    fee_other: "#ffb74d",
+    rescue: "#ff5252",
+    sale: "#2ec4b6",
     zone: "#ff8c3a",
     bivouac: "#c77dff",
     no_network: "#b388ff",

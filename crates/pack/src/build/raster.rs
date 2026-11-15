@@ -8,8 +8,8 @@
 //! class, see [`RasterSpec::tie_high`]).
 //!
 //! Any GeoTIFF Float32 layer of the pipeline slots in by adding a [`RasterSpec`] to
-//! [`catalog`]: today the 25 m snow rasters of `snow`. The slope and avalanche exposure
-//! classes are vector polygons ([`crate::build::class_tiles`]).
+//! [`catalog`] (empty today). The slope, avalanche exposure and snow classes are vector
+//! polygons ([`crate::build::class_tiles`]).
 
 use std::collections::HashMap;
 use std::fs::File;
@@ -144,7 +144,8 @@ pub fn slope_classes() -> Vec<Class> {
     ]
 }
 
-fn snow_depth_classes() -> Vec<Class> {
+/// Estimated snow depth classes (cm); legend colours of the viewer and of the export.
+pub fn snow_depth_classes() -> Vec<Class> {
     vec![
         Class {
             upper: 1.0,
@@ -205,7 +206,8 @@ pub fn exposure_classes() -> Vec<Class> {
     ]
 }
 
-fn snow_practice_classes() -> Vec<Class> {
+/// Snow classes of a practice (groomed, SRN): 0 insufficient, 1 borderline, 2 sufficient.
+pub fn snow_practice_classes() -> Vec<Class> {
     vec![
         Class {
             upper: 0.5,
@@ -225,58 +227,12 @@ fn snow_practice_classes() -> Vec<Class> {
     ]
 }
 
-/// Raster layers, in display order.
+/// Raster layers, in display order. Empty since the snow classes became vector polygons
+/// ([`crate::build::class_tiles`], X7 #141): every class layer of the pipeline is drawn
+/// in the colours of the style theme. The machinery stays for any palette raster (the IGN
+/// slope tiles for comparison use [`write_archive`]).
 pub fn catalog() -> Vec<RasterSpec> {
-    vec![
-        RasterSpec {
-            id: "snow-depth",
-            title: "Neige estimée (hauteur)",
-            origin: "snow",
-            file: "snow_depth.tif",
-            meta: "snow.meta.json",
-            classes: snow_depth_classes(),
-            minzoom: 9,
-            maxzoom: 13,
-            tie_high: false,
-            visible: false,
-            notes: &[
-                "Valeur centrale de la simulation Météo-France projetée sur le relief (pixel de 25 m) ; pas une mesure.",
-            ],
-            read: Read::Float32,
-        },
-        RasterSpec {
-            id: "snow-groomed",
-            title: "Neige pour piste damée (classes)",
-            origin: "snow",
-            file: "class_groomed.tif",
-            meta: "snow.meta.json",
-            classes: snow_practice_classes(),
-            minzoom: 9,
-            maxzoom: 13,
-            tie_high: false,
-            visible: false,
-            notes: &[
-                "Seuils proposés : moins de 20 cm insuffisant, 20 à 40 cm limite, 40 cm et plus suffisant.",
-            ],
-            read: Read::Float32,
-        },
-        RasterSpec {
-            id: "snow-srn",
-            title: "Neige pour ski hors piste (classes)",
-            origin: "snow",
-            file: "class_srn.tif",
-            meta: "snow.meta.json",
-            classes: snow_practice_classes(),
-            minzoom: 9,
-            maxzoom: 13,
-            tie_high: false,
-            visible: false,
-            notes: &[
-                "Seuils proposés : moins de 30 cm insuffisant, 30 à 60 cm limite, 60 cm et plus suffisant.",
-            ],
-            read: Read::Float32,
-        },
-    ]
+    Vec::new()
 }
 
 /// Reads the GeoTIFF of a raster layer as Float32 (NaN = no data).
