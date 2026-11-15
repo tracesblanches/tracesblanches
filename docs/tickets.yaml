@@ -1533,3 +1533,13 @@ tickets:
     Au déploiement du 15/11/2026, deux reconstructions successives du même site ont publié une mise à jour différentielle de 11 Mo au lieu de quelques centaines de Ko : la couche `plan-ign` change entre deux constructions.
     Pistes de correction : tuiles téléchargées figées par la date de la fiche IGNF_PLAN-IGN (ne retélécharger que si l'IGN publie une nouvelle version), écriture PMTiles déterministe (ordre et compression), comparaison par contenu avant publication.
     Critère : deux reconstructions sans nouvelle version IGN produisent une couche `plan-ign` identique à l'octet ; la synchro quotidienne revient sous 1 Mo.
+
+- key: X27
+  title: "Aucun cas particulier par site dans le code"
+  milestone: M3 Client v1
+  labels: [pipeline, infra]
+  deps: [G2]
+  body: |
+    Règle de l'utilisateur : Cervières et Chapelle-des-Bois ne sont pas des cas spéciaux. Le code contient encore des noms de sites, des réglages, des fiches ou des chemins propres à ces deux sites (relevé du 15/11/2026, hors tests : common/site.rs, assist/crowd.rs et presets.rs, core/zone_eval.rs et ephemeris.rs, pisteplan/spec.rs, collect.rs et labels.rs, snow/stations.rs, ffi/catalog.rs, stations/titres.rs, zones/sources/gpu.rs, voice, osm/census.rs, meteo/hourly.rs, status/mairie.rs, cli, avalanche/exposure/build.rs, terrain).
+    Correction : tout comportement vient des données de chaque site (registre, sources, emprise, massif) ou d'un calcul général ; aucune branche de code par nom de site. Les deux sites ne restent que comme jeux de test.
+    Critère : `grep -riE "cervieres|chapelle"` hors tests, fixtures et docs ne renvoie rien ; résultats inchangés sur les deux sites ; un domaine quelconque se construit et se planifie de la même façon.
