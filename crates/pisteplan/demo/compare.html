@@ -1,0 +1,123 @@
+<!doctype html>
+<!--
+  P22 demo: our pistes in the viewer's style, OSM alone (view=osm) or with the attributes
+  transcribed from the official plan (view=plan). Never shows the plan's picture.
+  Serve the repository root with range requests (skimap serve / pack example `serve`), then:
+    /crates/pisteplan/demo/compare.html?site=chapelle-des-bois&view=plan#13/46.605/6.115
+-->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>skimap — plan des pistes transcrit</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.1/dist/maplibre-gl.css"
+      integrity="sha384-uTttxo/aOKbdE5RlD/SPzSDoDmNvGlUYPjONi2MN/b7c9HPSvW07OIuyP7uL6jxK" crossorigin="anonymous">
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.1/dist/maplibre-gl.js"
+        integrity="sha384-nXMl9YiLoSG5KBPTFgvxVuIqQQcqIvo0bFrvoEaGJC6r7IibIzF1S36Zbf/sKBtL" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/pmtiles@4.5.0/dist/pmtiles.js"
+        integrity="sha384-pbKNZbDshUsLnZMIVsn/t+j3xEY9PGfuX5Z22l5rcy/obXz3EwaMx1F5d9sRsJMn" crossorigin="anonymous"></script>
+<style>
+  html, body, #map { margin: 0; height: 100%; font: 14px system-ui, sans-serif; }
+  #title { position: absolute; top: 10px; left: 10px; z-index: 2; background: rgba(255,255,255,.92);
+           padding: 8px 12px; border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,.3); max-width: 46%; }
+  #title b { font-size: 16px; }
+  #legend { margin-top: 4px; font-size: 12px; }
+  .sw { display: inline-block; width: 18px; height: 4px; vertical-align: middle; margin: 0 4px 0 8px; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="title"><b id="t"></b><div id="legend"></div></div>
+<script>
+const q = new URLSearchParams(location.search);
+const site = q.get("site") || "chapelle-des-bois";
+const view = q.get("view") || "plan";
+const pack = `../../../data/out/${site}/pack/`;
+const planDir = `../../../data/out/${site}/plan_pistes/`;
+const base = new URL(pack, location.href).href;
+const abs = (rel) => base + rel;
+// Same colours as the viewer (tools/viewer, DIFF_COLORS).
+const BY_DIFF = ["match", ["get", "difficulty"], "novice", "#1a9850", "easy", "#2166ac",
+  "intermediate", "#d73027", "advanced", "#111111", "#8c8c8c"];
+const BY_COLOUR = ["match", ["get", "colour"], "green", "#1a9850", "blue", "#2166ac",
+  "red", "#d73027", "black", "#111111",
+  ["match", ["get", "ink"], "orange", "#f28e2b", "yellow", "#e6b800", "purple", "#8e44ad", "#8c8c8c"]];
+const lineW = (a, b) => ["interpolate", ["linear"], ["zoom"], 10, a, 16, b];
+const protocol = new pmtiles.Protocol();
+maplibregl.addProtocol("pmtiles", protocol.tile);
+const map = new maplibregl.Map({ container: "map", style: { version: 8, sources: {}, layers: [] },
+                                 hash: true, attributionControl: { compact: true }, fadeDuration: 0,
+                                 canvasContextAttributes: { preserveDrawingBuffer: true } });
+map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-right");
+
+async function json(u) { const r = await fetch(u); if (!r.ok) throw new Error(u + " " + r.status); return r.json(); }
+
+(async () => {
+  const manifest = await json(abs("manifest.json"));
+  const b = manifest.basemaps.find((x) => x.id === "osm");
+  const s = await json(abs(b.style));
+  if (s.sprite && typeof s.sprite === "string" && !/^[a-z]+:/.test(s.sprite)) s.sprite = abs(s.sprite);
+  if (s.glyphs && !/^[a-z]+:\/\//.test(s.glyphs)) s.glyphs = abs(s.glyphs);
+  for (const src of Object.values(s.sources))
+    if (src.url && src.url.startsWith("pmtiles://")) src.url = "pmtiles://" + abs(src.url.slice(10));
+  // basemap=none: the viewer's plain background (its no-basemap mode), glyphs kept for the
+  // labels (headless Chrome does not finish loading PMTiles vector tiles).
+  if (q.get("basemap") === "none") {
+    s.sources = {};
+    s.layers = [{ id: "bg", type: "background", paint: { "background-color": "#f4f1ea" } }];
+  }
+  const font = "Noto Sans Regular";
+  const pistes = await json(abs("layers/pistes.geojson"));
+  pistes.features.forEach((f) => { const u = f.properties.uses || []; f.properties._hike = u.includes("hike") && !u.includes("nordic"); });
+  s.sources.pistes = { type: "geojson", data: pistes };
+  if (view === "osm") {
+    document.getElementById("t").textContent = "Pistes OSM seules (état actuel de la carte)";
+    s.layers.push(
+      { id: "pistes", type: "line", source: "pistes", filter: ["!", ["get", "_hike"]], layout: { "line-cap": "round", "line-join": "round" },
+        paint: { "line-color": BY_DIFF, "line-width": lineW(1.5, 5) } },
+      { id: "pistes-hike", type: "line", source: "pistes", filter: ["get", "_hike"], paint: { "line-color": BY_DIFF, "line-width": lineW(1.5, 4), "line-dasharray": [1.5, 1.2] } },
+      { id: "pistes-name", type: "symbol", source: "pistes", minzoom: 12, layout: { "symbol-placement": "line", "text-field": ["coalesce", ["get", "name"], ""],
+        "text-font": [font], "text-size": 12 }, paint: { "text-color": BY_DIFF, "text-halo-color": "#fff", "text-halo-width": 1.5 } });
+  } else {
+    const plan = await json(planDir + "plan_pistes.geojson");
+    const lms = await json(planDir + "plan_landmarks.geojson");
+    // One line per piste and way: pistes sharing a trail are drawn side by side.
+    const n = plan.features.length;
+    plan.features.forEach((f, i) => { f.properties._k = i; });
+    s.sources.plan = { type: "geojson", data: plan };
+    s.sources.lms = { type: "geojson", data: lms };
+    document.getElementById("t").textContent = `Pistes transcrites du plan officiel (${n} pistes, appariement exact)`;
+    s.layers.push(
+      { id: "pistes", type: "line", source: "pistes", paint: { "line-color": "#b0b0b0", "line-width": lineW(1, 3) } },
+      { id: "plan", type: "line", source: "plan", layout: { "line-cap": "round", "line-join": "round" },
+        paint: { "line-color": BY_COLOUR, "line-width": lineW(1.5, 5),
+                 "line-offset": ["interpolate", ["linear"], ["zoom"], 10, ["-", ["%", ["get", "_k"], 5], 2], 16, ["*", 2.5, ["-", ["%", ["get", "_k"], 5], 2]]] } },
+      { id: "plan-conflict", type: "line", source: "plan", filter: ["!=", ["get", "osm_status"], "match"],
+        paint: { "line-color": "#ff00ff", "line-width": lineW(0.8, 2), "line-dasharray": [2, 2] } },
+      { id: "plan-name", type: "symbol", source: "plan", minzoom: 11, layout: { "symbol-placement": "line", "text-field": ["get", "name"],
+        "text-font": [font], "text-size": 12, "symbol-spacing": 300 }, paint: { "text-color": BY_COLOUR, "text-halo-color": "#fff", "text-halo-width": 1.6 } },
+      { id: "lms", type: "circle", source: "lms", paint: { "circle-radius": ["match", ["get", "kind"], "departure", 7, 4],
+        "circle-color": ["match", ["get", "kind"], "departure", "#f0b400", "summit", "#6b4f3a", "refuge", "#8c2d04", "#555"],
+        "circle-stroke-color": "#fff", "circle-stroke-width": 1.5 } },
+      { id: "lms-name", type: "symbol", source: "lms", layout: { "text-field": ["get", "name"], "text-font": [font], "text-size": 11,
+        "text-offset": [0, 1.1], "text-anchor": "top" }, paint: { "text-color": "#333", "text-halo-color": "#fff", "text-halo-width": 1.5 } });
+    const leg = [["#1a9850", "verte"], ["#2166ac", "bleue"], ["#d73027", "rouge"], ["#111111", "noire"], ["#f28e2b", "liaison"], ["#b0b0b0", "OSM non transcrit"]];
+    document.getElementById("legend").innerHTML = leg.map(([c, l]) => `<span class="sw" style="background:${c}"></span>${l}`).join("")
+      + `<span class="sw" style="background:repeating-linear-gradient(90deg,#f0f 0 4px,transparent 4px 8px)"></span>écart avec OSM (couleur)`
+      + `<span class="sw" style="background:#f0b400;height:8px;width:8px;border-radius:4px"></span>départ`;
+  }
+  map.setStyle(s);
+  // export=1: once everything is drawn, the canvas is written into the page as a PNG data
+  // URL (headless capture with --dump-dom, deterministic).
+  map.once("idle", () => {
+    document.title = "ready";
+    if (q.get("export") === "1") {
+      const pre = document.createElement("pre");
+      pre.id = "png";
+      pre.textContent = map.getCanvas().toDataURL("image/png");
+      document.body.appendChild(pre);
+    }
+  });
+})().catch((e) => { document.getElementById("t").textContent = "Erreur : " + e.message; document.title = "error"; });
+</script>
+</body>
+</html>

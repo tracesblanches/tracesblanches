@@ -1,0 +1,64 @@
+[package]
+name = "skimap-pisteplan"
+description = "Plan des pistes officiel transcrit sur nos cartes : extraction, appariement à OSM, attributs des pistes."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[features]
+default = []
+# Registration and transcription of the official plans (pipeline side): downloader,
+# OSM pistes (planet extract) and landmarks (Overpass), OCR (ocrs, pure Rust, rten),
+# PNG for diagnostics. Without it the crate only reads the transcription.
+pipeline = [
+    "skimap-common/download",
+    "dep:skimap-osm",
+    "dep:ocrs",
+    "dep:rten",
+    "dep:png",
+    "dep:rayon",
+    "dep:rstar",
+    "dep:tracing",
+]
+
+[dependencies]
+skimap-common = { workspace = true }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+# Pipeline only.
+skimap-osm = { workspace = true, optional = true }
+rayon = { workspace = true, optional = true }
+rstar = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+# Not in [workspace.dependencies] (request to the orchestrator): OCR and PNG.
+ocrs = { version = "0.14.0", default-features = false, features = ["onnx"], optional = true }
+rten = { version = "0.28.0", default-features = false, features = ["onnx_format"], optional = true }
+png = { version = "0.18.1", optional = true }
+
+[dev-dependencies]
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true
+
+[[example]]
+name = "inspect"
+required-features = ["pipeline"]
+
+[[example]]
+name = "register"
+required-features = ["pipeline"]
+
+[[example]]
+name = "ocr_dump"
+required-features = ["pipeline"]
+
+[[example]]
+name = "plan_pistes"
+required-features = ["pipeline"]
+
+[[example]]
+name = "ocr_gold"
+required-features = ["pipeline"]
