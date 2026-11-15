@@ -489,6 +489,17 @@ pub fn flat_boxes(img: &Rgb, pt_per_px: f64) -> Vec<PageRect> {
 /// proximity (cells of about 2 pt, joined within 10 pt), the group with the most pixels
 /// inside `region` (page points); the group may extend beyond it.
 pub fn main_network(kept: &Mask, pt_per_px: f64, region: PageRect) -> Option<[usize; 4]> {
+    networks(kept, pt_per_px, region).into_iter().next()
+}
+
+/// Smallest share of the main network's line pixels for another network of the page to
+/// be a map of its own (pages with several maps).
+pub const OTHER_MAP_MIN_SHARE: f64 = 0.25;
+
+/// Every drawn network of the page (bounding boxes, pixels): the main one first
+/// ([`main_network`]), then the other groups holding at least [`OTHER_MAP_MIN_SHARE`] of
+/// its line pixels, by size: the other maps of a page with several maps.
+pub fn networks(kept: &Mask, pt_per_px: f64, region: PageRect) -> Vec<[usize; 4]> {
     let b = ((2.0 / pt_per_px).round() as usize).max(1);
     let (gw, gh) = (kept.w.div_ceil(b), kept.h.div_ceil(b));
     let mut cells = vec![0usize; gw * gh];
@@ -532,18 +543,32 @@ pub fn main_network(kept: &Mask, pt_per_px: f64, region: PageRect) -> Option<[us
             weight[lab[i] as usize] += c;
         }
     }
-    let best = (1..weight.len()).max_by_key(|&i| weight[i])?;
-    let (mut x0, mut y0, mut x1, mut y1) = (usize::MAX, usize::MAX, 0, 0);
+    let Some(best) = (1..weight.len()).max_by_key(|&i| weight[i]) else {
+        return Vec::new();
+    };
+    let mut total = vec![0usize; sizes.len()];
+    let mut bbox = vec![[usize::MAX, usize::MAX, 0, 0]; sizes.len()];
     for (i, &c) in cells.iter().enumerate() {
-        if c > 0 && lab[i] as usize == best {
+        if c > 0 {
+            let g = lab[i] as usize;
             let (x, y) = (i % gw, i / gw);
-            x0 = x0.min(x * b);
-            y0 = y0.min(y * b);
-            x1 = x1.max(((x + 1) * b).min(kept.w));
-            y1 = y1.max(((y + 1) * b).min(kept.h));
+            total[g] += c;
+            let r = &mut bbox[g];
+            r[0] = r[0].min(x * b);
+            r[1] = r[1].min(y * b);
+            r[2] = r[2].max(((x + 1) * b).min(kept.w));
+            r[3] = r[3].max(((y + 1) * b).min(kept.h));
         }
     }
-    (x1 > x0).then_some([x0, y0, x1, y1])
+    let mut others: Vec<usize> = (1..sizes.len())
+        .filter(|&g| g != best && total[g] as f64 >= OTHER_MAP_MIN_SHARE * total[best] as f64)
+        .collect();
+    others.sort_by(|a, b| total[*b].cmp(&total[*a]).then(a.cmp(b)));
+    std::iter::once(best)
+        .chain(others)
+        .map(|g| bbox[g])
+        .filter(|r| r[2] > r[0])
+        .collect()
 }
 
 /// Where to look for the map: the largest rectangle of the page that meets none of the
@@ -804,6 +829,8 @@ pub struct AutoReport {
     pub ink_widths_px: Vec<f64>,
     /// Bounding box of the drawn network, page points.
     pub network: Option<PageRect>,
+    /// Bounding boxes of the other drawn networks (other maps of the page), page points.
+    pub other_networks: Vec<PageRect>,
     /// Region searched for the map (away from the side panels), page points.
     pub region: PageRect,
     /// Flat boxes found (masks and map frames).
@@ -817,6 +844,11 @@ pub struct AutoSpec {
     pub spec: PlanSpec,
     /// How it was found.
     pub report: AutoReport,
+    /// Map area and masks of every other map of the page ([`networks`]), tried in turn
+    /// when the main map does not register.
+    pub other_maps: Vec<(PageRect, Vec<PageRect>)>,
+    /// Map registered: 0 for the main map, `i` for `other_maps[i - 1]`.
+    pub map_index: usize,
 }
 
 /// Most frequent colour of the page (4-bit bins per channel), the background.
@@ -1151,7 +1183,39 @@ pub fn detect(
         .filter(|b| !frames.contains(b))
         .collect();
     let (_, kept_net) = kept_of(&whole);
-    let network = main_network(&kept_net, k, region).map(|r| px_rect(r, k));
+    let nets: Vec<PageRect> = networks(&kept_net, k, region)
+        .into_iter()
+        .map(|r| px_rect(r, k))
+        .collect();
+    let network = nets.first().copied();
+    // Other maps of the page: each its own area around its network (not grown over the
+    // main map), its own masks.
+    let main_area = network.map(|n| map_area(n, page, &boxes));
+    let other_maps: Vec<(PageRect, Vec<PageRect>)> = nets
+        .iter()
+        .skip(1)
+        .map(|n| {
+            let mut a = map_area(*n, page, &boxes);
+            if let Some(m) = main_area {
+                // Shrink towards the network on the sides where it meets the main map.
+                if inside(&a, &m) {
+                    if n[0] >= m[2] {
+                        a[0] = a[0].max(m[2]);
+                    }
+                    if n[2] <= m[0] {
+                        a[2] = a[2].min(m[0]);
+                    }
+                    if n[1] >= m[3] {
+                        a[1] = a[1].max(m[3]);
+                    }
+                    if n[3] <= m[1] {
+                        a[3] = a[3].min(m[1]);
+                    }
+                }
+            }
+            (a, hiding(&a))
+        })
+        .collect();
     if let Some(n) = network {
         let a = map_area(n, page, &boxes);
         // The region free of panels is map too (the network may stop short of it).
@@ -1172,9 +1236,12 @@ pub fn detect(
             line_width_px: width,
             ink_widths_px: ink_widths,
             network,
+            other_networks: nets.iter().skip(1).copied().collect(),
             region,
             boxes,
         },
+        other_maps,
+        map_index: 0,
     }
 }
 
@@ -1191,6 +1258,45 @@ pub struct AutoRegistration {
     pub hint: BBox,
 }
 
+/// Downloads and reads a plan: probe, rendering at [`choose_dpi`], its text lines (text
+/// layer, else OCR of the raw rendering; both cached).
+pub fn read_plan(
+    src: &PlanSource,
+    layout: &DataLayout,
+    dl: &Downloader,
+    engine: &ocrs::OcrEngine,
+) -> Result<(Probe, input::PlanInput, Vec<TextBox>)> {
+    let fetched = dl.fetch(&Request::get(&src.source, &src.url).max_age(input::PDF_MAX_AGE))?;
+    let text = input::text_layer(&fetched, layout)?;
+    let probe = input::probe(&fetched.path, &text)?;
+    let dpi = choose_dpi(&probe);
+    let inp = input::load_fetched(fetched, dpi, layout)?;
+    let lines: Vec<TextBox> = match label_source(&probe) {
+        LabelSource::TextLayer => inp.text.lines.iter().map(|(l, _)| l.clone()).collect(),
+        LabelSource::Ocr => crate::build::ocr_page(engine, &inp, false, layout)?,
+    };
+    Ok((probe, inp, lines))
+}
+
+/// Census domains a plan the collector could not attach names
+/// ([`crate::collect::locate`]: its text, title and file name).
+pub fn locate_plan(
+    src: &PlanSource,
+    layout: &DataLayout,
+    dl: &Downloader,
+    engine: &ocrs::OcrEngine,
+    census: &[crate::collect::Domain],
+) -> Result<Vec<String>> {
+    let (_, _, lines) = read_plan(src, layout, dl, engine)?;
+    let texts: Vec<String> = lines.into_iter().map(|l| l.text).collect();
+    let file = src.url.rsplit('/').next().unwrap_or_default().to_owned();
+    Ok(crate::collect::locate(
+        &texts,
+        &[src.title.clone(), file],
+        census,
+    ))
+}
+
 /// Reads a plan from its source alone: probe, resolution, text or OCR, sheet detection,
 /// registration (labels placed on the hint extent, then OSM pistes of the extent actually
 /// drawn: map area carried onto the map, plus [`EXTENT_MARGIN_M`]).
@@ -1203,30 +1309,41 @@ pub fn register_auto(
     engine: &ocrs::OcrEngine,
 ) -> Result<AutoRegistration> {
     let t = std::time::Instant::now();
-    let fetched = dl.fetch(&Request::get(&src.source, &src.url).max_age(input::PDF_MAX_AGE))?;
-    let text = input::text_layer(&fetched, layout)?;
-    let probe = input::probe(&fetched.path, &text)?;
-    let dpi = choose_dpi(&probe);
-    let inp = input::load_fetched(fetched, dpi, layout)?;
-    let lines: Vec<TextBox> = match label_source(&probe) {
-        LabelSource::TextLayer => inp.text.lines.iter().map(|(l, _)| l.clone()).collect(),
-        LabelSource::Ocr => crate::build::ocr_page(engine, &inp, false, layout)?,
-    };
+    let (probe, inp, lines) = read_plan(src, layout, dl, engine)?;
     let mut auto = detect(src, &probe, &inp.image, inp.pt_per_px, &lines, hint);
     let load_s = t.elapsed().as_secs_f64();
-    let reg = register_input(
-        auto.spec.clone(),
-        inp,
-        load_s,
-        layout,
-        dl,
-        planet,
-        // A text layer needs no OCR (the hand-written sheets run it to measure it).
-        (auto.spec.labels == LabelSource::Ocr).then_some(engine),
-        Some(EXTENT_MARGIN_M),
-    )?;
-    auto.spec.extent = reg.spec.extent;
-    Ok(AutoRegistration { auto, reg, hint })
+    // The main map, then (page with several maps) each other map in turn: the first that
+    // registers. Only a failure to place the plan moves on to the next map.
+    let candidates: Vec<(PageRect, Vec<PageRect>)> =
+        std::iter::once((auto.spec.map_area, auto.spec.masks.clone()))
+            .chain(auto.other_maps.iter().cloned())
+            .collect();
+    let mut last = None;
+    for (i, (area, masks)) in candidates.into_iter().enumerate() {
+        let mut spec = auto.spec.clone();
+        spec.map_area = area;
+        spec.masks = masks;
+        match register_input(
+            spec,
+            inp.clone(),
+            load_s,
+            layout,
+            dl,
+            planet,
+            // A text layer needs no OCR.
+            (auto.spec.labels == LabelSource::Ocr).then_some(engine),
+            Some(EXTENT_MARGIN_M),
+        ) {
+            Ok(reg) => {
+                auto.spec = reg.spec.clone();
+                auto.map_index = i;
+                return Ok(AutoRegistration { auto, reg, hint });
+            }
+            Err(e @ crate::Error::Fit(_)) => last = Some(e),
+            Err(e) => return Err(e),
+        }
+    }
+    Err(last.unwrap_or_else(|| crate::Error::Fit(format!("{}: no map found", src.id))))
 }
 
 #[cfg(test)]

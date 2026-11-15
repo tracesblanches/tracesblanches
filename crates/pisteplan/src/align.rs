@@ -340,14 +340,14 @@ pub fn icp_pairs(
     drawn: &[DrawnPoint],
     osm: &OsmRef,
     tree: &RTree<OsmPoint>,
-    to_map: &(dyn Fn(P2) -> P2 + Sync),
+    to_map: &(dyn Fn(P2) -> Option<P2> + Sync),
     radius_m: f64,
     cell_pt: f64,
 ) -> Vec<Pair> {
     let found: Vec<(i64, i64, f64, Pair)> = drawn
         .par_iter()
         .filter_map(|d| {
-            let q = to_map(d.p);
+            let q = to_map(d.p)?;
             let r2 = radius_m * radius_m;
             let hit = tree
                 .nearest_neighbor_iter(&q)
@@ -396,14 +396,15 @@ pub struct IcpStep {
     pub median_m: f64,
 }
 
-/// Non-rigid ICP from the coarse affine map. Returns the final warp, its pairs and the
-/// iterations.
+/// Non-rigid ICP from a coarse map (the affine map of the label RANSAC, or the rays of
+/// a perspective camera cast onto the terrain; `None` where a page point has no image).
+/// Returns the final warp, its pairs and the iterations.
 pub fn icp(
     spec: &PlanSpec,
     drawn: &[DrawnPoint],
     osm: &OsmRef,
     tree: &RTree<OsmPoint>,
-    coarse: &Affine,
+    coarse: &(dyn Fn(P2) -> Option<P2> + Sync),
     schedule: &[(f64, f64)],
     cell_pt: f64,
 ) -> Option<(Warp, Vec<Pair>, Vec<IcpStep>)> {
@@ -414,8 +415,8 @@ pub fn icp(
         for _ in 0..2 {
             let pairs = {
                 let f = |p: P2| match &warp {
-                    Some(w) => w.to_map(p),
-                    None => coarse.apply(up(p)),
+                    Some(w) => Some(w.to_map(p)),
+                    None => coarse(p),
                 };
                 icp_pairs(spec, drawn, osm, tree, &f, radius_m, cell_pt)
             };
@@ -424,9 +425,9 @@ pub fn icp(
             }
             let res: Vec<f64> = pairs
                 .iter()
-                .map(|p| match &warp {
-                    Some(w) => dist(w.to_map(p.plan), p.map),
-                    None => dist(coarse.apply(up(p.plan)), p.map),
+                .filter_map(|p| match &warp {
+                    Some(w) => Some(dist(w.to_map(p.plan), p.map)),
+                    None => coarse(p.plan).map(|q| dist(q, p.map)),
                 })
                 .collect();
             steps.push(IcpStep {

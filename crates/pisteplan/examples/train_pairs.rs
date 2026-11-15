@@ -11,8 +11,7 @@ use std::time::Instant;
 
 use serde_json::json;
 use skimap_common::config::Config;
-use skimap_common::geom::BBox;
-use skimap_pisteplan::autospec::register_auto;
+use skimap_pisteplan::autospec::{self, register_auto};
 use skimap_pisteplan::collect::{self, Collected, Domain};
 use skimap_pisteplan::spec::PlanSource;
 use skimap_pisteplan::transcribe::{self, InkDistance};
@@ -20,9 +19,19 @@ use skimap_pisteplan::{Error, learn, ocr};
 
 struct Job {
     src: PlanSource,
-    hint: BBox,
+    /// Census domains (catalogue), or none: located from the plan's text.
+    domains: Vec<String>,
     format: String,
     test: bool,
+}
+
+/// Whether domains meet an evaluation site (test only, never trained on).
+fn is_test(domains: &[String], census: &[Domain]) -> bool {
+    skimap_common::site::SITES.iter().any(|s| {
+        census
+            .iter()
+            .any(|d| domains.contains(&d.id) && collect::intersects(&d.bbox, &s.bbox))
+    })
 }
 
 fn run_one(
@@ -39,7 +48,27 @@ fn run_one(
         return format!("{}: déjà fait", job.src.id);
     }
     let t = Instant::now();
-    let res = register_auto(&job.src, job.hint, layout, dl, planet, engine);
+    // A plan the collector did not attach is located by the places it names.
+    let (domains, located) = if job.domains.is_empty() {
+        match autospec::locate_plan(&job.src, layout, dl, engine, census) {
+            Ok(d) => (d, true),
+            Err(e) => (Vec::new(), {
+                tracing::warn!("{}: {e}", job.src.id);
+                true
+            }),
+        }
+    } else {
+        (job.domains.clone(), false)
+    };
+    // A plan located near an evaluation site is a test plan too.
+    let test = job.test || is_test(&domains, census);
+    let res = match collect::hint(&domains, census) {
+        Some(hint) => register_auto(&job.src, hint, layout, dl, planet, engine),
+        None => Err(Error::Data(format!(
+            "{}: no census domain named on the plan",
+            job.src.id
+        ))),
+    };
     let doc = match res {
         Ok(a) => {
             let reg = &a.reg;
@@ -61,7 +90,10 @@ fn run_one(
                 .collect();
             let ties: Vec<f64> = reg.ties.iter().map(|t| t.residual_m).collect();
             json!({
-                "id": job.src.id, "site": job.src.site, "test": job.test, "format": job.format,
+                "id": job.src.id, "site": job.src.site, "test": test, "format": job.format,
+                "domains": domains, "located_from_text": located,
+                "map_index": a.auto.map_index, "maps": 1 + a.auto.other_maps.len(),
+                "placement": if reg.camera.is_some() { "perspective" } else { "flat" }, "camera": reg.camera,
                 "url": job.src.url, "title": job.src.title,
                 "ok": true, "seconds": t.elapsed().as_secs_f64(),
                 "drawn_extent": drawn, "domains_drawn": domains,
@@ -77,7 +109,8 @@ fn run_one(
             })
         }
         Err(e) => json!({
-            "id": job.src.id, "site": job.src.site, "test": job.test, "format": job.format,
+            "id": job.src.id, "site": job.src.site, "test": test, "format": job.format,
+                "domains": domains, "located_from_text": located,
             "url": job.src.url, "ok": false, "error": e.to_string(),
             "seconds": t.elapsed().as_secs_f64(),
         }),
@@ -105,6 +138,10 @@ fn run_one(
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_writer(std::io::stderr)
+        .init();
     let jobs_n: usize = std::env::args()
         .nth(1)
         .and_then(|s| s.parse().ok())
@@ -116,7 +153,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let layout = cfg.layout();
     let dl = collect::downloader(&cfg)?;
     let census = collect::load_census(&layout)?;
-    let out: PathBuf = layout.france_layer_dir("plan_training")?.join("plans");
+    // `TRAIN_PLANS_DIR=<name>`: another directory under plan_training (a new run beside
+    // an earlier one, to compare).
+    let sub = std::env::var("TRAIN_PLANS_DIR").unwrap_or_else(|_| "plans".to_owned());
+    let out: PathBuf = layout.france_layer_dir("plan_training")?.join(sub);
     std::fs::create_dir_all(&out)?;
     let cat_path = layout
         .france_layer_dir(collect::LAYER)?
@@ -126,17 +166,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // draw an evaluation site is read the same way, marked test (never trained on).
     let mut jobs: Vec<Job> = Vec::new();
     for c in cat.iter().filter(|c| collect::readable(c)) {
-        let Some(hint) = collect::hint(&c.candidate.domains, &census) else {
-            continue;
-        };
-        let test = skimap_common::site::SITES.iter().any(|s| {
-            !collect::plans_for_area(&s.bbox, std::slice::from_ref(c), &census).is_empty()
-        });
         jobs.push(Job {
             src: collect::plan_source(c),
-            hint,
+            domains: c.candidate.domains.clone(),
+            test: is_test(&c.candidate.domains, &census),
             format: c.format.clone().unwrap_or_default(),
-            test,
         });
     }
     // Most likely to register first: the test sites, the ENJ plans (one cartographer, text
