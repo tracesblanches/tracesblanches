@@ -1,5 +1,5 @@
 //! Minimal Mapbox Vector Tile 2.1 writer and reader, for the polygon class layers of the
-//! pack (slope, avalanche exposure: [`crate::classes`]).
+//! pack (slope, avalanche exposure: `build::class_tiles`).
 //!
 //! Only what these layers need: polygon features (exterior rings with positive area in
 //! tile coordinates, y down, interior rings negative), string and integer attributes.

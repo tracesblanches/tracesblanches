@@ -22,7 +22,7 @@
 //!   synthetic outings.
 //!
 //! Shared: [`course`] (a route followed), [`guidance`] (junctions, turns, obvious ways),
-//! [`line`] (geometry along a route), [`phrases`] (what the plan says), [`presets`]
+//! [`line`](mod@line) (geometry along a route), [`phrases`] (what the plan says), [`presets`]
 //! (requests on archived days of both sites), [`error`].
 //!
 //! Runs on the phone: no networking. Never « sans danger », never « sûr ».
