@@ -1,0 +1,47 @@
+<?xml version="1.0" e"true" SW="false" W="false" NW="true" N="false"
+COMMENTAIRE="Test affichage"/>
+  <ACCIDENTEL>et synth√®se des risques de d√©clenchement ski"61" MERNUAGES="-1"/>
+   <ImageMeteo>apercu_meteo_8.png</ImageMeteo>
+  </METEO>
+  <BSH>
+   <METEK>
+    <ECHEANCE DATE="2023-10-20T06:00:00" FF1="35" DD1="SE" FF2="30" DD2="SE" ISO0="3600"
+PLUIESWNEIGE="3299" TEMPSSENSIBLE="42"/>
+    <ECHEANCE DATE="2023-10-20T12:00:00" FF1="25" DD1="SO" FF2="20" DD2="O" ISO0="28NEIGE="2500" TEMPSSENSIBLE="70"/>
+    <ECHEANC version="1.0" e"true" SW="false" W="false" NW="true" N="false"
+COMMENTAIRE="Test affichage"/>
+  <ACCIDENTEL>et synth√®se des risques de d√©clenchement ski"61" MERNUAGES="-1"/>
+   <ImageMeteo>apercu_meteo_8.png</ImageMeteo>
+  </METEO>
+  <BSH>
+   <METEK>
+    <ECHEANCE DATE="2023-10-20T06:00:00" FF1="35" DD1="SE" FF2="30" DD2="SE" ISO0="3600"
+PLUIESWNEIGE="3300" TEMPSSENSIBLE="42"/>
+    <ECHEANCE DATE="2023-10-20T12:00:00" FF1="25" DD1="SO" FF2="20" DD2="O" ISO0="28NEIGE="2500" TEMPSSENSIBLE="70"/>
+    <ECHEANCE DATE="2023-10-21T12:00:00" FF1A="5" DD1="SO"≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤≤ FF2="5" DD2="SO" ISO0="2400"
+PLUIENEIGE="2100" TEMPSSENSIBLE="71"/>
+    <ECHEANCE DATE="2023-10-21T18:00:00EO>
+  <BSH>
+   <METEO>
+    <ECHEANCE DATE="2023-10-20T06:00:00" FF1="35" DD1="SE" FF2="30" DD2="SE" ISO0="3600"
+PLUIENEIGE="3300" TEMPSSENSIBLE="71"2>
+    <ECHEANCE DATE="2023-10-202:T100:00" FF1="25" DD1="SO" FF2="20" DD2="O" ISO0="2800"
+PLUIENEIGE="2500" TEMPSSENSIBLE="52"/>
+    <ECHEANCE DATE="2023-10-20T18:00:00" FF1="35" DDements skieurs : et synth√®se des risques de d√©clenchement skieur</RESUME>
+  <RisqueJ2>risque limit√©</RisqueJ2>
+  <CommentaireRisqueJ2>Test diffusion et affichage Appli
+Tendance des risques √/TexteMeta>
+</BULLETINS_NEIGE_AVALANE DATE="2022-10-21T12:00:00" FF1A="5" DD1="SO" FF2="5" DD2="SO" ISO0="2400"
+PLUIENEIGE="2100" TEMPSSENSIBLE="71"/>
+    <ECHEANCE DATE="2023-10-21T18:00:00EO>
+  <BSH>
+   <METEO>
+    <ECHEANCE DATE="2023-10-20T06:00:00" FF1="35" DD1="SE" FF2="30" DD2="SE" MSO0="3600"
+PLUIENEIGE="3300" TEMPSSENSIBLE="71"2>
+    <ECHE-16ANCE DATE="2023-10-202:T100:00" FF1="25" DD1="SO" FF2="20" DD2="O" ISO0="2800"
+PLUIENEIGE="2500" TEMPSSENSIBLE="52"/>
+    <ECHEANCE DATE="2023-10-20T18:00:00" FF1="35" DDements skieurs : et synth√®se des risques de d√©clenchement skieur</RESUME>
+  <RisqueJ2>risque limit√©</RisqueJ2>
+  <CommentaireRisqueJ2>Test diffusion et affichage Appli
+Tendance des risques √/TexteMeta>
+</B

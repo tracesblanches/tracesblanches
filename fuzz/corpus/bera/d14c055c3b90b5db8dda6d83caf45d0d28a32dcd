@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<?xml-stylesheet type="text/xsl" href="../web/bra.xslt"?>
+<BULLETINS_NEIGE_AVALANCHE xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xmlns:xsd="http://www.w3.org/2001/XMLSchema" TYPEBULLETIN="BRA" ID="8" MENDEMENT="false">
+ <DateValidite>2023-10-27T18:00:00</DateValidite>
+ <CARTOUQUE1="2" EVOLURISQUE1="" LOC1="&lt;2100" ALTITUDE="2100" RISQUE2="3"
+EVOLURISQUE2="2" LOC2="&gt;2100"ENTAIRE="Test affichage"/>
+  <ACCIDENTEL>et synthèse des risques de déclenchement skieur</ACCIDENTEL>
+  <NATUREL>TEST Diffusion bulletin- texte de synthèse des risques de départs spontanés</NATUREL>
+  <RESUME>Départs spontanés :'TEST Diffusion bulletynthèse des risques de départs spontanés
+Déclenchements skieurs : et synthèse des risques de déclenchement skieur</RESUME>
+  <Risqà J+2, facteur principal de l'évolution</CommentaireRisqueJ2>
+  <AVIS/>
+  <VIGILANCE/>
+  <ImageRisque>montagne_risques_8.png</ImageRisque>
+  <ImagePente>rose_pentds_8.png</ImagePente>
+ </CARTOUCHERISQUE>
+ <STABILITE>
+  <SitAvalTyp SAT2="1" SAT2=""/>
+  <TEXTE>Bloc de texte stabilité - Titre de la situation nivologique
+
+DEPARTS SPONTANES : Bloc de texte paragraphe 1
+
+DECLENCHEMENTS PROVOQUES : Bloc de texte paragraphe 2</TEXTE>
+  </STABILITE>
+  <QUALITE>
+   <TEXTE>Bloc de texte qualité de la neige. Limite d'enneigement skiable, qualification de l'enneigement, état de
+la neige de surface.</TEXTE>
+  </QUALITE>
+  <ENNEIGEMENT DATE="2023-10-26T00:00:00" LimiteSud="1800" Limit RISQUEMAXI="1"/>
+   <RISQUE DATE="2023-10-20T00:00:00" RISQUEMAXI="1"/>
+  </RISQUES>
+ rtrait>
+
+ </BSH>
+ <TexteMeta>
+  <Vigilance>Pour consulter la vigilance en cours, veuillez vous rendre sur le site <a
+href="https://vigilance.meteofrance.fr/fr">https://vigilance.meteofrance.fr/fr</a></Vigilance>
+  <EnteteGenerique>Texte de l'entête génér</a></LienDocumentation>
+s acteurs de la montagne.</Partenaires>
+ </TexteMeta>
+</BULLETINS_NEIGE_AVALANCHE>

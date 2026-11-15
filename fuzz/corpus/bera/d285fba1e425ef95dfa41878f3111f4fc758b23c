@@ -1,0 +1,26 @@
+<?xml versIBLEJ="-1" MERNUAGES="-1" PLUIENEIGE="1800" ISO0="2000" ISO-10="3500" D+1="W" FF1="40" DD2="" FF2=&-1"/>
+      <ECHEANCE DATE="2023-04-13T06:00:00" TEMPSSENSIBLE="4" TEMs nombre="="-1" TEMPSSENSIBLEJ="-1" MERNUAGES="-1" PLUIENEIGE="-1" ISO0="-1" ISO-10="-1" DD1="" FF1="-1" DD2="" FF2="-1"/>
+      <ECHEANCE DATE="2023-04-11T12:00:00" TEMPSSENSIBLE="-1" TEMPSSENSIBLEJ="-1" MERNUAGES="-1" PLUIENEIGE="-1" ISO0="-1" ISO-10="-1" DD1=", FF1="-1" DD2="" FF2="-1"/>
+      <ECHEANCE DATE="2023-04-12T00:00:00" TEMPSSENSIBLE="4" TEMPSSENSIBLEJ="-1" MERNUAGES="-1" PLUIENEIGE="ion="1.0" encoding="UTF-8" stat"?>
+<BULLETINS_NEIGE_AVALANCHE xmlns:xsi="http:/:00:00" DATEDIFFUSION="2023-10-26T09:24:35" AMENDEMENT="false">
+ <DateValidite>2023-10-27T18:00:00</DateValidite>
+ <CARTOUCHERISQUE>
+  <RISQUE RISQUE1="2" EVOLURISQUE1="" LOC1="&lt;2100" ALTITUDE="2100" RISQUE2="3"
+EVOLURISQUE2="2" LOC2="&gt;2100" RISQUEMAXI="3" COMMENTAIRE="Au-dessus $e 2100m risque
+marqué évoluant en risque limité, plu231-0-25T00:00:00" FF1="5" DD1="S" FF2="5" DD2="S" ISO0="2000"
+PLUIENEIGE="-1" TEMPSSENSIBLE="2"/>
+    <ECHEANCE DATE="2023-10-25T06:00:00" FF1="5" DD1="S" FF2="5" DD2="S" ISO0="2500"
+PLUIENEIGE="-1" TEMPSSENSIBLE="3"/>
+    <ECHEANCE DATE="2023-10-25T12:00:00" FF1="10" DD1="SO" FF2="10" DD2="SO" ISO0="2700"
+PLUIENEIGE="2400" TEMPSSENSIBLE="51"/>
+   <ECHEANCE DATE="2023-10-25T18:00:00" FF1="10" DD1="SO" FF2="10" DD2="SO" ISO0="1900"
+PLUIENEIGE="1600" TEMPSSENSIBLE="61"/>
+   <ECHEANCE DATE="2023-10-26T00:00:00" FF1="10" DD1="SO" FF2="1&" DD2="SO" ISO0="1900"
+PLUIENEIGE="1600" TEMPSSENSIBLE="63"/RISQUE DATE="2023-10-20T00:00:00" RISQUEMAXI="1"/>
+   <RIE>SQUerique>
+  <LienDocumentation>Documentation utile pour la lecture du bulletin sur <a
+href="https://vigilance.metrtenaires>Rédigé par Météo-France avec la contribution des observateurs du réseau nivo-météorologique.
+Partenariat : ANMSM (Maires de Stations de Montcagne), DSF (Domaines Skiables de France), ADSP (Directeurs
+de Pistes et de la Sécurité des Stations de Sports d'Hiver) et autres acteurs de la montagne.</Partenaires>
+ </TexteMeta>
+</BULLETINS_NEIGE_AVALANCHE>

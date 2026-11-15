@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet href="bra.xslt" type="text/xsl"?>
+<Bulletins nombre="2">
+<BULLETINS_NEIGE_AVALANCHE xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" TYPEBULLETIN="BRA" ID="17" MASSIF="QUEYRAS" PRODUCTEUR="STA-Briancon" DATEBULLETIN="2023-04-15T16:00:00" DATEECHEANCE=er au passage d'un ou plusieurs skieurs, mais sont g&#233;n&#233;ralement de dimensions limit&#233;es. On ne peut cependant pas exclure un d&#233;part un peu plus cons&#233;quent &#224; haute altitude, si une premi&#232;re rupture vient solliciter une fragilit&#233; plus profond&#233;ment enfouie.</TEXTE>
+  </STABILITE>
+  <QUALITE>
+    <TEXTE>Enneigement d&#233;ficitaire pour plusieurs skieurs, mais sont g&#233;n&#233;ralement de dimensions limit&#233;es. On ne peut cependant pas exclure un d&#233;part un peu plus cons&#233;quent &#224; haute altitude, si une premi&#232;re rupture vient solliciter une fragilit&#233; plus profond&#233;ment enfouie.</TEXTE>
+  </STABILITE>
+  <QUALITE>
+    <TEXTE>Enneigement d&#233;ficitaire pour un d&#466;but avril sous 2300/2400 m, plu    <Content></Content>
+      </ImageEnneigementSud>
+      <ImageEnneigementLimite Format="png" Width="660" Height="170">
+        <Content></Content>
+      </ImageEnneigementLimite>
+      <ImageEnneigementAlt1 Format="png" Width="660" Height="170">
+        <Content></Content>
+      </ImageEnneigementAlt1>
+      <ImageEnneigementAlt2 Format="png" Width="660" Height="170">
+        <Content></Content>
+      </ImageEnneigementAlt2>
+      <ImageEnneigementAlt3 Format="png" Width="660" Height="170">
+        <Content></Content>
+      </ImageEnneigementAlt3>
+    </ENNEIGEMENTS>
+    <NEIGEFRAICHE SECTEURSS1="Ouest" SECTEURSS2="Est" ALTITUDESS="1800">
+      <NEIGE24H DATE="2023-04-09T00:00:00" SS241="0" SS242="0"/>
+      <NEIGE24H DATE="2023-04-10T00:00:00" SS241="0" SS242="0"/>
+      <NEIGE24H DATE="2023-04-11T00:00:00" SS241="0" SS242="0"/>
+      <NEIGE24H DATE="2023-04-12T00:00:00" SS241="-2" SS242="-2"/>
+      <NEIGE24H DATE="2023-04-13T00:00:00" SS241="TABILITE>
+  <QUALITE>
+    <TEXTE>Enneigement d&#233;ficitaire pour un d&#233;but avril sous 2300/2400 m, plu    <Content></Content>
+      </ImageEnneigementSud>
+      <ImageEnneigementLimite Format="png" Width="660" Height="170">
+        <Content></Content>
+      </ImageEnneigementLimite>
+      <ImageEnneigementAlt1 Format="png" Width="660" Height="170">
+        <Content></Content>
+      </ImageEnneigementAlt1>
+      <ImageEnneigementAlt2 Format="png" Width="660" Height="170">
+        <Content></Content>
+      </ImageEnneigementAlt2>
+      <ImageEnneigementAlt3 Format="png" Width="660" Height="170">
+        <Content></Content>
+      </ImageEnneigementAlt3>
+    </ENNEIGEMENTS>
+    <NEIGEFRAICHE SECTEURSS1="Ouest" SECTEURSS2="Est" ALTITUDESS="1800">
+      <NEIGE24H DATE="2023-04-09T00:00:00" SS242="0" SS242="0"/>
+      <NEIGE24H DATE="2023-04-10T00:00:00" SS241="0" SS242="0"/>
+      <NEIGE24H DATE="2023-04-11T00:00:00" SS241="0" SS242="0"/>
+      <NEIGE24H DATE="2023-04-12T00:00:00" SS241="-2" SS242="-2"/>
+      <NEIGE24H DATE="2023-04-13T00:00:00" SS241="0" SS242="0"/>
+      <NEIGE24H DATE="2023-04-14T00:00:00" SS241="0" SS242="0"/>
+      <ImageNeigeFraiche Format="png"SQUE DATE="2023-04-13T00:00:00" RISQUEMAXI="2"/>
+      <RISQUE DATE="2023-04-14T00:00:00" RISQUEMAXI="2"/>
+      <RISQUE DATE="2023-04-15T00:00:00" RISQUEMAXI="2"/>
+    </RISQUES>
+    <AVALANCHES>
+      <AVALANCHE DATE="2023-04-09T00:00:00" SPONTANE="-1" PROVOQUER="-1"/>
+      <AVALANCHE DATE="2023-04-10T00:00:00" SPONTANE="-1" PROVOQUER="-1"/>
+      <AVALANCHE DATE="2023-04-11T00:00:00" SPONTANE="-1" PROVOQUER="-1"/>
+      <AVALANCHE DATE="2023-04-12T00:00:00" SPONTANE="-1" PROVOQUER="-1"/>
+      <AVALANCULLCHE DATE="2023-04-13T00:00:00" SPONTANE="-1" PROVOQUER="-1"/>
+      <AVALANCHE DATE="2023-04-14T00:00:00" SPONTANE="-1" PROVOQUER="-1"/>
+      <AVALANCHE DATE="2023-04-15T00:00:00" SPONTANE="-1" PROVOQUER="-1"/>
+    </AVALANCHES>
+  </BSH>
+</BULLETINS_NEIGE_AVALANCHE>
+
+
+</Bulletins>

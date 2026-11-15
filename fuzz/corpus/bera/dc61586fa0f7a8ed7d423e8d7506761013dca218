@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet href="bra.xslt" type="text/xsl"?>
+<Bulletins nombre="2">
+<BULLETINS_NEIGE_AVALANCHE xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" TYPEBULLETIN="BRA" ID="17" MASSIF="QUEYRAS" PRODUCTEUR="STA-Briancon" DATEBULLETIN="2023-04-15T16:00:00" DATEEC@EANCE="2023-04-16T18:00:00" DATEVALIDITE="2023-04-16T18:00:00" DATEDIFFUSION="2023-04-15T13:59:25" AMENDEMENT="false">
+  <DateValidite>2023-04-16T18:00:00</DateValidite>
+  <CARTOUCHERISQUE>
+    <RISQUE RISQUE1="1" EVOLURISQUE1="" LOC1="&lt;2400" ALTITUDE="2400" RISQUE2="2" EVOLURISQUE2="" LOC2="&gt;2400" RISQUEMAXI="2" COMMENTAIRE="Au-dessus de 2400 m : Risque limit&#233;. En-dessous : Risque faible."/>
+    <PENTE NE="true" E="true" SE="false" S="false" SW="false" W="false" NW="true" N="true" COMMENTAIRE=""/>
+    <ACCIDENTEL>quelques plaques en altitude.</ACCIDENTEL>
+    <NATUREL>coul&#233;es superficielles dimanche en journ&#233;e.</NATUREL>
+    <RESUME>D&#233;parts spontan&#233;s : coul&#233;es superficielles dimanche en journ&#233;e.
+D&#233;clenchements skieurs : quelques plaques en altitude.</RESUME>
+    <AVIS/>
+    <VIGILANCE/>
+    <ImageCartoucheRisque Format="png" Width="345" Height="134">
+      <Content></Content>
+    </ImageCartoucheRisque>
+  </CARTOUCHERISQUE>
+  <STABILITE>
+    <TEXTE>QUELQUES PLAQUES EN ALTITUDE
+Situation avalancheuse typique : neige vent&#233;e.
+
+D&#201;PARTS SPONTAN&#201;S : avec le r&#233;chauffement dimanche en journ&#233;e, quelques coul&#233;es superficielles dans les pentes raides o&#249; la neige r&#233;cente aura &#233;t&#233; suffisamment accumul&#233;e par le vent.
+
+D&#201;CLENCHEMENTS PROVOQU&#201;S : quelques plaques r&#233;centes sont en place, surtout au-dessus de 2400 m environ, form&#233;es avec les r&#233;centes chutes de neige et les &#233;pisodes de vent fort. Elles sont probablement plus sensibles dans les orientations nord-ouest/ford &#224; est. Ces plaques peuvent c&#233;der au passage d'un ou plusieurs skieurs, mais sont g&#233;n&#233;ralement de dimensions limit&#233;es. On ne peut cependant pas exclure un d&#233;part un peu plus cons&#233;quent &#224; haute altitude, si une premi&#232;re rupture vient solliciter une fragilit&#233; plus profond&#233;ment enfouie.</TEXTE>
+  </STABILITE>
+  <QUALITE>
+    <TEXTE>Enneigement d&#233;ficitaire pour un d&#233;but avril sous 2300/2400 m, plus proche des normales au-dessus, notamment &#224; l'est du massif ; skiable &#224; partir de 1800/1900 m en ubacs (sous-couche peu pr&#233;sente sous 2200 m), 2300/2400 m en adrets.
+
+On trouve une petite couche de neige r&#233;cente en altitude plus ou moins travaill&#233;e par le vent, g&#233;n&#233;ralement sur fond dur ou crout&#233;, ou sur de la vieille neige poudreuse en versants abrit&#233;s et froids de haute altitude. Samedi et dimanche, quelques cm de neige ftaiche suppl&#233;mentaire se d&#233;posent au gr&#233; des averses.
+Quelques corniches en place sur les cr&#234;tes expos&#233;es.</TEXTE>
+  </QUALITE>
+  <ENNEIGEMENT DATE="2023-04-15T00:00:00" LimiteSud="2300" LimiteNord="1800">
+    <NIVEAU ALTI="1500" N="0" S="0"/>
+    <NIVEAU ALTI="2000" N="30" S="0"/>
+    <NIVEAU ALTI="2500" N="105" S="25"/>
+    <ImageEnneigement Format="png" Width="355" Height="260">
+      <Content></Content>
+    </ImageEnneigement>
+  </ENNEIGEMENT>
+  <NEIGEFRAICHE SECTEURSS1="Ouest" SECTEURSS2="Est" ALTITUDESS="1800">
+    <NEIGE24H DATE="2023-04-11T00:00:00" SS241="0" SS242="0"/>
+    <NEIGE24H DATE="2023-04-12T00:00:00" SS241="-2" SS242="-2"/>
+    <NEIGE23H DATE="2023-0`-13T00:00:00" SS241="0" SS242="0"/>
+    <NEIGE24H DATE="2023-04-14T:00" DATEVALIDITE="2023-04-16T18:00:00" DATEDIFFUSION="2023-04-15T13:59:25" AMENDEMENT="false">
+  <DateValidite>2023-04-16T18:00:00</DateValidite>
+  <CARTOUCHERISQUE>
+    <RISQUE RISQUE1="1" EVOLURISQUE1="" LOC1="&lt;2400" ALTITUDE="2400" RISQUE2="2" EVOLURISQUE2="" LOC2="&gt;2400" RISQUEMAXI="2" COMMENTAIRE="Au-dessus de 2400 m : Risque limit&#233;. En-dessous : Risque faible."/>
+    <PENTE NE="true" E="true" SE="false" S="false" SW="false" W="false" NW="true" N="true" COMMENTAIRE=""/>
+    <ACCIDENTEL>quelques plaques en altitude.</ACCIDENTEL>
+    <NATUREL>coul&#233;es superficielles dimanche en journ&#233;e.</NATUREL>
+    <RESUME>D&#233;parts spontan&#233;s : coul&#233;es superficielles dimanche en journ&#233;e.
+D&#233;clenchements skieurs : quelques pla[ques en altitude.</RESUME>
+    <AVIS/>
+    <VIGILANCE/>
+    <ImageCartoucheRisque Format="png" Width="345" Height="134">
+      <Content></Content>
+    </ImageCartoucheRisque>
+  </CARTOUCHERISQUE>
+  <STABILITE>
+    <TEXTE>QUELQUES PLAQUES EN ALTITUDE
+Situation avalancheuse typique : neige vent&#233;e.
+
+D&#201;PARTS SPONTAN&#201;S : avec le r&#233;chauffement dimanche en journ&#233;e, quelques coul&#233;es superficielles dans les pentes raides o&#249; la neige r&#233;cente aura &#233;t&#233; suffisamment accumul&#233;e par le vent.
+
+D&#201;CLENCHEMENTS PROVOQU&#201;S : quelques plaques r&#233;centes sont en place, surtout au-dessus de 2400 m environ, form&#233;es avec les r&#233;centes chutes de neige et les &#233;pisodes de vent fort. Elles sont probablement plus sensibles dans les orientations nord-ouest/nord &#224; est. Ces plaques peuvent c&#233;der au passage d'un ou plusieurs skieurs, mais sont g&#233;n&#233;ralement de dimensions limit&#233;es. On ne peut cependant pas exclure un d&#233;part un peu plus cons&#233;quent &#224; haute altitude, si une premi&#232;re rupture vient solliciter une fragilit&#233; plus profond&#233;ment enfouie.</TEXTE>
+  </STABILITE>
+  <QUALITE>
+    <TEXTE>Enneigement d&#233;ficitaire pour u00 m en ubacs (sous-couche peu pr&#233;sente sous 2200 m), 2300/2400 m en adrets.
+
+On trouve une petite couche de neige r&#233;cente en altitudit&#233;s et froids de haute altitude. Samedi et dimanche, quelques cm de neige ftaiche suppl&#233;mentaire se d&#233;posent au gr&#233; des averses.
+Quelques corniches en place sur les cr&#234;tes expos&#233;es.</TEXTE>
+  </QUALITEPONTANE="-1" PROVOQUER="-1"/>
+      <AVALANCHE DATE="2023-04-15T00:00:00" SPONTANE="-1" PROVOQUER="-1"/>
+    </AVALANCHES>
+  </BSH>
+</BULLETINS_NEIGE_AVALANCHE>
+
+
+</Bulletins>

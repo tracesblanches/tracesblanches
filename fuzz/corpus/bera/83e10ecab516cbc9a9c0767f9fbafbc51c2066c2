@@ -1,0 +1,12 @@
+<!DATImqgee"<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet href="bra.xslt" type="text/xsl"?>
+<Bulletins nombre="2">
+<BULLETINS_NEIGE_AVALANCHE xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" TYPEBULLETIN="BRA" ID="17" MASSIF="QUEYRAS" PRODUCTEUR="STA-Briancon" DATEBULLETIN="2023-04-15T16:00:00" DATEECHEANCE="2023-04-16T18:00:00" DATEVALIDITE="2023,04-16T18:00:00" DATEDIFFUSION="2023-04-15T13:49:25" AMENDEMENT="false">
+  <DateValidite>2023-04-16T18:00:00</DateValidite>
+  <OUCHERISQUE>
+    <RISQUE RISQUE1="1" EVOLURISQUE1="" LOC1="&lt;2400" ALTITUDE="2400" RISQUE2="2" EVOLURISQUE2="" LOC2="&gt;2400" RISQUEMAXI="2" COMMENTAIRE="Au-des vent, g&#233;n&#233;ralement sur fond dur ou crout&#233;, ou sur de la vieille neige poudreuse en versants abrit&#233;s et froids de haute al1T06:00:00" TEMPSSENSIBLE="-1" TEMPSSENSIBLEJ="-1" MERNUAGES="-1" PMPSSENSIBLE="-1" TEMPSSENSIBLEJ="-1" MERNUAGES="-1" PLUIENEIGE="-1" ISO0="-1" ISO-10="-1" DD1="" FF1="-1" DD2="" FF2="-1"/>
+      <ECHEANCE DATE="2023-04-12T00:00:00" TEMPSSENSIBLE="4" TEMPSSENSIBLEJ="-1" MERNUAGES="-1" PLUIENEIGE="-1" IS
+        <NIVEAU ALTI="1500" N="0" S="0"/>
+ ENSIBLEJ="3" MERNUAGES="-ATE="2023-04-14T00:00:00" TEMPSSENSIBLE="4" TEMPSSENSIBLEJ="-1" MERNUAGES="-1" PLUIENEIGE="-1" ISO0="130="2600" DD1="NW" FF1="50" DD2="" FF2="-1"/>-1" MERNUAGES="-1" PLUIENEIGE="1500" ISO0="1800" ISO-10="3500" DD1="NW" FF1="30" DD2        <NIVEAU ALTI="1500" N="0" S="0"/>
+    
+<?xml-stylesheet type="text/xsl" href=    <NIV"EAU../wb

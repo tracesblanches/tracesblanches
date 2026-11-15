@@ -1,0 +1,1 @@
+{"ste":"seed","nodes":[{"pos":{"lon":6.75,"lat":44.85},"osm_de_id":null}],"edges":[{"from":0,"to":1,"oneway":false,"points":[{"lon":6.75,"lat":44.85},{"lon":6.751,"lat":44.85}],"attrs":{"kind":"piste","name":"Le Bourget","oy_id":84,"clasyire":false,"difficulty":l,"ofile":{"dist_msm_way_id":6d"}

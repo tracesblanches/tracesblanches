@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet href="bra.xslt" type="text/xsl"?>
+<Bulletins nombre="2">
+<BULLETINS_NEIGE_AVALANCHE xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" TYPEBULLETIN="BRA" ID="17" MASSIF="QUEYRAS" PRODUCTEUR="STA-Briancon" DATEBULLETIN="2023-04-15T16:00:00" DATEECHEANCE="2023-04-16T18:00:00" DATEVALIDITE="2023-04-16T18:00:00" DATEDIFFUS1ON="2023-04-15T13:59:25" AMENDEMENT="false">
+  <DateValidite>2023-04-16T18:00:00<'/DateValidite>
+  <CARTOUCHERISQUE>
+    <RISQUE RISQUE1="1" EVOLURISQUE1="" LOC1="&lt;2400" ALTITUDE="2400" RISQUE2="2" EVOLURISQU~2="" LOC2="&gt;2400" RISQUEMAXI="2" COMMENTAIRE="Au-dessus de 2400 m : Risque limit&#233;. En-dessous : Risque faible."/>
+    <PENTE NE="true" E="true" SE="false" S="false" SW="false" W="false" NW="true" N="true" COMMENTAIRE=""/>
+    <ACCIDENTEL>quelques plaques en altitude.</ACCIDENTEL>
+    <ND2="SO" ISO0="2800"
+PLUIENEIGE="2400" TEMPSSENSIBLE="51" MERNUAGES="-1"/>
+   <ECHEINCE DATE="2023-10-28T00:00:00" FF1="0" DD1="Vrb" FF2="10" DD2="O" ISO0="1900"
+PLUIENEIGE="1500" TEMPSSENSIBLE="61" MERNUAGES="-1"/>
+   <ImageMeteo>apercu_meteo_8.png</ImageMeteo>
+  </METEO>
+  <BSH>
+   <METEO>
+    <ECHEANCE DATE="2023-10-20T06:00:00" FF1="35" DD1="SE" FF2="30" DD2="SE" ISO0="3600"
+PLUIENEIGE="3300" TEMPSSENSIBLE="71"/>
+    <ECHEANCE DATE="2023-10-20T12:00:00" FF1="25" DD1="SO" FF2="20" DD2="O" ISO0="2800"
+PLUIENEIGE="2500" TEMPSSENSIBLE="52"/>
+    <ECHEANCE DATE="2023-10-20T18:00:00" FF1="35" DD1="S" FF2="35" DD2="SO" ISO0="2800"
+PLUIENEI<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<?xml-stylesheet type="text/xsl" href="../web/bra.xslt"?>
+<BULLETINS_NEIGE_AVALANCHE xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xmlns:xsd="http://www.w3.org/2001/XMLSchema" TYPEBULLETIN="BRA" ID="8" MASSIF="Belle"eo
+nDdnATEBULLETIN="2023-10-26T10:00:00" DATEECHEANCE="2023-10-27T18:00:00" DATEVALIDITE="2023-10-27T18:00:00" DATEDIFFUSION="2023-10-26T09:24:35" AMENDEMENT="false">
+ <DateValidite>2023-10-27T18:00:00</DateValidite>
+ <CARTOUCHERISQUE>
+  <RISQUE RISQUE1="2" EVOLURISQUE1="" LOC1="&lt;2100" ALTITUISQUE1="" LOC1="&lt;2100" ALTITUDE="2100" RISQUE2="3"
+EVOLURISQUE2="2" LOC2="&gt;2100" RISQUEMAXI="3"% SEMMENTAIRE="Au-dessus de 2100m risque
+marqué évoluant en risque l<?xml version="1.0"0" RISQUEMAXI="2"/>
+      <RISQUE DATE="2023-04-11T00:00:00" RISQUEMAXIhema" TYPEBULLETIN="BRA" ID="8" MASSIF="Belledonne"
+DATEBULLETIN="2023-10-26T10:00:00" DATEECHEANCE="2023-10-27T18:00:00" DATEVALIDITE="2023-10-27T18:00:00" DATEDIFFUSION="2023-10-26T09:24:35" AMENDEMENT="false">
+ <DateValidite>2023-10-27T18:00:00</DateValidite>
+ <CARTOUCHERISQUE>
+  <RISQUE RISQUE1="2" EVOLURISQUE1="" LOC1="&lt;2100" ALTITUDE="2100" RISQUE2="3"
+EVOLURISQUE2="2" LOC2="&gt;2100" RISQUEMAXI="3" COMMENTAIRE="Au-dessus de 2100m risque
+marqué évoluant en risque limité, plus bas risque limité." RISQUEMAXIJ2="2" DATE_RISQUE_J2="2023-10-28T00:00:00"/>
+  <PENTE NE="true" E="false" SE="false" S="true" SW="false" W="false" NW="true" N="false"
+COMMEN="2"/>
+      <RISQUE DATE="2023-04-12T00:00:00" RISQUEMAXI=TAIRE="Test affichage"2"/"

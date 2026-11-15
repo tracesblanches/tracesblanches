@@ -2367,6 +2367,7 @@ name = "skimap-avalanche"
 version = "0.1.0"
 dependencies = [
  "approx",
+ "proptest",
  "rayon",
  "serde",
  "serde_json",
@@ -2419,6 +2420,7 @@ dependencies = [
  "hex",
  "httpdate",
  "proj4rs",
+ "proptest",
  "reqwest",
  "rustls",
  "serde",
@@ -2437,6 +2439,7 @@ name = "skimap-core"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "proptest",
  "rstar 0.12.2",
  "serde",
  "serde_json",
@@ -2544,6 +2547,7 @@ dependencies = [
  "geojson",
  "hex",
  "pmtiles",
+ "proptest",
  "rayon",
  "rusqlite",
  "serde",
@@ -2634,6 +2638,7 @@ dependencies = [
  "approx",
  "chrono",
  "flate2",
+ "proptest",
  "rayon",
  "serde",
  "serde_json",
@@ -2690,6 +2695,7 @@ name = "skimap-voice"
 version = "0.1.0"
 dependencies = [
  "hex",
+ "proptest",
  "rayon",
  "serde",
  "serde_json",
@@ -2706,6 +2712,7 @@ dependencies = [
  "chrono",
  "geo",
  "geojson",
+ "proptest",
  "serde",
  "serde_json",
  "skimap-common",

@@ -1,0 +1,4 @@
+{"site":"seed","nodes":[{"pos":{"lon":6.75,"lat":44.85},"osmndd_o_ie":1},{"pos":{"lon":6.751,"lat":44.85},"osm_node_id":2},{"pos":{"lon":6.751,"lat":44.8508},"osm_node_id":null}],"edges":[{"fromo":1,"oneway":false,"points":[{"lon":6.75,"lat":22.85},{"lon":6.751,"lat":44.85}],"attrs":{"kind":"piste","nac":true,"hike":false,"difficulty":
+
+
+sinll,"drozfile":{"

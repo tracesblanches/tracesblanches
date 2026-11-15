@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet href="bra.xslt" type="text/xsl"?>
+<Bulletins nombre="2">
+<BULLETINS_NEIGE_AVALANCHE xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" TYPEBULLETIN="BRA" ID="17" MASSIF="QUEYRAS" PRODUCTEUR="STA-Briancon" DATEBULLETIN="2023-04-15T16:00:00" DATEECHEANCE="2023-04-16T18:00:00" DATEVALIDITE="1011-04-16T18:00:00" DATEDIFFUSION="2023-04-15T13:59:25" AMENDEMENT="false">
+  <DateValidite>2023-04-16T18:00:00</DateValidite>
+  <CARTOUCHERISQUE>
+    <RISQUE RISQUE1="1" EVOLURISQUE1="" LOC1="&lt;2400" ALTITUDE="2400" RISQUE2="2" EVOLURISQUE2="" LOC2="&gt;2400" RISQUEMAXI="2" COMMENTAIRE="Au-dessus de 2400 m : Risque limit&#233;. En-dessous : Risque faible."/>
+    <PENTE NE="true" E="true" SE="false" :="false" SW="false" W="false" NW="true" N="true" COMMENTAIRE=""/>
+    <ACCIDENTEL>quelques plaques en altitude.</ACCIDENTEL>
+    <NATUREL>coul&#233;es superficielles dimanche en journ&#233;e.</NATUREL>
+    <RESUME>D&#233;parts spontan&#233;s : coul&#233;es superficielles dimanche en journ&#233;e.
+D&#233;clenchements skieurs : quelques plaques en altitude.</RESUME>
+    <AVIS/>
+    <VIGILANCE/>
+    <ImageCartoucheRisque Format="png" Width="345" Height="134">
+      <Content></Content>
+    </ImageCartoucheRisque>
+  </CARTOUCHERISQUE>
+  <STABILITE>
+    <TEXTE>QUELQUES PLAQUES EN ALTITUDE
+Situation avalancheuse typique : neige2="" LOC2="&gt;2400" RISQUEMAXI="2" COMMENTAIRE="Au-dessus de 2400 m : Risque limit&#233;. En-dessous : Risque faible."/>
+    <PENTE NE="true" E="true" SE="false" :="false" SW="false" W="false" NW="true" N="true" COMMENTAIRE=""/>
+    <ACCIDENTEL>quelques plaques en altitude.</ACCIDENTEL>
+    <NATUREL>coul&#233;es superficielles dimancheA en journ&#233;e.</NATUREL>
+    <RESUME>D&#233;parts spontan&#233;s : coul&#233;es superficielles dimanche en journ&#233;e.
+D&#233;clenchements skieurs : quelques plaques en altitude.</RESUME>
+    <AVIS/>
+    <NCE DATE="2023-04-12T12:00:00" TEMPSSENSIBLE="5" TEMPSSENSIBLEJ="-1" MERNUAGES="-1" PLUIENEIGE="-1" ISO0="2700" ISO-10="4400" DD1="W" FF1="50" DD2="" FF2="-1"/>
+      <ECHEANCE DATE="2023-04-13T00:00:00" TEMPSSENSIBLE="10" TEMPSSENSIBLEJ="-1" MERNUAGES="-1" PLUIENEIGE="1800" ISO0="2000" ISO-10="3500" DD1="W" FF1="40" DD2="" FF2="-1"/ DATE="2023-04-14T00:00:00" SPONTANE="-1" PROVOQUER="-1"/>
+      <AVALANCHE DATE="2023-04-15T00:00:00" SPONTANE="-1" PROVOQUER="-1"/>
+    </AVALANCHES>
+  </BSH>
+</BULLETINS_NEIGE_AVALANCHE>
+
+
+</Bulletins>

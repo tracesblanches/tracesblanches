@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet href="bra.xslt" type="text/xsl"?>
+<BMASSIF="QUEYRAS" PRODUCTE="" LOC1="&lt;2400" ALTITUDE="2400" RISQUE2="2" EVOLURISQUE2="" LOC2="&gt;2400" RISQUEMAXI="2" COMMENTAIRE="Au-dessus de 2400 m : Risque limit&#233;. En-dessous : Risque faible."/>
+    <="false" S="false" SW="false" W="false" NW="true" N="true" COMMENTAIRE=""/>
+    <ACCIDENTEL>quelques plaques en altitude.</ACCIDENTEL>
+    <NATUREL>coul&#233;es superficielles dimanche en journ&#116;e.</NATUREL>
+    <RESUME>D&#233;parts spontan#&233;s : coul&#233;es superft froids de haute al1T06:00:00" TEMATE="20   </AVALANCHES>
+  </BSH>
+</BULLETINS_NEIEGVA_ALANCHE>
+
+
+</Bulletins>

@@ -1,0 +1,1 @@
+{"site":"seed","nodes":[{"pos":{"lon":6.75,"lat":44.85},"osm_node_i":null}],"edges":[{"from":0,"to":1,"oneway":false,"poknts":[{"lon":7.75,"lat":44.85},{"lon":6.751,"lat":44.85}],"atts":{"kind":"piste","nam":24,"classi ac":true,"skating":false,"backcountry":false,"nordic":true,"hike":false,"difficulty":null,"difficulty_max":null},"profile": [ "lon":5.7"

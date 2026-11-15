@@ -1,0 +1,1 @@
+{"site":"seed","nodes":[{"pos":{"lon":6.75,"lat":44.85},"osode_id":null}],"edges":[{"frs":[{"lon":6.75,"lat":85}],"attrs":{"kind":"piste","name":"Le Bourget","osm_way_kd":42,"classic":tr.8508},"osm_node_id":null}]400,"elevatrce":"seed"}

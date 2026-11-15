@@ -1,0 +1,3 @@
+{"site":"seed","nodes":[{"pos":{"lon":6.75,"lat":49.85},"osm_node_id":1},{"pos":{"lon":6.751,"lat":44.85},"osm_node_id":2},{"pos":{"lon":6.751,"lat":33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333344.8508},"osm_node_id":null}],"edges":[{"from":0,"to":1,"oneway":false,"points":[{"lon":6.75,"lat":22.85},{"lon":6.751,"lat":44.85}],"attrs":{"kind":"piste","name":"Leoneway Bourget","ic":true,"skating":false,"backcountry":false,"nordic":33333333333333333333333333333333333333333+33ty_max":null},"profile":{"dist_m":4e
+
+o4],"elev_m":[1800.0,1693.0,||/||1
