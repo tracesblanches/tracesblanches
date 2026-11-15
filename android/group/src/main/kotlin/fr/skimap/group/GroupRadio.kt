@@ -15,6 +15,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
+import android.os.Looper
 import android.os.ParcelUuid
 import android.util.Log
 import androidx.core.content.ContextCompat
@@ -69,6 +70,19 @@ class BleGroupRadio(
     private val pending = arrayOfNulls<ByteArray>(2)
     private val callbacks = Array(2) { SetCallback(it) }
     private var scanCallback: ScanCallback? = null
+    private val lock = Any()
+    private var closed = false
+
+    /** The advertising callbacks run on the main thread: they must come even after the service's thread is gone. */
+    private val callbackHandler = Handler(Looper.getMainLooper())
+
+    /** Advertising sets started or starting (instrumented test: 0 some time after [stop]). */
+    val activeSets: Int get() = synchronized(lock) { sets.count { it != null } + starting.count { it } }
+
+    /** Advertising sets the stack started (instrumented test). */
+    @Volatile
+    var startedSets = 0
+        private set
 
     private fun granted(p: String) = ContextCompat.checkSelfPermission(context, p) == PackageManager.PERMISSION_GRANTED
 
@@ -91,14 +105,25 @@ class BleGroupRadio(
             txPower: Int,
             status: Int,
         ) {
-            handler.post {
+            synchronized(lock) {
                 starting[index] = false
-                if (status == ADVERTISE_SUCCESS && set != null) {
-                    sets[index] = set
-                    // Data that came while the set was starting.
-                    pending[index]?.let { write(index, it) }
-                } else {
-                    Log.w(TAG, "group: advertising set $index failed ($status)")
+                if (status == ADVERTISE_SUCCESS && set != null) startedSets++
+                when {
+                    status != ADVERTISE_SUCCESS || set == null -> {
+                        Log.w(TAG, "group: advertising set $index failed ($status)")
+                    }
+
+                    // Stopped while it was starting: stopping it then is ignored by the stack
+                    // (not finished registration), and the set would advertise on.
+                    closed -> {
+                        stopSet(index)
+                    }
+
+                    else -> {
+                        sets[index] = set
+                        // Data that came while the set was starting.
+                        pending[index]?.let { write(index, it) }
+                    }
                 }
             }
         }
@@ -131,6 +156,17 @@ class BleGroupRadio(
     ) {
         if (!available) return
         val advertiser = adapter?.bluetoothLeAdvertiser ?: return
+        synchronized(lock) {
+            if (!closed) advertise(advertiser, own, relay)
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun advertise(
+        advertiser: android.bluetooth.le.BluetoothLeAdvertiser,
+        own: ByteArray?,
+        relay: ByteArray?,
+    ) {
         listOf(own, relay).forEachIndexed { i, frame ->
             if (frame == null) return@forEachIndexed
             pending[i] = frame
@@ -151,7 +187,7 @@ class BleGroupRadio(
                             .setTxPowerLevel(AdvertisingSetParameters.TX_POWER_HIGH)
                             .build()
                     try {
-                        advertiser.startAdvertisingSet(params, data(frame), null, null, null, callbacks[i], handler)
+                        advertiser.startAdvertisingSet(params, data(frame), null, null, null, callbacks[i], callbackHandler)
                     } catch (e: SecurityException) {
                         starting[i] = false
                         Log.w(TAG, "group: advertising permission", e)
@@ -226,16 +262,23 @@ class BleGroupRadio(
     @SuppressLint("MissingPermission")
     override fun stop() {
         stopScan()
-        val advertiser = adapter?.bluetoothLeAdvertiser
-        for (i in sets.indices) {
-            try {
-                if (sets[i] != null || starting[i]) advertiser?.stopAdvertisingSet(callbacks[i])
-            } catch (e: SecurityException) {
-                Log.w(TAG, "group: advertising permission", e)
+        synchronized(lock) {
+            closed = true
+            // Sets still starting are stopped when they have started.
+            for (i in sets.indices) {
+                if (sets[i] != null) stopSet(i)
+                sets[i] = null
+                pending[i] = null
             }
-            sets[i] = null
-            starting[i] = false
-            pending[i] = null
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun stopSet(index: Int) {
+        try {
+            adapter?.bluetoothLeAdvertiser?.stopAdvertisingSet(callbacks[index])
+        } catch (e: SecurityException) {
+            Log.w(TAG, "group: advertising permission", e)
         }
     }
 
