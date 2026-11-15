@@ -1,9 +1,10 @@
 //! Cards of the map features the user touches (refuges today, stations once the pack has
-//! them): a title, facts in French, phone numbers to dial, links, the source and the date
-//! of the information. One call per touch.
+//! them): a title, facts in the language of the app (French or English, VO6 #129; values
+//! from the sources stay as published), phone numbers to dial, links, the source and the
+//! date of the information. One call per touch.
 //!
 //! Station cards read a pack layer `stations` (GeoJSON points) whose properties follow the
-//! schema documented in `android/README.md` (crate `stations` to come): `name`,
+//! schema documented in `android/docs/telechargement.md` (crate `stations` to come): `name`,
 //! `emergency` (`[{label, phone}]`, 112 always shown first), `fee_outlets`
 //! (`[{name, address, phone}]`), `prices` (`[{label, price_eur, date}]`), `phones`
 //! (`[{label, phone}]`), `websites` (`[{label, url}]`), `source`, `updated`.
@@ -13,9 +14,9 @@ use serde_json::{Map, Value};
 /// One line of a card.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct Fact {
-    /// Label, French (`Places`).
+    /// Label in the language asked (`Places`).
     pub label: String,
-    /// Value, French (`16`).
+    /// Value (`16`); words of the source as published.
     pub value: String,
 }
 
@@ -42,7 +43,8 @@ pub struct Link {
 /// The card of a map feature.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct Card {
-    /// Kind, French (`Cabane non gardée`, `Station`).
+    /// Kind (`Cabane non gardée`, `Station`): the source's words, else in the language
+    /// asked.
     pub kind: String,
     /// Name.
     pub title: String,
@@ -58,16 +60,91 @@ pub struct Card {
     pub updated: Option<String>,
 }
 
+/// Language of the card labels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum Lang {
+    /// French.
+    Fr,
+    /// English (the default of the app outside French-speaking phones).
+    En,
+}
+
+/// English of every French label of the cards (labels and the app's own words; values
+/// from the sources are not translated).
+const EN: &[(&str, &str)] = &[
+    ("Refuge", "Hut"),
+    ("Gardiennage", "Warden"),
+    ("gardé", "wardened"),
+    ("non gardé", "not wardened"),
+    ("Places", "Beds"),
+    ("État", "Condition"),
+    ("poêle", "stove"),
+    ("cheminée", "fireplace"),
+    ("couvertures", "blankets"),
+    ("latrines", "latrines"),
+    ("Équipements", "Equipment"),
+    ("Eau à moins de 100 m", "Water within 100 m"),
+    ("oui", "yes"),
+    ("non", "no"),
+    ("Altitude", "Elevation"),
+    ("Accès", "Access"),
+    ("Dernier commentaire", "Latest comment"),
+    ("Remarque", "Note"),
+    ("Fiche refuges.info", "refuges.info page"),
+    ("Refuge sans nom", "Unnamed hut"),
+    ("Cabane non gardée", "Unwardened hut"),
+    ("Abri", "Shelter"),
+    ("Abri ou refuge", "Shelter or hut"),
+    ("Cheminée", "Fireplace"),
+    ("Payant", "Fee"),
+    ("Description", "Description"),
+    ("Téléphone", "Phone"),
+    ("Site web", "Website"),
+    ("Fiche OpenStreetMap", "OpenStreetMap page"),
+    ("Sans nom", "Unnamed"),
+    ("Gîte", "Lodge"),
+    ("Bivouac", "Bivouac"),
+    ("toujours accessible", "always open"),
+    ("accessible pendant le gardiennage", "open when wardened"),
+    ("clés à demander", "keys on request"),
+    ("jamais gardé", "never wardened"),
+    ("Places gardées", "Beds when wardened"),
+    ("Places hors gardiennage", "Beds when not wardened"),
+    ("Période d'accès", "Access period"),
+    ("chauffage", "heating"),
+    ("matelas", "mattresses"),
+    ("gaz", "gas"),
+    (
+        "Équipements hors gardiennage",
+        "Equipment when not wardened",
+    ),
+    ("Fiche Camptocamp", "Camptocamp page"),
+    ("Secours (urgence)", "Rescue (emergency)"),
+    ("Secours", "Rescue"),
+    ("Vente de la redevance", "Trail pass sold at"),
+    ("Point de vente", "Sales point"),
+    ("Tarif", "Price"),
+    ("Station", "Ski area"),
+];
+
+/// `fr` in `lang`.
+fn t(lang: Lang, fr: &'static str) -> &'static str {
+    match lang {
+        Lang::Fr => fr,
+        Lang::En => EN.iter().find(|(f, _)| *f == fr).map_or(fr, |(_, e)| *e),
+    }
+}
+
 /// Card of a feature of `pack_layer` from its properties (JSON object as given by the
-/// map). `None`: not a layer with cards.
+/// map), labels in `lang`. `None`: not a layer with cards.
 #[uniffi::export]
-pub fn feature_card(pack_layer: String, properties_json: String) -> Option<Card> {
+pub fn feature_card(pack_layer: String, properties_json: String, lang: Lang) -> Option<Card> {
     let props: Map<String, Value> = serde_json::from_str(&properties_json).ok()?;
     match pack_layer.as_str() {
-        "refuges-info" => Some(refuges_info(&props)),
-        "refuges-osm" => Some(refuges_osm(&props)),
-        "refuges-camptocamp" => Some(camptocamp(&props)),
-        "stations" => Some(station(&props)),
+        "refuges-info" => Some(refuges_info(&props, lang)),
+        "refuges-osm" => Some(refuges_osm(&props, lang)),
+        "refuges-camptocamp" => Some(camptocamp(&props, lang)),
+        "stations" => Some(station(&props, lang)),
         _ => None,
     }
 }
@@ -167,32 +244,42 @@ fn metres(v: Option<f64>) -> Option<String> {
     v.map(|m| format!("{} m", m.round()))
 }
 
-fn refuges_info(p: &Map<String, Value>) -> Card {
-    let kind = text(p.get("type_label")).unwrap_or_else(|| "Refuge".to_owned());
+fn refuges_info(p: &Map<String, Value>, l: Lang) -> Card {
+    let kind = text(p.get("type_label")).unwrap_or_else(|| t(l, "Refuge").to_owned());
     let mut facts = Vec::new();
     let guarded = kind.contains("gardé") && !kind.contains("non gardé");
     fact(
         &mut facts,
-        "Gardiennage",
-        Some(if guarded { "gardé" } else { "non gardé" }.to_owned()),
+        t(l, "Gardiennage"),
+        Some(
+            if guarded {
+                t(l, "gardé")
+            } else {
+                t(l, "non gardé")
+            }
+            .to_owned(),
+        ),
     );
     let places = num(p.get("places")).filter(|n| *n > 0.0);
     let mattress = num(p.get("places_mattress")).filter(|n| *n > 0.0);
     fact(
         &mut facts,
-        "Places",
+        t(l, "Places"),
         match (places, mattress) {
-            (Some(n), Some(m)) => Some(format!("{n}, dont {m} sur matelas")),
+            (Some(n), Some(m)) => Some(match l {
+                Lang::Fr => format!("{n}, dont {m} sur matelas"),
+                Lang::En => format!("{n}, {m} with mattresses"),
+            }),
             (Some(n), None) => Some(n.to_string()),
             _ => None,
         },
     );
-    fact(&mut facts, "État", text(p.get("state")));
+    fact(&mut facts, t(l, "État"), text(p.get("state")));
     let equipment: Vec<&str> = [
-        ("stove", "poêle"),
-        ("fireplace", "cheminée"),
-        ("blankets", "couvertures"),
-        ("latrines", "latrines"),
+        ("stove", t(l, "poêle")),
+        ("fireplace", t(l, "cheminée")),
+        ("blankets", t(l, "couvertures")),
+        ("latrines", t(l, "latrines")),
     ]
     .iter()
     .filter(|(k, _)| yes(p.get(*k)) == Some(true))
@@ -200,33 +287,34 @@ fn refuges_info(p: &Map<String, Value>) -> Card {
     .collect();
     fact(
         &mut facts,
-        "Équipements",
+        t(l, "Équipements"),
         (!equipment.is_empty()).then(|| equipment.join(", ")),
     );
     fact(
         &mut facts,
-        "Eau à moins de 100 m",
-        yes(p.get("water_100m")).map(|w| if w { "oui" } else { "non" }.to_owned()),
+        t(l, "Eau à moins de 100 m"),
+        yes(p.get("water_100m")).map(|w| if w { t(l, "oui") } else { t(l, "non") }.to_owned()),
     );
-    fact(&mut facts, "Altitude", metres(num(p.get("alt"))));
-    fact(&mut facts, "Accès", text(p.get("access")));
+    fact(&mut facts, t(l, "Altitude"), metres(num(p.get("alt"))));
+    fact(&mut facts, t(l, "Accès"), text(p.get("access")));
     if let Some(c) = nested(p, "last_comment") {
         let date = day(text(c.get("date")));
         fact(
             &mut facts,
             &format!(
-                "Dernier commentaire{}",
+                "{}{}",
+                t(l, "Dernier commentaire"),
                 date.map(|d| format!(" ({d})")).unwrap_or_default()
             ),
             text(c.get("text")),
         );
     }
-    fact(&mut facts, "Remarque", text(p.get("remark")));
+    fact(&mut facts, t(l, "Remarque"), text(p.get("remark")));
     let mut links = Vec::new();
-    link(&mut links, "Fiche refuges.info", text(p.get("url")));
+    link(&mut links, t(l, "Fiche refuges.info"), text(p.get("url")));
     Card {
         kind,
-        title: text(p.get("name")).unwrap_or_else(|| "Refuge sans nom".to_owned()),
+        title: text(p.get("name")).unwrap_or_else(|| t(l, "Refuge sans nom").to_owned()),
         facts,
         phones: Vec::new(),
         links,
@@ -235,42 +323,46 @@ fn refuges_info(p: &Map<String, Value>) -> Card {
     }
 }
 
-fn refuges_osm(p: &Map<String, Value>) -> Card {
+fn refuges_osm(p: &Map<String, Value>, l: Lang) -> Card {
     let tags = nested(p, "tags").unwrap_or_default();
     let kind = match text(p.get("kind")).as_deref() {
-        Some("alpine_hut") => "Refuge",
-        Some("wilderness_hut") => "Cabane non gardée",
-        Some("shelter") => "Abri",
-        _ => "Abri ou refuge",
+        Some("alpine_hut") => t(l, "Refuge"),
+        Some("wilderness_hut") => t(l, "Cabane non gardée"),
+        Some("shelter") => t(l, "Abri"),
+        _ => t(l, "Abri ou refuge"),
     }
     .to_owned();
     let mut facts = Vec::new();
-    fact(&mut facts, "Places", text(tags.get("beds")));
+    fact(&mut facts, t(l, "Places"), text(tags.get("beds")));
     fact(
         &mut facts,
-        "Cheminée",
-        yes(tags.get("fireplace")).map(|f| if f { "oui" } else { "non" }.to_owned()),
+        t(l, "Cheminée"),
+        yes(tags.get("fireplace")).map(|f| if f { t(l, "oui") } else { t(l, "non") }.to_owned()),
     );
-    fact(&mut facts, "Payant", text(tags.get("fee")));
-    fact(&mut facts, "Accès", text(tags.get("access")));
-    fact(&mut facts, "Altitude", metres(num(tags.get("ele"))));
-    fact(&mut facts, "Description", text(tags.get("description")));
+    fact(&mut facts, t(l, "Payant"), text(tags.get("fee")));
+    fact(&mut facts, t(l, "Accès"), text(tags.get("access")));
+    fact(&mut facts, t(l, "Altitude"), metres(num(tags.get("ele"))));
+    fact(
+        &mut facts,
+        t(l, "Description"),
+        text(tags.get("description")),
+    );
     let mut phones = Vec::new();
     if let Some(raw) = text(tags.get("phone")) {
-        phones_from(&raw, "Téléphone", &mut phones);
+        phones_from(&raw, t(l, "Téléphone"), &mut phones);
     }
     let mut links = Vec::new();
-    link(&mut links, "Site web", text(tags.get("website")));
-    if let (Some(t), Some(id)) = (text(p.get("osm_type")), text(p.get("osm_id"))) {
+    link(&mut links, t(l, "Site web"), text(tags.get("website")));
+    if let (Some(kind_osm), Some(id)) = (text(p.get("osm_type")), text(p.get("osm_id"))) {
         link(
             &mut links,
-            "Fiche OpenStreetMap",
-            Some(format!("https://www.openstreetmap.org/{t}/{id}")),
+            t(l, "Fiche OpenStreetMap"),
+            Some(format!("https://www.openstreetmap.org/{kind_osm}/{id}")),
         );
     }
     Card {
         kind,
-        title: text(tags.get("name")).unwrap_or_else(|| "Sans nom".to_owned()),
+        title: text(tags.get("name")).unwrap_or_else(|| t(l, "Sans nom").to_owned()),
         facts,
         phones,
         links,
@@ -279,25 +371,25 @@ fn refuges_osm(p: &Map<String, Value>) -> Card {
     }
 }
 
-fn camptocamp(p: &Map<String, Value>) -> Card {
+fn camptocamp(p: &Map<String, Value>, l: Lang) -> Card {
     let kind = match text(p.get("waypoint_type")).as_deref() {
-        Some("hut") => "Refuge",
-        Some("gite") => "Gîte",
-        Some("shelter") => "Abri",
-        Some("bivouac") => "Bivouac",
-        _ => "Refuge",
+        Some("hut") => t(l, "Refuge"),
+        Some("gite") => t(l, "Gîte"),
+        Some("shelter") => t(l, "Abri"),
+        Some("bivouac") => t(l, "Bivouac"),
+        _ => t(l, "Refuge"),
     }
     .to_owned();
     let mut facts = Vec::new();
     fact(
         &mut facts,
-        "Gardiennage",
+        t(l, "Gardiennage"),
         text(p.get("custodianship")).map(|c| {
             match c.as_str() {
-                "always_accessible" => "toujours accessible",
-                "accessible_when_wardened" => "accessible pendant le gardiennage",
-                "keys_needed" => "clés à demander",
-                "no_warden" => "jamais gardé",
+                "always_accessible" => t(l, "toujours accessible"),
+                "accessible_when_wardened" => t(l, "accessible pendant le gardiennage"),
+                "keys_needed" => t(l, "clés à demander"),
+                "no_warden" => t(l, "jamais gardé"),
                 other => other,
             }
             .to_owned()
@@ -305,20 +397,24 @@ fn camptocamp(p: &Map<String, Value>) -> Card {
     );
     fact(
         &mut facts,
-        "Places gardées",
+        t(l, "Places gardées"),
         text(p.get("capacity_staffed")),
     );
     fact(
         &mut facts,
-        "Places hors gardiennage",
+        t(l, "Places hors gardiennage"),
         text(p.get("capacity_unstaffed")),
     );
-    fact(&mut facts, "Période d'accès", text(p.get("access_period")));
+    fact(
+        &mut facts,
+        t(l, "Période d'accès"),
+        text(p.get("access_period")),
+    );
     let equipment: Vec<&str> = [
-        ("heating_unstaffed", "chauffage"),
-        ("blanket_unstaffed", "couvertures"),
-        ("mattress_unstaffed", "matelas"),
-        ("gas_unstaffed", "gaz"),
+        ("heating_unstaffed", t(l, "chauffage")),
+        ("blanket_unstaffed", t(l, "couvertures")),
+        ("mattress_unstaffed", t(l, "matelas")),
+        ("gas_unstaffed", t(l, "gaz")),
     ]
     .iter()
     .filter(|(k, _)| yes(p.get(*k)) == Some(true))
@@ -326,15 +422,19 @@ fn camptocamp(p: &Map<String, Value>) -> Card {
     .collect();
     fact(
         &mut facts,
-        "Équipements hors gardiennage",
+        t(l, "Équipements hors gardiennage"),
         (!equipment.is_empty()).then(|| equipment.join(", ")),
     );
-    fact(&mut facts, "Altitude", metres(num(p.get("elevation"))));
+    fact(
+        &mut facts,
+        t(l, "Altitude"),
+        metres(num(p.get("elevation"))),
+    );
     let mut links = Vec::new();
-    link(&mut links, "Fiche Camptocamp", text(p.get("url")));
+    link(&mut links, t(l, "Fiche Camptocamp"), text(p.get("url")));
     Card {
         kind,
-        title: text(p.get("title")).unwrap_or_else(|| "Sans nom".to_owned()),
+        title: text(p.get("title")).unwrap_or_else(|| t(l, "Sans nom").to_owned()),
         facts,
         phones: Vec::new(),
         links,
@@ -343,9 +443,9 @@ fn camptocamp(p: &Map<String, Value>) -> Card {
     }
 }
 
-fn station(p: &Map<String, Value>) -> Card {
+fn station(p: &Map<String, Value>, l: Lang) -> Card {
     let mut phones = vec![Phone {
-        label: "Secours (urgence)".to_owned(),
+        label: t(l, "Secours (urgence)").to_owned(),
         display: "112".to_owned(),
         dial: "112".to_owned(),
     }];
@@ -353,7 +453,7 @@ fn station(p: &Map<String, Value>) -> Card {
         if let Some(raw) = text(e.get("phone")) {
             phones_from(
                 &raw,
-                &text(e.get("label")).unwrap_or_else(|| "Secours".to_owned()),
+                &text(e.get("label")).unwrap_or_else(|| t(l, "Secours").to_owned()),
                 &mut phones,
             );
         }
@@ -367,11 +467,11 @@ fn station(p: &Map<String, Value>) -> Card {
             .flatten()
             .collect::<Vec<_>>()
             .join(", ");
-        fact(&mut facts, "Vente de la redevance", Some(what));
+        fact(&mut facts, t(l, "Vente de la redevance"), Some(what));
         if let Some(raw) = text(o.get("phone")) {
             phones_from(
                 &raw,
-                &text(o.get("name")).unwrap_or_else(|| "Point de vente".to_owned()),
+                &text(o.get("name")).unwrap_or_else(|| t(l, "Point de vente").to_owned()),
                 &mut phones,
             );
         }
@@ -381,10 +481,12 @@ fn station(p: &Map<String, Value>) -> Card {
         let date = day(text(pr.get("date")));
         fact(
             &mut facts,
-            &text(pr.get("label")).unwrap_or_else(|| "Tarif".to_owned()),
-            price.map(|p| match date {
-                Some(d) => format!("{p} (prix indicatif du {d})"),
-                None => format!("{p} (prix indicatif)"),
+            &text(pr.get("label")).unwrap_or_else(|| t(l, "Tarif").to_owned()),
+            price.map(|p| match (date, l) {
+                (Some(d), Lang::Fr) => format!("{p} (prix indicatif du {d})"),
+                (None, Lang::Fr) => format!("{p} (prix indicatif)"),
+                (Some(d), Lang::En) => format!("{p} (indicative price, {d})"),
+                (None, Lang::En) => format!("{p} (indicative price)"),
             }),
         );
     }
@@ -392,7 +494,7 @@ fn station(p: &Map<String, Value>) -> Card {
         if let Some(raw) = text(ph.get("phone")) {
             phones_from(
                 &raw,
-                &text(ph.get("label")).unwrap_or_else(|| "Téléphone".to_owned()),
+                &text(ph.get("label")).unwrap_or_else(|| t(l, "Téléphone").to_owned()),
                 &mut phones,
             );
         }
@@ -401,13 +503,13 @@ fn station(p: &Map<String, Value>) -> Card {
     for w in list(p, "websites") {
         link(
             &mut links,
-            &text(w.get("label")).unwrap_or_else(|| "Site web".to_owned()),
+            &text(w.get("label")).unwrap_or_else(|| t(l, "Site web").to_owned()),
             text(w.get("url")),
         );
     }
     Card {
-        kind: "Station".to_owned(),
-        title: text(p.get("name")).unwrap_or_else(|| "Station".to_owned()),
+        kind: t(l, "Station").to_owned(),
+        title: text(p.get("name")).unwrap_or_else(|| t(l, "Station").to_owned()),
         facts,
         phones,
         links,
@@ -440,6 +542,7 @@ mod tests {
                 "last_comment": "{\"date\": \"2026-02-03 10:00\", \"text\": \"Bois sec\"}",
                 "modified": "2025-12-01 08:00:00", "url": "https://www.refuges.info/point/1"}"#
                 .into(),
+            Lang::Fr,
         )
         .unwrap();
         assert_eq!(c.title, "Cabane du Lac");
@@ -470,6 +573,7 @@ mod tests {
                 "tags": {"name": "La Jaique", "phone": "+33 3 81 00 00 00; 06 00 00 00 00",
                          "website": "https://example.org", "ele": "1370"}}"#
                 .into(),
+            Lang::Fr,
         )
         .unwrap();
         assert_eq!(c.kind, "Refuge");
@@ -481,13 +585,13 @@ mod tests {
             "refuges-camptocamp".into(),
             r#"{"title": "Chalet Gaillard", "waypoint_type": "hut", "custodianship": "always_accessible",
                 "capacity_staffed": 19, "access_period": "Toute l'année", "url": "https://www.camptocamp.org/waypoints/552665"}"#
-                .into(),
+                .into(), Lang::Fr,
         )
         .unwrap();
         assert_eq!(c.facts[0].value, "toujours accessible");
         assert_eq!(c.facts[1].value, "19");
-        assert!(feature_card("pistes".into(), "{}".into()).is_none());
-        assert!(feature_card("refuges-info".into(), "not json".into()).is_none());
+        assert!(feature_card("pistes".into(), "{}".into(), Lang::Fr).is_none());
+        assert!(feature_card("refuges-info".into(), "not json".into(), Lang::Fr).is_none());
     }
 
     #[test]
@@ -500,7 +604,7 @@ mod tests {
                 "prices": [{"label": "Redevance journée", "price_eur": 9.5, "date": "2026-11-01"}],
                 "websites": [{"label": "Office de tourisme", "url": "https://example.org/ot"}],
                 "source": "Espace Nordique Jurassien", "updated": "2026-11-10"}"#
-                .into(),
+                .into(), Lang::Fr,
         )
         .unwrap();
         let dials: Vec<&str> = c.phones.iter().map(|p| p.dial.as_str()).collect();
@@ -509,5 +613,46 @@ mod tests {
         assert_eq!(c.facts[0].value, "Foyer de ski de fond, Village");
         assert_eq!(c.facts[1].value, "9,50 € (prix indicatif du 2026-11-01)");
         assert_eq!(c.updated.as_deref(), Some("2026-11-10"));
+    }
+
+    #[test]
+    fn english_labels() {
+        let props = r#"{"name": "Cabane du Lac", "type_label": "cabane non gardée", "places": 6,
+            "places_mattress": 4, "stove": true, "water_100m": true, "alt": 2012.4,
+            "last_comment": {"date": "2026-02-03", "text": "Bois sec"}}"#;
+        let c = feature_card("refuges-info".into(), props.into(), Lang::En).unwrap();
+        let labels: Vec<&str> = c.facts.iter().map(|f| f.label.as_str()).collect();
+        assert_eq!(
+            labels,
+            [
+                "Warden",
+                "Beds",
+                "Equipment",
+                "Water within 100 m",
+                "Elevation",
+                "Latest comment (2026-02-03)"
+            ]
+        );
+        assert_eq!(c.facts[0].value, "not wardened");
+        assert_eq!(c.facts[1].value, "6, 4 with mattresses");
+        assert_eq!(c.facts[3].value, "yes");
+        // Words of the source stay as published.
+        assert_eq!(c.kind, "cabane non gardée");
+        assert_eq!(c.facts[5].value, "Bois sec");
+        let s = feature_card(
+            "stations".into(),
+            r#"{"prices": [{"price_eur": 9.5}]}"#.into(),
+            Lang::En,
+        )
+        .unwrap();
+        assert_eq!(s.kind, "Ski area");
+        assert_eq!(s.phones[0].label, "Rescue (emergency)");
+        assert_eq!(s.facts[0].label, "Price");
+        assert_eq!(s.facts[0].value, "9,50 € (indicative price)");
+        // Every French label has its own English word.
+        let mut fr: Vec<&str> = EN.iter().map(|(f, _)| *f).collect();
+        fr.sort_unstable();
+        fr.dedup();
+        assert_eq!(fr.len(), EN.len());
     }
 }

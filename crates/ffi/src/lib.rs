@@ -1,33 +1,34 @@
 //! Android library of the core (K1, #51), exposed to Kotlin through UniFFI.
 //!
-//! The app never parses the pack itself: it lists the packs copied to its storage
-//! ([`list_packs`]), opens one with the phone-side reader of `skimap-pack`
-//! ([`open_pack`], [`PackHandle::info`]) and receives a complete MapLibre style
-//! ([`PackHandle::map_style`]): the basemap style of the pack with every URL made absolute
-//! (`pmtiles://file://…`, `file://…` glyphs and sprites) and the pack layers drawn on top
-//! (pistes with colour, shape, name and direction, piste status, refuges). The symbols the
-//! style refers to and the legend rows come from [`map_symbols`] and
-//! [`PackHandle::legend`], so colours and shapes are defined once, here.
+//! The app never parses the pack itself: it lists the packs of its storage
+//! ([`list_packs`]), opens one or several with the phone-side reader of `skimap-pack`
+//! ([`open_packs`]) and instantiates on them a style validated by the user (`styles/`,
+//! K15: [`style::instantiate`], [`PackSet::map_style`]). Cards of touched features
+//! ([`feature_card`]), the census of the nordic areas ([`Catalog`]) and the download and
+//! update of packs from the server ([`sync`]: plan, bundle check and install, state) are
+//! here too, in coarse calls.
 //!
-//! No network, no SQLite: the crate links the reader of `skimap-pack` without its
-//! `pipeline` feature.
+//! No HTTP and no SQLite in this crate: the app makes the requests (K2), this crate
+//! decides what to download and installs it with `skimap-pack` (without its `pipeline`
+//! feature).
 
 pub mod card;
 pub mod catalog;
+pub mod fees;
 pub mod info;
 pub mod style;
-pub mod symbols;
+pub mod sync;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use skimap_pack::Pack;
 
-pub use card::{Card, Fact, Link, Phone, feature_card};
+pub use card::{Card, Fact, Lang, Link, Phone, feature_card};
 pub use catalog::{Catalog, Domain, DomainDistance, PackStatus};
-pub use info::{BasemapInfo, Bounds, OverlayInfo, PackEntry, PackInfo, StatusSummary};
-pub use style::MapStyle;
-pub use symbols::{LegendEntry, MapSymbol, SymbolShape};
+pub use fees::{FeePrice, FeeZone};
+pub use info::{BasemapInfo, Bounds, PackEntry, PackInfo, StatusSummary};
+pub use style::{LayerGroup, LegendEntry, LegendKind, MapStyle, OverlayLayers};
 
 uniffi::setup_scaffolding!();
 
@@ -45,12 +46,6 @@ pub enum PackError {
     Invalid {
         /// What is wrong (`message` would clash with `Exception.message` in Kotlin).
         detail: String,
-    },
-    /// Basemap identifier not in the pack.
-    #[error("no basemap {id:?} in the pack")]
-    UnknownBasemap {
-        /// Identifier asked for.
-        id: String,
     },
 }
 
@@ -77,53 +72,11 @@ pub fn list_packs(root: String) -> Vec<PackEntry> {
     info::list_packs(Path::new(&root))
 }
 
-/// Everything the app needs to show a pack, in one call across the FFI (calls are coarse:
-/// one per pack opened, one per basemap switch).
-#[derive(Debug, uniffi::Record)]
-pub struct PackView {
-    /// The opened pack, for later calls ([`PackHandle::map_style`]).
-    pub handle: Arc<PackHandle>,
-    /// Summary of the pack.
-    pub info: PackInfo,
-    /// Style with `basemap` (or the first basemap).
-    pub style: MapStyle,
-    /// Legend rows.
-    pub legend: Vec<LegendEntry>,
-    /// Symbols the style refers to.
-    pub symbols: Vec<MapSymbol>,
-    /// [`core_version`], shown with the pack sources.
-    pub core_version: String,
-}
-
-/// Opens the pack in `dir` and composes its style with `basemap` (`None`: the first one).
-#[uniffi::export]
-pub fn open_pack(dir: String, basemap: Option<String>) -> Result<PackView, PackError> {
-    let handle = Arc::new(PackHandle::open(PathBuf::from(dir))?);
-    let style = handle.map_style(basemap)?;
-    Ok(PackView {
-        info: handle.info(),
-        legend: handle.legend(),
-        symbols: map_symbols(),
-        core_version: core_version(),
-        style,
-        handle,
-    })
-}
-
-/// Symbols (images) the map style refers to; the app draws them and registers them under
-/// [`MapSymbol::id`] before the style loads.
-#[uniffi::export]
-pub fn map_symbols() -> Vec<MapSymbol> {
-    symbols::map_symbols()
-}
-
 /// An opened pack.
-#[derive(Debug, uniffi::Object)]
+#[derive(Debug)]
 pub struct PackHandle {
     pack: Pack,
     info: PackInfo,
-    /// Piste name points, computed once (reused by every basemap switch).
-    labels: Option<serde_json::Value>,
 }
 
 impl PackHandle {
@@ -139,51 +92,33 @@ impl PackHandle {
         }
         let pack = Pack::open(dir)?;
         let info = info::summarise(&pack)?;
-        let labels = if info.overlays.iter().any(|o| o.id == "pistes") {
-            Some(style::piste_labels(&pack)?)
-        } else {
-            None
-        };
-        Ok(Self { pack, info, labels })
+        Ok(Self { pack, info })
     }
 
     /// The reader of `skimap-pack` behind this handle.
     pub fn pack(&self) -> &Pack {
         &self.pack
     }
-}
 
-#[uniffi::export]
-impl PackHandle {
-    /// Summary of the pack: site, validity, basemaps, overlays, piste status, attributions.
-    pub fn info(&self) -> PackInfo {
-        self.info.clone()
-    }
-
-    /// Complete MapLibre style: `basemap` (or the first basemap of the pack when `None`; a
-    /// plain snow-white background when the pack has none) with the pack layers on top.
-    pub fn map_style(&self, basemap: Option<String>) -> Result<MapStyle, PackError> {
-        style::compose(&self.pack, basemap.as_deref(), self.labels.as_ref())
-    }
-
-    /// Legend rows of the layers drawn by [`PackHandle::map_style`] for this pack.
-    pub fn legend(&self) -> Vec<LegendEntry> {
-        symbols::legend(&self.info)
+    /// Summary of the pack: site, validity, basemaps, piste status, attributions.
+    pub fn info(&self) -> &PackInfo {
+        &self.info
     }
 }
 
 /// Identifier of the free mode in style names and in [`PackInfo::site_id`].
 pub const FREE_MODE_ID: &str = "libre";
 
-/// Several packs shown together (free mode: everything installed in the frame), or one
-/// (area mode). One call opens them all, one call per basemap switch.
+/// Several packs shown together (free mode: everything installed), or one (area mode).
+/// One call opens them all, one call per style switch (practice, theme, guidance).
 #[derive(Debug, uniffi::Object)]
 pub struct PackSet {
     handles: Vec<PackHandle>,
     info: PackInfo,
+    free: bool,
 }
 
-/// [`PackView`] of a [`PackSet`].
+/// What [`open_packs`] returns.
 #[derive(Debug, uniffi::Record)]
 pub struct PackSetView {
     /// The opened packs, for later calls ([`PackSet::map_style`]).
@@ -191,20 +126,22 @@ pub struct PackSetView {
     /// Summary: the pack itself when there is one, else the packs merged
     /// ([`info::merge`]).
     pub info: PackInfo,
-    /// Style with `basemap` (or the first basemap of the first pack).
+    /// `style_json` instantiated on the packs.
     pub style: MapStyle,
-    /// Legend rows.
-    pub legend: Vec<LegendEntry>,
-    /// Symbols the style refers to.
-    pub symbols: Vec<MapSymbol>,
     /// [`core_version`].
     pub core_version: String,
 }
 
-/// Opens the packs in `dirs` together. Packs that do not open are skipped when at least one
-/// opens (the error of the first one is returned otherwise).
+/// Opens the packs in `dirs` together and instantiates `style_json` (a style of
+/// `styles/`) on them. `free`: free mode, named `libre` even with a single pack. Packs that
+/// do not open are skipped when at least one opens (the error of the first one is
+/// returned otherwise).
 #[uniffi::export]
-pub fn open_packs(dirs: Vec<String>, basemap: Option<String>) -> Result<PackSetView, PackError> {
+pub fn open_packs(
+    dirs: Vec<String>,
+    style_json: String,
+    free: bool,
+) -> Result<PackSetView, PackError> {
     let mut handles = Vec::new();
     let mut first_error = None;
     for d in dirs {
@@ -221,17 +158,19 @@ pub fn open_packs(dirs: Vec<String>, basemap: Option<String>) -> Result<PackSetV
         }));
     }
     let infos: Vec<PackInfo> = handles.iter().map(|h| h.info.clone()).collect();
-    let info = if infos.len() == 1 {
+    let info = if infos.len() == 1 && !free {
         infos[0].clone()
     } else {
         info::merge(&infos, FREE_MODE_ID)
     };
-    let set = Arc::new(PackSet { handles, info });
-    let style = set.map_style(basemap)?;
+    let set = Arc::new(PackSet {
+        handles,
+        info,
+        free,
+    });
+    let style = set.map_style(style_json)?;
     Ok(PackSetView {
         info: set.info.clone(),
-        legend: set.legend(),
-        symbols: map_symbols(),
         core_version: core_version(),
         style,
         set,
@@ -240,19 +179,21 @@ pub fn open_packs(dirs: Vec<String>, basemap: Option<String>) -> Result<PackSetV
 
 #[uniffi::export]
 impl PackSet {
-    /// Style of every pack of the set with `basemap`.
-    pub fn map_style(&self, basemap: Option<String>) -> Result<MapStyle, PackError> {
-        let parts: Vec<(&Pack, Option<&serde_json::Value>)> = self
-            .handles
-            .iter()
-            .map(|h| (&h.pack, h.labels.as_ref()))
-            .collect();
-        style::compose_set(&parts, basemap.as_deref(), &self.info.site_id)
+    /// `style_json` (a style of `styles/`) instantiated on every pack of the set.
+    pub fn map_style(&self, style_json: String) -> Result<MapStyle, PackError> {
+        let packs: Vec<&Pack> = self.handles.iter().map(|h| &h.pack).collect();
+        let name = if self.free {
+            FREE_MODE_ID
+        } else {
+            &self.info.site_id
+        };
+        style::instantiate(&style_json, &packs, name)
     }
 
-    /// Legend rows of the layers of the set.
-    pub fn legend(&self) -> Vec<LegendEntry> {
-        symbols::legend(&self.info)
+    /// Trail-pass zones of the packs of the set (H2), one per pass.
+    pub fn fee_zones(&self) -> Result<Vec<FeeZone>, PackError> {
+        let packs: Vec<&Pack> = self.handles.iter().map(|h| &h.pack).collect();
+        fees::fee_zones(&packs)
     }
 
     /// Number of packs in the set.
