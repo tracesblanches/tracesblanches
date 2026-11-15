@@ -1261,3 +1261,15 @@ tickets:
     Zones de validité des redevances (« zones forfait ») : pour chaque titre (redevance d'un site, d'un regroupement comme l'Espace nordique jurassien, Nordic Pass départemental, régional ou national), l'emprise et les pistes couvertes, avec prix indicatifs datés (H1). La carte montre où ton titre est valable, et signale une piste d'un autre domaine ou hors de ta redevance avant que tu ne t'y engages ; à l'inverse, elle montre les pistes accessibles avec ton titre que tu aurais pu manquer.
     Packs : téléchargement par zone (cadre ou massif) couvrant plusieurs domaines d'un coup, sans doublon de données communes.
     Critère : Jura (redevance ENJ et Nordic Pass) et Haut-Doubs vérifiés à la main ; une sortie qui franchit deux domaines affichée et annoncée correctement.
+
+- key: SR1
+  title: Difficulté d'un tracé SRN et conseils
+  milestone: M3 Client v1
+  labels: [algo, planifier]
+  deps: [C3, P5, G5]
+  body: |
+    Pour tout tracé SRN (itinéraire publié, tracé dessiné ou calculé hors piste) : une difficulté claire (facile, moyen, difficile, très difficile) avec ses raisons, et des conseils.
+    Facteurs : pentes en montée et en descente le long du tracé (répartition, passages les plus raides, longueur des passages), descente en forêt dense ou étroite (hauteur de canopée LiDAR), dénivelé et longueur, part de plat, éloignement d'une sortie ou d'une route, zones sans réseau, exposition aux avalanches et zones protégées, orientation et altitude (neige, vent), et conditions du jour quand elles sont connues (neige fraîche à tracer, croûte, regel).
+    Conseils : peaux courtes ou écailles selon les montées, technique de descente (chasse-neige, conversion) selon les pentes, glisse si long plat, passages à éviter, demi-tour conseillé, équipement.
+    Calibrage sur des tracés cotés par des sources publiées (Camptocamp, topos SRN, parcs) avec évaluation séparée par itinéraire ; règles lisibles avant tout modèle opaque ; jamais « facile » pour un tracé qui traverse une zone exposée aux avalanches.
+    Critère : cotation et conseils relus à la main sur 20 tracés variés (GTJ, Vercors, Queyras, Vosges, Jura), accord mesuré avec les cotations publiées.
