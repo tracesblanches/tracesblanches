@@ -583,22 +583,23 @@ tickets:
     Critère : plan créé et suivi sur le terrain.
 
 - key: S2
-  title: Service d'alerte en cas de non-retour
+  title: Minuterie de non-retour côté serveur (complément facultatif)
   milestone: M3 Client v1
   labels: [serveur, sécurité]
-  deps: [S0]
+  deps: [S0, K10]
   body: |
-    Minuterie côté serveur ; canal à décider (notification, e-mail, SMS) et son coût. L'alerte part même si le téléphone est mort.
-    Critère : décision du canal ; alerte de test reçue par un contact.
+    Règle de l'utilisateur : tout ce qui est critique tourne sur le téléphone, sans internet. Ce service n'est qu'un complément facultatif de K10, pour le seul cas où le téléphone ne peut plus rien envoyer (batterie morte, froid, casse, ensevelissement) : le plan déposé au départ, quand il y a du réseau, déclenche l'alerte au contact si le retour n'est pas confirmé. L'app fonctionne entièrement sans lui.
+    Critère : alerte de test reçue par un contact ; surveillance qui signale une minuterie arrêtée.
 
 - key: K10
-  title: Plan de sortie partagé
+  title: Plan de sortie partagé et alerte de non-retour sur le téléphone
   milestone: M3 Client v1
   labels: [client, sécurité]
-  deps: [K9, S2]
+  deps: [K9, J1]
   body: |
-    Itinéraire, heure de retour, contact ; confirmation de retour (F19).
-    Critère : scénario de non-retour testé de bout en bout.
+    Tout sur le téléphone, sans internet. Au départ, le plan de journée (itinéraire, heure de retour prévue, consigne « sans nouvelles à telle heure, appeler le 112 ») est envoyé au contact par SMS ou message, depuis l'app de messagerie pré-remplie : le contact sert de minuterie, sans aucun serveur. Pendant la sortie : position envoyée par SMS quand du réseau GSM passe (le SMS passe là où les données ne passent pas), confirmation de retour envoyée à l'arrivée, rappel local si l'heure de retour approche. Appel du 112 en un geste (F19).
+    À vérifier : règle Google Play sur la permission SEND_SMS (réservée aux apps SMS par défaut, sauf exceptions) ; sans elle, chaque envoi demande un appui ; SOS par satellite absent du Pixel 8.
+    Critère : scénario de non-retour testé de bout en bout en mode avion puis avec réseau intermittent.
 
 - key: S1
   title: Service OAuth Strava
