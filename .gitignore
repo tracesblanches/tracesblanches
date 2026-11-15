@@ -12,3 +12,6 @@ target/
 
 # Worktrees des agents
 .claude/worktrees/
+
+# Claude Code worktrees and local state
+/.claude/
