@@ -26,11 +26,13 @@
 pub mod course;
 pub mod error;
 pub mod fallback;
+pub mod gps;
 pub mod guidance;
 pub mod line;
 pub mod phrases;
 pub mod plan;
 pub mod presets;
+pub mod session;
 pub mod speech;
 pub mod track;
 
