@@ -204,8 +204,25 @@ fn tif_meta(
 }
 
 /// Builds the layer of a site: needs the `terrain` and `pistes` layers; downloads the
-/// LiDAR HD MNH and, in the Hautes-Alpes, the DDT 05 CLPA through the shared downloader.
+/// LiDAR HD MNH and, in the Hautes-Alpes with `personal_sources` of the environment
+/// configuration (`SKIMAP_PERSONAL_SOURCES`, as the command line), the DDT 05 CLPA
+/// through the shared downloader. See [`build_with`].
 pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<ExposureSummary> {
+    let personal = skimap_common::config::Config::from_env()?.personal_sources;
+    build_with(site, layout, dl, personal)
+}
+
+/// [`build`] with an explicit `personal_sources`. The CLPA is personal use only (INRAE;
+/// the DDT 05's right to republish it is not confirmed, docs/licences-donnees.md):
+/// without the option the layer is the model alone, no CLPA is read, fused nor
+/// validated against; with it the CLPA footprints are fused (never « peu exposé » inside
+/// a known footprint) and the layer is marked personal use only by its CLPA source.
+pub fn build_with(
+    site: &Site,
+    layout: &DataLayout,
+    dl: &Downloader,
+    personal_sources: bool,
+) -> Result<ExposureSummary> {
     let dir = layout.layer_dir(site, LAYER)?;
     DataLayout::ensure(&dir)?;
     let (lines, pistes_source) = read_pistes(layout, site)?;
@@ -224,6 +241,7 @@ pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<Exposu
         &lines,
         pistes_source,
         t_in,
+        personal_sources,
     )?;
     let mut summary = summary;
     summary.io_seconds.1 = t0.elapsed().as_secs_f64();
@@ -241,6 +259,7 @@ fn write_layer(
     lines: &[PisteLine],
     pistes_source: SourceRef,
     t_in: f64,
+    personal_sources: bool,
 ) -> Result<ExposureSummary> {
     // Validation of the model alone against the CLPA (P18), then the CLPA footprints are
     // fused into the user classes (never « peu exposé » inside a known footprint).
@@ -256,9 +275,14 @@ fn write_layer(
     let all: Vec<&PisteLine> = lines.iter().collect();
     let mut exposure = m.exposure.clone();
     let mut clpa_source = None;
-    let (clpa_model, clpa_fused, clpa_raised) = match validation::clpa_footprints(site, dl)? {
+    let footprints = if personal_sources {
+        validation::clpa_footprints(site, dl)?
+    } else {
+        None
+    };
+    let (clpa_model, clpa_fused, clpa_raised) = match footprints {
         Some((polys, src)) => {
-            clpa_source = Some(src);
+            clpa_source = Some(src.personal_use_only());
             let before = validation::validate(m, &m.exposure, &polys, &nordic, &all)?;
             let raised = validation::fuse_clpa(&mut exposure, &polys);
             let after = validation::validate(m, &exposure, &polys, &nordic, &all)?;
@@ -278,6 +302,12 @@ fn write_layer(
         bytes,
         "255",
     ));
+    // The model alone, kept for the diagnostic only when the fusion changed cells; a
+    // previous fused build never lingers.
+    let model_path = dir.join(files::EXPOSURE_MODEL);
+    if clpa_raised == 0 && model_path.exists() {
+        std::fs::remove_file(&model_path).map_err(|e| skimap_common::Error::io(&model_path, e))?;
+    }
     if clpa_raised > 0 {
         let p = dir.join(files::EXPOSURE_MODEL);
         let bytes = raster::write_u8(&p, &m.exposure)?;
@@ -420,7 +450,11 @@ fn write_layer(
     notes.extend([
         "Jamais « sûr » ni « sans danger » : les trois classes sont « terrain peu exposé (modèle) », « exposé », « très exposé ».".to_owned(),
         format!("Très exposé = classes ATES 3 et 4 du classifieur dev8 ; peu exposé = classes 0 et 1 à plus de {LOW_MARGIN_M} m de toute cellule atteinte par l'écoulement rare (α = 18°) et de toute zone de départ rare avant tamisage ; exposé = le reste."),
-        "Dans les Hautes-Alpes, les cellules dans une emprise CLPA (DDT 05) passent au moins en « exposé » : une avalanche connue n'est jamais affichée « peu exposé ». La validation P18 (clpa_model du résumé) mesure le modèle seul, avant cette fusion.".into(),
+        if personal_sources {
+            "Dans les Hautes-Alpes, les cellules dans une emprise CLPA (DDT 05) passent au moins en « exposé » : une avalanche connue n'est jamais affichée « peu exposé ». La validation P18 (clpa_model du résumé) mesure le modèle seul, avant cette fusion. CLPA à usage personnel : couche marquée usage personnel.".to_owned()
+        } else {
+            "Sortie du modèle seul : la CLPA (usage personnel, INRAE ; republication par la DDT 05 non confirmée) n'est ni lue ni fusionnée sans l'option personal_sources.".to_owned()
+        },
         "Zones de départ : pente (Horn, comme GDAL), abri au vent (médiane des angles sur 60 m), forêt ; logique floue et seuils des valeurs ISSW 2026 d'AutoATES v3.0, sans rugosité ; tamis de 1000 m² (algorithme de gdal_sieve).".into(),
         "Écoulement : Flow-Py (com4FlowPy, moteur Numba porté opération par opération), α = 30° (fréquent) et 18° (rare), exposant 8, seuil de flux 0,003, z_delta ≤ 270 m, frottement et détraînement en forêt (forestDetrainment).".into(),
         "Forêt : cellule « arbre » si la hauteur de canopée du MNH LiDAR HD à 5 m est ≥ 3 m ; couvert = part des cellules « arbre » sur 3 × 3 cellules (15 m). Choix non calibrés.".into(),

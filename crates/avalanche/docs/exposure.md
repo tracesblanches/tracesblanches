@@ -27,7 +27,18 @@ Portage Rust d'AutoATES v3.0 (instantané ISSW 2026, MIT, commit `5558c16`) et d
 3. **Écoulement** (`flowpy`) : Flow-Py (D'Amboise et al. 2022), routage par cellule de départ avec persistance et exposant 8, arrêt sur la ligne d'énergie d'angle α = 30° (fréquent) ou 18° (rare), z_delta ≤ 270 m, frottement ajouté (5° à 52°) et détraînement en forêt. Choisi plutôt qu'un cône d'angle alpha seul : le cône du rapport 07 est un majorant qui ignore le terrain intermédiaire (100 % des pistes de Cervières atteignables à 18°) ; Flow-Py est le modèle d'écoulement d'AutoATES v2 et v3, ce qui rend la comparaison cellule par cellule possible. Parallèle (rayon, un chemin par cellule de départ, maxima par opérations atomiques exactes).
 4. **Classes ATES 0–4** (`ates`) : classifieur dev8 (votes, planchers, score de classe 0, unité minimale de cartographie).
 5. **Trois classes** : très exposé = ATES 3–4 ; peu exposé = ATES 0–1 à plus de 10 m de toute cellule atteinte par l'écoulement rare et de toute zone de départ rare (avant tamis) ; exposé = le reste. La classe 0 de la référence peut tomber dans une zone d'écoulement (rapport 07) : la règle l'interdit.
-6. **Fusion CLPA** (Hautes-Alpes) : toute cellule dans une emprise CLPA passe au moins en « exposé ». La validation P18 mesure le modèle seul, avant cette fusion.
+6. **Fusion CLPA** (Hautes-Alpes, **avec `personal_sources` seulement**) : toute cellule dans une emprise CLPA passe au moins en « exposé ». La validation P18 mesure le modèle seul, avant cette fusion. La CLPA d'INRAE est réservée à un usage personnel et le droit de la DDT 05 de la republier n'est pas confirmé (docs/licences-donnees.md : « Usage personnel seulement, tant qu'il n'y a pas d'accord écrit : […] CLPA et EPA d'INRAE ») : sans l'option, `build_with(…, false)` ne lit pas la CLPA, la couche est la sortie du modèle seul ; avec l'option, la source DDT 05 est marquée `personal_use_only` et le pack public écarte la couche et ce qui en dérive. `build` lit l'option dans l'environnement (`SKIMAP_PERSONAL_SOURCES`, comme la ligne de commande).
+
+   Effet mesuré (15/11/2026, mêmes entrées) :
+
+   | | Cervières sans CLPA | avec CLPA | Chapelle-des-Bois (pas de CLPA) |
+   |---|---|---|---|
+   | terrain peu exposé (modèle) | 9,50 % | 9,32 % | 86,17 % |
+   | exposé | 51,65 % | 51,83 % | 13,73 % |
+   | très exposé | 38,85 % | 38,85 % | 0,11 % |
+   | cellules relevées par la CLPA | 0 | 18 737 (0,47 km²) | 0 |
+
+   Sans la CLPA, 1,68 % de la surface des emprises CLPA de Cervières reste affichée « terrain peu exposé (modèle) » (validation P18 du modèle seul, `exposure-validation.md`) : limite du pack public, à lever par l'accord de la DDT 05.
 
 ## Oracle (P16) : l'implémentation de référence
 

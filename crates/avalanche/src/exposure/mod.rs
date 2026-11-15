@@ -13,7 +13,7 @@ pub mod raster;
 pub mod segments;
 pub mod validation;
 
-pub use build::{ExposureSummary, build, read_exposure_grid};
+pub use build::{ExposureSummary, build, build_with, read_exposure_grid};
 
 use std::path::{Path, PathBuf};
 
