@@ -1166,3 +1166,15 @@ tickets:
     Kotlin : rien ne tourne écran éteint hors du service de localisation et de l'audio ; aucune scrutation ni minuterie de fond ; coroutines sur le bon dispatcher ; Compose stable (recompositions comptées), R8, profils de référence, aucune allocation dans le chemin d'un fix ; appel du noyau par lots plutôt que par fix si les fixes arrivent par lots.
     Mesure : Macrobenchmark et Microbenchmark Jetpack, Perfetto avec les rails d'énergie (ODPM) du Pixel 8, budget par heure de sortie écran éteint, régression bloquante en CI quand elle est mesurable.
     Critère : budget d'énergie par mode (poche, approche, interaction, pause) mesuré sur le Pixel, comparé au coût du GPS seul.
+
+- key: E2
+  title: Mode préparation sur le téléphone et mode ski de plusieurs jours
+  milestone: M3 Client v1
+  labels: [client, planifier]
+  deps: [J1, E1, K2]
+  body: |
+    Règle de répartition : chaque calcul tourne là où ses entrées sont les plus petites. Serveur : ce qui part de grosses données brutes ou sert tout le monde (LiDAR, OSM, avalanches, interrogation des sources). Téléphone : ce qui est personnel, ou dérivé à bas coût de petites entrées quotidiennes.
+    Mode préparation (en charge, Wi-Fi, WorkManager avec contraintes) : plans de journée pour les jours du séjour avec les prévisions J+1 à J+3, boucles et plans B selon tes préférences, temps estimés recalibrés sur tes sorties, routage hors piste, éventuellement neige du jour projetée sur place à partir des données par massif (quelques Ko au lieu d'un raster), synthèse des noms non prévus.
+    Mode ski (plusieurs jours, sans réseau possible) : aucun calcul lourd, plans déjà prêts, âge de chaque info affiché, prévisions périmées signalées.
+    Pas de calcul réparti entre téléphones d'utilisateurs : le calcul serveur total reste petit et vérifier des résultats venus de tiers coûterait plus cher.
+    Critère : séjour de 3 jours simulé en mode avion après une préparation ; temps et énergie de la préparation mesurés sur le Pixel en charge ; température du téléphone suivie.
