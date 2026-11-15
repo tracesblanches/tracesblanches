@@ -350,14 +350,14 @@ fn fee_zones_over_the_packs() {
     assert_eq!(zones[0].kind, "site");
     assert_eq!(zones[1].prices[0].price_eur, 240.0);
     assert_eq!(zones[1].prices[0].date.as_deref(), Some("2026-11-01"));
-    // No style draws the layer yet: no style layer reads it.
+    // The validated styles draw the layer (group `redevance`): its source points into the pack.
     let v: Value = serde_json::from_str(&view.style.json).unwrap();
     assert!(
         v["sources"]
             .as_object()
             .unwrap()
             .values()
-            .all(|s| !s["data"].as_str().unwrap_or("").contains("fee-zones"))
+            .any(|s| s["data"].as_str().unwrap_or("").contains("fee-zones"))
     );
 }
 
@@ -627,16 +627,35 @@ fn real_packs_with_every_style() {
             let n = check_urls(&v, &[&dir]);
             check_layers(&v);
             let original: Value = serde_json::from_str(&style_json(name)).unwrap();
-            assert_eq!(
-                v["layers"].as_array().unwrap().len(),
-                original["layers"].as_array().unwrap().len(),
-                "{site} {name}: every layer of the style kept"
-            );
-            assert!(
-                view.style.missing.is_empty(),
-                "{site} {name}: {:?}",
-                view.style.missing
-            );
+            // Every layer is kept, except those of a source the style declares optional
+            // (`skimap:optional_sources`) and the pack does not have.
+            let optional: Vec<&str> = original["metadata"]["skimap:optional_sources"]
+                .as_array()
+                .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
+                .unwrap_or_default();
+            let kept: std::collections::HashSet<&str> = v["layers"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(|l| l["id"].as_str())
+                .collect();
+            for l in original["layers"].as_array().unwrap() {
+                let id = l["id"].as_str().unwrap();
+                if !kept.contains(id) {
+                    let src = l["source"].as_str().unwrap_or("");
+                    assert!(
+                        optional.contains(&src),
+                        "{site} {name}: layer {id} dropped but its source {src} is not optional"
+                    );
+                }
+            }
+            let missing: Vec<&String> = view
+                .style
+                .missing
+                .iter()
+                .filter(|m| !optional.iter().any(|o| m.ends_with(&format!(": {o}"))))
+                .collect();
+            assert!(missing.is_empty(), "{site} {name}: {missing:?}");
             let t = Instant::now();
             let again = view.set.map_style(style_json(name)).unwrap();
             let restyle_ms = t.elapsed().as_secs_f64() * 1e3;
