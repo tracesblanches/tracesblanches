@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">skimap</string>
+    <string name="map_shown">Carte de %1$s, %2$s, affichée</string>
+    <string name="map_loading">Carte de %1$s, %2$s, en cours d\'affichage</string>
+    <string name="map_drawing">Affichage de la carte…</string>
+    <string name="credits">Sources et licences des données</string>
+    <string name="recenter">Vue auto : recentrer sur %1$s</string>
+    <string name="map_and_legend">Carte et légende</string>
+    <string name="sheet_title">Carte et légende</string>
+    <string name="sheet_site">Domaine</string>
+    <string name="choose_domain">Choisir un domaine en France</string>
+    <string name="mode_free">Tout afficher (mode libre)</string>
+    <string name="mode_area">Un domaine : %1$s</string>
+    <string name="domains_title">Domaines nordiques de France</string>
+    <string name="domains_search">Rechercher un domaine ou une commune</string>
+    <string name="domains_nearest">Domaines les plus proches</string>
+    <string name="domains_locating">Recherche de la position…</string>
+    <string name="domains_no_position">Position indisponible : autorisez la localisation ou cherchez par nom.</string>
+    <string name="domain_installed">Pack installé : toucher pour l\'ouvrir</string>
+    <string name="domain_available">Pack disponible au téléchargement (bientôt)</string>
+    <string name="domain_not_built">Pack pas encore construit</string>
+    <string name="domain_distance">à %1$s km</string>
+    <string name="domain_km">%1$s km de pistes</string>
+    <string name="sheet_basemap">Fond de carte</string>
+    <string name="sheet_legend">Légende</string>
+    <string name="sheet_layers">Couches</string>
+    <string name="card_call">Appeler : %1$s, %2$s</string>
+    <string name="card_source_dated">Source : %1$s · information du %2$s</string>
+    <string name="layers_always">Toujours affichés, pour la sécurité : pistes, difficulté, sens unique et état (fermée, ouverte).</string>
+    <string name="sheet_sources">Licences des données</string>
+    <string name="sheet_pack">Pack %1$s · ouvert en %2$d ms · %3$s</string>
+    <string name="close">Fermer</string>
+    <string name="loading">Ouverture du pack…</string>
+    <string name="no_pack_title">Aucun pack sur ce téléphone</string>
+    <string name="no_pack_body">Copiez le dossier d\'un pack avec adb depuis l\'ordinateur, puis touchez « Chercher à nouveau ».</string>
+    <string name="no_pack_dir">Dossier des packs :</string>
+    <string name="unreadable_pack">Pack illisible : %1$s</string>
+    <string name="retry">Chercher à nouveau</string>
+    <string name="failed_title">Ce pack ne s\'ouvre pas</string>
+    <string name="choose_other">Ouvrir un autre pack</string>
+    <string name="personal_sources">Ce pack contient des données à usage personnel (état des pistes, météo) : ne le partagez pas.</string>
+    <plurals name="domains_count">
+        <item quantity="one">%1$d domaine affiché sur %2$d</item>
+        <item quantity="many">%1$d domaines affichés sur %2$d</item>
+        <item quantity="other">%1$d domaines affichés sur %2$d</item>
+    </plurals>
+    <plurals name="domains_map">
+        <item quantity="one">Carte de France de %1$d domaine nordique : carrés, packs installés ; points, autres domaines</item>
+        <item quantity="many">Carte de France des %1$d domaines nordiques : carrés, packs installés ; points, autres domaines</item>
+        <item quantity="other">Carte de France des %1$d domaines nordiques : carrés, packs installés ; points, autres domaines</item>
+    </plurals>
+</resources>

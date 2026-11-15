@@ -1,0 +1,13 @@
+# Gradle, Kotlin and Android Studio
+.gradle/
+.kotlin/
+build/
+local.properties
+.idea/
+*.iml
+captures/
+# Generated, never versioned: Rust libraries, APKs and bundles, packs
+*.so
+*.apk
+*.aab
+packs/
