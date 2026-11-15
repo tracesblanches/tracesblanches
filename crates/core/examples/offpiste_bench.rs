@@ -176,6 +176,8 @@ fn now_rfc3339() -> String {
 struct SiteCtx {
     id: &'static str,
     grid: OffpisteGrid,
+    /// Default overlays: avalanche exposure when prepared (`exposure_5m.skr`).
+    overlays: Vec<offpiste::Overlay>,
     layer: ZoneLayer,
     rules: RuleSet,
     slope_f32: Grid<f32>,
@@ -186,6 +188,7 @@ impl SiteCtx {
     fn load(layout: &DataLayout, id: &str) -> Res<Self> {
         let s = site(id)?;
         let grid = OffpisteGrid::load(&layout.layer_dir(s, LAYER)?)?;
+        let overlays = default_overlays(&layout.layer_dir(s, LAYER)?)?;
         let zdir = layout.layer_dir(s, "zones")?;
         let layer =
             ZoneLayer::from_geojson_str(&std::fs::read_to_string(zdir.join("zones.geojson"))?)?;
@@ -200,6 +203,7 @@ impl SiteCtx {
         Ok(Self {
             id: s.id,
             grid,
+            overlays,
             layer,
             rules,
             slope_f32,
@@ -213,6 +217,26 @@ impl SiteCtx {
             .map(|&(a, b)| segment_distance(p, a, b))
             .fold(f64::INFINITY, f64::min)
     }
+}
+
+/// The router's default overlays: the avalanche exposure of the prepared directory with
+/// [`offpiste::ExposureFactors::default`] (« exposé » ×3, « très exposé » blocked).
+/// `SKIMAP_OFFPISTE_EXPOSURE=off` drops it; `SKIMAP_EXPOSURE_HIGH=<factor>` lets the user
+/// allow « très exposé » at that factor; `SKIMAP_EXPOSURE_EXPOSED=<factor>` changes ×3.
+fn default_overlays(dir: &std::path::Path) -> Res<Vec<offpiste::Overlay>> {
+    if std::env::var("SKIMAP_OFFPISTE_EXPOSURE").is_ok_and(|v| v == "off") {
+        return Ok(Vec::new());
+    }
+    let mut f = offpiste::ExposureFactors::default();
+    if let Ok(v) = std::env::var("SKIMAP_EXPOSURE_HIGH") {
+        f.high = v.parse()?;
+    }
+    if let Ok(v) = std::env::var("SKIMAP_EXPOSURE_EXPOSED") {
+        f.exposed = v.parse()?;
+    }
+    Ok(offpiste::load_exposure_overlay(dir, &f)?
+        .into_iter()
+        .collect())
 }
 
 struct Request {
@@ -245,7 +269,7 @@ fn run_request(layout: &DataLayout, ctx: &SiteCtx, req: &Request) -> Res<Request
     let router = Router {
         grid: &ctx.grid,
         snow: Some(&snow),
-        overlays: &[],
+        overlays: &ctx.overlays,
         policy: &policy,
         params: &params,
     };
@@ -334,6 +358,21 @@ fn run_request(layout: &DataLayout, ctx: &SiteCtx, req: &Request) -> Res<Request
         }
     }
     let n_off = route.piste.iter().filter(|v| **v == PISTE_NONE).count();
+    // Exposure class of every route cell (overlay grid sampled at the cell centre).
+    let exposure_cells: Option<BTreeMap<&str, usize>> = ctx.overlays.first().map(|o| {
+        let mut m = BTreeMap::new();
+        for &(c, r) in &route.cells {
+            let (x, y) = ctx.grid.elevation.transform().cell_center(c, r);
+            let k = match o.grid.value_at(x, y).copied() {
+                Some(1) => "terrain peu exposé (modèle)",
+                Some(2) => "exposé",
+                Some(3) => "très exposé",
+                _ => "sans donnée",
+            };
+            *m.entry(k).or_insert(0) += 1;
+        }
+        m
+    });
     let n_marked = route.piste.iter().filter(|v| **v == PISTE_MARKED).count();
     let n_groomed = route.piste.iter().filter(|v| **v == PISTE_GROOMED).count();
     let snow_date = req
@@ -370,6 +409,8 @@ fn run_request(layout: &DataLayout, ctx: &SiteCtx, req: &Request) -> Res<Request
                    "snow_factor": params.snow_factor, "snow_unknown_factor": params.snow_unknown_factor,
                    "groomed_factor": params.groomed_factor, "marked_factor": params.marked_factor, "avoid_factor": params.avoid_factor},
     });
+    let mut summary = summary;
+    summary["exposure_cells"] = json!(exposure_cells);
     if !violations.is_empty() {
         return Err(format!(
             "{}: {} violations, first: {:?}",
@@ -674,6 +715,7 @@ fn bench(layout: &DataLayout, args: &[String]) -> Res<()> {
 
     let t0 = Instant::now();
     let grid = OffpisteGrid::load(&layout.layer_dir(s, LAYER)?)?;
+    let overlays = default_overlays(&layout.layer_dir(s, LAYER)?)?;
     let load_grid_s = t0.elapsed().as_secs_f64();
     let mem_grid = mem();
     let t0 = Instant::now();
@@ -692,7 +734,7 @@ fn bench(layout: &DataLayout, args: &[String]) -> Res<()> {
     let router = Router {
         grid: &grid,
         snow: Some(&snow),
-        overlays: &[],
+        overlays: &overlays,
         policy: &policy,
         params: &params,
     };

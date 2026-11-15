@@ -777,6 +777,65 @@ impl SnowGrid {
     }
 }
 
+/// Avalanche exposure classes in the prepared directory (from the `avalanche-exposure`
+/// layer, CLPA fusion included): 1 « terrain peu exposé (modèle) », 2 « exposé »,
+/// 3 « très exposé », 255 no data.
+pub const FILE_EXPOSURE: &str = "exposure_5m.skr";
+/// No-data code of [`FILE_EXPOSURE`].
+pub const EXPOSURE_NODATA: u8 = 255;
+
+/// Cost factors of the avalanche exposure overlay, by class. Defaults: « très exposé »
+/// blocked (the user may allow it, with a factor), « exposé » ×3, « terrain peu exposé
+/// (modèle) » and no data ×1. « Peu exposé » is a model output, never « sûr ».
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ExposureFactors {
+    /// Class 1, « terrain peu exposé (modèle) ».
+    pub low: f32,
+    /// Class 2, « exposé ».
+    pub exposed: f32,
+    /// Class 3, « très exposé » (`f32::INFINITY` blocks).
+    pub high: f32,
+    /// No data (outside the modelled area).
+    pub nodata: f32,
+}
+
+impl Default for ExposureFactors {
+    fn default() -> Self {
+        Self {
+            low: 1.0,
+            exposed: 3.0,
+            high: f32::INFINITY,
+            nodata: 1.0,
+        }
+    }
+}
+
+impl ExposureFactors {
+    /// The overlay of the router for an exposure grid.
+    pub fn overlay(&self, grid: Grid<u8>) -> Overlay {
+        let mut factor = [1.0f32; 256];
+        factor[1] = self.low;
+        factor[2] = self.exposed;
+        factor[3] = self.high;
+        factor[usize::from(EXPOSURE_NODATA)] = self.nodata;
+        Overlay {
+            kind: OverlayKind::AvalancheExposure,
+            grid,
+            factor,
+        }
+    }
+}
+
+/// The avalanche exposure overlay of a prepared directory ([`FILE_EXPOSURE`]), `None` if
+/// the site has no exposure layer.
+pub fn load_exposure_overlay(dir: &Path, factors: &ExposureFactors) -> Result<Option<Overlay>> {
+    let p = dir.join(FILE_EXPOSURE);
+    if !p.is_file() {
+        return Ok(None);
+    }
+    Ok(Some(factors.overlay(read_raster(&p)?)))
+}
+
 /// Kind of an optional cost overlay.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OverlayKind {
@@ -1701,6 +1760,32 @@ mod tests {
         let mut bad = bytes.clone();
         bad[0] = b'X';
         assert!(decode_raster::<u16>(&bad).is_err());
+    }
+
+    #[test]
+    fn exposure_overlay_defaults_and_file() {
+        let f = ExposureFactors::default();
+        let o = f.overlay(grid_of(2, 2, |c, r| {
+            [1u8, 2, 3, EXPOSURE_NODATA][c + 2 * r]
+        }));
+        assert_eq!(o.kind, OverlayKind::AvalancheExposure);
+        assert_eq!(o.factor[1], 1.0);
+        assert_eq!(o.factor[2], 3.0);
+        assert!(o.factor[3].is_infinite(), "très exposé blocked by default");
+        assert_eq!(o.factor[usize::from(EXPOSURE_NODATA)], 1.0);
+        assert_eq!(o.factor[0], 1.0);
+        // The user may allow « très exposé ».
+        let allowed = ExposureFactors { high: 6.0, ..f }.overlay(o.grid.clone());
+        assert_eq!(allowed.factor[3], 6.0);
+        // From a prepared directory: absent file, no overlay.
+        let dir = std::env::temp_dir().join(format!("skimap-exposure-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(load_exposure_overlay(&dir, &f).unwrap().is_none());
+        write_raster(&dir.join(FILE_EXPOSURE), &o.grid, EXPOSURE_NODATA).unwrap();
+        let back = load_exposure_overlay(&dir, &f).unwrap().unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(back.grid.data(), o.grid.data());
+        assert!(back.factor[3].is_infinite());
     }
 
     #[test]

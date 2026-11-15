@@ -251,6 +251,19 @@ fn containing_ids(layer: &ZoneLayer, p: LonLat) -> Vec<String> {
 /// The zone rasterisation is checked against `ZoneLayer::containing` on 20 000 random
 /// cells (`stats.zones.check_mismatches`).
 pub fn prepare(s: &Site, layout: &DataLayout, snow_dirs: &[PathBuf]) -> Result<LayerMeta> {
+    prepare_with_exposure(s, layout, snow_dirs, None)
+}
+
+/// [`prepare`], plus the avalanche exposure classes (`skimap_avalanche::exposure::
+/// read_exposure_grid`: Lambert-93 `u8`, 1 / 2 / 3, 255 no data) written as
+/// [`offpiste::FILE_EXPOSURE`] on the 5 m grid (nearest cell centre) for the router's
+/// default overlay ([`offpiste::ExposureFactors`]).
+pub fn prepare_with_exposure(
+    s: &Site,
+    layout: &DataLayout,
+    snow_dirs: &[PathBuf],
+    exposure: Option<&Grid<u8>>,
+) -> Result<LayerMeta> {
     let t_all = Instant::now();
     let out = layout.layer_dir(s, LAYER)?;
     DataLayout::ensure(&out)?;
@@ -479,7 +492,45 @@ pub fn prepare(s: &Site, layout: &DataLayout, snow_dirs: &[PathBuf]) -> Result<L
 
     let t0 = Instant::now();
     let grid = OffpisteGrid::new(elevation, slope_q, zones_q, pistes, classes)?;
-    let files = grid.write(&out)?;
+    let mut files = grid.write(&out)?;
+    // Avalanche exposure on the 5 m grid (nearest cell centre); a stale file of an earlier
+    // run is removed when the layer is absent.
+    let exposure_path = out.join(offpiste::FILE_EXPOSURE);
+    let mut exposure_counts = [0u64; 4];
+    match exposure {
+        Some(e) => {
+            if e.crs() != Crs::Lambert93 {
+                return Err(err("exposure grid not in Lambert-93"));
+            }
+            let mut data = Vec::with_capacity(n);
+            for r in 0..h {
+                for c in 0..w {
+                    let (x, y) = t.cell_center(c, r);
+                    let v = e
+                        .value_at(x, y)
+                        .copied()
+                        .unwrap_or(offpiste::EXPOSURE_NODATA);
+                    exposure_counts[match v {
+                        1..=3 => usize::from(v),
+                        _ => 0,
+                    }] += 1;
+                    data.push(v);
+                }
+            }
+            let g = Grid::from_vec(w, h, t, Crs::Lambert93, data)
+                .map_err(|e| err(e.to_string()))?
+                .with_nodata(offpiste::EXPOSURE_NODATA);
+            files.push((
+                offpiste::FILE_EXPOSURE.to_owned(),
+                offpiste::write_raster(&exposure_path, &g, offpiste::EXPOSURE_NODATA)?,
+            ));
+        }
+        None => {
+            if exposure_path.exists() {
+                std::fs::remove_file(&exposure_path).map_err(|e| Error::io(&exposure_path, e))?;
+            }
+        }
+    }
     let write_s = t0.elapsed().as_secs_f64();
 
     // Snow layers.
@@ -577,6 +628,9 @@ pub fn prepare(s: &Site, layout: &DataLayout, snow_dirs: &[PathBuf]) -> Result<L
             offpiste::FILE_PISTES => {
                 "0 hors réseau, 1 itinéraire balisé non damé, 2 piste nordique damée"
             }
+            offpiste::FILE_EXPOSURE => {
+                "exposition aux avalanches (u8) de la couche avalanche-exposure (fusion CLPA) : 1 terrain peu exposé (modèle), 2 exposé, 3 très exposé, 255 absente ; surcouche du routeur par défaut (exposé ×3, très exposé bloqué)"
+            }
             _ => "",
         }
     };
@@ -616,13 +670,14 @@ pub fn prepare(s: &Site, layout: &DataLayout, snow_dirs: &[PathBuf]) -> Result<L
                   "boundary_cells_decided_by_containing": near.len(), "boundary_cells_changed": near_changed,
                   "check_sample_cells": sample, "check_mismatches": mismatches.len(), "mismatch_examples": mismatches.iter().take(10).collect::<Vec<_>>()},
         "pistes": {"edges": edges.len(), "cells_marked": piste_counts[0], "cells_groomed": piste_counts[1]},
+        "exposure": exposure.map(|_| json!({"cells_nodata": exposure_counts[0], "cells_low": exposure_counts[1], "cells_exposed": exposure_counts[2], "cells_high": exposure_counts[3]})),
         "timings_s": {"read_geotiff": read_s, "quantise": quantise_s, "zones": zones_s, "pistes": pistes_s, "write": write_s, "total": t_all.elapsed().as_secs_f64()},
         "peak_rss_kib": proc_status("VmHWM:"),
     });
     meta.notes = vec![
         "Les rasters gardent les entrées du coût (altitude, pente, classes de zones, pistes, neige) : la pente maximale, les poids et la date sont des paramètres de la requête sur le téléphone.".into(),
         "Itinéraires balisés = graphe des pistes OSM (ski de fond, raquettes, randonnée) : approximation des itinéraires autorisés des arrêtés (annexe 5 de l'APPB Haut-Jura), non vérifiée.".into(),
-        "Sans couche forêt ni exposition aux avalanches pour l'instant (crochet Overlay prévu).".into(),
+        "Exposition aux avalanches (exposure_5m.skr, si la couche avalanche-exposure existe) : surcouche du routeur par défaut, « exposé » ×3, « très exposé » bloqué sauf choix contraire de l'utilisateur (offpiste::ExposureFactors). « Peu exposé » est une sortie de modèle, jamais « sûr ». Pas encore de couche forêt.".into(),
     ];
     meta.write(&out)?;
     Ok(meta)

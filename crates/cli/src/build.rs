@@ -158,8 +158,22 @@ impl Ctx {
         Ok(skimap_core::routing::build(site, &self.layout)?.1)
     }
 
+    /// P16 to P18: avalanche exposure (needs `terrain` and `pistes`; downloads the IGN
+    /// LiDAR HD canopy height once).
+    pub fn avalanche_exposure(
+        &self,
+        site: &Site,
+    ) -> Result<skimap_avalanche::exposure::ExposureSummary> {
+        Ok(skimap_avalanche::exposure::build(
+            site,
+            &self.layout,
+            &self.dl,
+        )?)
+    }
+
     /// C3: off-piste rasters, `offpiste/` (needs `terrain`, `zones`, `pistes` and the snow
-    /// layer directories, default the site's `snow`).
+    /// layer directories, default the site's `snow`), with the avalanche exposure of the
+    /// `avalanche-exposure` layer when it exists (router overlay by default).
     pub fn offpiste_prepare(&self, site: &Site, snow_dirs: &[PathBuf]) -> Result<LayerMeta> {
         let default;
         let dirs = if snow_dirs.is_empty() {
@@ -168,10 +182,16 @@ impl Ctx {
         } else {
             snow_dirs
         };
-        Ok(skimap_core::offpiste::prepare::prepare(
+        let exposure = match skimap_avalanche::exposure::read_exposure_grid(&self.layout, site) {
+            Ok(g) => Some(g),
+            Err(skimap_avalanche::Error::MissingLayer { .. }) => None,
+            Err(e) => return Err(e.into()),
+        };
+        Ok(skimap_core::offpiste::prepare::prepare_with_exposure(
             site,
             &self.layout,
             dirs,
+            exposure.as_ref(),
         )?)
     }
 
@@ -292,6 +312,20 @@ impl Ctx {
             let kinds: Vec<String> = z.by_kind.iter().map(|(k, n)| format!("{k} {n}")).collect();
             Ok(format!("{} zones ({})", z.zones, kinds.join(", ")))
         });
+        run.step("avalanche-exposure", &["terrain", "pistes"], || {
+            let e = self.avalanche_exposure(site)?;
+            let [low, exp, high] = e.class_shares;
+            Ok(format!(
+                "{} x {} cellules de {} m ; terrain peu exposé (modèle) {:.1} %, exposé {:.1} %, très exposé {:.1} % ; CLPA : {} cellules relevées",
+                e.grid.0,
+                e.grid.1,
+                e.grid.2,
+                low * 100.0,
+                exp * 100.0,
+                high * 100.0,
+                e.clpa_cells_raised
+            ))
+        });
         run.step("routing", &["pistes", "terrain"], || {
             let g = self.routing(site)?;
             Ok(format!(
@@ -312,8 +346,15 @@ impl Ctx {
             || {
                 let m = self.offpiste_prepare(site, &[])?;
                 let g = &m.stats["grid"];
+                let exposure = match &m.stats["exposure"] {
+                    serde_json::Value::Null => "sans exposition aux avalanches".to_owned(),
+                    e => format!(
+                        "exposition : {} cellules très exposées, {} exposées",
+                        e["cells_high"], e["cells_exposed"]
+                    ),
+                };
                 Ok(format!(
-                    "grille {} x {} cellules de {} m, pente ≥ 30° {:.1} %, {} classes de zones (écarts de contrôle {}), {} cellules de piste damée, {} fichiers",
+                    "grille {} x {} cellules de {} m, pente ≥ 30° {:.1} %, {} classes de zones (écarts de contrôle {}), {} cellules de piste damée, {exposure}, {} fichiers",
                     g["size_cells"][0],
                     g["size_cells"][1],
                     g["cell_size"],

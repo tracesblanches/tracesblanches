@@ -138,6 +138,9 @@ enum Command {
         /// `YYYY-MM-DD` (noon), `YYYY-MM-DDTHH:MM` in French legal time, or RFC 3339.
         date: String,
     },
+    /// Avalanche exposure of a site (P16 #29, P17 #30, P18 #31); needs the `terrain` and
+    /// `pistes` layers, downloads the IGN LiDAR HD canopy height once.
+    AvalancheExposure(SiteArg),
     /// Trail graph with elevation profiles, `routes/piste_graph.json` (C1, #33); needs the
     /// `pistes` and `terrain` layers.
     Routing(SiteArg),
@@ -439,6 +442,10 @@ fn run(cli: Cli) -> Result<()> {
             print!("{}", e.describe_fr());
             Ok(())
         }
+        Command::AvalancheExposure(a) => {
+            let s = site(&a.site)?;
+            print_json(&ctx()?.avalanche_exposure(s)?)
+        }
         Command::Routing(a) => {
             let s = site(&a.site)?;
             print_json(&ctx()?.routing(s)?)
@@ -566,7 +573,7 @@ mod tests {
         assert!(
             matches!(cli.command, Command::OffpistePrepare { ref snow_dirs, .. } if snow_dirs.len() == 2)
         );
-        for cmd in ["routing", "voice"] {
+        for cmd in ["routing", "voice", "avalanche-exposure"] {
             Cli::try_parse_from(["skimap", cmd, "chapelle-des-bois"]).unwrap();
         }
         // Without the graph, `route` says how to build it.
