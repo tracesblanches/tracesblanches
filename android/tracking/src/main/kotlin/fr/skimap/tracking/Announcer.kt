@@ -260,6 +260,7 @@ class Announcer(
                 t.setAudioAttributes(attributes)
                 tts = t
             } else {
+                Log.w(TAG, "Android voice unavailable (status $status)")
                 t.shutdown()
             }
         }

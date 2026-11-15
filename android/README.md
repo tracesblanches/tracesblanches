@@ -48,7 +48,7 @@ adb logcat -s skimap        # « packs … opened in N ms », « map … fully r
 - `ui/` : `MapViewModel` et `DomainsViewModel` (`StateFlow`), `MapScreen`, `MapSheet`, `CardSheet`, `PackTexts` (textes traduits), `domains/DomainPicker`, thème à fort contraste ; `ui/map/` : `PackMap` (style rechargé seulement au changement de packs ou de style), `MapEngine` (MapLibre démarré hors du fil principal).
 - Textes : `res/values` (anglais, défaut) et `res/values-fr` ; fiches traduites par le noyau (`Lang`).
 - Sobriété (E1) : rien en arrière-plan hors WorkManager sous contraintes ; aucune minuterie ; StrictMode sans accès disque au démarrage ; R8 et profil de référence en release.
-- Service de localisation, guidage, voix (K4, rapport 09) : agent B.
+- La journée (J5, K4 à K13) : `day/` (matin, « Valider la journée », plan du jour, groupes, contact), `guidance/` (bandeau fin inclus une fois dans l'écran carte, service de l'app) et le module `tracking` (un seul service de premier plan `location` lancé par le geste, positions par lots au noyau, voix, vibrations, boutons, notification ; voir [tracking/README.md](tracking/README.md)).
 
 ## Limites
 

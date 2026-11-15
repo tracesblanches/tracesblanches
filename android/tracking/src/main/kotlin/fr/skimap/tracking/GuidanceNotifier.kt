@@ -115,19 +115,30 @@ class GuidanceNotifier(
         return b.build()
     }
 
-    /** Posts the notification when its content changed; true when posted. */
+    /**
+     * Posts the notification when its content changed; true when posted. Screen off
+     * ([screenOn] false), only what matters changes it (next turn, time left, arrival,
+     * phase, proposal, switch): the distances are refreshed when the screen comes on.
+     */
     @android.annotation.SuppressLint("MissingPermission")
-    fun update(g: Guidance): Boolean {
+    fun update(
+        g: Guidance,
+        screenOn: Boolean = true,
+    ): Boolean {
         val key =
-            listOf(
-                GuidanceText.headline(g),
-                GuidanceText.detail(g),
-                g.proposal?.id,
-                g.switch,
-                g.route,
-                // Progress bar by the percent.
-                (g.progressM / g.lengthM.coerceAtLeast(1.0) * PERCENT).toInt(),
-            )
+            if (screenOn) {
+                listOf(
+                    GuidanceText.headline(g),
+                    GuidanceText.detail(g),
+                    g.proposal?.id,
+                    g.switch,
+                    g.route,
+                    // Progress bar by the percent.
+                    (g.progressM / g.lengthM.coerceAtLeast(1.0) * PERCENT).toInt(),
+                )
+            } else {
+                listOf(g.phase, g.nextTurn, g.nextName, GuidanceText.detail(g), g.proposal?.id, g.switch, g.route)
+            }
         if (key == shown) return false
         shown = key
         if (nm.areNotificationsEnabled()) {

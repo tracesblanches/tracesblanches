@@ -27,6 +27,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.LocalDate
+import java.time.LocalTime
 
 /** What the skier asks in the morning (J5): a few choices, all with a default. */
 data class DayInputs(
@@ -65,9 +66,37 @@ sealed interface DayUi {
 }
 
 private const val MINUTES_PER_HOUR = 60
+private const val DAY_START = "08:00"
+private const val QUARTER_MIN = 15
+private const val LEAD_MIN = 10
+private const val DAY_START_MIN = 8 * 60
+private const val LAST_START_MIN = 23 * 60 + 45
 
-/** The core's request for the choices of the morning (`null` without a start). */
-fun dayRequest(i: DayInputs): DayRequest? {
+/**
+ * The earliest start of a day: 8 h, or today the next quarter hour at least 10 min from
+ * now (a plan validated at 13 h 25 does not start at 11 h).
+ */
+fun earliestStart(
+    date: LocalDate,
+    today: LocalDate,
+    now: LocalTime,
+): String {
+    if (date != today) return DAY_START
+    // Minutes of the day, 10 min from now, up to the next quarter hour; 8 h at the earliest.
+    val soon = now.hour * MINUTES_PER_HOUR + now.minute + LEAD_MIN
+    val quarter = (soon + QUARTER_MIN - 1) / QUARTER_MIN * QUARTER_MIN
+    val t = quarter.coerceIn(DAY_START_MIN, LAST_START_MIN)
+    return "%02d:%02d".format(t / MINUTES_PER_HOUR, t % MINUTES_PER_HOUR)
+}
+
+/**
+ * The core's request for the choices of the morning (`null` without a start). [earliest]:
+ * the earliest start the best time may choose, « 08:00 », or later today.
+ */
+fun dayRequest(
+    i: DayInputs,
+    earliest: String = DAY_START,
+): DayRequest? {
     val s = i.start ?: return null
     val h = i.budgetMin / MINUTES_PER_HOUR
     val m = i.budgetMin % MINUTES_PER_HOUR
@@ -83,7 +112,7 @@ fun dayRequest(i: DayInputs): DayRequest? {
         start = s,
         date = i.date.toString(),
         startTime = null,
-        earliest = "08:00",
+        earliest = earliest,
         budgetMin = i.budgetMin.toDouble(),
         skating = i.skating,
         returnBefore = i.returnBefore,
@@ -160,8 +189,9 @@ class DayViewModel(
     private val packsDir: () -> File,
     private val workDir: () -> File,
     private val preferredSite: String?,
-    today: LocalDate,
+    private val today: LocalDate,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    private val now: () -> LocalTime = { LocalTime.now() },
 ) : ViewModel() {
     private val mutable = MutableStateFlow<DayUi>(DayUi.Loading)
     val state: StateFlow<DayUi> = mutable.asStateFlow()
@@ -185,7 +215,9 @@ class DayViewModel(
                 if (pick == null) {
                     null
                 } else {
+                    val t0 = System.nanoTime()
                     val p = backend.open(pick.first, workDir().absolutePath)
+                    android.util.Log.i("skimap", "day: ${pick.second} layers opened in ${(System.nanoTime() - t0) / 1_000_000} ms")
                     Triple(pick, p, backend.starts(pick.second))
                 }
             }
@@ -253,7 +285,7 @@ class DayViewModel(
     private fun recompute() {
         val p = planner
         val s = state.value as? DayUi.Ready
-        val req = dayRequest(inputs)
+        val req = dayRequest(inputs, earliestStart(inputs.date, today, now()))
         if (p == null || s == null || req == null) return
         computing?.cancel()
         update { it.copy(computing = true, error = null) }
@@ -261,7 +293,10 @@ class DayViewModel(
             viewModelScope.launch {
                 val r = withContext(io) { runCatching { p.morning(req, s.group?.modelJson) } }
                 r
-                    .onSuccess { m -> update { it.copy(morning = m, computing = false, choice = 0) } }
+                    .onSuccess { m ->
+                        android.util.Log.i("skimap", "day: morning ${req.label} in ${m.computeMs} ms, ${m.loops.size} loops")
+                        update { it.copy(morning = m, computing = false, choice = 0) }
+                    }
                     .onFailure { e -> update { it.copy(computing = false, error = e.message) } }
             }
     }

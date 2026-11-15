@@ -73,6 +73,13 @@ abstract class TrackingService : Service() {
     private var lastSaid: String? = null
     private var ended = false
     private var screenRegistered = false
+    private var screenOn = true
+    private var recap: Recap? = null
+    private var recapAt = 0L
+    private var lastFixT = 0L
+
+    /** Replay: the inputs come from the test, not from the platform (its fixes would carry today's time). */
+    private var replaying = false
 
     /** Counters of the outing (logged at the end; read by the instrumented tests). */
     class Stats {
@@ -83,6 +90,16 @@ abstract class TrackingService : Service() {
         @Volatile var requests = 0
 
         @Volatile var motionArmed = 0
+
+        /** Announcements finished (said or failed), said with the pack's clips, with the Android voice. */
+        @Volatile var voiced = 0
+
+        @Volatile var voicedClips = 0
+
+        @Volatile var voicedTts = 0
+
+        /** Notifications posted (only when their text changes). */
+        @Volatile var notified = 0
 
         val gpsLog: MutableList<GpsRequest> = java.util.Collections.synchronizedList(ArrayList())
         val said: MutableList<Utterance> = java.util.Collections.synchronizedList(ArrayList())
@@ -119,6 +136,7 @@ abstract class TrackingService : Service() {
                 intent: Intent,
             ) {
                 val on = intent.action == Intent.ACTION_SCREEN_ON
+                screenOn = on
                 controls?.screen(on)
                 val c = core ?: return
                 handle(c.screen(System.currentTimeMillis(), on))
@@ -153,6 +171,11 @@ abstract class TrackingService : Service() {
         handler = HandlerCompat.createAsync(thread.looper)
         executor = java.util.concurrent.Executor { handler.post(it) }
         announcer = Announcer(this)
+        announcer.onDone = { _, _ ->
+            stats.voiced++
+            stats.voicedClips = announcer.played
+            stats.voicedTts = announcer.spokenByTts
+        }
         haptics = Haptics(this)
         notifier = GuidanceNotifier(this, javaClass)
     }
@@ -208,6 +231,8 @@ abstract class TrackingService : Service() {
         core = c
         planDir = dir
         ended = false
+        recap = null
+        replaying = replay
         getSharedPreferences(Tracking.PREFS, MODE_PRIVATE).edit { putString(Tracking.KEY_ACTIVE, dir) }
         val lm = locationManager()
         provider =
@@ -227,6 +252,7 @@ abstract class TrackingService : Service() {
         Log.i(TAG, "tracking: $dir, provider $provider")
         controls = PhysicalControls(this, handler, ::act)
         val interactive = getSystemService(PowerManager::class.java)?.isInteractive ?: true
+        screenOn = interactive
         controls?.screen(interactive)
         apply(GpsPolicy.START)
         if (replay) {
@@ -253,7 +279,9 @@ abstract class TrackingService : Service() {
     /** A batch of fixes from the platform (or from a replay). */
     fun fixes(locations: List<Location>) {
         val c = core ?: return
-        if (locations.isEmpty()) return
+        // After the end, fixes still in flight are dropped (the outing is over).
+        if (locations.isEmpty() || ended) return
+        lastFixT = locations.last().time
         stats.batches++
         stats.fixes += locations.size
         handle(c.pushFixes(FixPacker.pack(locations)))
@@ -279,6 +307,7 @@ abstract class TrackingService : Service() {
     }
 
     private fun handle(b: Batch) {
+        if (ended) return
         for (u in b.utterances) {
             stats.said += u
             lastSaid = u.text
@@ -295,17 +324,27 @@ abstract class TrackingService : Service() {
         stats.session += b.session
         b.gps?.let(::apply)
         guidance = b.guidance
-        notifier.update(b.guidance)
+        if (notifier.update(b.guidance, screenOn)) stats.notified++
         planDir?.let { Tracking.publish(TrackingState.Running(it, b.guidance, applied, lastSaid)) }
-        if (b.recap != null) end(b.recap, stopped = false)
+        if (b.recap != null && recap == null) {
+            // The last words (« Sortie terminée. ») come a few seconds after the end (the
+            // speech groups for 8 s): the service ends once they are said, or 30 s later.
+            recap = b.recap
+            recapAt = lastFixT
+            handler.postDelayed({ end(recap, stopped = false) }, END_GRACE_MS)
+        }
+        val r = recap
+        if (r != null && (b.utterances.any { "finished" in it.kinds } || lastFixT - recapAt >= END_GRACE_MS)) {
+            end(r, stopped = false)
+        }
     }
 
     /** Applies the core's GPS request (only what changed: no yoyo of the chip). */
     @SuppressLint("MissingPermission")
     private fun apply(r: GpsRequest) {
         stats.gpsLog += r
-        val lm = locationManager() ?: return
-        if (GpsPolicy.changes(applied, r)) {
+        val lm = locationManager()
+        if (lm != null && !replaying && GpsPolicy.changes(applied, r)) {
             try {
                 if (listening) LocationManagerCompat.removeUpdates(lm, listener)
                 LocationManagerCompat.requestLocationUpdates(
@@ -325,7 +364,7 @@ abstract class TrackingService : Service() {
         }
         val sm = getSystemService(SensorManager::class.java)
         val sensor = sm?.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION)
-        if (sensor != null) {
+        if (sensor != null && !replaying) {
             if (r.significantMotion && applied?.significantMotion != true) {
                 sm.requestTriggerSensor(motion, sensor)
                 stats.motionArmed++
@@ -339,24 +378,33 @@ abstract class TrackingService : Service() {
     private fun act(a: ButtonAction) {
         val c = core ?: return
         val now = System.currentTimeMillis()
+        Log.i(TAG, "button: $a")
         when (a) {
             ButtonAction.NEXT_DIRECTION -> {
-                c.sayNext(now)?.let(announcer::say)
+                say(c.sayNext(now))
             }
 
             ButtonAction.TIME_LEFT -> {
-                c.sayRemaining(now)?.let(announcer::say)
+                say(c.sayRemaining(now))
             }
 
             ButtonAction.BOTH -> {
-                c.sayNext(now)?.let(announcer::say)
-                c.sayRemaining(now)?.let(announcer::say)
+                say(c.sayNext(now))
+                say(c.sayRemaining(now))
             }
 
             ButtonAction.BRING_ME_BACK -> {
                 toggleBack()
             }
         }
+    }
+
+    /** Says what a button asked for. */
+    private fun say(u: Utterance?) {
+        if (u == null) return
+        stats.said += u
+        lastSaid = u.text
+        announcer.say(u)
     }
 
     private fun toggleBack() {
@@ -381,7 +429,7 @@ abstract class TrackingService : Service() {
             Log.i(
                 TAG,
                 "tracking ended (${if (stopped) "stopped" else "finished"}): ${stats.fixes} fixes in ${stats.batches} batches, " +
-                    "${stats.requests} GPS requests, ${stats.said.size} said",
+                    "${stats.requests} GPS requests, ${stats.said.size} said, ${stats.notified} notifications",
             )
             onEnded(dir, recap, gpx)
         }
@@ -422,5 +470,8 @@ abstract class TrackingService : Service() {
 
         /** What the outing told about the group (C11), written at the end. */
         const val OBSERVATION_FILE = "observation.json"
+
+        /** After the recap, the last words are waited for this long at most, milliseconds. */
+        const val END_GRACE_MS = 30_000L
     }
 }

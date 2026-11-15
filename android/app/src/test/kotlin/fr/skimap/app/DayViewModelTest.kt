@@ -8,6 +8,7 @@ import fr.skimap.app.day.DayBackend
 import fr.skimap.app.day.DayStore
 import fr.skimap.app.day.DayUi
 import fr.skimap.app.day.DayViewModel
+import fr.skimap.app.day.earliestStart
 import fr.skimap.core.DayPlanView
 import fr.skimap.core.DayRequest
 import fr.skimap.core.DayStart
@@ -31,6 +32,7 @@ import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import java.io.File
 import java.time.LocalDate
+import java.time.LocalTime
 
 /** A morning that records what it was asked. */
 class FakeDayBackend(
@@ -95,6 +97,7 @@ class DayViewModelTest {
         "chapelle-des-bois",
         LocalDate.of(2026, 11, 16),
         Dispatchers.Unconfined,
+        { LocalTime.of(13, 25) },
     )
 
     @Test
@@ -157,6 +160,17 @@ class DayViewModelTest {
                     .endsWith("-2"),
             )
         }
+
+    @Test
+    fun aPlanOfTodayStartsAfterNow() {
+        val d = LocalDate.of(2026, 11, 15)
+        assertEquals("08:00", earliestStart(d.plusDays(1), d, LocalTime.of(13, 25)))
+        assertEquals("08:00", earliestStart(d, d, LocalTime.of(6, 30)))
+        assertEquals("13:45", earliestStart(d, d, LocalTime.of(13, 25)))
+        assertEquals("13:45", earliestStart(d, d, LocalTime.of(13, 35)))
+        assertEquals("14:00", earliestStart(d, d, LocalTime.of(13, 36)))
+        assertEquals("23:45", earliestStart(d, d, LocalTime.of(23, 50)))
+    }
 
     @Test
     fun noPackOfASupportedSite() =

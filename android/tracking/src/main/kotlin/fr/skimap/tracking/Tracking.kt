@@ -48,8 +48,9 @@ object Tracking {
 
     /**
      * Replay of recorded inputs (instrumented tests): the inputs carry their own clock, so
-     * the service tells the core nothing of its own (no screen event at the wall-clock
-     * time); everything else is the same.
+     * the service tells the core nothing of its own (no screen event, no platform fix at the
+     * wall-clock time; the GPS requests are recorded, not given to the platform); everything
+     * else is the same.
      */
     const val EXTRA_REPLAY = "replay"
 
