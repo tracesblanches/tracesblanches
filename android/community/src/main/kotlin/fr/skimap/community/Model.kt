@@ -57,17 +57,6 @@ data class ServerReport(
     val photo: Boolean,
 )
 
-/** An outing of « Mes sorties ». */
-data class Outing(
-    val id: String,
-    val source: String,
-    val name: String,
-    val startMs: Long,
-    val km: Double,
-    val movingMin: Double,
-    val gainM: Double,
-)
-
 /** Kind of challenge. */
 enum class ChallengeKind { ROUTE, DOMAIN, DISTANCE }
 
@@ -140,14 +129,11 @@ data class AreaContext(
  * UniFFI bindings, faked in the JVM tests).
  */
 interface CommunityCore {
-    /** Imports the Strava archive into [outRoot], then the group learns the outings. */
+    /** Imports the Strava archive into [outRoot] (the history), then the group learns the outings. */
     fun importStrava(
         zip: File,
         outRoot: File,
     ): ImportSummary
-
-    /** Outings under [roots], newest first. */
-    fun outings(roots: List<File>): List<Outing>
 
     /** Challenges from the outings under [roots]. */
     fun challenges(
@@ -171,6 +157,9 @@ interface CommunityCore {
     /** The area of [siteId] (or the first pack), with its style, if a pack is installed. */
     fun area(siteId: String?): AreaContext?
 
-    /** Roots of the outings: the app's plans and the imported ones. */
-    fun outingRoots(): List<File>
+    /**
+     * The app's history of the outings (its `plans/`, listed by « Bilans des sorties »): the
+     * challenges read it and the Strava import writes into it. One history, one storage.
+     */
+    fun outingsRoot(): File
 }

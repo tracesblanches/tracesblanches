@@ -21,6 +21,7 @@ class GuidanceNotifier(
     private val service: Class<out TrackingService>,
 ) {
     private val nm = NotificationManagerCompat.from(context)
+    private val labels = GuidanceLabels.of(context)
     private var shown: List<Any?>? = null
 
     /** Notifications posted (tests, logs). */
@@ -78,12 +79,12 @@ class GuidanceNotifier(
         if (g == null || starting) {
             return b.setContentTitle(context.getString(R.string.tracking_starting)).build()
         }
-        val headline = GuidanceText.headline(g)
-        val detail = GuidanceText.detail(g)
+        val headline = GuidanceText.headline(g, l = labels)
+        val detail = GuidanceText.detail(g, labels)
         b
             .setContentTitle(headline)
             .setContentText(detail)
-            .setShortCriticalText(GuidanceText.chip(g))
+            .setShortCriticalText(GuidanceText.chip(g, labels))
         if (g.lengthM > 0) {
             val progress = (g.progressM / g.lengthM * PROGRESS_MAX).toInt().coerceIn(0, PROGRESS_MAX)
             b.setStyle(
@@ -95,7 +96,14 @@ class GuidanceNotifier(
         }
         val p = g.proposal
         val s = g.switch
+        val profile = g.profileProposal
         when {
+            profile != null -> {
+                b.setContentText(profile.text)
+                b.addAction(0, context.getString(R.string.profile_choose), action(Tracking.ACTION_PROFILE_ACCEPT, CODE_PROFILE_ACCEPT))
+                b.addAction(0, context.getString(R.string.profile_keep), action(Tracking.ACTION_PROFILE_DECLINE, CODE_PROFILE_DECLINE))
+            }
+
             p != null -> {
                 b.setContentText(p.text)
                 b.addAction(0, context.getString(R.string.accept), action(Tracking.ACTION_ACCEPT, CODE_ACCEPT))
@@ -128,16 +136,26 @@ class GuidanceNotifier(
         val key =
             if (screenOn) {
                 listOf(
-                    GuidanceText.headline(g),
-                    GuidanceText.detail(g),
+                    GuidanceText.headline(g, l = labels),
+                    GuidanceText.detail(g, labels),
                     g.proposal?.id,
+                    g.profileProposal,
                     g.switch,
                     g.route,
                     // Progress bar by the percent.
                     (g.progressM / g.lengthM.coerceAtLeast(1.0) * PERCENT).toInt(),
                 )
             } else {
-                listOf(g.phase, g.nextTurn, g.nextName, GuidanceText.detail(g), g.proposal?.id, g.switch, g.route)
+                listOf(
+                    g.phase,
+                    g.nextTurn,
+                    g.nextName,
+                    GuidanceText.detail(g, labels),
+                    g.proposal?.id,
+                    g.profileProposal,
+                    g.switch,
+                    g.route,
+                )
             }
         if (key == shown) return false
         shown = key
@@ -158,5 +176,7 @@ class GuidanceNotifier(
         private const val CODE_DECLINE = 2
         private const val CODE_REFUSE = 3
         private const val CODE_BACK = 4
+        private const val CODE_PROFILE_ACCEPT = 5
+        private const val CODE_PROFILE_DECLINE = 6
     }
 }

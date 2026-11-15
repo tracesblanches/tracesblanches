@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Menu: tools of the outing. -->
+    <string name="tools_title">Tools</string>
+    <string name="tools_offpiste">Off-piste route</string>
+    <string name="tools_outings">Outing recaps</string>
+    <string name="tools_low_exposure">Less exposed terrain (avalanches)</string>
+    <string name="low_exposure_warning">Less exposed terrain (model): never a guarantee. The avalanche bulletin and your judgement on the spot come first.</string>
+    <string name="tools_no_pack">No area pack on this phone.</string>
+    <string name="tools_working">Computing…</string>
+
+    <!-- K7 fog -->
+    <string name="fog_title">Bearing in the fog</string>
+    <string name="fog_choose">Go to</string>
+    <string name="fog_kind_refuge">Refuge</string>
+    <string name="fog_kind_parking">Car park</string>
+    <string name="fog_kind_start">Start</string>
+    <string name="fog_kind_point">Point on the map</string>
+    <string name="fog_waiting_fix">Waiting for the position…</string>
+    <string name="fog_compass_ok">Compass calibrated</string>
+    <string name="fog_compass_low">Compass not calibrated: move the phone in a figure of eight, away from metal</string>
+    <string name="fog_compass_none">No compass on this phone: the direction comes from your movement</string>
+    <string name="fog_arrow">Direction of %1$s</string>
+    <string name="fog_voice">Voice guidance, screen off</string>
+    <string name="fog_voice_stop">Stop the guidance</string>
+    <string name="fog_hint_fog">Fog forecast now: tap for the bearing to %1$s</string>
+    <string name="fog_hint_lost">Far from the route: tap for the bearing to %1$s</string>
+    <string name="settings_title">Settings</string>
+    <string name="settings_prep">Preparation of the next days</string>
+    <string name="settings_alert">Non-return alert by the server</string>
+    <string name="settings_layers">Map</string>
+    <string name="settings_earcons">Short sounds</string>
+    <string name="earcons_explain">Before the words: two beeps on the left or on the right to turn, three low sounds off the route. Taken into account when the outing starts.</string>
+    <string name="earcons_on">Short sounds before the voice</string>
+    <string name="earcons_volume">Volume: %1$d %%</string>
+    <string name="earcons_listen">Listen: left then right</string>
+    <string name="fog_permission">The guidance needs the precise position.</string>
+
+    <!-- V1 off-piste -->
+    <string name="offpiste_title">Off-piste route</string>
+    <string name="offpiste_from">From</string>
+    <string name="offpiste_to">To</string>
+    <string name="offpiste_here">My position</string>
+    <string name="offpiste_day">Day: %1$s</string>
+    <string name="offpiste_day_prev">Previous day</string>
+    <string name="offpiste_day_next">Next day</string>
+    <string name="offpiste_compute">Compute the route</string>
+    <string name="offpiste_level">Difficulty %1$s (way back: %2$s)</string>
+    <string name="offpiste_figures">%1$s km · +%2$d m / −%3$d m · steepest %4$d°</string>
+    <string name="offpiste_reasons">Reasons</string>
+    <string name="offpiste_advice">Advice</string>
+    <string name="offpiste_details">Both directions in detail</string>
+    <string name="offpiste_show_map">Show on the map</string>
+    <string name="offpiste_guide">Guide me along it</string>
+    <string name="offpiste_in_places">Restricted in places: %1$s</string>
+    <string name="offpiste_missing">Not evaluated (missing from the pack): %1$s</string>
+    <string name="offpiste_compute_ms">Computed in %1$d ms on this phone</string>
+
+    <!-- V6 rules of a place -->
+    <string name="place_title">This place</string>
+    <string name="place_rules">Rules %1$s</string>
+    <string name="place_not_covered">Outside the territories the rules cover: no rule known here.</string>
+    <string name="place_zones">Zones: %1$s</string>
+    <string name="place_inactive">Not in force: %1$s</string>
+    <string name="place_source">Source: %1$s (%2$s)</string>
+    <string name="place_fog">Bearing to this point</string>
+    <string name="place_offpiste">Off-piste route to here</string>
+
+    <!-- A10 recap -->
+    <string name="recap_title">My outings</string>
+    <string name="recap_none">No outing recorded yet.</string>
+    <string name="recap_listen">Listen</string>
+    <string name="recap_delete">Delete this outing</string>
+    <string name="recap_delete_all">Delete all my outings</string>
+    <string name="recap_delete_confirm">Delete this outing and its trace? This cannot be undone.</string>
+    <string name="recap_delete_all_confirm">Delete every outing and every trace? This cannot be undone.</string>
+    <string name="recap_delete_yes">Delete</string>
+    <string name="recap_cancel">Cancel</string>
+    <string name="recap_back">All my outings</string>
+    <string name="recap_notification">Outing recap</string>
+
+    <!-- E2 preparation -->
+    <string name="prep_auto">Prepare the next days while charging on Wi-Fi</string>
+    <string name="prep_now">Prepare now</string>
+    <string name="prep_ski_mode">Multi-day ski mode (no heavy computation)</string>
+    <string name="prep_ski_mode_on">Ski mode: the prepared plans are used as they are; the date of every information is shown.</string>
+    <string name="prep_days">Prepared days</string>
+    <string name="prep_no_days">No day prepared yet.</string>
+    <string name="prep_take">Ski this plan</string>
+    <string name="prep_back">Back around %1$s</string>
+    <string name="prep_voice_missing">Said by the phone\'s voice (clip missing from the pack): %1$d</string>
+    <string name="prep_infos">Age of the information</string>
+    <string name="prep_last">Last preparation: %1$s</string>
+
+    <!-- S2 server alert -->
+    <string name="alert_title">Non-return alert by the server (optional)</string>
+    <string name="alert_explain">The SMS to your contact stays the main way. If you turn this on, the plan is sent to the skimap server at the start; without your confirmation of return, it e-mails your contacts.</string>
+    <string name="alert_emails">Contacts\' e-mails (up to 3, comma separated)</string>
+    <string name="alert_status_off">Off</string>
+    <string name="alert_status_pending">Will be sent as soon as the network allows</string>
+    <string name="alert_status_active">Plan deposited on the server</string>
+    <string name="alert_status_unavailable">Service not available (server alert not configured): rely on the SMS to your contact</string>
+    <string name="alert_status_failed">Not deposited: %1$s</string>
+    <string name="alert_status_returned">Return confirmed to the server</string>
+</resources>

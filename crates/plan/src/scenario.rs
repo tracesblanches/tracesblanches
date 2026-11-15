@@ -108,6 +108,13 @@ pub enum Step {
         /// Seconds after the proposal.
         after_s: f64,
     },
+    /// Answers the proposal to choose another group profile after a delay (X14).
+    AnswerProfile {
+        /// Accepts.
+        accept: bool,
+        /// Seconds after the proposal.
+        after_s: f64,
+    },
 }
 
 /// How a group skis (C11): the truth of a simulated outing.
@@ -482,6 +489,11 @@ pub fn run_with_layers(
         .collect();
     answers.reverse();
     let mut answer_at: Option<(f64, bool)> = None;
+    let profile_answer = sc.steps.iter().find_map(|s| match s {
+        Step::AnswerProfile { accept, after_s } => Some((*accept, *after_s)),
+        _ => None,
+    });
+    let mut profile_at: Option<(f64, bool)> = None;
     let start_pos = sk.pos();
     let plane = LocalPlane::new(start_pos);
     // Noise of C2, one draw per second for the whole outing.
@@ -607,7 +619,8 @@ pub fn run_with_layers(
                 Step::WaitAtStart { .. }
                 | Step::ArriveByCar { .. }
                 | Step::WrongTurn { .. }
-                | Step::Answer { .. } => true,
+                | Step::Answer { .. }
+                | Step::AnswerProfile { .. } => true,
                 _ => false,
             };
             if !fire {
@@ -620,6 +633,12 @@ pub fn run_with_layers(
         {
             events.push(Input::Answer { t: at(t), accept });
             answer_at = None;
+        }
+        if let Some((at_t, accept)) = profile_at
+            && t >= at_t
+        {
+            events.push(Input::ProfileAnswer { t: at(t), accept });
+            profile_at = None;
         }
         // Motion.
         let mut pos = sk.pos();
@@ -776,6 +795,11 @@ pub fn run_with_layers(
                 Output::Proposal { .. } => {
                     if let Some((accept, after)) = answers.pop() {
                         answer_at = Some((t + after, accept));
+                    }
+                }
+                Output::ProfileProposal { .. } => {
+                    if let Some((accept, after)) = profile_answer {
+                        profile_at = Some((t + after, accept));
                     }
                 }
                 Output::Switched { .. } => {
@@ -935,6 +959,17 @@ pub fn timeline(run: &Run) -> Vec<String> {
                     } else {
                         ""
                     }
+                ),
+                Output::ProfileProposal { proposal, .. } => format!(
+                    "profil proposé {} ({:.1}) : {}",
+                    proposal.profile.name, proposal.log_ratio, proposal.text
+                ),
+                Output::ProfileAnswered {
+                    accept, profile, ..
+                } => format!(
+                    "profil {} {}",
+                    if *accept { "choisi" } else { "refusé" },
+                    profile.as_ref().map_or("", |p| p.name.as_str())
                 ),
             };
             format!("{:>6.0} s  {}  {what}", s, local(o.t()).format("%H:%M:%S"))

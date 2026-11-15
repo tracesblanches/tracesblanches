@@ -17,6 +17,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import fr.skimap.app.guidance.SkiTrackingService
 import fr.skimap.tracking.Activity
 import fr.skimap.tracking.GpsPolicy
+import fr.skimap.tracking.StepReport
 import fr.skimap.tracking.Tracking
 import fr.skimap.tracking.TrackingService
 import fr.skimap.tracking.TrackingState
@@ -180,22 +181,32 @@ class TrackingReplayTest {
         while (i < inputs.size) {
             val o = inputs[i]
             val lastT: Long
-            if (o.has("fix")) {
+            if (o.has("fix") || o.has("steps")) {
                 // The batch the provider delivers for the request the service applies.
                 val applied = s.stats.gpsLog.lastOrNull() ?: GpsPolicy.START
                 val delay = GpsPolicy.batchDelayMs(applied)
-                val first = ms(o.getJSONObject("fix"))
+                val first = ms(o.getJSONObject(o.keys().next()))
                 val batch = ArrayList<Location>()
-                while (i < inputs.size && inputs[i].has("fix")) {
-                    val f = inputs[i].getJSONObject("fix")
-                    val t = ms(f)
-                    if (batch.isNotEmpty() && t - first > delay) break
-                    val p = f.getJSONObject("pos")
-                    batch += loc(t, p.getDouble("lon"), p.getDouble("lat"))
+                // The step reports of the batch's time go with it (X10), one call.
+                val steps = ArrayList<StepReport>()
+                while (i < inputs.size && (inputs[i].has("fix") || inputs[i].has("steps"))) {
+                    val e = inputs[i].getJSONObject(inputs[i].keys().next())
+                    val t = ms(e)
+                    if ((batch.isNotEmpty() || steps.isNotEmpty()) && t - first > delay) break
+                    if (inputs[i].has("steps")) {
+                        steps += StepReport(t, e.getInt("steps"))
+                    } else {
+                        val p = e.getJSONObject("pos")
+                        batch += loc(t, p.getDouble("lon"), p.getDouble("lat"))
+                    }
                     i++
                 }
-                lastT = batch.last().time
-                onService(s) { s.fixes(batch) }
+                lastT = batch.lastOrNull()?.time ?: steps.last().tMs
+                onService(s) {
+                    if (batch.isEmpty()) s.inject { it.pushBatch(ByteArray(0), steps) } else s.fixes(batch, steps)
+                }
+                // A batch of steps alone goes through inject (posted): wait for it as for the events.
+                if (batch.isEmpty()) onService(s) {}
                 batches++
             } else {
                 val key = o.keys().next()
@@ -246,7 +257,11 @@ class TrackingReplayTest {
                 if (gpsWant.getJSONObject(k).getLong("t_ms") <= lastT) want = gpsWant.getJSONObject(k)
             }
             val got = s.stats.gpsLog.last()
+            // An input of the same millisecond still to come (steps, then the significant
+            // motion at the same instant) may change it: checked after that one.
+            val sameInstant = i < inputs.size && inputs[i].let { ms(it.getJSONObject(it.keys().next())) } == lastT
             if (want != null &&
+                !sameInstant &&
                 (
                     got.mode.name.lowercase() != want.getString("mode") ||
                         got.intervalMs != want.getLong("interval_ms") ||

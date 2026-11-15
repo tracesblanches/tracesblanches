@@ -3,6 +3,7 @@ package fr.skimap.app
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import fr.skimap.app.day.ChosenProfile
 import fr.skimap.app.day.Contact
 import fr.skimap.app.day.DayBackend
 import fr.skimap.app.day.DayStore
@@ -201,5 +202,43 @@ class DayViewModelTest {
         assertEquals("une sortie apprise", learned.learned)
         assertEquals(1u, st.groups().first { it.spec.name == "Famille test" }.outings)
         assertNull(st.learnFrom(dir.absolutePath))
+    }
+
+    @Test
+    fun theProfileChosenDuringTheOutingLearns() {
+        // Real core: the plan was made for the family, the skier chose « Adulte confirmé »
+        // during the outing (X14, the core's GroupProfile written by the location service).
+        ctx
+            .getSharedPreferences("day-test", Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .commit()
+        val st = store()
+        val family = st.groups().first()
+        val dir = tmp.newFolder("plan-x14")
+        st.setPlanGroup(dir.absolutePath, family.spec.name)
+        File(dir, DayStore.PROFILE_CHOSEN_FILE).writeText(
+            """{"name":"Adulte confirmé","adults":1,"children":[],"style":"classic","level":"expert"}""",
+        )
+        File(dir, DayStore.OBSERVATION_FILE).writeText(
+            """{"model_s":[1200.0,2400.0,600.0],"moving_s":[1000.0,2000.0,500.0],"progress_m":11000.0,""" +
+                """"travelled_m":11300.0,"stops_s":[60.0,0.0,0.0],"elapsed_s":3700.0}""",
+        )
+        val learned = st.learnFrom(dir.absolutePath)!!
+        assertEquals("Adulte confirmé", learned.spec.name)
+        assertEquals("expert", learned.spec.level)
+        assertEquals(1u, learned.outings)
+        // The chosen profile is now a saved group, the plan's group and the one selected.
+        assertEquals(1u, st.groups().first { it.spec.name == "Adulte confirmé" }.outings)
+        assertEquals(0u, st.groups().first { it.spec.name == family.spec.name }.outings)
+        assertEquals("Adulte confirmé", File(dir, DayStore.GROUP_FILE).readText())
+        assertEquals("Adulte confirmé", st.selectedGroup())
+        assertNull(st.learnFrom(dir.absolutePath))
+        // A profile of the same make-up as a saved group is that group.
+        val dir2 = tmp.newFolder("plan-x14-2")
+        File(dir2, DayStore.PROFILE_CHOSEN_FILE).writeText(
+            """{"name":"Adulte","adults":1,"children":[],"style":"classic","level":"intermediate"}""",
+        )
+        assertEquals("Seul", ChosenProfile.group(st, dir2)?.spec?.name)
     }
 }

@@ -44,6 +44,9 @@ object PackSync {
     private const val LOG_TAG = "skimap"
     private const val KEY_SERVER = "server_url"
     private const val PERIODIC = "pack-updates"
+
+    /** The download of the speech model, as earlier versions named it. */
+    private const val VOICE_MODEL_WORK = "voice-model"
     private const val BACKOFF_SECONDS = 30L
     private const val PERIOD_HOURS = 24L
 
@@ -140,9 +143,9 @@ object PackSync {
                 .addTag(TAG)
                 .build()
         wm.enqueueUniquePeriodicWork(PERIODIC, ExistingPeriodicWorkPolicy.KEEP, request)
-        // The speech model of the voice commands comes with the packs, on its own (Wi-Fi, charging).
-        fr.skimap.app.voicecmd.VoiceModelWorker
-            .schedule(context)
+        // No voice recognition in the app for now (decision of 15/11/2026): a download of the
+        // speech model queued by an earlier version is dropped.
+        wm.cancelUniqueWork(VOICE_MODEL_WORK)
     }
 }
 

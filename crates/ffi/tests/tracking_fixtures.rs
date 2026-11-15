@@ -151,6 +151,10 @@ fn session_follows_the_core_on_the_fixtures() {
                         accept: *accept,
                     },
                     Input::Refuse { .. } => TrackEvent::Refuse { t_ms },
+                    Input::ProfileAnswer { accept, .. } => TrackEvent::ProfileAnswer {
+                        t_ms,
+                        accept: *accept,
+                    },
                     Input::Steps { steps, .. } => TrackEvent::Steps {
                         t_ms,
                         steps: *steps,

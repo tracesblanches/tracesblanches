@@ -169,7 +169,7 @@ class CommunityActivity : ComponentActivity() {
             withContext(Dispatchers.IO) {
                 contentResolver.openInputStream(uri)?.use { input -> zip.outputStream().use { input.copyTo(it) } }
             }
-            model.importStrava(zip, File(filesDir, "outings"))
+            model.importStrava(zip)
         }
     }
 

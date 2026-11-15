@@ -412,10 +412,6 @@ tasks.withType<Test>().configureEach {
     val storePath = store.map { it.asFile.absolutePath }
     val serverPath = serverBin.map { it.asFile.absolutePath }
     val stylesPath = repoRoot.resolve("styles").absolutePath
-    // The real recognizer (sherpa-onnx JNI for this machine) in the voice command tests.
-    dependsOn(":voicecmd:sherpaHost")
-    val sherpaLib = rootDir.resolve("voicecmd/build/sherpa/host/lib").absolutePath
-    jvmArgumentProviders.add(CommandLineArgumentProvider { listOf("-Djava.library.path=$sherpaLib") })
     jvmArgumentProviders.add(
         CommandLineArgumentProvider {
             listOf(
@@ -462,8 +458,8 @@ dependencies {
     implementation(project(":sport"))
     // Reports, OSM notes, « Mes sorties » (V8 to V15).
     implementation(project(":community"))
-    // Offline voice commands (V3, VO5, A11).
-    implementation(project(":voicecmd"))
+    // No voice commands in the app for now (decision of 15/11/2026): the module :voicecmd
+    // (V3, VO5, A11) stays in the repository and builds and tests on its own, out of the APK.
     // Group mode (N2): the BLE radio in the location service, the group screen.
     implementation(project(":group"))
     implementation(libs.androidx.core.ktx)

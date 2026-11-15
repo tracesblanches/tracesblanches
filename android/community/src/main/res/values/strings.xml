@@ -38,11 +38,9 @@
     <string name="left_hours">%1$d h left</string>
     <string name="left_days">%1$d d left</string>
 
-    <string name="outings_title">My outings</string>
+    <string name="outings_title">Challenges and Strava import</string>
     <string name="outings_loading">Computing on the phone…</string>
-    <string name="outings_list">Outings</string>
-    <string name="outings_none">No outing yet.</string>
-    <string name="outing_line">%1$.1f km · %2$d min moving · %3$d m climb</string>
+    <string name="outings_in_history">Your outings, traced by the app or imported from Strava, are in “Outing recaps”.</string>
     <string name="challenges_title">Challenges</string>
     <string name="challenge_route">Whole %1$s</string>
     <string name="challenge_domain">Every piste of %1$s</string>

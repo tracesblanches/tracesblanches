@@ -1,12 +1,13 @@
 package fr.skimap.app.community
 
+import fr.skimap.app.day.DayStore
 import fr.skimap.community.CommunityApi
 import fr.skimap.community.ReportKind
 import fr.skimap.community.ReportOutbox
 import fr.skimap.community.ReportUploader
 import fr.skimap.core.challengesCompute
 import fr.skimap.core.osmNoteDraft
-import fr.skimap.core.outingsList
+import fr.skimap.core.outingHistory
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -22,8 +23,8 @@ import java.net.URI
 /**
  * The module :community against the real skimap-server (task cargoServer) and the real
  * core (host library): a report made offline sent when the server comes back with the
- * time it was seen, listed, confirmed by another phone; outings, challenges and the OSM
- * note through the core.
+ * time it was seen, listed, confirmed by another phone; challenges and the OSM note through
+ * the core; the Strava imports in the app's history of the outings (one history).
  */
 class CommunityServerTest {
     @get:Rule
@@ -104,10 +105,8 @@ class CommunityServerTest {
                 append("</trkseg></trk></gpx>")
             }
         File(plan, "trace.gpx").writeText(gpx)
+        // The challenges read the app's history of the outings: no list of their own.
         val roots = listOf(plan.parentFile!!.absolutePath)
-        val outings = outingsList(roots)
-        assertEquals(1, outings.size)
-        assertEquals(3.0, outings[0].km, 0.02)
         val routes = """{"routes":[{"id":"r","name":"R","publisher":"P","licence":"L","line":[[6.77,44.85],[6.77,44.877]]}]}"""
         val c = challengesCompute(roots, routes, emptyList(), 1_768_100_000_000)
         assertEquals("r", c[0].id)
@@ -116,6 +115,34 @@ class CommunityServerTest {
         val n = osmNoteDraft("wrong_name", "Les Fonts", 42L, "Panneau : Fonts", 6.77, 44.85, true)
         assertTrue(n.text.startsWith("Le nom de cette piste est faux.\nPiste : « Les Fonts »"))
         assertTrue(n.formBody.startsWith("lat=44.85&lon=6.77&text="))
+    }
+
+    @Test
+    fun stravaImportsAreInTheAppHistory() {
+        val files = tmp.newFolder("files")
+        // Imported before the history was the only storage: moved into it once.
+        val old = File(files, "outings/strava-103").also { it.mkdirs() }
+        File(old, "outing.json").writeText(
+            """{"id":"strava-103","source":"strava","name":"Risoux","activity":"Nordic Ski",
+            "start":"2026-01-10T09:00:00Z","elapsed_s":8400.0,"moving_s":7920.0,"distance_m":21400.0,
+            "gain_m":310.0,"track":[[6.0,46.6],[6.01,46.61]]}""",
+        )
+        val core =
+            RustCommunityCore(
+                { tmp.newFolder("packs") },
+                { files },
+                { "{}" },
+                DayStoreLearning(DayStore({ error("no preferences in this test") }, { files })),
+            )
+        val root = core.outingsRoot()
+        assertEquals(File(files, "plans"), root)
+        assertTrue(File(root, "strava-103/outing.json").isFile)
+        assertTrue(!File(files, "outings").exists())
+        val h = outingHistory(root.absolutePath)
+        assertEquals(1, h.size)
+        assertEquals("strava", h[0].kind)
+        assertEquals("Risoux", h[0].title)
+        assertEquals(21.4, h[0].distanceKm, 1e-9)
     }
 
     private companion object {

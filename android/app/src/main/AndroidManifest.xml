@@ -72,5 +72,24 @@
             android:name=".guidance.SkiTrackingService"
             android:exported="false"
             android:foregroundServiceType="location" />
+        <!-- Tools of the outing: bearing in the fog (K7), off-piste route (V1), outings and
+             their recap (A10), trip and preparation (E2). -->
+        <activity
+            android:name=".fog.FogActivity"
+            android:exported="false" />
+        <activity
+            android:name=".offpiste.OffpisteActivity"
+            android:exported="false" />
+        <activity
+            android:name=".recap.RecapActivity"
+            android:exported="false" />
+        <activity
+            android:name=".prep.PrepActivity"
+            android:exported="false" />
+        <!-- Guided outings (bearing, off-piste line): the same location service, module :tracking. -->
+        <service
+            android:name=".fog.GuidedTrackingService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
     </application>
 </manifest>

@@ -24,6 +24,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
@@ -42,8 +43,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import fr.skimap.app.R
 import fr.skimap.app.day.DayActivity
-import fr.skimap.app.voicecmd.VoiceCommandButton
 import fr.skimap.tracking.Guidance
+import fr.skimap.tracking.GuidanceLabels
 import fr.skimap.tracking.GuidanceText
 import fr.skimap.tracking.Phase
 import fr.skimap.tracking.Tracking
@@ -87,7 +88,6 @@ fun GuidanceOverlay(
             Tracking.command(context, SkiTrackingService::class.java, if (accept) Tracking.ACTION_ACCEPT else Tracking.ACTION_DECLINE)
         },
         onRefuseSwitch = { Tracking.command(context, SkiTrackingService::class.java, Tracking.ACTION_REFUSE_SWITCH) },
-        showVoice = true,
     )
 }
 
@@ -106,7 +106,6 @@ fun GuidanceOverlayContent(
     onAnswer: (Boolean) -> Unit,
     onRefuseSwitch: () -> Unit,
     modifier: Modifier = Modifier,
-    showVoice: Boolean = false,
 ) {
     Box(modifier.fillMaxSize()) {
         when (state) {
@@ -116,7 +115,6 @@ fun GuidanceOverlayContent(
                     onOpen = onOpen,
                     onAnswer = onAnswer,
                     onRefuseSwitch = onRefuseSwitch,
-                    showVoice = showVoice,
                     modifier =
                         Modifier
                             .align(Alignment.BottomCenter)
@@ -169,10 +167,10 @@ fun GuidanceBar(
     onAnswer: (Boolean) -> Unit,
     onRefuseSwitch: () -> Unit,
     modifier: Modifier = Modifier,
-    // The microphone of the voice commands (V3, VO5): off in the captures.
-    showVoice: Boolean = false,
 ) {
     val open = stringResource(R.string.guidance_open)
+    val context = LocalContext.current
+    val labels = remember(context) { GuidanceLabels.of(context) }
     Surface(
         modifier = modifier.fillMaxWidth().testTag(GuidanceTags.BAR),
         shape = RoundedCornerShape(14.dp),
@@ -187,7 +185,7 @@ fun GuidanceBar(
                     .heightIn(min = 56.dp)
                     .clickable(onClickLabel = open, onClick = onOpen)
                     .semantics(mergeDescendants = true) {
-                        contentDescription = GuidanceText.accessibility(g)
+                        contentDescription = GuidanceText.accessibility(g, labels)
                         liveRegion = LiveRegionMode.Polite
                     }.padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -205,19 +203,18 @@ fun GuidanceBar(
                 val lines = if (LocalDensity.current.fontScale > LARGE_FONT) 2 else 1
                 Column(Modifier.weight(1f)) {
                     Text(
-                        GuidanceText.headline(g, withArrow = false),
+                        GuidanceText.headline(g, withArrow = false, l = labels),
                         style = MaterialTheme.typography.titleMedium,
                         maxLines = lines,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        GuidanceText.short(g),
+                        GuidanceText.short(g, labels),
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = lines,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                if (showVoice) VoiceCommandButton()
             }
             val p = g.proposal
             val s = g.switch
