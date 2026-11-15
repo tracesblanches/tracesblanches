@@ -1178,3 +1178,15 @@ tickets:
     Mode ski (plusieurs jours, sans réseau possible) : aucun calcul lourd, plans déjà prêts, âge de chaque info affiché, prévisions périmées signalées.
     Pas de calcul réparti entre téléphones d'utilisateurs : le calcul serveur total reste petit et vérifier des résultats venus de tiers coûterait plus cher.
     Critère : séjour de 3 jours simulé en mode avion après une préparation ; temps et énergie de la préparation mesurés sur le Pixel en charge ; température du téléphone suivie.
+
+- key: N1
+  title: Alerte et relais entre utilisateurs par proximité, sans réseau
+  milestone: M4 v2
+  labels: [recherche, sécurité]
+  deps: [K4, K10]
+  body: |
+    Les téléphones qui ont l'app se parlent directement (Bluetooth basse consommation, éventuellement Wi-Fi Aware ou Nearby Connections), sans réseau.
+    Usages à évaluer : skieur blessé hors réseau dont l'appel est relayé par un autre utilisateur qui passe, puis transmis dès que l'un d'eux retrouve du réseau (stockage et retransmission) ; mode groupe (où sont mes amis, alerte de séparation) ; signalements partagés au refuge (trace faite, piste damée).
+    À mesurer et vérifier : portée réelle sur neige et en forêt entre un Pixel 8 et un Pixel 8 Pro, coût batterie de l'émission et de l'écoute en veille, limites Android en arrière-plan, probabilité de croiser un autre utilisateur selon la fréquentation, vie privée (identifiants tournants, chiffrement), abus et fausses alertes, règles d'appel du 112 par un tiers.
+    Jamais présenté comme un DVA. Interférence d'un téléphone avec un DVA à vérifier (recommandations ICAR).
+    Critère : rapport chiffré et décision ; si favorable, prototype de relais entre deux téléphones mesuré dehors.
