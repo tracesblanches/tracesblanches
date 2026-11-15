@@ -1,0 +1,42 @@
+#!/bin/sh
+# One pipeline task for some sites, then publication of their packs (CronJobs on the server,
+# image skimap-pipeline). Steps run one at a time on the shared volume (flock), a failed
+# step keeps the previous outputs of its layer, and the pack is published anyway when it
+# verifies (skimap-server publish refuses one that does not).
+#
+#   skimap-job build-all cervieres chapelle-des-bois   # weekly: everything (heavy)
+#   skimap-job snow      cervieres chapelle-des-bois   # daily: snow J-1, routing rasters
+#   skimap-job bera      cervieres                     # daily: avalanche bulletin
+#   skimap-job status    chapelle-des-bois             # trail status (personal sources)
+#   skimap-job meteo     cervieres chapelle-des-bois   # hourly weather (personal sources)
+#
+# Environment: SKIMAP_DATA_DIR (pipeline data), SKIMAP_STORE (published store),
+# METEOFRANCE_API_KEY and the other keys of the pipeline.
+set -u
+task=${1:?task}
+shift
+: "${SKIMAP_DATA_DIR:?}" "${SKIMAP_STORE:?}"
+
+exec 9>"$SKIMAP_DATA_DIR/.pipeline.lock"
+flock 9
+
+rc=0
+step() {
+  echo "+ $*"
+  "$@" || { rc=$?; echo "FAILED ($rc): $*"; return 1; }
+}
+
+for site in "$@"; do
+  case "$task" in
+    build-all) step skimap build-all "$site" ;;
+    snow) step skimap snow "$site" && step skimap offpiste-prepare "$site" && step skimap build-pack "$site" ;;
+    bera) step skimap bera "$site" && step skimap build-pack "$site" ;;
+    status) step skimap status-poll "$site" && step skimap build-pack "$site" ;;
+    meteo) step skimap meteo "$site" && step skimap build-pack "$site" ;;
+    *) echo "unknown task $task" >&2; exit 2 ;;
+  esac
+  if [ -f "$SKIMAP_DATA_DIR/out/$site/pack/manifest.json" ]; then
+    step skimap-server publish "$SKIMAP_DATA_DIR/out/$site/pack"
+  fi
+done
+exit $rc

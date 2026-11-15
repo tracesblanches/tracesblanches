@@ -1,0 +1,304 @@
+//! Publication and synchronisation end to end, over HTTP: catalog and index with ETag (a
+//! sync without change is one 304), bundles with byte ranges, the phone-side plan and
+//! `apply_bundle` of the pack crate, base rebuild, retention, garbage collection.
+
+mod common;
+
+use std::net::SocketAddr;
+use std::path::Path;
+use std::sync::Arc;
+
+use chrono::{Duration, TimeZone, Utc};
+use common::{get, make_pack, request};
+use skimap_pack::Pack;
+use skimap_pack::sync::{SiteIndex, SyncState, plan, plan_full, read_state, write_state};
+use skimap_pack::update::{MISSING_CONTENTS, apply_bundle};
+use skimap_server::app::App;
+use skimap_server::clock::{Clock, ManualClock};
+use skimap_server::store::{Retention, Store};
+
+const BASEMAP: &[u8] = &[42u8; 100_000];
+const OTHER_BASEMAP: &[u8] = &[7u8; 100_000];
+
+/// Every file under `dir` with the SHA-256 of its contents.
+fn tree(dir: &Path) -> Vec<(String, String)> {
+    fn walk(root: &Path, d: &Path, out: &mut Vec<(String, String)>) {
+        for e in std::fs::read_dir(d).unwrap() {
+            let p = e.unwrap().path();
+            if p.is_dir() {
+                walk(root, &p, out);
+            } else {
+                out.push((
+                    p.strip_prefix(root).unwrap().to_string_lossy().into_owned(),
+                    skimap_pack::update::sha256_hex(&std::fs::read(&p).unwrap()),
+                ));
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(dir, dir, &mut out);
+    out.sort();
+    out
+}
+
+/// Requests and bytes of one sync.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Cost {
+    requests: u32,
+    bytes: u64,
+}
+
+/// What the app does: revalidate the index, download the bundles of the plan (falling
+/// back to the base when contents are missing), apply them, record the state.
+fn sync(addr: SocketAddr, phone: &Path, work: &Path) -> Cost {
+    let state = read_state(phone).unwrap();
+    let mut cost = Cost::default();
+    let etag = state.as_ref().and_then(|s| s.index_etag.clone());
+    let hdr: Vec<(&str, &str)> = etag
+        .as_deref()
+        .map(|e| ("If-None-Match", e))
+        .into_iter()
+        .collect();
+    let r = request(addr, "GET", "/v1/sites/cervieres/index.json", &hdr, b"");
+    cost.requests += 1;
+    cost.bytes += r.body.len() as u64;
+    if r.status == 304 {
+        return cost;
+    }
+    assert_eq!(r.status, 200);
+    let etag = r.header("etag").map(str::to_owned);
+    let index: SiteIndex = serde_json::from_slice(&r.body).unwrap();
+    let mut todo = plan(&index, state.as_ref());
+    let mut fell_back = false;
+    let mut i = 0;
+    std::fs::create_dir_all(work).unwrap();
+    while i < todo.len() {
+        let b = &todo[i];
+        let r = get(addr, &b.url);
+        cost.requests += 1;
+        cost.bytes += r.body.len() as u64;
+        assert_eq!((r.status, r.body.len() as u64), (200, b.bytes));
+        let path = work.join(&b.sha256);
+        std::fs::write(&path, &r.body).unwrap();
+        match apply_bundle(phone, &path) {
+            Ok(_) => i += 1,
+            Err(e) if e.to_string().contains(MISSING_CONTENTS) && !fell_back => {
+                fell_back = true;
+                todo = plan_full(&index);
+                i = 0;
+            }
+            Err(e) => panic!("{e}"),
+        }
+    }
+    write_state(
+        phone,
+        &SyncState {
+            version: index.latest.version.clone(),
+            base_version: index.base_version.clone(),
+            index_etag: etag,
+        },
+    )
+    .unwrap();
+    cost
+}
+
+fn index(addr: SocketAddr) -> SiteIndex {
+    serde_json::from_slice(&get(addr, "/v1/sites/cervieres/index.json").body).unwrap()
+}
+
+type Files = [(&'static str, &'static [u8]); 5];
+
+fn files(bera: &'static [u8], meta: &'static [u8], basemap: &'static [u8]) -> Files {
+    [
+        ("basemap/osm.pmtiles", basemap),
+        ("basemap/osm/fonts/Noto Sans Regular/0-255.pbf", b"glyphs"),
+        ("layers/pistes.json", b"{\"pistes\":1}"),
+        ("layers/bera.json", bera),
+        ("pack.meta.json", meta),
+    ]
+}
+
+#[test]
+fn publish_and_sync() {
+    let t = tempfile::tempdir().unwrap();
+    let out = t.path().join("out/cervieres/pack");
+    let clock = Arc::new(ManualClock::new(
+        Utc.with_ymd_and_hms(2026, 11, 15, 2, 0, 0).unwrap(),
+    ));
+    let store = Store::open(t.path().join("store")).unwrap();
+    let retention = Retention {
+        recent_versions: 2,
+        rebase_fraction: 0.10,
+    };
+    let publish = |version: &str, f: &Files| {
+        make_pack(&out, version, f);
+        let r = store.publish(&out, clock.now(), retention).unwrap();
+        clock.advance(Duration::hours(12));
+        r
+    };
+
+    let r = publish("v01", &files(b"{\"risk\":1}", b"1", BASEMAP));
+    assert_eq!(
+        (r.status.as_str(), r.rebased, r.new_blobs),
+        ("published", true, 6)
+    );
+    // Rebuilt with nothing new but its build time: not published again.
+    let r = publish("v02", &files(b"{\"risk\":1}", b"2", BASEMAP));
+    assert_eq!((r.status.as_str(), r.latest.as_str()), ("unchanged", "v01"));
+    let expected_v1 = t.path().join("expected/v01");
+    make_pack(&expected_v1, "v01", &files(b"{\"risk\":1}", b"1", BASEMAP));
+
+    let app = App::new(
+        Store::open(t.path().join("store")).unwrap(),
+        None,
+        None,
+        "https://skimap.test",
+        "contact@example.org",
+        clock.clone(),
+    );
+    let server = skimap_server::http::serve("127.0.0.1:0", 4, Arc::new(app)).unwrap();
+    let addr = server.addr;
+    assert_eq!(get(addr, "/healthz").status, 200);
+    assert!(String::from_utf8_lossy(&get(addr, "/privacy").body).contains("contact@example.org"));
+
+    // Catalog.
+    let c = get(addr, "/v1/catalog.json").json();
+    assert_eq!(c["sites"][0]["site"]["id"], "cervieres");
+    assert_eq!(c["sites"][0]["latest"]["version"], "v01");
+    assert_eq!(c["sites"][0]["index_url"], "/v1/sites/cervieres/index.json");
+
+    // First sync: index + base bundle = 2 requests; the pack is the pipeline's.
+    let phone = t.path().join("phone/cervieres");
+    let cost = sync(addr, &phone, &t.path().join("dl1"));
+    assert_eq!(cost.requests, 2);
+    assert_eq!(tree(&phone), tree(&expected_v1));
+    assert!(Pack::open(&phone).unwrap().verify().unwrap().is_empty());
+
+    // Nothing new: one request, 304, empty body.
+    let cost = sync(addr, &phone, &t.path().join("dl"));
+    assert_eq!(
+        cost,
+        Cost {
+            requests: 1,
+            bytes: 0
+        }
+    );
+
+    // Bundles: immutable, resumable.
+    let base_url = index(addr).base.url;
+    let full = get(addr, &base_url).body;
+    let r = request(addr, "GET", &base_url, &[("Range", "bytes=1000-")], b"");
+    assert_eq!(r.status, 206);
+    assert_eq!(r.body, full[1000..]);
+    assert_eq!(
+        r.header("cache-control"),
+        Some(skimap_server::app::IMMUTABLE)
+    );
+    let r = request(addr, "HEAD", &base_url, &[], b"");
+    assert_eq!(r.header("content-length").unwrap(), full.len().to_string());
+    let etag = r.header("etag").unwrap().to_owned();
+    assert_eq!(
+        request(addr, "GET", &base_url, &[("If-None-Match", &etag)], b"").status,
+        304
+    );
+    let r = request(addr, "GET", &base_url, &[("Range", "bytes=99999999-")], b"");
+    assert_eq!(r.status, 416);
+    let none = format!("/v1/bundles/{}.skb", "0".repeat(64));
+    assert_eq!(get(addr, &none).status, 404);
+    assert_eq!(get(addr, "/v1/bundles/..%2Findex.json").status, 404);
+    assert_eq!(get(addr, "/v1/sites/nowhere/index.json").status, 404);
+    assert_eq!(get(addr, "/v1/sites/..%2F..%2Fx/index.json").status, 404);
+    assert_eq!(
+        request(addr, "PUT", "/v1/catalog.json", &[], b"").status,
+        405
+    );
+
+    // The next day: new BERA. One delta bundle, small.
+    let r = publish("v03", &files(b"{\"risk\":3}", b"3", BASEMAP));
+    assert_eq!((r.status.as_str(), r.rebased), ("published", false));
+    assert_eq!(r.changed, ["bera"]);
+    assert!(r.daily_delta_bytes.unwrap() < 5000, "{r:?}");
+    let cost = sync(addr, &phone, &t.path().join("dl2"));
+    assert_eq!(cost.requests, 2);
+    assert!(cost.bytes < 10_000, "{cost:?}");
+    assert_eq!(tree(&phone), tree(&out));
+    let bera = index(addr)
+        .changes
+        .into_iter()
+        .find(|c| c.id == "bera")
+        .unwrap();
+    assert_eq!(bera.change, skimap_pack::update::Change::Changed);
+    assert_eq!(bera.valid_until.as_deref(), Some("2026-11-16"));
+
+    // The phone stays offline while four versions go by: its version is no longer kept,
+    // it gets the delta from the base (one bundle), not the whole pack.
+    for (v, x) in [
+        ("v04", &b"4"[..]),
+        ("v05", &b"5"[..]),
+        ("v06", &b"6"[..]),
+        ("v07", &b"7"[..]),
+    ] {
+        let r = publish(v, &files(x, x, BASEMAP));
+        assert!(!r.rebased);
+    }
+    let from: Vec<_> = index(addr)
+        .deltas
+        .iter()
+        .map(|d| d.from.clone().unwrap())
+        .collect();
+    assert_eq!(from, ["v01", "v05", "v06"]);
+    let cost = sync(addr, &phone, &t.path().join("dl3"));
+    assert_eq!(cost.requests, 2);
+    assert!(cost.bytes < 10_000, "{cost:?}");
+    assert_eq!(tree(&phone), tree(&out));
+
+    // New basemap (more than a tenth of the pack): the base is rebuilt; the phone, on a
+    // kept version, still gets a delta.
+    let r = publish("v08", &files(b"8", b"8", OTHER_BASEMAP));
+    assert!(r.rebased, "{r:?}");
+    assert_eq!(r.base, "v08");
+    let cost = sync(addr, &phone, &t.path().join("dl4"));
+    assert_eq!(cost.requests, 2);
+    assert!(cost.bytes > 100_000);
+    assert_eq!(tree(&phone), tree(&out));
+    assert!(!publish("v09", &files(b"9", b"9", OTHER_BASEMAP)).rebased);
+    // A second phone installed at v01 long ago (another base): base + delta.
+    let old_phone = t.path().join("phone2/cervieres");
+    make_pack(&old_phone, "v01", &files(b"{\"risk\":1}", b"1", BASEMAP));
+    write_state(
+        &old_phone,
+        &SyncState {
+            version: "v01".into(),
+            base_version: "v01".into(),
+            index_etag: None,
+        },
+    )
+    .unwrap();
+    let cost = sync(addr, &old_phone, &t.path().join("dl5"));
+    assert_eq!(cost.requests, 3);
+    assert_eq!(tree(&old_phone), tree(&out));
+
+    // Bundles of the previous index stay one more publication, then go.
+    let prev = index(addr);
+    let r = publish("v10", &files(b"10", b"10", OTHER_BASEMAP));
+    assert!(r.files_removed > 0, "{r:?}");
+    for d in &prev.deltas {
+        assert_eq!(
+            get(addr, &d.url).status,
+            200,
+            "previous index's bundles kept"
+        );
+    }
+    publish("v11", &files(b"11", b"11", OTHER_BASEMAP));
+    for d in &prev.deltas {
+        assert_eq!(get(addr, &d.url).status, 404);
+    }
+    assert_eq!(get(addr, &index(addr).base.url).status, 200);
+
+    // A pack that does not verify is refused.
+    std::fs::write(out.join("layers/bera.json"), b"tampered").unwrap();
+    let e = store.publish(&out, clock.now(), retention).unwrap_err();
+    assert!(format!("{e:#}").contains("does not verify"), "{e:#}");
+
+    server.stop();
+}

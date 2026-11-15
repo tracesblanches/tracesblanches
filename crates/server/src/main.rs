@@ -1,0 +1,155 @@
+//! `skimap-server`: `serve`, `publish`, `send-test-email`.
+
+use std::path::PathBuf;
+use std::process::ExitCode;
+use std::sync::Arc;
+use std::time::Duration;
+
+use anyhow::{Context, Result};
+use clap::{Parser, Subcommand};
+use skimap_server::alerts::Alerts;
+use skimap_server::alerts::mail::{Mailer, NoMailer, SmtpMailer};
+use skimap_server::app::App;
+use skimap_server::clock::{Clock, SystemClock};
+use skimap_server::config::Config;
+use skimap_server::store::{Retention, Store};
+use skimap_server::strava::Strava;
+
+#[derive(Parser, Debug)]
+#[command(
+    name = "skimap-server",
+    version,
+    about = "Serveur de skimap : packs, mises à jour, alerte de non-retour, OAuth Strava"
+)]
+struct Cli {
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand, Debug)]
+enum Command {
+    /// Serves HTTP (settings from the environment, see the crate README).
+    Serve {
+        /// Listen address (overrides SKIMAP_SERVER_ADDR).
+        #[arg(long)]
+        addr: Option<String>,
+    },
+    /// Publishes pipeline packs (data/out/<site>/pack/) into the store; prints a JSON
+    /// report per pack.
+    Publish {
+        /// Pack directories.
+        #[arg(required = true)]
+        packs: Vec<PathBuf>,
+        /// Store directory (overrides SKIMAP_STORE).
+        #[arg(long)]
+        store: Option<PathBuf>,
+    },
+    /// Sends one test e-mail through the configured SMTP relay.
+    SendTestEmail {
+        /// Recipient.
+        to: String,
+    },
+}
+
+fn mailer(cfg: &Config) -> Result<Arc<dyn Mailer>> {
+    Ok(match &cfg.smtp {
+        Some(s) => Arc::new(SmtpMailer::new(s.clone())?),
+        None => Arc::new(NoMailer),
+    })
+}
+
+fn serve(cfg: Config, addr: Option<String>) -> Result<()> {
+    let contact = cfg
+        .contact_email
+        .clone()
+        .filter(|c| skimap_server::util::valid_email(c))
+        .context("SKIMAP_CONTACT_EMAIL must be the contact address of the privacy page")?;
+    let clock: Arc<dyn Clock> = Arc::new(SystemClock);
+    let store = Store::open(&cfg.store)?;
+    let mut alerts = Alerts::open(&cfg.db, mailer(&cfg)?, Arc::clone(&clock), &cfg.public_url)?;
+    alerts.daily_cap = cfg.alert_daily_cap;
+    let alerts = Arc::new(alerts);
+    tracing::info!(mailer = %alerts.mailer(), "alerts");
+    let strava = match &cfg.strava {
+        Some(s) => Some((Strava::new(s.clone())?, s.clone())),
+        None => None,
+    };
+    tracing::info!(configured = strava.is_some(), "strava");
+    let mut app = App::new(
+        store,
+        Some(Arc::clone(&alerts)),
+        strava,
+        &cfg.public_url,
+        &contact,
+        Arc::clone(&clock),
+    );
+    if let Some(c) = &cfg.controller {
+        app.controller = c.clone();
+    }
+    let addr = addr.unwrap_or_else(|| cfg.addr.clone());
+    let running = skimap_server::http::serve(&addr, cfg.workers, Arc::new(app))?;
+    tracing::info!(addr = %running.addr, workers = cfg.workers, store = %cfg.store.display(), "listening");
+    // The timer of the alerts.
+    std::thread::spawn(move || {
+        loop {
+            match alerts.tick() {
+                Ok(r) if r != Default::default() => tracing::info!(?r, "alert tick"),
+                Ok(_) => {}
+                Err(e) => tracing::error!(error = %format!("{e:#}"), "alert tick"),
+            }
+            std::thread::sleep(Duration::from_secs(15));
+        }
+    });
+    running.join();
+    Ok(())
+}
+
+fn run(cli: Cli) -> Result<()> {
+    let cfg = Config::from_env()?;
+    match cli.command {
+        Command::Serve { addr } => serve(cfg, addr),
+        Command::Publish { packs, store } => {
+            let store = Store::open(store.unwrap_or(cfg.store.clone()))?;
+            let retention: Retention = cfg.retention;
+            for p in packs {
+                let r = store
+                    .publish(&p, chrono::Utc::now(), retention)
+                    .with_context(|| format!("publishing {}", p.display()))?;
+                println!("{}", serde_json::to_string(&r)?);
+            }
+            Ok(())
+        }
+        Command::SendTestEmail { to } => {
+            let m = mailer(&cfg)?;
+            m.send(&skimap_server::alerts::mail::Email {
+                to: to.clone(),
+                subject: "skimap : message de test du service d'alerte".into(),
+                body: format!(
+                    "Bonjour,\n\nCeci est un message de test du service d'alerte de non-retour de skimap ({}).\n\
+                     Si vous le lisez, les alertes vous parviendront.\n",
+                    cfg.public_url
+                ),
+            })?;
+            println!("sent to {to} via {}", m.describe());
+            Ok(())
+        }
+    }
+}
+
+fn main() -> ExitCode {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "skimap_server=info,info".into()),
+        )
+        .with_writer(std::io::stderr)
+        .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stderr()))
+        .init();
+    match run(Cli::parse()) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("skimap-server: {e:#}");
+            ExitCode::FAILURE
+        }
+    }
+}

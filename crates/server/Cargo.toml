@@ -1,0 +1,37 @@
+[package]
+name = "skimap-server"
+description = "Serveur de distribution (catalogue, packs, mises à jour différentielles), alerte de non-retour, échange OAuth Strava, page de confidentialité."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "skimap-server"
+path = "src/main.rs"
+
+[dependencies]
+# Phone-side reader of the pack crate (manifest, verify, update format): no pipeline.
+skimap-pack.workspace = true
+# Site names and identifiers (no download feature: no HTTP stack from it).
+skimap-common.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+clap.workspace = true
+sha2.workspace = true
+hex.workspace = true
+rusqlite.workspace = true
+tiny_http.workspace = true
+reqwest.workspace = true
+rustls.workspace = true
+webpki-roots.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
