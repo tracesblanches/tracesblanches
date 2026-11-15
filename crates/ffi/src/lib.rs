@@ -8,6 +8,12 @@
 //! update of packs from the server ([`sync`]: plan, bundle check and install, state) are
 //! here too, in coarse calls.
 //!
+//! The day (J5, K4, K5, K9, C11): [`tracking_day`] computes the morning on the pack (briefing,
+//! best time, wax, loops with the group's time) and writes the validated plan;
+//! [`tracking`] follows it during the outing on a thread of its own (batches of fixes in,
+//! what to say, alerts, switches, proposals, GPS mode and guidance out); [`tracking_back`]
+//! guides « ramène-moi » along the way skied.
+//!
 //! No HTTP and no SQLite in this crate: the app makes the requests (K2), this crate
 //! decides what to download and installs it with `skimap-pack` (without its `pipeline`
 //! feature).
@@ -18,6 +24,9 @@ pub mod fees;
 pub mod info;
 pub mod style;
 pub mod sync;
+pub mod tracking;
+pub mod tracking_back;
+pub mod tracking_day;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

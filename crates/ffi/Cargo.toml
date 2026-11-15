@@ -1,6 +1,6 @@
 [package]
 name = "skimap-ffi"
-description = "Bibliothèque Android du noyau (UniFFI) : packs, styles validés instanciés sur les packs, synchro des packs, fiches FR/EN, catalogue des domaines, zones de redevance (K1, K15, K2, H2, VO6)."
+description = "Bibliothèque Android du noyau (UniFFI) : packs, styles validés instanciés sur les packs, synchro des packs, fiches FR/EN, catalogue des domaines, zones de redevance (K1, K15, K2, H2, VO6) ; matin, plan de journée et suivi de la sortie (J5, K4, K5, K9, C11)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,6 +13,13 @@ name = "skimap_ffi"
 
 [dependencies]
 skimap-pack = { workspace = true }
+# Day plan and tracking (K4, K5, K9, J5, C11): the phone-side crates, no HTTP stack.
+skimap-plan.workspace = true
+skimap-assist.workspace = true
+skimap-core.workspace = true
+skimap-common.workspace = true
+skimap-voice.workspace = true
+chrono.workspace = true
 geojson.workspace = true
 serde.workspace = true
 serde_json.workspace = true
