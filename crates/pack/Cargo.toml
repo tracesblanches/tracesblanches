@@ -73,3 +73,7 @@ required-features = ["pipeline"]
 
 [lints]
 workspace = true
+
+[[example]]
+name = "class_tiles"
+required-features = ["pipeline"]

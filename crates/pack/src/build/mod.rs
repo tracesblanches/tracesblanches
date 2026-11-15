@@ -5,9 +5,11 @@
 //! a reader never sees a half-written pack.
 
 pub mod assets;
+pub mod class_tiles;
 pub mod extract;
 pub mod layers;
 pub mod osm;
+pub mod pistes;
 pub mod plan_ign;
 pub mod raster;
 
@@ -60,6 +62,8 @@ pub struct BuildOptions {
     pub voice: bool,
     /// Include the off-piste rasters of the core (`data/out/<site>/offpiste/`, gzipped).
     pub offpiste: bool,
+    /// Vectorisation of the slope and avalanche exposure classes.
+    pub class_params: class_tiles::Params,
 }
 
 impl Default for BuildOptions {
@@ -74,6 +78,7 @@ impl Default for BuildOptions {
             ign_slopes: false,
             voice: true,
             offpiste: true,
+            class_params: class_tiles::Params::default(),
         }
     }
 }
@@ -193,12 +198,28 @@ fn build_into(
 
     let t = Instant::now();
     for spec in raster::catalog() {
-        match raster::include(&spec, &out, root)? {
+        match raster::include(&spec, &out, root, opts.personal_sources)? {
             layers::Outcome::Included(l) => layers.push(*l),
             layers::Outcome::Missing(m) => missing.push(m),
         }
     }
     timings.push(("raster layers".to_owned(), t.elapsed().as_secs_f64()));
+    for spec in class_tiles::catalog() {
+        let t = Instant::now();
+        let (outcome, steps) =
+            class_tiles::include(&spec, &out, root, &opts.class_params, opts.personal_sources)?;
+        match outcome {
+            layers::Outcome::Included(l) => layers.push(*l),
+            layers::Outcome::Missing(m) => missing.push(m),
+        }
+        for (step, secs) in steps {
+            timings.push((format!("{} : {step}", spec.id), secs));
+        }
+        timings.push((
+            format!("{} (vector classes)", spec.id),
+            t.elapsed().as_secs_f64(),
+        ));
+    }
     if opts.ign_slopes {
         let t = Instant::now();
         layers.push(raster::ign_slopes(site.bbox, dl, root)?);
@@ -206,7 +227,7 @@ fn build_into(
     }
 
     let voice = if opts.voice {
-        voice_slot(&out, root)?
+        voice_slot(&out, root, opts.personal_sources)?
     } else {
         absent_voice("voix non demandée pour ce pack")
     };
@@ -324,8 +345,18 @@ fn absent_voice(note: &str) -> VoiceSlot {
 }
 
 /// Copies the voice clips (`data/out/<site>/voice/manifest.json` and `clips/`) if present.
-fn voice_slot(out: &Path, root: &Path) -> Result<VoiceSlot> {
+fn voice_slot(out: &Path, root: &Path, personal_sources: bool) -> Result<VoiceSlot> {
     let src = out.join("voice");
+    // Clips spoken from layer names (zones, pistes, refuges): personal use when one of
+    // their sources is (Biodiv'sports zone names).
+    if let Some(m) = layers::read_meta(&src.join("voice.meta.json"))?
+        && layers::restricted(&m.meta.sources)
+        && !personal_sources
+    {
+        return Ok(absent_voice(
+            "clips écartés : ils disent des noms tirés d'une source à usage personnel (option personal_sources désactivée) ; reconstruire la voix sans ces sources",
+        ));
+    }
     let manifest = src.join("manifest.json");
     let clips = src.join("clips");
     if !manifest.is_file() || !clips.is_dir() {

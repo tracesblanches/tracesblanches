@@ -27,6 +27,9 @@ pub enum Transform {
     GeoJson,
     /// GeoJSON zones annotated with the rules of `rules.json` in the same directory.
     Zones,
+    /// GeoJSON pistes enriched with the trail state and the piste plan
+    /// ([`crate::build::pistes`]).
+    Pistes,
 }
 
 /// A layer looked for in the pipeline outputs.
@@ -50,6 +53,10 @@ pub struct Spec {
     pub transform: Transform,
     /// Notes, French.
     pub notes: &'static [&'static str],
+    /// Pipeline layers the file is derived from: when one of them comes from a
+    /// personal-use source, so does this layer (off-piste rasters of the core from the
+    /// avalanche exposure and the zones).
+    pub depends: &'static [&'static str],
 }
 
 /// Result of looking for a layer.
@@ -79,6 +86,7 @@ const fn vector(
         visible,
         transform: Transform::GeoJson,
         notes: &[],
+        depends: &[],
     }
 }
 
@@ -99,6 +107,7 @@ const fn data(
         visible: false,
         transform: Transform::Copy,
         notes: &[],
+        depends: &[],
     }
 }
 
@@ -116,6 +125,7 @@ pub fn catalog() -> Vec<Spec> {
         Spec {
             notes: &[
                 "Propriétés dérivées par le pack : `rules` (règles de rules.json qui s'appliquent à la zone : id, sujet, effet, période, résumé, conditions, source) et `rules_text` (texte français).",
+                "Champs simples dérivés des règles de la zone et de celles des territoires qui la contiennent (skimap_zones::fields) : `bivouac` (forbidden, forbidden_in_places, tolerated, consent_required, allowed, unknown), `access` (forbidden, forbidden_in_places, routes_only, routes_only_in_places, avoid_recommended, allowed, unknown), leurs périodes (`bivouac_period`, `access_period`, null = toute l'année) et les règles qui décident (`bivouac_rules`, `access_rules`).",
             ],
             transform: Transform::Zones,
             ..vector(
@@ -166,14 +176,20 @@ pub fn catalog() -> Vec<Spec> {
             "pistes.meta.json",
             false,
         ),
-        vector(
-            "pistes",
-            "Pistes nordiques",
-            "pistes",
-            "pistes.geojson",
-            "pistes.meta.json",
-            true,
-        ),
+        Spec {
+            notes: &[
+                "Propriétés ajoutées par le pack, voie OSM par voie OSM : `state` (open, closed, unknown), `state_at` (date de l'état publiée par la source), `state_source`, `state_itineraries` (couche status) ; `colour_source`, `oneway_source`, `name_source` (osm ou plan), `plan_pistes`, `plan_colours`, `geometry_reversed` (plan des pistes P22). Sources à usage personnel : seulement avec personal_sources.",
+            ],
+            transform: Transform::Pistes,
+            ..vector(
+                "pistes",
+                "Pistes nordiques",
+                "pistes",
+                "pistes.geojson",
+                "pistes.meta.json",
+                true,
+            )
+        },
         vector(
             "routes",
             "Itinéraires de preuve (routage sur pistes)",
@@ -321,6 +337,11 @@ pub fn catalog() -> Vec<Spec> {
     ]
 }
 
+/// Layers the off-piste rasters of the core (and its proof routes) are computed from,
+/// besides relief and pistes: the avalanche exposure (CLPA fused with `personal_sources`)
+/// and the zones (Biodiv'sports with `personal_sources`).
+pub const OFFPISTE_INPUTS: &[&str] = &["avalanche-exposure", "zones"];
+
 /// A binary raster of the off-piste router (`skimap_core::offpiste`, format SKR1), stored
 /// gzipped: the phone inflates it once.
 const fn core_raster(id: &'static str, title: &'static str, file: &'static str) -> Spec {
@@ -336,6 +357,7 @@ const fn core_raster(id: &'static str, title: &'static str, file: &'static str) 
         notes: &[
             "Raster SKR1 de skimap-core (en-tête de 72 octets, voir offpiste.meta.json), compressé gzip dans le pack.",
         ],
+        depends: OFFPISTE_INPUTS,
     }
 }
 
@@ -356,6 +378,7 @@ pub fn discovered(out: &Path) -> Result<Vec<Spec>> {
                 stem.replace('_', " ")
             )),
             file: Cow::Owned(name),
+            depends: OFFPISTE_INPUTS,
             ..vector("", "", "routes", "", "routes.meta.json", false)
         });
     }
@@ -560,13 +583,14 @@ pub fn layer_entry(p: EntryParts<'_>, meta: Option<&MetaRead>) -> Layer {
         valid_from: meta.and_then(|m| m.meta.valid_from.clone()),
         valid_until: meta.and_then(|m| m.meta.valid_until.clone()),
         validity: meta.and_then(|m| m.meta.validity.clone()),
-        personal_use_only: sources.iter().any(|s| s.personal_use_only),
+        personal_use_only: restricted(&sources),
         sources,
         bytes: p.bytes,
         features: None,
         geometry_types: Vec::new(),
         visible: p.visible,
         raster: None,
+        classes: None,
         notes,
     }
 }
@@ -588,9 +612,9 @@ pub fn include(spec: &Spec, out: &Path, root: &Path, personal_sources: bool) -> 
         Some(m) => read_meta(&dir.join(m))?,
         None => None,
     };
-    let personal = meta
-        .as_ref()
-        .is_some_and(|m| m.meta.sources.iter().any(|s| s.personal_use_only));
+    let own = meta.as_ref().is_some_and(|m| restricted(&m.meta.sources));
+    let derived = personal_inputs(out, spec.depends)?;
+    let personal = own || !derived.is_empty();
     if personal && !personal_sources {
         return Ok(Outcome::Missing(Missing {
             id: spec.id.to_string(),
@@ -605,17 +629,18 @@ pub fn include(spec: &Spec, out: &Path, root: &Path, personal_sources: bool) -> 
             format!("layers/{}.{ext}.gz", spec.id),
             format!("{ext}+gzip"),
         ),
-        Transform::GeoJson | Transform::Zones => {
+        Transform::GeoJson | Transform::Zones | Transform::Pistes => {
             (format!("layers/{}.geojson", spec.id), "geojson".to_owned())
         }
     };
     let dst = root.join(&file);
     let mut features = None;
     let mut geometry_types = Vec::new();
+    let mut joined: Option<crate::build::pistes::PistesReport> = None;
     let bytes = match spec.transform {
         Transform::Copy => copy_file(&src, &dst)?,
         Transform::Gzip => gzip_file(&src, &dst)?,
-        Transform::GeoJson | Transform::Zones => {
+        Transform::GeoJson | Transform::Zones | Transform::Pistes => {
             let text = std::fs::read_to_string(&src).map_err(|e| Error::io(&src, e))?;
             let mut v: Value = serde_json::from_str(&text)
                 .map_err(|e| Error::json(src.display().to_string(), e))?;
@@ -623,7 +648,10 @@ pub fn include(spec: &Spec, out: &Path, root: &Path, personal_sources: bool) -> 
                 let rules_path = dir.join("rules.json");
                 let rules_text =
                     std::fs::read_to_string(&rules_path).map_err(|e| Error::io(&rules_path, e))?;
-                annotate_zones(&mut v, &text, &rules_text)?;
+                annotate_zones(&mut v, &text, &rules_text, chrono::Utc::now().date_naive())?;
+            }
+            if spec.transform == Transform::Pistes {
+                joined = Some(crate::build::pistes::enrich(&mut v, out, personal_sources)?);
             }
             let (n, types) = compact_geojson(&mut v, &src)?;
             features = Some(n);
@@ -653,7 +681,80 @@ pub fn include(spec: &Spec, out: &Path, root: &Path, personal_sources: bool) -> 
     );
     l.features = features;
     l.geometry_types = geometry_types;
+    if let Some(r) = joined {
+        for s in r.sources.iter().cloned() {
+            if !l.sources.iter().any(|x| x.name == s.name && x.url == s.url) {
+                l.sources.push(s);
+            }
+        }
+        l.personal_use_only = restricted(&l.sources);
+        l.notes.push(format!(
+            "État par voie : {} ; couleur du plan : {} voies sans couleur OSM coloriées, {} avec une couleur absente d'OSM (OSM gardé), {} conformes à OSM ; sens du plan : {} voies (conflits {}) ; noms du plan : {}.",
+            r.states
+                .iter()
+                .map(|(k, n)| format!("{k} {n}"))
+                .collect::<Vec<_>>()
+                .join(", "),
+            r.colour_from_plan,
+            r.colour_plan_differs,
+            r.colour_plan_agrees,
+            r.oneway_from_plan,
+            r.oneway_plan_conflicts,
+            r.name_from_plan
+        ));
+    }
+    if !derived.is_empty() {
+        l.personal_use_only = true;
+        l.notes.push(format!(
+            "Calculée à partir de couches à usage personnel ({}) : usage personnel.",
+            derived.join(", ")
+        ));
+    }
     Ok(Outcome::Included(Box::new(l)))
+}
+
+/// Sources whose terms do not allow a published pack until their owner agrees in
+/// writing (docs/licences-donnees.md, « Usage personnel seulement, tant qu'il n'y a pas
+/// d'accord écrit »), recognised by name (lower case) even when an older metadata file
+/// does not mark them `personal_use_only`.
+pub const UNAUTHORISED_SOURCES: [&str; 7] = [
+    "biodiv'sports",
+    "clpa",
+    "enquête permanente sur les avalanches",
+    "enj snowmap",
+    "nordic france",
+    "mairie de cervières",
+    "open-meteo",
+];
+
+/// Whether a source may not go into a published pack: marked `personal_use_only`, or one
+/// of [`UNAUTHORISED_SOURCES`].
+pub fn unauthorised(s: &Source) -> bool {
+    let name = s.name.to_lowercase();
+    s.personal_use_only || UNAUTHORISED_SOURCES.iter().any(|u| name.contains(u))
+}
+
+/// Whether any of `sources` may not go into a published pack ([`unauthorised`]).
+pub fn restricted(sources: &[Source]) -> bool {
+    sources.iter().any(unauthorised)
+}
+
+/// Whether the pipeline layer `origin` (`<origin>/<origin>.meta.json`) has a
+/// personal-use-only source.
+pub fn personal_origin(out: &Path, origin: &str) -> Result<bool> {
+    let path = out.join(origin).join(format!("{origin}.meta.json"));
+    Ok(read_meta(&path)?.is_some_and(|m| restricted(&m.meta.sources)))
+}
+
+/// The layers of `depends` that have a personal-use-only source.
+pub fn personal_inputs(out: &Path, depends: &[&str]) -> Result<Vec<String>> {
+    let mut v = Vec::new();
+    for d in depends {
+        if personal_origin(out, d)? {
+            v.push((*d).to_owned());
+        }
+    }
+    Ok(v)
 }
 
 fn ext_of(file: &str) -> String {
@@ -760,8 +861,16 @@ pub fn effect_fr(e: Effect) -> &'static str {
     }
 }
 
-/// Adds `rules` and `rules_text` to every zone feature.
-pub fn annotate_zones(v: &mut Value, zones_text: &str, rules_text: &str) -> Result<()> {
+/// Adds to every zone feature `rules` and `rules_text`, and the simple fields derived
+/// from the rules ([`skimap_zones::fields`], rules in force on `date` or later):
+/// `bivouac`, `bivouac_period`, `bivouac_rules`, `access`, `access_period`,
+/// `access_rules`.
+pub fn annotate_zones(
+    v: &mut Value,
+    zones_text: &str,
+    rules_text: &str,
+    date: chrono::NaiveDate,
+) -> Result<()> {
     let layer = ZoneLayer::from_geojson_str(zones_text)?;
     let rules = RuleSet::from_json_str(rules_text)?;
     let Some(features) = v.get_mut("features").and_then(Value::as_array_mut) else {
@@ -808,7 +917,14 @@ pub fn annotate_zones(v: &mut Value, zones_text: &str, rules_text: &str) -> Resu
             }
             text.push(line);
         }
+        let fields = skimap_zones::fields::zone_fields(&layer, &rules, zone, date);
         if let Some(props) = f.get_mut("properties").and_then(Value::as_object_mut) {
+            props.insert("bivouac".to_owned(), json!(fields.bivouac.as_str()));
+            props.insert("bivouac_period".to_owned(), json!(fields.bivouac_period));
+            props.insert("bivouac_rules".to_owned(), json!(fields.bivouac_rules));
+            props.insert("access".to_owned(), json!(fields.access.as_str()));
+            props.insert("access_period".to_owned(), json!(fields.access_period));
+            props.insert("access_rules".to_owned(), json!(fields.access_rules));
             props.insert("rules".to_owned(), Value::Array(list));
             props.insert(
                 "rules_text".to_owned(),
@@ -876,7 +992,20 @@ mod tests {
         }]});
         let text = zones.to_string();
         let mut v = zones.clone();
-        annotate_zones(&mut v, &text, skimap_zones::rules::RULES_JSON).unwrap();
+        let date = chrono::NaiveDate::from_ymd_opt(2026, 11, 15).unwrap();
+        annotate_zones(&mut v, &text, skimap_zones::rules::RULES_JSON, date).unwrap();
+        assert_eq!(
+            v.pointer("/features/0/properties/bivouac").unwrap(),
+            "consent_required"
+        );
+        assert_eq!(
+            v.pointer("/features/0/properties/bivouac_rules/0").unwrap(),
+            "fr-r111-32-bivouac-consent"
+        );
+        assert_eq!(
+            v.pointer("/features/0/properties/access").unwrap(),
+            "unknown"
+        );
         let rules = v
             .pointer("/features/0/properties/rules")
             .unwrap()
