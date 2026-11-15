@@ -1,0 +1,59 @@
+# Supply chain checks of the workspace (Q6, #106): `cargo deny check` (CI job `deny`).
+#
+# - advisories: RustSec database, every advisory (vulnerability, unmaintained, unsound)
+#   and yanked crates are errors; an exception goes in `ignore` with its reason;
+# - licenses: only permissive licences, all compatible with the EUPL-1.2 considered for the
+#   code (docs/licences/f2-licence-code.md) and with distributing the Android binary; the
+#   workspace crates are unpublished (`publish = false`) and their own licence is still to
+#   be decided (F2, #2), so they are not checked;
+# - bans: no wildcard version requirements; duplicate versions are reported, not denied
+#   (the tree has several through geo / reqwest / zip);
+# - sources: crates.io only; the patched pmtiles (vendor/pmtiles, MIT OR Apache-2.0) is a
+#   path dependency.
+#
+# The licences of the data (ODbL, Licence Ouverte, CC BY-SA, EUPL / CeCILL-C of some
+# sources) are documented in docs/licences-donnees.md: they do not concern the crates.
+
+[graph]
+# Every feature of the workspace crates (pipeline, download, geotiff): the pipeline and
+# the phone dependencies are both checked.
+all-features = true
+
+[advisories]
+yanked = "deny"
+ignore = []
+
+[licenses]
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    # Mozilla root certificates (webpki-roots, webpki-root-certs): permissive data licence.
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+    # libbz2-rs-sys (zip archives): the BSD-style licence of bzip2 1.0.6.
+    "bzip2-1.0.6",
+]
+confidence-threshold = 0.93
+private = { ignore = true }
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Path dependencies (`workspace = true`, vendor/pmtiles) have no version requirement.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

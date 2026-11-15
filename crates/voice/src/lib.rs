@@ -8,7 +8,7 @@
 //!   the phone) for fixed phrases, numbers, distances, durations and all names of a pack.
 //!
 //! Phone side (no networking, no subprocess): [`bank`] (events → announcements),
-//! [`clips`], [`manifest`], [`names`], [`numbers`], [`quantity`]. Workstation side:
+//! [`clips`], [`mod@manifest`], [`names`], [`numbers`], [`quantity`]. Workstation side:
 //! [`pack`] (generation of the voice layer), [`tts`] (pockettts.cpp), [`audio`] (trim,
 //! level, Ogg/Opus), [`tokenizer`] and [`gguf`] (exact Pocket TTS token counts).
 //!

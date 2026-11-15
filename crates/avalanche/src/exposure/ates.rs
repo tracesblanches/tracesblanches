@@ -12,7 +12,7 @@
 //! These classes are an intermediate product kept for the comparison with the oracle:
 //! the reference itself calls its maps « a research/tutorial product, not an operational
 //! ATES map », and its class 0 can fall inside a modelled runout (report 07). The layer
-//! shown to users is [`super::classes`], derived from these classes and the raw runout.
+//! shown to users is [`super::exposure_classes`], derived from these classes and the raw runout.
 
 use rayon::prelude::*;
 
