@@ -35,5 +35,6 @@ pub mod presets;
 pub mod session;
 pub mod speech;
 pub mod track;
+pub mod tracker;
 
 pub use error::{Error, Result};
