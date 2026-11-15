@@ -2935,6 +2935,7 @@ dependencies = [
 name = "skimap-refuges"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "geo",
  "serde",
  "serde_json",
@@ -3000,6 +3001,24 @@ dependencies = [
  "serde_json",
  "skimap-common",
  "skimap-osm",
+ "thiserror",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "skimap-stations"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "csv",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "skimap-common",
+ "skimap-osm",
+ "skimap-refuges",
  "thiserror",
  "tracing",
  "tracing-subscriber",

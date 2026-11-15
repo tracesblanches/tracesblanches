@@ -12,6 +12,7 @@ use skimap_common::download::{Downloader, Fetched, Request};
 use skimap_common::geom::{BBox, LonLat};
 
 use crate::error::{RefugesError, Result};
+use crate::privacy::{self, Phone};
 
 /// Downloader source name.
 pub const SOURCE: &str = "camptocamp";
@@ -67,6 +68,32 @@ pub struct Waypoint {
     pub licence: Option<String>,
     /// History page (authors) required for attribution.
     pub attribution_url: Option<String>,
+    /// Phone of the establishment (`phone` of a gîte or of a staffed hut, see
+    /// [`is_establishment`]); `phone_custodian` is never kept (a person's number).
+    pub phones: Vec<Phone>,
+    /// Official site of the establishment (`url`).
+    pub website: Option<String>,
+}
+
+/// Whether a waypoint is an establishment whose `phone` may be published: a gîte, or a
+/// hut staffed at least part of the year (staffed capacity, or wardened custodianship).
+pub fn is_establishment(
+    waypoint_type: &str,
+    custodianship: Option<&str>,
+    capacity_staffed: Option<i64>,
+) -> bool {
+    match waypoint_type {
+        "gite" => true,
+        "hut" => {
+            custodianship != Some("no_warden")
+                && (capacity_staffed.is_some_and(|c| c > 0)
+                    || matches!(
+                        custodianship,
+                        Some("accessible_when_wardened" | "always_accessible" | "key_needed")
+                    ))
+        }
+        _ => false,
+    }
 }
 
 /// Strips HTML tags and decodes the common entities.
@@ -147,23 +174,40 @@ pub fn parse_waypoint(doc: &Value) -> Result<Waypoint> {
         .map(title_of);
     let b = |k: &str| doc.get(k).and_then(Value::as_bool);
     let i = |k: &str| doc.get(k).and_then(Value::as_i64);
+    let waypoint_type = doc
+        .get("waypoint_type")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_owned();
+    let custodianship = doc
+        .get("custodianship")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    let establishment = is_establishment(
+        &waypoint_type,
+        custodianship.as_deref(),
+        i("capacity_staffed"),
+    );
+    let phones = match doc.get("phone").and_then(Value::as_str) {
+        Some(p) if establishment => privacy::structured_phone(p, "etablissement", "camptocamp"),
+        _ => Vec::new(),
+    };
+    let website = doc
+        .get("url")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|u| u.starts_with("http"))
+        .map(str::to_owned);
     Ok(Waypoint {
         id,
         title: title_of(doc),
-        waypoint_type: doc
-            .get("waypoint_type")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_owned(),
+        waypoint_type,
         pos: position(doc)?,
         elevation: doc.get("elevation").and_then(Value::as_f64),
         country,
         capacity_unstaffed: i("capacity"),
         capacity_staffed: i("capacity_staffed"),
-        custodianship: doc
-            .get("custodianship")
-            .and_then(Value::as_str)
-            .map(str::to_owned),
+        custodianship,
         mattress_unstaffed: b("matress_unstaffed"),
         blanket_unstaffed: b("blanket_unstaffed"),
         gas_unstaffed: b("gas_unstaffed"),
@@ -172,7 +216,7 @@ pub fn parse_waypoint(doc: &Value) -> Result<Waypoint> {
             .pointer("/cooked/access_period")
             .and_then(Value::as_str)
             .map(strip_html)
-            .filter(|s| !s.is_empty()),
+            .and_then(|s| privacy::redact(&s)),
         quality: doc
             .get("quality")
             .and_then(Value::as_str)
@@ -186,6 +230,8 @@ pub fn parse_waypoint(doc: &Value) -> Result<Waypoint> {
             .pointer("/license/attribution_url")
             .and_then(Value::as_str)
             .map(str::to_owned),
+        phones,
+        website,
     })
 }
 
@@ -266,6 +312,9 @@ mod tests {
             "matress_unstaffed": false,
             "heating_unstaffed": false,
             "quality": "medium",
+            "phone": "04 00 00 00 01",
+            "phone_custodian": "06 00 00 00 02",
+            "url": "http://www.exemple-refuge.fr/",
             "geometry": {"geom": "{\"type\": \"Point\", \"coordinates\": [758734.83625301, 5597109.178331737]}"},
             "areas": [{"area_type": "admin_limits", "locales": [{"lang": "fr", "title": "Hautes-Alpes"}]},
                       {"area_type": "country", "locales": [{"lang": "fr", "title": "France"}]}],
@@ -286,10 +335,29 @@ mod tests {
             Some("01/03 au 01/05 et du 15/06 au 15/09")
         );
         assert_eq!(w.licence.as_deref(), Some("CC-BY-SA-3.0"));
+        // Staffed hut: its phone is kept, the custodian's never.
+        assert_eq!(w.phones.len(), 1);
+        assert_eq!(w.phones[0].display, "04 00 00 00 01");
+        assert_eq!(w.website.as_deref(), Some("http://www.exemple-refuge.fr/"));
+        assert!(!serde_json::to_string(&w).unwrap().contains("06 00"));
         // EPSG:3857 → WGS84 (spherical Mercator, checked with the closed formula): 6.81583 E, 44.84472 N.
         assert!((w.pos.lon - 6.815831).abs() < 1e-6, "{:?}", w.pos);
         assert!((w.pos.lat - 44.844722).abs() < 1e-6, "{:?}", w.pos);
         assert!(parse_waypoint(&json!({"document_id": 1})).is_err());
+    }
+
+    #[test]
+    fn establishments() {
+        assert!(is_establishment("gite", None, None));
+        assert!(is_establishment("hut", None, Some(30)));
+        assert!(is_establishment("hut", Some("key_needed"), None));
+        assert!(!is_establishment("hut", Some("no_warden"), Some(10)));
+        assert!(!is_establishment("hut", None, None));
+        assert!(!is_establishment(
+            "shelter",
+            Some("always_accessible"),
+            Some(4)
+        ));
     }
 
     #[test]

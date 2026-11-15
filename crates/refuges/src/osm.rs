@@ -13,6 +13,10 @@ use skimap_common::download::{Downloader, Fetched, Request};
 use skimap_common::geom::{BBox, LonLat};
 
 use crate::error::{RefugesError, Result};
+use crate::privacy::{self, Phone};
+
+/// Phone tags read on staffed huts only (`tourism=alpine_hut`), never kept as tags.
+pub const PHONE_TAGS: &[&str] = &["phone", "contact:phone"];
 
 /// Downloader source name.
 pub const SOURCE: &str = "overpass";
@@ -42,8 +46,8 @@ pub const KEPT_TAGS: &[&str] = &[
     "fee",
     "reservation",
     "operator",
-    "phone",
     "website",
+    "contact:website",
     "ele",
     "ref:refuges.info",
     "description",
@@ -66,8 +70,13 @@ pub struct Hut {
     pub kind: String,
     /// refuges.info id from `ref:refuges.info`.
     pub refuges_info_id: Option<u64>,
-    /// Selected tags.
+    /// Selected tags (`description` filtered by [`privacy::redact`]).
     pub tags: BTreeMap<String, String>,
+    /// Phones of a staffed hut (`phone`, `contact:phone` of a `tourism=alpine_hut`); the
+    /// phones of unstaffed huts and shelters are dropped (they may reach a private person).
+    pub phones: Vec<Phone>,
+    /// Element page on openstreetmap.org.
+    pub url: String,
 }
 
 /// Overpass QL query for the huts and shelters of a box.
@@ -136,17 +145,43 @@ pub fn parse(v: &Value) -> Result<Vec<Hut>> {
             .and_then(|r| r.split(';').next())
             .and_then(|r| r.trim().parse().ok());
         let kind = kind_of(&all);
+        let phones = if kind == "alpine_hut" {
+            let mut p: Vec<Phone> = Vec::new();
+            for k in PHONE_TAGS {
+                for x in all
+                    .get(*k)
+                    .map(|v| privacy::structured_phone(v, "etablissement", "openstreetmap"))
+                    .unwrap_or_default()
+                {
+                    if !p.iter().any(|y| y.e164 == x.e164) {
+                        p.push(x);
+                    }
+                }
+            }
+            p
+        } else {
+            Vec::new()
+        };
         let tags = all
             .into_iter()
             .filter(|(k, _)| KEPT_TAGS.contains(&k.as_str()))
+            .filter_map(|(k, v)| {
+                if k == "description" {
+                    privacy::redact(&v).map(|v| (k, v))
+                } else {
+                    Some((k, v))
+                }
+            })
             .collect();
         out.push(Hut {
+            url: format!("https://www.openstreetmap.org/{osm_type}/{id}"),
             osm_type: osm_type.to_owned(),
             osm_id: id,
             pos: LonLat::new(lon, lat),
             kind,
             refuges_info_id,
             tags,
+            phones,
         });
     }
     out.sort_by(|a, b| (&a.osm_type, a.osm_id).cmp(&(&b.osm_type, b.osm_id)));
@@ -178,10 +213,10 @@ mod tests {
     fn parse_elements() {
         let v = json!({"elements": [
             {"type": "node", "id": 1, "lat": 44.85, "lon": 6.81,
-             "tags": {"tourism": "alpine_hut", "name": "Refuge des Fonts", "ref:refuges.info": "1428", "wikidata": "Q1"}},
+             "tags": {"tourism": "alpine_hut", "name": "Refuge des Fonts", "ref:refuges.info": "1428", "wikidata": "Q1", "phone": "+33 4 00 00 00 01"}},
             {"type": "way", "id": 2, "center": {"lat": 46.6, "lon": 6.1},
              "tags": {"amenity": "shelter", "shelter_type": "public_transport"}},
-            {"type": "node", "id": 3, "lat": 46.6, "lon": 6.1, "tags": {"amenity": "shelter", "fireplace": "yes"}},
+            {"type": "node", "id": 3, "lat": 46.6, "lon": 6.1, "tags": {"amenity": "shelter", "fireplace": "yes", "phone": "06 00 00 00 02", "description": "Clé chez M. Dupont 06 00 00 00 02"}},
             {"type": "node", "id": 3, "lat": 46.6, "lon": 6.1, "tags": {"amenity": "shelter"}},
             {"type": "relation", "id": 4, "tags": {"tourism": "wilderness_hut"}}
         ]});
@@ -194,8 +229,16 @@ mod tests {
         assert_eq!(h[0].kind, "alpine_hut");
         assert_eq!(h[0].refuges_info_id, Some(1428));
         assert!(!h[0].tags.contains_key("wikidata"));
+        assert_eq!(h[0].phones[0].display, "04 00 00 00 01");
+        assert_eq!(h[0].url, "https://www.openstreetmap.org/node/1");
         assert_eq!(h[1].osm_id, 3);
         assert_eq!(h[1].kind, "shelter");
+        // A shelter's phone may be a private person's: dropped; description filtered.
+        assert!(h[1].phones.is_empty() && !h[1].tags.contains_key("phone"));
+        assert_eq!(
+            h[1].tags["description"],
+            "Clé chez M. [nom retiré] [téléphone retiré]"
+        );
         assert_eq!(h[2].kind, "bus_shelter");
         assert!((h[2].pos.lat - 46.6).abs() < 1e-12);
     }

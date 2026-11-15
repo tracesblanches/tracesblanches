@@ -19,6 +19,7 @@ use skimap_common::download::{Downloader, Fetched, Request};
 use skimap_common::geom::{BBox, LonLat};
 
 use crate::error::{RefugesError, Result};
+use crate::privacy::{self, Phone};
 
 /// Downloader source name.
 pub const SOURCE: &str = "refuges-info";
@@ -31,7 +32,9 @@ pub const ATTRIBUTION: &str = "© les contributeurs de refuges.info (CC BY-SA 2.
 /// Points per comment request.
 const COMMENT_CHUNK: usize = 40;
 
-/// Dated comment of a point.
+/// Dated comment of a point: only its date and id. The text and the author are never
+/// kept (H1, #132: no signed comment in the layers; reproducing the text would also
+/// require naming its author, CC BY-SA).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Comment {
     /// Comment id.
@@ -40,10 +43,6 @@ pub struct Comment {
     pub point: u64,
     /// Date as given by the API (`YYYY-MM-DD hh:mm:ss.ffffff+zz`).
     pub date: String,
-    /// Text (plain).
-    pub text: String,
-    /// Author (may be empty).
-    pub author: String,
     /// Whether a photo is attached.
     pub photo: bool,
 }
@@ -88,14 +87,24 @@ pub struct Point {
     pub url: Option<String>,
     /// Last modification of the record.
     pub modified: Option<String>,
-    /// Access text.
+    /// Access text (phones, e-mails and person names removed, [`privacy::redact`]).
     pub access: Option<String>,
-    /// Remarks.
+    /// Remarks (same filter).
     pub remark: Option<String>,
-    /// Owner / whom to ask.
+    /// Owner / whom to ask (same filter).
     pub owner: Option<String>,
+    /// Phones of the establishment found in the owner text
+    /// ([`privacy::establishment_phones`]).
+    pub phones: Vec<Phone>,
+    /// Official site given in the owner text (« Site officiel: »).
+    pub website: Option<String>,
     /// Last dated comment.
     pub last_comment: Option<Comment>,
+}
+
+/// Whether a point is an open establishment (staffed hut or gîte, not closed).
+pub fn is_establishment(type_id: Option<u64>, state: Option<&str>) -> bool {
+    matches!(type_id, Some(9 | 10)) && state.is_none()
 }
 
 fn str_at<'a>(v: &'a Value, path: &str) -> Option<&'a str> {
@@ -152,14 +161,18 @@ pub fn parse_points(v: &Value) -> Result<Vec<Point>> {
                 ));
             }
         };
+        let type_id = p.pointer("/type/id").and_then(Value::as_u64);
+        let state = str_at(p, "/etat/valeur").map(str::to_owned);
+        let owner_raw = str_at(p, "/proprio/valeur");
+        let establishment = is_establishment(type_id, state.as_deref());
         out.push(Point {
             id,
             name: str_at(p, "/nom").unwrap_or_default().to_owned(),
-            type_id: p.pointer("/type/id").and_then(Value::as_u64),
+            type_id,
             type_label: str_at(p, "/type/valeur").map(str::to_owned),
             pos: LonLat::new(lon, lat),
             alt: p.pointer("/coord/alt").and_then(Value::as_f64),
-            state: str_at(p, "/etat/valeur").map(str::to_owned),
+            state,
             places: int_at(p, "/places/valeur"),
             places_mattress: int_at(p, "/info_comp/places_matelas/valeur"),
             stove: yes_no(p, "poele"),
@@ -171,9 +184,13 @@ pub fn parse_points(v: &Value) -> Result<Vec<Point>> {
             missing_wall: yes_no(p, "manque_un_mur"),
             url: str_at(p, "/lien").map(str::to_owned),
             modified: str_at(p, "/date/derniere_modif").map(str::to_owned),
-            access: str_at(p, "/acces/valeur").map(str::to_owned),
-            remark: str_at(p, "/remarque/valeur").map(str::to_owned),
-            owner: str_at(p, "/proprio/valeur").map(str::to_owned),
+            access: str_at(p, "/acces/valeur").and_then(privacy::redact),
+            remark: str_at(p, "/remarque/valeur").and_then(privacy::redact),
+            owner: owner_raw.and_then(privacy::redact),
+            phones: owner_raw
+                .map(|o| privacy::establishment_phones(o, establishment, "refuges.info"))
+                .unwrap_or_default(),
+            website: owner_raw.and_then(privacy::official_site),
             last_comment: None,
         });
     }
@@ -211,15 +228,6 @@ pub fn parse_comments(v: &Value) -> Result<Vec<Comment>> {
             id,
             point,
             date: str_at(c, "/date_commentaire")
-                .unwrap_or_default()
-                .to_owned(),
-            text: c
-                .get("texte_commentaire")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .trim()
-                .to_owned(),
-            author: str_at(c, "/auteur_commentaire")
                 .unwrap_or_default()
                 .to_owned(),
             photo: c.get("photo-originale").is_some(),
@@ -342,6 +350,14 @@ mod tests {
                 "type": "Feature", "id": 1428,
                 "geometry": {"type": "Point", "coordinates": [6.81, 44.85]},
                 "properties": {"nom": "Refuge des Fonts", "etat": {"valeur": "Fermé au public"}}
+            }, {
+                "type": "Feature", "id": 7,
+                "geometry": {"type": "Point", "coordinates": [6.1, 46.6]},
+                "properties": {
+                    "nom": "Gîte fictif", "type": {"id": 9, "valeur": "gîte d'étape"},
+                    "proprio": {"valeur": "Anne et Luc PERRIN\r\nTél : 03 00 00 00 07\r\nMail : anne.perrin@free.fr\r\nSite officiel: https://www.gite-fictif.fr/"},
+                    "acces": {"valeur": "Clé chez M. Dupont, 06 00 00 00 01"}
+                }
             }]
         })
     }
@@ -349,7 +365,22 @@ mod tests {
     #[test]
     fn points() {
         let p = parse_points(&sample()).unwrap();
-        assert_eq!(p.len(), 2);
+        assert_eq!(p.len(), 3);
+        // Personal data filtered, establishment phone and site kept.
+        let g = &p[2];
+        assert_eq!(g.phones.len(), 1);
+        assert_eq!(g.phones[0].display, "03 00 00 00 07");
+        assert_eq!(g.website.as_deref(), Some("https://www.gite-fictif.fr/"));
+        let owner = g.owner.as_deref().unwrap();
+        assert!(
+            !owner.contains("PERRIN") && !owner.contains("free.fr") && !owner.contains("00 07"),
+            "{owner}"
+        );
+        let access = g.access.as_deref().unwrap();
+        assert!(
+            !access.contains("Dupont") && !access.contains("06 00"),
+            "{access}"
+        );
         assert_eq!(p[0].id, 648);
         assert_eq!(p[0].type_id, Some(9));
         assert_eq!(p[0].alt, Some(2140.0));
@@ -365,7 +396,8 @@ mod tests {
 
     #[test]
     fn incremental_merge() {
-        let full = parse_points(&sample()).unwrap();
+        let mut full = parse_points(&sample()).unwrap();
+        full.truncate(2);
         let mut changed = full[1].clone();
         changed.places = Some(9);
         let mut new = full[0].clone();
@@ -389,6 +421,9 @@ mod tests {
         let l = latest_comments(c);
         assert_eq!(l[&648].id, 54639);
         assert!(l[&648].photo);
-        assert_eq!(l[&1428].text, "Contact");
+        assert_eq!(l[&1428].date, "2026-08-11 13:40:14+02");
+        // Neither the text nor the author is kept.
+        let v = serde_json::to_value(&l[&1428]).unwrap();
+        assert!(v.get("text").is_none() && v.get("author").is_none(), "{v}");
     }
 }

@@ -204,6 +204,8 @@ mod tests {
             access: None,
             remark: None,
             owner: None,
+            phones: Vec::new(),
+            website: None,
             last_comment: None,
         }
     }
@@ -218,6 +220,8 @@ mod tests {
             kind: kind.to_owned(),
             refuges_info_id: ri,
             tags,
+            phones: Vec::new(),
+            url: format!("https://www.openstreetmap.org/node/{id}"),
         }
     }
 
@@ -241,6 +245,8 @@ mod tests {
             url: String::new(),
             licence: None,
             attribution_url: None,
+            phones: Vec::new(),
+            website: None,
         }
     }
 
