@@ -9,6 +9,8 @@ publish.workspace = true
 [dependencies]
 
 [dev-dependencies]
+# Example `command_audio` only: Pocket TTS on the workstation and the WAV writer.
+skimap-voice.workspace = true
 proptest.workspace = true
 
 [lints]

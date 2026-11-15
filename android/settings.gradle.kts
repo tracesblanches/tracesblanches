@@ -22,3 +22,5 @@ include(":sync")
 include(":tracking")
 // Sending the outing (K11): Health Connect and Strava.
 include(":sport")
+// Offline voice commands (V3, VO5, A11): speech model on demand, released after each command.
+include(":voicecmd")
