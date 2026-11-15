@@ -272,14 +272,159 @@ pub fn parse_landmarks(v: &Value) -> Result<Vec<Landmark>> {
     Ok(out)
 }
 
-/// Downloads the landmarks of `b` (Overpass, source `overpass`).
+/// Mirror used when the main instance cannot be reached (VK Maps' public Overpass).
+pub const OVERPASS_MIRROR_URL: &str = "https://maps.mail.ru/osm/tools/overpass/api/interpreter";
+
+/// IGN Géoplateforme WFS (BD TOPO).
+pub const IGN_WFS_URL: &str = "https://data.geopf.fr/wfs/ows";
+
+/// Kind of a BD TOPO toponym (`classe_de_l_objet`, `nature_de_l_objet`); `None` for the
+/// classes that are not landmarks of a plan (rivers, roads, lines…).
+pub fn ign_kind(class: &str, nature: &str) -> Option<LandmarkKind> {
+    let n = crate::labels::fold(nature);
+    Some(match class {
+        "Zone d'habitation" => LandmarkKind::Place,
+        "Détail orographique" if n.starts_with("col") => LandmarkKind::Pass,
+        "Détail orographique"
+            if n.starts_with("sommet") || n.starts_with("pic") || n.starts_with("crete") =>
+        {
+            LandmarkKind::Summit
+        }
+        "Plan d'eau" => LandmarkKind::Lake,
+        "Zone d'activité ou d'intérêt" if n.contains("refuge") || n.contains("abri") => {
+            LandmarkKind::Refuge
+        }
+        "Détail orographique"
+        | "Lieu-dit non habité"
+        | "Zone d'activité ou d'intérêt"
+        | "Equipement de transport"
+        | "Transport par cable" => LandmarkKind::Other,
+        _ => return None,
+    })
+}
+
+/// Parses a BD TOPO `toponymie` GeoJSON page into landmarks (`osm`: `ign/<cleabs>`).
+pub fn parse_ign_toponyms(v: &Value) -> Result<Vec<Landmark>> {
+    let feats = v
+        .get("features")
+        .and_then(Value::as_array)
+        .ok_or_else(|| Error::Data("WFS answer without features".into()))?;
+    let mut out = Vec::new();
+    for f in feats {
+        let p = &f["properties"];
+        let (Some(name), Some(class)) = (
+            p["graphie_du_toponyme"].as_str(),
+            p["classe_de_l_objet"].as_str(),
+        ) else {
+            continue;
+        };
+        let Some(kind) = ign_kind(class, p["nature_de_l_objet"].as_str().unwrap_or("")) else {
+            continue;
+        };
+        let c = &f["geometry"]["coordinates"];
+        let (Some(lon), Some(lat)) = (c[0].as_f64(), c[1].as_f64()) else {
+            continue;
+        };
+        let ll = LonLat::new(lon, lat);
+        out.push(Landmark {
+            osm: format!(
+                "ign/{}",
+                p["cleabs_de_l_objet"].as_str().unwrap_or_default()
+            ),
+            name: name.to_owned(),
+            kind,
+            ele: None,
+            ll,
+            xy: l93(ll)?,
+        });
+    }
+    Ok(out)
+}
+
+/// Toponyms of `b` from the BD TOPO (IGN WFS, source `ign`, pages of 5 000).
+pub fn landmarks_ign(dl: &Downloader, b: &BBox) -> Result<(Vec<Landmark>, Fetched)> {
+    let mut out = Vec::new();
+    let mut first = None;
+    for page in 0..20 {
+        let url = format!(
+            "{IGN_WFS_URL}?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAMES=BDTOPO_V3:toponymie&BBOX={},{},{},{},urn:ogc:def:crs:EPSG::4326&COUNT=5000&STARTINDEX={}&OUTPUTFORMAT=application/json",
+            b.south,
+            b.west,
+            b.north,
+            b.east,
+            page * 5000
+        );
+        let f = dl.fetch(&Request::get("ign", &url))?;
+        let v: Value = f.json()?;
+        let n = v["features"].as_array().map_or(0, Vec::len);
+        out.extend(parse_ign_toponyms(&v)?);
+        first.get_or_insert(f);
+        if n < 5000 {
+            break;
+        }
+    }
+    let first = first.ok_or_else(|| Error::Data("no WFS page".into()))?;
+    Ok((out, first))
+}
+
+/// Where the landmarks of a registration come from.
+#[derive(Debug, Clone)]
+pub struct LandmarkSource {
+    /// The answer (first page).
+    pub fetched: Fetched,
+    /// Name of the source.
+    pub name: &'static str,
+    /// Licence.
+    pub licence: &'static str,
+    /// Attribution.
+    pub attribution: &'static str,
+}
+
+/// Landmarks of `b`: an Overpass answer already in the cache (the hand-written sheets),
+/// else the BD TOPO toponyms (IGN), else Overpass on the network.
+pub fn landmarks_any(dl: &Downloader, b: &BBox) -> Result<(Vec<Landmark>, LandmarkSource)> {
+    let osm = |f: Fetched| LandmarkSource {
+        fetched: f,
+        name: "OpenStreetMap, repères nommés (Overpass)",
+        licence: "ODbL 1.0",
+        attribution: "© les contributeurs d'OpenStreetMap (ODbL)",
+    };
+    let q = landmark_query(b);
+    let cached = dl.fetch(
+        &Request::post_form("overpass", OVERPASS_URL, &[("data", &q)])
+            .cache(skimap_common::download::CachePolicy::Offline),
+    );
+    if let Ok(f) = cached {
+        let v: Value = f.json()?;
+        return Ok((parse_landmarks(&v)?, osm(f)));
+    }
+    match landmarks_ign(dl, b) {
+        Ok((l, f)) => Ok((
+            l,
+            LandmarkSource {
+                fetched: f,
+                name: "IGN BD TOPO, toponymie (Géoplateforme, WFS)",
+                licence: "Licence Ouverte Etalab 2.0",
+                attribution: "IGN – BD TOPO",
+            },
+        )),
+        Err(_) => {
+            let (l, f) = landmarks(dl, b)?;
+            Ok((l, osm(f)))
+        }
+    }
+}
+
+/// Downloads the landmarks of `b` (Overpass, source `overpass`): from the mirror, else
+/// from the main instance (unreachable on 15/11/2026: connection refused, each attempt
+/// costing the downloader's retries).
 pub fn landmarks(dl: &Downloader, b: &BBox) -> Result<(Vec<Landmark>, Fetched)> {
     let q = landmark_query(b);
-    let f = dl.fetch(&Request::post_form(
-        "overpass",
-        OVERPASS_URL,
-        &[("data", &q)],
-    ))?;
+    let req = |url: &str| Request::post_form("overpass", url, &[("data", &q)]);
+    let f = match dl.fetch(&req(OVERPASS_MIRROR_URL)) {
+        Ok(f) => f,
+        Err(_) => dl.fetch(&req(OVERPASS_URL))?,
+    };
     let v: Value = f.json()?;
     Ok((parse_landmarks(&v)?, f))
 }

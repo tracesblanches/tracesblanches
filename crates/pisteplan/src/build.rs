@@ -3,9 +3,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
+use rayon::prelude::*;
 use serde::Serialize;
 use serde_json::{Value, json};
-use skimap_common::download::{Downloader, Fetched};
+use skimap_common::download::Downloader;
 use skimap_common::layout::DataLayout;
 use skimap_common::meta::{FileMeta, LayerMeta, SourceRef};
 use skimap_common::output;
@@ -84,8 +85,8 @@ pub struct Registration {
     pub union: SkelGraph,
     /// OSM reference.
     pub osm: OsmRef,
-    /// Overpass answer of the landmarks.
-    pub landmarks_fetched: Fetched,
+    /// Source of the landmarks (Overpass answer or BD TOPO toponyms).
+    pub landmarks_source: osmref::LandmarkSource,
     /// Label ↔ landmark candidates.
     pub candidates: Vec<LabelMatch>,
     /// RANSAC result.
@@ -265,10 +266,11 @@ pub fn register_input(
         .collect();
     let legend = match spec.labels {
         LabelSource::TextLayer => labels::legend(&spec, &lines, &inp.image, k),
-        LabelSource::Ocr => labels::legend_ocr(&spec, &lines),
+        LabelSource::Ocr => labels::legend_ocr(&spec, &lines, &inp.image, k),
     };
     let classes = segment::classify(&spec, &inp.image, k);
     let graphs: Vec<(usize, SkelGraph)> = (0..spec.inks.len())
+        .into_par_iter()
         .map(|i| {
             let (_, g) =
                 segment::ink_lines(&classes, inp.image.w, inp.image.h, i as u8, &spec.line);
@@ -286,7 +288,7 @@ pub fn register_input(
     };
     lap("segmentation", &mut t);
     let mut osm = osmref::pistes(planet, &spec.extent)?;
-    let (lms, landmarks_fetched) = osmref::landmarks(dl, &spec.extent)?;
+    let (lms, landmarks_source) = osmref::landmarks_any(dl, &spec.extent)?;
     osm.landmarks = lms;
     lap("osm", &mut t);
     let (min_sim, ele_tol) = match spec.labels {
@@ -294,48 +296,73 @@ pub fn register_input(
         LabelSource::Ocr => (0.75, None),
     };
     let candidates = align::label_candidates(&map_labels, &osm.landmarks, min_sim, ele_tol);
-    let coarse = align::coarse(&candidates, RANSAC_TOL_PT).ok_or_else(|| {
-        crate::Error::Fit(format!(
-            "{}: no consistent label ↔ landmark set ({} candidates)",
-            spec.id,
-            candidates.len()
-        ))
-    })?;
-    // Automatic sheets: the extent is a hint around the domains; once the plan is placed,
-    // the OSM pistes are those of the extent actually drawn (map area carried onto the
-    // map by the coarse fit, plus the margin).
-    if let Some(margin) = refine_extent_m {
-        let fit = |p: crate::warp::P2| coarse.affine.apply(align::up(p));
-        let drawn_extent = extent_of(&spec.map_area, &fit, margin)?;
-        let overlaps = drawn_extent.south < spec.extent.north
-            && drawn_extent.north > spec.extent.south
-            && drawn_extent.west < spec.extent.east
-            && drawn_extent.east > spec.extent.west;
-        if !overlaps {
-            return Err(crate::Error::Fit(format!(
-                "{}: the plan placed by its labels ({drawn_extent:?}) is outside the hint",
-                spec.id
-            )));
+    // Placement: the RANSAC allows a rotation of 45° at most (north up, give or take);
+    // an automatic sheet may be any plan, drawn rotated to fit its page: when the first
+    // placement fails (no consistent set, or an ICP without pairs), any rotation is tried,
+    // with five consistent labels at least.
+    let rotations: &[f64] = if refine_extent_m.is_some() {
+        &[45.0, 180.0]
+    } else {
+        &[45.0]
+    };
+    let hint = spec.extent;
+    let mut placed = None;
+    let mut failure = format!(
+        "{}: no consistent label ↔ landmark set ({} candidates)",
+        spec.id,
+        candidates.len()
+    );
+    for &max_rot in rotations {
+        let Some(coarse) = align::coarse(&candidates, RANSAC_TOL_PT, max_rot) else {
+            continue;
+        };
+        if max_rot > 45.0 && coarse.inliers.len() < 5 {
+            continue;
         }
-        spec.extent = drawn_extent;
-        let lms = std::mem::take(&mut osm.landmarks);
-        osm = osmref::pistes(planet, &spec.extent)?;
-        osm.landmarks = lms;
+        // Automatic sheets: the extent is a hint around the domains; once the plan is
+        // placed, the OSM pistes are those of the extent actually drawn (map area carried
+        // onto the map by the coarse fit, plus the margin).
+        if let Some(margin) = refine_extent_m {
+            let fit = |p: crate::warp::P2| coarse.affine.apply(align::up(p));
+            let drawn_extent = extent_of(&spec.map_area, &fit, margin)?;
+            let overlaps = drawn_extent.south < hint.north
+                && drawn_extent.north > hint.south
+                && drawn_extent.west < hint.east
+                && drawn_extent.east > hint.west;
+            if !overlaps {
+                failure = format!(
+                    "{}: the plan placed by its labels ({drawn_extent:?}) is outside the hint",
+                    spec.id
+                );
+                continue;
+            }
+            spec.extent = drawn_extent;
+            let lms = std::mem::take(&mut osm.landmarks);
+            osm = osmref::pistes(planet, &spec.extent)?;
+            osm.landmarks = lms;
+        }
+        let drawn = align::sample_lines(&graphs, k, 3.0);
+        let tree = align::osm_tree(&osm, 10.0);
+        match align::icp(
+            &spec,
+            &drawn,
+            &osm,
+            &tree,
+            &coarse.affine,
+            ICP_SCHEDULE,
+            ICP_CELL_PT,
+        ) {
+            Some(r) => {
+                placed = Some((coarse, r));
+                break;
+            }
+            None => failure = format!("{}: ICP found too few pairs", spec.id),
+        }
     }
-    lap("ransac", &mut t);
-    let drawn = align::sample_lines(&graphs, k, 3.0);
-    let tree = align::osm_tree(&osm, 10.0);
-    let (warp, pairs, steps) = align::icp(
-        &spec,
-        &drawn,
-        &osm,
-        &tree,
-        &coarse.affine,
-        ICP_SCHEDULE,
-        ICP_CELL_PT,
-    )
-    .ok_or_else(|| crate::Error::Fit(format!("{}: ICP found too few pairs", spec.id)))?;
-    lap("icp", &mut t);
+    let Some((coarse, (warp, pairs, steps))) = placed else {
+        return Err(crate::Error::Fit(failure));
+    };
+    lap("ransac_icp", &mut t);
     let ties = align::junction_ties(&union, k, &osm, &warp, TIE_MAX_PT * coarse.scale);
     let tie_pairs: Vec<_> = ties.iter().map(|t| (t.plan, t.map)).collect();
     let kinds = [
@@ -368,7 +395,7 @@ pub fn register_input(
         graphs,
         union,
         osm,
-        landmarks_fetched,
+        landmarks_source,
         candidates,
         coarse,
         warp,
@@ -697,10 +724,10 @@ pub fn transcribe_and_write(
             )),
         planet_source.clone(),
         SourceRef::from_fetched(
-            "OpenStreetMap, repères nommés (Overpass)",
-            "ODbL 1.0",
-            "© les contributeurs d'OpenStreetMap (ODbL)",
-            &reg.landmarks_fetched,
+            reg.landmarks_source.name,
+            reg.landmarks_source.licence,
+            reg.landmarks_source.attribution,
+            &reg.landmarks_source.fetched,
         ),
     ];
     meta.files = vec![

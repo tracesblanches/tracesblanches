@@ -3,8 +3,10 @@
 //! Without features the crate is the phone-side reader of the transcription
 //! ([`transcript`]) plus the plane-to-plane models ([`warp`]). The `pipeline` feature adds
 //! the registration of a plan: download, rendering and text layer (poppler tools as the
-//! input step), colour segmentation, skeleton graph, OCR (ocrs), matching to OSM
-//! (labels, RANSAC, non-rigid ICP, junctions), thin-plate spline, transcription.
+//! input step), reading sheet detected from the plan (`autospec`), colour segmentation,
+//! skeleton graph, OCR (ocrs), matching to OSM (labels, RANSAC, non-rigid ICP,
+//! junctions), thin-plate spline, transcription; the collector of the plans (`collect`)
+//! and the pairs labelled for the learnt matching (`learn`).
 
 pub mod error;
 pub mod linalg;
@@ -27,6 +29,8 @@ pub mod image;
 pub mod input;
 #[cfg(feature = "pipeline")]
 pub mod labels;
+#[cfg(feature = "pipeline")]
+pub mod learn;
 #[cfg(feature = "pipeline")]
 pub mod ocr;
 #[cfg(feature = "pipeline")]

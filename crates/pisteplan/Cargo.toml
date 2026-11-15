@@ -74,3 +74,12 @@ required-features = ["pipeline"]
 [[example]]
 name = "collect_plans"
 required-features = ["pipeline"]
+
+[[example]]
+name = "train_pairs"
+required-features = ["pipeline"]
+
+[[example]]
+name = "diag_plan"
+required-features = ["pipeline"]
+

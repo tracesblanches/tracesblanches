@@ -431,6 +431,16 @@ pub fn discover_enj(dl: &Downloader, census: &[Domain]) -> Result<Vec<Candidate>
                 domains.extend(domains_named(&name, census));
             }
         }
+        // Else the page's own name, « pontarlier-larmont-bolandoz » (each word).
+        if domains.is_empty() {
+            let slug = page
+                .trim_start_matches(ENJ_ROOT)
+                .trim_start_matches('/')
+                .trim_end_matches(".html");
+            for w in slug.split('-').filter(|w| w.len() > 3) {
+                domains.extend(domains_named(w, census));
+            }
+        }
         for l in &ls {
             let Some(name) = enj_original_name(l) else {
                 continue;

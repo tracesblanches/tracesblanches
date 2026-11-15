@@ -353,20 +353,41 @@ pub fn parse_colour_line(text: &str) -> Option<(&'static str, String, Option<f64
 
 /// Legend of a picture plan read by OCR (lines off the map with a colour word); the
 /// departure is the sector of the legend column holding the line.
-pub fn legend_ocr(spec: &PlanSpec, lines: &[TextBox]) -> Vec<LegendEntry> {
-    lines
+pub fn legend_ocr(
+    spec: &PlanSpec,
+    lines: &[TextBox],
+    img: &Rgb,
+    pt_per_px: f64,
+) -> Vec<LegendEntry> {
+    let off_map: Vec<TextBox> = lines
         .iter()
         .filter(|l| {
             let c = l.center();
             !spec.on_map(c[0], c[1])
         })
+        .cloned()
+        .collect();
+    join_lengths(&off_map)
+        .iter()
         .flat_map(split_entries)
         .filter_map(|l| {
-            let (ink, name, km) = parse_colour_line(&l.text)?;
+            // « Piste verte : le Gibera • 1,5 km », else « Le Gibera 1,5 km » after a dash
+            // of the piste's colour.
+            let (ink, name, km) = match parse_colour_line(&l.text) {
+                Some((ink, name, km)) => (spec.inks.iter().position(|i| i.name == ink), name, km),
+                None => {
+                    let (name, km) = split_length(&l.text)?;
+                    if name.chars().filter(|c| c.is_alphabetic()).count() < 3 {
+                        return None;
+                    }
+                    let ink = dash_ink(spec, img, l.rect, pt_per_px)?;
+                    (Some(ink), name, Some(km))
+                }
+            };
             let c = l.center();
             Some(LegendEntry {
                 name,
-                ink: spec.inks.iter().position(|i| i.name == ink),
+                ink,
                 length_km: km,
                 departure: spec
                     .sectors
@@ -377,6 +398,40 @@ pub fn legend_ocr(spec: &PlanSpec, lines: &[TextBox]) -> Vec<LegendEntry> {
             })
         })
         .collect()
+}
+
+/// Joins an OCR line that is only a length (« 1,2 km », the column of lengths of a legend)
+/// to the line on its left that overlaps it vertically by half its height at least,
+/// within 100 pt (the name, « La verte »): « La verte 1,2 km », box of the name. Lines
+/// already ending with a length are left as they are.
+pub fn join_lengths(lines: &[TextBox]) -> Vec<TextBox> {
+    let is_length = |t: &str| {
+        let t = t.trim();
+        split_length(&format!("x {t}")).is_some()
+            && t.chars().filter(|c| c.is_alphabetic()).count() <= 2
+    };
+    let mut out: Vec<TextBox> = lines
+        .iter()
+        .filter(|l| !is_length(&l.text))
+        .cloned()
+        .collect();
+    for l in lines.iter().filter(|l| is_length(&l.text)) {
+        let h = l.rect[3] - l.rect[1];
+        let best = out
+            .iter_mut()
+            .filter(|o| {
+                let ov = o.rect[3].min(l.rect[3]) - o.rect[1].max(l.rect[1]);
+                o.rect[2] <= l.rect[0] + 2.0
+                    && l.rect[0] - o.rect[2] < 100.0
+                    && ov >= 0.5 * h
+                    && split_length(&o.text).is_none()
+            })
+            .min_by(|a, b| (l.rect[0] - a.rect[2]).total_cmp(&(l.rect[0] - b.rect[2])));
+        if let Some(o) = best {
+            o.text = format!("{} {}", o.text.trim(), l.text.trim());
+        }
+    }
+    out
 }
 
 /// Splits an OCR line holding two legend entries side by side (two columns read as one

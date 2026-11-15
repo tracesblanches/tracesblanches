@@ -9,6 +9,8 @@
 
 use std::collections::BTreeMap;
 
+use rayon::prelude::*;
+
 use serde::Serialize;
 use skimap_common::download::{Downloader, Request};
 use skimap_common::geom::BBox;
@@ -152,13 +154,23 @@ pub fn entry_candidates(lines: &[TextBox], src: LabelSource) -> Vec<EntryCand> {
             }
             out
         }
-        LabelSource::Ocr => lines
+        LabelSource::Ocr => crate::labels::join_lengths(lines)
             .iter()
             .flat_map(crate::labels::split_entries)
             .filter_map(|l| {
-                let (ink, _, _) = parse_colour_line(&l.text)?;
+                // « Piste verte : … », else « Name 2,9 km » (its dash gives the ink).
+                let word_ink = match parse_colour_line(&l.text) {
+                    Some((ink, _, _)) => Some(ink),
+                    None => {
+                        let (name, _) = split_length(&l.text)?;
+                        if name.chars().filter(|c| c.is_alphabetic()).count() < 3 {
+                            return None;
+                        }
+                        None
+                    }
+                };
                 Some(EntryCand {
-                    word_ink: Some(ink),
+                    word_ink,
                     kind: kind_words(&l.text),
                     text: l.text.clone(),
                     rect: l.rect,
@@ -727,6 +739,7 @@ pub fn measured_width(
     pt_per_px: f64,
 ) -> (f64, Vec<f64>) {
     let per: Vec<(f64, f64)> = (0..n_inks)
+        .into_par_iter()
         .map(|ink| ink_width(classes, w, h, ink, pt_per_px))
         .collect();
     let mut ok: Vec<f64> = per
@@ -978,10 +991,13 @@ pub fn detect(
     // background of the map itself; the others hide the map (masks).
     let kept_of = |spec: &PlanSpec| {
         let classes = segment::classify(spec, img, k);
+        let kepts: Vec<Mask> = (0..spec.inks.len())
+            .into_par_iter()
+            .map(|ink| segment::ink_lines(&classes, img.w, img.h, ink as u8, &spec.line).0)
+            .collect();
         let mut kept_all = Mask::new(img.w, img.h);
-        for ink in 0..spec.inks.len() {
-            let (kept, _) = segment::ink_lines(&classes, img.w, img.h, ink as u8, &spec.line);
-            kept_all.or(&kept);
+        for kept in &kepts {
+            kept_all.or(kept);
         }
         (classes, kept_all)
     };
@@ -1205,7 +1221,8 @@ pub fn register_auto(
         layout,
         dl,
         planet,
-        Some(engine),
+        // A text layer needs no OCR (the hand-written sheets run it to measure it).
+        (auto.spec.labels == LabelSource::Ocr).then_some(engine),
         Some(EXTENT_MARGIN_M),
     )?;
     auto.spec.extent = reg.spec.extent;

@@ -16,7 +16,7 @@ On ne redistribue pas le plan, et on ne l'affiche pas en image sur la carte. Il 
 
 Téléchargés par le téléchargeur commun (sources `nordicfrance`, `enj`, cache 30 jours). Les rendus restent dans `data/cache/pisteplan/`.
 
-**Collecteur** (`collect`, exemple `collect_plans`) : médiathèque WordPress de Nordic France (recherches « plan » et « piste », station de rattachement → domaine du recensement) et pages des massifs de l'ENJ. Les fichiers sont choisis sur leur titre (raquettes, piétons, alpin, navettes… écartés). Sources propres, une requête toutes les 5 s. Au 15/11/2026 : 298 candidats, 257 plans distincts (41 doublons, 0 erreur), dont 114 PDF avec couche texte, 105 PDF-image, 15 PDF vectoriels sans texte, 22 images. 157 sont rattachés à un domaine ; 92 des 219 domaines ont au moins un plan. Dates de création de 2009 à 2026, surtout 2018-2026. Sortie : `data/out/france/plans/catalogue.json` (usage personnel).
+**Collecteur** (`collect`, exemple `collect_plans`) : médiathèque WordPress de Nordic France (recherches « plan » et « piste », station de rattachement → domaine du recensement) et pages des massifs de l'ENJ. Les fichiers sont choisis sur leur titre (raquettes, piétons, alpin, navettes… écartés). Sources propres, une requête toutes les 5 s. Au 15/11/2026 : 298 candidats, 257 plans distincts (41 doublons, 0 erreur), dont 114 PDF avec couche texte, 105 PDF-image, 15 PDF vectoriels sans texte, 22 images. 159 sont rattachés à un domaine (station, sites ou nom de la page) ; 99 des 219 domaines ont au moins un plan. Dates de création de 2009 à 2026, surtout 2018-2026. Sortie : `data/out/france/plans/catalogue.json` (usage personnel).
 
 ## Chaîne
 
@@ -82,3 +82,5 @@ La relecture a aussi trouvé deux erreurs, corrigées depuis : « Combe Verte »
 - 17 pistes de Chapelle-des-Bois n'ont aucune relation OSM du même nom (Le Pré d'Haut, Combe des Cives, les liaisons, Le Gy, La Lanterne…). Elles sont listées, pas devinées : c'est l'entrée de G1.
 - Sens : flèches lues à Chapelle-des-Bois seulement. Le plan de Cervières n'en dessine pas. Une flèche est un trou de l'encre (triangle blanc cerné) ; son sens est le signe de l'asymétrie de ses pixels le long de la ligne. Dans un extrait relu à la main, 10 flèches sur 12 sont trouvées. Le sens est donné par voie (`plan_ways.geojson`), pas par piste.
 - Les PDF n'ont ni `ETag` ni `Last-Modified` : un nouveau plan n'est vu qu'à l'expiration du cache (30 jours).
+- Le test exact est sensible au calage : à Chapelle-des-Bois, de petits écarts de fiche (zone de carte au point près, masques, encres) font varier le nombre de pistes transcrites de 25 à 32. Les pistes qui basculent sont celles dont la part dessinée est proche de 50 % ou des copies décalées.
+- Fiche automatique : les plans-dessins en perspective (panoramas des stations alpines), les pages à plusieurs cartes et les légendes sans tiret coloré ne sont pas lus ; seuls les plans calés par leurs étiquettes servent à l'apprentissage.

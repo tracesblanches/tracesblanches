@@ -157,30 +157,40 @@ pub fn classify(spec: &PlanSpec, img: &Rgb, pt_per_px: f64) -> Vec<u8> {
         .enumerate()
         .flat_map(|(i, ink)| ink.refs.iter().map(move |&c| (i, lab(c))))
         .collect();
-    let mut cache = std::collections::HashMap::<[u8; 3], u8>::new();
+    // Bands of rows in parallel, each with its colour cache (pure per pixel: the result
+    // does not depend on the split).
+    use rayon::prelude::*;
     let mut out = vec![NONE; img.w * img.h];
-    for y in 0..img.h {
-        let py = (y as f64 + 0.5) * pt_per_px;
-        for x in 0..img.w {
-            if !spec.on_map((x as f64 + 0.5) * pt_per_px, py) {
-                continue;
-            }
-            let c = img.get(x, y);
-            let k = *cache.entry(c).or_insert_with(|| {
-                let l = lab(c);
-                let mut best = (NONE, f32::MAX);
-                for &(i, r) in &refs {
-                    let d = ((l[0] - r[0]).powi(2) + (l[1] - r[1]).powi(2) + (l[2] - r[2]).powi(2))
-                        .sqrt();
-                    if d <= spec.inks[i].max_de && d < best.1 {
-                        best = (i as u8, d);
+    let band = 64;
+    out.par_chunks_mut(img.w * band)
+        .enumerate()
+        .for_each(|(b, chunk)| {
+            let mut cache = std::collections::HashMap::<[u8; 3], u8>::new();
+            for (dy, row) in chunk.chunks_mut(img.w).enumerate() {
+                let y = b * band + dy;
+                let py = (y as f64 + 0.5) * pt_per_px;
+                for (x, o) in row.iter_mut().enumerate() {
+                    if !spec.on_map((x as f64 + 0.5) * pt_per_px, py) {
+                        continue;
                     }
+                    let c = img.get(x, y);
+                    *o = *cache.entry(c).or_insert_with(|| {
+                        let l = lab(c);
+                        let mut best = (NONE, f32::MAX);
+                        for &(i, r) in &refs {
+                            let d = ((l[0] - r[0]).powi(2)
+                                + (l[1] - r[1]).powi(2)
+                                + (l[2] - r[2]).powi(2))
+                            .sqrt();
+                            if d <= spec.inks[i].max_de && d < best.1 {
+                                best = (i as u8, d);
+                            }
+                        }
+                        best.0
+                    });
                 }
-                best.0
-            });
-            out[y * img.w + x] = k;
-        }
-    }
+            }
+        });
     out
 }
 
