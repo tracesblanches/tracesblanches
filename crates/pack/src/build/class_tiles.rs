@@ -1,10 +1,12 @@
-//! Class layers as vector tiles: the slope classes of `terrain` (`slope_5m.tif`) and the
-//! avalanche exposure classes of `avalanche-exposure` (`exposure_5m.tif`) become class
-//! polygons, cut into Mapbox Vector Tiles per zoom in a PMTiles archive of the pack.
+//! Class layers as vector tiles: the slope classes of `terrain` (`slope_5m.tif`), the
+//! avalanche exposure classes of `avalanche-exposure` (`exposure_5m.tif`) and the snow
+//! classes of `snow` (`snow_depth.tif`, `class_groomed.tif`, `class_srn.tif`, 25 m) become
+//! class polygons, cut into Mapbox Vector Tiles per zoom in a PMTiles archive of the pack.
 //!
 //! The classes and their thresholds are those of the source rasters (IGN slope classes
-//! 30, 35, 40, 45°; exposure codes 1, 2, 3): nothing is recomputed. Method, on the 5 m
-//! Lambert-93 grid:
+//! 30, 35, 40, 45°; exposure codes 1, 2, 3; snow classes of `skimap-snow`): nothing is
+//! recomputed. Method, on the Lambert-93 grid of the source (5 m, 25 m for the snow,
+//! which is not smoothed, [`ClassSpec::smoothing`]):
 //!
 //! 1. **Smoothing** ([`Smoothing::Fill`]). Each threshold level `class >= k` gains the
 //!    cells of which at least 5 of the 9 cells of the 3 × 3 window are in it (cells
@@ -42,7 +44,8 @@ use skimap_common::grid::Grid;
 
 use crate::build::layers::{EntryParts, Outcome, copy_meta, layer_entry, read_meta, restricted};
 use crate::build::raster::{
-    Class, Read, exposure_classes, grid_bbox_wgs84, read_as, slope_classes, write_archive,
+    Class, Read, exposure_classes, grid_bbox_wgs84, read_as, slope_classes, snow_depth_classes,
+    snow_practice_classes, write_archive,
 };
 use crate::error::{Error, Result};
 use crate::manifest::{
@@ -146,6 +149,10 @@ pub struct ClassSpec {
     pub level_labels: &'static [&'static str],
     /// How the GeoTIFF is read.
     pub read: Read,
+    /// Smoothing of this layer, instead of [`Params::smoothing`]: the snow classes are
+    /// not smoothed (the smoothing only adds cells to the higher levels, the optimistic
+    /// side for snow, where less snow is the cautious side).
+    pub smoothing: Option<Smoothing>,
     /// Shown when the viewer opens.
     pub visible: bool,
     /// Notes, French.
@@ -190,6 +197,7 @@ pub fn catalog() -> Vec<ClassSpec> {
             drawn_from: 1,
             level_labels: &["30° et plus", "35° et plus", "40° et plus", "45° et plus"],
             read: Read::Float32,
+            smoothing: None,
             visible: true,
             notes: &[
                 "Classes de la carte des pentes IGN (30, 35, 40, 45°) en polygones vectoriels ; moins de 30° : pas de polygone. Attribut `class` : 1 (30 à 35°) à 4 (45° et plus).",
@@ -206,12 +214,77 @@ pub fn catalog() -> Vec<ClassSpec> {
             drawn_from: 0,
             level_labels: &["exposé ou très exposé", "très exposé"],
             read: Read::AvalancheClasses,
+            smoothing: None,
             visible: false,
             notes: &[
                 "Classes de la couche avalanche-exposure (modèle de type ATES et emprises CLPA fusionnées) en polygones vectoriels ; attribut `class` : 1 « terrain peu exposé (modèle) », 2 « exposé », 3 « très exposé », comme l'attribut `exposure` de avalanche-segments. Une sortie de modèle, jamais « sûr » ni « sans danger » ; consulter le BERA.",
             ],
         },
+        snow(
+            "snow-depth",
+            "Neige estimée (hauteur)",
+            "snow_depth.tif",
+            snow_depth_classes(),
+            &[
+                "1 cm et plus",
+                "10 cm et plus",
+                "20 cm et plus",
+                "40 cm et plus",
+                "60 cm et plus",
+                "100 cm et plus",
+            ],
+            &[
+                "Valeur centrale de la simulation Météo-France projetée sur le relief (cellules de 25 m) en polygones vectoriels ; pas une mesure. Attribut `class` : 0 (moins de 1 cm) à 6 (100 cm et plus).",
+            ],
+        ),
+        snow(
+            "snow-groomed",
+            "Neige pour piste damée (classes)",
+            "class_groomed.tif",
+            snow_practice_classes(),
+            &["limite ou suffisant", "suffisant"],
+            &[
+                "Seuils proposés : moins de 20 cm insuffisant, 20 à 40 cm limite, 40 cm et plus suffisant. Attribut `class` : 0 insuffisant, 1 limite, 2 suffisant (polygones vectoriels des cellules de 25 m, sans lissage).",
+            ],
+        ),
+        snow(
+            "snow-srn",
+            "Neige pour ski hors piste (classes)",
+            "class_srn.tif",
+            snow_practice_classes(),
+            &["limite ou suffisant", "suffisant"],
+            &[
+                "Seuils proposés : moins de 30 cm insuffisant, 30 à 60 cm limite, 60 cm et plus suffisant. Attribut `class` : 0 insuffisant, 1 limite, 2 suffisant (polygones vectoriels des cellules de 25 m, sans lissage).",
+            ],
+        ),
     ]
+}
+
+/// A snow layer of `snow/` (25 m Float32 rasters): every class drawn, no smoothing, hidden
+/// by default.
+fn snow(
+    id: &'static str,
+    title: &'static str,
+    file: &'static str,
+    classes: Vec<Class>,
+    level_labels: &'static [&'static str],
+    notes: &'static [&'static str],
+) -> ClassSpec {
+    ClassSpec {
+        id,
+        title,
+        origin: "snow",
+        file,
+        meta: "snow.meta.json",
+        classes,
+        value_base: 0,
+        drawn_from: 0,
+        level_labels,
+        read: Read::Float32,
+        smoothing: Some(Smoothing::None),
+        visible: false,
+        notes,
+    }
 }
 
 /// No-data class index of a spec.
@@ -828,6 +901,7 @@ pub fn vectorize(grid: &Grid<f32>, spec: &ClassSpec, params: &Params) -> Result<
     let gt = *grid.transform();
     let cell = gt.pixel_width.abs();
     let cell_m2 = cell * gt.pixel_height.abs();
+    let smoothing = spec.smoothing.unwrap_or(params.smoothing);
     let n = spec.classes.len();
     let nd = nodata(spec);
     let raw: Vec<u8> = grid.data().par_iter().map(|&v| classify(spec, v)).collect();
@@ -849,7 +923,7 @@ pub fn vectorize(grid: &Grid<f32>, spec: &ClassSpec, params: &Params) -> Result<
                 .iter()
                 .map(|&c| c != nd && usize::from(c) >= k)
                 .collect();
-            let mut m = match params.smoothing {
+            let mut m = match smoothing {
                 Smoothing::None => m,
                 Smoothing::Majority => majority3(&m, &valid, w, h),
                 Smoothing::Fill => {
@@ -1216,7 +1290,7 @@ pub fn vectorize(grid: &Grid<f32>, spec: &ClassSpec, params: &Params) -> Result<
         ),
         method: format!(
             "niveaux « classe ≥ k » lissés par 3 × 3 ({}), taches et trous de moins de {} m² supprimés au premier seuil et de moins de {} m² aux seuils suivants (4-connexité), frontières partagées entre régions par les milieux des côtés des cellules, Douglas-Peucker par zoom (moitié d'un pixel d'écran au zoom suivant, au moins {} m), découpe par tuile avec une marge de {BUFFER} unités sur {EXTENT}",
-            match params.smoothing {
+            match smoothing {
                 Smoothing::None => "aucun",
                 Smoothing::Majority => "majorité",
                 Smoothing::Fill => "majorité qui ajoute seulement",

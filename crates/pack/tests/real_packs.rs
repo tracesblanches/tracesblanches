@@ -173,6 +173,39 @@ fn sources(layout: &DataLayout, site: &Site) {
         let out = layout.out_dir(site);
         // Every GeoJSON layer keeps all the features of its source.
         for l in m.layers.iter().filter(|l| l.format == "geojson") {
+            if l.id == "piste-labels" {
+                // Derived from the pistes of the pack: every name is an itinerary or a
+                // name of the nordic ways, every nordic itinerary has its lines.
+                let pistes = pack.read_geojson("pistes").unwrap();
+                let mut names = BTreeSet::new();
+                for f in &pistes.features {
+                    let p = f.properties.as_ref().unwrap();
+                    let nordic = p["uses"]
+                        .as_array()
+                        .is_some_and(|u| u.iter().any(|x| x == "nordic"));
+                    if !nordic {
+                        continue;
+                    }
+                    for r in p["relations"].as_array().into_iter().flatten() {
+                        names.extend(r["name"].as_str().map(str::to_owned));
+                    }
+                    names.extend(p["name"].as_str().map(str::to_owned));
+                }
+                let labels = pack.read_geojson("piste-labels").unwrap();
+                let got: BTreeSet<String> = labels
+                    .features
+                    .iter()
+                    .filter_map(|f| f.properties.as_ref()?["name"].as_str().map(str::to_owned))
+                    .collect();
+                println!(
+                    "piste-labels: {} lines, {} names",
+                    labels.features.len(),
+                    got.len()
+                );
+                assert!(!got.is_empty());
+                assert!(got.is_subset(&names), "{:?}", got.difference(&names));
+                continue;
+            }
             let src = json(&out.join(&l.origin));
             let n = src["features"].as_array().unwrap().len() as u64;
             assert_eq!(l.features, Some(n), "{}", l.id);

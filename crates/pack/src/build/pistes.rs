@@ -357,6 +357,156 @@ pub fn enrich(v: &mut Value, out: &Path, personal_sources: bool) -> Result<Piste
     Ok(report)
 }
 
+/// Pack layer of the piste name lines.
+pub const LABELS_LAYER: &str = "piste-labels";
+
+/// Piste names along merged lines: one LineString per run of ways of the same itinerary,
+/// joined end to end where exactly two ways of that itinerary meet. The OSM ways are
+/// short (median 184 m at Cervières) and their `name` lists every itinerary of a shared
+/// section (`La Bergerie / Le Plan d'Eau / Les Pins`): too long for any way, a name along
+/// a way is rarely placed. Here each itinerary (OSM relation, else the piste plan names,
+/// else the way name) gets its own lines, as long as the network allows.
+///
+/// Only nordic ways (`uses` has `nordic`). Properties: `name`, `difficulty` (of the
+/// itinerary, else of the ways), `length_m`, `ways` (number of OSM ways merged).
+pub fn labels(pistes: &Value) -> Value {
+    // name -> (difficulty, lines)
+    let mut by_name: BTreeMap<String, (Option<String>, Vec<Vec<[f64; 2]>>)> = BTreeMap::new();
+    for f in features(pistes) {
+        let p = &f["properties"];
+        let nordic = p["uses"]
+            .as_array()
+            .is_some_and(|u| u.iter().any(|x| x == "nordic"));
+        if !nordic {
+            continue;
+        }
+        let mut names: Vec<(String, Option<String>)> = p["relations"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|r| {
+                let n = r["name"].as_str()?.trim();
+                (!n.is_empty()).then(|| (n.to_owned(), r["difficulty"].as_str().map(str::to_owned)))
+            })
+            .collect();
+        let way_difficulty = p["difficulty"].as_str().map(str::to_owned);
+        if names.is_empty() {
+            names = p["plan_pistes"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(|n| (n.trim().to_owned(), way_difficulty.clone()))
+                .filter(|(n, _)| !n.is_empty())
+                .collect();
+        }
+        if names.is_empty()
+            && let Some(n) = p["name"].as_str().map(str::trim).filter(|n| !n.is_empty())
+        {
+            names.push((n.to_owned(), way_difficulty.clone()));
+        }
+        let g = &f["geometry"];
+        let parts: Vec<Vec<[f64; 2]>> = match g["type"].as_str() {
+            Some("LineString") => vec![coords(&g["coordinates"])],
+            Some("MultiLineString") => g["coordinates"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(coords)
+                .collect(),
+            _ => Vec::new(),
+        };
+        for (name, difficulty) in names {
+            let e = by_name.entry(name).or_insert((None, Vec::new()));
+            if e.0.is_none() {
+                e.0 = difficulty.or_else(|| way_difficulty.clone());
+            }
+            e.1.extend(parts.iter().filter(|l| l.len() >= 2).cloned());
+        }
+    }
+    let mut out = Vec::new();
+    for (name, (difficulty, lines)) in by_name {
+        for (line, ways) in merge_lines(&lines) {
+            let length: f64 = line
+                .windows(2)
+                .map(|w| {
+                    skimap_common::geom::LonLat::new(w[0][0], w[0][1])
+                        .haversine_m(skimap_common::geom::LonLat::new(w[1][0], w[1][1]))
+                })
+                .sum();
+            out.push(json!({"type": "Feature",
+                "geometry": {"type": "LineString", "coordinates": line},
+                "properties": {"name": name, "difficulty": difficulty,
+                               "length_m": (length * 10.0).round() / 10.0, "ways": ways}}));
+        }
+    }
+    json!({"type": "FeatureCollection", "features": out})
+}
+
+fn coords(v: &Value) -> Vec<[f64; 2]> {
+    v.as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|p| Some([p.get(0)?.as_f64()?, p.get(1)?.as_f64()?]))
+        .collect()
+}
+
+/// Joins lines end to end at the points where exactly two line ends meet (no junction,
+/// no dead end); returns each merged line with the number of lines it holds.
+fn merge_lines(lines: &[Vec<[f64; 2]>]) -> Vec<(Vec<[f64; 2]>, usize)> {
+    let key = |p: [f64; 2]| ((p[0] * 1e6).round() as i64, (p[1] * 1e6).round() as i64);
+    let mut ends: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
+    for (i, l) in lines.iter().enumerate() {
+        ends.entry(key(l[0])).or_default().push(i);
+        ends.entry(key(l[l.len() - 1])).or_default().push(i);
+    }
+    // The other line at an end shared by exactly two line ends.
+    let next = |p: [f64; 2], from: usize| -> Option<usize> {
+        let e = &ends[&key(p)];
+        (e.len() == 2).then(|| if e[0] == from { e[1] } else { e[0] })
+    };
+    let mut used = vec![false; lines.len()];
+    let mut out = Vec::new();
+    for start in 0..lines.len() {
+        if used[start] {
+            continue;
+        }
+        used[start] = true;
+        let mut line = lines[start].clone();
+        let mut n = 1;
+        // Forward from the last point, then backward from the first.
+        for forward in [true, false] {
+            let mut cur = start;
+            loop {
+                let end = if forward {
+                    line[line.len() - 1]
+                } else {
+                    line[0]
+                };
+                let Some(j) = next(end, cur).filter(|&j| !used[j]) else {
+                    break;
+                };
+                used[j] = true;
+                n += 1;
+                let mut l = lines[j].clone();
+                if key(l[0]) != key(end) {
+                    l.reverse();
+                }
+                if forward {
+                    line.extend_from_slice(&l[1..]);
+                } else {
+                    l.pop();
+                    l.extend_from_slice(&line);
+                    line = l;
+                }
+                cur = j;
+            }
+        }
+        out.push((line, n));
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -451,5 +601,58 @@ mod tests {
         assert_eq!(r.oneway_from_plan, 1);
         assert_eq!(r.name_from_plan, 1);
         assert_eq!(r.states.get("open"), Some(&2));
+    }
+
+    #[test]
+    fn labels_follow_itineraries_and_merge_ways() {
+        let line = |c: &[[f64; 2]]| json!({"type": "LineString", "coordinates": c});
+        let rel = |n: &str| json!({"name": n, "difficulty": "easy"});
+        let f = |g: Value, rels: Vec<Value>, name: Option<&str>, uses: &[&str]| {
+            json!({"type": "Feature", "geometry": g,
+                   "properties": {"uses": uses, "relations": rels, "name": name, "difficulty": "intermediate"}})
+        };
+        let v = json!({"type": "FeatureCollection", "features": [
+            // Itinerary A over three ways, one drawn backwards; B shares the middle one.
+            f(line(&[[6.0, 46.0], [6.001, 46.0]]), vec![rel("A")], Some("A"), &["nordic"]),
+            f(line(&[[6.002, 46.0], [6.001, 46.0]]), vec![rel("A"), rel("B")], Some("A / B"), &["nordic"]),
+            f(line(&[[6.002, 46.0], [6.003, 46.0]]), vec![rel("A")], Some("A"), &["nordic"]),
+            // A way without itinerary keeps its own name; walking ways are left out.
+            f(line(&[[6.1, 46.0], [6.101, 46.0]]), vec![], Some("Chemin"), &["nordic"]),
+            f(line(&[[6.2, 46.0], [6.201, 46.0]]), vec![], Some("Sentier"), &["hike"]),
+        ]});
+        let out = labels(&v);
+        let feats = out["features"].as_array().unwrap();
+        let names: Vec<&str> = feats
+            .iter()
+            .map(|f| f["properties"]["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(names, ["A", "B", "Chemin"]);
+        let a = &feats[0];
+        assert_eq!(a["properties"]["ways"], 3);
+        assert_eq!(a["properties"]["difficulty"], "easy");
+        assert_eq!(a["geometry"]["coordinates"].as_array().unwrap().len(), 4);
+        let len = a["properties"]["length_m"].as_f64().unwrap();
+        assert!((len - 232.0).abs() < 2.0, "{len}");
+        assert_eq!(feats[2]["properties"]["difficulty"], "intermediate");
+    }
+
+    #[test]
+    fn merge_stops_at_junctions() {
+        // A star of three lines: no end shared by exactly two lines, nothing merged.
+        let star = vec![
+            vec![[0.0, 0.0], [1.0, 0.0]],
+            vec![[0.0, 0.0], [0.0, 1.0]],
+            vec![[0.0, 0.0], [-1.0, 0.0]],
+        ];
+        assert_eq!(merge_lines(&star).len(), 3);
+        // A closed loop of two lines merges into one.
+        let ring = vec![
+            vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]],
+            vec![[1.0, 1.0], [0.0, 1.0], [0.0, 0.0]],
+        ];
+        let m = merge_lines(&ring);
+        assert_eq!(m.len(), 1);
+        assert_eq!(m[0].1, 2);
+        assert_eq!(m[0].0.len(), 5);
     }
 }
