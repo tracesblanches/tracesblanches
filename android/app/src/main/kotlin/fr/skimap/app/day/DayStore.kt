@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.core.content.edit
 import fr.skimap.core.GroupSpec
 import fr.skimap.core.GroupView
+import fr.skimap.core.groupDefault
 import fr.skimap.core.groupLearn
 import fr.skimap.core.groupNew
 import fr.skimap.core.groupRead
@@ -44,14 +45,15 @@ class DayStore(
         }
     }
 
-    /** Saved groups; « seul » and « en famille » the first time. */
+    /** Saved groups; « Famille avec enfants débutants » and « Seul » the first time. */
     fun groups(): List<GroupView> {
         val raw = prefs().getString(KEY_GROUPS, null)
         if (raw == null) {
+            // The family the app offers first (C11), then a lone skier.
             val defaults =
                 listOf(
+                    groupDefault(),
                     groupNew(GroupSpec("Seul", 1u, byteArrayOf(), false, "intermediate")),
-                    groupNew(GroupSpec("En famille", 2u, FAMILY_AGES, false, "intermediate")),
                 )
             saveGroups(defaults)
             return defaults
@@ -120,8 +122,5 @@ class DayStore(
         const val GROUP_FILE = "group.txt"
         const val OBSERVATION_FILE = "observation.json"
         const val LEARNED_FILE = "learned.txt"
-
-        /** « En famille » the first time: children of 6 and 9, the family of the scenarios (Q9). */
-        private val FAMILY_AGES = byteArrayOf(6, 9)
     }
 }

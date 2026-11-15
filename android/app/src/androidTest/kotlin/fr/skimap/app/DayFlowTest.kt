@@ -13,11 +13,11 @@ import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.util.Log
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.isEnabled
-import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -123,7 +123,11 @@ class DayFlowTest {
             shell("pm grant ${target.packageName} android.permission.$p")
         }
         shell("appops set ${target.packageName} android:mock_location allow")
-        target.getSharedPreferences("skimap_day", Context.MODE_PRIVATE).edit().clear().commit()
+        target
+            .getSharedPreferences("skimap_day", Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .commit()
         shell("input keyevent KEYCODE_WAKEUP")
         shell("wm dismiss-keyguard")
 
@@ -241,10 +245,13 @@ class DayFlowTest {
                     val n = saidBefore()
                     shell("input keyevent KEYCODE_VOLUME_DOWN")
                     events += "volume down ($n said before)"
-                    shell("dumpsys media_session").lines().filter {
-                        it.contains("skimap") || it.contains("Media button session") || it.contains("active=") ||
-                            it.contains("state=PlaybackState") || it.contains("volumeType")
-                    }.take(20).forEach { Log.i("skimap", "day flow media_session: $it") }
+                    shell("dumpsys media_session")
+                        .lines()
+                        .filter {
+                            it.contains("skimap") || it.contains("Media button session") || it.contains("active=") ||
+                                it.contains("state=PlaybackState") || it.contains("volumeType")
+                        }.take(20)
+                        .forEach { Log.i("skimap", "day flow media_session: $it") }
                 }
 
                 90 -> {
@@ -272,7 +279,10 @@ class DayFlowTest {
         s.stats.said.forEach { Log.i("skimap", "day flow said [${it.kinds}] ${it.text}") }
         assertTrue("started: ${s.stats.session}", "started" in s.stats.session)
         assertTrue(s.stats.batches > 10)
-        val modes = s.stats.gpsLog.map { it.mode }.toSet()
+        val modes =
+            s.stats.gpsLog
+                .map { it.mode }
+                .toSet()
         assertTrue("$modes", modes.any { it != GpsMode.IDLE })
         assertTrue(running.guidance.progressM > 100)
         // The buttons: the time left (volume down) and the next direction (headset) were said.
@@ -283,13 +293,23 @@ class DayFlowTest {
         // The lock-screen notification.
         val n = target.getSystemService(NotificationManager::class.java).activeNotifications.firstOrNull { it.id == GuidanceNotifier.ID }
         assertNotNull(n)
-        val title = n!!.notification.extras.getCharSequence("android.title").toString()
-        val text = n.notification.extras.getCharSequence("android.text").toString()
+        val title =
+            n!!
+                .notification.extras
+                .getCharSequence("android.title")
+                .toString()
+        val text =
+            n.notification.extras
+                .getCharSequence("android.text")
+                .toString()
         Log.i("skimap", "day flow notification: « $title » « $text », promoted=${n.notification.flags and 0x40000 != 0}")
         // The next direction and its distance; the time left, or the switch to refuse in one gesture.
         assertTrue(title, title.contains(" m ") || title.startsWith("Arrivée"))
         assertTrue(text, text.contains("restantes") || text.startsWith("Itinéraire changé") || text.startsWith("Vous"))
-        val actions = n.notification.actions.orEmpty().map { it.title.toString() }
+        val actions =
+            n.notification.actions
+                .orEmpty()
+                .map { it.title.toString() }
         Log.i("skimap", "day flow notification actions $actions")
         assertTrue("$actions", "Ramène-moi" in actions)
         // The lock screen: screen off, then on without unlocking.
@@ -338,7 +358,10 @@ class DayFlowTest {
         val ended = Tracking.state.value as TrackingState.Ended
         val gpx = File(ended.gpx!!).readText()
         val points = gpx.split("<trkpt").size - 1
-        Log.i("skimap", "day flow: GPX $points points, voiced ${s.stats.voiced} (${s.stats.voicedClips} clips, ${s.stats.voicedTts} Android voice)")
+        Log.i(
+            "skimap",
+            "day flow: GPX $points points, voiced ${s.stats.voiced} (${s.stats.voicedClips} clips, ${s.stats.voicedTts} Android voice)",
+        )
         assertTrue(points >= 100)
         assertTrue(File(planDir, TrackingService.OBSERVATION_FILE).isFile)
         assertEquals(null, Tracking.activePlan(target))

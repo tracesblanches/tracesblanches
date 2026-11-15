@@ -111,9 +111,9 @@ class DayViewModelTest {
             val b = FakeDayBackend()
             val v = vm(b)
             val s = v.state.value as DayUi.Ready
-            // Defaults: the first start, 2 h, classic; the groups « Seul » and « En famille ».
-            assertEquals(listOf("Seul", "En famille"), s.groups.map { it.spec.name })
-            assertEquals("Seul", s.group!!.spec.name)
+            // Defaults: the first start, 2 h, classic; the family the app offers first, then « Seul ».
+            assertEquals(listOf("Famille avec enfants débutants", "Seul"), s.groups.map { it.spec.name })
+            assertEquals("Famille avec enfants débutants", s.group!!.spec.name)
             assertEquals(DayFixtures.morning, s.morning)
             assertEquals(1, b.requests.size)
             assertEquals("2 h, classique", b.requests[0].first.label)
@@ -125,10 +125,10 @@ class DayViewModelTest {
             assertEquals("easy", r.maxDifficulty)
             assertEquals("16:00", r.returnBefore)
             // The group's model goes to the core with the request (C11).
-            val fam = s.groups[1]
-            v.selectGroup(fam)
-            assertEquals(fam.modelJson, b.requests.last().second)
-            assertEquals("En famille", store().selectedGroup())
+            val other = s.groups[1]
+            v.selectGroup(other)
+            assertEquals(other.modelJson, b.requests.last().second)
+            assertEquals("Seul", store().selectedGroup())
         }
 
     @Test
@@ -148,7 +148,7 @@ class DayViewModelTest {
             assertEquals(1, b.validated.single().first)
             assertTrue(File(p.planDir).isDirectory)
             assertTrue(p.planDir.endsWith("plans/2026-11-16-1"))
-            assertEquals("Seul", File(p.planDir, DayStore.GROUP_FILE).readText())
+            assertEquals("Famille avec enfants débutants", File(p.planDir, DayStore.GROUP_FILE).readText())
             assertEquals(p, v.validated.value)
             assertEquals(Contact("Marie", "0612345678"), st.contact())
             // A second plan the same day gets its own directory.

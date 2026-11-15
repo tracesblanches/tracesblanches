@@ -1314,7 +1314,7 @@ impl<'a> Engine<'a> {
     fn guidance(&self) -> GuidanceView {
         let p = &self.o.plan;
         let limit = p.turnaround.limit.map(hhmm);
-        let planned_back = p.pace.as_ref().map_or(p.turnaround.arrival, |x| x.arrival);
+        let planned_back = p.pace.as_ref().map_or(p.turnaround.arrival, |x| x.planned);
         let s = self.tracker.progress();
         let mut remaining_m = (self.cache.length_m - s).max(0.0);
         let now = self.last.map(|(t, _)| t);

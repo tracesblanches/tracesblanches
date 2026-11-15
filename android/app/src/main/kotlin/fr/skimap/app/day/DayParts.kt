@@ -191,6 +191,9 @@ internal fun LoopCard(
             RadioButton(selected = selected, onClick = null)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(l.label, style = MaterialTheme.typography.titleMedium)
+                if (l.ifAllGoesWell) {
+                    Text(stringResource(R.string.day_if_all_goes_well), style = MaterialTheme.typography.labelMedium)
+                }
                 Text(
                     stringResource(R.string.day_loop_stats, "%.1f".format(Locale.FRANCE, l.lengthKm), l.gainM.toInt()),
                     style = MaterialTheme.typography.bodyMedium,

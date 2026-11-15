@@ -29,6 +29,7 @@
     <string name="day_best_time">Meilleur moment</string>
     <string name="day_wax">Fartage</string>
     <string name="day_loops">Boucles proposées</string>
+    <string name="day_if_all_goes_well">Si tout va bien</string>
     <string name="day_no_loop">Aucune boucle pour ces choix. Changez la durée ou le départ.</string>
     <string name="day_loop_stats">%1$s km · D+ %2$d m</string>
     <string name="day_loop_status">%1$s km ouverts · %2$s km fermés</string>

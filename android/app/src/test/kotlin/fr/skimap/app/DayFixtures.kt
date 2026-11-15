@@ -38,8 +38,8 @@ object DayFixtures {
 
     val groups =
         listOf(
+            group("Famille avec enfants débutants", "2 adultes, enfants de 10 et 14 ans"),
             group("Seul", "1 adulte"),
-            group("En famille", "2 adultes, enfants de 6 et 9 ans"),
         )
 
     val loops =
@@ -51,9 +51,10 @@ object DayFixtures {
                 260.0,
                 115.0,
                 "2 h 35 à 6 h 10",
-                "retour entre 12 h 35 et 16 h 10",
+                "médiane 3 h 40, prévu sur 4 h 50 (côté lent), retour prévu vers 14 h 50",
                 true,
                 null,
+                false,
                 listOf(10.1, 0.0, 2.7),
                 listOf("10 km de pistes ouvertes", "neige transformée qui ramollit à partir de 11 h", "vent faible"),
                 listOf("Skis à écailles — retenue incertaine sur neige transformée", "Lampe frontale — retour proche du coucher du soleil"),
@@ -69,6 +70,7 @@ object DayFixtures {
                 "retour entre 14 h 10 et 19 h 50",
                 true,
                 "Retour prévu après la limite de 16 h 00 : boucle longue pour ce groupe",
+                true,
                 listOf(12.5, 0.0, 5.6),
                 listOf("liaison des Rouges-Truites ouverte"),
                 emptyList(),
@@ -91,7 +93,7 @@ object DayFixtures {
             "Matin 9 h–12 h, air +5 °C, neige ≈ 0 °C, neige mouillée : classique, retenue incertaine, skis à écailles conseillés.",
             loops,
             listOf("carte d'enneigement : absente du pack"),
-            "2 adultes, enfants de 6 et 9 ans",
+            "2 adultes, enfants de 10 et 14 ans",
             "Ce plan n'est jamais une garantie : informations indicatives, lisez le BERA et les sources officielles, et décidez sur place.",
             191u,
         )
@@ -109,7 +111,7 @@ object DayFixtures {
         computing = computing,
         choice = choice,
         groups = groups,
-        group = groups[1],
+        group = groups[0],
         contact = Contact("Marie", "06 12 34 56 78"),
     )
 

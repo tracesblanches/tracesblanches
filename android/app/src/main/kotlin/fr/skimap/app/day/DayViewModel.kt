@@ -296,8 +296,7 @@ class DayViewModel(
                     .onSuccess { m ->
                         android.util.Log.i("skimap", "day: morning ${req.label} in ${m.computeMs} ms, ${m.loops.size} loops")
                         update { it.copy(morning = m, computing = false, choice = 0) }
-                    }
-                    .onFailure { e -> update { it.copy(computing = false, error = e.message) } }
+                    }.onFailure { e -> update { it.copy(computing = false, error = e.message) } }
             }
     }
 

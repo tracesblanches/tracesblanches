@@ -18,15 +18,16 @@ use std::time::Instant;
 
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use skimap_assist::inputs::{Paths, SiteData};
+use skimap_assist::suggest::GroupTime;
 use skimap_common::geom::LonLat;
 use skimap_common::layout::DataLayout;
 use skimap_common::site::Site;
-use skimap_core::calibration::{GroupProfile, Level, OutingObs, ProfileModel, terrain_ratio};
+use skimap_core::calibration::{GroupProfile, Level, OutingObs, ProfileModel};
 use skimap_core::graph::{Difficulty, PisteGraph};
 use skimap_core::routing::Style;
 use skimap_pack::Pack;
-use skimap_plan::course::{Course, PlanLeg};
-use skimap_plan::pace::{self, PaceRoute, clock_fr, duration_fr};
+use skimap_plan::course::Course;
+use skimap_plan::pace::{self, clock_fr, duration_fr};
 use skimap_plan::plan::{self, Context, DayPlan, KeyKind, Morning, PlanRequest};
 
 use crate::tracking::{TrackingError, epoch_ms};
@@ -222,6 +223,10 @@ pub struct LoopView {
     /// median, else the model with its margin) is after the limit of the day (return asked,
     /// light minus 30 min): proposed all the same, the skier decides.
     pub warning: Option<String>,
+    /// « Si tout va bien » (C11): with children, a loop that fits the time asked at the
+    /// group's median only (not on the slow side the others are planned on); listed after
+    /// the others, never first.
+    pub if_all_goes_well: bool,
     /// Km on open, closed and unknown trails.
     pub status_km: Vec<f64>,
     /// Reasons of the choice, French.
@@ -468,6 +473,12 @@ pub fn group_learn(
     group_view(&m)
 }
 
+/// The group the app offers first (C11): « Famille avec enfants débutants ».
+#[uniffi::export]
+pub fn group_default() -> Result<GroupView, TrackingError> {
+    group_view(&ProfileModel::new(GroupProfile::app_default()))
+}
+
 /// Starts of a site: the start points of its ready-made requests (`skimap_plan::presets`).
 #[uniffi::export]
 pub fn day_starts(site_id: String) -> Vec<DayStart> {
@@ -582,45 +593,50 @@ fn clock_day(t: NaiveDateTime, day: NaiveDate) -> String {
     }
 }
 
-/// The group's time on a route of the morning (the text of `pace::plan_pace` without a
-/// plan): (duration text, return text, range, median arrival).
-fn group_time(
-    g: &PisteGraph,
-    legs: &[PlanLeg],
-    eta: &skimap_core::eta::EtaModel,
-    departure: NaiveDateTime,
-    model: &ProfileModel,
-) -> Option<(String, String, bool, NaiveDateTime)> {
-    let c = Course::new(g, legs, eta).ok()?;
-    let route = PaceRoute::of(&c, terrain_ratio(eta));
-    let p = model.params.predict(route.total());
-    let range = model.outings < pace::FIGURE_AFTER_OUTINGS || p.spread() > pace::FIGURE_SPREAD;
-    let at = |s: f64| departure + chrono::Duration::milliseconds((s * 1000.0) as i64);
+/// The group's time on a loop of the morning (`Suggestion::group`, C11): (duration text,
+/// return text, range, planned arrival). With children the loop is planned on the slow
+/// side of the range: the median is said too.
+fn group_time(t: &GroupTime, departure: NaiveDateTime) -> (String, String, bool, NaiveDateTime) {
+    let m = |min: f64| min * 60.0;
+    let at = |min: f64| departure + chrono::Duration::milliseconds((min * 60_000.0) as i64);
     let day = departure.date();
-    Some(if range {
-        (
-            format!("{} à {}", duration_fr(p.lo_s), duration_fr(p.hi_s)),
-            format!(
-                "retour entre {} et {}",
-                clock_day(at(p.lo_s), day),
-                clock_day(at(p.hi_s), day)
-            ),
-            true,
-            at(p.median_s),
+    let spread = if t.median_min > 0.0 {
+        (t.hi_min - t.lo_min) / (2.0 * t.median_min)
+    } else {
+        0.0
+    };
+    let range = t.outings < pace::FIGURE_AFTER_OUTINGS || spread > pace::FIGURE_SPREAD;
+    let duration = if range {
+        format!(
+            "{} à {}",
+            duration_fr(m(t.lo_min)),
+            duration_fr(m(t.hi_min))
         )
     } else {
-        (
-            format!(
-                "environ {} ({} à {})",
-                duration_fr(p.median_s),
-                duration_fr(p.lo_s),
-                duration_fr(p.hi_s)
-            ),
-            format!("retour vers {}", clock_day(at(p.median_s), day)),
-            false,
-            at(p.median_s),
+        format!(
+            "environ {} ({} à {})",
+            duration_fr(m(t.median_min)),
+            duration_fr(m(t.lo_min)),
+            duration_fr(m(t.hi_min))
         )
-    })
+    };
+    let back = if t.plan_min > t.median_min + 1.0 {
+        format!(
+            "médiane {}, prévu sur {} (côté lent), retour prévu vers {}",
+            duration_fr(m(t.median_min)),
+            duration_fr(m(t.plan_min)),
+            clock_day(at(t.plan_min), day)
+        )
+    } else if range {
+        format!(
+            "retour entre {} et {}",
+            clock_day(at(t.lo_min), day),
+            clock_day(at(t.hi_min), day)
+        )
+    } else {
+        format!("retour vers {}", clock_day(at(t.median_min), day))
+    };
+    (duration, back, range, at(t.plan_min))
 }
 
 /// The limit of a day (J1): the return asked, or light minus 30 min (C7), the earlier.
@@ -672,14 +688,7 @@ impl DayPlanner {
             .loaded
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let m = plan::morning(&l.data, &req);
-        let g = l
-            .data
-            .graph
-            .as_ref()
-            .ok_or_else(|| TrackingError::Invalid {
-                detail: "graphe".into(),
-            })?;
+        let m = plan::morning_for(&l.data, &req, model.as_ref());
         let limit = day_limit(&req);
         let loops = m
             .suggestions
@@ -687,10 +696,10 @@ impl DayPlanner {
             .iter()
             .enumerate()
             .map(|(i, s)| {
-                let legs: Vec<PlanLeg> = s.legs.iter().map(|x| PlanLeg::from(*x)).collect();
-                let (time_text, back_text, range, back) = model
+                let (time_text, back_text, range, back) = s
+                    .group
                     .as_ref()
-                    .and_then(|md| group_time(g, &legs, &s.eta, m.start_time, md))
+                    .map(|t| group_time(t, m.start_time))
                     .unwrap_or_else(|| {
                         (
                             format!("environ {} (modèle)", duration_fr(s.eta_min * 60.0)),
@@ -720,6 +729,7 @@ impl DayPlanner {
                     back_text,
                     range,
                     warning,
+                    if_all_goes_well: s.if_all_goes_well,
                     status_km: vec![s.status_km.0, s.status_km.1, s.status_km.2],
                     reasons: s.reasons.iter().map(|r| r.text.clone()).collect(),
                     equipment: m
@@ -776,7 +786,9 @@ impl DayPlanner {
             .ok_or_else(|| TrackingError::Invalid {
                 detail: "graphe".into(),
             })?;
-        if let Some(md) = &model {
+        // The morning's group gives its time to the plan (`plan::build`); a group given
+        // only now (a morning computed without one) is applied here.
+        if let (Some(md), None) = (&model, &m.group) {
             pace::with_pace(&mut p, g, md)?;
         }
         let track = plan::track(&p, g)?;
@@ -847,7 +859,7 @@ fn plan_view(p: &DayPlan, plan_dir: &str, g: &PisteGraph) -> DayPlanView {
     let back = p
         .pace
         .as_ref()
-        .map_or(p.turnaround.arrival_with_margin, |x| x.arrival);
+        .map_or(p.turnaround.arrival_with_margin, |x| x.planned);
     let line = Course::new(g, &p.route.legs, &p.eta)
         .map(|c| flat(c.line().points()))
         .unwrap_or_default();

@@ -262,7 +262,9 @@ class TrackingReplayTest {
         Log.i(
             "skimap",
             "Q9 $name: ${inputs.size} inputs, $batches batches, ${s.stats.notified} notifications, outing ${"%.0f".format(outing)} s; " +
-                "replay $wall ms wall, process CPU $cpu ms (${"%.1f".format(cpu * 3600.0 / outing)} ms per hour of outing); threads $threads",
+                "replay $wall ms wall, process CPU $cpu ms (${"%.1f".format(
+                    cpu * 3600.0 / outing,
+                )} ms per hour of outing); threads $threads",
         )
         assertEquals("GPS requests differ: ${gpsMismatch.take(5)}", 0, gpsMismatch.size)
 
@@ -300,7 +302,10 @@ class TrackingReplayTest {
         // Every announcement played: the pack's clips decoded and assembled, else the Android voice.
         val until = System.currentTimeMillis() + 240_000
         while (s.stats.voiced < said.size && System.currentTimeMillis() < until) Thread.sleep(200)
-        Log.i("skimap", "Q9 $name: ${said.size} said, ${s.stats.voicedClips} with the pack's clips, ${s.stats.voicedTts} with the Android voice")
+        Log.i(
+            "skimap",
+            "Q9 $name: ${said.size} said, ${s.stats.voicedClips} with the pack's clips, ${s.stats.voicedTts} with the Android voice",
+        )
         assertEquals(said.size, s.stats.voiced)
         assertEquals(said.count { it.allClips }, s.stats.voicedClips)
         assertEquals(said.count { !it.allClips }, s.stats.voicedTts)
@@ -323,7 +328,10 @@ class TrackingReplayTest {
                     val c = v.getString("condition")
                     if (c == "wind_rising") "wind_rising" else c
                 }
-                else -> v.toString()
+
+                else -> {
+                    v.toString()
+                }
             }
         }
 

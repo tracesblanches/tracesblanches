@@ -213,8 +213,9 @@ fn morning_to_recap(site: &'static Site, date: &str, budget_min: f64, return_bef
         max_difficulty: None,
     };
     let fam = group(&[6, 9]);
-    let m = planner.morning(req.clone(), Some(fam.clone())).unwrap();
-    let alone = planner.morning(req, None).unwrap();
+    // Validated below: the last morning computed, the family's.
+    let alone = planner.morning(req.clone(), None).unwrap();
+    let m = planner.morning(req, Some(fam.clone())).unwrap();
     println!(
         "{}: layers {} ms, morning {} ms ({} loops), first: {} · {} · {} · {:?}",
         site.id,
@@ -250,6 +251,7 @@ fn morning_to_recap(site: &'static Site, date: &str, budget_min: f64, return_bef
         t0.elapsed().as_millis()
     );
     println!("  SMS: {}", v.sms);
+    println!("  pace: {:?}", v.pace_text);
     assert!(v.sms.contains("112"), "{}", v.sms);
     assert!(v.pace_text.as_deref().unwrap_or("").contains("a priori"));
     if let Some(r) = return_before {

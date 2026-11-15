@@ -79,7 +79,11 @@ class DayScreenTest {
         assertTrue(inputs[1].skating && inputs[2].easyOnly)
         // The loops with the group's range and the warning when it passes the limit.
         rule.onNodeWithTag(DayTags.LIST).performScrollToNode(hasTestTag(DayTags.LOOP + 0))
-        rule.onNodeWithText("2 h 35 à 6 h 10 · retour entre 12 h 35 et 16 h 10", useUnmergedTree = true).assertIsDisplayed()
+        rule
+            .onNodeWithText(
+                "2 h 35 à 6 h 10 · médiane 3 h 40, prévu sur 4 h 50 (côté lent), retour prévu vers 14 h 50",
+                useUnmergedTree = true,
+            ).assertIsDisplayed()
         rule.onNodeWithTag(DayTags.LOOP + 0).assertIsSelected()
         rule.onNodeWithTag(DayTags.LIST).performScrollToNode(hasTestTag(DayTags.LOOP + 1))
         rule
@@ -87,6 +91,7 @@ class DayScreenTest {
                 "Retour prévu après la limite de 16 h 00 : boucle longue pour ce groupe",
                 useUnmergedTree = true,
             ).assertIsDisplayed()
+        rule.onNodeWithText("Si tout va bien", useUnmergedTree = true).assertIsDisplayed()
         rule.onNodeWithTag(DayTags.LOOP + 1).performClick()
         assertEquals(1, chosen)
         // « Valider la journée »: one button, glove size, always visible.
