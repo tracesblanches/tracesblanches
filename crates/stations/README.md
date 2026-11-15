@@ -33,7 +33,7 @@ Membres → domaines : mots de chaque partie du libellé dans le nom, le nom Ope
 - 112 en tête des 219 fiches ; poste de secours (pisteurs, premiers secours, secours en montagne) : 64 (29 %) ; avec centres de secours et défibrillateurs : 164 (75 %).
 - Point de vente OSM : 120 (55 %) ; téléphone : 123 (56 %) ; site : 175 (80 %) ; parking : 208 (95 %).
 - Titre au prix daté (usage personnel) : 145 (66 %) ; prix journée : 1 (Cervières). Poste de secours, point de vente et prix daté ensemble : 38 (17 %).
-- Titres : Pass national 143 domaines, Montagnes du Jura 39, NP 74 : 19, Isère-Drôme 22, Alpes du Sud 25, 8 Pass de site ENJ ; 10 sources et 32 pages de domaine lues sans erreur.
+- Titres : Pass national 143 domaines, Montagnes du Jura 39, NP 74 : 19, Isère-Drôme 22, Alpes du Sud 25, 9 Pass de site ENJ ; 10 sources et 32 pages de domaine lues sans erreur.
 - Overpass : 98 requêtes (42 « loin », 56 « près ») ; avec les deux instances surchargées le 15/11/2026, environ 2 h au premier passage ; ensuite le cache (1 jour) et la période hebdomadaire.
 
 ## Jura (hypothèse de l'utilisateur)
