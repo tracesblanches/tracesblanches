@@ -1,6 +1,6 @@
 # skimap-meteo
 
-Client des API Météo-France : BERA par massif et météo horaire (pipeline). Tickets : P8 (#21), P19 (#32).
+Client des API Météo-France : BERA par massif et météo horaire (pipeline). Tickets : P8 (#21), P19 (#32), X17 (#151).
 
 ## BERA par massif (P8, module `bera`)
 
@@ -55,14 +55,30 @@ Source actuelle : **Open-Meteo**, gratuit pour un usage non commercial seulement
 
 `snow_depth` n'est jamais lu : nul avec `meteofrance_seamless` (rapport 03) ; la hauteur de neige vient de la couche d'enneigement (P6).
 
-### Passage à AROME de Météo-France
+### Source publiable : AROME de Météo-France en données ouvertes (X17, #151, module `arome`)
 
-Deux voies, non codées :
+`skimap_meteo::arome::build(site, &layout, &downloader)` écrit la même couche `meteo-hourly/` (même `HourlyFile`, l'assistant la lit telle quelle) sans `personal_sources` ; `skimap_meteo::arome::refresh(&[sites], &layout, &downloader)` est l'entrée du serveur.
 
-1. **API « AROME » du portail Météo-France**, avec la clé `METEOFRANCE_API_KEY` dans l'en-tête `apikey` : service WCS 2.0.1 `https://public-api.meteofrance.fr/public/arome/1.0/wcs/MF-NWP-HIGHRES-AROME-001-FRANCE-WCS/` (`GetCapabilities` répond 401 sans clé le 14/11/2026), puis `GetCoverage` par paramètre avec un sous-ensemble lat/long/temps autour de chaque point. Petites extractions ; quotas du portail à confirmer.
-2. **« Paquets AROME 0,01° » en données ouvertes** (Licence Ouverte, sans clé) sur data.gouv.fr : fichiers GRIB2 horaires de toute la grille EURW1S100 (mis à jour en continu). Il faut un décodeur GRIB2 (absent du workspace) et de gros téléchargements.
+- **Source** : « Paquets AROME - Résolution 0,025° » de Météo-France sur data.gouv.fr, **Licence Ouverte 2.0**, sans clé, sans quota publié. Fichiers servis par le dépôt public `https://meteofrance-pnt.s3.rbx.io.cloud.ovh.net/pnt/<run>/arome/0025/<paquet>/` (les URL des ressources du jeu de données) ; la liste S3 (`?list-type=2&prefix=pnt/&delimiter=/`) donne les runs (deux jours gardés). Huit runs par jour (00 à 21 UTC), échéances 0 à 51 h, GRIB2 compressé CCSDS (gabarit 5.42), grille EURW1S40 avec valeurs manquantes hors du domaine trapézoïdal (bitmap). L'API WCS du portail (clé `METEOFRANCE_API_KEY`) n'est pas nécessaire.
+- **Paquets lus** : `SP1` (9 fichiers par run, 470 Mo) : T(2m), HU(2m), FF et DD(10m), FF_RAF(10m) (maximum sur l'heure), NEBUL, PRECIP, NEIGE, GRAUPEL (cumulés depuis le début du run) ; l'altitude du point de grille vient de `SP2` 00-06 h (48 Mo) : le fichier des champs constants est en compression 5.50002, non lue par le décodeur. Plus le fichier `SP1` 00-06 h des cinq runs précédents (toutes les 6 h, 58 Mo chacun) : leurs heures 1 à 6 donnent les 24 h d'historique que demandent la qualité de neige et le fartage (série de 81 heures, de la veille au surlendemain).
+- **Décodage** : crate `grib` 0.20.3 avec `rust-aec` (Rust pur, sans libaec), un fil par fichier, chaque champ décodé une fois pour tous les points de tous les sites ; point de grille le plus proche (0,025°).
+- **Absent des paquets de surface** (valeurs nulles) : visibilité et brouillard, isotherme 0 °C (seulement en niveaux isobares ou hauteurs : 444 à 700 Mo par groupe d'échéances), code temps OMM, nébulosité basse (`SP2` entier, 375 Mo, non lue par l'assistant). Température apparente calculée (Steadman 1994, BoM, sans rayonnement), refroidissement éolien comme P19.
+- **Unités** : neige en cm = (NEIGE + GRAUPEL) en mm d'eau × 0,7 (la conversion d'Open-Meteo, pour garder l'unité que lit l'assistant) ; précipitations et neige horaires = différences des cumuls.
+- **Méta** : `meteo-hourly.meta.json` marque la source publiable (`personal_use_only` faux), licence, attribution « Météo-France, modèle AROME 0,025° (Licence Ouverte 2.0) », run lu (`parameters.arome_run`, `past_runs`), point de grille de chaque point (`parameters.points`).
+- **Idempotence** : `refresh` ne réécrit un site que si sa couche ne contient pas déjà le run le plus récent (`parameters.arome_run`) ; un second appel dans le même run n'écrit rien et ne télécharge rien.
 
-Dans les deux cas, seule la fonction qui remplit `Hour` change ; `hourly.json` garde le même format, avec le modèle de chaque variable dans `models`.
+Validation du décodage (oracle Python `eccodes` hors dépôt, run du 15/11/2026 09 UTC) : tous les champs utiles du fichier `SP1` 00-06 h (58 champs) à cinq points (Le Laus, Chapelle-des-Bois, Plateau de Beille, Vercors, un point hors domaine en mer Baltique) et l'altitude de `SP2` à trois points : même indice de grille, écart maximal 1,2·10⁻⁵ (précision f32), valeurs manquantes identiques.
+
+Limites : horizon 51 h (le jour J+2 n'est couvert que jusqu'à la fin du run) ; pas de correction d'altitude (Le Laus : point de grille à 2027 m pour un départ à 1750 m ; Les Fonts : 2401 m pour 2044 m) ; heures du jour en cours avant le run absentes si les runs précédents ne sont plus publiés.
+
+Intégration au rattrapage quotidien du serveur : appeler `arome::refresh(&sites, &layout, &dl)` avec tous les sites à servir, une fois par run (toutes les 3 h) ou au moins chaque matin après le run de 03 UTC ; sans effet si le run n'a pas changé. Le cache du téléchargeur garde les fichiers d'un run (environ 810 Mo par rafraîchissement, dont 290 Mo réutilisés au run suivant) : prévoir une purge des entrées `meteofrance-pnt` de plus de deux jours.
+
+```sh
+cargo run --release -p skimap-meteo --example arome -- cervieres chapelle-des-bois plateau-de-beille
+cargo run --release -p skimap-meteo --example arome -- --file <fichier.grib2> 44.8552 6.7269
+```
+
+### Open-Meteo (usage personnel)
 
 ```sh
 SKIMAP_PERSONAL_SOURCES=1 cargo run -p skimap-meteo --example hourly -- cervieres
