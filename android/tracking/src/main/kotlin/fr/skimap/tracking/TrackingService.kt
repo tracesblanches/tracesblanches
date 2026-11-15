@@ -8,6 +8,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener2
 import android.hardware.SensorManager
 import android.hardware.TriggerEvent
 import android.hardware.TriggerEventListener
@@ -20,6 +22,7 @@ import android.os.HandlerThread
 import android.os.IBinder
 import android.os.PowerManager
 import android.os.Process
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.ServiceCompat
 import androidx.core.content.edit
@@ -57,6 +60,13 @@ abstract class TrackingService : Service() {
         gpx: String?,
     ) = Unit
 
+    /**
+     * Called on the service's thread when the skier chose the profile the core proposed
+     * (X14): [profileJson] is the core's `GroupProfile`; the app makes it the group of the
+     * day (what the outing teaches goes to it).
+     */
+    protected open fun onProfileChosen(profileJson: String) = Unit
+
     private lateinit var thread: HandlerThread
     private lateinit var handler: Handler
     private lateinit var executor: java.util.concurrent.Executor
@@ -81,6 +91,14 @@ abstract class TrackingService : Service() {
     /** Replay: the inputs come from the test, not from the platform (its fixes would carry today's time). */
     private var replaying = false
 
+    /** X10: the step counter in 10 s reports, and the batch of fixes waiting for its flush. */
+    private val steps = StepReports()
+    private var stepsOn = false
+    private var waiting: List<Location>? = null
+
+    /** K6: the short sounds, read when the outing starts. */
+    private var earconSettings = EarconSettings(true, EarconSettings.DEFAULT_VOLUME)
+
     /** Counters of the outing (logged at the end; read by the instrumented tests). */
     class Stats {
         @Volatile var batches = 0
@@ -101,12 +119,21 @@ abstract class TrackingService : Service() {
         /** Notifications posted (only when their text changes). */
         @Volatile var notified = 0
 
+        /** Step reports given to the core (X10), and the short sounds asked (K6). */
+        @Volatile var stepReports = 0
+
+        @Volatile var earcons = 0
+
         val gpsLog: MutableList<GpsRequest> = java.util.Collections.synchronizedList(ArrayList())
         val said: MutableList<Utterance> = java.util.Collections.synchronizedList(ArrayList())
         val alerts: MutableList<AlertKind> = java.util.Collections.synchronizedList(ArrayList())
         val switches: MutableList<RouteSwitch> = java.util.Collections.synchronizedList(ArrayList())
         val proposals: MutableList<Proposal> = java.util.Collections.synchronizedList(ArrayList())
         val session: MutableList<String> = java.util.Collections.synchronizedList(ArrayList())
+        val profileProposals: MutableList<ProfileProposal> = java.util.Collections.synchronizedList(ArrayList())
+
+        /** The profile chosen during the outing (X14), JSON. */
+        @Volatile var profileChosen: String? = null
     }
 
     val stats = Stats()
@@ -126,6 +153,33 @@ abstract class TrackingService : Service() {
         object : TriggerEventListener() {
             override fun onTrigger(event: TriggerEvent?) {
                 handler.post { core?.let { handle(it.activity(System.currentTimeMillis(), Activity.SIGNIFICANT_MOTION)) } }
+            }
+        }
+
+    /**
+     * Android's step counter (X10): a non-wake-up sensor batched in its FIFO (it never wakes
+     * the phone); its events come when the phone is awake for a batch of fixes, which asks
+     * for them ([SensorManager.flush]) and goes to the core with them once flushed.
+     */
+    private val stepListener =
+        object : SensorEventListener2 {
+            override fun onSensorChanged(event: SensorEvent) {
+                // Sensor time is the elapsed realtime clock: to the wall clock of the fixes.
+                val ageMs = (SystemClock.elapsedRealtimeNanos() - event.timestamp) / NANOS_PER_MS
+                steps.sample(System.currentTimeMillis() - ageMs, event.values[0].toLong())
+            }
+
+            override fun onAccuracyChanged(
+                sensor: Sensor?,
+                accuracy: Int,
+            ) = Unit
+
+            override fun onFlushCompleted(sensor: Sensor?) {
+                steps.close(System.currentTimeMillis())
+                waiting?.let {
+                    waiting = null
+                    push(it)
+                }
             }
         }
 
@@ -156,6 +210,8 @@ abstract class TrackingService : Service() {
             Tracking.ACTION_REFUSE_SWITCH to { core?.let { handle(it.refuse(System.currentTimeMillis())) } },
             Tracking.ACTION_BACK to { toggleBack() },
             Tracking.ACTION_SAY to { act(ButtonAction.BOTH) },
+            Tracking.ACTION_PROFILE_ACCEPT to { core?.let { handle(it.profileAnswer(System.currentTimeMillis(), true)) } },
+            Tracking.ACTION_PROFILE_DECLINE to { core?.let { handle(it.profileAnswer(System.currentTimeMillis(), false)) } },
         )
 
     /** Local binding: the app's screens and the instrumented tests reach the service. */
@@ -255,11 +311,13 @@ abstract class TrackingService : Service() {
         val interactive = getSystemService(PowerManager::class.java)?.isInteractive ?: true
         screenOn = interactive
         controls?.screen(interactive)
+        earconSettings = Tracking.earcons(this)
         apply(GpsPolicy.START)
         if (replay) {
             publish()
             return
         }
+        startSteps()
         val f =
             IntentFilter().apply {
                 addAction(Intent.ACTION_SCREEN_ON)
@@ -277,15 +335,76 @@ abstract class TrackingService : Service() {
         Tracking.publish(TrackingState.Running(dir, g, applied, lastSaid))
     }
 
+    /** The step counter, batched without waking the phone (X10); absent on some phones. */
+    private fun startSteps() {
+        val sm = getSystemService(SensorManager::class.java) ?: return
+        val sensor = sm.getDefaultSensor(Sensor.TYPE_STEP_COUNTER) ?: return
+        stepsOn = sm.registerListener(stepListener, sensor, SensorManager.SENSOR_DELAY_NORMAL, STEP_LATENCY_US, handler)
+        Log.i(TAG, "tracking: step counter ${if (stepsOn) "on" else "refused"} (wake-up ${sensor.isWakeUpSensor})")
+    }
+
     /** A batch of fixes from the platform (or from a replay). */
     fun fixes(locations: List<Location>) {
-        val c = core ?: return
         // After the end, fixes still in flight are dropped (the outing is over).
+        if (core == null || locations.isEmpty() || ended) return
+        // A batch still waiting for the steps (no flush answer): it goes first.
+        waiting?.let {
+            waiting = null
+            push(it)
+        }
+        val sm = getSystemService(SensorManager::class.java)
+        if (stepsOn && sm != null && sm.flush(stepListener)) {
+            waiting = locations
+        } else {
+            push(locations)
+        }
+    }
+
+    /** One call to the core: the batch and the step reports closed by then. */
+    private fun push(locations: List<Location>) {
+        val c = core ?: return
+        if (ended) return
+        lastFixT = locations.last().time
+        stats.batches++
+        stats.fixes += locations.size
+        val reports = steps.drain()
+        stats.stepReports += reports.size
+        val packed = FixPacker.pack(locations)
+        handle(if (reports.isEmpty()) c.pushFixes(packed) else c.pushBatch(packed, reports))
+    }
+
+    /** A batch of fixes and the step reports over the same time, as recorded (replays of recorded inputs). */
+    fun fixes(
+        locations: List<Location>,
+        reports: List<StepReport>,
+    ) {
+        val c = core ?: return
         if (locations.isEmpty() || ended) return
         lastFixT = locations.last().time
         stats.batches++
         stats.fixes += locations.size
-        handle(c.pushFixes(FixPacker.pack(locations)))
+        stats.stepReports += reports.size
+        handle(c.pushBatch(FixPacker.pack(locations), reports))
+    }
+
+    /** Test hook: an event of the step counter ([total] steps since boot at [tMs]). */
+    fun stepEvent(
+        tMs: Long,
+        total: Long,
+    ) {
+        steps.sample(tMs, total)
+    }
+
+    /** Test hook: the step counter flushed at [tMs] (every event up to then is known). */
+    fun stepsFlushed(tMs: Long) {
+        steps.close(tMs)
+    }
+
+    /** Short sound of K6 when on. */
+    private fun earcon(e: Earcon?) {
+        if (e == null || !earconSettings.enabled) return
+        stats.earcons++
+        announcer.earcon(e, earconSettings.volume)
     }
 
     /** Location provider used: `fused` where the platform has it, else `gps`. */
@@ -309,17 +428,23 @@ abstract class TrackingService : Service() {
 
     private fun handle(b: Batch) {
         if (ended) return
-        for (u in b.utterances) {
-            stats.said += u
-            lastSaid = u.text
-            announcer.say(u)
-            if ("turn" in u.kinds) HapticPatterns.turn(b.guidance.nextTurn)?.let(haptics::play)
-        }
+        // Off the route or back on it: its sound before the words (K6).
         for (a in b.alerts) {
             stats.alerts += a
             haptics.play(HapticPatterns.alert(a))
+            earcon(EarconSynth.alert(a))
         }
-        if (b.proposals.isNotEmpty()) haptics.play(HapticPatterns.PROPOSAL)
+        for (u in b.utterances) {
+            stats.said += u
+            lastSaid = u.text
+            if ("turn" in u.kinds) {
+                // Left in the left ear, right in the right one, just before the words.
+                earcon(EarconSynth.turn(b.guidance.nextTurn))
+                HapticPatterns.turn(b.guidance.nextTurn)?.let(haptics::play)
+            }
+            announcer.say(u)
+        }
+        proposals(b)
         stats.proposals += b.proposals
         stats.switches += b.switches
         stats.session += b.session
@@ -337,6 +462,16 @@ abstract class TrackingService : Service() {
         val r = recap
         if (r != null && (b.utterances.any { "finished" in it.kinds } || lastFixT - recapAt >= END_GRACE_MS)) {
             end(r, stopped = false)
+        }
+    }
+
+    /** Proposals of a shorter way (C11) or of another profile (X14): felt; a profile chosen goes to the app. */
+    private fun proposals(b: Batch) {
+        if (b.proposals.isNotEmpty() || b.profileProposals.isNotEmpty()) haptics.play(HapticPatterns.PROPOSAL)
+        stats.profileProposals += b.profileProposals
+        b.profileChosen?.let { chosen ->
+            stats.profileChosen = chosen
+            onProfileChosen(chosen)
         }
     }
 
@@ -448,7 +583,10 @@ abstract class TrackingService : Service() {
         listening = false
         getSystemService(SensorManager::class.java)?.let { sm ->
             sm.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION)?.let { sm.cancelTriggerSensor(motion, it) }
+            if (stepsOn) sm.unregisterListener(stepListener)
         }
+        stepsOn = false
+        waiting = null
     }
 
     override fun onDestroy() {
@@ -474,5 +612,10 @@ abstract class TrackingService : Service() {
 
         /** After the recap, the last words are waited for this long at most, milliseconds. */
         const val END_GRACE_MS = 30_000L
+
+        /** The step counter's FIFO is read at most this late (it never wakes the phone), microseconds. */
+        const val STEP_LATENCY_US = 60_000_000
+
+        private const val NANOS_PER_MS = 1_000_000L
     }
 }

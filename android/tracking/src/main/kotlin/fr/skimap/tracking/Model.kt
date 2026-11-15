@@ -62,6 +62,20 @@ data class Proposal(
     val text: String,
 )
 
+/** The core asks whether to choose another group profile (X14), answered with one gesture. */
+data class ProfileProposal(
+    val name: String,
+    /** The profile, JSON (the core's `GroupProfile`): the group of the day once accepted. */
+    val profileJson: String,
+    val text: String,
+)
+
+/** Steps counted by the phone over one report (X10): end of the report, steps since the previous one. */
+data class StepReport(
+    val tMs: Long,
+    val steps: Int,
+)
+
 /** A change of route the skier may refuse with one gesture. */
 data class RouteSwitch(
     val route: String,
@@ -95,6 +109,8 @@ data class Guidance(
     val gpsMode: GpsMode,
     val proposal: Proposal?,
     val switch: RouteSwitch?,
+    /** Profile proposal waiting for an answer (X14). */
+    val profileProposal: ProfileProposal? = null,
 )
 
 /** End of the outing. */
@@ -116,6 +132,10 @@ data class Batch(
     val gps: GpsRequest?,
     val recap: Recap?,
     val guidance: Guidance,
+    /** Profile proposals (X14). */
+    val profileProposals: List<ProfileProposal> = emptyList(),
+    /** The profile chosen by an answer (X14), JSON. */
+    val profileChosen: String? = null,
 )
 
 /**
@@ -126,6 +146,18 @@ data class Batch(
 interface TrackingCore : AutoCloseable {
     /** A batch of fixes packed by [FixPacker]. */
     fun pushFixes(packed: ByteArray): Batch
+
+    /** A batch of fixes and the step reports over the same time (X10), in one call. */
+    fun pushBatch(
+        packed: ByteArray,
+        steps: List<StepReport>,
+    ): Batch
+
+    /** Answers the profile proposal (X14). */
+    fun profileAnswer(
+        tMs: Long,
+        accept: Boolean,
+    ): Batch
 
     fun screen(
         tMs: Long,

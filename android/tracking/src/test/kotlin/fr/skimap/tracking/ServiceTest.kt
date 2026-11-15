@@ -17,6 +17,7 @@ import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowSensor
 
 /** A core that answers what the test scripts: one batch per call, recorded. */
@@ -52,6 +53,25 @@ class FakeCore : TrackingCore {
 
     override fun pushFixes(packed: ByteArray): Batch {
         this.packed += packed
+        return batch()
+    }
+
+    val steps = ArrayList<StepReport>()
+
+    override fun pushBatch(
+        packed: ByteArray,
+        steps: List<StepReport>,
+    ): Batch {
+        this.packed += packed
+        this.steps += steps
+        return batch()
+    }
+
+    override fun profileAnswer(
+        tMs: Long,
+        accept: Boolean,
+    ): Batch {
+        events += "profile $accept"
         return batch()
     }
 
@@ -125,6 +145,7 @@ class FakeService : TrackingService() {
 }
 
 @RunWith(RobolectricTestRunner::class)
+@Config(qualifiers = "fr-rFR")
 class ServiceTest {
     private val app = ApplicationProvider.getApplicationContext<Application>()
 
@@ -271,5 +292,110 @@ class ServiceTest {
         val titles = n.actions.map { it.title.toString() }
         assertEquals(listOf("Accepter", "Refuser", "Ramène-moi"), titles)
         assertEquals(p.text, n.extras.getCharSequence("android.text").toString())
+    }
+
+    @Test
+    fun stepsGoToTheCoreWithTheBatchInTenSecondReports() {
+        val s = start()
+        val lm = app.getSystemService(LocationManager::class.java)
+        // The counter: 1000 steps since boot at 0 s, 12 more by 9 s, none after; known up to 31 s.
+        s.post {
+            s.stepEvent(0, 1_000)
+            s.stepEvent(4_000, 1_005)
+            s.stepEvent(9_000, 1_012)
+            s.stepsFlushed(31_000)
+        }
+        shadowOf(s.looper).idle()
+        shadowOf(lm).simulateLocation(s.providerName, loc(30_000, 6.72, 44.85))
+        shadowOf(s.looper).idle()
+        // One call: the fix and the reports of 0–10 s (12 steps), 10–20 s and 20–30 s (none).
+        assertEquals(1, FakeService.core.packed.size)
+        assertEquals(listOf(StepReport(10_000, 12), StepReport(20_000, 0), StepReport(30_000, 0)), FakeService.core.steps)
+        assertEquals(3, s.stats.stepReports)
+    }
+
+    @Test
+    fun turnsAndAlertsHaveTheirShortSounds() {
+        val s = start()
+        val turn = Utterance("Dans deux cents mètres, tournez à gauche.", emptyList(), false, false, listOf("turn"))
+        FakeService.core.next = { g ->
+            Batch(listOf(turn), listOf(AlertKind.OFF_ROUTE, AlertKind.BACK_ON_ROUTE), emptyList(), emptyList(), emptyList(), null, null, g)
+        }
+        val lm = app.getSystemService(LocationManager::class.java)
+        shadowOf(lm).simulateLocation(s.providerName, loc(1_000, 6.72, 44.85))
+        shadowOf(s.looper).idle()
+        // Off the route, reassurance, left: three sounds.
+        assertEquals(3, s.stats.earcons)
+        // Off: none.
+        Tracking.setEarcons(app, enabled = false, volume = 0.3f)
+        assertEquals(EarconSettings(false, 0.3f), Tracking.earcons(app))
+    }
+
+    @Test
+    fun aProfileProposalIsAnsweredWithOneGesture() {
+        val s = start()
+        val pp =
+            ProfileProposal(
+                "Famille, enfant de 6 ans, débutants",
+                "{}",
+                "Votre rythme ressemble à celui du profil « Famille ». Voulez-vous le choisir ?",
+            )
+        FakeService.core.next = { g ->
+            Batch(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), null, null, g.copy(profileProposal = pp), listOf(pp))
+        }
+        val lm = app.getSystemService(LocationManager::class.java)
+        shadowOf(lm).simulateLocation(s.providerName, loc(1_000, 6.72, 44.85))
+        shadowOf(s.looper).idle()
+        val n = shadowOf(app.getSystemService(NotificationManager::class.java)).getNotification(GuidanceNotifier.ID)
+        assertEquals(listOf("Choisir ce profil", "Garder le profil", "Ramène-moi"), n.actions.map { it.title.toString() })
+        assertEquals(pp.text, n.extras.getCharSequence("android.text").toString())
+        assertEquals(listOf(pp), s.stats.profileProposals)
+        for (a in listOf(Tracking.ACTION_PROFILE_ACCEPT, Tracking.ACTION_PROFILE_DECLINE)) {
+            s.onStartCommand(Intent(app, FakeService::class.java).setAction(a), 0, 2)
+        }
+        shadowOf(s.looper).idle()
+        assertEquals(listOf("screen true", "profile true", "profile false"), FakeService.core.events)
+    }
+}
+
+/** The notification in English, the default language (VO6). */
+@RunWith(RobolectricTestRunner::class)
+class ServiceEnglishTest {
+    private val app = ApplicationProvider.getApplicationContext<Application>()
+
+    @Test
+    fun theNotificationIsInEnglish() {
+        shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.POST_NOTIFICATIONS)
+        FakeService.core = FakeCore()
+        shadowOf(app.getSystemService(LocationManager::class.java)).setProviderEnabled(LocationManager.FUSED_PROVIDER, true)
+        val intent =
+            Intent(app, FakeService::class.java)
+                .setAction(Tracking.ACTION_START)
+                .putExtra(Tracking.EXTRA_PLAN_DIR, app.filesDir.absolutePath)
+        val s =
+            Robolectric
+                .buildService(FakeService::class.java, intent)
+                .create()
+                .startCommand(0, 1)
+                .get()
+        shadowOf(s.looper).idle()
+        val p = Proposal(1, "short_loop", "text")
+        FakeService.core.next = { g ->
+            Batch(emptyList(), emptyList(), emptyList(), listOf(p), emptyList(), null, null, g.copy(phase = Phase.MOVING, proposal = p))
+        }
+        val lm = app.getSystemService(LocationManager::class.java)
+        shadowOf(lm).simulateLocation(
+            s.providerName,
+            Location(LocationManager.GPS_PROVIDER).apply {
+                time = 1_000
+                longitude = 6.72
+                latitude = 44.85
+            },
+        )
+        shadowOf(s.looper).idle()
+        val n = shadowOf(app.getSystemService(NotificationManager::class.java)).getNotification(GuidanceNotifier.ID)
+        assertEquals("← 1.2 km left · Greffier", n.extras.getCharSequence("android.title").toString())
+        assertEquals(listOf("Accept", "Decline", "Take me back"), n.actions.map { it.title.toString() })
+        assertEquals(GuidanceLabels.FR, GuidanceLabels.FR.copy())
     }
 }

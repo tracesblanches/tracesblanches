@@ -188,4 +188,51 @@ class LogicTest {
         val all = listOf(HapticPatterns.SAFETY, HapticPatterns.BACK_ON, HapticPatterns.LEFT, HapticPatterns.RIGHT, HapticPatterns.U_TURN)
         assertEquals(all.size, all.map { it.toList() }.toSet().size)
     }
+
+    @Test
+    fun stepReportsAreTenSecondWindowsWithTheSilences() {
+        val r = StepReports()
+        r.sample(0, 500)
+        r.sample(3_000, 503)
+        r.sample(8_000, 509)
+        // Nothing closed before every event of the window is known.
+        assertTrue(r.drain().isEmpty())
+        r.sample(14_000, 515)
+        assertEquals(listOf(StepReport(10_000, 9)), r.drain())
+        r.close(40_000)
+        assertEquals(listOf(StepReport(20_000, 6), StepReport(30_000, 0), StepReport(40_000, 0)), r.drain())
+        // A counter that restarted (lower total): counted from there.
+        r.sample(42_000, 3)
+        r.sample(45_000, 10)
+        r.close(50_000)
+        assertEquals(listOf(StepReport(50_000, 7)), r.drain())
+    }
+
+    @Test
+    fun earconsAreShortPannedAndDistinct() {
+        fun energy(
+            pcm: ShortArray,
+            ch: Int,
+        ) = (ch until pcm.size step 2).sumOf { pcm[it].toDouble() * pcm[it] }
+        val left = EarconSynth.pcm(Earcon.LEFT, 1f)
+        val right = EarconSynth.pcm(Earcon.RIGHT, 1f)
+        // Left in the left ear, right in the right one.
+        assertTrue(energy(left, 0) > 50 * energy(left, 1))
+        assertTrue(energy(right, 1) > 50 * energy(right, 0))
+        for (e in Earcon.entries) {
+            val pcm = EarconSynth.pcm(e, 1f)
+            val ms = pcm.size / 2 * 1000 / EarconSynth.RATE
+            assertTrue("$e: $ms ms", ms in 100..500)
+            // Discreet: the peak stays under a quarter of the full scale.
+            assertTrue(pcm.maxOf { kotlin.math.abs(it.toInt()) } < Short.MAX_VALUE / 4)
+            // Volume scales it; 0 is silence.
+            assertTrue(EarconSynth.pcm(e, 0f).all { it.toInt() == 0 })
+        }
+        assertEquals(Earcon.LEFT, EarconSynth.turn(Turn.KEEP_LEFT))
+        assertEquals(Earcon.RIGHT, EarconSynth.turn(Turn.SLIGHT_RIGHT))
+        assertNull(EarconSynth.turn(Turn.STRAIGHT))
+        assertEquals(Earcon.OFF_ROUTE, EarconSynth.alert(AlertKind.OFF_ROUTE))
+        assertEquals(Earcon.REASSURANCE, EarconSynth.alert(AlertKind.BACK_ON_ROUTE))
+        assertNull(EarconSynth.alert(AlertKind.FOG))
+    }
 }
