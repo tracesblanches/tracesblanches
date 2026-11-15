@@ -17,7 +17,11 @@ Jamais « sans danger » : chaque sortie dit ce qu'elle ne sait pas (couche abse
 | `wax` | A2 | fartage classique (retenue et glisse) et skating (glisse), tables Swix et Toko citées |
 | `briefing` | A1 | classement des domaines et des itinéraires du jour et des jours suivants, chaque raison avec ses points |
 | `synthesis` | A7 | trois phrases : avalanche, météo, règles et réseau sur l'itinéraire |
-| `crowd` | A4 | affluence (fait, utilisé par A1) |
+| `crowd` | A4 | affluence (fait, utilisé par A1 et A9) |
+| `suggest` | A5 | boucles pour un temps, une technique, un niveau et une heure de retour, sur le graphe C1 avec le temps C5 |
+| `equipment` | A6 | liste d'équipement d'une sortie, chaque élément avec sa raison |
+| `alerts` | A8 | alertes de changement de conditions et de demi-tour avancé pendant la sortie, rejeux |
+| `best_time` | A9 | meilleur moment pour partir |
 | `layer` | — | `skimap_assist::build(site, &layout, &Options)` écrit la couche `assist` |
 
 ## Sorties (`data/out/<site>/assist/`)
@@ -28,6 +32,10 @@ Jamais « sans danger » : chaque sortie dit ce qu'elle ne sait pas (couche abse
 | `snow_quality_<date>.json` / `.txt` | par jour et par point météo : état de surface heure par heure (06 h à 20 h) des 17 classes, énergie, eau liquide, croûte, neige fraîche ; meilleur créneau par classe, meilleure classe ; tableau lisible dans le `.txt` |
 | `wax_<date>.json` / `.txt` | par jour et par point : matin (9–12 h) et après-midi (12–16 h), conditions, fart de retenue Swix et équivalent Toko, conseil écailles / peaux, glisse Swix (température de l'air) et Toko (température de la neige), raisons, pages des fabricants |
 | `synthesis_<date>.json` / `.txt` | par jour : les trois phrases, les événements vocaux, les faits (niveau BERA, km en zone CLPA, km sans réseau, règles actives avec leur source) |
+| `suggestions_<date>.json` / `.txt` / `.geojson` | boucles suggérées par demande, raisons, géométrie pour le visualiseur (A5) |
+| `equipment_<date>.json` / `.txt` | liste par sortie (A6) |
+| `alerts_<date>.json` / `.txt` | rejeux météo par jour et rejeux de traces sur les boucles (A8) |
+| `best_time_<date>.json` / `.txt` | meilleur départ par jour et par point, créneaux essayés (A9) |
 | `assist.meta.json` | sources de toutes les couches lues (avec `personal_use_only`), tables de fartage, fichiers, entrées de chaque exécution (`parameters.runs`) |
 | `history/` | entrées archivées des jours passés (exemple `history`) : `meteo_<début>_<fin>.json` (format P19 plus `relative_humidity_pct`), `snow_<date>/` (P6), `bera_<date>.json` (P8) |
 
@@ -43,7 +51,7 @@ SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-assist --example history
 SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-assist --example history -- cervieres 2026-11-15 2026-11-15 --no-snow
 # l'assistant (aucun réseau)
 cargo run --release -p skimap-assist --example assist -- cervieres 2026-01-05 --days 5 --history past \
-    --home 6.6426,44.8986 --route data/out/cervieres/routes/routes.geojson
+    --home 6.6426,44.8986 --route data/out/cervieres/routes/routes.geojson --suggest --outings
 cargo run --release -p skimap-assist --example assist -- chapelle-des-bois 2026-11-15 --history with-forecast \
     --home 6.3554,46.9035 --route data/out/chapelle-des-bois/routes/offpiste_risoux_fevrier.geojson
 cargo test -p skimap-assist --test real_sites -- --ignored   # contrôles sur les données réelles
@@ -59,4 +67,6 @@ Temps de calcul (`build`, release, 20 cœurs) : 0,15 à 0,23 s pour Cervières, 
 - [A2 : fartage](docs/fartage.md) : tables Swix et Toko citées, règles, écailles et peaux
 - [A3 : qualité de neige](docs/qualite-neige.md) : heuristique, validation qualitative sur des jours passés
 - [A7 : synthèse](docs/synthese.md) : les trois phrases, la voix
+- [A5 : suggestion d'itinéraire](docs/suggestions.md) : boucles, barème, limites du graphe
+- [A6, A8, A9 : équipement, alertes, meilleur moment](docs/equipement-alertes-depart.md)
 - [Limites](docs/limites.md)

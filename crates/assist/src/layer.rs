@@ -32,6 +32,7 @@ use crate::inputs::{Paths, SiteData};
 use crate::snow_quality::{DayQuality, Quality};
 use crate::synthesis::{self, Synthesis};
 use crate::wax::{self, DayWax};
+use crate::{alerts, best_time, equipment};
 
 /// Layer name.
 pub const LAYER: &str = "assist";
@@ -47,6 +48,32 @@ pub struct Options {
     pub home: Option<LonLat>,
     /// Input files that replace the current layers (past days).
     pub paths: Paths,
+    /// Route suggestion requests (A5), each on its own start day.
+    pub requests: Vec<crate::suggest::Request>,
+    /// Outings for the equipment list (A6), besides the best loop of each request.
+    pub outings: Vec<equipment::Outing>,
+}
+
+/// A replay of the alerts (A8) on the best loop of a request, with a synthetic trace at
+/// the model pace divided by `slowdown`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Replay {
+    /// Request.
+    pub request: String,
+    /// Loop.
+    pub route: String,
+    /// Start, local.
+    pub start: chrono::NaiveDateTime,
+    /// Slowdown of the trace (1: on time).
+    pub slowdown: f64,
+    /// C7 deadline.
+    pub deadline: Option<chrono::NaiveDateTime>,
+    /// Turnaround at the planned pace (`None`: the loop ends before the deadline).
+    pub planned_turnaround: Option<chrono::NaiveDateTime>,
+    /// Positions replayed.
+    pub fixes: usize,
+    /// Alerts.
+    pub alerts: Vec<alerts::Alert>,
 }
 
 /// What a run produced.
@@ -62,6 +89,14 @@ pub struct Output {
     pub wax: Vec<DayWax>,
     /// Synthesis per day.
     pub synthesis: Vec<Synthesis>,
+    /// Route suggestions (A5).
+    pub suggestions: Vec<crate::suggest::Suggestions>,
+    /// Best time to leave per day and point (A9).
+    pub best_times: Vec<best_time::BestTime>,
+    /// Equipment lists (A6).
+    pub equipment: Vec<equipment::Equipment>,
+    /// Alert replays (A8).
+    pub replays: Vec<Replay>,
     /// Files written.
     pub files: Vec<PathBuf>,
 }
@@ -124,6 +159,18 @@ pub fn quality_table(q: &DayQuality) -> String {
     s
 }
 
+fn turnaround_deadline(
+    point: &crate::layers::WeatherPoint,
+    date: NaiveDate,
+) -> Option<chrono::NaiveDateTime> {
+    skimap_core::turnaround::deadline(
+        date,
+        point.position,
+        &skimap_core::turnaround::TurnaroundParams::default(),
+    )
+    .map(|d| skimap_core::ephemeris::local_time(d.deadline))
+}
+
 /// Runs the assistant for a site and writes the `assist` layer.
 pub fn build(site: &Site, layout: &DataLayout, opts: &Options) -> Result<Output> {
     let data = SiteData::load(layout, site, &opts.paths)?;
@@ -131,7 +178,7 @@ pub fn build(site: &Site, layout: &DataLayout, opts: &Options) -> Result<Output>
         .date
         .unwrap_or_else(|| skimap_core::ephemeris::local_time(chrono::Utc::now()).date());
     let bopts = briefing::Options { home: opts.home };
-    let brief = briefing::brief(&data, date, opts.extra_days, &bopts);
+    let mut brief = briefing::brief(&data, date, opts.extra_days, &bopts);
     let mut waxes = Vec::new();
     for day in &brief.days {
         for q in &day.snow_quality {
@@ -147,6 +194,130 @@ pub fn build(site: &Site, layout: &DataLayout, opts: &Options) -> Result<Output>
         .iter()
         .map(|d| synthesis::synthesise(&data, d.date))
         .collect();
+    // A9: best time to leave for a 2-hour outing, per day and per forecast point; the
+    // first point's goes into the briefing (text and voice, before the sunset line).
+    let mut best_times: Vec<best_time::BestTime> = Vec::new();
+    for day in brief.days.iter_mut() {
+        let mut first: Option<best_time::BestTime> = None;
+        for q in day.snow_quality.iter().filter(|q| q.enough_snow) {
+            let Some(p) = data.weather.as_ref().and_then(|w| w.point(&q.point)) else {
+                continue;
+            };
+            let req = best_time::Request {
+                date: day.date,
+                duration_min: 120.0,
+                earliest: chrono::NaiveTime::from_hms_opt(8, 0, 0).expect("time"),
+                classes: Vec::new(),
+            };
+            let bt = best_time::best_time(p, Some(q), day.crowd.as_ref().map(|c| c.level), &req);
+            if first.is_none() {
+                first = Some(bt.clone());
+            }
+            best_times.push(bt);
+        }
+        if let Some(bt) = first {
+            day.text.push(format!(
+                "Meilleur moment pour partir ({}) : {}",
+                bt.point, bt.text
+            ));
+            if let Some(ev) = bt.voice() {
+                let at = day
+                    .voice
+                    .iter()
+                    .position(|e| {
+                        matches!(
+                            e,
+                            skimap_voice::Event::Briefing(
+                                skimap_voice::bank::Briefing::Sunset { .. }
+                            )
+                        )
+                    })
+                    .unwrap_or(day.voice.len());
+                day.voice.insert(at, ev);
+            }
+        }
+    }
+    // A5, then A6 and A8 on the best loop of each request.
+    let suggestions: Vec<crate::suggest::Suggestions> = opts
+        .requests
+        .iter()
+        .map(|r| crate::suggest::suggest(&data, r))
+        .collect();
+    let kick_unreliable = |d: NaiveDate| {
+        waxes
+            .iter()
+            .any(|w| w.date == d && (!w.morning.kick_reliable || !w.afternoon.kick_reliable))
+    };
+    let mut outings: Vec<equipment::Outing> = opts.outings.clone();
+    for o in &mut outings {
+        o.kick_unreliable |= kick_unreliable(o.start.date());
+    }
+    for s in &suggestions {
+        if let Some(best) = s.suggestions.first() {
+            outings.push(equipment::Outing {
+                label: format!("{} : {}", s.request.label, best.label),
+                start: s.request.start_time,
+                duration_min: best.eta_min,
+                route: best.line.clone(),
+                offpiste: false,
+                kick_unreliable: kick_unreliable(s.request.start_time.date()),
+            });
+        }
+    }
+    let lists: Vec<equipment::Equipment> = outings
+        .iter()
+        .map(|o| equipment::equipment(&data, o))
+        .collect();
+    let mut replays: Vec<Replay> = Vec::new();
+    for s in &suggestions {
+        let (Some(best), Some(point)) = (
+            s.suggestions.first(),
+            data.weather
+                .as_ref()
+                .and_then(|w| w.nearest(s.request.start))
+                .map(|(p, _)| p),
+        ) else {
+            continue;
+        };
+        // At the requested start at three paces, then a late start (planned return 30 min
+        // before the C7 deadline) at 1.5 times the model time.
+        let late = turnaround_deadline(point, s.request.start_time.date()).map(|d| {
+            d - chrono::Duration::seconds(
+                (best.profile.total_s()
+                    * skimap_core::turnaround::TurnaroundParams::default().eta_factor)
+                    as i64,
+            ) - chrono::Duration::minutes(30)
+        });
+        let mut cases = vec![
+            (s.request.start_time, 1.0),
+            (s.request.start_time, 1.5),
+            (s.request.start_time, 2.0),
+        ];
+        if let Some(l) = late.filter(|l| *l > s.request.start_time) {
+            cases.push((l, 1.5));
+        }
+        for (start, slowdown) in cases {
+            let trace = alerts::synthetic_trace(&best.profile, slowdown, 300.0);
+            let mut m =
+                alerts::Monitor::new(start, &best.profile, point, alerts::Params::default());
+            let planned_turnaround = m.planned_turnaround();
+            let deadline = m.deadline();
+            let found: Vec<alerts::Alert> = trace
+                .iter()
+                .flat_map(|(t, d)| m.update(start + chrono::Duration::seconds(*t as i64), *d))
+                .collect();
+            replays.push(Replay {
+                request: s.request.label.clone(),
+                route: best.label.clone(),
+                start,
+                slowdown,
+                deadline,
+                planned_turnaround,
+                fixes: trace.len(),
+                alerts: found,
+            });
+        }
+    }
 
     let dir = layout.layer_dir(site, LAYER)?;
     DataLayout::ensure(&dir)?;
@@ -246,8 +417,141 @@ pub fn build(site: &Site, layout: &DataLayout, opts: &Options) -> Result<Output>
         with(header(&data, date), "days", &syntheses)?,
         t,
     )?;
+    // A9.
+    let mut t = String::new();
+    for b in &best_times {
+        let _ = writeln!(
+            t,
+            "{} — {} : {}",
+            briefing::date_fr(b.request.date),
+            b.point,
+            b.text
+        );
+        if let Some(ev) = b.voice() {
+            let _ = writeln!(t, "  Voix : {}", ev.announce().text());
+        }
+    }
+    if best_times.is_empty() {
+        t.push_str("Pas de créneau : aucun jour avec de la neige et la météo de la journée.\n");
+    }
+    write(
+        stem("best_time"),
+        with(header(&data, date), "days", &best_times)?,
+        t,
+    )?;
+    // A6.
+    if !lists.is_empty() {
+        let mut t = String::new();
+        for l in &lists {
+            let _ = writeln!(t, "{}", l.text);
+            let _ = writeln!(t, "  Voix : {}", l.voice().announce().text());
+        }
+        write(
+            stem("equipment"),
+            with(header(&data, date), "outings", &lists)?,
+            t,
+        )?;
+    }
+    // A8.
+    let day_alerts: Vec<(NaiveDate, String, Vec<alerts::Alert>)> = brief
+        .days
+        .iter()
+        .flat_map(|d| {
+            data.weather
+                .iter()
+                .flat_map(|w| &w.points)
+                .filter(move |p| p.covers(d.date, 9, 16))
+                .map(move |p| {
+                    (
+                        d.date,
+                        p.id.clone(),
+                        alerts::day_replay(p, d.date, alerts::Params::default()),
+                    )
+                })
+        })
+        .collect();
+    if !replays.is_empty() || !day_alerts.is_empty() {
+        let mut t = String::new();
+        for (d, p, a) in &day_alerts {
+            let _ = writeln!(
+                t,
+                "Rejeu météo {} {} (sortie de 10 h, retour prévu à 16 h) : {}",
+                d,
+                p,
+                if a.is_empty() {
+                    "aucune alerte".to_owned()
+                } else {
+                    a.iter()
+                        .map(|x| format!("{} {} ({})", x.at.format("%H:%M"), x.text, x.spoken))
+                        .collect::<Vec<_>>()
+                        .join(" ; ")
+                }
+            );
+        }
+        for r in &replays {
+            let _ = writeln!(
+                t,
+                "{} ({}), départ {}, allure × {} ({} positions), heure limite {}, demi-tour prévu {} :",
+                r.request,
+                r.route,
+                r.start.format("%d/%m %H:%M"),
+                r.slowdown,
+                r.fixes,
+                r.deadline
+                    .map(|d| d.format("%H:%M").to_string())
+                    .unwrap_or_default(),
+                r.planned_turnaround
+                    .map(|d| d.format("%H:%M").to_string())
+                    .unwrap_or_else(|| "aucun (boucle finie avant)".into())
+            );
+            if r.alerts.is_empty() {
+                let _ = writeln!(t, "  aucune alerte");
+            }
+            for a in &r.alerts {
+                let _ = writeln!(
+                    t,
+                    "  {} {:?} : {} — voix : {}",
+                    a.at.format("%H:%M"),
+                    a.kind,
+                    a.text,
+                    a.spoken
+                );
+            }
+        }
+        write(
+            stem("alerts"),
+            with(header(&data, date), "replays", &replays)?,
+            t,
+        )?;
+    }
+    // A5.
+    if !suggestions.is_empty() {
+        let mut t = String::new();
+        for s in &suggestions {
+            for l in &s.text {
+                let _ = writeln!(t, "{l}");
+            }
+            let _ = writeln!(t);
+        }
+        write(
+            stem("suggestions"),
+            with(header(&data, date), "requests", &suggestions)?,
+            t,
+        )?;
+        let feats: Vec<Value> = suggestions
+            .iter()
+            .flat_map(crate::suggest::features)
+            .collect();
+        let g = dir.join(format!("{}.geojson", stem("suggestions")));
+        skimap_common::output::write_geojson(&g, &feats)?;
+        files.push(g);
+    }
     write_meta(&dir, site, date, &data, &files)?;
     Ok(Output {
+        suggestions,
+        best_times,
+        equipment: lists,
+        replays,
         site: site.id.to_owned(),
         date,
         briefing: brief,
@@ -308,7 +612,10 @@ fn write_meta(
         })?
         .filter_map(|e| e.ok())
         .map(|e| e.file_name().to_string_lossy().into_owned())
-        .filter(|n| (n.ends_with(".json") || n.ends_with(".txt")) && !n.ends_with(".meta.json"))
+        .filter(|n| {
+            (n.ends_with(".json") || n.ends_with(".txt") || n.ends_with(".geojson"))
+                && !n.ends_with(".meta.json")
+        })
         .collect();
     names.sort();
     let describe = |n: &str| {
@@ -318,6 +625,14 @@ fn write_meta(
             "qualité de neige par heure, par classe de pente et d'orientation, par point (A3)"
         } else if n.starts_with("wax_") {
             "fartage classique et skating par point, matin et après-midi, sources (A2)"
+        } else if n.starts_with("best_time_") {
+            "meilleur moment pour partir par jour et par point, créneaux essayés et leurs raisons (A9)"
+        } else if n.starts_with("equipment_") {
+            "liste d'équipement par sortie, chaque élément avec sa raison (A6)"
+        } else if n.starts_with("alerts_") {
+            "rejeux des alertes de changement de conditions et de demi-tour sur des traces synthétiques (A8)"
+        } else if n.starts_with("suggestions_") {
+            "boucles suggérées pour un temps, une technique et une heure de retour, raisons ; GeoJSON WGS84 pour le visualiseur (A5)"
         } else if n.starts_with("synthesis_") {
             "synthèse en trois phrases des risques et règles du jour (A7)"
         } else {
@@ -330,7 +645,11 @@ fn write_meta(
             "A1 (#88)".into(),
             "A2 (#89)".into(),
             "A3 (#90)".into(),
+            "A5 (#92)".into(),
+            "A6 (#93)".into(),
             "A7 (#94)".into(),
+            "A8 (#95)".into(),
+            "A9 (#96)".into(),
         ],
         valid_from: Some(date.to_string()),
         validity: Some("le jour de chaque fichier et les jours suivants qu'il couvre".into()),

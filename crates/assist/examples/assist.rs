@@ -4,7 +4,7 @@
 //! ```sh
 //! cargo run --release -p skimap-assist --example assist -- cervieres 2026-11-15 \
 //!     [--days 3] [--home 6.6426,44.8986] [--meteo a.json,b.json] [--snow DIR] \
-//!     [--bera FILE] [--status DIR] [--route FILE] [--history past|with-forecast]
+//!     [--bera FILE] [--status DIR] [--route FILE] [--history past|with-forecast] [--suggest] [--outings]
 //! ```
 //!
 //! `--history` takes the files written by the `history` example for that date:
@@ -13,10 +13,14 @@
 
 use std::path::PathBuf;
 
-use chrono::NaiveDate;
+use chrono::{NaiveDate, NaiveTime};
+use skimap_assist::equipment::Outing;
 use skimap_assist::inputs::Paths;
+use skimap_assist::suggest::Request;
 use skimap_common::geom::LonLat;
 use skimap_common::layout::DataLayout;
+use skimap_core::graph::Difficulty;
+use skimap_core::routing::Style;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -85,6 +89,125 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     paths.snow_dirs.push(layout.layer_dir(site, "snow")?);
                 }
             }
+            "--suggest" => {
+                // Three requests per site on the first day: « 2 h skating, back before
+                // 16 h », « 3 h classic », « 1 h 30 classic, green and blue » in the
+                // afternoon (from another start at Cervières).
+                let d = date.ok_or("--suggest needs a date")?;
+                let at = |h: u32, m: u32| d.and_hms_opt(h, m, 0).expect("time");
+                let (a, an, b, bn) = match site.id {
+                    "cervieres" => (
+                        LonLat::new(6.7269, 44.8552),
+                        "Le Laus",
+                        LonLat::new(6.8161, 44.8448),
+                        "Les Fonts",
+                    ),
+                    _ => (
+                        LonLat::new(6.1125, 46.6032),
+                        "le départ des pistes de Chapelle-des-Bois",
+                        LonLat::new(6.1125, 46.6032),
+                        "le départ des pistes de Chapelle-des-Bois",
+                    ),
+                };
+                let req = |label: &str, start, name: &str, t, min, style, back, max| Request {
+                    label: label.into(),
+                    start,
+                    start_name: name.into(),
+                    start_time: t,
+                    budget_min: min,
+                    style,
+                    return_before: back,
+                    max_difficulty: max,
+                    max_results: 3,
+                };
+                opts.requests = vec![
+                    req(
+                        "2 h, skating, retour avant 16 h",
+                        a,
+                        an,
+                        at(10, 0),
+                        120.0,
+                        Style::Skating,
+                        NaiveTime::from_hms_opt(16, 0, 0),
+                        None,
+                    ),
+                    req(
+                        "3 h, classique",
+                        a,
+                        an,
+                        at(10, 0),
+                        180.0,
+                        Style::Classic,
+                        None,
+                        None,
+                    ),
+                    req(
+                        "1 h 30, classique, pistes vertes et bleues, départ 14 h 30",
+                        b,
+                        bn,
+                        at(14, 30),
+                        90.0,
+                        Style::Classic,
+                        None,
+                        Some(Difficulty::Easy),
+                    ),
+                ];
+                i -= 1;
+            }
+            "--outings" => {
+                // Typical outings on the core proof routes (A6), with the time core
+                // computed for them (C5 classic time, C3 off-piste cost).
+                let d = date.ok_or("--outings needs a date")?;
+                let dir = layout.layer_dir(site, "routes")?;
+                let list: &[(&str, &str, u32, u32, bool)] = match site.id {
+                    "cervieres" => &[
+                        (
+                            "Le Laus → refuge des Fonts, pistes, classique",
+                            "routes.geojson",
+                            10,
+                            0,
+                            false,
+                        ),
+                        (
+                            "Le Laus → col d'Izoard, hors piste, départ 13 h",
+                            "offpiste_laus_izoard.geojson",
+                            13,
+                            0,
+                            true,
+                        ),
+                    ],
+                    _ => &[(
+                        "Traversée du Risoux, hors piste, départ 10 h 30",
+                        "offpiste_risoux_fevrier.geojson",
+                        10,
+                        30,
+                        true,
+                    )],
+                };
+                for (label, file, h, m, off) in list {
+                    let v: serde_json::Value =
+                        serde_json::from_str(&std::fs::read_to_string(dir.join(file))?)?;
+                    let f = v["features"]
+                        .as_array()
+                        .and_then(|a| a.iter().find(|f| f["properties"]["kind"] == "route"))
+                        .ok_or("no route feature")?;
+                    let p = &f["properties"];
+                    let secs = p["eta_classic_s"]
+                        .as_f64()
+                        .or_else(|| p["summary"]["cost_s"].as_f64())
+                        .ok_or("no time on the route")?;
+                    let route = skimap_assist::layers::line_coords(&f["geometry"]);
+                    opts.outings.push(Outing {
+                        label: (*label).into(),
+                        start: d.and_hms_opt(*h, *m, 0).expect("time"),
+                        duration_min: secs / 60.0,
+                        route,
+                        offpiste: *off,
+                        kick_unreliable: false,
+                    });
+                }
+                i -= 1;
+            }
             other => return Err(format!("unknown option {other}").into()),
         }
         i += 2;
@@ -108,6 +231,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     for s in &out.synthesis {
         println!("Synthèse {} : {}", s.date, s.text());
+    }
+    for s in &out.suggestions {
+        for l in &s.text {
+            println!("{l}");
+        }
+    }
+    for b in &out.best_times {
+        println!("Départ {} {} : {}", b.request.date, b.point, b.text);
+    }
+    for e in &out.equipment {
+        println!("Équipement : {}", e.text);
+    }
+    for r in &out.replays {
+        println!(
+            "Alertes {} ×{} : {}",
+            r.route,
+            r.slowdown,
+            r.alerts
+                .iter()
+                .map(|a| format!("{} {}", a.at.format("%H:%M"), a.text))
+                .collect::<Vec<_>>()
+                .join(" | ")
+        );
     }
     eprintln!("assist {} : {:.3} s", site.id, secs);
     Ok(())

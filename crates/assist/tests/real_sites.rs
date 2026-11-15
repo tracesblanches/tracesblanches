@@ -13,9 +13,12 @@ use skimap_assist::briefing::{self, Factor};
 use skimap_assist::inputs::{Paths, SiteData};
 use skimap_assist::layers::OpenState;
 use skimap_assist::snow_quality::Quality;
-use skimap_assist::{synthesis, wax};
+use skimap_assist::suggest::{self, Request};
+use skimap_assist::{alerts, best_time, equipment, synthesis, wax};
+use skimap_common::geom::LonLat;
 use skimap_common::layout::DataLayout;
 use skimap_common::site::{CERVIERES, CHAPELLE_DES_BOIS, Site};
+use skimap_core::routing::Style;
 
 fn layout() -> DataLayout {
     DataLayout::new(
@@ -164,4 +167,133 @@ fn today_both_sites() {
     let b = briefing::day(&d, t, &briefing::Options::default());
     // The ENJ lists Le Glacier as open with no snow: not recommended.
     assert!(!briefing::spoken(&b).contains("Conseillé"));
+}
+
+fn request(
+    start: LonLat,
+    name: &str,
+    at: &str,
+    min: f64,
+    style: Style,
+    back: Option<u32>,
+) -> Request {
+    Request {
+        label: format!("{min} min"),
+        start,
+        start_name: name.into(),
+        start_time: chrono::NaiveDateTime::parse_from_str(at, "%Y-%m-%dT%H:%M").unwrap(),
+        budget_min: min,
+        style,
+        return_before: back.map(|h| chrono::NaiveTime::from_hms_opt(h, 0, 0).unwrap()),
+        max_difficulty: None,
+        max_results: 3,
+    }
+}
+
+#[test]
+#[ignore]
+fn suggestions_respect_time_and_report_graph_limits() {
+    let d = history(&CHAPELLE_DES_BOIS, false, "offpiste_risoux_fevrier.geojson");
+    let village = LonLat::new(6.1125, 46.6032);
+    let r = request(
+        village,
+        "village",
+        "2026-02-22T10:00",
+        120.0,
+        Style::Skating,
+        Some(16),
+    );
+    let s = suggest::suggest(&d, &r);
+    assert_eq!(s.suggestions.len(), 3, "{:?}", s.text);
+    for x in &s.suggestions {
+        assert!((90.0..=132.0).contains(&x.eta_min), "{}", x.eta_min);
+        assert!(x.arrival.time() <= chrono::NaiveTime::from_hms_opt(16, 0, 0).unwrap());
+        assert!(x.length_km > 5.0);
+    }
+    // One-way trails of the graph (C1): part of the network is out of reach, said.
+    assert!(
+        s.notes
+            .iter()
+            .any(|n| n.contains("ne sont pas atteignables")),
+        "{:?}",
+        s.notes
+    );
+    // Cervières: from Les Fonts, the Le Laus network is disconnected (18 m gap in P2).
+    let c = history(&CERVIERES, false, "routes.geojson");
+    let fonts = LonLat::new(6.8161, 44.8448);
+    let s = suggest::suggest(
+        &c,
+        &request(
+            fonts,
+            "Les Fonts",
+            "2026-01-09T14:30",
+            90.0,
+            Style::Classic,
+            None,
+        ),
+    );
+    assert!(
+        s.notes.iter().any(|n| n.starts_with("138 nœuds sur 189")),
+        "{:?}",
+        s.notes
+    );
+    // A8 on the best loop, started late and 1.5 times slower: the turnaround is advanced.
+    let best = &s.suggestions[0];
+    let late = chrono::NaiveDateTime::parse_from_str("2026-01-09T15:00", "%Y-%m-%dT%H:%M").unwrap();
+    let p = c.weather.as_ref().unwrap().point("les-fonts").unwrap();
+    let trace = alerts::synthetic_trace(&best.profile, 1.5, 300.0);
+    let a = alerts::replay(late, &best.profile, p, &trace, alerts::Params::default());
+    assert!(
+        a.iter().any(|x| matches!(
+            x.kind,
+            alerts::Kind::TurnaroundAdvanced | alerts::Kind::TurnaroundNow
+        )),
+        "{a:#?}"
+    );
+}
+
+#[test]
+#[ignore]
+fn best_time_equipment_and_weather_replay() {
+    let d = history(&CERVIERES, false, "routes.geojson");
+    let p = d.weather.as_ref().unwrap().point("le-laus").unwrap();
+    // 8 January 2026: fog from late morning at Le Laus.
+    let day = date("2026-01-08");
+    let a = alerts::day_replay(p, day, alerts::Params::default());
+    assert!(a.iter().any(|x| x.kind == alerts::Kind::Fog), "{a:#?}");
+    let q = skimap_assist::snow_quality::day_quality(p, day, &Default::default(), None).unwrap();
+    let req = best_time::Request {
+        date: day,
+        duration_min: 120.0,
+        earliest: chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
+        classes: vec![],
+    };
+    let b = best_time::best_time(p, Some(&q), None, &req);
+    let best = b.best.clone().unwrap();
+    assert!(
+        best.start.time() < chrono::NaiveTime::from_hms_opt(11, 0, 0).unwrap(),
+        "{}",
+        b.text
+    );
+    assert!(b.starts.iter().all(|s| s.back <= b.deadline.unwrap()));
+    // Le Laus → Les Fonts on the pistes: avalanche terrain (P16–P18, CLPA) and 5 km
+    // without network.
+    let route = d.route.as_ref().unwrap().line.clone();
+    let o = equipment::Outing {
+        label: "Le Laus → Les Fonts".into(),
+        start: date("2026-01-05").and_hms_opt(10, 0, 0).unwrap(),
+        duration_min: 135.0,
+        route,
+        offpiste: false,
+        kick_unreliable: false,
+    };
+    let e = equipment::equipment(&d, &o);
+    let kinds: Vec<equipment::Kind> = e.items.iter().map(|i| i.kind).collect();
+    assert!(kinds.contains(&equipment::Kind::AvalancheKit), "{}", e.text);
+    assert!(kinds.contains(&equipment::Kind::PowerBank), "{}", e.text);
+    assert!(
+        e.facts.no_network_km > 4.0 && e.facts.clpa_km > 1.38,
+        "{:?}",
+        e.facts
+    );
 }

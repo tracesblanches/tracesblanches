@@ -9,3 +9,5 @@ Points (barème dans la doc du module) : état du jour (tout fermé −10 ; sino
 Voix : `Event::Briefing` (ouverture, BERA ou absence de bulletin, pistes ouvertes, recommandation, météo, neige, affluence, coucher du soleil).
 
 Pour A5 et A9 : `briefing::day` renvoie les candidats avec leur neige (`SnowStats`), leur météo (`DayWeather`) et leurs raisons ; `snow_quality::DayQuality` donne par heure et par classe la qualité et le meilleur créneau (le point de départ de A9).
+
+Le briefing porte aussi le meilleur moment pour partir (A9, première ligne de `best_time`) dans son texte et sa voix (`Briefing::BestTime`, avant le coucher du soleil).
