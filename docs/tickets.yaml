@@ -496,8 +496,8 @@ tickets:
   labels: [serveur, infra]
   deps: [P14, P8, P19]
   body: |
-    Stockage objet + exécution planifiée du pipeline (packs, neige du jour, BERA, état des pistes, météo). Coût mesuré.
-    Critère : URLs stables des fichiers ; coût mensuel estimé.
+    Déployé sur le cluster k3s (arm64), tout en gitops selon les règles du dépôt d'infrastructure : manifestes, Application ArgoCD et script de déploiement du dépôt d'infrastructure (build arm64 natif sur le buildkitd du cluster), DNS et règles Cloudflare dans cloudflare/. Packs servis en fichiers statiques à la manière de Worker PMTiles (pas de coût par utilisateur). Pipeline planifié en CronJobs : packs, neige du jour, BERA, état des pistes, météo.
+    Critère : URLs stables des fichiers ; ArgoCD synchronisé ; coût mensuel estimé.
 
 - key: K1
   title: Squelette de l'app Android (Compose, MapLibre, lecture de pack)
@@ -1108,3 +1108,24 @@ tickets:
   body: |
     Règles nationales (APPB, réserves, coeurs de parc, codes) appliquées automatiquement partout ; arrêtés locaux non recensés signalés « règles locales non vérifiées ».
     Critère : chaque domaine a ses règles nationales et un statut clair pour les locales.
+
+# ---------- Ajouts du 15/11/2026 ----------
+- key: P22
+  title: Plan des pistes officiel calé sur la carte
+  milestone: M1 Preuve Rust
+  labels: [algo, carte]
+  deps: [P2, C1]
+  body: |
+    Les stations publient un plan des pistes dessiné (PDF ou image, souvent en perspective, pas à l'échelle). Le caler automatiquement sur la carte : extraire les tracés colorés et les étiquettes (noms, numéros, couleurs), apparier leur topologie au graphe OSM et aux repères (refuges, villages, sommets), puis déformer le plan par morceaux à partir des points d'appui.
+    Usages : afficher sa position GPS sur le plan officiel de la station ; superposer le plan déformé à la carte ; récupérer noms, couleurs, sens et pistes absentes d'OSM (alimente G1).
+    Le plan reste la propriété de la station : usage personnel tant qu'aucune autorisation n'est obtenue (comme personal_sources).
+    Critère : plans de Cervières et Chapelle-des-Bois calés ; erreur médiane des points d'appui en mètres mesurée ; position d'une trace réelle affichée sur le plan.
+
+- key: K14
+  title: Publication sur le Play Store (test interne)
+  milestone: M3 Client v1
+  labels: [client, infra]
+  deps: [K1, Q8]
+  body: |
+    Reprendre l'outillage de ../tablonaute (compte développeur Android existant, fastlane, signature d'envoi, store_assets, page de confidentialité, liste de contrôle de publication) ; ne pas reprendre son interface. Fiche, captures, politique de confidentialité hébergée sur le serveur (S0). Piste de test interne d'abord.
+    Critère : build signé envoyé sur la piste de test interne et installé sur le Pixel depuis le Play Store.
