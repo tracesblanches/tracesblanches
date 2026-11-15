@@ -97,16 +97,23 @@ class DayStore(
     }
 
     /**
-     * The end of an outing (C11): the group of the plan learns what the outing told
-     * (`observation.json` written by the location service). Once per plan.
+     * The end of an outing (C11): the group of the day learns what the outing told
+     * (`observation.json` written by the location service). Once per plan. The group of
+     * the day is the profile chosen during the outing (X14) when there was one: it becomes
+     * the plan's group and the group selected for the next plans; else the plan's group.
      */
     fun learnFrom(planDir: String): GroupView? {
         val dir = File(planDir)
-        val name = File(dir, GROUP_FILE).takeIf { it.isFile }?.readText()
-        val obs = File(dir, OBSERVATION_FILE).takeIf { it.isFile }?.readText()
         val done = File(dir, LEARNED_FILE)
-        val g = groups().firstOrNull { it.spec.name == name }
-        if (obs == null || g == null || done.exists()) return null
+        val obs = File(dir, OBSERVATION_FILE).takeIf { it.isFile && !done.exists() }?.readText()
+        val g =
+            obs?.let {
+                ChosenProfile.group(this, dir)?.also {
+                    setPlanGroup(planDir, it.spec.name)
+                    selectGroup(it.spec.name)
+                } ?: File(dir, GROUP_FILE).takeIf { it.isFile }?.readText().let { name -> groups().firstOrNull { it.spec.name == name } }
+            }
+        if (obs == null || g == null) return null
         val learned = groupLearn(g.modelJson, obs)
         putGroup(learned)
         done.writeText(learned.outings.toString())
@@ -122,5 +129,8 @@ class DayStore(
         const val GROUP_FILE = "group.txt"
         const val OBSERVATION_FILE = "observation.json"
         const val LEARNED_FILE = "learned.txt"
+
+        /** The profile chosen during the outing (X14), written beside the plan by the location service. */
+        const val PROFILE_CHOSEN_FILE = "profile_chosen.json"
     }
 }

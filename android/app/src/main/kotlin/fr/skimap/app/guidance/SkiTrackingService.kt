@@ -34,7 +34,7 @@ class SkiTrackingService : TrackingService() {
     /** The profile chosen during the outing (X14), kept next to the plan for the screens and the learning. */
     override fun onProfileChosen(profileJson: String) {
         val dir = (Tracking.state.value as? TrackingState.Running)?.planDir ?: return
-        runCatching { java.io.File(dir, PROFILE_FILE).writeText(profileJson) }
+        runCatching { java.io.File(dir, DayStore.PROFILE_CHOSEN_FILE).writeText(profileJson) }
             .onSuccess { Log.i(TAG, "profile chosen during the outing: $profileJson") }
             .onFailure { Log.w(TAG, "profile chosen", it) }
     }
@@ -111,8 +111,5 @@ class SkiTrackingService : TrackingService() {
 
     private companion object {
         const val ENDED_ID = 4209
-
-        /** The profile chosen during the outing (X14), next to the plan. */
-        const val PROFILE_FILE = "profile_chosen.json"
     }
 }
