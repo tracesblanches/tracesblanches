@@ -1250,3 +1250,14 @@ tickets:
     Sources : OSM (phone, contact:*, website, emergency, amenity, shop=ticket), Nordic France et sites des stations, refuges.info et Camptocamp ; licences et droit des bases de données vérifiés avant toute publication (sinon usage personnel). Chaque champ porte sa source et sa date ; un prix sans date n'est pas affiché.
     Le 112 reste affiché en premier dans toute fiche de secours.
     Critère : fiches complètes vérifiées à la main pour 10 stations et 20 refuges ; part des 219 domaines avec secours, point de vente et prix datés.
+
+- key: H2
+  title: Mode libre et zones de validité des redevances
+  milestone: M3 Client v1
+  labels: [client, carte]
+  deps: [G2, H1]
+  body: |
+    Mode par défaut : la carte montre tout ce qui existe dans le cadre affiché, toutes stations et domaines SRN confondus, sans choisir une station. Le mode station reste disponible pour se concentrer sur un domaine.
+    Zones de validité des redevances (« zones forfait ») : pour chaque titre (redevance d'un site, d'un regroupement comme l'Espace nordique jurassien, Nordic Pass départemental, régional ou national), l'emprise et les pistes couvertes, avec prix indicatifs datés (H1). La carte montre où ton titre est valable, et signale une piste d'un autre domaine ou hors de ta redevance avant que tu ne t'y engages ; à l'inverse, elle montre les pistes accessibles avec ton titre que tu aurais pu manquer.
+    Packs : téléchargement par zone (cadre ou massif) couvrant plusieurs domaines d'un coup, sans doublon de données communes.
+    Critère : Jura (redevance ENJ et Nordic Pass) et Haut-Doubs vérifiés à la main ; une sortie qui franchit deux domaines affichée et annoncée correctement.
