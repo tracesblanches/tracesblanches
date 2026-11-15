@@ -412,6 +412,10 @@ tasks.withType<Test>().configureEach {
     val storePath = store.map { it.asFile.absolutePath }
     val serverPath = serverBin.map { it.asFile.absolutePath }
     val stylesPath = repoRoot.resolve("styles").absolutePath
+    // The real recognizer (sherpa-onnx JNI for this machine) in the voice command tests.
+    dependsOn(":voicecmd:sherpaHost")
+    val sherpaLib = rootDir.resolve("voicecmd/build/sherpa/host/lib").absolutePath
+    jvmArgumentProviders.add(CommandLineArgumentProvider { listOf("-Djava.library.path=$sherpaLib") })
     jvmArgumentProviders.add(
         CommandLineArgumentProvider {
             listOf(
@@ -456,6 +460,8 @@ dependencies {
     implementation(project(":tracking"))
     // Sending the outing (K11): Health Connect and Strava.
     implementation(project(":sport"))
+    // Offline voice commands (V3, VO5, A11).
+    implementation(project(":voicecmd"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)

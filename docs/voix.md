@@ -156,3 +156,22 @@ Erreur dominante avant : le quart disparaît (« Retour vers 15h. », 140 des 15
 (Comptées avec un mot par heure, les mesures du 15/11 au matin donnaient 6,8 %, 3,9 %, 4,3 % ; « Je vous propose » seul : 4,8 %, 0,8 %, 0 %.) Clips des packs refaits, enchaînés : les quatre annonces justes (homophones confondus) sur les deux sites.
 
 **Couches voice refaites** (`voice_pack`, GPU libre, CPU chargé à 80 sur 20 cœurs : temps non comparables) : 19 clips changés par site (les 3 `fix.plan-propose-*` et les 16 `loop.back.HH15`), tous à la graine 42, aucune attaque coupée, les autres identiques (texte, graine, durée, taille). Cervières 899 clips, 3 759 462 o, 1 222,9 s, 86,1 s (TTS 74,5 s) ; Chapelle-des-Bois 1 145 clips (4 noms de pistes de plus que le 15/11 au matin, venus de la couche `pistes` reconstruite entre-temps : « Combe des Cives multi-activités », « Élodie Bourgois-Pin », « Le Griffon », « Le Pré d'Haut »), 4 694 947 o, 1 530,9 s, 76,4 s (TTS 69,8 s). Échantillons `11-` à `15-` refaits.
+
+## Commandes vocales hors ligne (V3 #66, VO5 #87, A11 #98, 15/11/2026)
+
+Pile STT de speak reprise dans `android/voicecmd` (détails, licences, limites : [android/voicecmd/README.md](../android/voicecmd/README.md)) : sherpa-onnx 1.13.8, Silero VAD v6.2.3, Parakeet-TDT-0.6B-v3 int8, chargés au geste et libérés après chaque question. Modèle hors APK, téléchargé tout seul avec les packs (Wi-Fi, en charge) : 674 064 268 o (643 Mio). Classification sans LLM dans `crates/intent` (le LLM reste une option non intégrée) ; réponses tirées de la banque (`crates/ffi/src/voicecmd.rs`).
+
+Classification du texte : `test.tsv` (160 questions FR/EN, tenu à l'écart) 99,4 %, `dev.tsv` (161, réglage) 100 % (`cargo test -p skimap-intent --test rate -- --nocapture`, matrice de confusion).
+
+Bout en bout (questions de `test.tsv` dites par Pocket TTS, deux voix par langue, vent synthétique ; VAD, Parakeet biaisé vers les questions, classifieur), taux de bonne commande :
+
+| | propre | 10 dB | 5 dB | 0 dB | −5 dB |
+|---|---|---|---|---|---|
+| Toutes (320 par colonne) | 80,0 % | 72,8 % | 70,6 % | 66,3 % | 54,1 % |
+| Anglais (`alba`, `peter_yearsley`) | 97,2 % | 95,1 % | 97,9 % | 96,5 % | 88,7 % |
+| Français (`estelle`, `marius`) | 66,3 % | 55,1 % | 48,9 % | 42,1 % | 26,4 % |
+| dont `estelle` | 83 % | 75 % | 64 % | 53 % | 31 % |
+| dont `marius` | 49 % | 35 % | 34 % | 31 % | 21 % |
+| Questions hors liste refusées | 97,7 % | 95,5 % | 97,7 % | 97,7 % | 93,2 % |
+
+Les erreurs françaises sont de la transcription, pas de la classification : les questions courtes sortent dans une autre langue (« Tämpsäistä » pour « Temps restant », « Him and more » pour « Ramène-moi ») ; la voix `marius` est mal reconnue même sans vent. Le biais par hotwords n'apporte que 3 points (61,2 → 64,6 % en français propre). Sur le Pixel, ni mesuré ni testé (consigne) : chargement 1,3 à 4,3 s sur le poste (speak : 2,9 à 3,7 s sur le Pixel).

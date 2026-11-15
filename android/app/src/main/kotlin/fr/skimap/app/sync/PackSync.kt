@@ -140,6 +140,9 @@ object PackSync {
                 .addTag(TAG)
                 .build()
         wm.enqueueUniquePeriodicWork(PERIODIC, ExistingPeriodicWorkPolicy.KEEP, request)
+        // The speech model of the voice commands comes with the packs, on its own (Wi-Fi, charging).
+        fr.skimap.app.voicecmd.VoiceModelWorker
+            .schedule(context)
     }
 }
 
