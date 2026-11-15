@@ -54,6 +54,14 @@ Fichier `rules/rules.json`, validé à la compilation des tests (`RuleSet::valid
 
 Textes non lus et donc marqués comme tels : arrêtés signés des APPB Haut-Jura (27/05/2019) et Haut-Doubs (31/12/2025) — règles lues dans les projets, la synthèse et la plaquette ; arrêté de Cervières sur le feu (08/07/2022) — connu par la page du PNR du Queyras.
 
+## Champs simples (`fields`)
+
+`skimap_zones::fields::zone_fields(layer, rules, zone, date)` donne ce qu'une carte peut montrer d'une zone : `bivouac` (`forbidden`, `forbidden_in_places`, `tolerated`, `consent_required`, `allowed`, `unknown`) et `access` (`forbidden`, `forbidden_in_places`, `routes_only`, `routes_only_in_places`, `avoid_recommended`, `allowed`, `unknown`), avec la période et les règles qui décident. Une zone est gouvernée par ses règles et par celles des territoires de la couche qui contiennent un de ses points intérieurs (un territoire, par les plus grands seulement) ; verdict le plus restrictif dans l'ordre de `skimap_core::zone_eval`, règles en vigueur à la date ou plus tard. Le pack ajoute ces champs à chaque zone ; tests sur les règles réelles (`fields::tests`) et sur les deux packs (`crates/pack/tests/real_packs.rs`).
+
+## Biodiv'sports : usage personnel
+
+Biodiv'sports n'affiche aucune licence (docs/licences-donnees.md, « Usage personnel seulement, tant qu'il n'y a pas d'accord écrit : […] Biodiv'sports (aucune licence trouvée) ») : `build_with(…, personal_sources)` ne lit ses zones qu'avec l'option et marque alors sa source `personal_use_only` ; `build` lit l'option dans l'environnement (`SKIMAP_PERSONAL_SOURCES`, comme la ligne de commande). Sans l'option : 28 zones à Cervières (10 de moins), 34 à Chapelle-des-Bois (6 de moins).
+
 ## Limites
 
 - Hors de l'emprise du site, rien n'est évalué. Italie : aucune zone ni règle.

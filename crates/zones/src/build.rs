@@ -169,8 +169,24 @@ fn referenced_ids(rules: &RuleSet) -> BTreeSet<String> {
         .collect()
 }
 
-/// Fetches every source, assembles the layer of `site` and writes it.
+/// Fetches every source, assembles the layer of `site` and writes it; Biodiv'sports
+/// only with `personal_sources` of the environment configuration
+/// (`SKIMAP_PERSONAL_SOURCES`, as the command line). See [`build_with`].
 pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<ZonesReport> {
+    let personal = skimap_common::config::Config::from_env()?.personal_sources;
+    build_with(site, layout, dl, personal)
+}
+
+/// [`build`] with an explicit `personal_sources`. Biodiv'sports shows no licence
+/// (docs/licences-donnees.md: « Usage personnel seulement, tant qu'il n'y a pas d'accord
+/// écrit : […] Biodiv'sports (aucune licence trouvée) »): its zones are fetched only with
+/// the option, and then its source is marked `personal_use_only`.
+pub fn build_with(
+    site: &Site,
+    layout: &DataLayout,
+    dl: &Downloader,
+    personal_sources: bool,
+) -> Result<ZonesReport> {
     let t0 = Instant::now();
     let b = site.bbox;
     let rules = RuleSet::embedded()?;
@@ -186,7 +202,11 @@ pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<ZonesR
         .filter_map(|GpuZone { zone, ac2 }| clip(zone, site).map(|z| (z, ac2)))
         .collect();
     let gpu_zones = resolve_ac2(&mut inpn_zones, gpu_zones);
-    let biodiv_zones = merge_duplicates(clip_all(biodiv::fetch(dl, b)?));
+    let biodiv_zones = if personal_sources {
+        merge_duplicates(clip_all(biodiv::fetch(dl, b)?))
+    } else {
+        Vec::new()
+    };
     let district_zones = clip_all(swiss::districts(dl, b)?);
     let canton_zones = clip_all(swiss::cantons(dl, b)?);
 
@@ -242,7 +262,7 @@ pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<ZonesR
     let dir = layout.layer_dir(site, LAYER)?;
     write_text(&dir.join("zones.geojson"), &layer.to_geojson_string()?)?;
     write_text(&dir.join("rules.json"), RULES_JSON)?;
-    let meta = layer_meta(site, &layer, &by_kind, &resolution);
+    let meta = layer_meta(site, &layer, &by_kind, &resolution, personal_sources);
     meta.write(&dir)?;
 
     let report = ZonesReport {
@@ -262,6 +282,7 @@ fn layer_meta(
     layer: &ZoneLayer,
     by_kind: &BTreeMap<String, usize>,
     resolution: &[RuleResolution],
+    personal_sources: bool,
 ) -> LayerMeta {
     let b = site.bbox;
     let today = chrono::Utc::now().date_naive();
@@ -290,7 +311,7 @@ fn layer_meta(
         ("clipped", "géométrie coupée par l'emprise du site"),
         ("note", "remarque du pipeline"),
     ];
-    LayerMeta {
+    let mut meta = LayerMeta {
         tickets: vec!["P9 (#22)".into(), "P10 (#23)".into()],
         valid_until: Some((today + chrono::Days::new(30)).to_string()),
         validity: Some("Régénérer au moins chaque mois : Biodiv'sports évolue sans calendrier, INPN est mis à jour chaque semestre, le GPU en continu. Les règles (rules.json) sont relues à la main (date `reviewed`).".into()),
@@ -305,14 +326,17 @@ fn layer_meta(
                 .note("WFS Géoplateforme, sortie demandée en CRS:84 (la valeur par défaut est EPSG:3857)"),
             SourceRef::new("Géoportail de l'urbanisme, servitudes d'utilité publique", format!("{} couche {}", crate::sources::GEOPF_WFS, gpu::LAYER), "non vérifiée (F5, #11)", "Géoportail de l'urbanisme")
                 .note("seule source des sites inscrits (R111-33) ; AC1, AC2, AC4, AS1, A7 conservées"),
-            SourceRef::new("Biodiv'sports", biodiv::areas_url(b), "non vérifiée (F5, #11)", "Biodiv'sports (LPO AuRA et partenaires)")
-                .note("period=ignore : toutes les zones, quel que soit le mois ; mois sensibles dans `months`"),
             SourceRef::new("geo.admin.ch (OFEV districts francs, swissBOUNDARIES3D)", swiss::identify_url(swiss::LAYER_DISTRICTS, b), "opendata.swiss « terms_by » (attribution obligatoire)", "© OFEV, © swisstopo")
                 .note("districts francs : parties à protection intégrale ou partielle seulement"),
             SourceRef::new("geo.api.gouv.fr, contours des communes", format!("{}/departements/<code>/communes?format=geojson&geometry=contour", jurisdiction::API), "non vérifiée (F5, #11)", "geo.api.gouv.fr (Etalab, IGN)")
                 .note("France, départements et communes citées par les règles"),
         ],
         notes: vec![
+            if personal_sources {
+                "Biodiv'sports : aucune licence trouvée, usage personnel (option personal_sources) ; couche marquée usage personnel.".into()
+            } else {
+                "Biodiv'sports écarté : aucune licence trouvée, usage personnel seulement tant que la LPO n'a pas répondu (option personal_sources désactivée).".into()
+            },
             "Les zones sont découpées à l'emprise du site : hors emprise, aucune règle n'est évaluée.".into(),
             "Les sites inscrits viennent des servitudes AC2 du GPU qui ne recoupent aucun site classé INPN.".into(),
             "Contours des zones cœur de l'APPB Haut-Doubs : zone Biodiv'sports 686 (hors des deux emprises actuelles).".into(),
@@ -325,5 +349,14 @@ fn layer_meta(
             "areas_ha": layer.zones.iter().map(|z| (z.id().to_owned(), z.props.area_ha)).collect::<BTreeMap<_, _>>(),
         }),
         ..LayerMeta::new(LAYER, site.id)
+    };
+    if personal_sources {
+        meta.sources.insert(
+            2,
+            SourceRef::new("Biodiv'sports", biodiv::areas_url(b), "aucune licence trouvée : usage personnel (docs/licences-donnees.md)", "Biodiv'sports (LPO AuRA et partenaires)")
+                .note("period=ignore : toutes les zones, quel que soit le mois ; mois sensibles dans `months`")
+                .personal_use_only(),
+        );
     }
+    meta
 }
