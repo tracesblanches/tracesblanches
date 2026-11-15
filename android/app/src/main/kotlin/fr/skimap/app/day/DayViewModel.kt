@@ -217,7 +217,12 @@ class DayViewModel(
                 } else {
                     val t0 = System.nanoTime()
                     val p = backend.open(pick.first, workDir().absolutePath)
-                    android.util.Log.i("skimap", "day: ${pick.second} layers opened in ${(System.nanoTime() - t0) / 1_000_000} ms")
+                    android.util.Log.i(
+                        "skimap",
+                        "day: ${pick.second} layers opened in ${java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(
+                            System.nanoTime() - t0,
+                        )} ms",
+                    )
                     Triple(pick, p, backend.starts(pick.second))
                 }
             }

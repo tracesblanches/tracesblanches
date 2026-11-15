@@ -250,6 +250,7 @@ abstract class TrackingService : Service() {
                 }
             }
         Log.i(TAG, "tracking: $dir, provider $provider")
+        announcer.warmUp()
         controls = PhysicalControls(this, handler, ::act)
         val interactive = getSystemService(PowerManager::class.java)?.isInteractive ?: true
         screenOn = interactive

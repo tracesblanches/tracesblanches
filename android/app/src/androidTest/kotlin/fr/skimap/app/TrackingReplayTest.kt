@@ -148,6 +148,8 @@ class TrackingReplayTest {
         }
     }
 
+    // One scripted replay, step by step: its checks read best in one place.
+    @Suppress("CyclomaticComplexMethod", "NestedBlockDepth", "ComplexCondition")
     private fun run(
         name: String,
         dir: File,

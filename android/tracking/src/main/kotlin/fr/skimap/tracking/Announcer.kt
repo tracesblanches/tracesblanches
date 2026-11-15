@@ -158,6 +158,11 @@ class Announcer(
             .build()
     private var tts: TextToSpeech? = null
 
+    @Volatile private var ttsStatus = TextToSpeech.ERROR
+
+    @Volatile private var ttsReady = CountDownLatch(1)
+    private var ttsConfigured = false
+
     /** Announcements played (clips) and read (Android voice), for the tests and the logs. */
     @Volatile var played = 0
         private set
@@ -244,27 +249,46 @@ class Announcer(
         }
     }
 
-    /** The Android voice, started on first use (its start costs). */
-    private fun engine(): TextToSpeech? {
-        if (tts == null) {
-            val ready = CountDownLatch(1)
-            var status = TextToSpeech.ERROR
-            val t =
-                TextToSpeech(context) {
-                    status = it
-                    ready.countDown()
-                }
-            ready.await(TTS_INIT_S, TimeUnit.SECONDS)
-            if (status == TextToSpeech.SUCCESS) {
-                t.language = locale
-                t.setAudioAttributes(attributes)
-                tts = t
-            } else {
-                Log.w(TAG, "Android voice unavailable (status $status)")
-                t.shutdown()
+    /**
+     * Starts the Android voice in the background (the service does it when the outing
+     * starts: the proposals of C11 and the names the pack has no clip for need it, and its
+     * engine may take seconds to bind). Nothing is said.
+     */
+    fun warmUp() {
+        audio.execute { starting() }
+    }
+
+    /** The engine being started (callback pending) or started. */
+    private fun starting(): TextToSpeech {
+        tts?.let { return it }
+        val t =
+            TextToSpeech(context) {
+                ttsStatus = it
+                ttsReady.countDown()
             }
+        tts = t
+        return t
+    }
+
+    /** The Android voice once started, or null if it cannot start. */
+    private fun engine(): TextToSpeech? {
+        val t = starting()
+        if (!ttsReady.await(TTS_INIT_S, TimeUnit.SECONDS) || ttsStatus != TextToSpeech.SUCCESS) {
+            Log.w(TAG, "Android voice unavailable (status $ttsStatus)")
+            if (ttsReady.count == 0L) {
+                // Failed for good: shut it, the next announcement tries again.
+                t.shutdown()
+                tts = null
+                ttsReady = CountDownLatch(1)
+            }
+            return null
         }
-        return tts
+        if (!ttsConfigured) {
+            t.language = locale
+            t.setAudioAttributes(attributes)
+            ttsConfigured = true
+        }
+        return t
     }
 
     private fun speak(text: String): Boolean {
@@ -303,7 +327,7 @@ class Announcer(
         const val TAG = "skimap"
         const val MARGIN_MS = 300L
         const val MS_PER_S = 1000L
-        const val TTS_INIT_S = 5L
+        const val TTS_INIT_S = 20L
         const val TTS_MAX_S = 30L
     }
 }

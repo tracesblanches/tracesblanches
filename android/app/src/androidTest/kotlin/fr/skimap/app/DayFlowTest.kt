@@ -111,6 +111,8 @@ class DayFlowTest {
         assertTrue(what, cond())
     }
 
+    // The day as the skier lives it, step by step: one scripted test.
+    @Suppress("CyclomaticComplexMethod")
     @Test
     fun theDayFromTheMorningToTheEnd() {
         val pack = File(MainActivity.packsDir(target), "chapelle-des-bois")
@@ -340,6 +342,9 @@ class DayFlowTest {
         val back = s.stats.said.last { "back" in it.kinds }
         Log.i("skimap", "day flow back: ${back.text}")
         assertTrue(back.text, back.text.startsWith("Il reste"))
+        // The way back is the way skied (about 540 m here), not from a stray first fix.
+        val backM = (Tracking.state.value as TrackingState.Running).guidance.remainingM
+        assertTrue("way back $backM m", backM in 200.0..1500.0)
         Tracking.command(target, SkiTrackingService::class.java, Tracking.ACTION_BACK)
         waitFor("back stop", 10_000) { (Tracking.state.value as? TrackingState.Running)?.guidance?.route != "back" }
 

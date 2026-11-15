@@ -65,6 +65,8 @@ class TrackingEnergyTest {
         return out
     }
 
+    // One scripted measurement, step by step.
+    @Suppress("CyclomaticComplexMethod")
     @Test
     fun screenOffOutingCpu() {
         val minutes = InstrumentationRegistry.getArguments().getString("minutes")?.toInt() ?: 10

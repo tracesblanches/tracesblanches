@@ -925,6 +925,10 @@ struct Engine<'a> {
 }
 
 const TRACE_STEP_M: f64 = 10.0;
+/// A fix this far from the previous one…
+const TRACE_JUMP_M: f64 = 1000.0;
+/// …faster than this, m/s, is not skied: the trace restarts there.
+const TRACE_JUMP_MS: f64 = 60.0;
 
 impl<'a> Engine<'a> {
     fn new(o: &'a Owned, tracker: Tracker<'a>) -> Self {
@@ -991,6 +995,14 @@ impl<'a> Engine<'a> {
     fn feed(&mut self, i: &Input) {
         if let Input::Fix { t, pos } = i {
             let ts = t.timestamp_millis() as f64 / 1000.0;
+            // A jump no skier makes (the first fixes of a phone are often a cached position
+            // from elsewhere): the way skied starts again from here.
+            if let Some((t0, p0)) = self.last {
+                let d = p0.haversine_m(*pos);
+                if d > TRACE_JUMP_M && d > TRACE_JUMP_MS * (ts - t0).max(1.0) {
+                    self.trace.clear();
+                }
+            }
             match self.trace.last() {
                 Some(p) if p.haversine_m(*pos) < TRACE_STEP_M => {}
                 _ => self.trace.push(*pos),

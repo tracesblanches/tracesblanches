@@ -257,6 +257,10 @@ fn bring_me_back_on_the_fixtures() {
             _ => None,
         })
         .collect();
+    // The phone's first fix is a cached position from elsewhere (seen on the emulator:
+    // California): the way back must not go there.
+    s.push_fixes(pack_fixes(&[(out[0].0 - 5000, -123.150_031_7, 39.237_255)]))
+        .unwrap();
     for c in out.chunks(12) {
         s.push_fixes(pack_fixes(c)).unwrap();
     }
