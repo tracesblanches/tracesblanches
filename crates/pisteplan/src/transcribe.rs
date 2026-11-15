@@ -165,6 +165,17 @@ impl InkDistance {
             .fold(f64::INFINITY, f64::min)
     }
 
+    /// Drawn segments of `ink` within `r_pt` of `p` whose direction is within
+    /// [`MAX_ANGLE_DEG`] of `t` (unit).
+    pub fn segments_near(&self, ink: usize, p: P2, t: P2, r_pt: f64) -> Vec<Line<P2>> {
+        let cos_max = MAX_ANGLE_DEG.to_radians().cos();
+        self.trees[ink]
+            .locate_within_distance(p, r_pt * r_pt)
+            .filter(|s| (s.data[0] * t[0] + s.data[1] * t[1]).abs() >= cos_max)
+            .map(|s| *s.geom())
+            .collect()
+    }
+
     /// Unit direction of the drawn segment of `ink` nearest to `p` within `r_pt`.
     pub fn nearest_dir(&self, ink: usize, p: P2, r_pt: f64) -> Option<P2> {
         self.trees[ink]
@@ -336,6 +347,16 @@ pub const RADII_PT: &[f64] = &[3.0, 5.0, 8.0, 12.0];
 /// geometry in the piste's ink.
 pub const MIN_SHARE: f64 = 0.5;
 
+/// A legend name without its trailing qualifier in parentheses (« Les Coulets (côté
+/// Nord) » → « Les Coulets »); `None` without one, or when nothing is left before it.
+pub fn without_qualifier(name: &str) -> Option<&str> {
+    let t = name.trim_end();
+    let body = t.strip_suffix(')')?;
+    let open = body.rfind('(')?;
+    let base = body[..open].trim_end();
+    (base.chars().filter(|c| c.is_alphabetic()).count() >= 3).then_some(base)
+}
+
 /// Name candidates of every piste of the legend (no geometric test yet): relations of
 /// the same name (text layer: same key; OCR: best reading, unambiguous), else named ways.
 pub fn candidates(reg: &Registration, plan: &[PlanEntry]) -> Vec<Decision> {
@@ -367,16 +388,26 @@ pub fn candidates(reg: &Registration, plan: &[PlanEntry]) -> Vec<Decision> {
                 d.reason = "encre de la légende non lue".into();
                 return d;
             };
-            let mut cands: Vec<(f64, usize)> = reg
-                .osm
-                .relations
-                .iter()
-                .enumerate()
-                .filter_map(|(i, r)| {
-                    let s = name_sim(src, &e.name_read, r.name.as_deref()?);
-                    (s >= min_sim && !r.ways.is_empty()).then_some((s, i))
-                })
-                .collect();
+            let named = |name: &str| -> Vec<(f64, usize)> {
+                reg.osm
+                    .relations
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, r)| {
+                        let s = name_sim(src, name, r.name.as_deref()?);
+                        (s >= min_sim && !r.ways.is_empty()).then_some((s, i))
+                    })
+                    .collect()
+            };
+            // The full name first; else the name without its trailing qualifier in
+            // parentheses (« Les Coulets (côté Nord) », « Combe des Cives
+            // (Multi-activités) »), which OSM does not carry.
+            let mut cands = named(&e.name_read);
+            if cands.is_empty()
+                && let Some(base) = without_qualifier(&e.name_read)
+            {
+                cands = named(base);
+            }
             cands.sort_by(|a, b| b.0.total_cmp(&a.0));
             let key = |i: usize| name_key(reg.osm.relations[i].name.as_deref().unwrap_or(""));
             let chosen: Vec<(f64, usize)> = match src {
@@ -561,6 +592,111 @@ pub fn piste_test_warped(d: &InkDistance, s: &TestSamples, ink: usize) -> PisteT
         share: RADII_PT.iter().map(|&r| share_within(&truth, r)).collect(),
         shift_max,
         samples: truth.len(),
+    }
+}
+
+/// Radius of the coverage tolerant to a local offset, page points: a sample is drawn when
+/// a line of the ink runs within this distance, in the same direction, once the whole
+/// geometry is moved by the best offset ([`tolerant_share`]).
+pub const TOLERANT_RADIUS_PT: f64 = 3.0;
+
+/// Bounds of the local offset allowed, page points ([`local_tolerance_pt`]).
+pub const TOLERANCE_PT: (f64, f64) = (2.0, 8.0);
+
+/// Local offset the coverage tolerates on a registered plan: the 90th percentile of the
+/// error of the dense warp at the junctions held out (metres, `held_out_m`) in page
+/// points, within [`TOLERANCE_PT`] (the upper bound without held-out junctions).
+pub fn local_tolerance_pt(reg: &Registration) -> f64 {
+    let scale = reg.coarse.scale;
+    match quantile(&reg.held_out_m, 0.9) {
+        Some(p90) if scale > 0.0 => (p90 / scale).clamp(TOLERANCE_PT.0, TOLERANCE_PT.1),
+        _ => TOLERANCE_PT.1,
+    }
+}
+
+/// Samples of a piece of geometry moved by one offset in [`tolerant_share`]
+/// ([`SHARE_STEP_M`] apart: 200 m).
+pub const TOLERANT_PIECE: usize = 20;
+
+/// Share of samples (page point and direction, [`warped_samples`]) drawn with `ink`
+/// within `r_pt` once each piece of `piece` consecutive samples is moved by its best
+/// offset of the grid of 1 pt steps within `tol_pt` (the registration's local error, a
+/// shift of each part of the piste). `piece = usize::MAX`: one offset for the whole
+/// geometry. Exact over the grid: each sample keeps the ink segments of its direction
+/// within `r_pt + tol_pt · √2`, and every offset is scored on them.
+pub fn tolerant_share(
+    d: &InkDistance,
+    samples: &[(P2, P2)],
+    ink: usize,
+    r_pt: f64,
+    tol_pt: f64,
+    piece: usize,
+) -> f64 {
+    if samples.is_empty() {
+        return 0.0;
+    }
+    let reach = r_pt + tol_pt * std::f64::consts::SQRT_2;
+    let near: Vec<(P2, Vec<Line<P2>>)> = samples
+        .iter()
+        .map(|&(p, t)| (p, d.segments_near(ink, p, t, reach)))
+        .collect();
+    let steps = tol_pt.floor() as i64;
+    let r2 = r_pt * r_pt;
+    let offsets: Vec<(f64, f64)> = (-steps..=steps)
+        .flat_map(|dy| (-steps..=steps).map(move |dx| (dx as f64, dy as f64)))
+        .filter(|(x, y)| x.hypot(*y) <= tol_pt)
+        .collect();
+    let mut covered = 0usize;
+    for part in near.chunks(piece.max(1)) {
+        let best = offsets
+            .iter()
+            .map(|&(ox, oy)| {
+                part.iter()
+                    .filter(|(p, segs)| {
+                        let q = [p[0] + ox, p[1] + oy];
+                        segs.iter().any(|s| s.distance_2(&q) <= r2)
+                    })
+                    .count()
+            })
+            .max()
+            .unwrap_or(0);
+        covered += best;
+    }
+    covered as f64 / samples.len() as f64
+}
+
+/// Coverage tolerant to a local offset of a candidate and of its shifted copies
+/// ([`tolerant_share`] at [`TOLERANT_RADIUS_PT`]).
+#[derive(Debug, Clone, Serialize)]
+pub struct TolerantTest {
+    /// Offset tolerated, page points.
+    pub tol_pt: f64,
+    /// Share of the geometry.
+    pub share: f64,
+    /// Shares of the shifted copies.
+    pub copies: Vec<f64>,
+    /// Share with one offset per piece of [`TOLERANT_PIECE`] samples.
+    pub local: f64,
+    /// The same for the shifted copies.
+    pub local_copies: Vec<f64>,
+}
+
+/// [`TolerantTest`] of a candidate.
+pub fn tolerant_test(d: &InkDistance, s: &TestSamples, ink: usize, tol_pt: f64) -> TolerantTest {
+    TolerantTest {
+        tol_pt,
+        share: tolerant_share(d, &s.truth, ink, TOLERANT_RADIUS_PT, tol_pt, usize::MAX),
+        copies: s
+            .shifted
+            .iter()
+            .map(|sh| tolerant_share(d, sh, ink, TOLERANT_RADIUS_PT, tol_pt, usize::MAX))
+            .collect(),
+        local: tolerant_share(d, &s.truth, ink, TOLERANT_RADIUS_PT, tol_pt, TOLERANT_PIECE),
+        local_copies: s
+            .shifted
+            .iter()
+            .map(|sh| tolerant_share(d, sh, ink, TOLERANT_RADIUS_PT, tol_pt, TOLERANT_PIECE))
+            .collect(),
     }
 }
 
@@ -799,6 +935,49 @@ mod tests {
             oneway: Oneway::Unknown,
             length_m: 0.0,
         }
+    }
+
+    #[test]
+    fn tolerant_share_moves_the_geometry_by_its_best_offset() {
+        // One horizontal ink line, y = 0, x from 0 to 100 pt.
+        let seg = |a: P2, b: P2| GeomWithData::new(Line::new(a, b), [1.0, 0.0]);
+        let d = InkDistance {
+            trees: vec![RTree::bulk_load(
+                (0..100)
+                    .map(|x| seg([x as f64, 0.0], [x as f64 + 1.0, 0.0]))
+                    .collect(),
+            )],
+        };
+        let along = |y: f64, xs: std::ops::Range<i32>| -> Vec<(P2, P2)> {
+            xs.map(|x| ([x as f64 + 0.5, y], [1.0, 0.0])).collect()
+        };
+        // Drawn 7 pt off: nothing within 3 pt, everything once moved by 4 pt.
+        let s = along(7.0, 0..100);
+        assert_eq!(tolerant_share(&d, &s, 0, 3.0, 0.0, usize::MAX), 0.0);
+        assert_eq!(tolerant_share(&d, &s, 0, 3.0, 4.0, usize::MAX), 1.0);
+        assert_eq!(tolerant_share(&d, &s, 0, 3.0, 3.0, usize::MAX), 0.0);
+        // Half 7 pt above, half 7 pt below: one offset covers half, one per piece all.
+        let mut s = along(7.0, 0..50);
+        s.extend(along(-7.0, 50..100));
+        assert_eq!(tolerant_share(&d, &s, 0, 3.0, 4.0, usize::MAX), 0.5);
+        assert_eq!(tolerant_share(&d, &s, 0, 3.0, 4.0, 25), 1.0);
+        // A crossing line (perpendicular samples) is not followed.
+        let cross: Vec<(P2, P2)> = (0..10).map(|i| ([50.0, i as f64], [0.0, 1.0])).collect();
+        assert_eq!(tolerant_share(&d, &cross, 0, 3.0, 4.0, usize::MAX), 0.0);
+    }
+
+    #[test]
+    fn qualifiers_in_parentheses_are_dropped() {
+        assert_eq!(
+            without_qualifier("Les Coulets (côté Nord)"),
+            Some("Les Coulets")
+        );
+        assert_eq!(
+            without_qualifier("Combe des Cives (Multi-activités) "),
+            Some("Combe des Cives")
+        );
+        assert_eq!(without_qualifier("Le Gy"), None);
+        assert_eq!(without_qualifier("(Multi-activités)"), None);
     }
 
     #[test]
