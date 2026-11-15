@@ -55,6 +55,7 @@ fn day_fr(d: NaiveDate) -> String {
 }
 
 /// « mis à jour le 15/11 à 10 h 05 » (local time) of an epoch millisecond.
+#[uniffi::export]
 pub fn updated_fr(ms: i64) -> String {
     let t = skimap_core::ephemeris::local_time(
         DateTime::<Utc>::from_timestamp_millis(ms).unwrap_or_default(),

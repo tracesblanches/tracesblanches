@@ -37,6 +37,7 @@ use skimap_plan::pace::{clock_fr, duration_fr};
 use skimap_plan::tracker::Input;
 use skimap_voice::clips::Direction;
 
+use crate::PackError;
 use crate::card::Lang;
 use crate::tracking::{
     AlertKind, AlertView, BatchOut, GpsModeView, GpsRequestView, GuidanceView, INPUTS_FILE,
@@ -44,7 +45,6 @@ use crate::tracking::{
     TurnDirection, direction_view,
 };
 use crate::tracking_back::Backtrack;
-use crate::{PackError, card};
 
 /// Description of a guided outing, written in its directory.
 pub const GUIDED_FILE: &str = "guided.json";
@@ -1364,9 +1364,28 @@ fn placeholder() -> GuidanceView {
     }
 }
 
-#[allow(dead_code)]
-fn _card_lang_is_used(l: card::Lang) -> card::Lang {
-    l
+/// Visibility under which a forecast hour is foggy enough to offer the bearing, metres.
+pub const FOG_VISIBILITY_M: f64 = 300.0;
+
+/// Whether the forecast of the day plan in `plan_dir` (`plan.json`, hourly weather of
+/// the morning) gives fog or a visibility under [`FOG_VISIBILITY_M`] in the hour around
+/// `now_ms`: the app then offers the bearing on its own (K7), without any setting.
+#[uniffi::export]
+pub fn fog_expected(plan_dir: String, now_ms: i64) -> bool {
+    let path = Path::new(&plan_dir).join(crate::tracking_day::PLAN_FILE);
+    let Ok(json) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    let Ok(p) = skimap_plan::plan::DayPlan::from_json(&json) else {
+        return false;
+    };
+    let now = skimap_core::ephemeris::local_time(utc(now_ms));
+    p.weather.as_ref().is_some_and(|w| {
+        w.hours.iter().any(|h| {
+            (h.time - now).num_minutes().abs() <= 60
+                && (h.fog == Some(true) || h.visibility_m.is_some_and(|v| v < FOG_VISIBILITY_M))
+        })
+    })
 }
 
 #[cfg(test)]
