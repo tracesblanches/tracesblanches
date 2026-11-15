@@ -8,5 +8,7 @@ android
 tools
 docs
 fixtures
+# ...except the support code that crates/cli compiles in (fixtures/support/privacy.rs).
+!fixtures/support
 **/*.pmtiles
 **/*.tif
