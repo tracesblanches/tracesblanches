@@ -1111,15 +1111,14 @@ tickets:
 
 # ---------- Ajouts du 15/11/2026 ----------
 - key: P22
-  title: Plan des pistes officiel calé sur la carte
+  title: Plan des pistes officiel transcrit sur nos cartes
   milestone: M1 Preuve Rust
   labels: [algo, carte]
   deps: [P2, C1]
   body: |
-    Les stations publient un plan des pistes dessiné (PDF ou image, souvent en perspective, pas à l'échelle). Le caler automatiquement sur la carte : extraire les tracés colorés et les étiquettes (noms, numéros, couleurs), apparier leur topologie au graphe OSM et aux repères (refuges, villages, sommets), puis déformer le plan par morceaux à partir des points d'appui.
-    Usages : afficher sa position GPS sur le plan officiel de la station ; superposer le plan déformé à la carte ; récupérer noms, couleurs, sens et pistes absentes d'OSM (alimente G1).
-    Le plan reste la propriété de la station : usage personnel tant qu'aucune autorisation n'est obtenue (comme personal_sources).
-    Critère : plans de Cervières et Chapelle-des-Bois calés ; erreur médiane des points d'appui en mètres mesurée ; position d'une trace réelle affichée sur le plan.
+    Les stations publient un plan des pistes dessiné (PDF ou image, souvent en perspective, pas à l'échelle). Le pipeline le lit en local, extrait tracés colorés et étiquettes, apparie sa topologie au graphe OSM et aux repères (refuges, villages, sommets), puis transcrit ses informations sur nos propres géométries : nom, numéro, couleur, sens, type de piste, boucles, liaisons, départs et parkings. Les pistes absentes d'OSM sont tracées sur le terrain réel et marquées « tracé estimé » (alimente G1).
+    Rendu natif uniquement : la carte dessine ces pistes dans notre style, comme les autres. Aucune image du plan, ni couche raster, ni plan déformé dans un pack ou dans le dépôt ; l'image de la station n'est jamais redistribuée.
+    Critère : part des pistes du plan transcrites et appariées, attributs vérifiés à la main sur Cervières et Chapelle-des-Bois, écarts avec OSM (ajouts, corrections, conflits) listés.
 
 - key: K14
   title: Publication sur le Play Store (test interne)
