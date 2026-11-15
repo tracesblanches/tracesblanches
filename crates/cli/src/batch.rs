@@ -250,9 +250,12 @@ pub fn build_many(
             census.domains.len(),
             t.elapsed().as_secs_f64()
         );
+        let srn = ctx.srn(&planet)?;
+        println!("{} zones SRN hors stations", srn.areas.len());
         let shared = Shared {
             planet: Some(&planet),
             census: Some(&census),
+            srn: Some(&srn),
         };
         let queue = Mutex::new(todo);
         let done = Mutex::new(Vec::new());

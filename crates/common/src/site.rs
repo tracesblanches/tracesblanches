@@ -238,6 +238,9 @@ pub struct SiteRecord {
     /// Snowshoe / hiking-only km of the census domain.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub km_hike_only: Option<f64>,
+    /// SRN area: km of its seeding itineraries (G5).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub km_routes: Option<f64>,
     /// Sections of a site too large to build in one piece (built instead of it).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sections: Vec<String>,
@@ -458,10 +461,31 @@ static EVALUATION_RECORDS: LazyLock<Vec<SiteRecord>> = LazyLock::new(|| {
     t.sites
 });
 
+static EVALUATION_SITES: LazyLock<Vec<Site>> =
+    LazyLock::new(|| EVALUATION_RECORDS.iter().map(SiteRecord::to_site).collect());
+
+/// The evaluation sites as a slice (`SITES.iter()`, `SITES[0]`, `for s in SITES`).
+#[derive(Debug, Clone, Copy)]
+pub struct EvaluationSites;
+
+impl std::ops::Deref for EvaluationSites {
+    type Target = [Site];
+    fn deref(&self) -> &[Site] {
+        &EVALUATION_SITES
+    }
+}
+
+impl IntoIterator for EvaluationSites {
+    type Item = &'static Site;
+    type IntoIter = std::slice::Iter<'static, Site>;
+    fn into_iter(self) -> Self::IntoIter {
+        EVALUATION_SITES.iter()
+    }
+}
+
 /// Evaluation sites of the v1 proof of concept, from `data/sites.json`: the sites the
 /// tests and examples compare with the research reports.
-pub static SITES: LazyLock<Vec<Site>> =
-    LazyLock::new(|| EVALUATION_RECORDS.iter().map(SiteRecord::to_site).collect());
+pub static SITES: EvaluationSites = EvaluationSites;
 
 /// Cervières (Hautes-Alpes), from `data/sites.json`.
 pub static CERVIERES: LazyLock<Site> = LazyLock::new(|| evaluation("cervieres"));
@@ -470,7 +494,7 @@ pub static CERVIERES: LazyLock<Site> = LazyLock::new(|| evaluation("cervieres"))
 pub static CHAPELLE_DES_BOIS: LazyLock<Site> = LazyLock::new(|| evaluation("chapelle-des-bois"));
 
 fn evaluation(id: &str) -> Site {
-    *SITES
+    *EVALUATION_SITES
         .iter()
         .find(|s| s.id == id)
         .unwrap_or_else(|| panic!("data/sites.json has no site `{id}`"))
@@ -570,7 +594,7 @@ impl Registry {
     pub fn evaluation() -> Self {
         Self {
             records: EVALUATION_RECORDS.clone(),
-            sites: SITES.iter().collect(),
+            sites: EVALUATION_SITES.iter().collect(),
             path: None,
         }
     }

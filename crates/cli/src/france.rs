@@ -32,13 +32,15 @@ pub const MASSIF_SAMPLE_M: f64 = 250.0;
 pub const MASSIF_MIN_SHARE: f64 = 0.05;
 /// Overlap of neighbouring sections, metres (each side).
 pub const SECTION_OVERLAP_M: f64 = 1_000.0;
-/// Default half width of the corridor of a traverse given as a line, metres.
-pub const TRAVERSE_HALF_WIDTH_M: f64 = 2_000.0;
-/// SRN areas and traverses to add to the registry (ticket G5), GeoJSON: one feature per
-/// site, properties `name`, `kind` (`srn_area` or `traverse`), `department`, `insee`,
-/// `commune`, optional `id` and `half_width_m` (corridor of a line); geometry Polygon,
-/// MultiPolygon, LineString or MultiLineString (WGS84).
-pub const EXTRA_SITES: &str = "srn/sites.geojson";
+/// SRN areas of France outside groomed domains (G5, `skimap-srn`): play areas
+/// (`kind: domaine`) and traverses (`traversee`), footprint MultiPolygon (traverse
+/// corridor of 500 m), properties `id`, `name`, `commune {name, insee, departement}`,
+/// `lon`, `lat`, `km_routes` (see `crates/srn/docs/srn.md`). Path under
+/// `data/out/france/`.
+pub const SRN_AREAS: &str = "srn/srn_areas.geojson";
+/// Half width of the corridor of a traverse given as a line, metres (lines are not
+/// expected in [`SRN_AREAS`], whose traverses already are corridors).
+pub const TRAVERSE_HALF_WIDTH_M: f64 = 500.0;
 
 /// Polygons of an envelope, Lambert-93: each polygon is its rings (outer first).
 type Polys = Vec<Vec<Vec<(f64, f64)>>>;
@@ -378,6 +380,7 @@ fn census_records(features: &[Value], massifs: &[Massif]) -> Result<Vec<SiteReco
             status_source,
             km_nordic,
             km_hike_only,
+            km_routes: None,
             sections: Vec::new(),
             local: None,
         };
@@ -386,9 +389,10 @@ fn census_records(features: &[Value], massifs: &[Massif]) -> Result<Vec<SiteReco
     Ok(out)
 }
 
-/// SRN areas and traverses of [`EXTRA_SITES`] (ticket G5), split in sections when larger
-/// than [`MAX_SITE_SIDE_M`].
-fn extra_records(features: &[Value], massifs: &[Massif]) -> Result<Vec<SiteRecord>> {
+/// Sites of the SRN areas of [`SRN_AREAS`] (ticket G5): identifier = the `id` of the
+/// area, type SRN play area or traverse, working box = footprint + [`DOMAIN_MARGIN_M`],
+/// split in sections when larger than [`MAX_SITE_SIDE_M`] (the GTJ, 100 km).
+fn srn_records(features: &[Value], massifs: &[Massif]) -> Result<Vec<SiteRecord>> {
     let mut out = Vec::new();
     for f in features {
         let p = &f["properties"];
@@ -396,24 +400,30 @@ fn extra_records(features: &[Value], massifs: &[Massif]) -> Result<Vec<SiteRecor
         let id = p["id"]
             .as_str()
             .map_or_else(|| site::slug(&name), str::to_owned);
-        let kind: SiteKind = serde_json::from_value(p["kind"].clone())
-            .with_context(|| format!("{id} : kind (srn_area, traverse)"))?;
-        let half = p["half_width_m"].as_f64().unwrap_or(TRAVERSE_HALF_WIDTH_M);
-        let polys = polygons_93(&f["geometry"], half)?;
+        let kind = match p["kind"].as_str() {
+            Some("domaine") => SiteKind::SrnArea,
+            Some("traversee") => SiteKind::Traverse,
+            other => bail!("{id} : type SRN {other:?} (domaine, traversee)"),
+        };
+        let polys = polygons_93(&f["geometry"], TRAVERSE_HALF_WIDTH_M)?;
         let env = extent(&polys);
-        let center93 = ((env.0 + env.2) / 2.0, (env.1 + env.3) / 2.0);
-        let (found, mstatus, mnote) = attach_massifs(&polys, center93, massifs);
-        let (bbox, sections) = boxes(&polys, 0.0)?;
-        let center = crs::from_lambert93(center93.0, center93.1)?;
+        let center = match (p["lon"].as_f64(), p["lat"].as_f64()) {
+            (Some(lon), Some(lat)) => LonLat::new(lon, lat),
+            _ => crs::from_lambert93((env.0 + env.2) / 2.0, (env.1 + env.3) / 2.0)?,
+        };
+        let rep = crs::to_lambert93(center)?;
+        let (found, mstatus, mnote) = attach_massifs(&polys, rep, massifs);
+        let (bbox, sections) = boxes(&polys, DOMAIN_MARGIN_M)?;
+        let c = &p["commune"];
         let rec = SiteRecord {
             id,
             name,
             kind,
             parent: None,
             census_id: None,
-            department: p["department"].as_str().unwrap_or("").to_owned(),
-            insee: p["insee"].as_str().unwrap_or("").to_owned(),
-            commune: p["commune"].as_str().unwrap_or("").to_owned(),
+            department: c["departement"].as_str().unwrap_or("").to_owned(),
+            insee: c["insee"].as_str().unwrap_or("").to_owned(),
+            commune: c["name"].as_str().unwrap_or("").to_owned(),
             commune_center: center,
             bbox,
             envelope_bbox: Some(site::bbox_of_lambert93(env)?),
@@ -425,6 +435,7 @@ fn extra_records(features: &[Value], massifs: &[Massif]) -> Result<Vec<SiteRecor
             status_source: None,
             km_nordic: None,
             km_hike_only: None,
+            km_routes: p["km_routes"].as_f64(),
             sections: Vec::new(),
             local: None,
         };
@@ -463,7 +474,7 @@ pub struct RegistrySummary {
 }
 
 /// Builds the registry from the census (`data/out/france/domaines/domaines.geojson`), the
-/// snowtools massifs and the site tables; adds [`EXTRA_SITES`] when present.
+/// snowtools massifs and the site tables; adds the SRN areas of [`SRN_AREAS`] when present.
 pub fn build_registry(ctx: &Ctx) -> Result<RegistrySummary> {
     let census_path = ctx
         .layout
@@ -474,10 +485,10 @@ pub fn build_registry(ctx: &Ctx) -> Result<RegistrySummary> {
     let massifs = skimap_snow::massifs::fetch(&ctx.dl)?;
     let mut records = census_records(&features, &massifs)?;
     let census_domains = features.len();
-    let extra_path = ctx.layout.france_dir().join(EXTRA_SITES);
+    let extra_path = ctx.layout.france_dir().join(SRN_AREAS);
     let mut extra = 0;
     if extra_path.is_file() {
-        let e = extra_records(&read_features(&extra_path)?, &massifs)?;
+        let e = srn_records(&read_features(&extra_path)?, &massifs)?;
         extra = e.iter().filter(|r| r.parent.is_none()).count();
         records.extend(e);
     }
@@ -704,6 +715,7 @@ pub fn write_catalog(layout: &DataLayout, registry: &Registry) -> Result<Catalog
             "bbox": bbox_json(r.bbox),
             "envelope_bbox": r.envelope_bbox.map(bbox_json),
             "km_nordic": r.km_nordic,
+            "km_routes": r.km_routes,
             "km_hike_only": r.km_hike_only,
             "massifs": r.massifs.iter().map(|m| json!({"code": m.code, "name": m.name})).collect::<Vec<_>>(),
             "has_bera": r.has_bera,

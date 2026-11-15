@@ -2714,6 +2714,7 @@ dependencies = [
  "skimap-plan",
  "skimap-refuges",
  "skimap-snow",
+ "skimap-srn",
  "skimap-status",
  "skimap-terrain",
  "skimap-voice",

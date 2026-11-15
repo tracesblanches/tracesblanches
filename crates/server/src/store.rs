@@ -137,9 +137,12 @@ pub struct CatalogSite {
     pub first_download_bytes: u64,
 }
 
+/// Site identifiers of the pipeline (`skimap_common::site::slug`); up to 128 bytes: SRN
+/// areas keep the identifier of their first itinerary
+/// (`srn-traversee-datatourisme-6-80785b47-…`, 66 bytes, plus a section suffix).
 fn valid_site(s: &str) -> bool {
     !s.is_empty()
-        && s.len() <= 64
+        && s.len() <= 128
         && s.bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
@@ -759,6 +762,10 @@ mod tests {
     #[test]
     fn names() {
         assert!(valid_site("chapelle-des-bois"));
+        assert!(valid_site(
+            "srn-traversee-datatourisme-6-80785b47-1e6c-37be-99fc-d401c59b1fb7-1"
+        ));
+        assert!(!valid_site(&"a".repeat(129)));
         assert!(!valid_site("../x") && !valid_site("A") && !valid_site(""));
         assert!(valid_version("20261115T014538Z"));
         assert!(!valid_version("../x") && !valid_version("a/b"));

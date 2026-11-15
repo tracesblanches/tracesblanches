@@ -84,6 +84,9 @@ enum Command {
         /// Sites whose domain layer is written (default: every site of the registry).
         sites: Vec<String>,
     },
+    /// SRN areas of France outside groomed domains, `data/out/france/srn/` (G5, #131);
+    /// needs the census (`skimap domaines`).
+    Srn,
     /// Catalogue of France, `data/out/france/catalog.json` and `catalog.geojson`: every
     /// site with its box, centre, km and the state of its pack (G2).
     Catalog,
@@ -533,6 +536,8 @@ fn run(cli: Cli) -> Result<()> {
             let c = ctx()?;
             let planet = skimap_osm::extract::load_planet(&c.dl)?;
             let census = c.census(&planet)?;
+            let srn = c.srn(&planet)?;
+            println!("{} zones SRN hors stations", srn.areas.len());
             let summary = france::build_registry(&c)?;
             println!("{}", serde_json::to_string_pretty(&summary)?);
             let registry = Registry::load(&c.layout)?;
@@ -548,6 +553,12 @@ fn run(cli: Cli) -> Result<()> {
                 c.domaines_site(s, &planet, &census)?;
             }
             print_json(&census.stats)
+        }
+        Command::Srn => {
+            let c = ctx()?;
+            let out = skimap_srn::build(&c.layout, &c.dl)?;
+            println!("{} zones SRN hors stations", out.areas.len());
+            print_json(&out.stats)
         }
         Command::Catalog => {
             let c = france::write_catalog(&cfg.layout(), &registry)?;

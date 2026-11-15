@@ -74,6 +74,12 @@ impl Ctx {
         )?)
     }
 
+    /// G5: SRN areas of France outside groomed domains, `data/out/france/srn/` (needs the
+    /// census, `data/out/france/domaines/`).
+    pub fn srn(&self, planet: &Planet) -> Result<skimap_srn::SrnOutput> {
+        Ok(skimap_srn::build_from(&self.layout, &self.dl, planet)?)
+    }
+
     /// P5: terrain layer.
     pub fn terrain(&self, site: &Site) -> Result<skimap_terrain::TerrainBuild> {
         Ok(skimap_terrain::build(site, &self.layout, &self.dl)?)
@@ -346,6 +352,29 @@ impl Ctx {
                     v => format!("{}/{}", v["matched"], v["stations"]),
                 },
                 names.join(", ")
+            ))
+        });
+        run.step("srn", &["domaines"], || {
+            let out;
+            let srn = match shared.srn {
+                Some(s) => s,
+                None => {
+                    out = self.srn(planet_ref()?)?;
+                    &out
+                }
+            };
+            let count =
+                |k: skimap_srn::areas::Kind| srn.areas.iter().filter(|a| a.kind == k).count();
+            Ok(format!(
+                "France : {} zones SRN hors stations ({} domaines de jeu, {} traversées){}",
+                srn.areas.len(),
+                count(skimap_srn::areas::Kind::Domaine),
+                count(skimap_srn::areas::Kind::Traversee),
+                if shared.srn.is_some() {
+                    ", calculées une fois pour tous les sites"
+                } else {
+                    ""
+                }
             ))
         });
         run.step("terrain", &[], || {
@@ -684,6 +713,8 @@ pub struct Shared<'a> {
     pub planet: Option<&'a Planet>,
     /// Census of France.
     pub census: Option<&'a CensusOutput>,
+    /// SRN areas of France (G5).
+    pub srn: Option<&'a skimap_srn::SrnOutput>,
 }
 
 /// A step that does not apply to the site (reason in French).
