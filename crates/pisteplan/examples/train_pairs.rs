@@ -104,6 +104,7 @@ fn run_one(
                 "ransac_inliers": reg.coarse.inliers.len(), "icp_pairs": reg.pairs.len(),
                 "ties": reg.ties.len(), "tie_p90_m": skimap_pisteplan::warp::quantile(&ties, 0.9),
                 "inks": a.auto.spec.inks.iter().map(|i| i.name.clone()).collect::<Vec<_>>(),
+                "ink_sources": a.auto.report.inks.iter().map(|f| f.source).collect::<Vec<_>>(),
                 "labels": format!("{:?}", a.auto.spec.labels),
                 "pairs": pairs,
             })

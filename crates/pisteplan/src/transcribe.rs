@@ -336,6 +336,16 @@ pub const RADII_PT: &[f64] = &[3.0, 5.0, 8.0, 12.0];
 /// geometry in the piste's ink.
 pub const MIN_SHARE: f64 = 0.5;
 
+/// A legend name without its trailing qualifier in parentheses (« Les Coulets (côté
+/// Nord) » → « Les Coulets »); `None` without one, or when nothing is left before it.
+pub fn without_qualifier(name: &str) -> Option<&str> {
+    let t = name.trim_end();
+    let body = t.strip_suffix(')')?;
+    let open = body.rfind('(')?;
+    let base = body[..open].trim_end();
+    (base.chars().filter(|c| c.is_alphabetic()).count() >= 3).then_some(base)
+}
+
 /// Name candidates of every piste of the legend (no geometric test yet): relations of
 /// the same name (text layer: same key; OCR: best reading, unambiguous), else named ways.
 pub fn candidates(reg: &Registration, plan: &[PlanEntry]) -> Vec<Decision> {
@@ -367,16 +377,26 @@ pub fn candidates(reg: &Registration, plan: &[PlanEntry]) -> Vec<Decision> {
                 d.reason = "encre de la légende non lue".into();
                 return d;
             };
-            let mut cands: Vec<(f64, usize)> = reg
-                .osm
-                .relations
-                .iter()
-                .enumerate()
-                .filter_map(|(i, r)| {
-                    let s = name_sim(src, &e.name_read, r.name.as_deref()?);
-                    (s >= min_sim && !r.ways.is_empty()).then_some((s, i))
-                })
-                .collect();
+            let named = |name: &str| -> Vec<(f64, usize)> {
+                reg.osm
+                    .relations
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, r)| {
+                        let s = name_sim(src, name, r.name.as_deref()?);
+                        (s >= min_sim && !r.ways.is_empty()).then_some((s, i))
+                    })
+                    .collect()
+            };
+            // The full name first; else the name without its trailing qualifier in
+            // parentheses (« Les Coulets (côté Nord) », « Combe des Cives
+            // (Multi-activités) »), which OSM does not carry.
+            let mut cands = named(&e.name_read);
+            if cands.is_empty()
+                && let Some(base) = without_qualifier(&e.name_read)
+            {
+                cands = named(base);
+            }
             cands.sort_by(|a, b| b.0.total_cmp(&a.0));
             let key = |i: usize| name_key(reg.osm.relations[i].name.as_deref().unwrap_or(""));
             let chosen: Vec<(f64, usize)> = match src {
@@ -799,6 +819,20 @@ mod tests {
             oneway: Oneway::Unknown,
             length_m: 0.0,
         }
+    }
+
+    #[test]
+    fn qualifiers_in_parentheses_are_dropped() {
+        assert_eq!(
+            without_qualifier("Les Coulets (côté Nord)"),
+            Some("Les Coulets")
+        );
+        assert_eq!(
+            without_qualifier("Combe des Cives (Multi-activités) "),
+            Some("Combe des Cives")
+        );
+        assert_eq!(without_qualifier("Le Gy"), None);
+        assert_eq!(without_qualifier("(Multi-activités)"), None);
     }
 
     #[test]

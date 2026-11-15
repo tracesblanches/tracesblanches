@@ -114,9 +114,64 @@ pub struct LegendEntry {
     pub rect: [f64; 4],
 }
 
+/// Farthest a legend line's marker (dash, numbered disc, pictogram) is looked for to its
+/// left when there is no dash right beside it, page points.
+pub const ROW_MARKER_MAX_PT: f64 = 200.0;
+
+/// Left end of the band where the marker of a legend line is looked for: the right end
+/// of the nearest text box of the same row left of the line (vertical overlap of half the
+/// line's height at least; a number, another column), at most [`ROW_MARKER_MAX_PT`] away.
+pub fn row_left(lines: &[TextBox], rect: [f64; 4]) -> f64 {
+    let h = rect[3] - rect[1];
+    lines
+        .iter()
+        .filter(|l| {
+            let ov = l.rect[3].min(rect[3]) - l.rect[1].max(rect[1]);
+            l.rect[2] <= rect[0] - 1.0 && ov >= 0.5 * h
+        })
+        .map(|l| l.rect[2])
+        .fold(rect[0] - ROW_MARKER_MAX_PT, f64::max)
+}
+
+/// Nearest ink of the legend marker left of a text box: the dash beside it
+/// ([`dash_ink`]), else anything further left on its row ([`row_left`]: a numbered disc,
+/// a coloured pictogram of a table).
+pub fn marker_ink(
+    spec: &PlanSpec,
+    img: &Rgb,
+    rect: [f64; 4],
+    pt_per_px: f64,
+    lines: &[TextBox],
+) -> Option<usize> {
+    dash_ink(spec, img, rect, pt_per_px).or_else(|| {
+        let left = row_left(lines, rect);
+        (left < rect[0] - 16.0)
+            .then(|| {
+                band_ink(
+                    spec,
+                    img,
+                    [left, rect[1], rect[0] - 1.0, rect[3]],
+                    pt_per_px,
+                )
+            })
+            .flatten()
+    })
+}
+
 /// Nearest ink of the legend dash left of a text box: majority over the pixels of the
 /// band `[x0 − 16 pt, x0 − 1 pt] × [y0, y1]` within 1.5 × the ink threshold.
 pub fn dash_ink(spec: &PlanSpec, img: &Rgb, rect: [f64; 4], pt_per_px: f64) -> Option<usize> {
+    band_ink(
+        spec,
+        img,
+        [rect[0] - 16.0, rect[1], rect[0] - 1.0, rect[3]],
+        pt_per_px,
+    )
+}
+
+/// Majority ink over the pixels of a band `[x0, y0, x1, y1]` (page points) within
+/// 1.5 × the ink threshold; `None` below 4 pixels.
+pub fn band_ink(spec: &PlanSpec, img: &Rgb, band: [f64; 4], pt_per_px: f64) -> Option<usize> {
     let refs: Vec<(usize, [f32; 3])> = spec
         .inks
         .iter()
@@ -124,7 +179,8 @@ pub fn dash_ink(spec: &PlanSpec, img: &Rgb, rect: [f64; 4], pt_per_px: f64) -> O
         .flat_map(|(i, ink)| ink.refs.iter().map(move |&c| (i, lab(c))))
         .collect();
     let to_px = |v: f64| (v / pt_per_px).round().max(0.0) as usize;
-    let (x0, x1) = (to_px(rect[0] - 16.0), to_px(rect[0] - 1.0));
+    let rect = band;
+    let (x0, x1) = (to_px(rect[0]), to_px(rect[2]));
     let (y0, y1) = (to_px(rect[1]), to_px(rect[3]));
     let mut votes = vec![0usize; spec.inks.len()];
     for y in y0..y1.min(img.h) {
@@ -225,7 +281,7 @@ pub fn colour_word(spec: &PlanSpec, text: &str) -> Option<usize> {
 /// Legend of a plan whose boxes list « Name 12,3 km » lines under a « Departure - 1088 m »
 /// title (ENJ plans), or « Piste verte : le Gibera • 1,5 km » lines (Cervières).
 pub fn legend(spec: &PlanSpec, lines: &[TextBox], img: &Rgb, pt_per_px: f64) -> Vec<LegendEntry> {
-    let lines = &join_baselines(lines);
+    let lines = &join_lengths(&join_baselines(lines));
     let titles: Vec<(&TextBox, String)> = lines
         .iter()
         .filter_map(|l| box_title(&l.text).map(|(name, _)| (l, name)))
@@ -261,7 +317,8 @@ pub fn legend(spec: &PlanSpec, lines: &[TextBox], img: &Rgb, pt_per_px: f64) -> 
         if name.chars().filter(|c| c.is_alphabetic()).count() < 3 {
             continue;
         }
-        let ink = colour_word(spec, &raw_name).or_else(|| dash_ink(spec, img, rect, pt_per_px));
+        let ink =
+            colour_word(spec, &raw_name).or_else(|| marker_ink(spec, img, rect, pt_per_px, lines));
         // Departure: nearest title above, left-aligned with the box (within 30 pt).
         let departure = titles
             .iter()
@@ -380,7 +437,7 @@ pub fn legend_ocr(
                     if name.chars().filter(|c| c.is_alphabetic()).count() < 3 {
                         return None;
                     }
-                    let ink = dash_ink(spec, img, l.rect, pt_per_px)?;
+                    let ink = marker_ink(spec, img, l.rect, pt_per_px, &off_map)?;
                     (Some(ink), name, Some(km))
                 }
             };

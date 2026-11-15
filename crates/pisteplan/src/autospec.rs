@@ -107,14 +107,15 @@ pub fn colour_word_ink(text: &str) -> Option<&'static str> {
     .map(|(_, n)| *n)
 }
 
-/// Legend lines of a plan: on a text layer, « Name 12,3 km » lines (with the
+/// Legend lines of a plan: on a text layer, « Name 12,3 km » lines (a column of lengths
+/// joined to the name on its left, [`crate::labels::join_lengths`]; with the
 /// « (Multi-activités) 11,0 km » continuation joined, as [`crate::labels::legend`]); on an
 /// OCR reading, « Piste <couleur> : name • length » lines (as
 /// [`crate::labels::legend_ocr`], two columns read as one line split).
 pub fn entry_candidates(lines: &[TextBox], src: LabelSource) -> Vec<EntryCand> {
     match src {
         LabelSource::TextLayer => {
-            let lines = &join_baselines(lines);
+            let lines = &crate::labels::join_lengths(&join_baselines(lines));
             let mut out = Vec::new();
             for (i, l) in lines.iter().enumerate() {
                 let mut text = l.text.clone();
@@ -201,8 +202,35 @@ fn median_rgb(px: &[[u8; 3]]) -> [u8; 3] {
 /// colour), reduced to their core (median, then the pixels within ΔE 15 of it). `None`
 /// below 4 pixels.
 pub fn dash_colour(img: &Rgb, rect: PageRect, pt_per_px: f64) -> Option<[u8; 3]> {
+    band_colour(
+        img,
+        [rect[0] - 16.0, rect[1], rect[0] - 1.0, rect[3]],
+        pt_per_px,
+    )
+}
+
+/// Colour of a legend line's marker: the dash beside it ([`dash_colour`]), else the
+/// marker further left on its row ([`crate::labels::row_left`]: a numbered disc, a
+/// coloured pictogram of a table).
+pub fn marker_colour(
+    img: &Rgb,
+    rect: PageRect,
+    pt_per_px: f64,
+    lines: &[TextBox],
+) -> Option<[u8; 3]> {
+    dash_colour(img, rect, pt_per_px).or_else(|| {
+        let left = crate::labels::row_left(lines, rect);
+        (left < rect[0] - 16.0)
+            .then(|| band_colour(img, [left, rect[1], rect[0] - 1.0, rect[3]], pt_per_px))
+            .flatten()
+    })
+}
+
+/// [`dash_colour`] over a band `[x0, y0, x1, y1]`, page points.
+pub fn band_colour(img: &Rgb, band: PageRect, pt_per_px: f64) -> Option<[u8; 3]> {
+    let rect = band;
     let to_px = |v: f64| (v / pt_per_px).round().max(0.0) as usize;
-    let (x0, x1) = (to_px(rect[0] - 16.0), to_px(rect[0] - 1.0).min(img.w));
+    let (x0, x1) = (to_px(rect[0]), to_px(rect[2]).min(img.w));
     let (y0, y1) = (to_px(rect[1]), to_px(rect[3]).min(img.h));
     let mut px = Vec::new();
     for y in y0..y1 {
@@ -291,11 +319,25 @@ pub fn colour_name(c: [u8; 3]) -> Option<&'static str> {
 /// Difficulty colours of the French scale.
 pub const DIFFICULTIES: [&str; 4] = ["green", "blue", "red", "black"];
 
+/// Where an ink of the palette was read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InkSource {
+    /// Legend dashes or colour words.
+    Legend,
+    /// Line colours of the drawing itself (a legend without coloured dashes).
+    Drawing,
+    /// A colour drawn on the map that the legend does not list (non-ski).
+    Unlisted,
+}
+
 /// An ink of the palette with where it came from.
 #[derive(Debug, Clone, Serialize)]
 pub struct InkFound {
     /// The ink.
     pub ink: Ink,
+    /// Where it was read.
+    pub source: InkSource,
     /// Colours of the legend dashes (one per group of dashes within ΔE 15).
     pub legend_colours: Vec<[u8; 3]>,
     /// Legend lines of this ink.
@@ -303,6 +345,9 @@ pub struct InkFound {
     /// Map pixels of the ink's lines used for the references.
     pub map_pixels: usize,
 }
+
+/// A 4-bit colour bin: pixel count and channel sums.
+type ColourBin = (usize, [u64; 3]);
 
 /// Legend lines of one ink being grouped: name from words, dash colours, kinds, lines.
 type LegendGroup = (Option<&'static str>, Vec<[u8; 3]>, Vec<PisteKind>, usize);
@@ -388,12 +433,136 @@ pub fn legend_inks(entries: &[EntryCand]) -> Vec<InkFound> {
                 kind,
             },
             legend_colours: colours,
+            source: InkSource::Legend,
             entries: n,
             map_pixels: 0,
         });
     }
     out
 }
+
+/// Difficulty colours a drawing ink may take: green, blue, red. Black is left out: the
+/// drawing's black lines (roads, contours, text strokes) cannot be told from black pistes
+/// without a legend.
+pub const DRAWING_DIFFICULTIES: [&str; 3] = ["green", "blue", "red"];
+
+/// Least share of a colour name's line pixels that one of its colour groups holds to be a
+/// reference of its own (a plan drawing light and dark blue pistes: two groups).
+pub const DRAWING_GROUP_MIN_SHARE: f64 = 0.15;
+
+/// Line colours of the drawing itself, for a legend without coloured dashes. The pixels
+/// that stand out of their surroundings (`contrast` ≥ 20) where `keep` holds and whose
+/// colour is named green, blue or red ([`colour_name`]) are grouped by name, then within a
+/// name by colour (greedy groups within ΔE 20 around the most frequent 4-bit colour bin
+/// left; a group holds [`DRAWING_GROUP_MIN_SHARE`] of the name's pixels and 200 at least).
+/// Each group's reference is the median of its fifth of highest contrast (line centres,
+/// not the blends with the background); a reference within ΔE [`DRAWING_BACKGROUND_DE`]
+/// of a background colour of the map (`backgrounds`, [`map_backgrounds`]) is the texture
+/// of the background (shading, water, panels), not an ink. One ski ink per name (French
+/// difficulty scale), with its groups as references; the caller keeps those that draw
+/// lines.
+pub fn drawing_inks(
+    img: &Rgb,
+    contrast: &[f32],
+    keep: &dyn Fn(usize, usize) -> bool,
+    backgrounds: &[[f32; 3]],
+) -> Vec<InkFound> {
+    let mut cache: std::collections::HashMap<[u8; 3], Option<&'static str>> = Default::default();
+    let mut by_name: BTreeMap<&'static str, Vec<(f32, [u8; 3])>> = BTreeMap::new();
+    for y in 0..img.h {
+        for x in 0..img.w {
+            let i = y * img.w + x;
+            if contrast[i] < 20.0 || !keep(x, y) {
+                continue;
+            }
+            let p = img.get(x, y);
+            let name = *cache
+                .entry(p)
+                .or_insert_with(|| colour_name(p).filter(|n| DRAWING_DIFFICULTIES.contains(n)));
+            if let Some(n) = name {
+                by_name.entry(n).or_default().push((contrast[i], p));
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for (name, px) in by_name {
+        let min_n = ((DRAWING_GROUP_MIN_SHARE * px.len() as f64).ceil() as usize).max(200);
+        if px.len() < min_n {
+            continue;
+        }
+        // 4-bit bins: count and colour sums.
+        let bin = |p: [u8; 3]| [p[0] >> 4, p[1] >> 4, p[2] >> 4];
+        let mut bins: BTreeMap<[u8; 3], ColourBin> = BTreeMap::new();
+        for (_, p) in &px {
+            let e = bins.entry(bin(*p)).or_default();
+            e.0 += 1;
+            for (s, v) in e.1.iter_mut().zip(p) {
+                *s += *v as u64;
+            }
+        }
+        let mean = |(n, s): &ColourBin| {
+            let n = *n as u64;
+            lab([(s[0] / n) as u8, (s[1] / n) as u8, (s[2] / n) as u8])
+        };
+        let mut order: Vec<([u8; 3], ColourBin)> = bins.into_iter().collect();
+        order.sort_by(|a, b| b.1.0.cmp(&a.1.0).then(a.0.cmp(&b.0)));
+        let mut group_of: BTreeMap<[u8; 3], usize> = BTreeMap::new();
+        let mut groups = 0usize;
+        for i in 0..order.len() {
+            if group_of.contains_key(&order[i].0) {
+                continue;
+            }
+            let seed = mean(&order[i].1);
+            for (k, v) in &order[i..] {
+                if !group_of.contains_key(k) && de(mean(v), seed) <= 20.0 {
+                    group_of.insert(*k, groups);
+                }
+            }
+            groups += 1;
+        }
+        let mut members: Vec<Vec<(f32, [u8; 3])>> = vec![Vec::new(); groups];
+        for &(c, p) in &px {
+            members[group_of[&bin(p)]].push((c, p));
+        }
+        let mut refs = Vec::new();
+        for mut g in members.into_iter().filter(|g| g.len() >= min_n) {
+            g.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
+            let top: Vec<[u8; 3]> = g[..g.len().div_ceil(5)].iter().map(|c| c.1).collect();
+            let r = median_rgb(&top);
+            if backgrounds
+                .iter()
+                .all(|b| de(lab(r), *b) > DRAWING_BACKGROUND_DE)
+            {
+                refs.push(r);
+            }
+        }
+        if refs.is_empty() {
+            continue;
+        }
+        out.push(InkFound {
+            ink: Ink {
+                name: name.to_owned(),
+                refs: refs.clone(),
+                max_de: 0.0,
+                difficulty: Some(name.to_owned()),
+                kind: PisteKind::Ski,
+            },
+            legend_colours: refs,
+            source: InkSource::Drawing,
+            entries: 0,
+            map_pixels: px.len(),
+        });
+    }
+    out
+}
+
+/// Least CIELAB distance of a drawing ink's reference to every background colour of the
+/// map (twice the smallest ink threshold of [`detect`]).
+pub const DRAWING_BACKGROUND_DE: f32 = 16.0;
+
+/// Least length of thin lines (components of 20 pt of skeleton at least, 4 pt wide at
+/// most, as [`measured_width`]) an ink read from the drawing draws to be kept, points.
+pub const DRAWING_MIN_LINE_PT: f64 = 200.0;
 
 /// A rectangle of the page in pixels `[x0, y0, x1, y1]` (end exclusive) to points.
 fn px_rect(r: [usize; 4], k: f64) -> PageRect {
@@ -961,7 +1130,7 @@ pub fn detect(
     // Legend lines and their dash colours.
     let mut entries = entry_candidates(lines, labels);
     for e in &mut entries {
-        e.dash = dash_colour(img, e.rect, k);
+        e.dash = marker_colour(img, e.rect, k, lines);
     }
     let mut inks = legend_inks(&entries);
     // Flat boxes and the region where the map is (away from the side panels).
@@ -1006,6 +1175,22 @@ pub fn detect(
             f.ink.max_de = (0.5 * near).clamp(8.0, 22.0);
         }
     };
+    // A legend that gives fewer than two piste lines a difficulty ink (no coloured dash, no
+    // colour word: pictograms, numbers, a table) leaves the drawing's own line colours.
+    let contrast = local_contrast(img, (3.0 / k).round() as usize);
+    let legend_ski: usize = inks
+        .iter()
+        .filter(|f| f.ink.difficulty.is_some())
+        .map(|f| f.entries)
+        .sum();
+    let from_drawing = legend_ski < 2;
+    if from_drawing {
+        for f in drawing_inks(img, &contrast, &on_region, &backgrounds) {
+            if !inks.iter().any(|i| i.ink.name == f.ink.name) {
+                inks.push(f);
+            }
+        }
+    }
     thresholds(&mut inks);
     let mut spec = PlanSpec::new(
         src,
@@ -1019,6 +1204,23 @@ pub fn detect(
         false,
         Vec::new(),
     );
+    // Inks read from the drawing must draw lines: at least [`DRAWING_MIN_LINE_PT`] of
+    // thin line components (a texture or a filled area of the same colour does not).
+    if from_drawing {
+        let classes = segment::classify(&spec, img, k);
+        let lens: Vec<f64> = (0..spec.inks.len())
+            .into_par_iter()
+            .map(|i| ink_width(&classes, img.w, img.h, i, k).1 * k)
+            .collect();
+        let mut i = 0;
+        inks.retain(|f| {
+            let keep = f.source != InkSource::Drawing || lens[i] >= DRAWING_MIN_LINE_PT;
+            i += 1;
+            keep
+        });
+        thresholds(&mut inks);
+        spec.inks = inks.iter().map(|f| f.ink.clone()).collect();
+    }
     // Boxes of the region holding a quarter of the drawn lines or more are the flat
     // background of the map itself; the others hide the map (masks).
     let kept_of = |spec: &PlanSpec| {
@@ -1105,7 +1307,6 @@ pub fn detect(
                 .iter()
                 .any(|b| px >= b[0] && px < b[2] && py >= b[1] && py < b[3])
     };
-    let contrast = local_contrast(img, (3.0 / k).round() as usize);
     for f in &mut inks {
         let mut refs = Vec::new();
         for &c in &f.legend_colours {
@@ -1165,6 +1366,7 @@ pub fn detect(
                 kind: PisteKind::Pedestrian,
             },
             legend_colours: Vec::new(),
+            source: InkSource::Unlisted,
             entries: 0,
             map_pixels: px.len(),
         });
@@ -1448,6 +1650,46 @@ mod tests {
             Some("orange")
         );
         assert_eq!(colour_word_ink("Combe Verte 8,4 km"), None);
+    }
+
+    #[test]
+    fn drawing_inks_are_the_line_colours_off_the_background() {
+        // Pale blue background, a red and a dark blue line, a pale green filled area (no
+        // contrast inside), a long black line (left out: roads, contours).
+        let (w, h) = (200, 120);
+        let mut img = Rgb::new(w, h, [200, 225, 240]);
+        for x in 10..190 {
+            for y in 20..23 {
+                img.put(x, y, [220, 30, 40]);
+            }
+            for y in 60..63 {
+                img.put(x, y, [20, 100, 190]);
+            }
+            for y in 100..103 {
+                img.put(x, y, [10, 10, 10]);
+            }
+        }
+        for y in 70..95 {
+            for x in 20..120 {
+                img.put(x, y, [170, 230, 170]);
+            }
+        }
+        let contrast = local_contrast(&img, 3);
+        let bgs = map_backgrounds(&img, [0.0, 0.0, w as f64, h as f64], 1.0);
+        let inks = drawing_inks(&img, &contrast, &|_, _| true, &bgs);
+        let names: Vec<&str> = inks.iter().map(|f| f.ink.name.as_str()).collect();
+        assert_eq!(names, vec!["blue", "red"], "{inks:?}");
+        assert!(inks.iter().all(|f| f.source == InkSource::Drawing
+            && f.ink.kind == PisteKind::Ski
+            && f.ink.difficulty.as_deref() == Some(f.ink.name.as_str())));
+        let blue = &inks[0].ink.refs;
+        assert_eq!(blue.len(), 1, "{blue:?}");
+        assert!(de(lab(blue[0]), lab([20, 100, 190])) < 10.0, "{blue:?}");
+        // The background itself is never an ink, however textured.
+        assert!(
+            drawing_inks(&img, &vec![50.0; w * h], &|_, y| y < 15, &bgs).is_empty(),
+            "background read as an ink"
+        );
     }
 
     #[test]

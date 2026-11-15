@@ -92,8 +92,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     for f in &auto.report.inks {
         println!(
-            "  ink {:7} {:?} max_de {:.1} kind {:?} entries {} map px {}",
-            f.ink.name, f.ink.refs, f.ink.max_de, f.ink.kind, f.entries, f.map_pixels
+            "  ink {:7} {:?} max_de {:.1} kind {:?} source {:?} entries {} map px {}",
+            f.ink.name, f.ink.refs, f.ink.max_de, f.ink.kind, f.source, f.entries, f.map_pixels
         );
     }
     println!(
