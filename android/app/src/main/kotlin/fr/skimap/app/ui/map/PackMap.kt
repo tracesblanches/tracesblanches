@@ -23,6 +23,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import fr.skimap.app.data.CameraSpot
 import fr.skimap.app.data.OpenedPack
+import fr.skimap.app.group.GroupMembersOnMap
 import fr.skimap.core.Bounds
 import fr.skimap.core.Card
 import fr.skimap.core.Lang
@@ -210,6 +211,8 @@ fun PackMap(
     }
     // Panel "Couches": layer visibility of the groups of the style, no reload.
     LaunchedEffect(loaded, hidden) { loaded?.let { showGroups(it, style, hidden) } }
+    // The group's members during an outing (N2).
+    GroupMembersOnMap(loaded)
     // Touch on a refuge, a piste or a zone: its card, and the piste or zone highlighted.
     // One query per touch, around the finger.
     val currentOpened by rememberUpdatedState(opened)

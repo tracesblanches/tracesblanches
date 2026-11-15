@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="group_title">Groupe</string>
+    <string name="group_open">Créer ou rejoindre un groupe</string>
     <string name="group_back">Retour</string>
     <string name="group_intro">Les téléphones du groupe partagent leurs positions par Bluetooth pendant la sortie, à quelques dizaines de mètres (moins téléphone en poche). Chacun retransmet les dernières positions entendues. Vous voyez la dernière position connue de chaque membre et son âge. Sans compte, sans serveur, sans réseau. Ce n\'est pas un DVA : il ne retrouve personne sous la neige.</string>
     <string name="group_create">Créer un groupe</string>

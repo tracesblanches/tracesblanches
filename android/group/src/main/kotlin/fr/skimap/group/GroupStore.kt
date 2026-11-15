@@ -12,8 +12,10 @@ data class Joined(
 /** Where the group is kept (private preferences; the key never leaves the phone but by the QR code). */
 class GroupStore(
     private val context: Context,
+    /** Preferences file (two phones simulated in one process in the instrumented test). */
+    private val name: String = PREFS,
 ) {
-    private fun prefs() = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private fun prefs() = context.getSharedPreferences(name, Context.MODE_PRIVATE)
 
     fun joined(): Joined? {
         val p = prefs()

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="group_title">Group</string>
+    <string name="group_open">Create or join a group</string>
     <string name="group_back">Back</string>
     <string name="group_intro">Phones of the group share their positions over Bluetooth during the outing, within a few dozen metres (less with the phone in a pocket). Each one passes on the last positions it heard. You see each member\'s last known position and its age. No account, no server, no network. Not an avalanche transceiver: it finds no one under the snow.</string>
     <string name="group_create">Create a group</string>

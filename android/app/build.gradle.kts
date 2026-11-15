@@ -456,6 +456,8 @@ dependencies {
     implementation(project(":tracking"))
     // Sending the outing (K11): Health Connect and Strava.
     implementation(project(":sport"))
+    // Group mode (N2): the BLE radio in the location service, the group screen.
+    implementation(project(":group"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)

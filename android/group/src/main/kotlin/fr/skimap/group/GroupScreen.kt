@@ -43,6 +43,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 
 /** Test tags of the group screen. */
 object GroupTags {
@@ -273,7 +274,7 @@ fun memberStatus(m: Member): String {
             if (d >= KM) {
                 r.getString(R.string.group_distance_km, String.format(LocalLocale.current.platformLocale, "%.1f", d / KM))
             } else {
-                r.getString(R.string.group_distance_m, ((d / TEN).toInt() * TEN.toInt()))
+                r.getString(R.string.group_distance_m, (d / TEN).roundToInt() * TEN.toInt())
             }
     }
     parts +=
