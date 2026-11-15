@@ -12,6 +12,7 @@ pub mod osm;
 pub mod pistes;
 pub mod plan_ign;
 pub mod raster;
+pub mod stations;
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -194,6 +195,12 @@ fn build_into(
     }
     if let Some(l) = piste_labels(root, &layers)? {
         layers.push(l);
+    }
+    for o in stations::include(layout, site.bbox, root, opts.personal_sources)? {
+        match o {
+            layers::Outcome::Included(l) => layers.push(*l),
+            layers::Outcome::Missing(m) => missing.push(m),
+        }
     }
     timings.push((
         "vector and data layers".to_owned(),

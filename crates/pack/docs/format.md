@@ -19,7 +19,7 @@ layers/offpiste-*.skr.gz        rasters du routeur hors piste de core (SKR1, gzi
 layers/slope.pmtiles            polygones des classes de pente (tuiles vectorielles MVT, gzip)
 layers/avalanche-exposure.pmtiles  polygones des classes d'exposition aux avalanches (MVT)
 layers/meta/<couche>/<couche>.meta.json   copies des métadonnées des couches
-rasters/<id>.pmtiles            rasters en tuiles PNG 256 px (neige)
+layers/snow-*.pmtiles           polygones des classes de neige (MVT)
 voice/manifest.json, voice/clips/*.opus, voice/voice.meta.json
 ```
 
@@ -64,7 +64,11 @@ Lues dans `data/out/<site>/` avec leurs `<couche>.meta.json` (schéma `common::m
 | `assist-briefing`, `assist-wax`, `assist-snow-quality`, `assist-suggestions` | `assist/` (`briefing_<date>.json`, `wax_`, `snow_quality_`, `suggestions_<date>.geojson`) | sorties de `skimap assist` de la dernière date ; usage personnel (elles lisent la météo Open-Meteo et l'état des pistes) : seulement avec `personal_sources` |
 | `slope` | `terrain/slope_5m.tif` | polygones vectoriels z10-13, classes de la carte des pentes IGN (`class` 1 à 4 : 30-35, 35-40, 40-45, 45° et plus) |
 | `avalanche-exposure` | `avalanche-exposure/exposure_5m.tif` (UInt8 1 / 2 / 3, 255 absente) | polygones vectoriels z10-13, `class` 1 « terrain peu exposé (modèle) », 2 « exposé », 3 « très exposé » ; jamais « sûr » |
-| `snow-depth`, `snow-groomed`, `snow-srn` | `snow/*.tif` | tuiles z9-13 |
+| `snow-depth`, `snow-groomed`, `snow-srn` | `snow/*.tif` (25 m) | polygones vectoriels z10-13 (`build::class_tiles`, sans lissage : le côté prudent est moins de neige), `class` 0.. comme les classes de la crate snow ; 99,1 à 99,97 % des pixels redessinés au zoom 15 dans la classe de la source (Cervières, Chapelle-des-Bois) |
+| `piste-labels` | `layers/pistes.geojson` du pack | une ligne par itinéraire (relation OSM, sinon plan, sinon nom de la voie), voies jointes bout à bout : noms des pistes (`name`, `difficulty`, `length_m`, `ways`) |
+| `refuges` | `refuges/refuges.geojson` | fiches fusionnées (CC BY-SA 4.0) : téléphones, accès en hiver, sites, liens refuges.info et Camptocamp, attribution |
+| `stations`, `stations-pois`, `stations-status` | `france/stations/` | fiches des domaines de l'emprise (secours, 112 en premier, vente, contacts), points OSM rattachés, fraîcheur (ODbL, SkiRadar) |
+| `fee-zones` | `france/stations/titres.geojson` + `couverture.json` | usage personnel : titres valables sur un domaine de l'emprise, schéma de l'app (`fee_id`, `name`, `issuer`, `kind`, `prices`) + `scope`, `season`, `status`, `domains`, `ways` |
 | `ign-slopes` | WMTS `SLOPES.MOUNTAIN` (cache de terrain) | comparaison, tuiles RGBA z11-15 telles que servies |
 
 ## Couches de classes en vecteur (K15, #123)

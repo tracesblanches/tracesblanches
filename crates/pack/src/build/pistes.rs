@@ -357,6 +357,9 @@ pub fn enrich(v: &mut Value, out: &Path, personal_sources: bool) -> Result<Piste
     Ok(report)
 }
 
+/// A line as `[lon, lat]` points.
+type Line = Vec<[f64; 2]>;
+
 /// Pack layer of the piste name lines.
 pub const LABELS_LAYER: &str = "piste-labels";
 
@@ -371,7 +374,7 @@ pub const LABELS_LAYER: &str = "piste-labels";
 /// itinerary, else of the ways), `length_m`, `ways` (number of OSM ways merged).
 pub fn labels(pistes: &Value) -> Value {
     // name -> (difficulty, lines)
-    let mut by_name: BTreeMap<String, (Option<String>, Vec<Vec<[f64; 2]>>)> = BTreeMap::new();
+    let mut by_name: BTreeMap<String, (Option<String>, Vec<Line>)> = BTreeMap::new();
     for f in features(pistes) {
         let p = &f["properties"];
         let nordic = p["uses"]
