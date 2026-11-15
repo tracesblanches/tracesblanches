@@ -10,6 +10,10 @@ pub enum RefugesError {
     #[error(transparent)]
     Common(#[from] skimap_common::Error),
 
+    /// Error of the local OSM extracts (X5).
+    #[error(transparent)]
+    Osm(#[from] skimap_osm::OsmError),
+
     /// Unexpected content of a downloaded document.
     #[error("unexpected content from {source_name}: {message}")]
     Format {

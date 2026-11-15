@@ -8,7 +8,8 @@
 //!
 //! Output, in `data/out/<site>/refuges/` (WGS84):
 //! - `refuges_info.geojson`: points with places, stove, state and last dated comment;
-//! - `osm.geojson`: `tourism=alpine_hut`, `tourism=wilderness_hut`, `amenity=shelter`;
+//! - `osm.geojson`: `tourism=alpine_hut`, `tourism=wilderness_hut`, `amenity=shelter`
+//!   (local Geofabrik extracts, `skimap_osm::local`);
 //! - `camptocamp.geojson`: huts, shelters and gîtes with the unstaffed capacity;
 //! - `links.json`, `refuges.meta.json` (sources, licences, attributions, dates, figures).
 //!
@@ -109,7 +110,8 @@ fn count_by<'a>(items: impl Iterator<Item = (&'a str, bool)>) -> Value {
 pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<RefugesOutput> {
     let dir = layout.layer_dir(site, LAYER)?;
     let ri = refuges_info::fetch(dl, &site.bbox)?;
-    let (huts, osm_f) = osm::fetch(dl, &site.bbox)?;
+    let osm_read = osm::read(layout, dl, &site.bbox)?;
+    let huts = osm_read.huts;
     let c2c = camptocamp::fetch(dl, &site.bbox)?;
     let links = links::link(&ri.points, &huts, &c2c.waypoints);
 
@@ -301,12 +303,7 @@ pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<Refuge
             f,
         ));
     }
-    sources.push(source(
-        "OpenStreetMap (Overpass)",
-        osm::LICENCE,
-        osm::ATTRIBUTION,
-        &osm_f,
-    ));
+    sources.extend(osm_read.sources);
     for f in &c2c.listing {
         sources.push(source(
             "Camptocamp /waypoints",
@@ -327,7 +324,12 @@ pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<Refuge
         "Licence Ouverte 2.0",
         "geo.api.gouv.fr",
     ));
-    let valid_at = ri.full.meta.fetched_at_unix.max(osm_f.meta.fetched_at_unix);
+    let osm_at = osm_read
+        .valid_at
+        .as_deref()
+        .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
+        .map_or(0, |t| t.timestamp().max(0) as u64);
+    let valid_at = ri.full.meta.fetched_at_unix.max(osm_at);
     let meta = LayerMeta {
         tickets: vec!["P11 (#24)".to_owned(), "H1 (#132)".to_owned()],
         valid_from: skimap_common::meta::unix_to_rfc3339(valid_at as i64),

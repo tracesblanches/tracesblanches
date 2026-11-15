@@ -112,6 +112,14 @@ pub fn known_sources() -> Vec<SourcePolicy> {
         SourcePolicy::new("overpass")
             .limits([RateLimit::new(1, 5 * SECOND), RateLimit::per_day(10_000)])
             .max_wait(5 * MINUTE),
+        // Geofabrik OSM extracts (.osm.pbf, X5): about 20 files, 4.9 GB, published once a
+        // day, downloaded one at a time; a week-old copy is enough for huts and points of
+        // interest, and the conditional request (ETag, Last-Modified) avoids downloading
+        // it twice.
+        SourcePolicy::new("geofabrik")
+            .limits([RateLimit::new(1, 10 * SECOND)])
+            .max_age(7 * DAY)
+            .timeout(3 * HOUR),
         // OpenSnowMap daily extract planet_pistes.osm.gz (published once a day).
         SourcePolicy::new("opensnowmap").limits([RateLimit::new(1, MINUTE)]),
         // Biodiv'sports: no published quota, to confirm.
