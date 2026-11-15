@@ -471,7 +471,7 @@ fn not_implemented(name: &str, tickets: &str) -> Result<()> {
 fn build_all(cfg: &Config, registry: &Registry, a: BuildAllArgs) -> Result<()> {
     let c = build::Ctx::new(cfg)?;
     if let Some(id) = &a.site {
-        return c.build_all(registry.get(id)?);
+        return batch::build_single(&c, registry, registry.get(id)?);
     }
     let sites: Vec<&'static Site> = if a.all {
         registry.buildable()

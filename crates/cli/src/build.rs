@@ -257,14 +257,6 @@ impl Ctx {
         )?)
     }
 
-    /// Runs every available builder of `site` in dependency order and prints the time and
-    /// the key figures of each step (planet extract and census read here). Fails if any
-    /// step failed.
-    pub fn build_all(&self, site: &Site) -> Result<()> {
-        let out = self.build_all_with(site, &Shared::default(), &mut std::io::stdout());
-        out.into_result()
-    }
-
     /// Runs every available builder of `site` in dependency order, writing one line per
     /// step to `log`: time and key figures, « IGNORÉ » when a dependency failed, « sans
     /// objet » when the step does not apply to the site (with the reason), « ignoré » for

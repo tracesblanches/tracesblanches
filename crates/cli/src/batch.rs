@@ -448,6 +448,24 @@ fn build_one(
     Ok(o)
 }
 
+/// `build-all <site>`: the steps printed on stdout, the record written as in a batch
+/// (`build-all.json`, read by the catalogue and by the up-to-date test of `--all`).
+pub fn build_single(ctx: &Ctx, registry: &Registry, site: &'static Site) -> Result<()> {
+    let inp = inputs(ctx, registry, site)?;
+    let started_at = now_rfc3339();
+    let o = ctx.build_all_with(site, &Shared::default(), &mut std::io::stdout());
+    let rec = BuildRecord {
+        inputs: inp,
+        started_at,
+        finished_at: now_rfc3339(),
+        ok: o.ok(),
+        outcome: o.clone(),
+    };
+    DataLayout::ensure(&ctx.layout.out_dir(site))?;
+    skimap_common::output::write_json(&france::record_path(&ctx.layout, site.id), &rec)?;
+    o.into_result()
+}
+
 /// French text of a summary.
 pub fn describe(s: &BatchSummary) -> Vec<String> {
     let mut l = vec![format!(
