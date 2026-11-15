@@ -1,0 +1,15 @@
+[package]
+name = "skimap-intent"
+description = "Commandes vocales : classification d'intention sans LLM (normalisation, synonymes, distance d'édition, mots-clés) vers la liste fermée des fonctions du noyau (V3, VO5, A11)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true
