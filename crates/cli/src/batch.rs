@@ -528,7 +528,8 @@ pub fn build_many(
     let stamp = Utc::now().format("%Y%m%dT%H%M%SZ");
     skimap_common::output::write_json(&dir.join(format!("summary_{stamp}.json")), &summary)?;
     skimap_common::output::write_json(&dir.join("summary.json"), &summary)?;
-    write_status(&ctx.layout, sites)?;
+    // Every site of the registry, not only those of this batch.
+    write_status(&ctx.layout, &registry.buildable())?;
     Ok(summary)
 }
 
