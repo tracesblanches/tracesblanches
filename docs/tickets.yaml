@@ -1202,3 +1202,14 @@ tickets:
     Sur la carte : chaque membre, l'âge de sa dernière position et sa source. Alertes : membre qui décroche (distance et durée réglables), membre arrêté longtemps hors d'un refuge, membre sorti de l'itinéraire du plan commun, regroupement aux intersections du plan. Tout fonctionne sur le téléphone ; le serveur ne fait que relayer des messages qu'il ne peut pas lire.
     Batterie : écoute et émission à faible cycle, réglées par les modes de E1.
     Critère : sortie à deux (Pixel 8 et Pixel 8 Pro) avec séparation simulée, alerte reçue ; portée et coût batterie mesurés.
+
+- key: VO6
+  title: App bilingue français et anglais, voix par langue en paquet séparé
+  milestone: M3 Client v1
+  labels: [client, pendant]
+  deps: [VO3, K2]
+  body: |
+    Interface en anglais et en français, langue du téléphone détectée, anglais par défaut. Textes d'interface dans les ressources Android (quelques Ko).
+    Les clips vocaux pré-générés pèsent quelques Mo par site et par langue : ils sortent du pack de base et deviennent un paquet de langue séparé par site, téléchargé seulement pour la langue choisie (et remplacé si l'on change de langue). Banque de phrases anglaise (VO2) et clips anglais générés par Pocket TTS côté pipeline ; noms propres français lus correctement par la voix anglaise vérifiés par transcription.
+    Le catalogue du serveur (S0) liste les paquets de langue ; une mise à jour ne télécharge que la langue installée.
+    Critère : pack de base sans voix ; paquet FR et paquet EN par site mesurés ; changement de langue hors ligne refusé proprement, en ligne fait en un téléchargement.
