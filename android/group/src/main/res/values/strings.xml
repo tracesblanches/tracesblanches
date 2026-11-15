@@ -13,10 +13,9 @@
     <string name="group_cancel">Cancel</string>
     <string name="group_plan_common">The group shares the plan of the day validated on this phone.</string>
     <string name="group_plan_none">No plan of the day validated: members are compared by distance only.</string>
-    <string name="group_who_are_you">Who are you?</string>
     <string name="group_code">Group %1$s</string>
-    <string name="group_qr_description">QR code of group %1$s, to scan by the other members</string>
-    <string name="group_show_qr">Let the others scan this code before leaving.</string>
+    <string name="group_qr_description">QR code for %1$s to scan</string>
+    <string name="group_show_qr">Before leaving, let each member scan their own code: touch their name.</string>
     <string name="group_members">Members</string>
     <string name="group_you">%1$s (you)</string>
     <string name="group_never_heard">no position yet</string>

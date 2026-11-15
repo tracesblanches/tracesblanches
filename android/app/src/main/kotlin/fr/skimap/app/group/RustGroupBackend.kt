@@ -49,8 +49,11 @@ class RustGroupBackend(
 
     override fun read(qrText: String): GroupInfo = info(groupModeRead(qrText))
 
-    override fun qr(qrText: String): QrMatrix {
-        val m = groupModeQr(qrText)
+    override fun qr(
+        qrText: String,
+        member: Int?,
+    ): QrMatrix {
+        val m = groupModeQr(qrText, member?.toUByte())
         return QrMatrix(m.width.toInt(), m.modules.toBooleanArray())
     }
 
@@ -63,7 +66,7 @@ class RustGroupBackend(
         return RustGroupSession(openGroupSession(qrText, me.toUByte(), planDir, lang(), offset.toLong()))
     }
 
-    private fun info(i: CoreInfo) = GroupInfo(i.qrText, i.shortId, i.members, i.hasPlan)
+    private fun info(i: CoreInfo) = GroupInfo(i.qrText, i.shortId, i.members, i.hasPlan, i.member?.toInt())
 
     companion object {
         private const val MS = 1000

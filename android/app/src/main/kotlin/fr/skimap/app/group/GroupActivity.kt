@@ -60,7 +60,6 @@ class GroupActivity : ComponentActivity() {
             GroupActions(
                 create = controller::create,
                 scanned = controller::scanned,
-                choose = controller::choose,
                 leave = controller::leave,
                 back = ::finish,
                 wantCamera = { open ->

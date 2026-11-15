@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -26,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,6 +56,7 @@ object GroupTags {
     const val ADD = "group_add"
     const val DONE = "group_done"
     const val QR = "group_qr"
+    const val QR_FOR = "group_qr_for"
     const val MEMBER = "group_member"
     const val LEAVE = "group_leave"
     const val SCANNER = "group_scanner"
@@ -62,7 +66,6 @@ object GroupTags {
 data class GroupActions(
     val create: (List<String>) -> Unit = {},
     val scanned: (String) -> Unit = {},
-    val choose: (Int) -> Unit = {},
     val leave: () -> Unit = {},
     val back: () -> Unit = {},
     /** Asks for the camera; the scanner opens once given. */
@@ -124,10 +127,6 @@ fun GroupScreen(
                 }
             }
 
-            is GroupUi.Choosing -> {
-                Choose(ui.info, actions.choose)
-            }
-
             is GroupUi.InGroup -> {
                 InGroup(ui, live, actions.leave)
             }
@@ -160,11 +159,13 @@ private fun CreateForm(
     onCancel: () -> Unit,
 ) {
     val names = remember { mutableStateListOf("", "") }
+    // A name left empty is « Membre n »: nothing to fill in but who is who.
+    val defaults = (1..MAX_MEMBERS).map { stringResource(R.string.group_member_name, it) }
     names.forEachIndexed { i, n ->
         OutlinedTextField(
             value = n,
             onValueChange = { v -> names[i] = v.take(MAX_NAME) },
-            label = { Text(if (i == 0) stringResource(R.string.group_your_name) else stringResource(R.string.group_member_name, i + 1)) },
+            label = { Text(if (i == 0) stringResource(R.string.group_your_name) else defaults[i]) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth().testTag("${GroupTags.NAME}_$i"),
         )
@@ -179,26 +180,10 @@ private fun CreateForm(
         style = MaterialTheme.typography.bodySmall,
     )
     Button(
-        onClick = { onCreate(names.toList()) },
-        enabled = names[0].isNotBlank(),
+        onClick = { onCreate(names.mapIndexed { i, n -> n.ifBlank { defaults[i] } }) },
         modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag(GroupTags.DONE),
     ) { Text(stringResource(R.string.group_create_done)) }
     TextButton(onClick = onCancel) { Text(stringResource(R.string.group_cancel)) }
-}
-
-@Composable
-private fun Choose(
-    info: GroupInfo,
-    onChoose: (Int) -> Unit,
-) {
-    Text(stringResource(R.string.group_code, info.shortId), style = MaterialTheme.typography.titleMedium)
-    Text(stringResource(R.string.group_who_are_you), style = MaterialTheme.typography.titleMedium)
-    info.members.forEachIndexed { i, name ->
-        OutlinedButton(
-            onClick = { onChoose(i) },
-            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("${GroupTags.MEMBER}_$i"),
-        ) { Text(name) }
-    }
 }
 
 @Composable
@@ -208,12 +193,29 @@ private fun InGroup(
     onLeave: () -> Unit,
 ) {
     val id = ui.info.shortId
+    val names = ui.info.members
     Text(stringResource(R.string.group_code, id), style = MaterialTheme.typography.titleMedium)
-    Text(stringResource(R.string.group_show_qr), style = MaterialTheme.typography.bodyMedium)
-    val qrDescription = stringResource(R.string.group_qr_description, id)
+    // Each member scans their own code (it says who they are): the first other member's first.
+    var shown by remember(ui.info.qrText, ui.me) { mutableIntStateOf(if (ui.me == 0 && names.size > 1) 1 else 0) }
+    if (names.size > 1) {
+        Text(stringResource(R.string.group_show_qr), style = MaterialTheme.typography.bodyMedium)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            names.forEachIndexed { i, n ->
+                if (i != ui.me) {
+                    FilterChip(
+                        selected = i == shown,
+                        onClick = { shown = i },
+                        label = { Text(n) },
+                        modifier = Modifier.heightIn(min = 48.dp).testTag("${GroupTags.QR_FOR}_$i"),
+                    )
+                }
+            }
+        }
+    }
+    val qrDescription = stringResource(R.string.group_qr_description, names[shown])
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         QrCode(
-            ui.qr,
+            ui.qrs[shown],
             Modifier
                 .widthIn(max = 320.dp)
                 .fillMaxWidth()

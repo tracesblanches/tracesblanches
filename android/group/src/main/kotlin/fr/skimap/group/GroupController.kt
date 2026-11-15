@@ -19,16 +19,11 @@ sealed interface GroupUi {
         val invalidQr: Boolean = false,
     ) : GroupUi
 
-    /** A group scanned: this phone's member is to be chosen. */
-    data class Choosing(
-        val info: GroupInfo,
-    ) : GroupUi
-
-    /** This phone is member [me] of the group. */
+    /** This phone is member [me] of the group; [qrs]: the code each member scans to join. */
     data class InGroup(
         val info: GroupInfo,
         val me: Int,
-        val qr: QrMatrix,
+        val qrs: List<QrMatrix>,
     ) : GroupUi
 }
 
@@ -60,7 +55,7 @@ class GroupController(
                     hasPlan = planDir() != null
                     val j = store.joined()
                     val info = j?.let { runCatching { backend.read(it.qrText) }.getOrNull() }
-                    if (j != null && info != null) GroupUi.InGroup(info, j.me, backend.qr(j.qrText)) else GroupUi.NoGroup()
+                    if (j != null && info != null) inGroup(info, j.me) else GroupUi.NoGroup()
                 }
         }
     }
@@ -76,7 +71,7 @@ class GroupController(
                     // The core refuses what the form let through (a name of spaces only): no group.
                     runCatching { backend.create(key, members, planDir(), now() / MS) }.fold({ info ->
                         store.join(Joined(info.qrText, 0))
-                        GroupUi.InGroup(info, 0, backend.qr(info.qrText))
+                        inGroup(info, 0)
                     }, { GroupUi.NoGroup() })
                 }
         }
@@ -89,27 +84,27 @@ class GroupController(
         return out
     }
 
-    /** A QR code scanned. */
+    /** A QR code scanned: the group joined as the member it was shown for. */
     fun scanned(text: String) {
         scope.launch {
             mutable.value =
                 withContext(io) {
-                    runCatching { backend.read(text) }.fold({ GroupUi.Choosing(it) }, { GroupUi.NoGroup(invalidQr = true) })
+                    val info = runCatching { backend.read(text) }.getOrNull()
+                    val me = info?.member
+                    if (info != null && me != null) {
+                        store.join(Joined(info.qrText, me))
+                        inGroup(info, me)
+                    } else {
+                        GroupUi.NoGroup(invalidQr = true)
+                    }
                 }
         }
     }
 
-    /** This phone is member [me] of the group being joined. */
-    fun choose(me: Int) {
-        val c = mutable.value as? GroupUi.Choosing ?: return
-        scope.launch {
-            mutable.value =
-                withContext(io) {
-                    store.join(Joined(c.info.qrText, me))
-                    GroupUi.InGroup(c.info, me, backend.qr(c.info.qrText))
-                }
-        }
-    }
+    private fun inGroup(
+        info: GroupInfo,
+        me: Int,
+    ) = GroupUi.InGroup(info, me, info.members.indices.map { backend.qr(info.qrText, it) })
 
     fun leave() {
         scope.launch {

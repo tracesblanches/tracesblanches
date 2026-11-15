@@ -40,6 +40,8 @@ pub struct GroupInfo {
     pub short_id: String,
     /// Names of the members; the index is the member's number.
     pub members: Vec<String>,
+    /// The member a scanned QR code was shown for (joining is scanning, nothing else).
+    pub member: Option<u8>,
     /// Whether the group has a common plan.
     pub has_plan: bool,
     /// Creation, Unix seconds.
@@ -55,11 +57,12 @@ pub struct QrMatrix {
     pub modules: Vec<bool>,
 }
 
-fn info(g: &Group) -> GroupInfo {
+fn info(g: &Group, member: Option<u8>) -> GroupInfo {
     GroupInfo {
         qr_text: g.to_qr_text(),
         short_id: g.short_id(),
         members: g.members.clone(),
+        member,
         has_plan: g.has_plan(),
         created_s: g.created_s,
     }
@@ -87,23 +90,24 @@ pub fn group_mode_create(
         .map_err(|k: Vec<u8>| invalid(format!("key of {} bytes (32)", k.len())))?;
     let plan = plan_of(plan_dir.as_deref())?.unwrap_or([0u8; 8]);
     Group::create(key, members, plan, created_s)
-        .map(|g| info(&g))
+        .map(|g| info(&g, Some(0)))
         .map_err(invalid)
 }
 
-/// The group of a scanned QR text.
+/// The group of a scanned QR text, and the member it was shown for.
 #[uniffi::export]
 pub fn group_mode_read(qr_text: String) -> Result<GroupInfo, GroupError> {
-    Group::from_qr_text(&qr_text)
-        .map(|g| info(&g))
+    Group::read_qr(&qr_text)
+        .map(|(g, m)| info(&g, m))
         .map_err(invalid)
 }
 
-/// The QR code of a group's text.
+/// The QR code a member scans to join the group of `qr_text` as `member` (`None`: the
+/// group alone).
 #[uniffi::export]
-pub fn group_mode_qr(qr_text: String) -> Result<QrMatrix, GroupError> {
+pub fn group_mode_qr(qr_text: String, member: Option<u8>) -> Result<QrMatrix, GroupError> {
     let g = Group::from_qr_text(&qr_text).map_err(invalid)?;
-    let (width, modules) = g.qr_modules().map_err(invalid)?;
+    let (width, modules) = g.qr_modules(member).map_err(invalid)?;
     Ok(QrMatrix { width, modules })
 }
 
@@ -413,8 +417,11 @@ mod tests {
         )
         .unwrap();
         assert!(g.has_plan);
-        assert_eq!(group_mode_read(g.qr_text.clone()).unwrap(), g);
-        let qr = group_mode_qr(g.qr_text.clone()).unwrap();
+        assert_eq!(g.member, Some(0));
+        assert_eq!(group_mode_read(g.qr_text.clone()).unwrap().member, None);
+        let lea = format!("{}/1", g.qr_text);
+        assert_eq!(group_mode_read(lea).unwrap().member, Some(1));
+        let qr = group_mode_qr(g.qr_text.clone(), Some(1)).unwrap();
         assert_eq!(qr.modules.len() as u32, qr.width * qr.width);
         assert!(group_mode_plan_matches(g.qr_text.clone(), plan.clone().unwrap()).unwrap());
         assert!(group_mode_create(vec![1u8; 31], vec!["a".into()], None, 0).is_err());

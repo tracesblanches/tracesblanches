@@ -160,23 +160,52 @@ impl Group {
         format!("{QR_PREFIX}{}", base32(&self.to_bytes()))
     }
 
-    /// Reads a scanned QR text (spaces and case ignored around the payload).
+    /// Text of the QR code a member scans to join: the group and its number (`/n`), so that
+    /// scanning is all there is to do.
+    pub fn to_member_qr_text(&self, member: u8) -> String {
+        format!("{}/{member}", self.to_qr_text())
+    }
+
+    /// Reads a scanned QR text (spaces and case ignored around the payload); a member's
+    /// number after the group ([`Group::to_member_qr_text`]) is ignored.
     pub fn from_qr_text(text: &str) -> Result<Self, Error> {
+        Self::read_qr(text).map(|(g, _)| g)
+    }
+
+    /// Reads a scanned QR text: the group, and the member it was shown for (if any).
+    pub fn read_qr(text: &str) -> Result<(Self, Option<u8>), Error> {
         let t = text.trim();
         let body = t
             .strip_prefix(QR_PREFIX)
             .ok_or_else(|| Error::Qr("not a skimap group".into()))?;
-        Self::from_bytes(&unbase32(body)?)
+        let (body, member) = match body.split_once('/') {
+            Some((b, m)) => (
+                b,
+                Some(
+                    m.parse::<u8>()
+                        .map_err(|_| Error::Qr(format!("member {m:?}")))?,
+                ),
+            ),
+            None => (body, None),
+        };
+        let g = Self::from_bytes(&unbase32(body)?)?;
+        if let Some(m) = member
+            && usize::from(m) >= g.members.len()
+        {
+            return Err(Error::Member(m));
+        }
+        Ok((g, member))
     }
 
-    /// The QR code of [`Group::to_qr_text`]: its width and its modules, row by row (`true`:
-    /// dark), error correction M.
-    pub fn qr_modules(&self) -> Result<(u32, Vec<bool>), Error> {
-        let code = qrcode::QrCode::with_error_correction_level(
-            self.to_qr_text().as_bytes(),
-            qrcode::EcLevel::M,
-        )
-        .map_err(|e| Error::Qr(e.to_string()))?;
+    /// The QR code of [`Group::to_qr_text`] (or of [`Group::to_member_qr_text`] for
+    /// `member`): its width and its modules, row by row (`true`: dark), error correction M.
+    pub fn qr_modules(&self, member: Option<u8>) -> Result<(u32, Vec<bool>), Error> {
+        let text = match member {
+            Some(m) => self.to_member_qr_text(m),
+            None => self.to_qr_text(),
+        };
+        let code = qrcode::QrCode::with_error_correction_level(text.as_bytes(), qrcode::EcLevel::M)
+            .map_err(|e| Error::Qr(e.to_string()))?;
         let w = code.width() as u32;
         let dark = code
             .to_colors()
@@ -258,8 +287,26 @@ mod tests {
     }
 
     #[test]
+    fn member_qr_texts_carry_the_member() {
+        let g = group();
+        let t = g.to_member_qr_text(2);
+        assert_eq!(Group::read_qr(&t).unwrap(), (g.clone(), Some(2)));
+        assert_eq!(Group::read_qr(&g.to_qr_text()).unwrap(), (g.clone(), None));
+        assert_eq!(Group::from_qr_text(&t).unwrap(), g);
+        assert!(matches!(
+            Group::read_qr(&g.to_member_qr_text(3)),
+            Err(Error::Member(3))
+        ));
+        assert!(Group::read_qr(&format!("{}/x", g.to_qr_text())).is_err());
+        let (w1, m1) = g.qr_modules(Some(1)).unwrap();
+        let (_, m2) = g.qr_modules(Some(2)).unwrap();
+        assert!(w1 <= 41);
+        assert_ne!(m1, m2);
+    }
+
+    #[test]
     fn qr_modules_are_square_and_small() {
-        let (w, m) = group().qr_modules().unwrap();
+        let (w, m) = group().qr_modules(None).unwrap();
         assert_eq!(m.len(), (w * w) as usize);
         // 3 members: version ≤ 6 (41 modules), readable on a phone screen at arm's length.
         assert!(w <= 41, "width {w}");
@@ -268,7 +315,7 @@ mod tests {
             .map(|i| format!("Membre numéro {i:02} long"))
             .collect();
         let big = Group::create([9u8; 32], names, [1u8; 8], 1).unwrap();
-        let (w, _) = big.qr_modules().unwrap();
+        let (w, _) = big.qr_modules(Some(15)).unwrap();
         assert!(w <= 101, "width {w}");
     }
 

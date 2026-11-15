@@ -5,7 +5,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -70,9 +69,11 @@ class GroupTest {
     @Test
     fun twoPhonesThroughTheCore() {
         val g = group()
-        assertEquals(g, backend.read(g.qrText))
-        val qr = backend.qr(g.qrText)
+        assertEquals(g.copy(member = null), backend.read(g.qrText))
+        val qr = backend.qr(g.qrText, 1)
         assertEquals(qr.width * qr.width, qr.modules.size)
+        // Léa's code says who she is.
+        assertEquals(1, backend.read("${g.qrText}/1").member)
         val a = backend.open(g.qrText, 0, null)
         val b = backend.open(g.qrText, 1, null)
         val t0 = 1_768_036_800_000L
@@ -135,31 +136,38 @@ class GroupTest {
             }
         }
         rule.onNodeWithTag(GroupTags.CREATE).performClick()
-        rule.onNodeWithTag(GroupTags.DONE).assertIsNotEnabled()
         rule.onNodeWithTag("${GroupTags.NAME}_0").performTextInput("Pierre")
         rule.onNodeWithTag("${GroupTags.NAME}_1").performTextInput("Léa")
+        rule.onNodeWithTag(GroupTags.ADD).performClick()
         rule.onNodeWithTag(GroupTags.ADD).performClick()
         rule.onNodeWithTag("${GroupTags.NAME}_2").performTextInput("Jo")
         rule.onNodeWithText("Le groupe partage le plan de journée validé sur ce téléphone.").assertIsDisplayed()
         capture("group_create_light")
         rule.onNodeWithTag(GroupTags.DONE).performScrollTo().performClick()
-        assertEquals(listOf("Pierre", "Léa", "Jo"), created)
+        // A name left empty: « Membre 4 », nothing is mandatory.
+        assertEquals(listOf("Pierre", "Léa", "Jo", "Membre 4"), created)
         assertTrue(!scanning)
     }
 
     @Test
-    fun joinAndChoose() {
-        var chosen = -1
+    fun eachMemberHasTheirOwnCode() {
+        val g = group()
         rule.setContent {
             Themed {
                 Surface(Modifier.fillMaxSize()) {
-                    GroupScreen(GroupUi.Choosing(group()), null, hasPlan = false, GroupActions(choose = { chosen = it }))
+                    GroupScreen(
+                        GroupUi.InGroup(g, 0, g.members.indices.map { backend.qr(g.qrText, it) }),
+                        null,
+                        hasPlan = false,
+                        GroupActions(),
+                    )
                 }
             }
         }
-        rule.onNodeWithText("Qui êtes-vous ?").assertIsDisplayed()
-        rule.onNodeWithTag("${GroupTags.MEMBER}_1").performClick()
-        assertEquals(1, chosen)
+        // The creator's screen shows Léa's code first, then Jo's at a touch.
+        rule.onNodeWithContentDescription("Code à scanner par Léa").assertIsDisplayed()
+        rule.onNodeWithTag("${GroupTags.QR_FOR}_2").performClick()
+        rule.onNodeWithContentDescription("Code à scanner par Jo").assertIsDisplayed()
     }
 
     @Test
@@ -194,11 +202,16 @@ class GroupTest {
         rule.setContent {
             Themed {
                 Surface(Modifier.fillMaxSize()) {
-                    GroupScreen(GroupUi.InGroup(g, 0, backend.qr(g.qrText)), live, hasPlan = false, GroupActions())
+                    GroupScreen(
+                        GroupUi.InGroup(g, 0, g.members.indices.map { backend.qr(g.qrText, it) }),
+                        live,
+                        hasPlan = false,
+                        GroupActions(),
+                    )
                 }
             }
         }
-        rule.onNodeWithContentDescription("QR du groupe ${g.shortId}, à scanner par les autres membres").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Code à scanner par Léa").assertIsDisplayed()
         capture("group_qr_light")
         rule
             .onNodeWithText(
@@ -215,7 +228,12 @@ class GroupTest {
         rule.setContent {
             Themed(dark = true) {
                 Surface(Modifier.fillMaxSize()) {
-                    GroupScreen(GroupUi.InGroup(g, 1, backend.qr(g.qrText)), null, hasPlan = false, GroupActions())
+                    GroupScreen(
+                        GroupUi.InGroup(g, 1, g.members.indices.map { backend.qr(g.qrText, it) }),
+                        null,
+                        hasPlan = false,
+                        GroupActions(),
+                    )
                 }
             }
         }

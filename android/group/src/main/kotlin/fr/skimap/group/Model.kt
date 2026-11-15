@@ -10,6 +10,8 @@ data class GroupInfo(
     val shortId: String,
     val members: List<String>,
     val hasPlan: Boolean,
+    /** The member a scanned QR code was shown for: joining is scanning, nothing else. */
+    val member: Int? = null,
 )
 
 /** The QR code: [width] modules per side, row by row (`true`: dark). */
@@ -94,7 +96,11 @@ interface GroupBackend {
 
     fun read(qrText: String): GroupInfo
 
-    fun qr(qrText: String): QrMatrix
+    /** The QR code [member] scans to join (null: the group alone). */
+    fun qr(
+        qrText: String,
+        member: Int?,
+    ): QrMatrix
 
     /** The session of member [me], following the plan in [planDir]. */
     fun open(

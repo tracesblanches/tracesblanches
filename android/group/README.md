@@ -8,8 +8,8 @@ Le noyau Rust (`crates/group`, exposé par `crates/ffi/src/group.rs`) décide de
 
 | Fonction | Comment |
 |---|---|
-| Groupe | Créé au chalet : clé de 32 octets (`SecureRandom`), prénoms (le créateur d'abord, 16 au plus), empreinte du plan de journée validé ce jour sur ce téléphone (SHA-256 de `plan.json`, 8 octets). Gardé dans des préférences privées. |
-| QR | Texte `SKIMAP:G1:` + base32 (mode alphanumérique), matrice calculée par le noyau, dessinée noir sur blanc. Scan : CameraX + ZXing (aucun service Google Play). Chacun choisit ensuite qui il est. |
+| Groupe | Créé au chalet : clé de 32 octets (`SecureRandom`), prénoms facultatifs (vide : « Membre n » ; le créateur d’abord, 16 au plus), empreinte du plan de journée validé ce jour sur ce téléphone (SHA-256 de `plan.json`, 8 octets). Gardé dans des préférences privées. |
+| QR | Un code par membre : `SKIMAP:G1:` + base32 (mode alphanumérique) + `/n` (numéro du membre), matrice calculée par le noyau, dessinée noir sur blanc. Rejoindre = scanner son code (CameraX + ZXing, aucun service Google Play), rien d’autre. |
 | Trame | 21 octets en Service Data (UUID 16 bits provisoire `0xFD5C`, voir limites) : version, étiquette HMAC de l'époque de 15 min, membre et sauts, heure de la position, puis latitude, longitude (24 bits), drapeaux, progression le long du plan chiffrés en AES-256-CTR, MAC HMAC-SHA-256 tronqué à 4 octets. |
 | Émission | Deux jeux de publicité legacy non connectables, non scannables, INTERVAL_MEDIUM (250 ms), TX_POWER_HIGH : la trame du téléphone et, à tour de rôle, la dernière position connue d'un autre membre (un saut de plus). Données remplacées à chaque lot GNSS. |
 | Écoute | Scan filtré dans le contrôleur sur le préfixe version + étiquette (époques précédente, courante, suivante), SCAN_MODE_LOW_POWER, résultats par lots (`setReportDelay` = délai du lot GNSS, 5 à 60 s) si le contrôleur sait les mettre en lot ; relancé seulement au changement d'époque (au plus 1 démarrage par 15 min). |

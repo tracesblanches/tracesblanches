@@ -13,10 +13,9 @@
     <string name="group_cancel">Annuler</string>
     <string name="group_plan_common">Le groupe partage le plan de journée validé sur ce téléphone.</string>
     <string name="group_plan_none">Aucun plan de journée validé : les membres sont comparés à la distance seule.</string>
-    <string name="group_who_are_you">Qui êtes-vous ?</string>
     <string name="group_code">Groupe %1$s</string>
-    <string name="group_qr_description">QR du groupe %1$s, à scanner par les autres membres</string>
-    <string name="group_show_qr">Faites scanner ce code aux autres avant de partir.</string>
+    <string name="group_qr_description">Code à scanner par %1$s</string>
+    <string name="group_show_qr">Avant de partir, faites scanner à chacun son code : touchez son prénom.</string>
     <string name="group_members">Membres</string>
     <string name="group_you">%1$s (vous)</string>
     <string name="group_never_heard">pas encore de position</string>

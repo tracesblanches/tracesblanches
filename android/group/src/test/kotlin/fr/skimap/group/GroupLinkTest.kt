@@ -73,15 +73,19 @@ class FakeBackend(
     ): GroupInfo {
         check(key.size == 32 && key.any { it != 0.toByte() })
         created += members
-        return GroupInfo("SKIMAP:G1:TEST", "ab12", members, planDir != null)
+        return GroupInfo("SKIMAP:G1:TEST", "ab12", members, planDir != null, 0)
     }
 
     override fun read(qrText: String): GroupInfo {
         require(qrText.startsWith("SKIMAP:G1:")) { "not a group" }
-        return GroupInfo(qrText, "ab12", listOf("Pierre", "Léa"), true)
+        val member = qrText.substringAfter('/', "").toIntOrNull()
+        return GroupInfo(qrText.substringBefore('/'), "ab12", listOf("Pierre", "Léa"), true, member)
     }
 
-    override fun qr(qrText: String) = QrMatrix(21, BooleanArray(21 * 21) { it % 3 == 0 })
+    override fun qr(
+        qrText: String,
+        member: Int?,
+    ) = QrMatrix(21, BooleanArray(21 * 21) { it % 3 == (member ?: 0) % 3 })
 
     override fun open(
         qrText: String,
@@ -293,13 +297,17 @@ class GroupLinkTest {
         c.scanned("https://example.org")
         scope.advanceUntilIdle()
         assertEquals(GroupUi.NoGroup(invalidQr = true), c.ui.value)
+        // A group without a member's number: not a code to join with.
         c.scanned("SKIMAP:G1:OTHER")
         scope.advanceUntilIdle()
-        assertTrue(c.ui.value is GroupUi.Choosing)
-        c.choose(1)
+        assertEquals(GroupUi.NoGroup(invalidQr = true), c.ui.value)
+        // Léa's code: scanning is all there is to do.
+        c.scanned("SKIMAP:G1:OTHER/1")
         scope.advanceUntilIdle()
         assertEquals(Joined("SKIMAP:G1:OTHER", 1), store.joined())
-        assertEquals(1, (c.ui.value as GroupUi.InGroup).me)
+        val joined = c.ui.value as GroupUi.InGroup
+        assertEquals(1, joined.me)
+        assertEquals(2, joined.qrs.size)
         // Reopened: the group is still there.
         val c2 = GroupController(backend, store, { null }, scope, d)
         c2.load()
