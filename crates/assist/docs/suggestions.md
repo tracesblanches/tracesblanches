@@ -18,4 +18,19 @@ Limites du graphe, dites et non masquées : nœuds non atteignables depuis le d�
 
 Temps : 0,78 s pour trois demandes à Chapelle-des-Bois (649 nœuds : un itinéraire vers chaque nœud et retour, 40 précalculs de coûts), 0,1 s à Cervières.
 
+## Temps du groupe (C11)
+
+`suggest::suggest_for(&SiteData, &Request, Some(&ProfileModel))` choisit les boucles sur le temps du groupe du jour (`skimap_core::calibration`, a priori ou appris, [groupes.md](../../core/docs/groupes.md)) au lieu du temps du modèle : temps d'une boucle = médiane prédite pour le groupe (rythme par terrain, arrêts) ; écart au temps demandé, fenêtre de 75 à 110 %, retour prévu (× 1,2, marge de C7), heures limites et résumé parlé sur ce temps. Points de demi-tour : l'aller et le retour les plus rapides, en temps du modèle, convertis au temps du groupe sur le plat, dans 50 à 110 % du temps demandé (les coûts des routeurs portent des facteurs de style que le rythme du groupe multiplierait). `eta_min` reste le temps du modèle ; `group` (médiane, fourchette à 80 %, mouvement, arrêts) et la première raison disent le temps du groupe (« 3,7 km, D+ … m, environ <médiane> pour <groupe> (<10 %> à <90 %>, a priori ; modèle C5, skating : <temps du modèle>), retour prévu vers … »). Sans groupe (`suggest`, `suggest_for(…, None)`), rien ne change : sorties identiques octet pour octet aux sorties d'avant C11 sur les six demandes des deux sites (`suggestions_and_turnaround_without_group_golden`).
+
+Famille (enfants de 6 et 9 ans, a priori), demandes de `presets` (Cervières 09/01/2026, Chapelle-des-Bois 22/02/2026, `suggestions_and_turnaround_for_a_family`) :
+
+| Demande | Adulte : boucles (km max, modèle) | Famille : boucles (km max, modèle, temps du groupe : médiane et fourchette) |
+|---|---|---|
+| Cervières, 2 h skating, retour avant 16 h | 1 (11,0 km, 111 min) | 2 (3,7 km, 34–35 min, 119–121 min ; 70 à 206) |
+| Cervières, 3 h classique | 1 (15,8 km, 180 min) | 2 (3,8 km, 40–45 min, 140–159 min ; 83 à 268) |
+| Cervières, 1 h 30 depuis Les Fonts | 1 (10,0 km, 91 min) | 0 (aucune boucle assez courte depuis Les Fonts) |
+| Chapelle, 2 h skating, retour avant 16 h | 3 (13,2 km, 115–119 min) | 3 (3,8 km, 28–32 min, 97–111 min) |
+| Chapelle, 3 h classique | 3 (19,4 km, 189–197 min) | 3 (5,7 km, 52–55 min, 179–188 min) |
+| Chapelle, 1 h 30, vertes et bleues | 3 (9,4 km, 69–91 min) | 2 (3,0 km, 27–28 min, 91–94 min) |
+
 Voix : chaque boucle porte `voice`, `Event::LoopSummary` (« Boucle de treize kilomètres, environ deux heures, retour vers midi et quart. » : longueur au kilomètre, temps du modèle C5 sur la grille des durées, retour au quart d'heure le plus proche, dit comme on le dit), trois clips du pack.

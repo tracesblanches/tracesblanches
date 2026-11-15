@@ -1,6 +1,6 @@
 # skimap-assist
 
-Assistant : briefing, fartage, qualité de neige, affluence, suggestions, équipement, synthèse, alertes, meilleur moment, bilan, questions. Tickets : A1 (#88) à A11 (#98).
+Assistant : briefing, fartage, qualité de neige, affluence, suggestions, équipement, synthèse, alertes, meilleur moment, bilan, questions. Tickets : A1 (#88) à A11 (#98) ; temps du groupe dans A5 et A8 : C11 (#130).
 
 Côté téléphone : la crate ne télécharge rien, elle lit les couches de `data/out/<site>/`. `cargo tree -p skimap-assist -e normal` ne contient ni `reqwest`, ni `rustls`, ni `hyper` ; `skimap-common` y a les fonctions `default` et `geotiff` (lecture des cartes d'enneigement, `tiff` sans réseau). Les entrées des jours passés sont archivées par `skimap history`, côté poste.
 
@@ -18,9 +18,9 @@ Jamais « sans danger » : chaque sortie dit ce qu'elle ne sait pas (couche abse
 | `briefing` | A1 | classement des domaines et des itinéraires du jour et des jours suivants, chaque raison avec ses points |
 | `synthesis` | A7 | trois phrases : avalanche, météo, règles et réseau sur l'itinéraire |
 | `crowd` | A4 | affluence (fait, utilisé par A1 et A9) |
-| `suggest` | A5 | boucles pour un temps, une technique, un niveau et une heure de retour, sur le graphe C1 avec le temps C5 |
+| `suggest` | A5 | boucles pour un temps, une technique, un niveau et une heure de retour, sur le graphe C1 avec le temps C5, ou celui du groupe du jour (C11, `suggest_for`) |
 | `equipment` | A6 | liste d'équipement d'une sortie, chaque élément avec sa raison |
-| `alerts` | A8 | alertes de changement de conditions et de demi-tour avancé pendant la sortie, rejeux |
+| `alerts` | A8 | alertes de changement de conditions et de demi-tour avancé pendant la sortie (au rythme du groupe avec C11, `Monitor::for_group`), rejeux |
 | `best_time` | A9 | meilleur moment pour partir |
 | `layer` | — | `skimap_assist::build(site, &layout, &Options)` écrit la couche `assist` |
 | `presets` | — | entrées prêtes pour les deux sites : jours archivés (`history_paths`), trois demandes de suggestions, sorties sur les itinéraires de preuve de core (`skimap assist`, `skimap build-all`) |
