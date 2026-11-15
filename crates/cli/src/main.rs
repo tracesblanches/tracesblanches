@@ -697,12 +697,17 @@ fn run(cli: Cli) -> Result<()> {
         Command::Voice(a) => {
             let s = site(&a.site)?;
             let (b, names) = ctx()?.voice(s)?;
-            println!(
-                "noms : {} pistes, {} lieux, {} dates",
-                names.pistes.len(),
-                names.places.len(),
-                names.dates.len()
-            );
+            for (what, n) in [
+                ("publiables", &names.public),
+                ("usage personnel", &names.personal),
+            ] {
+                println!(
+                    "noms {what} : {} pistes, {} lieux, {} dates",
+                    n.pistes.len(),
+                    n.places.len(),
+                    n.dates.len()
+                );
+            }
             print_json(&b)
         }
         Command::Assist {

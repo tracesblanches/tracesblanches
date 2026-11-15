@@ -218,14 +218,16 @@ impl Ctx {
     }
 
     /// VO3: voice clips of the pack with the names of the built layers (`pistes`,
-    /// `refuges`, `zones`); Pocket TTS on this workstation (`VoiceConfig::from_env`).
+    /// `refuges`, `zones`, `plan_pistes`), split by provenance by `skimap_voice` (the clips
+    /// of personal-use names are listed in `personal.json`, left out of a published pack);
+    /// Pocket TTS on this workstation (`VoiceConfig::from_env`).
     pub fn voice(
         &self,
         site: &Site,
-    ) -> Result<(skimap_voice::pack::VoiceBuild, skimap_voice::PackNames)> {
-        let (names, sources) = crate::voice::pack_names(&self.layout, site)?;
+    ) -> Result<(skimap_voice::pack::VoiceBuild, skimap_voice::SiteNames)> {
+        let names = skimap_voice::site_names(&self.layout, site)?;
         let cfg = skimap_voice::VoiceConfig::from_env()?;
-        let b = skimap_voice::build(site, &self.layout, &names, &sources, &cfg)?;
+        let b = skimap_voice::build_site(site, &self.layout, &names, &cfg)?;
         Ok((b, names))
     }
 
