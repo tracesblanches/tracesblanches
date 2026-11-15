@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sport_title">Envoyer mes sorties</string>
+    <string name="sport_intro">À la fin d’une sortie, sa trace peut partir vers Health Connect et vers Strava. Rien n’est envoyé sans vous.</string>
+    <string name="sport_auto">Envoyer automatiquement à la fin de la sortie</string>
+    <string name="sport_close">Fermer</string>
+
+    <string name="sport_health">Health Connect</string>
+    <string name="sport_health_ready">Autorisé : chaque sortie envoyée y est écrite comme séance de ski avec son itinéraire.</string>
+    <string name="sport_health_ask">Autoriser skimap à écrire vos sorties (séance de ski et itinéraire).</string>
+    <string name="sport_health_allow">Autoriser</string>
+    <string name="sport_health_update">Health Connect doit être installé ou mis à jour.</string>
+    <string name="sport_health_install">Ouvrir le Play Store</string>
+    <string name="sport_health_unavailable">Health Connect n’est pas disponible sur ce téléphone.</string>
+
+    <string name="sport_strava">Strava</string>
+    <string name="sport_strava_checking">Vérification du service Strava…</string>
+    <string name="sport_strava_not_configured">La connexion à Strava sera possible quand le service skimap sera configuré pour Strava.</string>
+    <string name="sport_strava_unreachable">Le service skimap est injoignable. Réessayez avec du réseau.</string>
+    <string name="sport_strava_connect">Se connecter à Strava</string>
+    <string name="sport_strava_connecting">Connexion à Strava…</string>
+    <string name="sport_strava_connected">Connecté : %1$s</string>
+    <string name="sport_strava_connected_anonymous">Connecté à Strava</string>
+    <string name="sport_strava_disconnect">Déconnecter Strava</string>
+    <string name="sport_strava_hint">Les sorties partent en ski de fond (ou ski de randonnée en pratique randonnée nordique), avec les conditions du jour dans la description. Sans réseau, elles attendent et partent dès qu’il revient.</string>
+    <string name="sport_strava_error">Strava : %1$s</string>
+    <string name="sport_strava_denied">Strava n’a pas donné l’autorisation d’envoyer des activités.</string>
+    <string name="sport_strava_state">La réponse de Strava ne correspond pas à la demande : reconnectez-vous.</string>
+
+    <string name="sport_queue">Sorties envoyées</string>
+    <string name="sport_queue_empty">Aucune sortie envoyée pour l’instant.</string>
+    <string name="sport_step_pending">en attente</string>
+    <string name="sport_step_uploading">en traitement</string>
+    <string name="sport_step_done">envoyée</string>
+    <string name="sport_step_failed">échec : %1$s</string>
+    <string name="sport_step_not_allowed">non autorisé</string>
+    <string name="sport_step_not_connected">non connecté</string>
+    <string name="sport_line">%1$s · Health Connect %2$s · Strava %3$s</string>
+    <string name="sport_line_off">—</string>
+
+    <string name="sport_rationale_title">skimap et Health Connect</string>
+    <string name="sport_rationale_text">Quand vous envoyez une sortie, skimap l’écrit dans Health Connect : une séance de ski avec son heure de début et de fin, son itinéraire (les positions enregistrées pendant la sortie), son nom et le bilan. skimap ne lit rien dans Health Connect et n’envoie ces données nulle part ailleurs. Vous pouvez retirer l’autorisation à tout moment dans les réglages de Health Connect.</string>
+
+    <string name="sport_send">Envoyer</string>
+</resources>
