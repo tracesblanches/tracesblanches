@@ -33,6 +33,9 @@ pub struct SourcePolicy {
     /// of them; more than one only helps a source whose latency, not its quota, bounds
     /// the throughput (IGN tiles, geo.api.gouv.fr), when many sites are built at once.
     pub max_in_flight: usize,
+    /// Terms allow personal, non-commercial use only: the downloader refuses the source
+    /// unless `personal_sources` is on ([`crate::config::Config::personal_sources`]).
+    pub personal_use_only: bool,
 }
 
 const SECOND: Duration = Duration::from_secs(1);
@@ -53,7 +56,14 @@ impl SourcePolicy {
             backoff_max: MINUTE,
             timeout: 30 * MINUTE,
             max_in_flight: 1,
+            personal_use_only: false,
         }
+    }
+
+    /// Marks the source personal use only.
+    pub fn personal_use_only(mut self) -> Self {
+        self.personal_use_only = true;
+        self
     }
 
     /// Sets the number of requests in flight at once (at least 1).
@@ -105,7 +115,9 @@ pub fn known_sources() -> Vec<SourcePolicy> {
         // OpenSnowMap daily extract planet_pistes.osm.gz (published once a day).
         SourcePolicy::new("opensnowmap").limits([RateLimit::new(1, MINUTE)]),
         // Biodiv'sports: no published quota, to confirm.
-        SourcePolicy::new("biodiv-sports").max_age(7 * DAY),
+        SourcePolicy::new("biodiv-sports")
+            .max_age(7 * DAY)
+            .personal_use_only(),
         // DATAtourisme API: 1000 requests/hour (api.datatourisme.fr docs).
         SourcePolicy::new("datatourisme")
             .limits([RateLimit::new(1, SECOND), RateLimit::per_hour(1000)]),
@@ -128,8 +140,10 @@ pub fn known_sources() -> Vec<SourcePolicy> {
             .limits([RateLimit::new(20, SECOND)])
             .max_age(30 * DAY)
             .max_in_flight(8),
-        // ENJ Snowmap Geotrek API: trail status polled for everyone.
-        SourcePolicy::new("enj").max_age(15 * MINUTE),
+        // ENJ Snowmap Geotrek API: trail status, no licence displayed (L1): personal use.
+        SourcePolicy::new("enj")
+            .max_age(15 * MINUTE)
+            .personal_use_only(),
         // data.gouv.fr static files (ARCEP, DATAtourisme CSV, snowpack simulation).
         SourcePolicy::new("datagouv").max_age(DAY),
         // geo.api.gouv.fr (commune outlines). 0.75 to 1.3 s per request measured
@@ -150,22 +164,27 @@ pub fn known_sources() -> Vec<SourcePolicy> {
         SourcePolicy::new("meteofrance-archive").max_age(DAY),
         // Ministry ATOM service (geo-ide), DDT 05 avalanche shapefile, a static dataset: no
         // published quota (prudence, non sourcé).
-        SourcePolicy::new("geoide").max_age(30 * DAY),
+        SourcePolicy::new("geoide")
+            .max_age(30 * DAY)
+            .personal_use_only(),
         // Open-Meteo free API: 10 000 calls/day, non-commercial use only
         // (open-meteo.com/en/terms, report 03); forecasts refreshed hourly.
         SourcePolicy::new("open-meteo")
             .limits([RateLimit::new(1, SECOND), RateLimit::per_day(10_000)])
-            .max_age(HOUR),
+            .max_age(HOUR)
+            .personal_use_only(),
         // Nordic France white-label widget: HTML without terms, personal use only, polled at
         // low frequency (prudence, non sourcé).
         SourcePolicy::new("nordicfrance")
             .limits([RateLimit::new(1, MINUTE)])
-            .max_age(3 * HOUR),
+            .max_age(3 * HOUR)
+            .personal_use_only(),
         // Cervières town hall « Info damage » page: same as Nordic France (prudence, non
         // sourcé).
         SourcePolicy::new("cervieres-mairie")
             .limits([RateLimit::new(1, MINUTE)])
-            .max_age(3 * HOUR),
+            .max_age(3 * HOUR)
+            .personal_use_only(),
         // OpenSkiMap / OpenSkiData exports (ski_areas.csv, runs.csv): automated download
         // allowed "at most once per day" (openskidata.org, report 07): each of the two
         // files once a day.
@@ -200,6 +219,23 @@ mod tests {
         assert!(om.limits.contains(&RateLimit::per_day(10_000)));
         let lidar = all.iter().find(|p| p.name == "ign-lidar-wms").unwrap();
         assert_eq!(lidar.max_age, 365 * DAY);
+        // Personal-use-only sources (docs/licences-donnees.md).
+        let personal: Vec<&str> = all
+            .iter()
+            .filter(|p| p.personal_use_only)
+            .map(|p| p.name.as_str())
+            .collect();
+        assert_eq!(
+            personal,
+            [
+                "biodiv-sports",
+                "enj",
+                "geoide",
+                "open-meteo",
+                "nordicfrance",
+                "cervieres-mairie"
+            ]
+        );
         // Only the latency-bound sources have several requests in flight.
         for p in &all {
             let parallel = matches!(p.name.as_str(), "ign" | "ign-lidar-wms" | "geo-api");

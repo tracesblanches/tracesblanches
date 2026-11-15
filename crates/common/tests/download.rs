@@ -241,11 +241,18 @@ fn in_flight_requests_are_bounded_per_source() {
             }
         });
         let took = t0.elapsed();
-        assert_eq!(gauge.lock().unwrap().1, expect_max, "max_in_flight {allowed}");
+        assert_eq!(
+            gauge.lock().unwrap().1,
+            expect_max,
+            "max_in_flight {allowed}"
+        );
         // 8 requests of 150 ms: 1.2 s one at a time, 0.3 s four at a time.
         let rounds = 8 / expect_max as u32;
         assert!(took >= delay * rounds, "{took:?}");
-        assert!(took < delay * rounds + Duration::from_millis(600), "{took:?}");
+        assert!(
+            took < delay * rounds + Duration::from_millis(600),
+            "{took:?}"
+        );
     }
 }
 
@@ -265,7 +272,11 @@ fn rate_limit_holds_with_several_requests_in_flight() {
             s.spawn(move || dl.fetch(&Request::get("t", &url)).unwrap());
         }
     });
-    assert!(t0.elapsed() >= Duration::from_millis(1000), "{:?}", t0.elapsed());
+    assert!(
+        t0.elapsed() >= Duration::from_millis(1000),
+        "{:?}",
+        t0.elapsed()
+    );
 }
 
 #[test]
@@ -655,6 +666,62 @@ fn rate_limit_overrides_from_config() {
             .limits
             .contains(&RateLimit::per_day(1000))
     );
+}
+
+#[test]
+fn personal_sources_are_refused_unless_enabled() {
+    let srv = TestServer::start(|_, _| Reply::ok("widget"));
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().to_str().unwrap();
+    let url = srv.url("/station/3167");
+    // Default configuration: refused before any request, even with a cached answer.
+    let off = Config::from_vars([("SKIMAP_DATA_DIR", data)]).unwrap();
+    let on =
+        Config::from_vars([("SKIMAP_DATA_DIR", data), ("SKIMAP_PERSONAL_SOURCES", "1")]).unwrap();
+    for source in [
+        "nordicfrance",
+        "enj",
+        "cervieres-mairie",
+        "open-meteo",
+        "biodiv-sports",
+        "geoide",
+    ] {
+        let dl = Downloader::from_config(&off).unwrap();
+        let e = dl.fetch(&Request::get(source, &url)).unwrap_err();
+        assert!(
+            matches!(&e, Error::PersonalSourceRefused(s) if s == source),
+            "{e}"
+        );
+        assert!(e.to_string().contains("personal use only"), "{e}");
+    }
+    assert_eq!(srv.count(), 0);
+    let dl = Downloader::from_config(&on).unwrap();
+    assert_eq!(
+        dl.fetch(&Request::get("nordicfrance", &url))
+            .unwrap()
+            .origin,
+        Origin::Downloaded
+    );
+    assert_eq!(srv.count(), 1);
+    // Cached now; still refused without the option, cache included.
+    let dl = Downloader::from_config(&off).unwrap();
+    let cached = Request::get("nordicfrance", &url).cache(CachePolicy::Offline);
+    assert!(matches!(
+        dl.fetch(&cached),
+        Err(Error::PersonalSourceRefused(_))
+    ));
+    // Other sources are unaffected.
+    let dl = Downloader::from_config(&off).unwrap();
+    dl.fetch(&Request::get("geo-api", &srv.url("/communes")))
+        .unwrap();
+    // A builder without the option refuses too; with it, allowed.
+    let dl = Downloader::builder(dir.path().join("b")).build().unwrap();
+    assert!(dl.fetch(&Request::get("enj", &url)).is_err());
+    let dl = Downloader::builder(dir.path().join("b"))
+        .personal_sources(true)
+        .build()
+        .unwrap();
+    dl.fetch(&Request::get("enj", &url)).unwrap();
 }
 
 #[test]

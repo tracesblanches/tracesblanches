@@ -276,9 +276,17 @@ pub struct DownloaderBuilder {
     overrides: BTreeMap<String, Vec<RateLimit>>,
     clock: Arc<dyn Clock>,
     offline: bool,
+    personal_sources: bool,
 }
 
 impl DownloaderBuilder {
+    /// Allows the personal-use-only sources ([`SourcePolicy::personal_use_only`]); off by
+    /// default, set from [`Config::personal_sources`] by [`Downloader::from_config`].
+    pub fn personal_sources(mut self, allowed: bool) -> Self {
+        self.personal_sources = allowed;
+        self
+    }
+
     /// Adds or replaces the policy of a source.
     pub fn policy(mut self, p: SourcePolicy) -> Self {
         self.policies.retain(|q| q.name != p.name);
@@ -329,6 +337,7 @@ impl DownloaderBuilder {
             states: Mutex::new(HashMap::new()),
             clock: self.clock,
             offline: self.offline,
+            personal_sources: self.personal_sources,
         })
     }
 }
@@ -361,6 +370,7 @@ pub struct Downloader {
     states: Mutex<HashMap<String, Arc<SourceState>>>,
     clock: Arc<dyn Clock>,
     offline: bool,
+    personal_sources: bool,
 }
 
 /// Shared state of one source: rate limiter, in-flight slots, one lock per request key.
@@ -379,10 +389,7 @@ impl SourceState {
     fn slot(&self) -> Slot<'_> {
         let mut n = lock(&self.in_flight);
         while *n >= self.max_in_flight {
-            n = self
-                .slot_freed
-                .wait(n)
-                .unwrap_or_else(|p| p.into_inner());
+            n = self.slot_freed.wait(n).unwrap_or_else(|p| p.into_inner());
         }
         *n += 1;
         Slot(self)
@@ -432,6 +439,7 @@ impl Downloader {
             overrides: BTreeMap::new(),
             clock: Arc::new(SystemClock),
             offline: false,
+            personal_sources: false,
         }
     }
 
@@ -439,6 +447,7 @@ impl Downloader {
     pub fn from_config(cfg: &Config) -> Result<Self> {
         Self::builder(cfg.layout().cache_root())
             .rate_limit_overrides(cfg.rate_limits.clone())
+            .personal_sources(cfg.personal_sources)
             .build()
     }
 
@@ -480,6 +489,11 @@ impl Downloader {
     pub fn fetch(&self, req: &Request) -> Result<Fetched> {
         check_source_name(&req.source)?;
         let policy = self.policy(&req.source);
+        // Root guard of `personal_sources`: not even the cache of such a source is read.
+        if policy.personal_use_only && !self.personal_sources {
+            tracing::warn!(source = %req.source, "personal-use-only source refused");
+            return Err(Error::PersonalSourceRefused(req.source.clone()));
+        }
         let dir = self.cache_root.join(&req.source);
         std::fs::create_dir_all(&dir).map_err(|e| Error::io(&dir, e))?;
         let key = cache::key(
@@ -528,7 +542,6 @@ impl Downloader {
         entry: &Entry,
         mode: CachePolicy,
     ) -> Result<Fetched> {
-
         let cached = entry.load()?;
         let max_age = req.max_age.unwrap_or(policy.max_age);
         if mode == CachePolicy::Normal
@@ -546,11 +559,8 @@ impl Downloader {
 
         let mut attempt = 0u32;
         loop {
-            let sent = lock(&state.limiter).acquire(
-                &req.source,
-                self.clock.as_ref(),
-                policy.max_wait,
-            )?;
+            let sent =
+                lock(&state.limiter).acquire(&req.source, self.clock.as_ref(), policy.max_wait)?;
             let outcome = self.attempt(req, policy, conditional.as_ref(), entry);
             lock(&state.limiter).finish(sent, unix_ms(self.clock.now()))?;
             match outcome {
