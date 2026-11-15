@@ -134,12 +134,13 @@ pub fn known_sources() -> Vec<SourcePolicy> {
         // Camptocamp API: no published quota.
         SourcePolicy::new("camptocamp").max_age(7 * DAY),
         // IGN Géoplateforme (data.geopf.fr): vector TMS limited to 400 req/s per IP. About
-        // 0.2 to 0.3 s per tile measured (15/11/2026): one request at a time gives 3 to 5
-        // tiles/s; 8 in flight reach the 20/s limit (G2, every domain of France).
+        // 0.2 to 0.3 s per tile measured alone (15/11/2026), 1 s and more under load: one
+        // request at a time gives 1 to 5 tiles/s; 8 in flight gave 7 to 8/s while building
+        // 4 domains at once, 16 reach the 20/s limit (G2, every domain of France).
         SourcePolicy::new("ign")
             .limits([RateLimit::new(20, SECOND)])
             .max_age(30 * DAY)
-            .max_in_flight(8),
+            .max_in_flight(16),
         // ENJ Snowmap Geotrek API: trail status, no licence displayed (L1): personal use.
         SourcePolicy::new("enj")
             .max_age(15 * MINUTE)

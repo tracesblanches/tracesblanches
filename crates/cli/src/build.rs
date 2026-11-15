@@ -643,12 +643,20 @@ impl Ctx {
             if !problems.is_empty() {
                 bail!("relecture du pack : {}", problems.join(" ; "));
             }
+            let mut slow: Vec<&(String, f64)> = r.timings.iter().filter(|t| t.1 >= 1.0).collect();
+            slow.sort_by(|a, b| b.1.total_cmp(&a.1));
+            let slow: Vec<String> = slow.iter().map(|(k, s)| format!("{k} {s:.1} s")).collect();
             Ok(format!(
-                "pack {} : {:.2} Mo, {} couches, {} absentes ; relecture : OK",
+                "pack {} : {:.2} Mo, {} couches, {} absentes ; relecture : OK ; {}",
                 r.pack_version,
                 r.total_bytes as f64 / 1e6,
                 r.layers.len(),
                 r.missing.len(),
+                if slow.is_empty() {
+                    "toutes les parties en moins de 1 s".to_owned()
+                } else {
+                    slow.join(", ")
+                }
             ))
         });
         let mut export_bytes = None;
