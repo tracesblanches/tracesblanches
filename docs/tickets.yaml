@@ -1117,6 +1117,7 @@ tickets:
   deps: [P2, C1]
   body: |
     Les stations publient un plan des pistes dessiné (PDF ou image, souvent en perspective, pas à l'échelle). Le pipeline le lit en local, extrait tracés colorés et étiquettes, apparie sa topologie au graphe OSM et aux repères (refuges, villages, sommets), puis transcrit ses informations sur nos propres géométries : nom, numéro, couleur, sens, type de piste, boucles, liaisons, départs et parkings. Les pistes absentes d'OSM sont tracées sur le terrain réel et marquées « tracé estimé » (alimente G1).
+    Appariement soit exact (topologie et étiquettes certaines), soit par un modèle appris ; jamais d'approximation silencieuse. Jeu d'entraînement : les domaines où OSM a déjà les pistes, noms, couleurs et sens donnent des paires (plan, OSM) étiquetées automatiquement ; évaluation séparée par domaine, Cervières et Chapelle-des-Bois en test seulement.
     Rendu natif uniquement : la carte dessine ces pistes dans notre style, comme les autres. Aucune image du plan, ni couche raster, ni plan déformé dans un pack ou dans le dépôt ; l'image de la station n'est jamais redistribuée.
     Critère : part des pistes du plan transcrites et appariées, attributs vérifiés à la main sur Cervières et Chapelle-des-Bois, écarts avec OSM (ajouts, corrections, conflits) listés.
 
