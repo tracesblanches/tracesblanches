@@ -440,8 +440,10 @@ impl Output {
     }
 }
 
-/// Where the geometry of a route comes from.
+/// Where the geometry of a route comes from. Two at most live (the route followed and the
+/// one a switch can go back to): the view of the table is kept inline, read on every fix.
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 enum Geo<'a> {
     /// The plan's table.
     Table(RouteView<'a>),

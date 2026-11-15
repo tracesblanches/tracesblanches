@@ -1538,7 +1538,7 @@ pub fn write(
         ),
         FileMeta::new(
             "plan_<date>_<demande>_<rang>.trk",
-            "table à plat lue sans copie par le téléphone à chaque position (format SKTRK001, skimap_plan::track) : géométrie de la boucle et de chaque plan B dans le plan local du départ, index en grille de 200 m, points de décision triés, profil de temps",
+            "table à plat lue sans copie par le téléphone à chaque position (format SKTRK002, skimap_plan::track) : géométrie de la boucle et de chaque plan B dans le plan local du départ (un plan B ne garde que sa partie propre et lit dans la boucle le début et la fin qu'il partage avec elle), index en grille de 200 m, points de décision triés, profil de temps",
         ),
     ];
     meta.notes = vec![NEVER_SAFE.into()];
@@ -1568,7 +1568,9 @@ pub fn json_close(a: &Value, b: &Value, tol: f64) -> bool {
 }
 
 /// The flat table the phone follows (E1): the loop and each plan B, computed here once
-/// ([`crate::track`]). Announcements of a plan B before its divergence are the loop's.
+/// ([`crate::track`]). Announcements of a plan B before its divergence are the loop's. A
+/// plan B keeps only its own part and refers to the loop for the legs it shares with it
+/// (X13; the loop's own block is unchanged).
 pub fn track(plan: &DayPlan, g: &PisteGraph) -> Result<crate::track::Track> {
     use crate::track::{RouteTable, Track};
     plan.check_graph(g)?;
@@ -1581,7 +1583,24 @@ pub fn track(plan: &DayPlan, g: &PisteGraph) -> Result<crate::track::Track> {
         .enumerate()
         .map(|(i, a)| (0, i as u32, a))
         .collect();
-    let mut routes = vec![RouteTable::new(0, 0.0, &course, &plane, &loop_anns)];
+    // Legs of the loop each plan B shares at its head and at its tail (the course drops
+    // legs of no length).
+    let real = |legs: &[PlanLeg]| legs.iter().filter(|l| l.length_m() > 1e-6).count();
+    let n = course.legs().len();
+    let shares: Vec<(usize, usize)> = plan
+        .plans_b
+        .iter()
+        .map(|b| {
+            let f = &b.fallback;
+            let head = real(&plan.route.legs[..f.prefix.min(plan.route.legs.len())]);
+            let tail = f.rejoin.map_or(0, |r| {
+                real(&plan.route.legs[r.min(plan.route.legs.len())..])
+            });
+            (head.min(n), tail.min(n))
+        })
+        .collect();
+    let base = RouteTable::new(0, 0.0, &course, &plane, &loop_anns);
+    let mut routes = vec![base];
     for (bi, b) in plan.plans_b.iter().enumerate() {
         let f = &b.fallback;
         if !f.exists() {
@@ -1601,13 +1620,13 @@ pub fn track(plan: &DayPlan, g: &PisteGraph) -> Result<crate::track::Track> {
                 .enumerate()
                 .map(|(i, a)| ((bi + 1) as u32, i as u32, a)),
         );
-        routes.push(RouteTable::new(
-            (bi + 1) as i32,
-            f.s_div,
-            &cb,
-            &plane,
-            &anns,
-        ));
+        let (head, tail) = shares[bi];
+        let id = (bi + 1) as i32;
+        let table = RouteTable::on_loop(
+            &routes[0], &course, id, f.s_div, &cb, &plane, &anns, head, tail,
+        )
+        .unwrap_or_else(|| RouteTable::new(id, f.s_div, &cb, &plane, &anns));
+        routes.push(table);
     }
     Ok(Track { origin, routes })
 }
