@@ -17,14 +17,8 @@
 //!
 //! Each hour records which model gave each variable ([`PointForecast::models`]).
 //!
-//! **Switch path to Météo-France AROME** (no code yet, documented in the README):
-//! - API « AROME » of the Météo-France portal (key `METEOFRANCE_API_KEY`, header `apikey`),
-//!   WCS 2.0.1 `https://public-api.meteofrance.fr/public/arome/1.0/wcs/MF-NWP-HIGHRES-AROME-001-FRANCE-WCS/`
-//!   (`GetCapabilities` answers 401 without key, 14/11/2026), `GetCoverage` with a
-//!   lat/long/time subset per parameter: small point extractions;
-//! - or the open « Paquets AROME 0,01° » (Licence Ouverte, no key) on data.gouv.fr: hourly
-//!   GRIB2 files of the whole EURW1S100 grid, which need a GRIB2 decoder (not in the
-//!   workspace) and large downloads.
+//! **Publishable source**: the open Météo-France AROME packages, see [`crate::arome`]
+//! (same layer and format, no key, no `personal_sources`).
 //!
 //! Output (`data/out/<site>/meteo-hourly/`): `hourly.json` ([`HourlyFile`]) and
 //! `meteo-hourly.meta.json`.
@@ -299,6 +293,41 @@ fn max_opt(v: impl Iterator<Item = Option<f64>>) -> Option<f64> {
     v.flatten().reduce(f64::max)
 }
 
+/// Summary of each local day of a series of hours.
+pub fn days(hours: &[Hour]) -> Vec<Day> {
+    let mut by_day: BTreeMap<String, Vec<&Hour>> = BTreeMap::new();
+    for h in hours {
+        by_day
+            .entry(h.time.chars().take(10).collect())
+            .or_default()
+            .push(h);
+    }
+    let daytime = |h: &Hour| {
+        h.time
+            .get(11..13)
+            .and_then(|x| x.parse::<u32>().ok())
+            .is_some_and(|hh| (9..=16).contains(&hh))
+    };
+    by_day
+        .into_iter()
+        .map(|(date, hs)| {
+            let dt: Vec<&&Hour> = hs.iter().filter(|h| daytime(h)).collect();
+            let cc: Vec<f64> = dt.iter().filter_map(|h| h.cloud_cover_pct).collect();
+            Day {
+                date,
+                snowfall_cm: (hs.iter().filter_map(|h| h.snowfall_cm).sum::<f64>() * 10.0).round()
+                    / 10.0,
+                daytime_cloud_cover_pct: (!cc.is_empty())
+                    .then(|| (cc.iter().sum::<f64>() / cc.len() as f64).round()),
+                max_gust_kmh: max_opt(hs.iter().map(|h| h.gust_kmh)),
+                min_wind_chill_c: min_opt(hs.iter().map(|h| h.wind_chill_c)),
+                daytime_fog_hours: dt.iter().filter(|h| h.fog == Some(true)).count(),
+                min_freezing_level_m: min_opt(hs.iter().map(|h| h.freezing_level_m)),
+            }
+        })
+        .collect()
+}
+
 /// Merges the two model answers of a point into hours and days.
 pub fn merge(p: &ForecastPoint, mf: &Series, best: &Series) -> Result<PointForecast> {
     let times = mf.times();
@@ -357,37 +386,7 @@ pub fn merge(p: &ForecastPoint, mf: &Series, best: &Series) -> Result<PointForec
             }
         })
         .collect();
-    let mut by_day: BTreeMap<String, Vec<&Hour>> = BTreeMap::new();
-    for h in &hours {
-        by_day
-            .entry(h.time.chars().take(10).collect())
-            .or_default()
-            .push(h);
-    }
-    let daytime = |h: &Hour| {
-        h.time
-            .get(11..13)
-            .and_then(|x| x.parse::<u32>().ok())
-            .is_some_and(|hh| (9..=16).contains(&hh))
-    };
-    let days = by_day
-        .into_iter()
-        .map(|(date, hs)| {
-            let dt: Vec<&&Hour> = hs.iter().filter(|h| daytime(h)).collect();
-            let cc: Vec<f64> = dt.iter().filter_map(|h| h.cloud_cover_pct).collect();
-            Day {
-                date,
-                snowfall_cm: (hs.iter().filter_map(|h| h.snowfall_cm).sum::<f64>() * 10.0).round()
-                    / 10.0,
-                daytime_cloud_cover_pct: (!cc.is_empty())
-                    .then(|| (cc.iter().sum::<f64>() / cc.len() as f64).round()),
-                max_gust_kmh: max_opt(hs.iter().map(|h| h.gust_kmh)),
-                min_wind_chill_c: min_opt(hs.iter().map(|h| h.wind_chill_c)),
-                daytime_fog_hours: dt.iter().filter(|h| h.fog == Some(true)).count(),
-                min_freezing_level_m: min_opt(hs.iter().map(|h| h.freezing_level_m)),
-            }
-        })
-        .collect();
+    let days = days(&hours);
     let mut models = BTreeMap::new();
     for v in MF_VARIABLES {
         models.insert((*v).to_owned(), "meteofrance_seamless".to_owned());
