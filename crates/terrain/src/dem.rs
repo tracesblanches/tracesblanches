@@ -214,8 +214,12 @@ pub fn fetch_dem(e: &Extent, dl: &Downloader) -> Result<Grid<f32>> {
     let gt = GeoTransform::north_up(origin.0, origin.1, CELL);
     let mut mosaic = Grid::filled(w, h, gt, Crs::Lambert93, f32::NAN);
     debug!(tiles = tiles.len(), w, h, "fetching LiDAR HD tiles");
-    for t in &tiles {
-        let tile = fetch_tile(*t, dl)?;
+    // Tiles fetched on several threads (the downloader bounds the requests in flight).
+    let fetched =
+        skimap_common::download::fetch_all(&tiles, skimap_common::download::FETCH_THREADS, |t| {
+            fetch_tile(*t, dl)
+        })?;
+    for (t, tile) in tiles.iter().zip(fetched) {
         let c0 = usize::try_from(t.kx - kx0).unwrap_or(0) * TILE_PX;
         let r0 = usize::try_from(ky1 - t.ky).unwrap_or(0) * TILE_PX;
         let data = mosaic.data_mut();

@@ -751,6 +751,60 @@ fn parse_retry_after(v: &str, now: SystemTime) -> Option<Duration> {
     Some(at.duration_since(now).unwrap_or(Duration::ZERO))
 }
 
+/// Threads used by [`fetch_all`] callers for tile downloads: enough to fill the
+/// in-flight slots of the IGN sources ([`SourcePolicy::max_in_flight`]).
+pub const FETCH_THREADS: usize = 16;
+
+/// Maps `f` over `items` on `threads` scoped threads (not the rayon pool: these threads
+/// mostly wait for the network), keeping the order; the first error stops the others
+/// and is returned. The downloader bounds the requests in flight per source whatever
+/// the number of threads.
+pub fn fetch_all<T, R, E, F>(items: &[T], threads: usize, f: F) -> Result<Vec<R>, E>
+where
+    T: Sync,
+    R: Send,
+    E: Send,
+    F: Fn(&T) -> Result<R, E> + Sync,
+{
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    let next = AtomicUsize::new(0);
+    let failed = AtomicBool::new(false);
+    let slots: Vec<Mutex<Option<Result<R, E>>>> = items.iter().map(|_| Mutex::new(None)).collect();
+    std::thread::scope(|s| {
+        for _ in 0..threads.clamp(1, items.len().max(1)) {
+            s.spawn(|| {
+                loop {
+                    if failed.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    let i = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(item) = items.get(i) else { break };
+                    let r = f(item);
+                    if r.is_err() {
+                        failed.store(true, Ordering::Relaxed);
+                    }
+                    *lock(&slots[i]) = Some(r);
+                }
+            });
+        }
+    });
+    let mut out = Vec::with_capacity(items.len());
+    let mut first_err = None;
+    for slot in slots {
+        match slot.into_inner().unwrap_or_else(|p| p.into_inner()) {
+            Some(Ok(r)) => out.push(r),
+            Some(Err(e)) => {
+                first_err.get_or_insert(e);
+            }
+            None => {}
+        }
+    }
+    match first_err {
+        Some(e) => Err(e),
+        None => Ok(out),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -784,6 +838,27 @@ mod tests {
             Some(Duration::from_secs(30))
         );
         assert_eq!(parse_retry_after("soon", now), None);
+    }
+
+    #[test]
+    fn fetch_all_keeps_order_and_stops_on_error() {
+        let items: Vec<u32> = (0..100).collect();
+        let out = fetch_all(&items, 8, |&i| Ok::<_, Error>(i * 2)).unwrap();
+        assert_eq!(out, items.iter().map(|i| i * 2).collect::<Vec<_>>());
+        let e = fetch_all(&items, 8, |&i| {
+            if i == 37 {
+                Err(Error::Config("bad tile".into()))
+            } else {
+                Ok(i)
+            }
+        })
+        .unwrap_err();
+        assert!(e.to_string().contains("bad tile"));
+        assert!(
+            fetch_all(&[] as &[u32], 4, |&i| Ok::<_, Error>(i))
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]

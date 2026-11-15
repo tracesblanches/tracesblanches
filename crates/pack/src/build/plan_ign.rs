@@ -98,16 +98,19 @@ fn fetch_tiles_dated(
     maxzoom: u8,
 ) -> Result<(Vec<TileData>, (u64, u64))> {
     let list = tiles_covering(bbox, minzoom, maxzoom);
+    // Tiles fetched on several threads (the downloader bounds the requests in flight).
+    let fetched = skimap_common::download::fetch_all(
+        &list,
+        skimap_common::download::FETCH_THREADS,
+        |&(z, x, y)| fetch_tile_dated(dl, z, x, y),
+    )?;
+    tracing::info!(total = list.len(), "Plan IGN tiles");
     let mut out = Vec::with_capacity(list.len());
     let mut span = (u64::MAX, 0);
-    for (i, (z, x, y)) in list.iter().copied().enumerate() {
-        let (t, at) = fetch_tile_dated(dl, z, x, y)?;
+    for ((z, x, y), (t, at)) in list.iter().copied().zip(fetched) {
         span = (span.0.min(at), span.1.max(at));
         if !t.is_empty() {
             out.push(((z, x, y), t));
-        }
-        if (i + 1) % 500 == 0 {
-            tracing::info!(done = i + 1, total = list.len(), "Plan IGN tiles");
         }
     }
     Ok((out, span))
