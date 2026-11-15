@@ -2984,6 +2984,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "skimap-srn"
+version = "0.1.0"
+dependencies = [
+ "csv",
+ "geo",
+ "geo-types",
+ "quick-xml",
+ "rstar 0.12.2",
+ "serde",
+ "serde_json",
+ "skimap-common",
+ "skimap-osm",
+ "thiserror",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "skimap-status"
 version = "0.1.0"
 dependencies = [
