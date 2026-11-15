@@ -1,0 +1,36 @@
+# Detekt on top of its default configuration (buildUponDefaultConfig), with the Compose
+# rules of io.nlopez.compose.rules. Only the differences are listed.
+naming:
+  FunctionNaming:
+    # Composable functions are nouns in PascalCase.
+    ignoreAnnotated: ['Composable']
+  TopLevelPropertyNaming:
+    constantPattern: '[A-Z][A-Za-z0-9_]*'
+
+style:
+  MagicNumber:
+    # Dimensions, colours and drawing proportions are named by their call site.
+    ignorePropertyDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+    excludes: ['**/test/**', '**/androidTest/**', '**/ui/theme/**', '**/ui/map/SymbolBitmaps.kt']
+  MaxLineLength:
+    maxLineLength: 140
+  UnusedPrivateMember:
+    ignoreAnnotated: ['Preview']
+
+complexity:
+  LongParameterList:
+    functionThreshold: 8
+    ignoreDefaultParameters: true
+    ignoreAnnotated: ['Composable']
+  LongMethod:
+    excludes: ['**/test/**', '**/androidTest/**']
+    ignoreAnnotated: ['Composable']
+  CyclomaticComplexMethod:
+    ignoreSimpleWhenEntries: true
+
+Compose:
+  ModifierMissing:
+    active: true
+  CompositionLocalAllowlist:
+    active: true
