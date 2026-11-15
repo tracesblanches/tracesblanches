@@ -60,7 +60,7 @@ use crate::course::{Course, PlanLeg};
 use crate::error::{Error, Result};
 use crate::fallback::{self, Fallback, FallbackKind, MIN_EXIT_SAVING_S};
 use crate::guidance::{self, Junction};
-use crate::phrases::{ClipCheck, PlanPhrase, Voice, never_safe};
+use crate::phrases::{self, ClipCheck, PLAN_PHRASES, Voice, never_safe};
 use crate::speech::Priority;
 
 /// Format of the plan file.
@@ -825,8 +825,8 @@ pub fn announcements(
 
 /// The announcement of a switch to a plan B: its phrase, then the turn at the divergence
 /// (or « turn back » when the plan B starts behind).
-pub fn switch_announcement(phrase: PlanPhrase, first_turn: Option<Event>) -> Announcement {
-    let mut a = phrase.announce();
+pub fn switch_announcement(phrase: Fixed, first_turn: Option<Event>) -> Announcement {
+    let mut a = phrases::announce(phrase);
     if let Some(e) = first_turn {
         a = a.then(e.announce());
     }
@@ -930,8 +930,8 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
             let cb = Course::new(g, &f.full_legs(&legs), &eta)?;
             let jb = guidance::junctions(g, &cb);
             let phrase = match f.kind {
-                FallbackKind::Exit => PlanPhrase::Shortcut,
-                FallbackKind::Detour { .. } => PlanPhrase::ClosedAhead,
+                FallbackKind::Exit => Fixed::PlanShortcut,
+                FallbackKind::Detour { .. } => Fixed::PlanClosedAhead,
             };
             let first = turn_at(g, &jb, f.s_div, None, voice);
             if f.kind == FallbackKind::Exit
@@ -951,7 +951,7 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
             });
             (switch_announcement(phrase, first), after)
         } else {
-            (PlanPhrase::ClosedNoDetour.announce(), Vec::new())
+            (phrases::announce(Fixed::PlanClosedNoDetour), Vec::new())
         };
         plans_b.push(PlanB {
             fallback: f,
@@ -1092,8 +1092,8 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
             .announce(),
         );
     }
-    for p in PlanPhrase::ALL {
-        runtime.push(p.announce());
+    for p in PLAN_PHRASES {
+        runtime.push(phrases::announce(p));
     }
     for a in &runtime {
         check(a);

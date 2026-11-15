@@ -479,6 +479,22 @@ fixed_phrases! {
     ItemFaceProtection = "item-face-protection" => "Des moufles et une protection du visage, il fera très froid.",
     /// Waxless skis or skins: grip wax unreliable (A6, A2).
     ItemWaxless = "item-waxless" => "Des skis à écailles ou des peaux, le fart de retenue tiendra mal.",
+    /// A trail of the planned route is closed: switch to a detour (J2).
+    PlanClosedAhead = "plan-closed-ahead" => "Piste fermée sur votre itinéraire. Nouvel itinéraire.",
+    /// A trail of the planned route is closed and no other way is known (J2).
+    PlanClosedNoDetour = "plan-closed-no-detour" => "Piste fermée sur votre itinéraire, aucun autre passage connu.",
+    /// Conditions worsen: switch to the shortcut to the finish (J2).
+    PlanShortcut = "plan-shortcut" => "Les conditions changent. Raccourci vers l'arrivée.",
+    /// Late: switch to a shorter version of the loop (J2).
+    PlanShortened = "plan-shortened" => "Vous êtes en retard sur l'heure prévue. Boucle raccourcie pour rentrer à l'heure.",
+    /// Off the route for a while: new route computed (J2).
+    PlanRerouted = "plan-rerouted" => "Nouvel itinéraire calculé.",
+    /// The previous route is kept, the plan B refused (J2).
+    PlanKept = "plan-kept" => "Itinéraire initial conservé.",
+    /// No time left: the fastest way home does not start with a U-turn (J2).
+    PlanHomeNow = "plan-home-now" => "Il faut rentrer maintenant par le plus court, afin d'arriver avant la nuit.",
+    /// End of the outing (J3).
+    PlanFinished = "plan-finished" => "Sortie terminée.",
 }
 
 /// Lengths of a suggested loop announced, kilometres.
