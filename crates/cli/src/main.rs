@@ -187,12 +187,21 @@ enum Command {
     BuildAll(SiteArg),
     /// Fetch every source of a site (P2, P5, P6, P8, P9, P11, P12, P13, P19).
     Fetch(Placeholder),
-    /// Build the offline pack of a site (P14, #27).
-    BuildPack(Placeholder),
+    /// Build the offline pack of a site from the pipeline outputs (P14, #27).
+    BuildPack(SiteArg),
+    /// Serve a directory over HTTP with range requests, for the pack viewer (P15, #28).
+    Serve {
+        /// Root directory (the repository root for `tools/viewer/`).
+        #[arg(default_value = ".")]
+        root: PathBuf,
+        /// Address.
+        #[arg(long, default_value = "127.0.0.1:8765")]
+        addr: String,
+    },
     /// Estimated time of a route (C5, #37).
     Eta(Placeholder),
-    /// Export the layers of a site for the viewer (P15, #28).
-    Export(Placeholder),
+    /// Export the pack of a site for Locus Map and OsmAnd (P21, #100).
+    Export(SiteArg),
     /// Daily briefing of a site (A1, #88).
     Briefing(Placeholder),
 }
@@ -502,9 +511,29 @@ fn run(cli: Cli) -> Result<()> {
             "fetch",
             "P2 #15, P5 #18, P6 #19, P8 #21, P9 #22, P11 #24, P12 #25, P13 #26, P19 #32",
         ),
-        Command::BuildPack(_) => not_implemented("build-pack", "P14 #27"),
+        Command::BuildPack(a) => {
+            let s = site(&a.site)?;
+            let c = ctx()?;
+            let r = c.build_pack(s)?;
+            let problems = skimap_pack::Pack::open(&r.pack_dir)?.verify()?;
+            print_json(&r)?;
+            if !problems.is_empty() {
+                anyhow::bail!("relecture du pack : {}", problems.join(" ; "));
+            }
+            Ok(())
+        }
+        Command::Serve { root, addr } => {
+            println!(
+                "{} sur http://{addr}/ — visualiseur : http://{addr}/tools/viewer/index.html",
+                root.display()
+            );
+            Ok(skimap_pack::serve::serve(&root, addr.as_str())?)
+        }
         Command::Eta(_) => not_implemented("eta", "C5 #37"),
-        Command::Export(_) => not_implemented("export", "P15 #28"),
+        Command::Export(a) => {
+            let s = site(&a.site)?;
+            print_json(&ctx()?.export(s)?)
+        }
         Command::Briefing(_) => not_implemented("briefing", "A1 #88"),
     }
 }
@@ -573,7 +602,13 @@ mod tests {
         assert!(
             matches!(cli.command, Command::OffpistePrepare { ref snow_dirs, .. } if snow_dirs.len() == 2)
         );
-        for cmd in ["routing", "voice", "avalanche-exposure"] {
+        for cmd in [
+            "routing",
+            "voice",
+            "avalanche-exposure",
+            "build-pack",
+            "export",
+        ] {
             Cli::try_parse_from(["skimap", cmd, "chapelle-des-bois"]).unwrap();
         }
         // Without the graph, `route` says how to build it.

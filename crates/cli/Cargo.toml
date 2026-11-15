@@ -24,6 +24,7 @@ skimap-avalanche.workspace = true
 # Pipeline side of the core: graph profiles from the terrain model, off-piste rasters.
 skimap-core = { workspace = true, features = ["pipeline"] }
 skimap-voice.workspace = true
+skimap-pack = { workspace = true, features = ["pipeline"] }
 anyhow.workspace = true
 chrono.workspace = true
 clap.workspace = true

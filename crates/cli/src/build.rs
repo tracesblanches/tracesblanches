@@ -207,6 +207,32 @@ impl Ctx {
         Ok((b, names))
     }
 
+    /// P14: offline pack of the site from the pipeline outputs, `data/out/<site>/pack/`
+    /// (options from the configuration: personal sources).
+    pub fn build_pack(&self, site: &Site) -> Result<skimap_pack::build::BuildReport> {
+        let opts = skimap_pack::build::BuildOptions {
+            personal_sources: self.cfg.personal_sources,
+            ..Default::default()
+        };
+        Ok(skimap_pack::build::build(
+            site,
+            &self.layout,
+            &self.dl,
+            &opts,
+        )?)
+    }
+
+    /// P21: export of the pack for Locus Map and OsmAnd, `data/out/<site>/export/`.
+    pub fn export(&self, site: &Site) -> Result<skimap_pack::export::ExportReport> {
+        let pack = skimap_pack::Pack::open(skimap_pack::build::pack_dir(site, &self.layout)?)?;
+        Ok(skimap_pack::export::export(
+            &pack,
+            &self
+                .layout
+                .layer_dir(site, skimap_pack::export::EXPORT_LAYER)?,
+        )?)
+    }
+
     /// Runs every available builder of `site` in dependency order and prints the time and
     /// the key figures of each step. A step whose dependency failed is skipped; the
     /// personal-use steps are skipped when `personal_sources` is off. Fails if any step
@@ -443,6 +469,32 @@ impl Ctx {
                 s.clpa_in_commune,
                 s.clpa_in_commune_km2,
                 nets.join(" ; ")
+            ))
+        });
+        // The pack takes whatever layers exist; it does not need every step above.
+        run.step("build-pack", &[], || {
+            let r = self.build_pack(site)?;
+            let problems = skimap_pack::Pack::open(&r.pack_dir)?.verify()?;
+            Ok(format!(
+                "pack {} : {:.2} Mo, {} couches, {} absentes ; relecture : {}",
+                r.pack_version,
+                r.total_bytes as f64 / 1e6,
+                r.layers.len(),
+                r.missing.len(),
+                if problems.is_empty() {
+                    "OK".to_owned()
+                } else {
+                    problems.join(" ; ")
+                }
+            ))
+        });
+        run.step("export", &["build-pack"], || {
+            let r = self.export(site)?;
+            Ok(format!(
+                "{} fichiers, {:.2} Mo, {} couches non exportées",
+                r.files.len(),
+                r.total_bytes as f64 / 1e6,
+                r.skipped.len()
             ))
         });
         run.finish()
