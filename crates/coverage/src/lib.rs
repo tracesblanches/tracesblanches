@@ -298,8 +298,10 @@ pub fn build(
         o.covered_pct = round2(o.covered_km2 / analysed_km2 * 100.0);
         o.covered_km2 = round2(o.covered_km2);
     }
-    let any_km2 = km2(&any);
     let none_km2 = km2(&none);
+    // `any` is not clipped to the area (see `operator_coverage`): the covered part of the
+    // area is the area minus `none`, exactly (`none` = area minus `any`).
+    let any_km2 = analysed_km2 - none_km2;
 
     let none_wgs = reproject(&none, Crs::Lambert93, Crs::Wgs84)?;
     let features = no_network_features(&none, &none_wgs, release);
