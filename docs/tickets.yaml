@@ -503,9 +503,9 @@ tickets:
   title: Squelette de l'app Android (Compose, MapLibre, lecture de pack)
   milestone: M3 Client v1
   labels: [client, carte]
-  deps: [K0, P14]
+  deps: [P14]
   body: |
-    App Kotlin Jetpack Compose, carte MapLibre Native, lecture d'un pack local.
+    App Kotlin Jetpack Compose, carte MapLibre Native, lecture d'un pack local par le lecteur Rust (UniFFI). K0 ne tranche que le hors piste et n'empêche pas de commencer.
     Critère : pack Cervières affiché hors ligne sur le Pixel.
 
 - key: K2
@@ -920,3 +920,191 @@ tickets:
   body: |
     Questions libres (« Où skier demain avec du vent d'ouest ? ») répondues hors ligne à partir des données du pack. Gemini Nano est indisponible sur le 8 Pro ; speak fait tourner Gemma 4 E2B par LiteRT-LM (~17 tok/s sur CPU). Pas de LLM en v1 : toutes les réponses viennent des modèles de phrases (VO2). Si un LLM est ajouté, cadrage strict : il classe seulement la question vers une liste fermée de fonctions du noyau avec leurs paramètres ; la réponse reste produite par les modèles de phrases ; aucun chiffre, lieu ou conseil de sécurité ne sort du modèle ; question non reconnue → « je n'ai pas compris » et liste des questions possibles.
     Critère : taux de bonne classification mesuré sur un jeu de questions réelles ; décision d'ajouter ou non.
+
+# ---------- Qualité (Q) : tests, CI, documentation de niveau public ----------
+- key: Q1
+  title: Jeu de données de référence versionné pour les tests sur sites réels
+  milestone: M1 Preuve Rust
+  labels: [infra, preuve]
+  deps: [P14]
+  body: |
+    Aujourd'hui les tests sur données réelles sont `#[ignore]` et ne tournent jamais en CI. Extraire des deux sites un jeu réduit (quelques Mo, sources redistribuables seulement : OSM ODbL, IGN Licence Ouverte, Météo-France Etalab ; jamais les sources `personal_sources`), versionné dans `fixtures/` avec ses licences et son script de régénération en Rust (`skimap fixtures`).
+    Les tests réels tournent alors en CI sans réseau. Un test qui ne trouve pas ses données échoue au lieu de passer en silence.
+    Critère : `cargo test --workspace` couvre les deux sites sans réseau ni `--ignored` ; taille du jeu mesurée ; licences listées.
+
+- key: Q2
+  title: Tests de régression dorés sur les sorties du pipeline et du noyau
+  milestone: M1 Preuve Rust
+  labels: [infra, preuve]
+  deps: [Q1]
+  body: |
+    Pour chaque couche et chaque site : empreinte chiffrée (km de pistes par type, surfaces par classe, histogrammes de pente et d'exposition, nombre de refuges, ETA et longueur d'itinéraires de référence, phrases générées) comparée à une référence versionnée, avec tolérances justifiées.
+    Mise à jour explicite seulement (`--bless`) avec diff lisible dans la PR. Chiffres de référence reliés aux rapports de recherche.
+    Critère : une modification volontaire d'un coefficient fait échouer le bon test avec un diff clair.
+
+- key: Q3
+  title: Tests de propriétés et fuzzing des lecteurs de fichiers
+  milestone: M1 Preuve Rust
+  labels: [infra, preuve]
+  deps: [F1]
+  body: |
+    Propriétés (proptest) : géométrie (orientation, aires, découpes), routage (optimalité A* contre Dijkstra, ETA monotone avec la distance et le dénivelé), rattachement (trace sur piste rattachée à 100 %), projection de neige, phrases (arrondis).
+    Fuzzing (cargo-fuzz) de tout ce que le téléphone lit d'un fichier téléchargé : pack, manifeste, SKR1, PMTiles, GeoTIFF, BERA XML. Aucun panic accepté.
+    Critère : campagnes de fuzzing d'au moins 10 min par cible sans plantage ; corpus versionné ; propriétés en CI.
+
+- key: Q4
+  title: Couverture et tests de mutation mesurés
+  milestone: M1 Preuve Rust
+  labels: [infra, preuve]
+  deps: [Q1]
+  body: |
+    cargo-llvm-cov en CI avec seuil par crate (noyau et lecteur de pack les plus hauts) ; cargo-mutants sur le noyau, l'assistance et la voix, en tâche planifiée. Les mutants survivants deviennent des tests ou sont justifiés.
+    Critère : chiffres de couverture et score de mutation par crate publiés dans le README.
+
+- key: Q5
+  title: Bancs de performance de non-régression sur les cas dominants
+  milestone: M1 Preuve Rust
+  labels: [infra, preuve]
+  deps: [Q1]
+  body: |
+    Mesurer ce qui domine : routage hors piste sur la plus grande grille, rattachement d'une sortie entière, routage sur le graphe complet, exposition aux avalanches de Cervières, build-all complet. Comptage d'instructions (stable sur les runners GitHub) en CI, temps réel sur le poste.
+    Critère : un ralentissement volontaire de 10 % sur un cas dominant fait échouer la CI.
+
+- key: Q6
+  title: CI complète, chaîne d'approvisionnement et documentation générée
+  milestone: M1 Preuve Rust
+  labels: [infra]
+  deps: [F1]
+  body: |
+    cargo-deny (licences compatibles, avis de sécurité, sources), `cargo doc` sans avertissement et doctests, tests sans la fonction `pipeline` pour le téléphone, compilation Android, actions épinglées par hash, durée totale mesurée et cache.
+    Tâche planifiée hebdomadaire : build-all réel des deux sites avec téléchargements, comparé aux références de Q2.
+    Critère : CI verte sur la première poussée ; tâche planifiée réussie une fois.
+
+- key: Q7
+  title: README et documentation de niveau public
+  milestone: M1 Preuve Rust
+  labels: [infra]
+  deps: [Q2, Q4]
+  body: |
+    README racine : ce que fait skimap, captures du visualiseur, démarrage en 5 minutes, schéma d'architecture, sources et licences des données, statut et chiffres de preuve. README de chaque crate au même plan (rôle, API, entrées, sorties, preuve chiffrée, limites). CONTRIBUTING (règles, tests, références dorées), guide des données.
+    Critère : un développeur Rust qui ne connaît pas le projet reconstruit un pack en suivant le README seul (essai fait par un agent neuf).
+
+- key: Q8
+  title: Qualité du client Kotlin (tests unitaires, interface, captures, CI)
+  milestone: M3 Client v1
+  labels: [infra, client]
+  deps: [K1]
+  body: |
+    Tests JVM, tests Compose, tests de captures d'écran (thème clair, sombre, grande police), tests instrumentés sur émulateur en CI, detekt et ktlint, lint Android sans avertissement, contrôles d'accessibilité, profil de démarrage.
+    Critère : CI Android verte ; une régression visuelle volontaire est détectée.
+
+- key: Q9
+  title: Banc de scénarios de sortie rejoués de bout en bout
+  milestone: M1 Preuve Rust
+  labels: [infra, preuve]
+  deps: [Q1, J1]
+  body: |
+    Traces synthétiques et réelles rejouées dans le noyau avec une horloge simulée : sortie normale, écart, piste fermée, retard, brouillard, pause au refuge, abandon. Pour chaque scénario : annonces, alertes et bascules attendues, dans l'ordre et à la seconde près.
+    Les mêmes scénarios servent aux tests instrumentés du client.
+    Critère : au moins 15 scénarios sur les deux sites en CI.
+
+# ---------- Journée planifiée et automatismes (J) ----------
+- key: J1
+  title: Plan de journée dans le noyau
+  milestone: M3 Client v1
+  labels: [algo, planifier]
+  deps: [A1, A5, A6, A9, C1, C7, VO2]
+  body: |
+    Le matin, sans gants : briefing, créneau, fartage, boucles proposées, équipement ; on valide une boucle. Le plan contient l'itinéraire, les heures de passage, l'heure de demi-tour, les annonces prévues et les clips nécessaires. Sérialisé, lisible par le téléphone sans réseau.
+    Critère : plan produit pour les deux sites sur des journées passées ; relu.
+
+- key: J2
+  title: Plans B pré-calculés et bascule automatique
+  milestone: M3 Client v1
+  labels: [algo, sécurité]
+  deps: [J1, C2, A8]
+  body: |
+    À chaque intersection utile : raccourci vers l'arrivée, contournement d'une piste fermée, version écourtée si retard. Pendant la sortie, la bascule est choisie et annoncée sans manipulation ; on peut la refuser d'un geste.
+    Critère : bascules correctes sur les scénarios de Q9.
+
+- key: J3
+  title: Démarrage, pause et arrêt automatiques de la sortie
+  milestone: M3 Client v1
+  labels: [algo, pendant]
+  deps: [J1, C2]
+  body: |
+    Départ détecté au premier mouvement près du départ du plan, pause à l'arrêt, refuge reconnu, fin à l'arrivée avec bilan. Côté noyau la décision ; côté client la reconnaissance d'activité Android.
+    Critère : aucune manipulation nécessaire sur les scénarios normaux de Q9.
+
+- key: J4
+  title: Politique de parole « silence si tout va bien »
+  milestone: M3 Client v1
+  labels: [algo, pendant]
+  deps: [J1, VO2]
+  body: |
+    Hiérarchie des événements (sécurité, direction, horaire, confort), débit maximal d'annonces par heure, regroupement, rien à dire sur une piste évidente. Réglable.
+    Critère : nombre d'annonces par heure mesuré sur les scénarios ; aucune alerte de sécurité perdue.
+
+- key: J5
+  title: Écran « journée » et validation en un geste
+  milestone: M3 Client v1
+  labels: [client, planifier]
+  deps: [J1, K1]
+  body: |
+    Un écran unique le matin, raisons de chaque choix lisibles, un bouton « Valider la journée ». Le plan est envoyé au proche choisi (K10).
+    Critère : journée validée en moins de 30 s sur le Pixel.
+
+- key: K12
+  title: Interface utilisable avec des gants et en plein soleil
+  milestone: M3 Client v1
+  labels: [client, pendant]
+  deps: [K1]
+  body: |
+    Material 3 et règles Android suivies, mais cibles de 72 dp au moins, aucun geste fin indispensable, contraste élevé sur fond de neige, info jamais portée par la couleur seule, grande police.
+    Critère : toutes les actions de sortie faites avec des gants de ski sur le Pixel.
+
+- key: K13
+  title: Commandes physiques, écran verrouillé et montre
+  milestone: M3 Client v1
+  labels: [client, pendant]
+  deps: [K4, K5]
+  body: |
+    Bouton du casque et boutons de volume (temps restant, prochaine direction ; appui long « ramène-moi »), notification en direct sur l'écran verrouillé, tuile Wear OS optionnelle.
+    Critère : sortie guidée sans déverrouiller le téléphone.
+
+# ---------- Toutes les stations (G) ----------
+- key: G1
+  title: Pistes manquantes dans OSM ajoutées au pack
+  milestone: M4 v2
+  labels: [pipeline, carte]
+  deps: [P2, P13]
+  body: |
+    Détecter les pistes annoncées par l'exploitant et absentes d'OSM (4 à Cervières aujourd'hui). Tracé pris chez l'exploitant (Geotrek) s'il est publié, sinon reconstruit depuis nos traces ou les chemins IGN. Couche séparée « tracé estimé » avec sa source ; correction OSM préparée pour validation humaine, jamais envoyée automatiquement (règles d'import OSM).
+    Critère : les 4 pistes de Cervières présentes et marquées estimées.
+
+- key: G2
+  title: Pipeline pour les 219 domaines recensés
+  milestone: M4 v2
+  labels: [pipeline, infra]
+  deps: [P3, S0, Q2]
+  body: |
+    build-all générique sur tous les domaines, parallélisé, exposition aux avalanches seulement là où il y a du relief. Temps et taille totaux mesurés.
+    Critère : packs produits pour les 219 domaines ; échantillon de 10 vérifié.
+
+- key: G3
+  title: Sources d'état des pistes pour tous les domaines
+  milestone: M4 v2
+  labels: [recherche, juridique]
+  deps: [P3, L4]
+  body: |
+    Inventaire par domaine des sources d'ouverture (instances Geotrek, Nordic France, sites des stations) et de leurs conditions ; partenariat Nordic France.
+    Critère : part des 219 domaines couverte par une source autorisée.
+
+- key: G4
+  title: Règles de zones et de bivouac généralisées
+  milestone: M4 v2
+  labels: [pipeline, sécurité]
+  deps: [P9, G2]
+  body: |
+    Règles nationales (APPB, réserves, coeurs de parc, codes) appliquées automatiquement partout ; arrêtés locaux non recensés signalés « règles locales non vérifiées ».
+    Critère : chaque domaine a ses règles nationales et un statut clair pour les locales.
