@@ -688,14 +688,25 @@ fn union(mut a: Layer, b: &Layer) -> Layer {
 }
 
 /// Layer schema of a runtime source from the style metadata
-/// (`{"geometry": "Point", "properties": {"label": "string", "part": ["a", "b"]}}`).
+/// (`{"geometry": "Point", "properties": {"label": "string", "part": ["a", "b"]}}`;
+/// `geometry` may list several kinds).
 fn runtime_layer(v: &Value) -> Option<Layer> {
     let mut l = Layer {
         minzoom: 0,
         maxzoom: 24,
         ..Layer::default()
     };
-    l.geometry.insert(v["geometry"].as_str()?.to_string());
+    match &v["geometry"] {
+        Value::String(g) => {
+            l.geometry.insert(g.clone());
+        }
+        Value::Array(gs) => {
+            for g in gs {
+                l.geometry.insert(g.as_str()?.to_string());
+            }
+        }
+        _ => return None,
+    }
     for (k, t) in v["properties"].as_object()? {
         let values = t.as_array().map(|vals| {
             vals.iter()
