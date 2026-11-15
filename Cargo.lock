@@ -2677,10 +2677,12 @@ version = "0.1.0"
 dependencies = [
  "approx",
  "gungraun",
+ "hex",
  "proptest",
  "rayon",
  "serde",
  "serde_json",
+ "sha2",
  "skimap-common",
  "skimap-meteo",
  "skimap-terrain",

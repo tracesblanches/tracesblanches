@@ -39,3 +39,13 @@ Couche utilisateur :
 | Nous : part non « peu exposé » des longueurs avec donnée (boîte du rapport) | 87,5 % | 12,7 % (17,7 % en comptant les 6,8 km hors LiDAR HD) |
 
 À Chapelle-des-Bois, la part non « peu exposé » dépasse le majorant du rapport (8,7 %) : 59 % des cellules « exposé » sont en classe ATES 0–1 mais à moins de 10 m d'un petit talus raide (zone de départ avant tamis, souvent un bord de route ou de ruisseau), 41 % sont en classe ATES 2 (votes de pente sur 300 m et de clairières forestières du classifieur dev8).
+
+## Accélération (X25, #159, 15/11/2026)
+
+Résultats identiques au bit près : `exposure_fingerprint` (SHA-256 de chaque raster intermédiaire et final : pente, abri au vent, zones de départ, les quatre couches des deux écoulements, classes ATES, exposition) donne les mêmes empreintes avant et après sur Cervières et Chapelle-des-Bois ; les fichiers de la couche (`exposure_5m.tif`, `exposure_model_5m.tif`, `ates_5m.tif`, `canopy_5m.tif`, `segments.geojson`) et `summary.json` hors temps sont identiques octet pour octet. L'accord avec la référence AutoATES (100 % des classes) est donc inchangé.
+
+- Écoulement : `tan β^exp` vers les 8 voisins ne dépend pas du chemin ; il est calculé une fois par cellule (par tuiles de 64 × 64, au premier passage) au lieu de deux `powf`, un `atan` et un `tan` par voisin ouvert et par visite ; l'angle de parcours est l'`atan` du maximum de Δh / d, pris une fois par cellule (`atan` monotone) ; parents lus dans la file au lieu d'être copiés ; état par fil mis à zéro paresseusement ; maxima atomiques sans écriture quand la valeur ne monte pas. Temps processeur d'un fil sur 194 M visites de Cervières : 47,6 s → 20,6 s (×2,3).
+- Abri au vent : sélection des deux statistiques d'ordre du quantile au lieu du tri des ~450 angles, deux `atan` au lieu de 450.
+- Écriture : emprises CLPA rastérisées une fois (au lieu de trois), validations, GeoTIFF et tronçons écrits en parallèle.
+
+Mesures sur la machine partagée (charge 70 à 90 sur 20 cœurs, donc très dispersées) : modèle de Cervières 173 s → 118 s (extrême 131 → 97 s), Chapelle-des-Bois 11,4 → 4,3 s ; couche complète `exposure_build` Chapelle-des-Bois 23,5 → 6,8 s, Cervières 71 s après (159 à 186 s avant dans les mêmes conditions).
