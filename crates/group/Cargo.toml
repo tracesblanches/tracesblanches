@@ -1,0 +1,28 @@
+[package]
+name = "skimap-group"
+description = "Mode groupe sans réseau (N2) : groupe créé au chalet et partagé par QR, trame BLE chiffrée et authentifiée à étiquette tournante, dernières positions des membres relayées, alertes de séparation."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+# Runs on the phone: no networking, no I/O. The radio (BLE advertising and batched scan)
+# is the app's; this crate builds and checks the frames and decides the alerts.
+[dependencies]
+sha2.workspace = true
+thiserror.workspace = true
+# Not in [workspace.dependencies] (only this crate uses them): AES-256-CTR for the fields
+# of the frame, HMAC-SHA-256 for the rotating tag, the key derivation and the MAC (the
+# RustCrypto versions of digest 0.11 / cipher 0.5, as sha2 0.11 and aes 0.9 already in
+# Cargo.lock).
+aes = "0.9.4"
+ctr = "0.10.1"
+hmac = "0.13.0"
+# QR matrix of the group (drawn by the app); no image, no SVG.
+qrcode = { version = "0.14.1", default-features = false }
+
+[dev-dependencies]
+proptest = { version = "1.12.0", default-features = false, features = ["std"] }
+
+[lints]
+workspace = true
