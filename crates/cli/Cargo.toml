@@ -25,6 +25,7 @@ skimap-avalanche.workspace = true
 skimap-core = { workspace = true, features = ["pipeline"] }
 skimap-voice.workspace = true
 skimap-assist.workspace = true
+skimap-plan.workspace = true
 skimap-pack = { workspace = true, features = ["pipeline"] }
 anyhow.workspace = true
 chrono.workspace = true

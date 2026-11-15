@@ -7,6 +7,7 @@
 mod assist;
 mod build;
 mod history;
+mod plan;
 mod route;
 mod voice;
 
@@ -229,6 +230,18 @@ enum Command {
         /// Past days archived by `skimap history`: `past` or `with-forecast`.
         #[arg(long)]
         history: Option<String>,
+    },
+    /// Day plans of a site (J1, J2): the preset requests of the site on a day, first loop
+    /// of each; `data/out/<site>/plan/`, plan text printed.
+    Plan {
+        /// Site identifier.
+        site: String,
+        /// Day YYYY-MM-DD (default: the archived day of the site).
+        #[arg(long)]
+        date: Option<String>,
+        /// Only this request of the site, numbered from 1 (default: all).
+        #[arg(long)]
+        request: Option<usize>,
     },
     /// Every available builder of a site, in dependency order, timed.
     BuildAll(SiteArg),
@@ -586,6 +599,21 @@ fn run(cli: Cli) -> Result<()> {
             };
             let (_, lines) = assist::assist(&cfg.layout(), s, &args)?;
             for l in lines {
+                println!("{l}");
+            }
+            Ok(())
+        }
+        Command::Plan {
+            site: s,
+            date,
+            request,
+        } => {
+            let s = site(&s)?;
+            let args = plan::PlanArgs {
+                date: date.as_deref().map(build::parse_date).transpose()?,
+                request,
+            };
+            for l in plan::plan(&cfg.layout(), s, &args)?.lines {
                 println!("{l}");
             }
             Ok(())

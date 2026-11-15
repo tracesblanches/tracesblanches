@@ -1,10 +1,7 @@
-//! What the plan says: the announcements of the phrase bank (VO2, `skimap_voice::bank`)
-//! and the few phrases of the plan that the bank does not have yet.
-//!
-//! The plan phrases have ids `fix.plan-*`, the form of the bank's fixed phrases, so that
-//! they keep their id when they move into `skimap_voice::clips::Fixed` (requested to the
-//! orchestrator, with their texts). Until then the packs have no clip for them and the
-//! phone speaks their text with the fallback voice ([`ClipCheck::missing`]).
+//! What the plan says: the announcements of the phrase bank (VO2, `skimap_voice::bank`),
+//! including the plan's own fixed phrases ([`PLAN_PHRASES`], ids `fix.plan-*`), and the
+//! check of their clips against the pack ([`ClipCheck::missing`]: those go to the
+//! fallback voice of the phone).
 //!
 //! Never « sans danger », never « sûr » (tested on every phrase).
 
@@ -13,86 +10,30 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 use skimap_core::graph::{Difficulty, EdgeAttrs};
 use skimap_voice::bank::{Announcement, Pause, Segment};
-use skimap_voice::clips::Clip;
+use skimap_voice::clips::{Clip, Fixed};
 use skimap_voice::names::{Colour, PisteName, slug};
 use skimap_voice::pack::VoiceManifest;
 
-/// Phrases of the plan that the bank does not have.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PlanPhrase {
-    /// A trail of the route is closed: switch to a detour.
-    ClosedAhead,
-    /// A trail of the route is closed and no other way is known.
-    ClosedNoDetour,
-    /// Conditions worsen: switch to the shortcut to the finish.
-    Shortcut,
-    /// Late: switch to a shorter version of the loop.
-    Shortened,
-    /// Off the route for a while: new route computed.
-    Rerouted,
-    /// The previous route is kept (refusal, by a gesture or by skiing on).
-    Kept,
-    /// No time left: the fastest way home does not start with a U-turn.
-    HomeNow,
-    /// End of the outing.
-    Finished,
-}
+/// The plan's phrases in the bank (`Fixed::Plan*`, ids `fix.plan-*`): switch to a plan B,
+/// refusal, recomputed route, going home, end of the outing.
+pub const PLAN_PHRASES: [Fixed; 8] = [
+    Fixed::PlanClosedAhead,
+    Fixed::PlanClosedNoDetour,
+    Fixed::PlanShortcut,
+    Fixed::PlanShortened,
+    Fixed::PlanRerouted,
+    Fixed::PlanKept,
+    Fixed::PlanHomeNow,
+    Fixed::PlanFinished,
+];
 
-impl PlanPhrase {
-    /// Every phrase.
-    pub const ALL: [PlanPhrase; 8] = [
-        PlanPhrase::ClosedAhead,
-        PlanPhrase::ClosedNoDetour,
-        PlanPhrase::Shortcut,
-        PlanPhrase::Shortened,
-        PlanPhrase::Rerouted,
-        PlanPhrase::Kept,
-        PlanPhrase::HomeNow,
-        PlanPhrase::Finished,
-    ];
-
-    /// Clip of the phrase.
-    pub fn clip(self) -> Clip {
-        let (id, text) = match self {
-            PlanPhrase::ClosedAhead => (
-                "fix.plan-closed-ahead",
-                "Piste fermée sur votre itinéraire. Nouvel itinéraire.",
-            ),
-            PlanPhrase::ClosedNoDetour => (
-                "fix.plan-closed-no-detour",
-                "Piste fermée sur votre itinéraire, aucun autre passage connu.",
-            ),
-            PlanPhrase::Shortcut => (
-                "fix.plan-shortcut",
-                "Les conditions changent. Raccourci vers l'arrivée.",
-            ),
-            PlanPhrase::Shortened => (
-                "fix.plan-shortened",
-                "Vous êtes en retard sur l'horaire prévu. Boucle écourtée pour rentrer à l'heure.",
-            ),
-            PlanPhrase::Rerouted => ("fix.plan-rerouted", "Itinéraire recalculé."),
-            PlanPhrase::Kept => ("fix.plan-kept", "Itinéraire initial conservé."),
-            PlanPhrase::HomeNow => (
-                "fix.plan-home-now",
-                "Rentrez maintenant par le plus court, afin de rentrer avant la nuit.",
-            ),
-            PlanPhrase::Finished => ("fix.plan-finished", "Sortie terminée."),
-        };
-        Clip {
-            id: id.into(),
-            text: text.into(),
-        }
-    }
-
-    /// Announcement of the phrase alone.
-    pub fn announce(self) -> Announcement {
-        Announcement {
-            segments: vec![Segment {
-                clip: self.clip(),
-                pause: Pause::Long,
-            }],
-        }
+/// Announcement of a fixed phrase alone, as a message of its own (long pause after).
+pub fn announce(phrase: Fixed) -> Announcement {
+    Announcement {
+        segments: vec![Segment {
+            clip: phrase.clip(),
+            pause: Pause::Long,
+        }],
     }
 }
 
@@ -231,30 +172,21 @@ mod tests {
     use skimap_voice::tokenizer::PocketText;
 
     #[test]
-    fn plan_phrases_are_clips_of_the_bank_form() {
-        let mut ids = BTreeSet::new();
-        for p in PlanPhrase::ALL {
+    fn plan_phrases_are_the_bank_plan_phrases() {
+        // Every `fix.plan-*` phrase of the bank, once, and nothing else.
+        let bank: BTreeSet<String> = Fixed::ALL
+            .iter()
+            .map(|f| f.clip().id)
+            .filter(|id| id.starts_with("fix.plan-"))
+            .collect();
+        let ours: BTreeSet<String> = PLAN_PHRASES.iter().map(|f| f.clip().id).collect();
+        assert_eq!(ours.len(), PLAN_PHRASES.len());
+        assert_eq!(ours, bank);
+        for p in PLAN_PHRASES {
             let c = p.clip();
-            assert!(ids.insert(c.id.clone()), "duplicate {}", c.id);
-            assert!(c.id.starts_with("fix.plan-"));
-            assert!(
-                c.id.bytes().all(|b| b.is_ascii_lowercase()
-                    || b.is_ascii_digit()
-                    || b == b'.'
-                    || b == b'-'),
-                "{}",
-                c.id
-            );
             assert!(c.text.ends_with('.'), "{}", c.text);
             assert!(never_safe(&c.text), "{}", c.text);
-            // Not one of the bank's ids.
-            assert!(
-                !skimap_voice::clips::Fixed::ALL
-                    .iter()
-                    .any(|f| f.clip().id == c.id),
-                "{}",
-                c.id
-            );
+            assert_eq!(announce(p).segments.len(), 1);
         }
     }
 
@@ -264,7 +196,7 @@ mod tests {
         // Exact Pocket TTS counts with the model's tokenizer (`VoiceConfig::from_env`).
         let cfg = skimap_voice::VoiceConfig::from_env().unwrap();
         let t = PocketText::from_gguf(&cfg.tts.model).unwrap();
-        for p in PlanPhrase::ALL {
+        for p in PLAN_PHRASES {
             let n = t.count(&p.clip().text);
             eprintln!("{:?}: {n} tokens", p.clip().id);
             assert!(n <= skimap_voice::pack::MAX_TOKENS, "{p:?}: {n} tokens");

@@ -503,6 +503,22 @@ impl Ctx {
                 out.files.len()
             ))
         });
+        // Day plans of the preset requests (J1, J2) on the archived day of the site: the
+        // trail graph, the refuges, the voice clips and `assist/history/`. Not in the pack
+        // (computed in the morning, on the phone eventually: E2).
+        run.step("plan", &["routing"], || {
+            let r = crate::plan::plan(&self.layout, site, &crate::plan::PlanArgs::default())?;
+            let missing: usize = r.plans.iter().map(|p| p.clips.missing.len()).sum();
+            Ok(format!(
+                "{} plans ({}), {} plans B, {} annonces prévues, {} clips absents du pack, {} fichiers",
+                r.plans.len(),
+                r.plans.first().map(|p| p.date.to_string()).unwrap_or_default(),
+                r.plans.iter().map(|p| p.plans_b.len()).sum::<usize>(),
+                r.plans.iter().map(|p| p.announcements.len()).sum::<usize>(),
+                missing,
+                r.files.len()
+            ))
+        });
         // The pack takes whatever layers exist; it does not need every step above.
         run.step("build-pack", &[], || {
             let r = self.build_pack(site)?;

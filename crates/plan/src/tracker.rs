@@ -42,7 +42,7 @@ use skimap_core::matching::{AlertEvent, DeviationDetector, Hysteresis, ROUTE_HYS
 use skimap_core::turnaround::TurnaroundParams;
 use skimap_voice::Event;
 use skimap_voice::bank::{Announcement, Side};
-use skimap_voice::clips::Direction;
+use skimap_voice::clips::{Direction, Fixed};
 
 use crate::course::{Course, PlanLeg};
 use crate::error::{Error, Result};
@@ -50,7 +50,7 @@ use crate::fallback::{self, FallbackKind};
 use crate::gps::{self, GpsInput, GpsParams, GpsRequest, GpsState};
 use crate::guidance::{self, Junction};
 use crate::line::turn_deg;
-use crate::phrases::{PlanPhrase, Voice};
+use crate::phrases::{self, Voice};
 use crate::plan::{self, DayPlan, PlannedAnnouncement, Trigger};
 use crate::session::{Activity, End, Phase, Session, SessionEvent, SessionParams};
 use crate::speech::{Candidate, Priority, Speech, SpeechParams, Spoken};
@@ -716,7 +716,7 @@ impl<'a> Tracker<'a> {
                         Priority::Comfort,
                         "finished",
                         "finished",
-                        PlanPhrase::Finished.announce(),
+                        phrases::announce(Fixed::PlanFinished),
                         None,
                     );
                     let recap = self.recap(t1, end);
@@ -1200,7 +1200,7 @@ impl<'a> Tracker<'a> {
                     .filter(|(_, r)| rem - r >= self.p.min_saving_s)
                     .min_by(|a, b| a.1.total_cmp(&b.1));
                 if let Some((i, _)) = best {
-                    self.switch_plan_b(t, i, cause, PlanPhrase::Shortcut, Priority::Direction, out);
+                    self.switch_plan_b(t, i, cause, Fixed::PlanShortcut, Priority::Direction, out);
                 }
             }
             return;
@@ -1260,7 +1260,7 @@ impl<'a> Tracker<'a> {
             .filter(|(_, m)| arrival(*m) <= limit)
             .max_by(|a, b| a.1.total_cmp(&b.1));
         if let Some((i, _)) = pick {
-            self.switch_plan_b(t, i, cause, PlanPhrase::Shortened, Priority::Schedule, out);
+            self.switch_plan_b(t, i, cause, Fixed::PlanShortened, Priority::Schedule, out);
             return true;
         }
         false
@@ -1310,7 +1310,7 @@ impl<'a> Tracker<'a> {
                 .filter(|(_, r)| rem - r >= self.p.min_saving_s)
                 .min_by(|a, b| a.1.total_cmp(&b.1));
             if let Some((i, _)) = best {
-                self.switch_plan_b(t, i, cause, PlanPhrase::Shortened, Priority::Schedule, out);
+                self.switch_plan_b(t, i, cause, Fixed::PlanShortened, Priority::Schedule, out);
             }
         }
     }
@@ -1364,7 +1364,7 @@ impl<'a> Tracker<'a> {
         let (phrase, kind) = if behind {
             (a8, "turnaround_now")
         } else {
-            (PlanPhrase::HomeNow.announce(), "home_now")
+            (phrases::announce(Fixed::PlanHomeNow), "home_now")
         };
         if self.install_live(t, legs, Cause::NoTime, s_div, out) && !behind {
             let a = match self.first_turn_event(s_div) {
@@ -1447,7 +1447,7 @@ impl<'a> Tracker<'a> {
                 t,
                 i,
                 cause,
-                PlanPhrase::ClosedAhead,
+                Fixed::PlanClosedAhead,
                 Priority::Direction,
                 out,
             );
@@ -1507,7 +1507,7 @@ impl<'a> Tracker<'a> {
             None => false,
         };
         if done {
-            let a = PlanPhrase::ClosedAhead.announce();
+            let a = phrases::announce(Fixed::PlanClosedAhead);
             let a = match self.first_turn_event(s_div) {
                 Some(e) => a.then(e.announce()),
                 None => a,
@@ -1523,7 +1523,7 @@ impl<'a> Tracker<'a> {
                 Priority::Direction,
                 "switch",
                 "closed_no_detour",
-                PlanPhrase::ClosedNoDetour.announce(),
+                phrases::announce(Fixed::PlanClosedNoDetour),
                 None,
             );
         }
@@ -1581,7 +1581,7 @@ impl<'a> Tracker<'a> {
         if self.install_live(t, legs, Cause::Deviation, s_div, out) {
             // Not refusable by skiing on: the skier is already off the previous route.
             self.pending = None;
-            let mut a = PlanPhrase::Rerouted.announce();
+            let mut a = phrases::announce(Fixed::PlanRerouted);
             if behind {
                 a = a.then(
                     Event::Turn {
@@ -1697,7 +1697,7 @@ impl<'a> Tracker<'a> {
         t: f64,
         i: usize,
         cause: Cause,
-        phrase: PlanPhrase,
+        phrase: Fixed,
         priority: Priority,
         out: &mut Vec<Output>,
     ) {
@@ -1720,7 +1720,10 @@ impl<'a> Tracker<'a> {
         let s_div = self.plan.plans_b[i].fallback.s_div;
         self.install(t, new, cause, s_div, out);
         let a = crate::plan::switch_announcement(phrase, self.first_turn_event(s_div));
-        self.offer(t, priority, "switch", &format!("{phrase:?}"), a, None);
+        // Kind: the phrase without the bank's `Plan` prefix (« Shortcut », « Shortened »).
+        let name = format!("{phrase:?}");
+        let kind = name.strip_prefix("Plan").unwrap_or(&name);
+        self.offer(t, priority, "switch", kind, a, None);
     }
 
     fn revert(&mut self, t: f64, implicit: bool, out: &mut Vec<Output>) {
@@ -1758,7 +1761,7 @@ impl<'a> Tracker<'a> {
             Priority::Direction,
             "switch",
             "kept",
-            PlanPhrase::Kept.announce(),
+            phrases::announce(Fixed::PlanKept),
             Some(60.0),
         );
     }

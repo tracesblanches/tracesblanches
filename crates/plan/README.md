@@ -50,7 +50,6 @@ Mesures (15/11/2026, poste, release) : plan 0,06 s à Cervières, 0,13 à 0,27 s
 
 ## Limites
 
-- Phrases du plan (`fix.plan-*`) absentes de la banque VO2 : voix de secours tant qu'elles n'y sont pas.
 - Traces synthétiques seulement ; les seuils (pause, départ, GPS) restent à régler sur le terrain (T5) et sur le Pixel.
 - Les routes calculées pendant la sortie n'annoncent ni zones sans réseau ni couloirs d'avalanche (couches non lues par le suivi).
 - Les tests lisent `data/out/` : à brancher sur `fixtures/` (Q1).
