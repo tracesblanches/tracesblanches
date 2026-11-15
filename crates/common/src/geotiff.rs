@@ -1,4 +1,6 @@
-//! Minimal single-band Float32 GeoTIFF reader and writer.
+//! Minimal single-band GeoTIFF reader and writer: Float32 read and write, UInt8 read
+//! (class rasters), and a lenient reader of any common sample type and CRS
+//! ([`read_any`]).
 //!
 //! Writes north-up grids with the GeoTIFF tags GDAL and QGIS read: `ModelPixelScale`,
 //! `ModelTiepoint`, `GeoKeyDirectory` (EPSG code, pixel-is-area) and `GDAL_NODATA`.
@@ -194,12 +196,27 @@ pub fn write_f32(path: &Path, grid: &Grid<f32>) -> Result<u64> {
     Ok(len)
 }
 
-/// Decodes a single-band Float32 GeoTIFF; no-data values become `NaN`.
-pub fn decode_f32(bytes: &[u8]) -> Result<Grid<f32>> {
+/// Georeferencing and no-data of a decoded file.
+struct Header {
+    width: usize,
+    height: usize,
+    transform: GeoTransform,
+    /// CRS when supported ([`crs_from_keys`]), else the error it gave.
+    crs: Result<Crs>,
+    /// EPSG code of the projected (else geographic) CRS when the keys state one.
+    epsg: Option<u16>,
+    /// `GDAL_NODATA` as written.
+    nodata: Option<String>,
+}
+
+fn decoder(bytes: &[u8]) -> Result<Decoder<Cursor<&[u8]>>> {
+    Ok(Decoder::new(Cursor::new(bytes))
+        .map_err(|e| Error::tiff("read", e))?
+        .with_limits(Limits::unlimited()))
+}
+
+fn header(dec: &mut Decoder<Cursor<&[u8]>>) -> Result<Header> {
     let ctx = "read";
-    let mut dec = Decoder::new(Cursor::new(bytes))
-        .map_err(|e| Error::tiff(ctx, e))?
-        .with_limits(Limits::unlimited());
     let (w, h) = dec.dimensions().map_err(|e| Error::tiff(ctx, e))?;
     let scale = dec
         .get_tag_f64_vec(Tag::ModelPixelScaleTag)
@@ -210,13 +227,12 @@ pub fn decode_f32(bytes: &[u8]) -> Result<Grid<f32>> {
     let keys = dec
         .get_tag_u16_vec(Tag::GeoKeyDirectoryTag)
         .map_err(|e| Error::tiff("GeoKeyDirectory", e))?;
-    let nodata: Option<f32> = match dec.find_tag(Tag::GdalNodata) {
+    let nodata = match dec.find_tag(Tag::GdalNodata) {
         Ok(Some(v)) => {
             let s = v.into_string().map_err(|e| Error::tiff("GDAL_NODATA", e))?;
-            let s = s.trim_matches(|c: char| c == '\0' || c.is_whitespace());
             Some(
-                s.parse::<f32>()
-                    .map_err(|e| Error::tiff("GDAL_NODATA", format!("{s:?}: {e}")))?,
+                s.trim_matches(|c: char| c == '\0' || c.is_whitespace())
+                    .to_owned(),
             )
         }
         Ok(None) => None,
@@ -225,13 +241,12 @@ pub fn decode_f32(bytes: &[u8]) -> Result<Grid<f32>> {
     if scale.len() < 2 || tie.len() < 6 {
         return Err(Error::tiff(ctx, "incomplete georeferencing tags"));
     }
-    // Tie point (i, j) -> (x, y); origin of the raster is pixel (0, 0).
-    let origin_x = tie[3] - tie[0] * scale[0];
-    let origin_y = tie[4] + tie[1] * scale[1];
-    let gt = GeoTransform::north_up(origin_x, origin_y, scale[0]);
     if (scale[0] - scale[1]).abs() > 1e-9 {
         return Err(Error::tiff(ctx, format!("non-square cells {scale:?}")));
     }
+    // Tie point (i, j) -> (x, y); origin of the raster is pixel (0, 0).
+    let origin_x = tie[3] - tie[0] * scale[0];
+    let origin_y = tie[4] + tie[1] * scale[1];
     let doubles = match dec.find_tag(Tag::GeoDoubleParamsTag) {
         Ok(Some(v)) => v
             .into_f64_vec()
@@ -246,7 +261,40 @@ pub fn decode_f32(bytes: &[u8]) -> Result<Grid<f32>> {
         Ok(None) => String::new(),
         Err(e) => return Err(Error::tiff("GeoAsciiParams", e)),
     };
-    let crs = crs_from_keys(&keys, &doubles, &ascii)?;
+    let kv = parse_keys(&keys, &doubles, &ascii);
+    let short = |id| {
+        kv.iter().find_map(|(k, v)| match v {
+            KeyValue::Short(s) if *k == id => Some(*s),
+            _ => None,
+        })
+    };
+    let epsg = short(PROJECTED_CS_TYPE)
+        .or(short(GEOGRAPHIC_TYPE))
+        .filter(|c| *c != USER_DEFINED);
+    Ok(Header {
+        width: w as usize,
+        height: h as usize,
+        transform: GeoTransform::north_up(origin_x, origin_y, scale[0]),
+        crs: crs_from_keys(&keys, &doubles, &ascii),
+        epsg,
+        nodata,
+    })
+}
+
+/// Decodes a single-band Float32 GeoTIFF; no-data values become `NaN`.
+pub fn decode_f32(bytes: &[u8]) -> Result<Grid<f32>> {
+    let ctx = "read";
+    let mut dec = decoder(bytes)?;
+    let h = header(&mut dec)?;
+    let crs = h.crs?;
+    let nodata: Option<f32> = h
+        .nodata
+        .as_deref()
+        .map(|s| {
+            s.parse::<f32>()
+                .map_err(|e| Error::tiff("GDAL_NODATA", format!("{s:?}: {e}")))
+        })
+        .transpose()?;
     let mut data = match dec.read_image().map_err(|e| Error::tiff(ctx, e))? {
         DecodingResult::F32(v) => v,
         _ => return Err(Error::tiff(ctx, "not a Float32 raster")),
@@ -260,13 +308,112 @@ pub fn decode_f32(bytes: &[u8]) -> Result<Grid<f32>> {
             }
         }
     }
-    Grid::from_vec(w as usize, h as usize, gt, crs, data)
+    Grid::from_vec(h.width, h.height, h.transform, crs, data)
 }
 
 /// Reads a single-band Float32 GeoTIFF file.
 pub fn read_f32(path: &Path) -> Result<Grid<f32>> {
     let bytes = std::fs::read(path).map_err(|e| Error::io(path, e))?;
     decode_f32(&bytes)
+}
+
+/// Decodes a single-band UInt8 GeoTIFF (class rasters: avalanche exposure); the grid
+/// carries the `GDAL_NODATA` value when the file states one in 0..=255.
+pub fn decode_u8(bytes: &[u8]) -> Result<Grid<u8>> {
+    let ctx = "read";
+    let mut dec = decoder(bytes)?;
+    let h = header(&mut dec)?;
+    let crs = h.crs?;
+    let nodata = h
+        .nodata
+        .as_deref()
+        .and_then(|s| s.parse::<f64>().ok())
+        .filter(|v| v.fract() == 0.0 && (0.0..=255.0).contains(v))
+        .map(|v| v as u8);
+    let data = match dec.read_image().map_err(|e| Error::tiff(ctx, e))? {
+        DecodingResult::U8(v) => v,
+        _ => return Err(Error::tiff(ctx, "not a UInt8 raster")),
+    };
+    let g = Grid::from_vec(h.width, h.height, h.transform, crs, data)?;
+    Ok(match nodata {
+        Some(nd) => g.with_nodata(nd),
+        None => g,
+    })
+}
+
+/// Reads a single-band UInt8 GeoTIFF file.
+pub fn read_u8(path: &Path) -> Result<Grid<u8>> {
+    let bytes = std::fs::read(path).map_err(|e| Error::io(path, e))?;
+    decode_u8(&bytes)
+}
+
+/// A GeoTIFF of any common sample type read by [`decode_any`]: values as `f32`, no-data
+/// and non-finite values as `NaN`; the CRS may be one this crate does not handle.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AnyRaster {
+    /// Columns.
+    pub width: usize,
+    /// Rows.
+    pub height: usize,
+    /// North-up georeferencing.
+    pub transform: GeoTransform,
+    /// CRS when supported (Lambert-93, WGS84, Web Mercator).
+    pub crs: Option<Crs>,
+    /// EPSG code stated by the file, supported or not.
+    pub epsg: Option<u16>,
+    /// Values, row-major.
+    pub data: Vec<f32>,
+}
+
+/// Decodes a single-band GeoTIFF of any common sample type (UInt8, UInt16, Int16, Int32,
+/// Float32, Float64), striped or tiled, uncompressed, LZW or Deflate: rasters of other
+/// tools (GDAL, the AutoATES reference run), in any CRS.
+pub fn decode_any(bytes: &[u8]) -> Result<AnyRaster> {
+    let ctx = "read";
+    let mut dec = decoder(bytes)?;
+    let h = header(&mut dec)?;
+    let data: Vec<f32> = match dec.read_image().map_err(|e| Error::tiff(ctx, e))? {
+        DecodingResult::U8(v) => v.into_iter().map(f32::from).collect(),
+        DecodingResult::U16(v) => v.into_iter().map(f32::from).collect(),
+        DecodingResult::I16(v) => v.into_iter().map(f32::from).collect(),
+        DecodingResult::I32(v) => v.into_iter().map(|x| x as f32).collect(),
+        DecodingResult::F32(v) => v,
+        DecodingResult::F64(v) => v.into_iter().map(|x| x as f32).collect(),
+        _ => return Err(Error::tiff(ctx, "unsupported sample type")),
+    };
+    let nd = h
+        .nodata
+        .as_deref()
+        .and_then(|s| s.parse::<f64>().ok())
+        .filter(|v| v.is_finite())
+        .map(|v| v as f32);
+    let data = data
+        .into_iter()
+        .map(|v| {
+            if !v.is_finite() || nd == Some(v) {
+                f32::NAN
+            } else {
+                v
+            }
+        })
+        .collect::<Vec<f32>>();
+    if data.len() != h.width * h.height {
+        return Err(Error::tiff(ctx, "sample count does not match the size"));
+    }
+    Ok(AnyRaster {
+        width: h.width,
+        height: h.height,
+        transform: h.transform,
+        crs: h.crs.ok(),
+        epsg: h.epsg,
+        data,
+    })
+}
+
+/// Reads a single-band GeoTIFF file of any common sample type ([`decode_any`]).
+pub fn read_any(path: &Path) -> Result<AnyRaster> {
+    let bytes = std::fs::read(path).map_err(|e| Error::io(path, e))?;
+    decode_any(&bytes)
 }
 
 #[cfg(test)]
@@ -288,6 +435,63 @@ mod tests {
         for (a, b) in back.data().iter().zip(&data) {
             assert!(a == b || (a.is_nan() && b.is_nan()), "{a} vs {b}");
         }
+    }
+
+    /// A UInt8 GeoTIFF with the given projected EPSG code (written as GDAL does).
+    fn u8_tiff(epsg: u16, data: &[u8]) -> Vec<u8> {
+        use tiff::encoder::colortype::Gray8;
+        let mut buf = Cursor::new(Vec::new());
+        let mut enc = TiffEncoder::new(&mut buf).unwrap();
+        let mut img = enc.new_image::<Gray8>(3, 2).unwrap();
+        let d = img.encoder();
+        d.write_tag(Tag::ModelPixelScaleTag, &[5.0, 5.0, 0.0][..])
+            .unwrap();
+        d.write_tag(
+            Tag::ModelTiepointTag,
+            &[0.0, 0.0, 0.0, 988_709.75, 6_431_980.25, 0.0][..],
+        )
+        .unwrap();
+        let mut keys = geo_keys(Crs::Lambert93);
+        let i = keys.iter().position(|k| *k == 2154).unwrap();
+        keys[i] = epsg;
+        d.write_tag(Tag::GeoKeyDirectoryTag, &keys[..]).unwrap();
+        d.write_tag(Tag::GdalNodata, "255").unwrap();
+        img.write_data(data).unwrap();
+        buf.into_inner()
+    }
+
+    #[test]
+    fn u8_and_any_sample_type() {
+        let data = [1u8, 2, 3, 255, 0, 2];
+        let b = u8_tiff(2154, &data);
+        let g = decode_u8(&b).unwrap();
+        assert_eq!(g.data(), &data);
+        assert_eq!(g.nodata(), Some(&255));
+        assert_eq!(g.crs(), Crs::Lambert93);
+        assert_eq!(g.transform().origin_x, 988_709.75);
+        assert!(decode_f32(&b).is_err(), "not Float32");
+        let a = decode_any(&b).unwrap();
+        assert_eq!(
+            (a.width, a.height, a.epsg, a.crs),
+            (3, 2, Some(2154), Some(Crs::Lambert93))
+        );
+        assert_eq!(a.data[..3], [1.0, 2.0, 3.0]);
+        assert!(a.data[3].is_nan());
+        // A CRS this crate does not handle (UTM 11N, the AutoATES workshop data): the
+        // lenient reader keeps the code, the typed readers refuse.
+        let utm = u8_tiff(32611, &data);
+        let a = decode_any(&utm).unwrap();
+        assert_eq!((a.epsg, a.crs), (Some(32611), None));
+        assert!(decode_u8(&utm).is_err());
+        // Float32 files through the lenient reader.
+        let gt = GeoTransform::north_up(1000.0, 2000.0, 10.0);
+        let f = Grid::from_vec(2, 1, gt, Crs::Lambert93, vec![1.5f32, f32::NAN]).unwrap();
+        let mut buf = Cursor::new(Vec::new());
+        encode_f32(&mut buf, &f).unwrap();
+        let a = decode_any(buf.get_ref()).unwrap();
+        assert_eq!(a.data[0], 1.5);
+        assert!(a.data[1].is_nan());
+        assert_eq!(a.transform, gt);
     }
 
     #[test]

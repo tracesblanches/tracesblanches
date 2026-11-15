@@ -1,17 +1,16 @@
-//! Raster helpers: a plain grid type for the algorithms, a UInt8 class GeoTIFF writer and
-//! a reader for the GeoTIFFs written by GDAL / rasterio (the oracle outputs: Float32,
-//! Int16, UInt8, LZW or Deflate, striped or tiled).
+//! Raster helpers: a plain grid type for the algorithms and a UInt8 class GeoTIFF writer;
+//! reading goes through `skimap_common::geotiff` (`read_any` for the GDAL / rasterio
+//! outputs of the oracle, `read_u8` for the class rasters).
 //!
 //! The algorithms work on [`Raster`] (row-major, north-up, square cells, `NaN` = no data)
 //! and never on a CRS: Lambert-93 is attached when writing.
 
 use std::fs::File;
-use std::io::{BufWriter, Cursor, Write};
+use std::io::{BufWriter, Write};
 use std::path::Path;
 
 use skimap_common::crs::Crs;
 use skimap_common::grid::{GeoTransform, Grid};
-use tiff::decoder::{Decoder, DecodingResult, Limits};
 use tiff::encoder::{Compression, DeflateLevel, TiffEncoder, colortype::Gray8};
 use tiff::tags::Tag;
 
@@ -172,93 +171,30 @@ pub fn write_u8(path: &Path, r: &Raster<u8>) -> Result<u64> {
         .len())
 }
 
-/// A GeoTIFF read by [`read_any`]: values as `f32`, no-data as `NaN`.
-#[derive(Debug, Clone)]
-pub struct ReadRaster {
-    /// The raster.
-    pub raster: Raster<f32>,
-    /// EPSG code of the projected CRS when the file states one.
-    pub epsg: Option<u16>,
-}
-
-/// Reads a single-band GeoTIFF of any common sample type (UInt8, Int16, UInt16, Int32,
-/// Float32, Float64), striped or tiled, uncompressed, LZW or Deflate. The `GDAL_NODATA`
-/// value and non-finite values become `NaN`.
-pub fn read_any(path: &Path) -> Result<ReadRaster> {
-    let bytes = std::fs::read(path).map_err(|e| Error::io(path, e))?;
-    decode_any(&bytes).map_err(|e| match e {
-        Error::Format { message, .. } => Error::format(path.display().to_string(), message),
-        other => other,
-    })
-}
-
-/// See [`read_any`].
-pub fn decode_any(bytes: &[u8]) -> Result<ReadRaster> {
-    let e = |m: tiff::TiffError| Error::format("GeoTIFF", m.to_string());
-    let mut dec = Decoder::new(Cursor::new(bytes))
-        .map_err(e)?
-        .with_limits(Limits::unlimited());
-    let (w, h) = dec.dimensions().map_err(e)?;
-    let scale = dec.get_tag_f64_vec(Tag::ModelPixelScaleTag).map_err(e)?;
-    let tie = dec.get_tag_f64_vec(Tag::ModelTiepointTag).map_err(e)?;
-    if scale.len() < 2 || tie.len() < 6 || (scale[0] - scale[1]).abs() > 1e-9 {
-        return Err(Error::format("GeoTIFF", "unsupported georeferencing"));
+impl From<skimap_common::geotiff::AnyRaster> for Raster<f32> {
+    fn from(a: skimap_common::geotiff::AnyRaster) -> Self {
+        Raster {
+            w: a.width,
+            h: a.height,
+            cell: a.transform.pixel_width,
+            origin_x: a.transform.origin_x,
+            origin_y: a.transform.origin_y,
+            data: a.data,
+        }
     }
-    let keys = dec
-        .get_tag_u16_vec(Tag::GeoKeyDirectoryTag)
-        .unwrap_or_default();
-    let epsg = keys
-        .get(4..)
-        .unwrap_or_default()
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .find(|k| k[0] == 3072 && k[1] == 0)
-        .map(|k| k[3]);
-    let nodata: Option<f64> = match dec.find_tag(Tag::GdalNodata) {
-        Ok(Some(v)) => v.into_string().ok().and_then(|s| {
-            s.trim_matches(|c: char| c == '\0' || c.is_whitespace())
-                .parse::<f64>()
-                .ok()
-        }),
-        _ => None,
-    };
-    let data: Vec<f32> = match dec.read_image().map_err(e)? {
-        DecodingResult::U8(v) => v.into_iter().map(f32::from).collect(),
-        DecodingResult::U16(v) => v.into_iter().map(f32::from).collect(),
-        DecodingResult::I16(v) => v.into_iter().map(f32::from).collect(),
-        DecodingResult::I32(v) => v.into_iter().map(|x| x as f32).collect(),
-        DecodingResult::F32(v) => v,
-        DecodingResult::F64(v) => v.into_iter().map(|x| x as f32).collect(),
-        _ => return Err(Error::format("GeoTIFF", "unsupported sample type")),
-    };
-    let nd = nodata.filter(|v| v.is_finite()).map(|v| v as f32);
-    let data = data
-        .into_iter()
-        .map(|v| {
-            if !v.is_finite() || nd == Some(v) {
-                f32::NAN
-            } else {
-                v
-            }
-        })
-        .collect();
-    Ok(ReadRaster {
-        raster: Raster {
-            w: w as usize,
-            h: h as usize,
-            cell: scale[0],
-            origin_x: tie[3] - tie[0] * scale[0],
-            origin_y: tie[4] + tie[1] * scale[1],
-            data,
-        },
-        epsg,
-    })
+}
+
+/// Reads a single-band GeoTIFF of any common sample type and CRS (GDAL / rasterio outputs
+/// of the oracle, our own files) with `skimap_common::geotiff::read_any`: values as `f32`,
+/// no-data as `NaN`.
+pub fn read(path: &Path) -> Result<Raster<f32>> {
+    Ok(skimap_common::geotiff::read_any(path)?.into())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Cursor;
 
     #[test]
     fn u8_round_trip() {
@@ -272,14 +208,21 @@ mod tests {
         };
         let mut buf = Cursor::new(Vec::new());
         encode_u8(&mut buf, &r).unwrap();
-        let back = decode_any(buf.get_ref()).unwrap();
-        assert_eq!(back.epsg, Some(2154));
-        assert_eq!((back.raster.w, back.raster.h), (3, 2));
-        assert_eq!(back.raster.origin_x, 997_999.75);
-        assert_eq!(back.raster.origin_y, 6_426_000.25);
-        assert_eq!(back.raster.data[..3], [1.0, 2.0, 3.0]);
-        assert!(back.raster.data[3].is_nan());
-        assert_eq!(back.raster.data[4], 0.0);
+        let any = skimap_common::geotiff::decode_any(buf.get_ref()).unwrap();
+        assert_eq!(any.epsg, Some(2154));
+        assert_eq!(any.crs, Some(Crs::Lambert93));
+        let back = Raster::from(any);
+        assert_eq!((back.w, back.h), (3, 2));
+        assert_eq!(back.origin_x, 997_999.75);
+        assert_eq!(back.origin_y, 6_426_000.25);
+        assert_eq!(back.data[..3], [1.0, 2.0, 3.0]);
+        assert!(back.data[3].is_nan());
+        assert_eq!(back.data[4], 0.0);
+        // The same file as classes: UInt8 with its no-data value.
+        let g = skimap_common::geotiff::decode_u8(buf.get_ref()).unwrap();
+        assert_eq!(g.data(), &[1u8, 2, 3, 255, 0, 2]);
+        assert_eq!(g.nodata(), Some(&CLASS_NODATA));
+        assert_eq!(g.crs(), Crs::Lambert93);
     }
 
     #[test]
@@ -294,7 +237,7 @@ mod tests {
         };
         let mut buf = Cursor::new(Vec::new());
         skimap_common::geotiff::encode_f32(&mut buf, &r.to_grid()).unwrap();
-        let back = decode_any(buf.get_ref()).unwrap().raster;
+        let back = Raster::from(skimap_common::geotiff::decode_any(buf.get_ref()).unwrap());
         assert!(back.same_grid(&r));
         assert_eq!(back.data[0], 1.5);
         assert!(back.data[1].is_nan());

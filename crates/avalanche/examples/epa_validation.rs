@@ -53,7 +53,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|f| dir.join(f))
         .find(|p| p.exists())
         .ok_or("build the avalanche-exposure layer first")?;
-    let rr = raster::read_any(&path)?.raster;
+    let rr = raster::read(&path)?;
     let classes = rr.with_data(
         rr.data
             .iter()

@@ -1155,45 +1155,6 @@ impl SnowMap {
 }
 
 // ---------------------------------------------------------------------------------------
-// Avalanche exposure (P16–P18)
-
-/// Reads a UInt8 class GeoTIFF (the `avalanche-exposure` classes: Lambert-93, square
-/// cells, `GDAL_NODATA` 255). `skimap_common::geotiff` reads Float32 only.
-pub fn read_class_u8(path: &Path) -> Result<Grid<u8>> {
-    use tiff::decoder::{Decoder, DecodingResult, Limits};
-    use tiff::tags::Tag;
-    let bytes = std::fs::read(path).map_err(|source| Error::Io {
-        path: path.to_owned(),
-        source,
-    })?;
-    let e = |m: tiff::TiffError| Error::format(path, m);
-    let mut dec = Decoder::new(std::io::Cursor::new(bytes))
-        .map_err(e)?
-        .with_limits(Limits::unlimited());
-    let (w, h) = dec.dimensions().map_err(e)?;
-    let scale = dec.get_tag_f64_vec(Tag::ModelPixelScaleTag).map_err(e)?;
-    let tie = dec.get_tag_f64_vec(Tag::ModelTiepointTag).map_err(e)?;
-    if scale.len() < 2 || tie.len() < 6 || (scale[0] - scale[1]).abs() > 1e-9 {
-        return Err(Error::format(path, "georeferencing tags"));
-    }
-    let origin_x = tie[3] - tie[0] * scale[0];
-    let origin_y = tie[4] + tie[1] * scale[1];
-    let data = match dec.read_image().map_err(e)? {
-        DecodingResult::U8(v) => v,
-        _ => return Err(Error::format(path, "not a UInt8 raster")),
-    };
-    let gt = skimap_common::grid::GeoTransform::north_up(origin_x, origin_y, scale[0]);
-    Ok(Grid::from_vec(
-        w as usize,
-        h as usize,
-        gt,
-        skimap_common::crs::Crs::Lambert93,
-        data,
-    )?
-    .with_nodata(255))
-}
-
-// ---------------------------------------------------------------------------------------
 // Avalanche paths (P20)
 
 /// Historic avalanche paths (CLPA) of the site and the length of each piste inside them.

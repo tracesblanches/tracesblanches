@@ -14,7 +14,6 @@ pipeline = [
     "skimap-common/download",
     "skimap-common/geotiff",
     "dep:skimap-terrain",
-    "dep:skimap-avalanche",
     "dep:skimap-zones",
     "dep:chrono",
     "dep:rayon",
@@ -34,7 +33,6 @@ sha2.workspace = true
 thiserror.workspace = true
 # Pipeline only.
 skimap-terrain = { workspace = true, optional = true }
-skimap-avalanche = { workspace = true, optional = true }
 skimap-zones = { workspace = true, optional = true }
 chrono = { workspace = true, optional = true }
 rayon = { workspace = true, optional = true }

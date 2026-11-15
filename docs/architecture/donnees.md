@@ -41,7 +41,7 @@ Chaque couche écrit `<couche>.meta.json` selon un seul schéma, `common::meta::
 
 Changements par rapport aux schémas propres à chaque crate (phase B) : `path` → `name` et `valid_at` → `valid_from` (osm, refuges) ; `license` → `licence`, `data_date` → `edition` (zones, coverage) ; `valid_for` → `validity` (terrain, snow) ; `properties` de couche → `properties` du fichier GeoJSON (zones, coverage) ; `files` en objets au lieu de lignes de texte (meteo, status, avalanche) ; voice : `valid_until` (texte) → `validity`, `generated_at` à la seconde, ajout de `tickets`, `files` (`manifest.json`, `clips/<id>.opus`), `parameters` (voix, modèle, graine, débit Opus) et `stats` (clips par sorte, noms, octets, durée, temps de génération). Les fichiers de données sont inchangés octet pour octet, sauf : fin de ligne finale ajoutée aux JSON de meteo, status, avalanche et zones ; ordre des entités de `crossings.geojson` (P20 lit maintenant la couche `pistes`, mêmes 77 tronçons). Les GeoTIFF sont identiques pixel par pixel ; leurs octets compressés diffèrent selon le binaire (`skimap` lie le moteur zlib-rs de `zip` à flate2, l'exemple de la crate terrain miniz_oxide).
 
-GeoTIFF Float32 : `common::geotiff` (fonction `geotiff`), lecture et écriture, partagé par terrain et snow.
+GeoTIFF : `common::geotiff` (fonction `geotiff`) : Float32 en lecture et écriture (terrain, snow), UInt8 en lecture (`read_u8` : classes d'exposition aux avalanches, lues par avalanche, assist, pack), lecture tolérante de tout type d'échantillon et de toute projection (`read_any` : sorties GDAL de l'oracle AutoATES). Les crates n'embarquent plus leur propre lecteur TIFF.
 
 ## Sites
 

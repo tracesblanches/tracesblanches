@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use super::raster::{Raster, read_any};
+use super::raster::{Raster, read};
 use super::{Model, class, exposure_classes, flowpy};
 use crate::error::{Error, Result};
 
@@ -154,7 +154,7 @@ impl OracleRun {
     }
 
     fn read(&self, p: &Path) -> Result<Raster<f32>> {
-        Ok(read_any(&self.dir.join(p))?.raster)
+        read(&self.dir.join(p))
     }
 
     /// PRA raster `pra_<scenario>_<name>.tif`.
@@ -174,7 +174,7 @@ impl OracleRun {
                 {
                     let s = f.file_name().to_string_lossy().into_owned();
                     if s.ends_with(&format!("_{name}.tif")) {
-                        return Ok(read_any(&f.path())?.raster);
+                        return read(&f.path());
                     }
                 }
             }

@@ -2140,7 +2140,6 @@ dependencies = [
  "skimap-zones",
  "tempfile",
  "thiserror",
- "tiff",
 ]
 
 [[package]]
@@ -2328,7 +2327,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "skimap-avalanche",
  "skimap-common",
  "skimap-terrain",
  "skimap-zones",

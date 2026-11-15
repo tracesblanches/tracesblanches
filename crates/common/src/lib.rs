@@ -13,7 +13,7 @@
 //! - [`meta`]: `<layer>.meta.json` schema shared by every layer.
 //! - [`output`]: atomic JSON / GeoJSON / bytes writers.
 //! - `download` (feature `download`): cached, rate-limited HTTP downloader.
-//! - `geotiff` (feature `geotiff`): single-band Float32 GeoTIFF reader and writer.
+//! - `geotiff` (feature `geotiff`): single-band GeoTIFF: Float32 read and write, UInt8 read, lenient read of any sample type and CRS.
 
 pub mod config;
 pub mod crs;

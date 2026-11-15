@@ -31,7 +31,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let layout = Config::from_env()?.layout();
     let dir = layout.layer_dir(s, exposure::LAYER)?;
     let read = |name: &str| -> Result<raster::Raster<f32>, Box<dyn std::error::Error>> {
-        Ok(raster::read_any(&dir.join("inputs").join(format!("{name}_{cell}m.tif")))?.raster)
+        Ok(raster::read(
+            &dir.join("inputs").join(format!("{name}_{cell}m.tif")),
+        )?)
     };
     let inputs = Inputs {
         dem: read("dem")?,

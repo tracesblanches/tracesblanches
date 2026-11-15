@@ -230,7 +230,9 @@ impl SiteData {
         let edir = dir("avalanche-exposure")?;
         add_sources(&edir, "avalanche-exposure");
         let exposure = keep(
-            crate::layers::read_class_u8(&edir.join("exposure_5m.tif")),
+            // UInt8 classes, Lambert-93, no data 255 (`avalanche-exposure`).
+            skimap_common::geotiff::read_u8(&edir.join("exposure_5m.tif"))
+                .map_err(crate::error::Error::from),
             "exposition aux avalanches",
             &mut missing,
         );

@@ -24,8 +24,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dl = Downloader::from_config(&cfg)?;
     let dir = layout.layer_dir(s, exposure::LAYER)?.join("inputs");
     let inputs = Inputs {
-        dem: raster::read_any(&dir.join("dem_5m.tif"))?.raster,
-        canopy: raster::read_any(&dir.join("canopy_5m.tif"))?.raster,
+        dem: raster::read(&dir.join("dem_5m.tif"))?,
+        canopy: raster::read(&dir.join("canopy_5m.tif"))?,
     };
     let body = std::fs::read(layout.layer_dir(s, "pistes")?.join("pistes.geojson"))?;
     let lines = historic::pistes::from_pistes_geojson(&body)?;

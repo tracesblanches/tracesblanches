@@ -459,24 +459,11 @@ pub fn read_exposure_grid(
             path,
         });
     }
-    let r = raster::read_any(&path)?;
-    if r.epsg != Some(2154) {
+    let g = skimap_common::geotiff::read_u8(&path)?;
+    if g.crs() != skimap_common::crs::Crs::Lambert93 {
         return Err(Error::format(path.display().to_string(), "not Lambert-93"));
     }
-    let g = r.raster;
-    let gt = skimap_common::grid::GeoTransform::north_up(g.origin_x, g.origin_y, g.cell);
-    let data = g
-        .data
-        .iter()
-        .map(|v| if v.is_nan() { class::NODATA } else { *v as u8 })
-        .collect();
-    Ok(skimap_common::grid::Grid::from_vec(
-        g.w,
-        g.h,
-        gt,
-        skimap_common::crs::Crs::Lambert93,
-        data,
-    )?)
+    Ok(g.with_nodata(class::NODATA))
 }
 
 #[cfg(test)]

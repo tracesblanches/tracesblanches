@@ -75,8 +75,8 @@ pub struct RasterSpec {
 pub enum Read {
     /// Float32 (`skimap_common::geotiff`).
     Float32,
-    /// Any sample type of the avalanche crate (`exposure::raster::read_any`: UInt8 class
-    /// rasters, 255 no data), as Float32 with NaN.
+    /// UInt8 class raster (`skimap_common::geotiff::read_u8`: avalanche exposure, 255 no
+    /// data), as Float32 with NaN.
     AvalancheClasses,
 }
 
@@ -313,12 +313,18 @@ pub fn read_grid(spec: &RasterSpec, src: &Path) -> Result<Grid<f32>> {
     match spec.read {
         Read::Float32 => Ok(skimap_common::geotiff::read_f32(src)?),
         Read::AvalancheClasses => {
-            let r = skimap_avalanche::exposure::raster::read_any(src)
-                .map_err(|e| Error::Pack(format!("{}: {e}", src.display())))?;
-            if r.epsg != Some(2154) {
+            let g = skimap_common::geotiff::read_u8(src)?;
+            if g.crs() != Crs::Lambert93 {
                 return Err(Error::Pack(format!("{}: not Lambert-93", src.display())));
             }
-            Ok(r.raster.to_grid())
+            let nd = g.nodata().copied();
+            Ok(g.map(|v| {
+                if Some(*v) == nd {
+                    f32::NAN
+                } else {
+                    f32::from(*v)
+                }
+            }))
         }
     }
 }

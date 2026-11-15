@@ -23,7 +23,7 @@ fn connaught_matches_reference() {
         std::env::var("SKIMAP_AUTOATES_WORKSHOP_RUN")
             .expect("set SKIMAP_AUTOATES_WORKSHOP_RUN to outputs/connaught"),
     );
-    let read = |f: &str| raster::read_any(&dir.join("PRA").join(f)).unwrap().raster;
+    let read = |f: &str| raster::read(&dir.join("PRA").join(f)).unwrap();
     let dem = read("autoATES_v3_DSM_00.tif");
     // The workshop canopy grid is offset by about 1 m from the DSM grid (AOI crop): the
     // reference PRA and runout use the two arrays cell for cell, so do we. (Its ATES
