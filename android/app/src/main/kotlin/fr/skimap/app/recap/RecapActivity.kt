@@ -298,7 +298,8 @@ private fun OutingRow(
     ) {
         Column(Modifier.padding(12.dp)) {
             Text(s.title, style = MaterialTheme.typography.titleMedium)
-            Text("${s.`when`} · " + "%.1f km".format(Locale.FRANCE, s.distanceKm), style = MaterialTheme.typography.bodyMedium)
+            val source = if (s.kind == "strava") " · Strava" else ""
+            Text("${s.`when`} · " + "%.1f km".format(Locale.FRANCE, s.distanceKm) + source, style = MaterialTheme.typography.bodyMedium)
         }
     }
 }

@@ -6,7 +6,12 @@
 //! An outing is a directory under the app's `plans/`: a day plan (`plan.json`, K9) or a
 //! guided outing (`guided.json`, [`crate::fog`]), with the inputs recorded by the location
 //! service (`inputs.jsonl`) and, when the phone has a barometer, the pressure recorded in
-//! batches ([`PRESSURE_FILE`], one line `epoch_ms hPa` per sample).
+//! batches ([`PRESSURE_FILE`], one line `epoch_ms hPa` per sample). The outings imported
+//! from the Strava export (V15, [`crate::community::strava_import`] into the same
+//! `plans/`) are in the same history: their `outing.json` (`source` `strava`) gives the
+//! distance, times and climb; there is no plan, no forecast and no barometer for them.
+//! « Mes sorties » (module community) reads this history for the challenges: one history,
+//! one storage.
 //!
 //! Estimated time: the group's time for the day when the plan had one (C11), else the
 //! model time (C5); the actual time is from the first to the last fix. Conditions: the
@@ -371,6 +376,54 @@ struct Loaded {
     plan: Option<DayPlan>,
     pack_dir: Option<PathBuf>,
     fixes: Vec<(i64, LonLat)>,
+    /// Climb of an imported outing, as its `outing.json` says (no barometer, no pack).
+    imported_gain_m: Option<f64>,
+}
+
+impl Loaded {
+    /// Started: at least two fixes, or imported with a track.
+    fn started(&self) -> bool {
+        self.fixes.len() >= 2 || self.summary.kind == STRAVA
+    }
+}
+
+/// Kind of an outing imported from the Strava export.
+const STRAVA: &str = "strava";
+
+/// An outing imported from the Strava export into `dir` (its `outing.json`).
+fn load_imported(dir: &Path) -> Option<Loaded> {
+    let json = std::fs::read_to_string(dir.join(skimap_collab::track::OUTING_FILE)).ok()?;
+    let o: skimap_collab::track::Outing = serde_json::from_str(&json).ok()?;
+    if o.source != STRAVA || o.track.len() < 2 {
+        return None;
+    }
+    let start_ms = o.start.map_or(0, |t| t.timestamp_millis());
+    Some(Loaded {
+        summary: OutingSummary {
+            dir: dir.display().to_string(),
+            kind: STRAVA.into(),
+            site_id: None,
+            title: o.name,
+            date: o
+                .start
+                .map(|t| skimap_core::ephemeris::local_time(t).date().to_string())
+                .unwrap_or_default(),
+            when: if start_ms > 0 {
+                when_fr(start_ms)
+            } else {
+                String::new()
+            },
+            start_ms,
+            distance_km: o.distance_m / 1000.0,
+            moving_s: o.moving_s,
+            elapsed_s: o.elapsed_s,
+            estimated_s: None,
+        },
+        plan: None,
+        pack_dir: None,
+        fixes: Vec::new(),
+        imported_gain_m: Some(o.gain_m),
+    })
 }
 
 fn when_fr(ms: i64) -> String {
@@ -384,6 +437,11 @@ fn when_fr(ms: i64) -> String {
 }
 
 fn load(dir: &Path) -> Option<Loaded> {
+    if !dir.join(INPUTS_FILE).is_file()
+        && let Some(l) = load_imported(dir)
+    {
+        return Some(l);
+    }
     let inputs = read_inputs(&dir.join(INPUTS_FILE)).ok()?;
     let fixes = fixes(&inputs);
     let (d, moving, elapsed) = measure(&fixes);
@@ -461,11 +519,12 @@ fn load(dir: &Path) -> Option<Loaded> {
         plan,
         pack_dir,
         fixes,
+        imported_gain_m: None,
     })
 }
 
-/// The outings under `plans_root` that were started (at least two fixes), the latest
-/// first.
+/// The outings under `plans_root` that were started (at least two fixes) or imported
+/// from Strava, the latest first.
 #[uniffi::export]
 pub fn outing_history(plans_root: String) -> Vec<OutingSummary> {
     let Ok(rd) = std::fs::read_dir(&plans_root) else {
@@ -475,7 +534,7 @@ pub fn outing_history(plans_root: String) -> Vec<OutingSummary> {
         .filter_map(Result::ok)
         .filter(|e| e.path().is_dir())
         .filter_map(|e| load(&e.path()))
-        .filter(|l| l.fixes.len() >= 2)
+        .filter(Loaded::started)
         .map(|l| l.summary)
         .collect();
     v.sort_by_key(|o| std::cmp::Reverse(o.start_ms));
@@ -556,6 +615,11 @@ pub fn outing_recap(
         ));
         delta_fr(s.elapsed_s, e)
     });
+    if alt.is_none()
+        && let Some(g) = l.imported_gain_m
+    {
+        figures.push(format!("Dénivelé : {g:.0} m en montée (export Strava)"));
+    }
     if let Some(a) = &alt {
         let src = match a.source {
             AltitudeSource::BarometerAndRelief => "baromètre corrigé par le relief",
@@ -633,7 +697,7 @@ pub fn outing_recap(
         figures,
         comparisons,
         conditions,
-        ascent_m: alt.as_ref().map(|a| a.ascent_m),
+        ascent_m: alt.as_ref().map(|a| a.ascent_m).or(l.imported_gain_m),
         altitude_source: alt.as_ref().map(|a| a.source),
         text,
         spoken,
@@ -871,5 +935,61 @@ mod tests {
         .unwrap();
         assert_eq!(n, 1);
         assert!(second.exists());
+    }
+
+    #[test]
+    fn strava_imports_are_in_the_same_history() {
+        let root = tempfile::tempdir().unwrap();
+        let app = outing(root.path(), "a", T0, 400);
+        // « Mes sorties » summarises an app outing beside its trace: still one outing.
+        let summary = |id: &str, source: &str, start_ms: i64| skimap_collab::track::Outing {
+            id: id.into(),
+            source: source.into(),
+            name: "Risoux".into(),
+            activity: "Nordic Ski".into(),
+            start: DateTime::<Utc>::from_timestamp_millis(start_ms),
+            elapsed_s: 8400.0,
+            moving_s: 7920.0,
+            distance_m: 21_400.0,
+            gain_m: 310.0,
+            track: vec![[6.0, 46.6], [6.01, 46.61]],
+        };
+        let write = |dir: &Path, o: &skimap_collab::track::Outing| {
+            std::fs::create_dir_all(dir).unwrap();
+            std::fs::write(
+                dir.join(skimap_collab::track::OUTING_FILE),
+                serde_json::to_string(o).unwrap(),
+            )
+            .unwrap();
+        };
+        write(&app, &summary("a", "skimap", T0));
+        let strava = root.path().join("strava-103");
+        write(&strava, &summary("strava-103", "strava", T0 + 86_400_000));
+        // Interrupted import (no track): not an outing.
+        let mut empty = summary("strava-104", "strava", T0);
+        empty.track.clear();
+        write(&root.path().join("strava-104"), &empty);
+        let h = outing_history(root.path().display().to_string());
+        assert_eq!(h.len(), 2, "{h:?}");
+        assert_eq!(h[0].dir, strava.display().to_string());
+        assert_eq!(h[0].kind, "strava");
+        assert_eq!(h[0].title, "Risoux");
+        assert!((h[0].distance_km - 21.4).abs() < 1e-9);
+        assert_eq!(h[1].kind, "fog");
+        let work = tempfile::tempdir().unwrap();
+        let r = outing_recap(
+            strava.display().to_string(),
+            root.path().display().to_string(),
+            work.path().display().to_string(),
+        )
+        .unwrap();
+        assert!(r.text.contains("Distance : 21,4 km"), "{}", r.text);
+        assert!(
+            r.text
+                .contains("Dénivelé : 310 m en montée (export Strava)"),
+            "{}",
+            r.text
+        );
+        assert_eq!(r.ascent_m, Some(310.0));
     }
 }

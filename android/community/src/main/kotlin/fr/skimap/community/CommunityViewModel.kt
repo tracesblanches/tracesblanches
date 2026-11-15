@@ -35,9 +35,8 @@ data class ReportState(
     val area: AreaContext? = null,
 )
 
-/** State of « Mes sorties ». */
+/** State of « Défis et import Strava »: challenges and Strava import (the outings are the app's history). */
 data class OutingsState(
-    val outings: List<Outing> = emptyList(),
     val challenges: List<Challenge> = emptyList(),
     val loading: Boolean = true,
     val importing: Boolean = false,
@@ -180,27 +179,24 @@ class CommunityViewModel(
         }
     }
 
-    /** « Mes sorties »: outings and challenges, on the phone. */
+    /** « Défis et import Strava »: the challenges, computed on the phone from the app's history of the outings. */
     fun openOutings() {
         viewModelScope.launch {
-            val (outs, ch) =
+            val ch =
                 withContext(io) {
-                    val roots = deps.core.outingRoots()
+                    val roots = listOf(deps.core.outingsRoot())
                     val area = deps.core.area(siteId)
-                    deps.core.outings(roots) to deps.core.challenges(roots, deps.routesJson(), listOfNotNull(area), deps.now())
+                    deps.core.challenges(roots, deps.routesJson(), listOfNotNull(area), deps.now())
                 }
-            mutableOutings.update { it.copy(outings = outs, challenges = ch, loading = false) }
+            mutableOutings.update { it.copy(challenges = ch, loading = false) }
         }
     }
 
-    /** Imports the Strava archive the user picked (copied to [zip]), then lists again. */
-    fun importStrava(
-        zip: File,
-        outRoot: File,
-    ) {
+    /** Imports the Strava archive the user picked (copied to [zip]) into the history, then computes again. */
+    fun importStrava(zip: File) {
         mutableOutings.update { it.copy(importing = true, imported = null, importError = null) }
         viewModelScope.launch {
-            val r = withContext(io) { runCatching { deps.core.importStrava(zip, outRoot) }.also { zip.delete() } }
+            val r = withContext(io) { runCatching { deps.core.importStrava(zip, deps.core.outingsRoot()) }.also { zip.delete() } }
             mutableOutings.update {
                 it.copy(importing = false, imported = r.getOrNull(), importError = r.exceptionOrNull()?.message)
             }

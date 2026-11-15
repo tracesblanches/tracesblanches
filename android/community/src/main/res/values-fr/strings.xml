@@ -39,11 +39,9 @@
     <string name="left_hours">encore %1$d h</string>
     <string name="left_days">encore %1$d j</string>
 
-    <string name="outings_title">Mes sorties</string>
+    <string name="outings_title">Défis et import Strava</string>
     <string name="outings_loading">Calcul sur le téléphone…</string>
-    <string name="outings_list">Sorties</string>
-    <string name="outings_none">Pas encore de sortie.</string>
-    <string name="outing_line">%1$.1f km · %2$d min en mouvement · %3$d m de montée</string>
+    <string name="outings_in_history">Vos sorties, tracées par l\'application ou importées de Strava, sont dans « Bilans des sorties ».</string>
     <string name="challenges_title">Défis</string>
     <string name="challenge_route">%1$s en entier</string>
     <string name="challenge_domain">Toutes les pistes de %1$s</string>

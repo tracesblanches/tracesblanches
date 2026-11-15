@@ -1,9 +1,12 @@
 //! « Mes sorties », challenges and OSM corrections on the phone (V12 #75, V13 #76, V15
 //! #78), over `skimap-collab` (feature `phone`). Coarse calls: one per screen.
 //!
-//! Outings live in directories holding an `outing.json` (imported from Strava) or a
-//! `trace.gpx` (traced by the app, `plans/<day>/`; its `outing.json` is written beside it
-//! at the first listing). The app passes the roots it keeps them in.
+//! Outings live in the app's history (`plans/`, [`crate::recap`]): directories holding an
+//! `outing.json` (imported from Strava, written there by [`strava_import`]) or a
+//! `trace.gpx` (traced by the app; its `outing.json`, the summary with the thinned track
+//! the challenges need, is written beside it at the first reading). The list of the
+//! outings is the app's history ([`crate::recap::outing_history`]); « Mes sorties » only
+//! shows the challenges and the Strava import.
 
 use std::path::Path;
 
@@ -82,25 +85,6 @@ pub fn strava_import(
     })
 }
 
-/// An outing in « Mes sorties ».
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
-pub struct OutingView {
-    /// Identifier.
-    pub id: String,
-    /// `skimap` or `strava`.
-    pub source: String,
-    /// Name.
-    pub name: String,
-    /// Start, ms since the epoch (0: unknown).
-    pub start_ms: i64,
-    /// Distance, km.
-    pub km: f64,
-    /// Moving time, minutes.
-    pub moving_min: f64,
-    /// Climb, m.
-    pub gain_m: f64,
-}
-
 fn outings(roots: &[String]) -> Vec<Outing> {
     let mut out = Vec::new();
     for root in roots {
@@ -117,23 +101,6 @@ fn outings(roots: &[String]) -> Vec<Outing> {
     }
     out.sort_by(|a, b| b.start.cmp(&a.start).then_with(|| a.id.cmp(&b.id)));
     out
-}
-
-/// The outings under `roots`, newest first.
-#[uniffi::export]
-pub fn outings_list(roots: Vec<String>) -> Vec<OutingView> {
-    outings(&roots)
-        .into_iter()
-        .map(|o| OutingView {
-            start_ms: o.start.map_or(0, |t| t.timestamp_millis()),
-            km: o.distance_m / 1000.0,
-            moving_min: o.moving_s / 60.0,
-            gain_m: o.gain_m,
-            id: o.id,
-            source: o.source,
-            name: o.name,
-        })
-        .collect()
 }
 
 /// Kind of challenge.
@@ -377,9 +344,13 @@ mod tests {
         )
         .unwrap();
         let roots = vec![dir.path().join("plans").display().to_string()];
-        let list = outings_list(roots.clone());
+        let list = outings(&roots);
         assert_eq!(list.len(), 1);
-        assert!((list[0].km - 1.995).abs() < 0.01, "{}", list[0].km);
+        assert!(
+            (list[0].distance_m - 1995.0).abs() < 10.0,
+            "{}",
+            list[0].distance_m
+        );
         let now = "2026-01-20T00:00:00Z"
             .parse::<DateTime<Utc>>()
             .unwrap()

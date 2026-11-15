@@ -35,8 +35,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import java.text.DateFormat
-import java.util.Date
 
 /** Touch targets usable with gloves (the app's GloveTarget). */
 val GloveTarget = 72.dp
@@ -239,14 +237,16 @@ private fun ChallengeRow(c: Challenge) {
     }
 }
 
-/** « Mes sorties » (V13, V15): challenges, outings, import of the Strava export. */
+/**
+ * « Défis et import Strava » (V13, V15): challenges and import of the Strava export. The outings
+ * themselves are the app's history (« Bilans des sorties »), where the import puts them.
+ */
 @Composable
 fun OutingsScreen(
     state: OutingsState,
     onImport: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val res = LocalResources.current
     Column(
         modifier.verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -270,22 +270,7 @@ fun OutingsScreen(
             it.errors.take(MAX_ERRORS_SHOWN).forEach { e -> Text(e, style = MaterialTheme.typography.bodySmall) }
         }
         state.importError?.let { Text(stringResource(R.string.strava_error, it), color = MaterialTheme.colorScheme.error) }
-        Section(stringResource(R.string.outings_list))
-        if (!state.loading && state.outings.isEmpty()) Text(stringResource(R.string.outings_none))
-        val fmt = DateFormat.getDateInstance(DateFormat.MEDIUM)
-        state.outings.forEach { o ->
-            Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                Text(
-                    (if (o.startMs > 0) fmt.format(Date(o.startMs)) + " · " else "") + o.name.ifBlank { o.id },
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    res.getString(R.string.outing_line, o.km, o.movingMin.toInt(), o.gainM.toInt()) +
-                        if (o.source == "strava") " · Strava" else "",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-        }
+        Text(stringResource(R.string.outings_in_history), style = MaterialTheme.typography.bodyMedium)
     }
 }
 

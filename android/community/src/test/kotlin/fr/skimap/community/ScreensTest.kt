@@ -34,12 +34,6 @@ class FakeCore : CommunityCore {
         outRoot: File,
     ) = ImportSummary(3, 0, 1, 2, 3, 3, emptyList())
 
-    override fun outings(roots: List<File>) =
-        listOf(
-            Outing("strava-103", "strava", "Risoux", 1_768_035_600_000, 21.4, 132.0, 310.0),
-            Outing("2026-01-05-1", "skimap", "Boucle des Lacs", 1_767_600_000_000, 12.9, 95.0, 412.0),
-        )
-
     override fun challenges(
         roots: List<File>,
         routesJson: String,
@@ -83,7 +77,7 @@ class FakeCore : CommunityCore {
 
     override fun area(siteId: String?) = AreaContext("cervieres", "Cervières", doubleArrayOf(6.66, 44.77, 6.86, 44.92), null, null)
 
-    override fun outingRoots() = emptyList<File>()
+    override fun outingsRoot() = File("plans")
 }
 
 @RunWith(RobolectricTestRunner::class)
@@ -149,7 +143,6 @@ class ScreensTest {
         val core = FakeCore()
         val state =
             OutingsState(
-                outings = core.outings(emptyList()),
                 challenges = core.challenges(emptyList(), "", emptyList(), now),
                 loading = false,
                 imported = core.importStrava(File("x"), File("y")),
@@ -159,6 +152,11 @@ class ScreensTest {
         capture("outings_fr")
         rule.onNodeWithTag(CommunityTags.IMPORT).performScrollTo().performClick()
         assertEquals(1, imports)
+        // No list of outings here: they are the app's history.
+        rule
+            .onNodeWithText("Vos sorties, tracées par l'application ou importées de Strava, sont dans « Bilans des sorties ».")
+            .performScrollTo()
+            .assertIsDisplayed()
     }
 
     @Test
