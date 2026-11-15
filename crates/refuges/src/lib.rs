@@ -20,9 +20,11 @@
 pub mod camptocamp;
 pub mod error;
 pub mod fiche;
+pub mod journal;
 pub mod links;
 pub mod osm;
 pub mod privacy;
+pub mod refresh;
 pub mod refuges_info;
 
 use std::collections::{BTreeMap, HashMap};
@@ -37,6 +39,7 @@ use skimap_common::output::{feature, point, write_geojson, write_json};
 use skimap_common::site::Site;
 
 pub use error::{RefugesError, Result};
+pub use refresh::refresh;
 
 /// Name of this crate, checked by the crate smoke test.
 pub const CRATE: &str = env!("CARGO_PKG_NAME");
@@ -189,7 +192,17 @@ pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<Refuge
     write_geojson(&dir.join("camptocamp.geojson"), &c2c_features)?;
 
     // Practical cards (H1): refuges.info geometry + Camptocamp properties, CC BY-SA 4.0.
-    let cards = fiche::fiches(&ri.points, &ri_fr, &c2c.waypoints);
+    let mut cards = fiche::fiches(&ri.points, &ri_fr, &c2c.waypoints);
+    let read_at = ri
+        .incremental
+        .as_ref()
+        .unwrap_or(&ri.full)
+        .meta
+        .fetched_at_unix;
+    let read_at = skimap_common::meta::unix_to_rfc3339(read_at as i64);
+    for (_, c) in &mut cards {
+        c.checked_at = read_at.clone();
+    }
     let card_features: Vec<Value> = cards
         .iter()
         .map(|(pos, c)| feature(point(*pos), serde_json::to_value(c).unwrap_or(Value::Null)))

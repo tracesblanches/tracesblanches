@@ -128,6 +128,10 @@ pub struct Fiche {
     pub last_comment_date: Option<String>,
     /// Commune française au point (geo.api.gouv.fr).
     pub in_france: bool,
+    /// When the sources of the card were read (RFC 3339): refuges.info snapshot or update.
+    pub checked_at: Option<String>,
+    /// Last time the card changed (set by [`crate::refresh`], from `journal.jsonl`).
+    pub changed_at: Option<String>,
     /// Licence of the card.
     pub licence: String,
     /// Attribution to display with the card.
@@ -307,6 +311,8 @@ pub fn fiche(p: &Point, c2c: &[&Waypoint], in_france: bool) -> Fiche {
         refuges_info_modified: modified,
         last_comment_date: comment,
         in_france,
+        checked_at: None,
+        changed_at: None,
         licence: "CC BY-SA 4.0".to_owned(),
         attribution,
     }

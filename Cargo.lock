@@ -2935,6 +2935,7 @@ dependencies = [
 name = "skimap-refuges"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "geo",
  "serde",
  "serde_json",
