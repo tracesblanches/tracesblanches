@@ -54,8 +54,8 @@ use skimap_core::graph::{Difficulty, PisteGraph};
 use skimap_core::routing::Style;
 use skimap_core::turnaround::{self, TurnaroundParams};
 use skimap_voice::Event;
-use skimap_voice::bank::{Announcement, Change, Side};
-use skimap_voice::clips::Fixed;
+use skimap_voice::bank::{Announcement, Change, Side, ZoneRule};
+use skimap_voice::clips::{DayMonth, Fixed};
 use skimap_voice::pack::VoiceManifest;
 use skimap_voice::quantity::Clock;
 
@@ -87,6 +87,11 @@ pub const AVALANCHE_MERGE_M: f64 = 500.0;
 pub const NO_NETWORK_MERGE_M: f64 = 200.0;
 /// A historic avalanche path is announced this far before it, metres.
 pub const AVALANCHE_LEAD_M: f64 = 100.0;
+/// Distance at which a protected zone is announced ahead, metres.
+pub const ZONE_LEAD_M: f64 = 100.0;
+/// Protected zones are tested every this many samples of 10 m along a route, and at every
+/// sample where two tests disagree.
+const ZONE_STEP: usize = 5;
 /// Text of every plan: never « sans danger ».
 pub const NEVER_SAFE: &str = "Ce plan n'est jamais une garantie : informations indicatives, lisez le BERA et les sources officielles, et décidez sur place.";
 
@@ -659,10 +664,170 @@ fn runs(
 
 /// What [`announcements`] reads besides the route.
 pub struct Hazards<'a> {
-    /// Layers of the day (zones without network, historic avalanche paths, BERA).
+    /// Layers of the day (zones without network, historic avalanche paths, BERA, zones and
+    /// rules).
     pub data: &'a SiteData,
     /// Day.
     pub date: NaiveDate,
+    /// Protected zones already told for the plan: the morning says them for the loop (A7,
+    /// « Votre itinéraire traverse une zone protégée. »). `None`: no protected zone said
+    /// along the route (the loop); `Some(zones)`: the route's protected zones that are not
+    /// among them, at their entry (plans B, routes computed during the outing, X11).
+    pub zones_told: Option<&'a BTreeSet<String>>,
+    /// Stretch of the route searched for those protected zones, metres (the rest is the
+    /// loop's: before the divergence of a plan B, after its return).
+    pub zones_range: (f64, f64),
+}
+
+/// A protected zone crossed by a route, with its rules for a day outing (C8 at noon of the
+/// day, as A7 says them: zones that are not a country, department, canton or commune;
+/// rules of access, leaving the routes and fire), and the stretches of the route inside it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ZoneCrossing {
+    /// Zone identifier.
+    pub id: String,
+    /// Zone name.
+    pub name: String,
+    /// Rules said.
+    pub rules: Vec<ZoneRule>,
+    /// End of the period of the first rule, if seasonal.
+    pub until: Option<DayMonth>,
+    /// Stretches along the route, metres (closer than [`NO_NETWORK_MERGE_M`] merged).
+    pub runs: Vec<(f64, f64)>,
+}
+
+/// Protected zones crossed by a line (sampled every 10 m) between the distances `range`
+/// on a day; nothing without the zones layer. The zones of the layer that are not a country, department, canton or
+/// commune are tested along the line; the rules of each zone crossed are those of C8 at
+/// its first point on the line (one evaluation per zone: the big zones are not tested at
+/// every point).
+pub fn protected_zones(
+    line: &[LonLat],
+    range: (f64, f64),
+    data: &SiteData,
+    date: NaiveDate,
+) -> Vec<ZoneCrossing> {
+    use skimap_core::zone_eval::Verdict;
+    use skimap_zones::layer::ZoneKind;
+    use skimap_zones::rules::{Period, Topic};
+    let Some((layer, rules)) = &data.zones else {
+        return Vec::new();
+    };
+    let protected: Vec<&skimap_zones::layer::Zone> = layer
+        .zones
+        .iter()
+        .filter(|z| {
+            !matches!(
+                z.kind(),
+                ZoneKind::Country | ZoneKind::Department | ZoneKind::Canton | ZoneKind::Commune
+            )
+        })
+        .collect();
+    // Stretches of the line inside each zone (closer than NO_NETWORK_MERGE_M merged),
+    // and the first point inside: tested every ZONE_STEP samples of 10 m, and at every
+    // sample between two tests that disagree (the boundaries to 10 m; a zone crossed on
+    // less than the step between two tests outside is missed).
+    let samples: Vec<(LonLat, f64, f64)> = {
+        let mut s = 0.0;
+        densify(line, 10.0)
+            .into_iter()
+            .map(|(p, len)| {
+                let x = (p, s, len);
+                s += len;
+                x
+            })
+            .filter(|(_, s, len)| s + len >= range.0 && *s <= range.1)
+            .collect()
+    };
+    // Per zone: its stretches along the line and its first point on it.
+    type Inside = (Vec<(f64, f64)>, Option<LonLat>);
+    let mut inside: Vec<Inside> = vec![(Vec::new(), None); protected.len()];
+    for (k, z) in protected.iter().enumerate() {
+        let at = |i: usize| z.contains(samples[i].0);
+        let mut hits: Vec<usize> = Vec::new();
+        let mut prev: Option<(usize, bool)> = None;
+        let mut i = 0;
+        while i < samples.len() {
+            let here = at(i);
+            if let Some((j, was)) = prev
+                && was != here
+            {
+                hits.extend((j + 1..i).filter(|&m| at(m)));
+            }
+            if here {
+                hits.push(i);
+            }
+            prev = Some((i, here));
+            i += if i + 1 == samples.len() {
+                1
+            } else {
+                ZONE_STEP.min(samples.len() - 1 - i)
+            };
+        }
+        // Between two tests inside, the samples are inside.
+        hits.sort_unstable();
+        hits.dedup();
+        let (runs, first) = &mut inside[k];
+        for w in 0..hits.len() {
+            let m = hits[w];
+            let (p, s, len) = samples[m];
+            first.get_or_insert(p);
+            let filled = w > 0 && m - hits[w - 1] <= ZONE_STEP;
+            match runs.last_mut() {
+                Some(run) if filled || s - run.1 < NO_NETWORK_MERGE_M => run.1 = s + len,
+                _ => runs.push((s, s + len)),
+            }
+        }
+    }
+    let noon = skimap_assist::sun::local_to_utc(date.and_hms_opt(12, 0, 0).expect("noon"));
+    let mut out = Vec::new();
+    for (z, (mut runs, first)) in protected.into_iter().zip(inside) {
+        runs.retain(|(a, b)| b - a >= 30.0);
+        let Some(p) = first.filter(|_| !runs.is_empty()) else {
+            continue;
+        };
+        // Its rules of a day outing, as A7 says them: access, leaving the routes, fire.
+        let ev = skimap_core::zone_eval::evaluate(layer, rules, p, noon);
+        let mut said = Vec::new();
+        let mut until = None;
+        for r in ev
+            .active_rules()
+            .filter(|r| r.zones.iter().any(|id| id == z.id()))
+        {
+            let zr = match (r.topic, r.verdict) {
+                (Topic::Access, Verdict::Forbidden) => ZoneRule::NoEntry,
+                (Topic::Access, Verdict::AvoidRecommended) => ZoneRule::Quiet,
+                (Topic::LeaveRoutes, Verdict::Forbidden | Verdict::ForbiddenInPlaces) => {
+                    ZoneRule::StayOnRoutes
+                }
+                (Topic::Fire, Verdict::Forbidden) => ZoneRule::NoFire,
+                _ => continue,
+            };
+            if !said.contains(&zr) {
+                said.push(zr);
+            }
+            if until.is_none()
+                && let Some(Period::Yearly { to, .. }) = rules.get(&r.rule).map(|x| &x.period)
+            {
+                until = Some(DayMonth {
+                    day: to.day as u8,
+                    month: to.month as u8,
+                });
+            }
+        }
+        if said.is_empty() {
+            continue;
+        }
+        out.push(ZoneCrossing {
+            id: z.id().to_owned(),
+            name: z.props.name.clone(),
+            rules: said,
+            until,
+            runs,
+        });
+    }
+    out.sort_by(|a, b| a.runs[0].0.total_cmp(&b.runs[0].0));
+    out
 }
 
 fn planned(
@@ -686,7 +851,9 @@ fn planned(
 
 /// Planned announcements of a route: the loop summary at the departure, a turn before
 /// every junction that is not obvious, zones without network and historic avalanche paths
-/// ahead (with `hazards`), the arrival.
+/// ahead (with `hazards`), the protected zones not told for the plan
+/// ([`Hazards::zones_told`]), the arrival. The one function of the loop, its plans B and
+/// the routes computed during the outing (X11).
 pub fn announcements(
     g: &PisteGraph,
     c: &Course,
@@ -826,6 +993,39 @@ pub fn announcements(
                 ));
             }
         }
+        if let Some(told) = h.zones_told {
+            // At the first entry of each protected zone not told for the plan: its name,
+            // its rules (no entry: safety, else as a direction).
+            let mut entries: Vec<(f64, f64, ZoneCrossing)> =
+                protected_zones(c.line().points(), h.zones_range, h.data, h.date)
+                    .into_iter()
+                    .filter(|z| !told.contains(&z.id))
+                    .filter_map(|z| z.runs.first().copied().map(|(a, b)| (a, b, z)))
+                    .collect();
+            entries.sort_by(|x, y| x.0.total_cmp(&y.0));
+            for (k, (a, b, z)) in entries.into_iter().enumerate() {
+                let priority = if z.rules.contains(&ZoneRule::NoEntry) {
+                    Priority::Safety
+                } else {
+                    Priority::Direction
+                };
+                out.push(planned(
+                    format!("zone.{k}"),
+                    "protected_zone",
+                    Trigger::At {
+                        s: (a - ZONE_LEAD_M).max(0.0),
+                        until: b,
+                    },
+                    priority,
+                    Event::ProtectedZone {
+                        entered: false,
+                        zone: Some(z.name),
+                        rules: z.rules,
+                        until: z.until,
+                    },
+                ));
+            }
+        }
     }
     out.push(planned(
         "arrival".into(),
@@ -910,8 +1110,20 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
     let legs: Vec<PlanLeg> = s.legs.iter().map(|l| PlanLeg::from(*l)).collect();
     let course = Course::new(g, &legs, &eta)?;
     let junctions = guidance::junctions(g, &course);
-    let hazards = Hazards { data, date };
+    let hazards = Hazards {
+        data,
+        date,
+        zones_told: None,
+        zones_range: (0.0, f64::INFINITY),
+    };
     let anns = announcements(g, &course, &junctions, voice, Some(&hazards), departure);
+    // The plans B say the protected zones the loop does not cross (the morning says the
+    // loop's, A7).
+    let loop_zones: BTreeSet<String> =
+        protected_zones(course.line().points(), (0.0, f64::INFINITY), data, date)
+            .into_iter()
+            .map(|z| z.id)
+            .collect();
     // Limit and turnaround (with the light margin of the morning's group: an hour with
     // children, C11).
     let tp = m
@@ -969,7 +1181,17 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
             }
             // Only what lies after the divergence: the part shared with the loop is the
             // loop's.
-            let mut after = announcements(g, &cb, &jb, voice, Some(&hazards), departure);
+            // Its own part (before, the loop; after a return, the loop again).
+            let back = f
+                .s_rejoin
+                .map_or(f64::INFINITY, |r| cb.length_m() - (course.length_m() - r));
+            let hazards_b = Hazards {
+                data,
+                date,
+                zones_told: Some(&loop_zones),
+                zones_range: (f.s_div, back),
+            };
+            let mut after = announcements(g, &cb, &jb, voice, Some(&hazards_b), departure);
             after.retain(|a| match a.trigger {
                 Trigger::Departure => false,
                 Trigger::At { s, .. } => s >= f.s_div - TURN_LEAD_M,
@@ -1538,7 +1760,7 @@ pub fn write(
         ),
         FileMeta::new(
             "plan_<date>_<demande>_<rang>.trk",
-            "table à plat lue sans copie par le téléphone à chaque position (format SKTRK001, skimap_plan::track) : géométrie de la boucle et de chaque plan B dans le plan local du départ, index en grille de 200 m, points de décision triés, profil de temps",
+            "table à plat lue sans copie par le téléphone à chaque position (format SKTRK002, skimap_plan::track) : géométrie de la boucle et de chaque plan B dans le plan local du départ (un plan B ne garde que sa partie propre et lit dans la boucle le début et la fin qu'il partage avec elle), index en grille de 200 m, points de décision triés, profil de temps",
         ),
     ];
     meta.notes = vec![NEVER_SAFE.into()];
@@ -1568,7 +1790,9 @@ pub fn json_close(a: &Value, b: &Value, tol: f64) -> bool {
 }
 
 /// The flat table the phone follows (E1): the loop and each plan B, computed here once
-/// ([`crate::track`]). Announcements of a plan B before its divergence are the loop's.
+/// ([`crate::track`]). Announcements of a plan B before its divergence are the loop's. A
+/// plan B keeps only its own part and refers to the loop for the legs it shares with it
+/// (X13; the loop's own block is unchanged).
 pub fn track(plan: &DayPlan, g: &PisteGraph) -> Result<crate::track::Track> {
     use crate::track::{RouteTable, Track};
     plan.check_graph(g)?;
@@ -1581,7 +1805,24 @@ pub fn track(plan: &DayPlan, g: &PisteGraph) -> Result<crate::track::Track> {
         .enumerate()
         .map(|(i, a)| (0, i as u32, a))
         .collect();
-    let mut routes = vec![RouteTable::new(0, 0.0, &course, &plane, &loop_anns)];
+    // Legs of the loop each plan B shares at its head and at its tail (the course drops
+    // legs of no length).
+    let real = |legs: &[PlanLeg]| legs.iter().filter(|l| l.length_m() > 1e-6).count();
+    let n = course.legs().len();
+    let shares: Vec<(usize, usize)> = plan
+        .plans_b
+        .iter()
+        .map(|b| {
+            let f = &b.fallback;
+            let head = real(&plan.route.legs[..f.prefix.min(plan.route.legs.len())]);
+            let tail = f.rejoin.map_or(0, |r| {
+                real(&plan.route.legs[r.min(plan.route.legs.len())..])
+            });
+            (head.min(n), tail.min(n))
+        })
+        .collect();
+    let base = RouteTable::new(0, 0.0, &course, &plane, &loop_anns);
+    let mut routes = vec![base];
     for (bi, b) in plan.plans_b.iter().enumerate() {
         let f = &b.fallback;
         if !f.exists() {
@@ -1601,13 +1842,13 @@ pub fn track(plan: &DayPlan, g: &PisteGraph) -> Result<crate::track::Track> {
                 .enumerate()
                 .map(|(i, a)| ((bi + 1) as u32, i as u32, a)),
         );
-        routes.push(RouteTable::new(
-            (bi + 1) as i32,
-            f.s_div,
-            &cb,
-            &plane,
-            &anns,
-        ));
+        let (head, tail) = shares[bi];
+        let id = (bi + 1) as i32;
+        let table = RouteTable::on_loop(
+            &routes[0], &course, id, f.s_div, &cb, &plane, &anns, head, tail,
+        )
+        .unwrap_or_else(|| RouteTable::new(id, f.s_div, &cb, &plane, &anns));
+        routes.push(table);
     }
     Ok(Track { origin, routes })
 }

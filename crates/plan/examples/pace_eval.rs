@@ -7,6 +7,7 @@
 //! ```sh
 //! cargo run --release -p skimap-plan --example pace_eval            # both sites, 8 days
 //! cargo run --release -p skimap-plan --example pace_eval -- 12      # 12 days
+//! cargo run --release -p skimap-plan --example pace_eval -- 40 1    # 40 days, set 1 (other seeds)
 //! ```
 
 use std::time::Instant;
@@ -25,6 +26,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nth(1)
         .and_then(|a| a.parse().ok())
         .unwrap_or(8);
+    // Another validation set: the seeds of the GPS and of the groups' days moved by this.
+    let set: u64 = std::env::args()
+        .nth(2)
+        .and_then(|a| a.parse().ok())
+        .unwrap_or(0);
+    let other = |mut b: Behaviour| {
+        b.seed += 1000 * set;
+        b
+    };
     let layout =
         DataLayout::new(std::env::var("SKIMAP_DATA_DIR").unwrap_or_else(|_| "data".into()));
     let mut all = Vec::new();
@@ -37,19 +47,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             (
                 "famille (6 et 9 ans)",
                 fam,
-                Behaviour::family(),
+                other(Behaviour::family()),
                 GroupProfile::family(2, &[6, 9], Style::Classic),
             ),
             (
                 "adulte normal",
                 base.clone(),
-                Behaviour::normal_adult(),
+                other(Behaviour::normal_adult()),
                 GroupProfile::solo(base.style, Level::Intermediate),
             ),
             (
                 "adulte rapide",
                 base.clone(),
-                Behaviour::fast_adult(),
+                other(Behaviour::fast_adult()),
                 GroupProfile::solo(base.style, Level::Intermediate),
             ),
         ] {
@@ -76,7 +86,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 behaviour: bh,
                 profile: profile.clone(),
                 days,
-                seed: 500,
+                seed: 500 + 1000 * set,
             };
             let t = Instant::now();
             let res = pace_eval::evaluate(&case)?;
@@ -166,6 +176,66 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             at(0.5).mae_min[2],
             at(0.5).mae_min[4]
         );
+    }
+    // Calibration of the learned range (X14): the standardised error z = ln(real / median)
+    // / σ of each day (on what is left to do during the outing), its mean and mean square
+    // (1 when the range is right), and the coverage of the 80 % range, per group and over
+    // the groups of a kind.
+    println!(
+        "\nÉtalonnage de la fourchette apprise (au moins 3 sorties apprises) : z moyen, z² moyen, couverture à 80 % ;"
+    );
+    let kinds = ["famille", "adulte normal", "adulte rapide"];
+    let mut by_kind = vec![[(0usize, 0usize); 4]; kinds.len()];
+    for (name, res) in &all {
+        let mut line = format!("  {name} :");
+        for (fi, frac) in [0.0, 0.25, 0.5, 0.75].into_iter().enumerate() {
+            let (mut n, mut sz, mut sz2, mut inside) = (0usize, 0.0, 0.0, 0usize);
+            for d in res.iter().filter(|d| !d.switched && d.learned_on >= 3) {
+                let Some(x) = d.samples.iter().find(|x| (x.frac - frac).abs() < 1e-9) else {
+                    continue;
+                };
+                let (med, hi) = (x.learned_s - x.t_s, x.learned_range.1 - x.t_s);
+                let real = d.actual_s - x.t_s;
+                if med <= 0.0 || hi <= med || real <= 0.0 {
+                    continue;
+                }
+                let z = (real / med).ln() / ((hi / med).ln() / calibration::Z80);
+                n += 1;
+                sz += z;
+                sz2 += z * z;
+                inside += usize::from(x.learned_in);
+            }
+            if let Some(k) = kinds
+                .iter()
+                .position(|k| name.ends_with(k) || name.contains(&format!("— {k}")))
+            {
+                by_kind[k][fi].0 += inside;
+                by_kind[k][fi].1 += n;
+            }
+            if n > 0 {
+                line.push_str(&format!(
+                    " {:.0} % : {:+.2} / {:.2} / {:.0} % ({n}) ;",
+                    frac * 100.0,
+                    sz / n as f64,
+                    sz2 / n as f64,
+                    100.0 * inside as f64 / n as f64
+                ));
+            }
+        }
+        println!("{line}");
+    }
+    for (k, name) in kinds.iter().enumerate() {
+        let c: Vec<String> = by_kind[k]
+            .iter()
+            .zip([0, 25, 50, 75])
+            .map(|((i, n), f)| {
+                format!(
+                    "{f} % : {:.0} % sur {n}",
+                    100.0 * *i as f64 / (*n).max(1) as f64
+                )
+            })
+            .collect();
+        println!("  {name} (deux sites) : {}", c.join(", "));
     }
     Ok(())
 }

@@ -76,6 +76,8 @@ pub struct Course {
     edge_legs: HashMap<usize, Vec<usize>>,
     nodes: Vec<RouteNode>,
     profile: Profile,
+    /// Profile station at the start of each leg, and the last station.
+    prof_legs: Vec<usize>,
     /// Profile distance per line distance.
     scale: f64,
 }
@@ -151,10 +153,15 @@ impl Course {
                 });
             }
         }
-        let pieces: Vec<Piece<'_>> = legs
-            .iter()
-            .flat_map(|l| skimap_core::routing::edge_pieces(g, l.edge, l.from_m, l.to_m))
-            .collect();
+        let mut pieces: Vec<Piece<'_>> = Vec::new();
+        let mut prof_legs = Vec::with_capacity(legs.len() + 1);
+        for l in &legs {
+            prof_legs.push(pieces.len());
+            pieces.extend(skimap_core::routing::edge_pieces(
+                g, l.edge, l.from_m, l.to_m,
+            ));
+        }
+        prof_legs.push(pieces.len());
         let profile = Profile::of(eta, &pieces);
         let scale = if line.length_m() > 0.0 {
             profile.length_m() / line.length_m()
@@ -168,6 +175,7 @@ impl Course {
             edge_legs,
             nodes,
             profile,
+            prof_legs,
             scale,
         })
     }
@@ -200,6 +208,21 @@ impl Course {
     /// Time profile of the C5 model (distances of the profile pieces).
     pub fn profile(&self) -> &Profile {
         &self.profile
+    }
+
+    /// Index of the profile station at the start of each leg, then of the last station
+    /// (`legs().len() + 1` values): the stations a route shares with another one that has
+    /// the same legs before or after.
+    pub fn profile_leg_stations(&self) -> &[usize] {
+        &self.prof_legs
+    }
+
+    /// Index of the vertex of the line at a distance, when one is there (within 1 mm): the
+    /// vertices at the leg boundaries.
+    pub fn vertex_at(&self, s: f64) -> Option<usize> {
+        let cum = self.line.cumulative();
+        let i = cum.partition_point(|c| *c < s - 1e-3);
+        (i < cum.len() && (cum[i] - s).abs() <= 1e-3).then_some(i)
     }
 
     /// Profile distance of a line distance (the A8 monitor works on the profile).

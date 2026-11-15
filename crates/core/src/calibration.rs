@@ -432,6 +432,59 @@ pub struct PaceParams {
     pub stops: GammaRate,
     /// Log stop duration, seconds.
     pub stop_len: Nig,
+    /// Calibration of the range on the group's own outings (X14).
+    #[serde(default)]
+    pub spread: Spread,
+}
+
+/// Calibration of the range of a group on its own outings (X14 #148): each outing learned
+/// is first predicted with the posterior of the outings before it (leave-future-out), its
+/// standardised error `z = ln(real / median) / σ` (σ the log standard deviation of the
+/// range) kept from the [`CAL_FROM`]th outing on; the range is then the median times
+/// `exp(± Z80 k σ)` with `k² = (CAL_PRIOR + Σ z²) / (CAL_PRIOR + n)`: wider when the group
+/// is less regular than its model says, narrower when more. Without such outings, `k` = 1
+/// (the prior's range).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+pub struct Spread {
+    /// Outings learned.
+    pub seen: u32,
+    /// Outings with a standardised error kept.
+    pub n: f64,
+    /// Sum of their squares.
+    pub z2: f64,
+}
+
+/// The range is calibrated on the outings from this one on (the first ones are predicted
+/// from the prior: their errors say how wide the prior is, not the group).
+pub const CAL_FROM: u32 = 4;
+/// Weight of the model's own range in the calibration, outings.
+pub const CAL_PRIOR: f64 = 2.0;
+/// An outing counts in the calibration with this much moving time and elapsed time,
+/// seconds.
+pub const CAL_MIN_S: f64 = 1200.0;
+
+impl Spread {
+    /// Factor of the log standard deviation of the range.
+    pub fn factor(&self) -> f64 {
+        if self.n <= 0.0 {
+            return 1.0;
+        }
+        ((CAL_PRIOR + self.z2) / (CAL_PRIOR + self.n)).sqrt()
+    }
+
+    /// The prediction with its range calibrated (the median kept).
+    pub fn apply(&self, p: Prediction) -> Prediction {
+        let k = self.factor();
+        if k == 1.0 || p.median_s <= 0.0 || p.hi_s <= p.median_s {
+            return p;
+        }
+        let st = (p.hi_s / p.median_s).ln() / Z80;
+        Prediction {
+            lo_s: p.median_s * (-Z80 * k * st).exp(),
+            hi_s: p.median_s * (Z80 * k * st).exp(),
+            ..p
+        }
+    }
 }
 
 /// A prior row: moving pace (C5 = 1) per terrain, predictive standard deviation of its
@@ -658,6 +711,7 @@ impl PaceParams {
             detour: Nig::prior(rho, 0.08),
             stops: GammaRate::prior(r.stops_per_h, 2.0),
             stop_len: Nig::prior((r.stop_min * 60.0).ln(), 0.6),
+            spread: Spread::default(),
         }
     }
 
@@ -681,8 +735,14 @@ impl PaceParams {
         (self.stop_len.m + 0.5 * self.stop_len.sigma2()).exp()
     }
 
-    /// Duration of a route of model time `model_s` per terrain (C5, seconds).
+    /// Duration of a route of model time `model_s` per terrain (C5, seconds), with the
+    /// range calibrated on the group's outings ([`Spread`]).
     pub fn predict(&self, model_s: [f64; TERRAINS]) -> Prediction {
+        self.spread.apply(self.predict_model(model_s))
+    }
+
+    /// Duration of a route as the model says it, before the calibration of its range.
+    pub fn predict_model(&self, model_s: [f64; TERRAINS]) -> Prediction {
         let (mut med, mut sd_w) = (0.0, 0.0);
         for (m, n) in model_s.iter().zip(&self.pace) {
             let m = m.max(0.0);
@@ -700,6 +760,20 @@ impl PaceParams {
     /// Updates with an outing (robust conjugate update); returns the Huber weights of the
     /// pace observations per terrain (`None`: not enough moving time on it).
     pub fn learn(&mut self, o: &OutingObs) -> [Option<f64>; TERRAINS] {
+        // The outing as it was predicted before learning it: calibration of the range.
+        if self.spread.seen >= CAL_FROM
+            && o.elapsed_s >= CAL_MIN_S
+            && o.moving_total_s() >= CAL_MIN_S
+        {
+            let p = self.predict_model(o.model_s);
+            if p.median_s > 0.0 && p.hi_s > p.median_s {
+                let st = (p.hi_s / p.median_s).ln() / Z80;
+                let z = (o.elapsed_s / p.median_s).ln() / st;
+                self.spread.n += 1.0;
+                self.spread.z2 += z * z;
+            }
+        }
+        self.spread.seen += 1;
         let mut w = [None; TERRAINS];
         for (c, wc) in w.iter_mut().enumerate() {
             if o.moving_s[c] >= MIN_TERRAIN_S && o.model_s[c] > 0.0 {

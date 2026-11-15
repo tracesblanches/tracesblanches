@@ -26,7 +26,10 @@
 //! at the pace of the day) and the proposals of C11 when the group is durably later than
 //! planned ([`crate::pace`]: never imposed, answered by [`Input::Answer`]). On events only
 //! (allocating): off the route for [`TrackerParams::reroute_after_s`] → a new route on the
-//! trail graph to the junction ahead that costs the least extra time (or the finish); a
+//! trail graph to the junction ahead that costs the least extra time (or the finish), with
+//! the announcements of the plan's routes ([`plan::announcements`]: with the layers of the
+//! day, [`Tracker::with_layers`], zones without network, avalanche paths, protected zones;
+//! X11); a
 //! closed trail → the plan B of the morning that goes around it, else a route computed
 //! then, else « no other way known »; fog or rising wind → the exit saving the most time;
 //! late → the longest exit that still ends in time (shortened loop); no time left → the
@@ -40,6 +43,7 @@ use std::collections::BTreeSet;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use skimap_assist::alerts;
+use skimap_assist::inputs::SiteData;
 use skimap_assist::layers::WeatherPoint;
 use skimap_assist::suggest::{loop_voice, node_snap};
 use skimap_common::geom::LonLat;
@@ -200,6 +204,15 @@ pub enum Input {
         /// Accepted.
         accept: bool,
     },
+    /// Steps counted by the phone since the previous report (Android's step counter or step
+    /// detector, delivered with the fixes in time order): a skier striding climbs, a skier
+    /// stopped does not (X10).
+    Steps {
+        /// Time.
+        t: DateTime<Utc>,
+        /// Steps since the previous report.
+        steps: u32,
+    },
 }
 
 impl Input {
@@ -211,7 +224,8 @@ impl Input {
             | Input::Screen { t, .. }
             | Input::Closed { t, .. }
             | Input::Refuse { t }
-            | Input::Answer { t, .. } => *t,
+            | Input::Answer { t, .. }
+            | Input::Steps { t, .. } => *t,
         }
     }
 }
@@ -440,8 +454,10 @@ impl Output {
     }
 }
 
-/// Where the geometry of a route comes from.
+/// Where the geometry of a route comes from. Two at most live (the route followed and the
+/// one a switch can go back to): the view of the table is kept inline, read on every fix.
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 enum Geo<'a> {
     /// The plan's table.
     Table(RouteView<'a>),
@@ -577,6 +593,12 @@ pub struct Tracker<'a> {
     props: Proposals,
     /// A switch other than a reroute happened (no more proposals).
     switched_other: bool,
+    /// Layers of the day for the routes computed during the outing (X11), and the
+    /// protected zones of the loop (said in the morning, A7), once needed.
+    layers: Option<&'a SiteData>,
+    loop_zones: Option<BTreeSet<String>>,
+    /// When the terrain at the cursor was last given to the session, seconds.
+    climb_t: f64,
 }
 
 impl<'a> Tracker<'a> {
@@ -678,8 +700,20 @@ impl<'a> Tracker<'a> {
             reference: None,
             props: Proposals::default(),
             switched_other: false,
+            layers: None,
+            loop_zones: None,
+            climb_t: f64::NEG_INFINITY,
             p,
         })
+    }
+
+    /// The layers of the day (the pack's: zones without network, historic avalanche paths,
+    /// BERA, zones and rules): a route computed during the outing announces them as the
+    /// plan's routes do ([`plan::announcements`], X11), and the protected zones the loop
+    /// does not cross.
+    pub fn with_layers(mut self, data: &'a SiteData) -> Self {
+        self.layers = Some(data);
+        self
     }
 
     /// Route followed.
@@ -770,6 +804,13 @@ impl<'a> Tracker<'a> {
             }
             Input::Screen { on, .. } => {
                 self.screen_on = *on;
+                self.gps_mode(t, out);
+            }
+            Input::Steps { steps, .. } => {
+                let mut ev = std::mem::take(&mut self.session_events);
+                self.session.steps(t, *steps, &mut ev);
+                self.session_events(t, &mut ev, out);
+                self.session_events = ev;
                 self.gps_mode(t, out);
             }
             Input::Closed { ways, .. } => self.closure(t, ways, out),
@@ -1044,7 +1085,20 @@ impl<'a> Tracker<'a> {
                 pd.prev_cursor = pd.prev_cursor.max(s);
             }
         }
-        // 2. Session.
+        // 2. Session (on a climb, a pause from the fixes alone needs a longer window: X10;
+        // the terrain at the cursor every 10 s, from the plan's model times).
+        if running && t - self.climb_t >= 10.0 {
+            self.climb_t = t;
+            let m = self
+                .pace_route
+                .between(self.cursor - 50.0, self.cursor + 50.0);
+            let terrain = Terrain::ALL
+                .into_iter()
+                .filter(|t| m[*t as usize] > 0.0)
+                .max_by(|a, b| m[*a as usize].total_cmp(&m[*b as usize]))
+                .unwrap_or(Terrain::Flat);
+            self.session.set_terrain(terrain);
+        }
         let mut ev = std::mem::take(&mut self.session_events);
         self.session.fix_on(t, pos, Some(d), s, &mut ev);
         if !ev.is_empty() {
@@ -1876,12 +1930,37 @@ impl<'a> Tracker<'a> {
         };
         self.live += 1;
         let junctions = guidance::junctions(self.g, &course);
+        // The same announcements as the plan's routes (X11): with the layers of the day,
+        // zones without network, avalanche paths and the protected zones the loop does
+        // not cross.
+        if let Some(data) = self.layers
+            && self.loop_zones.is_none()
+            && let Ok(c) = Course::new(self.g, &self.plan.route.legs, &self.plan.eta)
+        {
+            self.loop_zones = Some(
+                plan::protected_zones(
+                    c.line().points(),
+                    (0.0, f64::INFINITY),
+                    data,
+                    self.plan.date,
+                )
+                .into_iter()
+                .map(|z| z.id)
+                .collect(),
+            );
+        }
+        let hazards = self.layers.map(|data| plan::Hazards {
+            data,
+            date: self.plan.date,
+            zones_told: self.loop_zones.as_ref(),
+            zones_range: (s_div, f64::INFINITY),
+        });
         let own = plan::announcements(
             self.g,
             &course,
             &junctions,
             self.voice,
-            None,
+            hazards.as_ref(),
             self.plan.departure,
         );
         let refs: Vec<(u32, u32, &PlannedAnnouncement)> = own

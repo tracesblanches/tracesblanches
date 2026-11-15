@@ -70,6 +70,8 @@ pub struct Sample {
     pub learned_s: f64,
     /// Within its 80 % interval.
     pub learned_in: bool,
+    /// Its 80 % interval (from the start), seconds.
+    pub learned_range: (f64, f64),
 }
 
 /// One outing.
@@ -143,6 +145,7 @@ pub fn evaluate(c: &Case<'_>) -> Result<Vec<Day>> {
             seed: c.seed + k,
             tail_s: 300.0,
             behaviour: Some(c.behaviour.day(k)),
+            step_counter: true,
         };
         let run = scenario::run(&sc, c.plan, view, c.graph, quiet())?;
         let (s0, s1) = started_finished(&run.outputs);
@@ -179,6 +182,7 @@ pub fn evaluate(c: &Case<'_>) -> Result<Vec<Day>> {
             prior_in: inside(actual, &pp.prediction),
             learned_s: pl.prediction.median_s,
             learned_in: inside(actual, &pl.prediction),
+            learned_range: (pl.prediction.lo_s, pl.prediction.hi_s),
         }];
         // Online, both variants on the same inputs.
         let mut a = Tracker::new(&plan_prior, view, c.graph, None, quiet())?;
@@ -220,6 +224,7 @@ pub fn evaluate(c: &Case<'_>) -> Result<Vec<Day>> {
                 prior_in: within(&ea.remaining),
                 learned_s: total(&eb.remaining),
                 learned_in: within(&eb.remaining),
+                learned_range: (el + eb.remaining.lo_s, el + eb.remaining.hi_s),
             });
             next += 1;
         }
