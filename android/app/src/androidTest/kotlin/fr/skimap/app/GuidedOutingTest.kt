@@ -88,6 +88,9 @@ class GuidedOutingTest {
         target.startForegroundService(start)
         val s = bind()
         runBlocking { withTimeout(TIMEOUT_MS) { Tracking.state.first { it is TrackingState.Running } } }
+        // The replayed outing lasts a fraction of a second: the barometer (1 sample a second)
+        // is given the time of a few samples before it ends.
+        Thread.sleep(BARO_MS)
         val t0 = System.currentTimeMillis()
         (1..FIXES).chunked(BATCH).forEach { batch ->
             val b = ByteBuffer.allocate(batch.size * FIX_BYTES).order(ByteOrder.LITTLE_ENDIAN)
@@ -106,7 +109,8 @@ class GuidedOutingTest {
         assertTrue(File(dir, "trace.gpx").isFile)
         val sm = target.getSystemService(SensorManager::class.java)
         if (sm.getDefaultSensor(Sensor.TYPE_PRESSURE) != null) {
-            assertTrue("pressure recorded", File(dir, "pressure.txt").isFile)
+            val p = File(dir, "pressure.txt")
+            assertTrue("pressure recorded", p.isFile && p.readLines().isNotEmpty())
         }
         // The compass of the device (rotation vector) gives a heading while the screen is on.
         val c = Compass(sm)
@@ -127,5 +131,6 @@ class GuidedOutingTest {
         const val FIX_BYTES = 24
         const val BIND_S = 30L
         const val TIMEOUT_MS = 60_000L
+        const val BARO_MS = 3_000L
     }
 }
