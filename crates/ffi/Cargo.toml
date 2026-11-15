@@ -19,6 +19,9 @@ skimap-assist.workspace = true
 skimap-core.workspace = true
 skimap-common.workspace = true
 skimap-voice.workspace = true
+# Voice commands (V3, VO5, A11): classification without a language model. Path
+# dependency: the crate is not in [workspace.dependencies] (root manifest not ours).
+skimap-intent = { path = "../intent" }
 chrono.workspace = true
 geojson.workspace = true
 serde.workspace = true

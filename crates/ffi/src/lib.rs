@@ -28,6 +28,7 @@ pub mod sync;
 pub mod tracking;
 pub mod tracking_back;
 pub mod tracking_day;
+pub mod voicecmd;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
