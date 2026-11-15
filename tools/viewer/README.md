@@ -12,7 +12,7 @@ cargo run --release -p skimap-pack --features pipeline --example serve -- . 127.
 google-chrome "http://127.0.0.1:8765/tools/viewer/index.html?pack=../../data/out/cervieres/pack/"
 ```
 
-Le menu en haut du panneau passe d'un site à l'autre (Cervières, Chapelle-des-Bois) ; `?pack=<chemin>` ouvre n'importe quel pack servi par le même serveur. Autres paramètres : `style=fond|srn|guidage|plan-ign|osm|none`, `theme=clair|sombre`, `layers=none` (fond d'origine sans couche), `panel=0` (panneau replié), `focus=decision` (cadre la position et la prochaine décision) ; la page met `window.__skimapIdle` à `true` quand la carte est chargée (captures).
+Sans paramètre, la page ouvre la **vue France** : tous les domaines nordiques sur la carte (catalogue du pipeline `data/out/france/catalog.json` s'il existe, sinon le recensement `data/out/france/domaines/domaines.geojson`, aucune liste en dur), recherche par nom (ou commune), domaine le plus proche (GPS, sinon centre de la carte). Toucher un domaine ouvre sa fiche : « Ouvrir le pack » s'il est construit (catalogue ; avec le recensement, le pack est cherché dans `data/out/<identifiant du domaine>/pack/` puis `data/out/<nom de la commune>/pack/`), sinon « Pack pas encore construit ». `?pack=<chemin>` ouvre directement un pack servi par le même serveur. Autres paramètres : `style=fond|srn|guidage|plan-ign|osm|none`, `theme=clair|sombre`, `layers=none` (fond d'origine sans couche), `panel=0` (panneau replié), `focus=decision` (cadre la position et la prochaine décision) ; la page met `window.__skimapIdle` à `true` quand la carte est chargée (captures).
 
 ## Sur le Pixel (Chrome Android)
 
@@ -23,6 +23,13 @@ adb reverse tcp:8765 tcp:8765
 ```
 
 puis, dans Chrome sur le téléphone : `http://localhost:8765/tools/viewer/index.html?pack=../../data/out/cervieres/pack/`. Rien n'est exposé sur le Wi-Fi. Le panneau est replié sur petit écran (bouton ☰) ; les cases, boutons radio et curseurs ont une taille tactile ; la géolocalisation (bouton ◎) marche sur `localhost`.
+
+## Interface
+
+- Pas de boutons + / − (pincement, molette, double toucher) ; boussole et position seulement, à la taille standard, dans un coin ; panneau derrière ☰ (29 px).
+- Crédits derrière un petit « ⓘ » en bas à droite ; licences détaillées dans le panneau, « Licences des données ».
+- Guidage : contrôles masqués, bandeau d'une ligne fine en haut (prochaine décision), position décalée vers le bas (40 % de marge en haut) pour voir l'itinéraire devant.
+- Couches : un interrupteur par groupe désactivable du style (`metadata.skimap:groups`, voir `styles/README.md`) ; seule la visibilité change, sans recharger le style ; choix mémorisé par style (`localStorage`, ignoré s'il est indisponible).
 
 ## Ce qu'il montre
 
