@@ -8,25 +8,36 @@
 //! the time model of C5 (`EtaModel`, style, temperature and snow class of the day):
 //!
 //! 1. the start is snapped to the network (300 m at most);
-//! 2. every node is a possible turning point; its outbound time is the fastest route from
-//!    the start; the turning points whose outbound time is 20 to 60 % of the budget are
-//!    kept, and at most 40 are spread out by farthest-point sampling;
+//! 2. every node is a possible turning point; its round trip is the fastest route from
+//!    the start and back; the turning points whose round trip is 50 to 110 % of the
+//!    budget are kept, and at most 40 are spread out by farthest-point sampling;
 //! 3. the way back from each turning point is the fastest route with the OSM ways of the
-//!    way out made 4 times more costly, so that it comes back by another trail when
-//!    there is one (otherwise it is an out-and-back, said as such);
+//!    way out made 4 times more costly, so that it comes back by another trail when there
+//!    is one not much longer; real loops are searched before out-and-backs (X16): when
+//!    that way back still travels stretches of the way out again (5 % of the loop or
+//!    more), the way back with those ways 30 times more costly is tried as well (a cycle
+//!    whenever the network has one); when no simple real loop fits, figures of eight: two
+//!    real loops from the start (petals, turning points at 15 to 55 % of the budget, at
+//!    most 20) whose stretches are distinct and whose times add up to 60 to 125 % of the
+//!    budget, the 20 closest to it;
 //! 4. trails harder than the level cost 4 times more (`difficulty`: the easiest colour of
 //!    the relations of a way, so a shared section of a green loop counts as green);
 //! 5. loops whose model time is outside 75 to 110 % of the budget are dropped, then those
 //!    that do not end before the return time and the C7 deadline (light limit minus 30
-//!    min) with the C7 margin factor 1.2 on the model time; near-duplicates (more than 60
-//!    % of their edges in common) keep the best.
+//!    min) with the C7 margin factor 1.2 on the model time;
+//! 6. the real loops (less than a quarter of their length travelled twice: a stem from the
+//!    start to the loop is allowed) are proposed, best score first: the simple ones, the
+//!    figures of eight (said as such, with the distance at which they pass the start again)
+//!    only when no simple loop fits; out-and-backs only when no real loop fits, and then it
+//!    is said, with the longest real loop found if any; near-duplicates (more than 60 % of
+//!    their edges in common) keep the best.
 //!
 //! # Score
 //!
 //! | Factor | Points |
 //! |---|---|
 //! | fit to the budget | −2 × relative gap |
-//! | out-and-back share (length on the same way twice) | −2 × share |
+//! | out-and-back share (length on stretches of the graph travelled twice) | −4 × share |
 //! | status (A1 sources, by geometry for the ENJ, by name for Nordic France) | closed share × −10, open share × +1 |
 //! | estimated snow (median along the loop, as A1) | as A1 |
 //! | avalanche exposure ≥ « exposé » (P16–P18) | −2 with BERA ≥ 3, −0.5 with BERA not available or no BERA, else noted |
@@ -47,7 +58,7 @@
 //! time stays in `eta_min`; the group's range is in [`Suggestion::group`]. Without a group
 //! ([`suggest`]) nothing changes.
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use chrono::{Duration, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use serde::Serialize;
@@ -106,8 +117,10 @@ pub struct Suggestion {
     pub arrival: NaiveDateTime,
     /// Turning point.
     pub turn: LonLat,
-    /// Share of the length on a way already travelled (out-and-back).
+    /// Share of the length on stretches of the graph already travelled (out-and-back).
     pub out_and_back_share: f64,
+    /// A real loop: less than [`REAL_LOOP_MAX_SHARE`] of its length travelled twice.
+    pub real_loop: bool,
     /// Km on open, closed and unknown trails.
     pub status_km: (f64, f64, f64),
     /// Snow along the loop.
@@ -292,11 +305,86 @@ pub struct Suggestions {
     pub text: Vec<String>,
 }
 
+/// Share of its length a loop may travel twice and still be a real loop: a stem from the
+/// start to the loop, travelled out and back, of up to an eighth of the length.
+pub const REAL_LOOP_MAX_SHARE: f64 = 0.25;
+
+/// Cost factor on the ways of the way out for the way back of the cycle search: another
+/// trail is taken whenever the network has one that is not 30 times longer.
+const AVOID_CYCLE: f64 = 30.0;
+
+/// Cost factor on the ways of the way out for the way back of the fallback loops: another
+/// trail when it is not 4 times longer, else an out-and-back.
+const AVOID_LOOP: f64 = 4.0;
+
+/// Points per share of the length travelled twice (X16: a loop that is half an
+/// out-and-back loses 2 points, as much as gusts of 60 km/h).
+const OUT_AND_BACK_POINTS: f64 = -4.0;
+
 /// Cost of the loop search: C5 time, style preferences, level and ways to avoid.
 struct LoopCost<'a> {
     eta: EtaModel,
     max_difficulty: Option<Difficulty>,
     avoid: &'a HashSet<i64>,
+    /// Factor on the ways to avoid.
+    avoid_factor: f64,
+}
+
+/// A loop to evaluate: its routes in travel order (way out and way back, or the two of
+/// each petal of a figure of eight) and its turning point.
+struct Candidate {
+    parts: Vec<Route>,
+    turn: usize,
+    /// A figure of eight: two loops from the start, back at the start in between.
+    eight: bool,
+}
+
+/// Share of the length of legs on stretches of the graph already travelled
+/// (out-and-back): on each edge, the overlap with the intervals travelled before, so that
+/// an OSM way split into several edges and travelled once counts once.
+fn twice_share(legs: &[Leg]) -> f64 {
+    let mut seen: HashMap<usize, Vec<(f64, f64)>> = HashMap::new();
+    let (mut twice, mut total) = (0.0, 0.0);
+    for l in legs {
+        let (a, b) = (l.from_m.min(l.to_m), l.from_m.max(l.to_m));
+        total += b - a;
+        let prev = seen.entry(l.edge).or_default();
+        // Disjoint intervals: the overlap is the sum of the intersections.
+        for (x, y) in prev.iter() {
+            twice += (b.min(*y) - a.max(*x)).max(0.0);
+        }
+        let (mut lo, mut hi) = (a, b);
+        prev.retain(|(x, y)| {
+            let touch = *x <= hi && *y >= lo;
+            if touch {
+                lo = lo.min(*x);
+                hi = hi.max(*y);
+            }
+            !touch
+        });
+        prev.push((lo, hi));
+    }
+    if total > 0.0 { twice / total } else { 0.0 }
+}
+
+/// Near-duplicates: more than 60 % of their edges in common.
+fn similar(a: &Suggestion, b: &Suggestion) -> bool {
+    let inter = a.edges.intersection(&b.edges).count() as f64;
+    let union = a.edges.union(&b.edges).count() as f64;
+    union > 0.0 && inter / union > 0.6
+}
+
+/// Adds the loops of `from` (best first) that are not near-duplicates of the kept ones,
+/// until `max` are kept.
+fn keep_distinct(kept: &mut Vec<Suggestion>, from: Vec<Suggestion>, max: usize) {
+    for l in from {
+        if !kept.iter().any(|k| similar(k, &l)) {
+            kept.push(l);
+        }
+        if kept.len() >= max {
+            break;
+        }
+    }
 }
 
 impl CostModel for LoopCost<'_> {
@@ -312,7 +400,7 @@ impl CostModel for LoopCost<'_> {
             f *= 4.0;
         }
         if attrs.osm_way_id.is_some_and(|w| self.avoid.contains(&w)) {
-            f *= 4.0;
+            f *= self.avoid_factor;
         }
         f
     }
@@ -444,6 +532,7 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
             eta,
             max_difficulty: req.max_difficulty,
             avoid: &no_avoid,
+            avoid_factor: AVOID_LOOP,
         },
     );
     let Some(start) = g.snap(req.start, 300.0) else {
@@ -486,63 +575,69 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
             req.start_name
         ));
     }
-    // Turning points: out and fastest way back between 50 and 110 % of the budget (the
-    // way back by another trail is longer), spread out. With a group: the model time of
+    // Round trip of every node: out and fastest way back. With a group: the model time of
     // that round trip at the group's time on the flat (the costs of the routers carry
     // style factors that its pace would multiply).
-    let back_s = |v: usize| -> Option<f64> {
-        let r = time_router.route_snaps(node_snap(g, v)?, start).ok()?;
-        Some(r.cost)
-    };
-    let group_round_s = |params: &PaceParams, v: usize| -> Option<f64> {
-        let (r_out, _) = out[v].as_ref()?;
-        let r_back = time_router.route_snaps(node_snap(g, v)?, start).ok()?;
-        let m = eta.time_s(&route_pieces(g, r_out)).total_s
-            + eta.time_s(&route_pieces(g, &r_back)).total_s;
-        Some(params.predict([0.0, m, 0.0]).median_s)
-    };
-    let window = 0.5 * budget_s..=1.1 * budget_s;
-    let mut cands: Vec<usize> = (0..n)
-        .filter(|v| match group {
-            None => out[*v]
-                .as_ref()
-                .is_some_and(|(_, t)| back_s(*v).is_some_and(|b| window.contains(&(t + b)))),
-            Some(gm) => group_round_s(&gm.params, *v).is_some_and(|x| window.contains(&x)),
+    let round_s: Vec<Option<f64>> = (0..n)
+        .map(|v| {
+            let (r_out, t) = out[v].as_ref()?;
+            let r_back = time_router.route_snaps(node_snap(g, v)?, start).ok()?;
+            Some(match group {
+                None => t + r_back.cost,
+                Some(gm) => {
+                    let m = eta.time_s(&route_pieces(g, r_out)).total_s
+                        + eta.time_s(&route_pieces(g, &r_back)).total_s;
+                    gm.params.predict([0.0, m, 0.0]).median_s
+                }
+            })
         })
         .collect();
-    let mut chosen: Vec<usize> = Vec::new();
-    if let Some(far) = cands.iter().copied().max_by(|a, b| {
-        out[*a]
-            .as_ref()
-            .unwrap()
-            .1
-            .total_cmp(&out[*b].as_ref().unwrap().1)
-    }) {
-        chosen.push(far);
-    }
-    while chosen.len() < 40 && !cands.is_empty() {
-        let pos = |v: usize| g.nodes()[v].pos;
-        let next = cands
-            .iter()
-            .copied()
-            .filter(|v| !chosen.contains(v))
-            .max_by(|a, b| {
-                let da = chosen
-                    .iter()
-                    .map(|c| pos(*c).haversine_m(pos(*a)))
-                    .fold(f64::MAX, f64::min);
-                let db = chosen
-                    .iter()
-                    .map(|c| pos(*c).haversine_m(pos(*b)))
-                    .fold(f64::MAX, f64::min);
-                da.total_cmp(&db)
-            });
-        match next {
-            Some(v) => chosen.push(v),
-            None => break,
+    // Turning points whose round trip is `lo` to `hi` times the budget, at most `k`, spread
+    // out by farthest-point sampling from the farthest one.
+    let spread = |lo: f64, hi: f64, k: usize| -> Vec<usize> {
+        let window = lo * budget_s..=hi * budget_s;
+        let mut cands: Vec<usize> = (0..n)
+            .filter(|v| round_s[*v].is_some_and(|x| window.contains(&x)))
+            .collect();
+        let mut chosen: Vec<usize> = Vec::new();
+        if let Some(far) = cands.iter().copied().max_by(|a, b| {
+            out[*a]
+                .as_ref()
+                .unwrap()
+                .1
+                .total_cmp(&out[*b].as_ref().unwrap().1)
+        }) {
+            chosen.push(far);
         }
-        cands.retain(|v| !chosen.contains(v));
-    }
+        while chosen.len() < k && !cands.is_empty() {
+            let pos = |v: usize| g.nodes()[v].pos;
+            let next = cands
+                .iter()
+                .copied()
+                .filter(|v| !chosen.contains(v))
+                .max_by(|a, b| {
+                    let da = chosen
+                        .iter()
+                        .map(|c| pos(*c).haversine_m(pos(*a)))
+                        .fold(f64::MAX, f64::min);
+                    let db = chosen
+                        .iter()
+                        .map(|c| pos(*c).haversine_m(pos(*b)))
+                        .fold(f64::MAX, f64::min);
+                    da.total_cmp(&db)
+                });
+            match next {
+                Some(v) => chosen.push(v),
+                None => break,
+            }
+            cands.retain(|v| !chosen.contains(v));
+        }
+        chosen
+    };
+    // The loops: turning points whose round trip is 50 to 110 % of the budget (the way
+    // back by another trail is longer); the petals of the figures of eight: 15 to 55 %.
+    let chosen = spread(0.5, 1.1, 40);
+    let petal_points = spread(0.15, 0.55, 20);
     // With children: the group's light margin (C7 plus caution, C11).
     let tp = group.map_or_else(TurnaroundParams::default, |g| g.profile.turnaround_params());
     let deadline = turnaround::deadline(date, req.start, &tp)
@@ -554,16 +649,11 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
     let states = edge_states(data, g, date);
     let bera = data.bera_for(date).and_then(|b| b.level());
     let map = data.snow_for(date);
-    let mut no_way_back = 0;
-    let mut too_late = 0;
-    let (mut too_short, mut too_long) = (0, 0);
-    let mut loops: Vec<Suggestion> = Vec::new();
-    // Loops that fit at the median of a group with children but not on its slow side.
-    let mut hopeful: Vec<Suggestion> = Vec::new();
     let plan_q = group.map_or(0.5, ProfileModel::plan_quantile);
-    let mut evaluated = 0;
-    for v in chosen {
-        let (r_out, _) = out[v].clone().expect("reachable");
+    // Way out to `v` and way back with the ways of the way out made `factor` times more
+    // costly; `None` when there is no way back (one-way trails).
+    let loop_from = |v: usize, factor: f64| -> Option<Vec<Route>> {
+        let (r_out, _) = out[v].clone()?;
         let avoid: HashSet<i64> = r_out
             .legs
             .iter()
@@ -575,24 +665,155 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
                 eta,
                 max_difficulty: req.max_difficulty,
                 avoid: &avoid,
+                avoid_factor: factor,
             },
         );
-        let Some(sv) = node_snap(g, v) else { continue };
-        let Ok(r_back) = back_router.route_snaps(sv, start) else {
+        let r_back = back_router.route_snaps(node_snap(g, v)?, start).ok()?;
+        Some(vec![r_out, r_back])
+    };
+    // Time a loop is planned on: the group's (C11: the median, the slow side of its range
+    // with children), else the model time.
+    let plan_time = |pieces: &[Piece<'_>]| -> f64 {
+        match group {
+            Some(gm) => gm
+                .params
+                .predict(Profile::of(&eta, pieces).model_by_terrain(ratio))
+                .quantile_s(plan_q),
+            None => eta.time_s(pieces).total_s,
+        }
+    };
+    // Candidates, real loops searched before out-and-backs (X16): for each turning point,
+    // the way back with the ways of the way out 4 times more costly; when it still comes
+    // back on stretches of the way out (5 % of the loop or more), the way back that avoids
+    // them as much as the network allows (a cycle when there is one). Figures of eight,
+    // made of two real loops from the start (petals), only when no simple real loop fits.
+    let mut cands: Vec<Candidate> = Vec::new();
+    let mut no_way_back = 0;
+    for &v in &chosen {
+        let Some(weak) = loop_from(v, AVOID_LOOP) else {
             no_way_back += 1;
             continue;
         };
-        evaluated += 1;
-        let mut pieces = route_pieces(g, &r_out);
-        pieces.extend(route_pieces(g, &r_back));
+        let legs: Vec<Leg> = weak.iter().flat_map(|r| r.legs.iter().copied()).collect();
+        let strong = if twice_share(&legs) >= 0.05 {
+            loop_from(v, AVOID_CYCLE).filter(|s| s[1].legs != weak[1].legs)
+        } else {
+            None
+        };
+        cands.push(Candidate {
+            parts: weak,
+            turn: v,
+            eight: false,
+        });
+        if let Some(parts) = strong {
+            cands.push(Candidate {
+                parts,
+                turn: v,
+                eight: false,
+            });
+        }
+    }
+    let mut too_late = 0;
+    let (mut too_short, mut too_long) = (0, 0);
+    // Real loops (less than a quarter of their length twice), simple or figures of eight,
+    // and out-and-backs.
+    let mut real: Vec<Suggestion> = Vec::new();
+    let mut eights: Vec<Suggestion> = Vec::new();
+    let mut out_and_back: Vec<Suggestion> = Vec::new();
+    // Loops that fit at the median of a group with children but not on its slow side.
+    let mut hopeful: Vec<Suggestion> = Vec::new();
+    // The longest real loop too short for the budget: its time and length.
+    let mut longest_real: Option<(f64, f64)> = None;
+    let mut petals_searched = false;
+    let mut next = 0;
+    loop {
+        if next == cands.len() {
+            if petals_searched || !real.is_empty() {
+                break;
+            }
+            petals_searched = true;
+            // Petals: real loops shorter than the budget (each loop once), combined two
+            // by two when their stretches are distinct and their times add up to about
+            // the budget (the 20 closest to it).
+            let mut petals: Vec<(Vec<Route>, usize, f64)> = Vec::new();
+            let mut petal_edges: Vec<BTreeSet<usize>> = Vec::new();
+            for &v in &petal_points {
+                let Some(parts) = loop_from(v, AVOID_CYCLE) else {
+                    continue;
+                };
+                let legs: Vec<Leg> = parts.iter().flat_map(|r| r.legs.iter().copied()).collect();
+                let edges: BTreeSet<usize> = legs.iter().map(|l| l.edge).collect();
+                if twice_share(&legs) >= REAL_LOOP_MAX_SHARE || petal_edges.contains(&edges) {
+                    continue;
+                }
+                let pieces: Vec<Piece<'_>> =
+                    parts.iter().flat_map(|r| route_pieces(g, r)).collect();
+                let t = plan_time(&pieces);
+                if t < 0.75 * budget_s && longest_real.is_none_or(|(x, _)| t > x) {
+                    longest_real = Some((t, legs.iter().map(Leg::length_m).sum::<f64>() / 1000.0));
+                }
+                petals.push((parts, v, t));
+                petal_edges.push(edges);
+            }
+            let mut pairs: Vec<(f64, Candidate)> = Vec::new();
+            for (i, (a, va, ta)) in petals.iter().enumerate() {
+                for (b, vb, tb) in &petals[i + 1..] {
+                    let gap = (ta + tb) / budget_s - 1.0;
+                    if gap > 0.25 {
+                        continue;
+                    }
+                    // The longer petal first.
+                    let (first, second, turn) = if ta >= tb { (a, b, *va) } else { (b, a, *vb) };
+                    let parts: Vec<Route> = first.iter().chain(second).cloned().collect();
+                    let legs: Vec<Leg> =
+                        parts.iter().flat_map(|r| r.legs.iter().copied()).collect();
+                    if twice_share(&legs) >= REAL_LOOP_MAX_SHARE {
+                        continue;
+                    }
+                    if gap >= -0.4 {
+                        pairs.push((
+                            gap.abs(),
+                            Candidate {
+                                parts,
+                                turn,
+                                eight: true,
+                            },
+                        ));
+                    } else if longest_real.is_none_or(|(x, _)| ta + tb > x) {
+                        longest_real = Some((
+                            ta + tb,
+                            legs.iter().map(Leg::length_m).sum::<f64>() / 1000.0,
+                        ));
+                    }
+                }
+            }
+            pairs.sort_by(|a, b| a.0.total_cmp(&b.0));
+            cands.extend(pairs.into_iter().take(20).map(|(_, c)| c));
+            continue;
+        }
+        let c = &cands[next];
+        next += 1;
+        let legs: Vec<Leg> = c
+            .parts
+            .iter()
+            .flat_map(|r| r.legs.iter().copied())
+            .collect();
+        let pieces: Vec<Piece<'_>> = c.parts.iter().flat_map(|r| route_pieces(g, r)).collect();
         let b = eta.time_s(&pieces);
         let profile = Profile::of(&eta, &pieces);
         // Time of the loop: the group's (C11: the median, the slow side of its range with
         // children), else the model time.
         let gp = group.map(|g| g.params.predict(profile.model_by_terrain(ratio)));
         let time_s = gp.map_or(b.total_s, |p| p.quantile_s(plan_q));
+        // Out-and-back share: length on stretches travelled twice.
+        let share_twice = twice_share(&legs);
+        let real_loop = share_twice < REAL_LOOP_MAX_SHARE;
+        let total: f64 = legs.iter().map(Leg::length_m).sum();
         if time_s < 0.75 * budget_s {
             too_short += 1;
+            if real_loop && longest_real.is_none_or(|(t, _)| time_s > t) {
+                longest_real = Some((time_s, total / 1000.0));
+            }
             continue;
         }
         // Too long on the slow side, in the time at the median: « si tout va bien ».
@@ -614,29 +835,19 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
             too_late += 1;
             continue;
         }
-        let mut line = r_out.polyline(g);
-        line.extend(r_back.polyline(g));
-        let legs: Vec<_> = r_out.legs.iter().chain(&r_back.legs).copied().collect();
-        // Out-and-back share: length on a way travelled twice.
-        let mut seen: HashSet<i64> = HashSet::new();
-        let mut twice = 0.0;
-        let mut total = 0.0;
+        let mut line: Vec<LonLat> = Vec::new();
+        for r in &c.parts {
+            line.extend(r.polyline(g));
+        }
         let (mut open_km, mut closed_km, mut unknown_km) = (0.0, 0.0, 0.0);
         for l in &legs {
             let len = l.length_m();
-            total += len;
-            if let Some(w) = g.edge(l.edge).attrs.osm_way_id
-                && !seen.insert(w)
-            {
-                twice += len;
-            }
             match states[l.edge] {
                 OpenState::Open => open_km += len / 1000.0,
                 OpenState::Closed => closed_km += len / 1000.0,
                 OpenState::Unknown => unknown_km += len / 1000.0,
             }
         }
-        let share_twice = if total > 0.0 { twice / total } else { 0.0 };
         // Trail names in order of first appearance (each part of « A / B »), with the
         // length on each; the label takes the three longest.
         let mut names: Vec<String> = Vec::new();
@@ -740,10 +951,22 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
             briefing::reason(
                 &mut reasons,
                 Factor::Data,
-                -2.0 * share_twice,
+                OUT_AND_BACK_POINTS * share_twice,
                 format!(
                     "{} % du parcours en aller-retour sur le même chemin",
                     (share_twice * 100.0).round()
+                ),
+            );
+        }
+        if c.eight {
+            let first: f64 = c.parts[..2].iter().map(Route::length_m).sum();
+            briefing::reason(
+                &mut reasons,
+                Factor::Data,
+                0.0,
+                format!(
+                    "en huit : deux boucles depuis le départ, on y repasse après {} km",
+                    fmt(first / 1000.0, 1)
                 ),
             );
         }
@@ -858,8 +1081,12 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
         };
         let target = if if_all_goes_well {
             &mut hopeful
+        } else if real_loop && c.eight {
+            &mut eights
+        } else if real_loop {
+            &mut real
         } else {
-            &mut loops
+            &mut out_and_back
         };
         target.push(Suggestion {
             label,
@@ -869,8 +1096,9 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
             loss_m: b.loss_m.round(),
             eta_min: (b.total_s / 60.0).round(),
             arrival,
-            turn: g.nodes()[v].pos,
+            turn: g.nodes()[c.turn].pos,
             out_and_back_share: (share_twice * 100.0).round() / 100.0,
+            real_loop,
             status_km: (open_km, closed_km, unknown_km),
             snow,
             exposure_km: exp,
@@ -886,6 +1114,7 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
             if_all_goes_well,
         });
     }
+    let evaluated = cands.len();
     if no_way_back > 0 {
         notes.push(format!(
             "{no_way_back} points de demi-tour sans retour possible vers le départ (sens uniques \
@@ -910,36 +1139,49 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
                 .unwrap_or_default()
         ));
     }
-    loops.sort_by(|a, b| b.score.total_cmp(&a.score));
+    // Simple real loops, best score first; figures of eight only when no simple loop fits,
+    // out-and-backs only when no real loop does.
+    let by_score = |a: &Suggestion, b: &Suggestion| b.score.total_cmp(&a.score);
     let mut kept: Vec<Suggestion> = Vec::new();
-    for l in loops {
-        let similar = kept.iter().any(|k| {
-            let inter = k.edges.intersection(&l.edges).count() as f64;
-            let union = k.edges.union(&l.edges).count() as f64;
-            union > 0.0 && inter / union > 0.6
-        });
-        if !similar {
-            kept.push(l);
-        }
-        if kept.len() >= req.max_results {
-            break;
+    for mut tier in [real, eights, out_and_back] {
+        if kept.is_empty() {
+            tier.sort_by(by_score);
+            keep_distinct(&mut kept, tier, req.max_results);
         }
     }
     // With children, after the loops proposed: the best loop that needs all to go well,
-    // if any.
-    hopeful.sort_by(|a, b| b.score.total_cmp(&a.score));
-    if let Some(h) = hopeful.into_iter().find(|l| {
-        !kept.iter().any(|k| {
-            let inter = k.edges.intersection(&l.edges).count() as f64;
-            let union = k.edges.union(&l.edges).count() as f64;
-            union > 0.0 && inter / union > 0.6
-        })
-    }) {
+    // if any (a real loop first).
+    hopeful.sort_by(|a, b| b.real_loop.cmp(&a.real_loop).then(by_score(a, b)));
+    if let Some(h) = hopeful
+        .into_iter()
+        .find(|l| !kept.iter().any(|k| similar(k, l)))
+    {
         kept.push(h);
     }
     if kept.is_empty() {
         notes.push("aucune boucle ne tient dans le temps et l'heure de retour demandés".into());
     } else {
+        if kept.iter().all(|k| !k.real_loop) {
+            notes.push(format!(
+                "aucune vraie boucle trouvée de {} à {} depuis {} : {} en partie en aller-retour \
+                 sur le même chemin, seule option du réseau ici{}",
+                hm(0.75 * budget_s),
+                hm(1.1 * budget_s),
+                req.start_name,
+                if kept.len() == 1 {
+                    "la boucle proposée est"
+                } else {
+                    "les boucles proposées sont"
+                },
+                longest_real
+                    .map(|(t, km)| format!(
+                        " ; la plus longue vraie boucle trouvée fait {} km, environ {}",
+                        fmt(km, 1),
+                        hm(t)
+                    ))
+                    .unwrap_or_default()
+            ));
+        }
         if kept
             .iter()
             .all(|k| k.snow.is_some_and(|s| s.depth_cm() < 20.0))
@@ -1098,14 +1340,28 @@ mod tests {
 
     /// A square loop A-B-C-D (≈ 1.7 × 2.2 km sides) and a spur A-E, flat.
     fn data() -> SiteData {
-        let p = |lon: f64, lat: f64| LonLat::new(lon, lat);
-        let pts = [
-            p(6.10, 46.60),
-            p(6.12, 46.60),
-            p(6.12, 46.62),
-            p(6.10, 46.62),
-            p(6.08, 46.60),
-        ];
+        site(
+            &[
+                (6.10, 46.60),
+                (6.12, 46.60),
+                (6.12, 46.62),
+                (6.10, 46.62),
+                (6.08, 46.60),
+            ],
+            &[
+                (0, 1, "Sud", 1, Difficulty::Easy),
+                (1, 2, "Est", 2, Difficulty::Easy),
+                (2, 3, "Nord", 3, Difficulty::Easy),
+                (3, 0, "Ouest", 4, Difficulty::Advanced),
+                (0, 4, "Antenne", 5, Difficulty::Easy),
+            ],
+        )
+    }
+
+    /// A flat graph: nodes (lon, lat) and straight edges (from, to, name, OSM way,
+    /// difficulty).
+    fn site(pts: &[(f64, f64)], edges: &[(usize, usize, &str, i64, Difficulty)]) -> SiteData {
+        let pts: Vec<LonLat> = pts.iter().map(|(x, y)| LonLat::new(*x, *y)).collect();
         let nodes = pts
             .iter()
             .map(|q| Node {
@@ -1113,24 +1369,20 @@ mod tests {
                 osm_node_id: None,
             })
             .collect();
-        let edge = |a: usize, b: usize, name: &str, way: i64, d: Difficulty| Edge {
-            from: a,
-            to: b,
-            oneway: false,
-            points: vec![pts[a], pts[b]],
-            attrs: attrs(name, way, d),
-            profile: None,
-        };
         let g = PisteGraph::new(GraphData {
             site: "test".into(),
             nodes,
-            edges: vec![
-                edge(0, 1, "Sud", 1, Difficulty::Easy),
-                edge(1, 2, "Est", 2, Difficulty::Easy),
-                edge(2, 3, "Nord", 3, Difficulty::Easy),
-                edge(3, 0, "Ouest", 4, Difficulty::Advanced),
-                edge(0, 4, "Antenne", 5, Difficulty::Easy),
-            ],
+            edges: edges
+                .iter()
+                .map(|(a, b, name, way, d)| Edge {
+                    from: *a,
+                    to: *b,
+                    oneway: false,
+                    points: vec![pts[*a], pts[*b]],
+                    attrs: attrs(name, *way, *d),
+                    profile: None,
+                })
+                .collect(),
             elevation_source: None,
         })
         .unwrap();
@@ -1315,5 +1567,179 @@ mod tests {
             family.plan_quantile(),
         );
         assert!((fq.total_s() - slow).abs() < 1.0);
+    }
+
+    fn leg(edge: usize, from_m: f64, to_m: f64) -> Leg {
+        Leg { edge, from_m, to_m }
+    }
+
+    #[test]
+    fn travelled_twice_by_stretch_not_by_way() {
+        // An OSM way split into two edges, travelled once: nothing twice.
+        assert_eq!(twice_share(&[leg(0, 0.0, 100.0), leg(1, 0.0, 300.0)]), 0.0);
+        // Out and back on the same edge: half of the length.
+        assert_eq!(twice_share(&[leg(0, 0.0, 100.0), leg(0, 100.0, 0.0)]), 0.5);
+        // Overlapping parts of an edge: 50 m of 200.
+        assert_eq!(
+            twice_share(&[leg(0, 0.0, 100.0), leg(0, 50.0, 150.0)]),
+            0.25
+        );
+        // Three passes over intervals merged on the way: 0–100, 200–300, then 50–250
+        // overlaps 50 + 50 m; then 0–300 overlaps all of it.
+        let three = [
+            leg(3, 0.0, 100.0),
+            leg(3, 300.0, 200.0),
+            leg(3, 50.0, 250.0),
+        ];
+        assert!((twice_share(&three) - 100.0 / 400.0).abs() < 1e-12);
+        let four = [three.as_slice(), &[leg(3, 0.0, 300.0)]].concat();
+        assert!((twice_share(&four) - 400.0 / 700.0).abs() < 1e-12);
+        assert_eq!(twice_share(&[]), 0.0);
+    }
+
+    /// Time of `km` at the model pace on flat groomed snow at −5 °C, minutes.
+    fn minutes(km: f64) -> f64 {
+        let eta = EtaModel::new(Style::Classic);
+        eta.piece_time_s(&attrs("x", 0, Difficulty::Easy), 1000.0 * km, 0.0, None) / 60.0
+    }
+
+    #[test]
+    fn real_loops_before_out_and_backs() {
+        // The square (A-B-C-D, 7.5 km) and a long spur A-F of 3.3 km.
+        let d = site(
+            &[
+                (6.10, 46.60),
+                (6.12, 46.60),
+                (6.12, 46.62),
+                (6.10, 46.62),
+                (6.10, 46.57),
+            ],
+            &[
+                (0, 1, "Sud", 1, Difficulty::Easy),
+                (1, 2, "Est", 2, Difficulty::Easy),
+                (2, 3, "Nord", 3, Difficulty::Easy),
+                (3, 0, "Ouest", 4, Difficulty::Easy),
+                (0, 4, "Antenne", 5, Difficulty::Easy),
+            ],
+        );
+        let g = d.graph.as_ref().unwrap();
+        let square: f64 = (0..4).map(|e| g.length_m(e)).sum::<f64>() / 1000.0;
+        let spur = g.length_m(4) / 1000.0;
+        // 2 × the spur fits the time asked better than the square (at 109 %): the square
+        // is proposed all the same, the out-and-back is not.
+        let s = suggest(&d, &req(minutes(square) / 1.09, None));
+        assert!((2.0 * spur / square - 1.0 / 1.09).abs() < 0.1);
+        assert!(!s.suggestions.is_empty(), "{:?}", s.text);
+        for x in &s.suggestions {
+            assert!(x.real_loop && x.out_and_back_share < 0.05, "{x:?}");
+            assert!((x.length_km - square).abs() < 0.1);
+        }
+        assert!(!s.notes.iter().any(|n| n.contains("vraie boucle")));
+        // The time of the out-and-back only: it is the one proposed, said as the only
+        // option of the network; the square, longer, is not a loop « too short ».
+        let s = suggest(&d, &req(minutes(2.0 * spur), None));
+        let x = s.suggestions.first().expect("the out-and-back");
+        assert!(!x.real_loop);
+        assert!((x.out_and_back_share - 0.5).abs() < 0.01, "{x:?}");
+        let r = x
+            .reasons
+            .iter()
+            .find(|r| r.text.contains("aller-retour"))
+            .unwrap();
+        assert!((r.points - OUT_AND_BACK_POINTS * 0.5).abs() < 0.01, "{r:?}");
+        assert!(r.text.starts_with("50 % du parcours"), "{}", r.text);
+        let note = s
+            .notes
+            .iter()
+            .find(|n| n.contains("vraie boucle"))
+            .expect("said");
+        assert!(
+            note.starts_with("aucune vraie boucle trouvée de ")
+                && note.contains(" depuis A : la boucle proposée est en partie en aller-retour")
+                && !note.contains("la plus longue"),
+            "{note}"
+        );
+        assert!(s.text.last().unwrap().contains(note.as_str()));
+        // Score: the sum of the points of the reasons.
+        let sum: f64 = x.reasons.iter().map(|r| r.points).sum();
+        assert!((x.score - sum).abs() < 1e-12);
+    }
+
+    #[test]
+    fn a_figure_of_eight_when_no_simple_loop_fits() {
+        // Two triangles of about 4.2 km on both sides of the start A: no simple loop is
+        // as long as both.
+        let d = site(
+            &[
+                (6.10, 46.60),
+                (6.12, 46.60),
+                (6.11, 46.61),
+                (6.08, 46.60),
+                (6.09, 46.59),
+            ],
+            &[
+                (0, 1, "Est 1", 1, Difficulty::Easy),
+                (1, 2, "Est 2", 2, Difficulty::Easy),
+                (2, 0, "Est 3", 3, Difficulty::Easy),
+                (0, 3, "Ouest 1", 4, Difficulty::Easy),
+                (3, 4, "Ouest 2", 5, Difficulty::Easy),
+                (4, 0, "Ouest 3", 6, Difficulty::Easy),
+            ],
+        );
+        let g = d.graph.as_ref().unwrap();
+        let east: f64 = (0..3).map(|e| g.length_m(e)).sum::<f64>() / 1000.0;
+        let west: f64 = (3..6).map(|e| g.length_m(e)).sum::<f64>() / 1000.0;
+        let s = suggest(&d, &req(minutes(east + west), None));
+        assert_eq!(s.suggestions.len(), 1, "{:?}", s.text);
+        let x = &s.suggestions[0];
+        assert!(x.real_loop && x.out_and_back_share == 0.0, "{x:?}");
+        assert!((x.length_km - (east + west)).abs() < 0.05, "{x:?}");
+        assert_eq!(x.names.len(), 6);
+        let eight = x
+            .reasons
+            .iter()
+            .find(|r| r.text.starts_with("en huit"))
+            .expect("said as a figure of eight");
+        assert_eq!(eight.points, 0.0);
+        let first = if east >= west { east } else { west };
+        assert!(
+            eight
+                .text
+                .ends_with(&format!("on y repasse après {} km", fmt(first, 1))),
+            "{}",
+            eight.text
+        );
+        // The profile covers both petals.
+        assert!((x.profile.length_m() / 1000.0 - x.length_km).abs() < 0.01);
+        // The time of one triangle: a simple loop, no figure of eight.
+        let s = suggest(&d, &req(minutes(east), None));
+        assert!(!s.suggestions.is_empty(), "{:?}", s.text);
+        for x in &s.suggestions {
+            assert!(!x.reasons.iter().any(|r| r.text.starts_with("en huit")));
+            assert!(x.length_km < 0.6 * (east + west), "{x:?}");
+        }
+    }
+
+    #[test]
+    fn out_and_back_only_on_a_line() {
+        let d = site(
+            &[(6.10, 46.60), (6.12, 46.60), (6.14, 46.60)],
+            &[
+                (0, 1, "Ligne", 1, Difficulty::Easy),
+                (1, 2, "Ligne", 1, Difficulty::Easy),
+            ],
+        );
+        let g = d.graph.as_ref().unwrap();
+        let line = (g.length_m(0) + g.length_m(1)) / 1000.0;
+        let s = suggest(&d, &req(minutes(2.0 * line), None));
+        let x = s.suggestions.first().expect("the out-and-back");
+        assert!(!x.real_loop);
+        assert!((x.out_and_back_share - 0.5).abs() < 0.01);
+        assert!((x.length_km - 2.0 * line).abs() < 0.05);
+        assert!(
+            s.notes.iter().any(|n| n.starts_with("aucune vraie boucle")),
+            "{:?}",
+            s.notes
+        );
     }
 }

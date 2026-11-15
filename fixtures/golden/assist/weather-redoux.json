@@ -1,0 +1,102 @@
+{
+  "alerts.chapelle-des-bois": [],
+  "alerts.risoux": [],
+  "best_time.chapelle-des-bois": [
+    "Meilleur départ vers 8 h 00 (retour vers 10 h 24, sortie de 120 min) : plat : neige transformée qui ramollit (décaille) puis neige humide et lourde, pluie ; départ à 15 h 00 : plat : neige humide et lourde."
+  ],
+  "best_time.risoux": [
+    "Meilleur départ vers 8 h 00 (retour vers 10 h 24, sortie de 120 min) : plat : neige transformée qui ramollit (décaille) puis neige humide et lourde, rafales jusqu'à 40 km/h, pluie ; départ à 15 h 00 : plat : neige humide et lourde."
+  ],
+  "briefing.0.text": [
+    "Chapelle-des-Bois — mercredi 24 février 2027",
+    "Domaines :",
+    "1. Chapelle-des-Bois (score -0,66) : 2 itinéraires ouverts sur 3 (10 km sur 15) [+2,00] ; 35 cm de neige estimée (médiane, carte du 24/02, 100 % des points ≥ 20 cm) : limite [+0,50] ; vent modéré (rafales 35 km/h) ; 7 °C en moyenne, ressenti 2 °C ; pluie (9,0 mm) [-1,50] ; surface : neige humide et lourde [-0,50] ; niveau d'affluence très chargé (vacances d'hiver (zone A, zone B), vacances de détente (Belgique (FWB))) [-1,00] ; à 38 km à vol d'oiseau [-0,76] ; 30 km de pistes nordiques (OSM) [+0,60].",
+    "2. Risoux (score -3,54) : pas de source d'état des pistes pour ce domaine ; 35 cm de neige estimée (médiane, carte du 24/02, 100 % des points ≥ 20 cm) : limite [+0,50] ; rafales jusqu'à 40 km/h [-1,00] ; 6 °C en moyenne, ressenti 1 °C ; pluie (9,0 mm) [-1,50] ; surface : neige humide et lourde [-0,50] ; niveau d'affluence très chargé (vacances d'hiver (zone A, zone B), vacances de détente (Belgique (FWB))) [-1,00] ; à 42 km à vol d'oiseau [-0,84] ; 40 km de pistes nordiques (OSM) [+0,80].",
+    "Itinéraires (les 5 premiers non fermés) :",
+    "1. La Mollasse (score -1,30) : ouvert [+3,00] ; 35 cm de neige estimée (médiane, carte du 24/02, 100 % des points ≥ 20 cm) : limite [+0,50] ; rafales jusqu'à 40 km/h [-1,00] ; 6 °C en moyenne, ressenti 1 °C ; pluie (9,0 mm) [-1,50] ; surface : neige humide et lourde [-0,50] ; niveau d'affluence très chargé (vacances d'hiver (zone A, zone B), vacances de détente (Belgique (FWB))) [-1,00] ; à 40 km à vol d'oiseau [-0,80].",
+    "2. Chemin Weibel (score -1,30) : ouvert [+3,00] ; 35 cm de neige estimée (médiane, carte du 24/02, 100 % des points ≥ 20 cm) : limite [+0,50] ; rafales jusqu'à 40 km/h [-1,00] ; 6 °C en moyenne, ressenti 1 °C ; pluie (9,0 mm) [-1,50] ; surface : neige humide et lourde [-0,50] ; niveau d'affluence très chargé (vacances d'hiver (zone A, zone B), vacances de détente (Belgique (FWB))) [-1,00] ; à 40 km à vol d'oiseau [-0,80].",
+    "Qualité de neige (chapelle-des-bois) : Au plat (1090 m) : neige humide et lourde entre 10 h et 15 h. Meilleur créneau : plat de 8 h à 10 h (neige transformée qui ramollit (décaille)). Neige lourde : nord 20° dès 10 h, nord-est 20° dès 10 h, est 20° dès 10 h, sud-est 20° dès 10 h, sud 20° dès 10 h, sud-ouest 20° dès 10 h, ouest 20° dès 10 h, nord-ouest 20° dès 10 h, nord 40° dès 10 h, nord-est 40° dès 10 h, est 40° dès 10 h, sud-est 40° dès 10 h, sud 40° dès 10 h, sud-ouest 40° dès 10 h, ouest 40° dès 10 h, nord-ouest 40° dès 10 h. Modèle simple (température, soleil, nuages, vent) : ni ombre du relief ni damage ; à confirmer sur le terrain.",
+    "Qualité de neige (risoux) : Au plat (1250 m) : neige humide et lourde entre 10 h et 15 h. Meilleur créneau : plat de 8 h à 10 h (neige transformée qui ramollit (décaille)). Neige lourde : nord 20° dès 10 h, nord-est 20° dès 10 h, est 20° dès 10 h, sud-est 20° dès 10 h, sud 20° dès 10 h, sud-ouest 20° dès 10 h, ouest 20° dès 10 h, nord-ouest 20° dès 10 h, nord 40° dès 10 h, nord-est 40° dès 10 h, est 40° dès 10 h, sud-est 40° dès 10 h, sud 40° dès 10 h, sud-ouest 40° dès 10 h, ouest 40° dès 10 h, nord-ouest 40° dès 10 h. Modèle simple (température, soleil, nuages, vent) : ni ombre du relief ni damage ; à confirmer sur le terrain.",
+    "Coucher du soleil 18 h 12.",
+    "Données : BERA ; état des pistes ; domaines ; avalanches historiques ; Nordic France : 2/3 ouverts."
+  ],
+  "briefing.0.voice": [
+    "Point du jour. Chapelle-des-Bois. Pas de bulletin d'avalanche pour ce massif. Deux pistes ouvertes. Conseillé aujourd'hui. La Mollasse. Température, sept degrés. Vent de vingt kilomètres heure. Neige humide et lourde. Affluence forte. Coucher du soleil. Dix-huit heures quinze."
+  ],
+  "briefing.1.text": [
+    "Chapelle-des-Bois — jeudi 25 février 2027",
+    "Domaines :",
+    "1. Chapelle-des-Bois (score 0,84) : 2 itinéraires ouverts sur 3 (10 km sur 15) (dernier état connu) [+2,00] ; 35 cm de neige estimée (médiane, carte du 24/02, 100 % des points ≥ 20 cm) : limite [+0,50] ; vent modéré (rafales 35 km/h) ; 7 °C en moyenne, ressenti 2 °C ; surface : neige humide et lourde [-0,50] ; niveau d'affluence très chargé (vacances d'hiver (zone A, zone B), vacances de détente (Belgique (FWB))) [-1,00] ; à 38 km à vol d'oiseau [-0,76] ; 30 km de pistes nordiques (OSM) [+0,60].",
+    "2. Risoux (score -2,04) : pas de source d'état des pistes pour ce domaine ; 35 cm de neige estimée (médiane, carte du 24/02, 100 % des points ≥ 20 cm) : limite [+0,50] ; rafales jusqu'à 40 km/h [-1,00] ; 6 °C en moyenne, ressenti 1 °C ; surface : neige humide et lourde [-0,50] ; niveau d'affluence très chargé (vacances d'hiver (zone A, zone B), vacances de détente (Belgique (FWB))) [-1,00] ; à 42 km à vol d'oiseau [-0,84] ; 40 km de pistes nordiques (OSM) [+0,80].",
+    "Itinéraires (les 5 premiers non fermés) :",
+    "1. La Mollasse (score 0,20) : ouvert (dernier état connu) [+3,00] ; 35 cm de neige estimée (médiane, carte du 24/02, 100 % des points ≥ 20 cm) : limite [+0,50] ; rafales jusqu'à 40 km/h [-1,00] ; 6 °C en moyenne, ressenti 1 °C ; surface : neige humide et lourde [-0,50] ; niveau d'affluence très chargé (vacances d'hiver (zone A, zone B), vacances de détente (Belgique (FWB))) [-1,00] ; à 40 km à vol d'oiseau [-0,80].",
+    "2. Chemin Weibel (score 0,20) : ouvert (dernier état connu) [+3,00] ; 35 cm de neige estimée (médiane, carte du 24/02, 100 % des points ≥ 20 cm) : limite [+0,50] ; rafales jusqu'à 40 km/h [-1,00] ; 6 °C en moyenne, ressenti 1 °C ; surface : neige humide et lourde [-0,50] ; niveau d'affluence très chargé (vacances d'hiver (zone A, zone B), vacances de détente (Belgique (FWB))) [-1,00] ; à 40 km à vol d'oiseau [-0,80].",
+    "Qualité de neige (chapelle-des-bois) : Au plat (1090 m) : neige humide et lourde entre 10 h et 15 h. Meilleur créneau : nord, pente de 40° de 8 h à 17 h (neige transformée qui ramollit (décaille)). Neige lourde : nord 20° dès 12 h, nord-est 20° dès 11 h, est 20° dès 11 h, sud-est 20° dès 10 h, sud 20° dès 11 h, sud-ouest 20° dès 11 h, ouest 20° dès 12 h, nord-ouest 20° dès 12 h, nord-est 40° dès 12 h, est 40° dès 10 h, sud-est 40° dès 10 h, sud 40° dès 10 h, sud-ouest 40° dès 11 h, ouest 40° dès 12 h, nord-ouest 40° dès 14 h. Modèle simple (température, soleil, nuages, vent) : ni ombre du relief ni damage ; à confirmer sur le terrain.",
+    "Qualité de neige (risoux) : Au plat (1250 m) : neige humide et lourde entre 10 h et 15 h. Meilleur créneau : nord-est, pente de 40° de 8 h à 17 h (neige transformée qui ramollit (décaille)). Neige lourde : nord 20° dès 13 h, nord-est 20° dès 12 h, est 20° dès 11 h, sud-est 20° dès 11 h, sud 20° dès 11 h, sud-ouest 20° dès 11 h, ouest 20° dès 12 h, nord-ouest 20° dès 13 h, est 40° dès 10 h, sud-est 40° dès 10 h, sud 40° dès 11 h, sud-ouest 40° dès 11 h, ouest 40° dès 13 h, nord-ouest 40° dès 14 h. Modèle simple (température, soleil, nuages, vent) : ni ombre du relief ni damage ; à confirmer sur le terrain.",
+    "Coucher du soleil 18 h 14.",
+    "Données : BERA ; état des pistes ; domaines ; avalanches historiques ; état des pistes : dernier connu (24/02 07:30) ; Nordic France : 2/3 ouverts."
+  ],
+  "briefing.1.voice": [
+    "Point du jour. Chapelle-des-Bois. Pas de bulletin d'avalanche pour ce massif. Deux pistes ouvertes. Conseillé aujourd'hui. La Mollasse. Température, sept degrés. Vent de vingt kilomètres heure. Neige humide et lourde. Affluence forte. Coucher du soleil. Dix-huit heures quinze."
+  ],
+  "quality.chapelle-des-bois": [
+    "mercredi 24 février 2027 — chapelle-des-bois (1090 m). F fraîche, V soufflée, A ancienne sèche, T transformée (décaille), H humide, S soupe, D dure regelée, G glace",
+    "heure  flat  N20 NE20  E20 SE20  S20 SW20  W20 NW20  N40 NE40  E40 SE40  S40 SW40  W40 NW40",
+    "  06 h    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T",
+    "  07 h    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T",
+    "  08 h    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T",
+    "  09 h    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T",
+    "  10 h    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H",
+    "  11 h    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H",
+    "  12 h    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H",
+    "  13 h    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H",
+    "  14 h    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H",
+    "  15 h    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H",
+    "  16 h    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H",
+    "  17 h    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H",
+    "  18 h    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H",
+    "  19 h    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T",
+    "Au plat (1090 m) : neige humide et lourde entre 10 h et 15 h.",
+    "Meilleur créneau : plat de 8 h à 10 h (neige transformée qui ramollit (décaille)).",
+    "Neige lourde : nord 20° dès 10 h, nord-est 20° dès 10 h, est 20° dès 10 h, sud-est 20° dès 10 h, sud 20° dès 10 h, sud-ouest 20° dès 10 h, ouest 20° dès 10 h, nord-ouest 20° dès 10 h, nord 40° dès 10 h, nord-est 40° dès 10 h, est 40° dès 10 h, sud-est 40° dès 10 h, sud 40° dès 10 h, sud-ouest 40° dès 10 h, ouest 40° dès 10 h, nord-ouest 40° dès 10 h.",
+    "Modèle simple (température, soleil, nuages, vent) : ni ombre du relief ni damage ; à confirmer sur le terrain."
+  ],
+  "quality.risoux": [
+    "mercredi 24 février 2027 — risoux (1250 m). F fraîche, V soufflée, A ancienne sèche, T transformée (décaille), H humide, S soupe, D dure regelée, G glace",
+    "heure  flat  N20 NE20  E20 SE20  S20 SW20  W20 NW20  N40 NE40  E40 SE40  S40 SW40  W40 NW40",
+    "  06 h    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T",
+    "  07 h    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T",
+    "  08 h    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T",
+    "  09 h    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T",
+    "  10 h    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H",
+    "  11 h    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H",
+    "  12 h    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H",
+    "  13 h    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H",
+    "  14 h    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H",
+    "  15 h    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H",
+    "  16 h    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H",
+    "  17 h    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H",
+    "  18 h    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H    H",
+    "  19 h    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T",
+    "Au plat (1250 m) : neige humide et lourde entre 10 h et 15 h.",
+    "Meilleur créneau : plat de 8 h à 10 h (neige transformée qui ramollit (décaille)).",
+    "Neige lourde : nord 20° dès 10 h, nord-est 20° dès 10 h, est 20° dès 10 h, sud-est 20° dès 10 h, sud 20° dès 10 h, sud-ouest 20° dès 10 h, ouest 20° dès 10 h, nord-ouest 20° dès 10 h, nord 40° dès 10 h, nord-est 40° dès 10 h, est 40° dès 10 h, sud-est 40° dès 10 h, sud 40° dès 10 h, sud-ouest 40° dès 10 h, ouest 40° dès 10 h, nord-ouest 40° dès 10 h.",
+    "Modèle simple (température, soleil, nuages, vent) : ni ombre du relief ni damage ; à confirmer sur le terrain."
+  ],
+  "synthesis": [
+    "Pas de bulletin d'avalanche pour ce massif (Jura) : des avalanches restent possibles sur les fortes pentes, le bulletin du SLF couvre le Jura suisse voisin. Météo de 9 h à 16 h (Chapelle-des-Bois, 1090 m) : de 6 à 8 °C, vent modéré (rafales 35 km/h), pluie (9,0 mm), ciel couvert. Sur les pistes du site : sortie des itinéraires balisés interdite (Forêts d'altitude du Haut-Doubs, Forêts d'altitude du Haut-Jura) jusqu'au 30 juin, sortie des pistes interdite par endroits (terrains privés), feu interdit (Forêts d'altitude du Haut-Jura) (hors de France et de Suisse, aucune règle connue) ; 11 % des pistes sans aucun réseau mobile, même pour le 112.",
+    "Pas de bulletin d'avalanche pour ce massif. Des avalanches restent possibles sur les fortes pentes. Température, sept degrés. Vent de vingt kilomètres heure. Attention, zone protégée devant. Forêts d'altitude du Haut-Doubs. Restez sur les itinéraires balisés. En vigueur jusqu'au trente juin. Attention, zone protégée devant. Forêts d'altitude du Haut-Jura. Restez sur les itinéraires balisés. En vigueur jusqu'au trente juin. Attention, zone protégée devant. Forêts d'altitude du Haut-Jura. Feux interdits."
+  ],
+  "wax.chapelle-des-bois": [
+    "Matin 9 h–12 h, air +7 °C, neige ≈ 0 °C, neige mouillée : classique, retenue incertaine, skis à écailles ou peaux conseillés (pluie ou neige mouillée qui tombe) ; sinon KX75 Red Extra Wet Klister (Swix) ; glisse classique et skating PS10 Yellow (Swix) ou Base Performance Hot Wax yellow (Toko). Même fartage l'après-midi.",
+    "neige mouillée (modèle de qualité de neige A3, plat), air +6,7 °C en moyenne (+6,1 à +7,3) ; glisse : air +6,7 °C (tables Swix), neige estimée +0,0 °C (tables Toko) ; humidité 95 %",
+    "neige mouillée (modèle de qualité de neige A3, plat), air +7,9 °C en moyenne (+7,7 à +8,0) ; glisse : air +7,9 °C (tables Swix), neige estimée +0,0 °C (tables Toko) ; humidité 95 %",
+    "Fartage. Prenez des skis à écailles ou des peaux. Fart de glisse pour neige chaude et humide."
+  ],
+  "wax.risoux": [
+    "Matin 9 h–12 h, air +6 °C, neige ≈ 0 °C, neige mouillée : classique, retenue incertaine, skis à écailles ou peaux conseillés (pluie ou neige mouillée qui tombe) ; sinon KX75 Red Extra Wet Klister (Swix) ; glisse classique et skating PS10 Yellow (Swix) ou Base Performance Hot Wax yellow (Toko). Même fartage l'après-midi.",
+    "neige mouillée (modèle de qualité de neige A3, plat), air +5,7 °C en moyenne (+5,1 à +6,3) ; glisse : air +5,7 °C (tables Swix), neige estimée +0,0 °C (tables Toko) ; humidité 95 %",
+    "neige mouillée (modèle de qualité de neige A3, plat), air +6,9 °C en moyenne (+6,7 à +7,0) ; glisse : air +6,9 °C (tables Swix), neige estimée +0,0 °C (tables Toko) ; humidité 95 %",
+    "Fartage. Prenez des skis à écailles ou des peaux. Fart de glisse pour neige chaude et humide."
+  ]
+}

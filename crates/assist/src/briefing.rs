@@ -266,6 +266,12 @@ pub fn date_fr(d: NaiveDate) -> String {
     )
 }
 
+/// A temperature in whole degrees: « 0 » and not « -0 » between −0.5 and 0.
+pub(crate) fn degrees(x: f64) -> String {
+    let s = format!("{x:.0}");
+    if s == "-0" { "0".to_owned() } else { s }
+}
+
 pub(crate) fn fmt_num(x: f64, decimals: usize) -> String {
     format!("{x:.decimals$}").replace('.', ",")
 }
@@ -360,21 +366,21 @@ pub(crate) fn weather_reasons(out: &mut Vec<Reason>, w: &DayWeather) {
                 out,
                 Factor::Cold,
                 -1.5,
-                format!("très froid, ressenti {c:.0} °C"),
+                format!("très froid, ressenti {} °C", degrees(c)),
             );
         } else if c <= -12.0 {
             reason(
                 out,
                 Factor::Cold,
                 -0.5,
-                format!("froid, ressenti {c:.0} °C"),
+                format!("froid, ressenti {} °C", degrees(c)),
             );
         } else if let Some(t) = w.temperature_mean_c {
             reason(
                 out,
                 Factor::Cold,
                 0.0,
-                format!("{t:.0} °C en moyenne, ressenti {c:.0} °C"),
+                format!("{} °C en moyenne, ressenti {} °C", degrees(t), degrees(c)),
             );
         }
     }
@@ -1152,6 +1158,7 @@ pub fn spoken(b: &DayBriefing) -> String {
 mod tests {
     use super::*;
     use crate::layers::{Area, Domain, Status, Weather, WeatherHour};
+    use crate::snow_quality::Quality;
     use skimap_common::site::CHAPELLE_DES_BOIS;
 
     fn hours(date: NaiveDate, f: impl Fn(u32) -> (f64, f64, f64, f64)) -> Vec<WeatherHour> {
@@ -1318,5 +1325,404 @@ mod tests {
             date_fr(NaiveDate::from_ymd_opt(2026, 1, 5).unwrap()),
             "lundi 5 janvier 2026"
         );
+    }
+
+    /// A uniform snow map of `cm` over the test area, valid at 06 h UTC of `date`.
+    fn snow(date: NaiveDate, cm: f32) -> crate::layers::SnowMap {
+        use skimap_common::grid::{GeoTransform, Grid};
+        let (x0, y0) = skimap_common::crs::to_lambert93(LonLat::new(6.0, 46.7)).unwrap();
+        let (x1, y1) = skimap_common::crs::to_lambert93(LonLat::new(6.3, 46.5)).unwrap();
+        let w = ((x1 - x0) / 100.0).ceil() as usize;
+        let h = ((y0 - y1) / 100.0).ceil() as usize;
+        crate::layers::SnowMap {
+            valid_at: date.and_hms_opt(6, 0, 0).unwrap().and_utc(),
+            depth: Grid::filled(
+                w,
+                h,
+                GeoTransform::north_up(x0, y0, 100.0),
+                skimap_common::crs::Crs::Lambert93,
+                cm,
+            ),
+            low: None,
+            high: None,
+        }
+    }
+
+    fn w(f: impl FnOnce(&mut DayWeather)) -> DayWeather {
+        let mut d = DayWeather {
+            hours: 7,
+            ..Default::default()
+        };
+        f(&mut d);
+        d
+    }
+
+    fn reasons_of(d: &DayWeather) -> Vec<(Factor, f64, String)> {
+        let mut out = Vec::new();
+        weather_reasons(&mut out, d);
+        out.into_iter()
+            .map(|r| (r.factor, r.points, r.text))
+            .collect()
+    }
+
+    #[test]
+    fn weather_reason_thresholds() {
+        let one = |d: DayWeather| reasons_of(&d).remove(0);
+        assert_eq!(
+            one(w(|d| d.gust_max_kmh = Some(24.9))),
+            (Factor::Wind, 0.0, "vent faible (rafales 25 km/h)".into())
+        );
+        assert_eq!(
+            one(w(|d| d.gust_max_kmh = Some(25.0))),
+            (Factor::Wind, 0.0, "vent modéré (rafales 25 km/h)".into())
+        );
+        assert_eq!(one(w(|d| d.gust_max_kmh = Some(40.0))).1, -1.0);
+        assert_eq!(one(w(|d| d.gust_max_kmh = Some(39.9))).1, 0.0);
+        assert_eq!(one(w(|d| d.gust_max_kmh = Some(60.0))).1, -2.0);
+        assert_eq!(one(w(|d| d.gust_max_kmh = Some(59.9))).1, -1.0);
+        assert_eq!(
+            one(w(|d| d.wind_chill_min_c = Some(-20.0))),
+            (Factor::Cold, -1.5, "très froid, ressenti -20 °C".into())
+        );
+        assert_eq!(one(w(|d| d.wind_chill_min_c = Some(-19.9))).1, -0.5);
+        assert_eq!(
+            one(w(|d| d.wind_chill_min_c = Some(-12.0))),
+            (Factor::Cold, -0.5, "froid, ressenti -12 °C".into())
+        );
+        assert!(reasons_of(&w(|d| d.wind_chill_min_c = Some(-11.9))).is_empty());
+        assert_eq!(
+            one(w(|d| {
+                d.wind_chill_min_c = Some(-0.4);
+                d.temperature_mean_c = Some(-0.3);
+            })),
+            (Factor::Cold, 0.0, "0 °C en moyenne, ressenti 0 °C".into())
+        );
+        assert_eq!(
+            one(w(|d| d.fog_hours = 4)),
+            (Factor::Fog, -1.0, "brouillard 4 h sur 7".into())
+        );
+        assert_eq!(
+            one(w(|d| d.fog_hours = 3)),
+            (Factor::Fog, -0.5, "brouillard 3 h sur 7".into())
+        );
+        assert_eq!(one(w(|d| d.fog_hours = 2)).1, -0.5);
+        assert!(reasons_of(&w(|d| d.fog_hours = 1)).is_empty());
+        assert_eq!(
+            one(w(|d| d.snowfall_cm = 5.0)),
+            (
+                Factor::Snowfall,
+                -0.5,
+                "5 cm de neige pendant la journée".into()
+            )
+        );
+        assert_eq!(
+            one(w(|d| d.snowfall_cm = 4.9)),
+            (
+                Factor::Snowfall,
+                0.0,
+                "5 cm de neige pendant la journée".into()
+            )
+        );
+        assert_eq!(one(w(|d| d.snowfall_cm = 1.0)).1, 0.0);
+        assert!(reasons_of(&w(|d| d.snowfall_cm = 0.9)).is_empty());
+        assert_eq!(
+            one(w(|d| d.rain_mm = 1.0)),
+            (Factor::Rain, -1.5, "pluie (1,0 mm)".into())
+        );
+        assert!(reasons_of(&w(|d| d.rain_mm = 0.9)).is_empty());
+        assert_eq!(
+            one(w(|d| d.cloud_mean_pct = Some(29.9))),
+            (Factor::Sun, 0.5, "ensoleillé".into())
+        );
+        assert!(reasons_of(&w(|d| d.cloud_mean_pct = Some(30.0))).is_empty());
+    }
+
+    #[test]
+    fn snow_and_surface_reasons() {
+        let stats = |median: f64, added: f64| SnowStats {
+            samples: 3,
+            median_cm: median,
+            p10_cm: median,
+            share_20cm: 1.0,
+            added_cm: added,
+            map_date: NaiveDate::from_ymd_opt(2027, 1, 12).unwrap(),
+        };
+        let first = |s: Option<SnowStats>, fresh: Option<f64>| {
+            let mut out = Vec::new();
+            snow_reasons(&mut out, &s, fresh);
+            out
+        };
+        assert_eq!(first(Some(stats(19.9, 0.0)), None)[0].points, -3.0);
+        let r = &first(Some(stats(19.0, 1.0)), None)[0];
+        assert_eq!(r.points, 0.5, "19 cm and 1 cm since: 20 cm");
+        assert_eq!(
+            r.text,
+            "20 cm de neige estimée (médiane, carte du 12/01 dont 1 cm tombés depuis, 100 % des points ≥ 20 cm) : limite"
+        );
+        assert_eq!(first(Some(stats(39.9, 0.0)), None)[0].points, 0.5);
+        let r = &first(Some(stats(40.0, 0.4)), None)[0];
+        assert_eq!(r.points, 2.0);
+        assert!(
+            r.text.contains("carte du 12/01, 100 %"),
+            "no « dont » under 0.5 cm"
+        );
+        let r = first(None, Some(5.0));
+        assert_eq!(r[0].points, -1.5);
+        assert_eq!(
+            (r[1].factor, r[1].points, r[1].text.as_str()),
+            (Factor::FreshSnow, 0.5, "5 cm de neige fraîche en 24 h")
+        );
+        assert_eq!(first(None, Some(4.9)).len(), 1);
+        let s = |q: Quality| {
+            let mut out = Vec::new();
+            surface_reason(&mut out, Some(q));
+            out[0].points
+        };
+        assert_eq!(s(Quality::Fresh), 0.5);
+        assert_eq!(s(Quality::Transformed), 0.5);
+        assert_eq!(s(Quality::OldDry), 0.0);
+        assert_eq!(s(Quality::Windblown), -0.5);
+        assert_eq!(s(Quality::Hard), -0.5);
+        assert_eq!(s(Quality::Wet), -0.5);
+        assert_eq!(s(Quality::Icy), -1.0);
+        assert_eq!(s(Quality::Slush), -1.0);
+        let mut out = Vec::new();
+        surface_reason(&mut out, None);
+        assert!(out.is_empty());
+        assert_eq!(crowd_points(CrowdLevel::Calm), 0.0);
+        assert_eq!(crowd_points(CrowdLevel::Moderate), -0.25);
+        assert_eq!(crowd_points(CrowdLevel::Busy), -0.5);
+        assert_eq!(crowd_points(CrowdLevel::VeryBusy), -1.0);
+        let mut v = vec![5.0, 1.0, 4.0, 2.0, 3.0];
+        assert_eq!(quantile(&mut v, 0.5), 3.0);
+        assert_eq!(quantile(&mut v, 0.9), 5.0);
+        assert_eq!(quantile(&mut v, 0.1), 1.0);
+    }
+
+    #[test]
+    fn snow_maps_domains_and_avalanche_paths() {
+        let date = NaiveDate::from_ymd_opt(2027, 1, 12).unwrap();
+        let mut d = data(date, 20.0);
+        // 15 cm on the map, 5 cm since: 20 cm, all points at 20 cm or more.
+        d.snows = vec![snow(date, 15.0)];
+        for p in d.weather.as_mut().unwrap().points.iter_mut() {
+            for h in &mut p.hours {
+                h.snowfall_cm = Some(
+                    if h.time.date() == date && (7..12).contains(&h.time.hour()) {
+                        1.0
+                    } else {
+                        0.0
+                    },
+                );
+            }
+        }
+        let s = snow_stats(&d.snows[0], &[LonLat::new(6.1, 46.6)], 5.0).unwrap();
+        assert_eq!((s.median_cm, s.added_cm, s.share_20cm), (15.0, 5.0, 1.0));
+        assert_eq!(
+            snow_stats(&d.snows[0], &[LonLat::new(7.5, 46.6)], 5.0),
+            None
+        );
+        // A3 at the points: the map plus the snowfall from 07 h to 09 h (2 cm).
+        let b = day(&d, date, &Options::default());
+        assert!(
+            b.snow_quality.iter().all(|q| q.snow_cm == Some(17.0)),
+            "{:?}",
+            b.snow_quality.iter().map(|q| q.snow_cm).collect::<Vec<_>>()
+        );
+        // The candidates: snowfall from 07 h until 09 h added.
+        let c = b.itineraries.iter().find(|c| c.name == "Alpha").unwrap();
+        assert_eq!(c.snow.unwrap().added_cm, 2.0);
+        assert!(b.notes.iter().all(|n| !n.starts_with("aucune carte")));
+        // Exactly 20 cm: enough (not « hors saison »).
+        d.snows = vec![snow(date, 20.0)];
+        for p in d.weather.as_mut().unwrap().points.iter_mut() {
+            for h in &mut p.hours {
+                h.snowfall_cm = Some(0.0);
+            }
+        }
+        let b = day(&d, date, &Options::default());
+        let alpha = b.itineraries.iter().find(|c| c.name == "Alpha").unwrap();
+        assert_eq!(alpha.reasons[0].text, "ouvert");
+        assert!(!b.domains[0].reasons[0].text.contains("insuffisante"));
+        // A map too old for the day: said.
+        let b = day(&d, date + Duration::days(5), &Options::default());
+        assert!(
+            b.domains[0]
+                .reasons
+                .iter()
+                .any(|r| r.text == "aucune carte d'enneigement de ce jour ou des 4 jours avant")
+        );
+        // An itinerary outside every domain belongs to none.
+        let it = Itinerary {
+            line: vec![LonLat::new(6.5, 46.9)],
+            ..d.status.as_ref().unwrap().itineraries[0].clone()
+        };
+        assert_eq!(domain_of(&d, &it), None);
+        assert_eq!(
+            domain_of(&d, &d.status.as_ref().unwrap().itineraries[0]),
+            Some("da")
+        );
+        // Historic avalanche paths: with the BERA of the day.
+        d.clpa = Some(crate::layers::Clpa {
+            covered: true,
+            areas: Default::default(),
+            piste_km: [("Alpha".to_owned(), 1.2), ("Ailleurs".to_owned(), 3.0)]
+                .into_iter()
+                .collect(),
+        });
+        d.pistes = vec![crate::layers::Piste {
+            way_id: 7,
+            name: Some("Alpha".into()),
+            relations: vec!["Alpha".into()],
+            uses: vec!["nordic".into()],
+            line: vec![LonLat::new(6.10, 46.60), LonLat::new(6.101, 46.60)],
+        }];
+        d.domains[0].ways = vec![7];
+        let clpa = |b: &DayBriefing, name: &str| {
+            b.domains
+                .iter()
+                .chain(&b.itineraries)
+                .find(|c| c.name == name)
+                .unwrap()
+                .reasons
+                .iter()
+                .find(|r| r.factor == Factor::Avalanche)
+                .map(|r| (r.points, r.text.clone()))
+        };
+        let b = day(&d, date, &Options::default());
+        assert_eq!(
+            clpa(&b, "Alpha"),
+            Some((
+                -0.5,
+                "1,2 km dans des zones d'avalanche connues, BERA non disponible".into()
+            ))
+        );
+        assert_eq!(
+            b.domains.iter().find(|c| c.id == "da").unwrap().clpa_km,
+            1.2
+        );
+        assert_eq!(
+            b.domains.iter().find(|c| c.id == "db").unwrap().clpa_km,
+            0.0
+        );
+        let bera = |level: u8| crate::layers::Bera {
+            site: "test".into(),
+            date: date.to_string(),
+            massif: None,
+            status: BeraStatus::Bulletin,
+            pdf_url: None,
+            bulletin: Some(crate::layers::BeraBulletin {
+                massif: "X".into(),
+                date_validity: None,
+                risk: crate::layers::BeraRisk {
+                    max: Some(level),
+                    ..Default::default()
+                },
+                aspects: Default::default(),
+                accidental: None,
+                natural: None,
+                snow_quality: None,
+            }),
+            notice: String::new(),
+            links: vec![],
+        };
+        d.beras = vec![bera(3)];
+        let b = day(&d, date, &Options::default());
+        assert_eq!(
+            clpa(&b, "Alpha"),
+            Some((
+                -2.0,
+                "1,2 km dans des zones d'avalanche connues, BERA 3 sur 5".into()
+            ))
+        );
+        d.beras = vec![bera(2)];
+        let b = day(&d, date, &Options::default());
+        assert_eq!(
+            clpa(&b, "Alpha"),
+            Some((
+                0.0,
+                "1,2 km dans des zones d'avalanche connues (BERA 2 sur 5)".into()
+            ))
+        );
+    }
+
+    #[test]
+    fn domain_status_from_its_itineraries() {
+        let date = NaiveDate::from_ymd_opt(2027, 1, 12).unwrap();
+        let mut d = data(date, 20.0);
+        let its = &mut d.status.as_mut().unwrap().itineraries;
+        // Alpha open (10 km), Gamma closed (4 km) in domain A.
+        its[2].length_km = Some(4.0);
+        let b = day(&d, date, &Options::default());
+        let a = b.domains.iter().find(|c| c.id == "da").unwrap();
+        assert_eq!(a.open_km, Some((10.0, 14.0)));
+        assert!((a.reasons[0].points - 3.0 * 10.0 / 14.0).abs() < 1e-12);
+        assert_eq!(
+            a.reasons[0].text,
+            "1 itinéraire ouvert sur 2 (10 km sur 14)"
+        );
+        // Every known itinerary closed: −10, said with their number.
+        let its = &mut d.status.as_mut().unwrap().itineraries;
+        its[0].state = OpenState::Closed;
+        let b = day(&d, date, &Options::default());
+        let a = b.domains.iter().find(|c| c.id == "da").unwrap();
+        assert_eq!(a.state, OpenState::Closed);
+        assert_eq!(
+            (a.reasons[0].points, a.reasons[0].text.as_str()),
+            (-10.0, "aucun des 2 itinéraires connus n'est ouvert")
+        );
+        // Domain B has one itinerary, closed.
+        d.status.as_mut().unwrap().itineraries[1].state = OpenState::Closed;
+        let b = day(&d, date, &Options::default());
+        let bb = b.domains.iter().find(|c| c.id == "db").unwrap();
+        assert_eq!(bb.reasons[0].text, "le seul itinéraire connu est fermé");
+        // Itineraries without length: no share, no points (not NaN).
+        let its = &mut d.status.as_mut().unwrap().itineraries;
+        for i in its.iter_mut() {
+            i.length_km = None;
+            i.state = OpenState::Open;
+        }
+        let b = day(&d, date, &Options::default());
+        let a = b.domains.iter().find(|c| c.id == "da").unwrap();
+        assert_eq!(a.open_km, Some((0.0, 0.0)));
+        assert_eq!(a.reasons[0].points, 0.0);
+        // Two days before the poll: no status, said, and the best domain not closed with
+        // snow is recommended.
+        d.snows = vec![snow(date - Duration::days(2), 30.0)];
+        d.pistes = vec![crate::layers::Piste {
+            way_id: 7,
+            name: Some("Alpha".into()),
+            relations: vec![],
+            uses: vec!["nordic".into()],
+            line: vec![LonLat::new(6.10, 46.60), LonLat::new(6.101, 46.60)],
+        }];
+        d.domains[0].ways = vec![7];
+        let b = day(&d, date - Duration::days(2), &Options::default());
+        assert_eq!(b.status, "none");
+        assert!(
+            b.notes
+                .iter()
+                .any(|n| n == "état des pistes inconnu pour ce jour")
+        );
+        assert!(
+            spoken(&b).contains("Conseillé aujourd'hui. Domaine "),
+            "{}",
+            spoken(&b)
+        );
+        // Mean cloud cover of 30 %: not sunny for the crowd.
+        for p in d.weather.as_mut().unwrap().points.iter_mut() {
+            for h in &mut p.hours {
+                h.cloud_cover_pct = Some(30.0);
+            }
+        }
+        let b = day(&d, date, &Options::default());
+        assert!(b.crowd.unwrap().reasons.is_empty());
+        for p in d.weather.as_mut().unwrap().points.iter_mut() {
+            for h in &mut p.hours {
+                h.cloud_cover_pct = Some(29.0);
+            }
+        }
+        let b = day(&d, date, &Options::default());
+        assert_eq!(b.crowd.unwrap().reasons, ["soleil"]);
     }
 }

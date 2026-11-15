@@ -1,0 +1,101 @@
+{
+  "alerts.le-laus": [],
+  "alerts.les-fonts": [],
+  "best_time.le-laus": [
+    "Meilleur départ vers 11 h 00 (retour vers 13 h 24, sortie de 120 min) : plat : neige ancienne froide et sèche, soleil ; départ à 9 h 00 : ressenti jusqu'à -17 °C."
+  ],
+  "best_time.les-fonts": [
+    "Meilleur départ vers 9 h 00 (retour vers 11 h 24, sortie de 120 min) : plat : neige ancienne froide et sèche, ressenti jusqu'à -21 °C, soleil."
+  ],
+  "briefing.0.text": [
+    "Cervières — mardi 12 janvier 2027",
+    "BERA : risque 2 sur 5 (lisez le bulletin complet).",
+    "Domaines :",
+    "1. Cervières (score 4,44) : 2 itinéraires ouverts sur 3 (10 km sur 15) [+2,00] ; 60 cm de neige estimée (médiane, carte du 12/01, 100 % des points ≥ 20 cm) : suffisante [+2,00] ; vent faible (rafales 15 km/h) ; froid, ressenti -17 °C [-0,50] ; ensoleillé [+0,50] ; surface : neige ancienne froide et sèche ; niveau d'affluence calme (soleil) ; à 8 km à vol d'oiseau [-0,16] ; 30 km de pistes nordiques (OSM) [+0,60].",
+    "2. Les Fonts (score 1,50) : pas de source d'état des pistes pour ce domaine ; 60 cm de neige estimée (médiane, carte du 12/01, 100 % des points ≥ 20 cm) : suffisante [+2,00] ; vent faible (rafales 20 km/h) ; très froid, ressenti -21 °C [-1,50] ; ensoleillé [+0,50] ; surface : neige ancienne froide et sèche ; niveau d'affluence calme (soleil) ; à 15 km à vol d'oiseau [-0,30] ; 40 km de pistes nordiques (OSM) [+0,80].",
+    "Itinéraires (les 5 premiers non fermés) :",
+    "1. Chemin du Blétonnet (score 4,79) : ouvert [+3,00] ; 60 cm de neige estimée (médiane, carte du 12/01, 100 % des points ≥ 20 cm) : suffisante [+2,00] ; vent faible (rafales 15 km/h) ; froid, ressenti -17 °C [-0,50] ; ensoleillé [+0,50] ; surface : neige ancienne froide et sèche ; niveau d'affluence calme (soleil) ; à 11 km à vol d'oiseau [-0,21].",
+    "2. Souliers (score 3,66) : ouvert [+3,00] ; 60 cm de neige estimée (médiane, carte du 12/01, 100 % des points ≥ 20 cm) : suffisante [+2,00] ; vent faible (rafales 20 km/h) ; très froid, ressenti -21 °C [-1,50] ; ensoleillé [+0,50] ; météo du point Les Fonts à 9 km ; surface : neige ancienne froide et sèche ; niveau d'affluence calme (soleil) ; à 17 km à vol d'oiseau [-0,34].",
+    "Qualité de neige (le-laus) : Au plat (1750 m) : neige ancienne froide et sèche entre 10 h et 15 h. Meilleur créneau : plat de 9 h à 17 h (neige ancienne froide et sèche). Modèle simple (température, soleil, nuages, vent) : ni ombre du relief ni damage ; à confirmer sur le terrain.",
+    "Qualité de neige (les-fonts) : Au plat (2040 m) : neige ancienne froide et sèche entre 10 h et 15 h. Meilleur créneau : plat de 9 h à 17 h (neige ancienne froide et sèche). Modèle simple (température, soleil, nuages, vent) : ni ombre du relief ni damage ; à confirmer sur le terrain.",
+    "Coucher du soleil 17 h 13.",
+    "Données : BERA ; état des pistes ; domaines ; avalanches historiques ; exposition aux avalanches ; Nordic France : 2/3 ouverts."
+  ],
+  "briefing.0.voice": [
+    "Point du jour. Cervières. Risque d'avalanche deux sur cinq, limité. Deux pistes ouvertes. Conseillé aujourd'hui. Chemin du Blétonnet. Température, moins dix degrés. Vent de dix kilomètres heure. Neige froide et sèche. Affluence faible. Coucher du soleil. Dix-sept heures quinze."
+  ],
+  "briefing.1.text": [
+    "Cervières — mercredi 13 janvier 2027",
+    "Domaines :",
+    "1. Cervières (score 4,44) : 2 itinéraires ouverts sur 3 (10 km sur 15) (dernier état connu) [+2,00] ; 60 cm de neige estimée (médiane, carte du 12/01, 100 % des points ≥ 20 cm) : suffisante [+2,00] ; vent faible (rafales 15 km/h) ; froid, ressenti -17 °C [-0,50] ; ensoleillé [+0,50] ; surface : neige ancienne froide et sèche ; niveau d'affluence calme (soleil) ; à 8 km à vol d'oiseau [-0,16] ; 30 km de pistes nordiques (OSM) [+0,60].",
+    "2. Les Fonts (score 1,50) : pas de source d'état des pistes pour ce domaine ; 60 cm de neige estimée (médiane, carte du 12/01, 100 % des points ≥ 20 cm) : suffisante [+2,00] ; vent faible (rafales 20 km/h) ; très froid, ressenti -21 °C [-1,50] ; ensoleillé [+0,50] ; surface : neige ancienne froide et sèche ; niveau d'affluence calme (soleil) ; à 15 km à vol d'oiseau [-0,30] ; 40 km de pistes nordiques (OSM) [+0,80].",
+    "Itinéraires (les 5 premiers non fermés) :",
+    "1. Chemin du Blétonnet (score 4,79) : ouvert (dernier état connu) [+3,00] ; 60 cm de neige estimée (médiane, carte du 12/01, 100 % des points ≥ 20 cm) : suffisante [+2,00] ; vent faible (rafales 15 km/h) ; froid, ressenti -17 °C [-0,50] ; ensoleillé [+0,50] ; surface : neige ancienne froide et sèche ; niveau d'affluence calme (soleil) ; à 11 km à vol d'oiseau [-0,21].",
+    "2. Souliers (score 3,66) : ouvert (dernier état connu) [+3,00] ; 60 cm de neige estimée (médiane, carte du 12/01, 100 % des points ≥ 20 cm) : suffisante [+2,00] ; vent faible (rafales 20 km/h) ; très froid, ressenti -21 °C [-1,50] ; ensoleillé [+0,50] ; météo du point Les Fonts à 9 km ; surface : neige ancienne froide et sèche ; niveau d'affluence calme (soleil) ; à 17 km à vol d'oiseau [-0,34].",
+    "Qualité de neige (le-laus) : Au plat (1750 m) : neige ancienne froide et sèche entre 10 h et 15 h. Meilleur créneau : plat de 9 h à 17 h (neige ancienne froide et sèche). Modèle simple (température, soleil, nuages, vent) : ni ombre du relief ni damage ; à confirmer sur le terrain.",
+    "Qualité de neige (les-fonts) : Au plat (2040 m) : neige ancienne froide et sèche entre 10 h et 15 h. Meilleur créneau : plat de 9 h à 17 h (neige ancienne froide et sèche). Modèle simple (température, soleil, nuages, vent) : ni ombre du relief ni damage ; à confirmer sur le terrain.",
+    "Coucher du soleil 17 h 14.",
+    "Données : BERA ; état des pistes ; domaines ; avalanches historiques ; exposition aux avalanches ; état des pistes : dernier connu (12/01 07:30) ; Nordic France : 2/3 ouverts."
+  ],
+  "briefing.1.voice": [
+    "Point du jour. Cervières. Deux pistes ouvertes. Conseillé aujourd'hui. Chemin du Blétonnet. Température, moins dix degrés. Vent de dix kilomètres heure. Neige froide et sèche. Affluence faible. Coucher du soleil. Dix-sept heures quinze."
+  ],
+  "quality.le-laus": [
+    "mardi 12 janvier 2027 — le-laus (1750 m). F fraîche, V soufflée, A ancienne sèche, T transformée (décaille), H humide, S soupe, D dure regelée, G glace",
+    "heure  flat  N20 NE20  E20 SE20  S20 SW20  W20 NW20  N40 NE40  E40 SE40  S40 SW40  W40 NW40",
+    "  06 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "  07 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "  08 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "  09 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "  10 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "  11 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "  12 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "  13 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "  14 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "  15 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "  16 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "  17 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "  18 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "  19 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "Au plat (1750 m) : neige ancienne froide et sèche entre 10 h et 15 h.",
+    "Meilleur créneau : plat de 9 h à 17 h (neige ancienne froide et sèche).",
+    "Modèle simple (température, soleil, nuages, vent) : ni ombre du relief ni damage ; à confirmer sur le terrain."
+  ],
+  "quality.les-fonts": [
+    "mardi 12 janvier 2027 — les-fonts (2040 m). F fraîche, V soufflée, A ancienne sèche, T transformée (décaille), H humide, S soupe, D dure regelée, G glace",
+    "heure  flat  N20 NE20  E20 SE20  S20 SW20  W20 NW20  N40 NE40  E40 SE40  S40 SW40  W40 NW40",
+    "  06 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "  07 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "  08 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "  09 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "  10 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "  11 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "  12 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "  13 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "  14 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "  15 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "  16 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "  17 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "  18 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "  19 h    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A    A",
+    "Au plat (2040 m) : neige ancienne froide et sèche entre 10 h et 15 h.",
+    "Meilleur créneau : plat de 9 h à 17 h (neige ancienne froide et sèche).",
+    "Modèle simple (température, soleil, nuages, vent) : ni ombre du relief ni damage ; à confirmer sur le terrain."
+  ],
+  "synthesis": [
+    "Risque d'avalanche deux sur cinq, limité, pentes nord, nord-est, nord-ouest les plus exposées : lisez le bulletin complet avant de partir. Météo de 9 h à 16 h (Le Laus, 1750 m) : de -12 à -9 °C, ressenti -17 °C, vent faible, isotherme 0 °C vers 600 m, ciel dégagé. Sur les pistes du site : feu interdit, réchauds compris (Cervières) (hors de France et de Suisse, aucune règle connue) ; 14 % des pistes sans aucun réseau mobile, même pour le 112.",
+    "Risque d'avalanche deux sur cinq, limité. Température, moins dix degrés. Vent de dix kilomètres heure. Feu interdit sur la commune, réchauds compris."
+  ],
+  "wax.le-laus": [
+    "Matin 9 h–12 h, air -11 °C, neige ≈ -13 °C, neige ancienne à grains fins : classique, retenue V30 Blue (Swix) ou Nordic GripWax blue (Toko) ; glisse classique et skating PS6 Blue (Swix) ou Base Performance Hot Wax blue (Toko). Même fartage l'après-midi.",
+    "neige ancienne à grains fins (modèle de qualité de neige A3, plat), air -11,1 °C en moyenne (-12,0 à -10,2) ; glisse : air -11,1 °C (tables Swix), neige estimée -13,0 °C (tables Toko) ; humidité 55 %",
+    "neige ancienne à grains fins (modèle de qualité de neige A3, plat), air -9,2 °C en moyenne (-9,5 à -9,0) ; glisse : air -9,2 °C (tables Swix), neige estimée -11,1 °C (tables Toko) ; humidité 55 %",
+    "Fartage. Fart de retenue bleu. Fart de glisse pour neige froide."
+  ],
+  "wax.les-fonts": [
+    "Matin 9 h–12 h, air -13 °C, neige ≈ -15 °C, neige ancienne à grains fins : classique, retenue V20 Green (Swix) ou Nordic GripWax blue (Toko) ; glisse classique et skating PS5 Turquoise (Swix) ou Base Performance Hot Wax blue (Toko). Après-midi 12 h–16 h, air -11 °C, neige ≈ -13 °C, neige ancienne à grains fins : classique, retenue V30 Blue (Swix) ou Nordic GripWax blue (Toko) ; glisse classique et skating PS6 Blue (Swix) ou Base Performance Hot Wax blue (Toko).",
+    "neige ancienne à grains fins (modèle de qualité de neige A3, plat), air -13,1 °C en moyenne (-14,0 à -12,2) ; glisse : air -13,1 °C (tables Swix), neige estimée -15,0 °C (tables Toko) ; humidité 55 %",
+    "neige ancienne à grains fins (modèle de qualité de neige A3, plat), air -11,2 °C en moyenne (-11,5 à -11,0) ; glisse : air -11,2 °C (tables Swix), neige estimée -13,1 °C (tables Toko) ; humidité 55 %",
+    "Fartage. Fart de retenue vert. Fart de glisse pour neige froide."
+  ]
+}

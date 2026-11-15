@@ -48,7 +48,7 @@ use skimap_assist::layers::WeatherPoint;
 use skimap_assist::suggest::{loop_voice, node_snap};
 use skimap_common::geom::LonLat;
 use skimap_core::calibration::{
-    DayPace, OutingObs, PaceParams, Prediction, Terrain, terrain_ratio,
+    DayPace, OutingObs, PaceParams, Prediction, TERRAINS, Terrain, terrain_ratio,
 };
 use skimap_core::graph::{LocalPlane, PisteGraph, Snap};
 use skimap_core::matching::{AlertEvent, DeviationDetector, Hysteresis, ROUTE_HYSTERESIS};
@@ -1239,7 +1239,16 @@ impl<'a> Tracker<'a> {
                     a.announcement.clone(),
                     a.priority,
                 );
-                self.offer(t, pr, &key, &kind, ann, Some(120.0));
+                // Due before the point is passed: at the current speed, a short window (a
+                // turn « dans vingt mètres » downhill) is said at once rather than after the
+                // grouping wait of the speech policy (it would be withdrawn unsaid).
+                let ttl = match self.session.speed(30.0) {
+                    Some(v) if v > 0.5 && pr != Priority::Safety => {
+                        ((f64::from(d.s_until) - self.cursor) / v).clamp(2.0, 120.0)
+                    }
+                    _ => 120.0,
+                };
+                self.offer(t, pr, &key, &kind, ann, Some(ttl));
                 if pr != Priority::Safety {
                     // Withdrawn if not said before the point is passed.
                     self.live_key = Some((key, f64::from(d.s_until)));
@@ -1493,12 +1502,13 @@ impl<'a> Tracker<'a> {
         let here = self.model_here();
         let group = self.plan.pace.is_some();
         let paused_for = self.remaining(t).1;
-        // With the group of the day (C11): its arrival at the pace of the day (median, the
-        // slow side with children); else the observed pace with the C7 margin.
+        // With the group of the day (C11): its arrival at the pace of the day once it says
+        // something (`limit_prediction`; median, the slow side with children); else the
+        // observed pace with the C7 margin.
         let arrival = |i: usize, model_total: f64| {
             if group {
-                self.exit_prediction(i, paused_for)
-                    .map(|p| local(t + self.planned_s(&p)))
+                self.exit_rest(i)
+                    .map(|rest| local(t + self.planned_s(&self.limit_prediction(rest, paused_for))))
             } else {
                 Some(local(t + pace * f * (model_total - here)))
             }
@@ -1537,9 +1547,12 @@ impl<'a> Tracker<'a> {
         };
         let f = TurnaroundParams::default().eta_factor;
         let arrival = if self.plan.pace.is_some() {
-            // The group of the day (C11): its arrival at the pace of the day (median, the
-            // slow side with children; stops included; the C7 deadline keeps its margin).
-            local(t + self.planned_s(&self.remaining(t).0))
+            // The group of the day (C11): its arrival at the pace of the day once it says
+            // something (`limit_prediction`; median, the slow side with children; stops
+            // included; the C7 deadline keeps its margin).
+            let paused_for = self.remaining(t).1;
+            let rest = self.pace_route.rest(self.cursor);
+            local(t + self.planned_s(&self.limit_prediction(rest, paused_for)))
         } else {
             local(t + pace * f * (self.model_total() - here))
         };
@@ -2087,13 +2100,42 @@ impl<'a> Tracker<'a> {
         self.pace_last = Some((t, c));
     }
 
+    /// Model time per terrain left on plan B `i` from the cursor (allocates: an event).
+    fn exit_rest(&self, i: usize) -> Option<[f64; TERRAINS]> {
+        let legs = self.full(&self.plan.plans_b[i]);
+        let c = Course::new(self.g, &legs, &self.plan.eta).ok()?;
+        Some(PaceRoute::of(&c, self.ratio).rest(self.cursor))
+    }
+
+    /// The group's planned moving time from the start to the cursor (its own pace per
+    /// terrain), seconds.
+    fn group_s_here(&self) -> f64 {
+        let at = self.pace_route.at(self.cursor);
+        at.iter()
+            .zip(&self.pace_base.pace)
+            .map(|(m, n)| m * (-n.m).exp())
+            .sum()
+    }
+
     /// Remaining time on plan B `i` from the cursor at the pace of the day (allocates: an
     /// event).
     fn exit_prediction(&self, i: usize, paused_for: Option<f64>) -> Option<Prediction> {
-        let legs = self.full(&self.plan.plans_b[i]);
-        let c = Course::new(self.g, &legs, &self.plan.eta).ok()?;
-        let rest = PaceRoute::of(&c, self.ratio).rest(self.cursor);
-        Some(self.day.predict(rest, paused_for))
+        Some(self.day.predict(self.exit_rest(i)?, paused_for))
+    }
+
+    /// The remaining time a limit is checked on (a change of route for the return time or
+    /// the C7 deadline): at the pace of the day once it is meaningful (A8's rule for a
+    /// group: 20 min of the group's planned time done, [`Tracker::group_s_here`]), at the
+    /// group's own pace before. The first minutes say nothing of the day: a stop not
+    /// decided yet (90 s) counts as moving without progress, and a family stopping two
+    /// minutes after the start would read as three times slower than planned and be sent
+    /// on a shorter loop at once. A late start still counts (the rest from now).
+    fn limit_prediction(&self, rest: [f64; TERRAINS], paused_for: Option<f64>) -> Prediction {
+        if self.group_s_here() >= 1200.0 {
+            self.day.predict(rest, paused_for)
+        } else {
+            self.day.predict_prior(rest, paused_for)
+        }
     }
 
     /// The pace of the day.

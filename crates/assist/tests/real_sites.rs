@@ -552,3 +552,190 @@ fn equipment_on_the_fixtures_le_laus_les_fonts() {
     // fixtures: nothing about avalanches may be claimed from missing data.
     assert_eq!(e.facts.clpa_km, 0.0, "{:?}", e.facts);
 }
+
+/// X16 (#150) on the fixtures (no weather): from Le Laus, a real loop for 2 h of skating
+/// (the 11 km half out-and-back before), and for 3 h, where the network has no real loop
+/// that long, the out-and-backs said as the only option with the longest real loop; at
+/// Chapelle-des-Bois only real loops. The share is measured on the legs.
+#[test]
+fn real_loops_on_the_fixtures() {
+    let share = |x: &suggest::Suggestion| {
+        let (t, l) = travelled_twice_m(&x.legs);
+        t / l
+    };
+    let c = fixture_data(&CERVIERES);
+    let reqs = skimap_assist::presets::suggestion_requests(&CERVIERES, date("2026-01-09"));
+    let s = suggest::suggest(&c, &reqs[0]);
+    println!("{}", s.text.join("\n"));
+    let x = s.suggestions.first().expect("a loop for 2 h");
+    assert!(x.real_loop && share(x) < 0.25, "{}", share(x));
+    assert!(!s.notes.iter().any(|n| n.contains("vraie boucle")));
+    let s = suggest::suggest(&c, &reqs[1]);
+    println!("{}", s.text.join("\n"));
+    assert!(!s.suggestions.is_empty());
+    assert!(s.suggestions.iter().all(|x| !x.real_loop));
+    assert!(
+        share(&s.suggestions[0]) < 0.35,
+        "{}",
+        share(&s.suggestions[0])
+    );
+    let note = s
+        .notes
+        .iter()
+        .find(|n| n.starts_with("aucune vraie boucle trouvée de 2 h 15 à 3 h 18 depuis Le Laus"))
+        .expect("said");
+    assert!(
+        note.contains("la plus longue vraie boucle trouvée fait"),
+        "{note}"
+    );
+    let d = fixture_data(&CHAPELLE_DES_BOIS);
+    for r in skimap_assist::presets::suggestion_requests(&CHAPELLE_DES_BOIS, date("2026-02-22")) {
+        let s = suggest::suggest(&d, &r);
+        assert_eq!(s.suggestions.len(), 3, "{:?}", s.text);
+        for x in &s.suggestions {
+            assert!(x.real_loop && share(x) < 0.05, "{}: {}", x.label, share(x));
+            assert!((x.out_and_back_share - share(x)).abs() < 0.006);
+        }
+    }
+}
+
+/// Length of a route on stretches of the graph already travelled, and its length, m:
+/// interval overlap on each edge (an OSM way split into several edges travelled once is
+/// not travelled twice).
+fn travelled_twice_m(legs: &[skimap_core::routing::Leg]) -> (f64, f64) {
+    let mut seen: std::collections::HashMap<usize, Vec<(f64, f64)>> = Default::default();
+    let (mut twice, mut total) = (0.0, 0.0);
+    for l in legs {
+        let (a, b) = (l.from_m.min(l.to_m), l.from_m.max(l.to_m));
+        total += b - a;
+        let prev = seen.entry(l.edge).or_default();
+        // `prev` holds disjoint intervals: the overlap is the sum of the intersections.
+        twice += prev
+            .iter()
+            .map(|(x, y)| (b.min(*y) - a.max(*x)).max(0.0))
+            .sum::<f64>();
+        let (mut lo, mut hi) = (a, b);
+        prev.retain(|(x, y)| {
+            let touch = *x <= hi && *y >= lo;
+            if touch {
+                lo = lo.min(*x);
+                hi = hi.max(*y);
+            }
+            !touch
+        });
+        prev.push((lo, hi));
+    }
+    (twice, total)
+}
+
+/// X16 (#150): share of the proposed loops travelled twice (out-and-back), on both sites
+/// with the weather of an archived day: the three presets and a grid of times (60 to 240
+/// min, classic and skating) from each start. Prints one line per request and the totals;
+/// the share is measured here on the legs (interval overlap per edge), independently of
+/// the one the assistant gives (`out_and_back_share`, printed second).
+#[test]
+#[ignore = "full-data: data/out/<site>/assist/history (Open-Meteo, personal use)"]
+fn full_data_out_and_back_share_of_the_loops() {
+    let grid = [60.0, 90.0, 120.0, 180.0, 240.0];
+    for (site, day, route, starts) in [
+        (
+            &CERVIERES,
+            "2026-01-09",
+            "routes.geojson",
+            vec![
+                (LonLat::new(6.7269, 44.8552), "Le Laus"),
+                (LonLat::new(6.8161, 44.8448), "Les Fonts"),
+            ],
+        ),
+        (
+            &CHAPELLE_DES_BOIS,
+            "2026-02-22",
+            "offpiste_risoux_fevrier.geojson",
+            vec![(LonLat::new(6.1125, 46.6032), "village")],
+        ),
+    ] {
+        let d = history(site, false, route);
+        let mut reqs = skimap_assist::presets::suggestion_requests(site, date(day));
+        for (p, name) in &starts {
+            for style in [Style::Classic, Style::Skating] {
+                for min in grid {
+                    let mut r = request(*p, name, &format!("{day}T10:00"), min, style, None);
+                    r.label = format!("{name} {min} min {style:?}");
+                    reqs.push(r);
+                }
+            }
+        }
+        let (mut first_n, mut first_sum, mut km, mut km_twice, mut loops, mut oab) =
+            (0, 0.0, 0.0, 0.0, 0, 0);
+        let mut none = 0;
+        let mut n_said = 0;
+        let mut secs = 0.0;
+        for r in &reqs {
+            let clock = std::time::Instant::now();
+            let s = suggest::suggest(&d, r);
+            secs += clock.elapsed().as_secs_f64();
+            let parts: Vec<String> = s
+                .suggestions
+                .iter()
+                .map(|x| {
+                    let (t, l) = travelled_twice_m(&x.legs);
+                    format!(
+                        "{:.1} km {:.0} % ({:.0} %)",
+                        x.length_km,
+                        100.0 * t / l,
+                        x.out_and_back_share * 100.0
+                    )
+                })
+                .collect();
+            let said: Vec<&String> = s
+                .notes
+                .iter()
+                .filter(|n| n.contains("vraie boucle"))
+                .collect();
+            println!(
+                "{} « {} » : {}{}",
+                site.id,
+                r.label,
+                parts.join(" ; "),
+                if said.is_empty() {
+                    String::new()
+                } else {
+                    format!(" — {}", said[0])
+                }
+            );
+            if let Some(f) = s.suggestions.first() {
+                let (t, l) = travelled_twice_m(&f.legs);
+                first_n += 1;
+                first_sum += t / l;
+            } else {
+                none += 1;
+            }
+            if !said.is_empty() {
+                n_said += 1;
+            }
+            for x in &s.suggestions {
+                let (t, l) = travelled_twice_m(&x.legs);
+                loops += 1;
+                km += l;
+                km_twice += t;
+                if t / l >= 0.25 {
+                    oab += 1;
+                }
+            }
+        }
+        println!(
+            "{} : {} demandes ({} sans boucle, {} « aucune vraie boucle »), {} boucles ; part \
+             d'aller-retour moyenne de la première boucle {:.1} %, de toutes (pondérée par la \
+             longueur) {:.1} % ; {} boucles à 25 % ou plus ; {:.2} s par demande",
+            site.id,
+            reqs.len(),
+            none,
+            n_said,
+            loops,
+            100.0 * first_sum / f64::from(first_n.max(1)),
+            100.0 * km_twice / km.max(1e-9),
+            oab,
+            secs / reqs.len() as f64
+        );
+    }
+}

@@ -720,6 +720,62 @@ mod tests {
         assert_eq!(base.open, None);
     }
 
+    #[test]
+    fn dates_across_centuries_and_bad_input() {
+        // Leap years of the Gregorian calendar: 2000 (div. by 400) yes, 1900 and 2100 no.
+        for (y, m, d) in [
+            (1900, 2, 28),
+            (1900, 3, 1),
+            (2000, 2, 29),
+            (2000, 3, 1),
+            (2100, 2, 28),
+            (2100, 3, 1),
+            (2400, 2, 29),
+            (1600, 2, 29),
+            (1999, 12, 31),
+        ] {
+            let date = Date::new(y, m, d);
+            assert_eq!(Date::from_days(date.days()), date, "{date}");
+        }
+        assert_eq!(Date::new(2100, 2, 28).add_days(1), Date::new(2100, 3, 1));
+        assert_eq!(Date::new(2000, 2, 28).add_days(1), Date::new(2000, 2, 29));
+        assert_eq!(Date::new(1900, 2, 28).add_days(1), Date::new(1900, 3, 1));
+        assert_eq!(Date::parse("2100-02-29"), None);
+        assert_eq!(Date::parse("2027-01-01-05"), None);
+        assert_eq!(Date::parse("27-01-01"), None);
+        assert_eq!(Date::parse("2027-01-1"), None);
+        assert_eq!(Date::parse("2027-01"), None);
+        assert_eq!(Date::parse("2027-13-01"), None);
+        assert_eq!(Date::parse("2027-01-31"), Some(Date::new(2027, 1, 31)));
+    }
+
+    #[test]
+    fn level_bounds_and_public_holidays() {
+        assert_eq!(CrowdLevel::from_score(1.99), CrowdLevel::Calm);
+        assert_eq!(CrowdLevel::from_score(2.0), CrowdLevel::Moderate);
+        assert_eq!(CrowdLevel::from_score(3.99), CrowdLevel::Moderate);
+        assert_eq!(CrowdLevel::from_score(4.0), CrowdLevel::Busy);
+        assert_eq!(CrowdLevel::from_score(5.99), CrowdLevel::Busy);
+        assert_eq!(CrowdLevel::from_score(6.0), CrowdLevel::VeryBusy);
+        // French holidays are listed once (zone A) and apply to the three zones only.
+        let armistice = Date::new(2026, 11, 11);
+        assert_eq!(public_holiday(B, armistice).unwrap().name, "Armistice");
+        assert_eq!(public_holiday(C, armistice).unwrap().name, "Armistice");
+        assert_eq!(
+            public_holiday(Fwb, armistice).unwrap().name,
+            "Jour de l'Armistice"
+        );
+        assert!(public_holiday(Vaud, armistice).is_none());
+        assert!(public_holiday(Neuchatel, armistice).is_none());
+        // A public holiday of a population counts as its weekend: Vaud's 2 January.
+        let f = forecast_day("chapelle-des-bois", Date::new(2027, 1, 2), None).unwrap();
+        assert!(
+            f.reasons.iter().any(|r| r.starts_with("2 janvier (Vaud)")),
+            "{:?}",
+            f.reasons
+        );
+    }
+
     /// Season 2026-27 for both sites; run with `-- --nocapture` to print the table.
     #[test]
     fn season_2026_27() {

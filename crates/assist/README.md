@@ -18,7 +18,7 @@ Jamais « sans danger » : chaque sortie dit ce qu'elle ne sait pas (couche abse
 | `briefing` | A1 | classement des domaines et des itinéraires du jour et des jours suivants, chaque raison avec ses points |
 | `synthesis` | A7 | trois phrases : avalanche, météo, règles et réseau sur l'itinéraire |
 | `crowd` | A4 | affluence (fait, utilisé par A1 et A9) |
-| `suggest` | A5 | boucles pour un temps, une technique, un niveau et une heure de retour, sur le graphe C1 avec le temps C5, ou celui du groupe du jour (C11, `suggest_for` : côté lent de la fourchette avec des enfants, option « si tout va bien ») |
+| `suggest` | A5 | boucles pour un temps, une technique, un niveau et une heure de retour, sur le graphe C1 avec le temps C5, ou celui du groupe du jour (C11, `suggest_for` : côté lent de la fourchette avec des enfants, option « si tout va bien ») ; vraies boucles avant les allers-retours, part repassée mesurée par tronçon, aller-retour dit quand c'est la seule option (X16, #150) |
 | `equipment` | A6 | liste d'équipement d'une sortie, chaque élément avec sa raison |
 | `alerts` | A8 | alertes de changement de conditions et de demi-tour avancé pendant la sortie (au rythme du groupe avec C11, `Monitor::for_group`, `Monitor::for_model` : côté lent et heure de lumière avec des enfants), rejeux |
 | `best_time` | A9 | meilleur moment pour partir |
@@ -56,6 +56,7 @@ skimap assist cervieres --date 2026-01-05 --days 5 --history past \
 skimap assist chapelle-des-bois --date 2026-11-15 --history with-forecast \
     --home 6.3554,46.9035 --route data/out/chapelle-des-bois/routes/offpiste_risoux_fevrier.geojson
 cargo test -p skimap-assist --test real_sites -- --ignored   # contrôles sur les données réelles
+cargo test -p skimap-assist --test weather   # A1–A9 sur 7 jeux de météo synthétiques versionnés (tests/data/weather, X15)
 ```
 
 `--history past` lit les fichiers de `history/` (chaque jour prend sa carte d'enneigement et son BERA) ; `with-forecast` ajoute la prévision courante (`meteo-hourly`) et la carte d'enneigement courante. Le point de départ « maison » des commandes est Briançon (Cervières) et Pontarlier (Chapelle-des-Bois), choisis comme villes d'accès, pas comme domicile de quelqu'un.

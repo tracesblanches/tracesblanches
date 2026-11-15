@@ -843,6 +843,15 @@ mod tests {
         let d = NaiveDate::from_ymd_opt(2026, 3, 2).unwrap();
         let q = day_quality(&p, d, &Params::default(), None).unwrap();
         assert!(class(&q, "flat").morning.is_wet());
+        // Wet since the morning everywhere: nothing « softens » during the day.
+        for c in q.classes.iter().filter(|c| c.class.slope_deg == 20.0) {
+            assert!(c.morning.is_wet(), "{}", c.code);
+        }
+        assert!(
+            !q.summary.iter().any(|s| s.contains("ramollissement")),
+            "{:?}",
+            q.summary
+        );
     }
 
     #[test]
@@ -898,5 +907,391 @@ mod tests {
         assert_eq!(classes().len(), 17);
         assert_eq!(classes()[5].code(), "S20");
         assert_eq!(classes()[9].code(), "N40");
+    }
+
+    fn surface(fresh: f64, liquid: f64, crust: f64, rained: bool) -> Surface {
+        Surface {
+            liquid,
+            crust,
+            fresh,
+            windblown: false,
+            rained,
+            cold: 0.0,
+        }
+    }
+
+    #[test]
+    fn surface_classes_at_their_bounds() {
+        assert_eq!(surface(2.0, 0.49, 0.0, false).quality(), Quality::Fresh);
+        assert_eq!(
+            surface(2.0, 0.5, 0.0, false).quality(),
+            Quality::Transformed
+        );
+        assert_eq!(surface(1.99, 0.0, 0.0, false).quality(), Quality::OldDry);
+        let mut w = surface(2.0, 0.0, 0.0, false);
+        w.windblown = true;
+        assert_eq!(w.quality(), Quality::Windblown);
+        assert_eq!(surface(0.0, 6.0, 0.0, false).quality(), Quality::Slush);
+        assert_eq!(surface(0.0, 5.99, 0.0, false).quality(), Quality::Wet);
+        assert_eq!(surface(0.0, 3.0, 0.0, false).quality(), Quality::Wet);
+        assert_eq!(
+            surface(0.0, 2.99, 0.0, false).quality(),
+            Quality::Transformed
+        );
+        assert_eq!(
+            surface(0.0, 0.2, 0.0, false).quality(),
+            Quality::Transformed
+        );
+        assert_eq!(surface(0.0, 0.19, 3.0, true).quality(), Quality::Icy);
+        assert_eq!(surface(0.0, 0.0, 2.99, true).quality(), Quality::Hard);
+        assert_eq!(surface(0.0, 0.0, 3.0, false).quality(), Quality::Hard);
+        assert_eq!(surface(0.0, 0.0, 0.2, false).quality(), Quality::Hard);
+        assert_eq!(surface(0.0, 0.0, 0.19, false).quality(), Quality::OldDry);
+        assert_eq!(surface(5.0, 0.0, 0.0, false).albedo(), 0.85);
+        assert_eq!(surface(0.0, 0.0, 0.0, false).albedo(), 0.75);
+        assert_eq!(surface(0.0, 0.0, 1.0, false).albedo(), 0.65);
+        assert!((water_mm(334_000.0 / 3600.0) - 1.0).abs() < 1e-12);
+    }
+
+    /// One hour of `step` at night (no sun) on the flat.
+    fn night(s: &mut Surface, t: f64, wind: f64, snow: f64, precip: f64) -> f64 {
+        let h = WeatherHour {
+            time: NaiveDate::from_ymd_opt(2027, 1, 12)
+                .unwrap()
+                .and_hms_opt(2, 0, 0)
+                .unwrap(),
+            temperature_c: Some(t),
+            apparent_temperature_c: None,
+            wind_chill_c: None,
+            wind_kmh: Some(wind),
+            gust_kmh: Some(wind),
+            visibility_m: None,
+            fog: None,
+            freezing_level_m: None,
+            snowfall_cm: Some(snow),
+            precipitation_mm: Some(precip),
+            cloud_cover_pct: Some(0.0),
+            relative_humidity_pct: None,
+            weather_code: None,
+        };
+        let sp = sun::SunPosition {
+            elevation_deg: -30.0,
+            azimuth_deg: 0.0,
+        };
+        let mut e = 0.0;
+        step(
+            s,
+            &h,
+            t,
+            sp,
+            classes()[0],
+            1750.0,
+            &Params::default(),
+            &mut e,
+        );
+        e
+    }
+
+    #[test]
+    fn one_hour_of_the_model() {
+        // Clear night at −10 °C, 5 km/h: E = (12 + 2.5) × −10 − (15 + 65) = −225 W/m², all
+        // of it cooling the dry surface (2 mm of cold content at most).
+        let mut s = surface(0.0, 0.0, 0.0, false);
+        let e = night(&mut s, -10.0, 5.0, 0.0, 0.0);
+        assert!((e + 225.0).abs() < 1e-9, "{e}");
+        assert!((s.cold - MAX_COLD_CONTENT_MM).abs() < 1e-12);
+        // Wet snow refreezes first: 225 W/m² for an hour is 2.43 mm.
+        let mut s = surface(0.0, 3.0, 0.0, true);
+        night(&mut s, -10.0, 5.0, 0.0, 0.0);
+        assert!(
+            (s.crust - water_mm(225.0)).abs() < 1e-9
+                && (s.liquid - (3.0 - water_mm(225.0))).abs() < 1e-9
+        );
+        // Snow of 2 cm or more in a calm hour: no longer wind-blown; rained no more.
+        let mut s = surface(3.0, 0.0, 0.0, true);
+        s.windblown = true;
+        night(&mut s, -10.0, 19.0, 2.0, 2.0);
+        assert!(!s.windblown && !s.rained);
+        assert!((s.fresh - 5.0 * Params::default().settle_per_hour).abs() < 1e-9);
+        // In wind of 20 km/h, or less than 2 cm: still wind-blown.
+        let mut s = surface(3.0, 0.0, 0.0, false);
+        s.windblown = true;
+        night(&mut s, -10.0, 20.0, 2.0, 2.0);
+        assert!(s.windblown);
+        let mut s = surface(3.0, 0.0, 0.0, false);
+        s.windblown = true;
+        night(&mut s, -10.0, 10.0, 1.9, 1.9);
+        assert!(s.windblown);
+        // A little snow on a rained crust under 2 cm in all: still « rained ».
+        let mut s = surface(0.0, 0.0, 3.0, true);
+        night(&mut s, -10.0, 5.0, 1.9, 1.9);
+        assert!(s.rained);
+        // Rain above +0.5 °C: water in, fresh snow out, « rained » from 0.5 mm.
+        let mut s = surface(3.0, 0.0, 0.0, false);
+        night(&mut s, 0.6, 5.0, 0.0, 0.5);
+        assert!(s.rained);
+        assert!(
+            (s.fresh - 2.5 * Params::default().settle_per_hour).abs() < 1e-9,
+            "{}",
+            s.fresh
+        );
+        let mut s = surface(0.0, 0.0, 0.0, false);
+        night(&mut s, 0.6, 5.0, 0.0, 0.4);
+        assert!(!s.rained);
+        let mut s = surface(0.0, 0.0, 0.0, false);
+        night(&mut s, 0.5, 5.0, 0.0, 2.0);
+        assert!(!s.rained && s.liquid == 0.0, "no rain at +0.5 °C");
+        // A melting hour: the cold content first, then the fresh snow, then water.
+        let mut s = surface(3.0, 0.0, 0.0, false);
+        s.cold = 0.5;
+        let e = night(&mut s, 20.0, 5.0, 0.0, 0.0);
+        let w = water_mm(e);
+        assert!(w > 0.5);
+        assert_eq!(s.cold, 0.0);
+        let fresh = (3.0 - (w - 0.5)).max(0.0) * Params::default().settle_per_hour;
+        assert!((s.fresh - fresh).abs() < 1e-9, "{} {fresh}", s.fresh);
+    }
+
+    #[test]
+    fn hours_reported_and_gaps() {
+        let p = point(44.85, "2027-01-10T00:00", 2, |_, h| {
+            (cycle(h, -10.0, -2.0), 0.0, 0.0, 5.0)
+        });
+        let all = simulate(&p, classes()[0], &Params::default());
+        assert_eq!(all.len(), 48);
+        for (h, w) in all.iter().zip(&p.hours) {
+            assert_eq!(h.time, w.time);
+            let mid = sun::local_to_utc(w.time + Duration::minutes(30));
+            let sp = skimap_core::ephemeris::sun_position(mid, p.position);
+            assert_eq!(
+                h.sun_elevation_deg,
+                (sp.elevation_deg * 10.0).round() / 10.0
+            );
+            assert!(h.liquid_mm <= MAX_SURFACE_WATER_MM && h.crust_mm <= 20.0);
+            assert_eq!(h.liquid_mm, (h.liquid_mm * 100.0).round() / 100.0);
+            assert_eq!(h.energy_wm2, (h.energy_wm2 * 10.0).round() / 10.0);
+        }
+        // At 02 h (no sun), −9.x °C, 5 km/h, clear.
+        let t = p.hours[2].temperature_c.unwrap();
+        let e = 14.5 * t - 80.0;
+        assert_eq!(all[2].energy_wm2, (e * 10.0).round() / 10.0);
+        // A warm afternoon then a frozen night leaves a crust, reported to 0.01 mm.
+        let p = point(44.85, "2027-03-18T00:00", 2, |_, h| {
+            (cycle(h, -8.0, 9.0), 0.0, 0.0, 5.0)
+        });
+        let all = simulate(&p, classes()[5], &Params::default());
+        let h = all.iter().find(|h| h.crust_mm > 0.0).expect("a crust");
+        assert_eq!(h.crust_mm, (h.crust_mm * 100.0).round() / 100.0);
+        assert!(all.iter().any(|h| h.liquid_mm > 0.0 && h.liquid_mm < 1.0));
+        // A gap of 6 hours keeps the state; of 7 hours, starts again from old dry snow.
+        let mut gap = p.clone();
+        let cut = gap.hours.iter().position(|h| h.time.hour() == 20).unwrap();
+        let after: Vec<WeatherHour> = gap.hours[cut + 6..].to_vec();
+        gap.hours.truncate(cut + 1);
+        gap.hours.extend(after.iter().cloned());
+        let s20 = classes()[5];
+        let kept = simulate(&gap, s20, &Params::default());
+        assert_eq!(kept[cut + 1].crust_mm > 0.0, all[cut + 6].crust_mm > 0.0);
+        assert!(kept[cut + 1].crust_mm > 0.0, "{:?}", kept[cut + 1]);
+        let mut gap7 = p.clone();
+        gap7.hours.truncate(cut + 1);
+        gap7.hours.extend(after.iter().skip(1).cloned());
+        let reset = simulate(&gap7, s20, &Params::default());
+        // Restarted: refreezes from nothing, no crust in the first hour after the gap.
+        assert_eq!(reset[cut + 1].crust_mm, 0.0, "{:?}", reset[cut + 1]);
+    }
+
+    #[test]
+    fn refreeze_cold_content_fresh_snow_and_drift() {
+        // 0.5 mm of water refreezes, the rest of the 225 W/m² hour cools the layer.
+        let mut s = surface(0.0, 0.5, 0.0, false);
+        night(&mut s, -10.0, 5.0, 0.0, 0.0);
+        assert!((s.crust - 0.5).abs() < 1e-12);
+        assert!(
+            (s.cold - (water_mm(225.0) - 0.5)).abs() < 1e-12,
+            "{}",
+            s.cold
+        );
+        // A trace of fresh snow under 0.05 cm after settling disappears, with its drift.
+        let mut s = surface(0.05, 0.0, 0.0, false);
+        s.windblown = true;
+        night(&mut s, -10.0, 5.0, 0.0, 0.0);
+        assert_eq!(s.fresh, 0.0);
+        assert!(!s.windblown);
+        let mut s = surface(0.1, 0.0, 0.0, false);
+        night(&mut s, -10.0, 5.0, 0.0, 0.0);
+        assert!((s.fresh - 0.1 * Params::default().settle_per_hour).abs() < 1e-12);
+        // Wind of 30 km/h (gusts 30) on 2 cm of dry fresh snow: wind-blown; gusts of 55
+        // alone too; not with 0.5 mm of water.
+        let drift = |fresh: f64, liquid: f64, wind: f64, gust: f64| {
+            let mut s = surface(fresh, liquid, 0.0, false);
+            let h = WeatherHour {
+                time: NaiveDate::from_ymd_opt(2027, 1, 12)
+                    .unwrap()
+                    .and_hms_opt(2, 0, 0)
+                    .unwrap(),
+                temperature_c: Some(-10.0),
+                apparent_temperature_c: None,
+                wind_chill_c: None,
+                wind_kmh: Some(wind),
+                gust_kmh: Some(gust),
+                visibility_m: None,
+                fog: None,
+                freezing_level_m: None,
+                snowfall_cm: Some(0.0),
+                precipitation_mm: Some(0.0),
+                cloud_cover_pct: Some(100.0),
+                relative_humidity_pct: None,
+                weather_code: None,
+            };
+            let sp = sun::SunPosition {
+                elevation_deg: -30.0,
+                azimuth_deg: 0.0,
+            };
+            let mut e = 0.0;
+            step(
+                &mut s,
+                &h,
+                -10.0,
+                sp,
+                classes()[0],
+                1750.0,
+                &Params::default(),
+                &mut e,
+            );
+            s.windblown
+        };
+        assert!(drift(3.0, 0.0, 30.0, 30.0));
+        assert!(!drift(3.0, 0.0, 29.0, 54.0));
+        assert!(drift(3.0, 0.0, 10.0, 55.0));
+        assert!(!drift(1.9, 0.0, 40.0, 60.0), "under 2 cm after settling");
+    }
+
+    #[test]
+    fn wet_fresh_snow_does_not_drift() {
+        // At 0 °C under clouds the hour refreezes 0.16 mm: 0.7 mm leaves 0.54 mm of water,
+        // too wet to drift; 0.3 mm leaves none.
+        let drift = |liquid: f64| {
+            let mut s = surface(3.0, liquid, 0.0, false);
+            let h = WeatherHour {
+                time: NaiveDate::from_ymd_opt(2027, 1, 12)
+                    .unwrap()
+                    .and_hms_opt(2, 0, 0)
+                    .unwrap(),
+                temperature_c: Some(0.0),
+                apparent_temperature_c: None,
+                wind_chill_c: None,
+                wind_kmh: Some(30.0),
+                gust_kmh: Some(30.0),
+                visibility_m: None,
+                fog: None,
+                freezing_level_m: None,
+                snowfall_cm: Some(0.0),
+                precipitation_mm: Some(0.0),
+                cloud_cover_pct: Some(100.0),
+                relative_humidity_pct: None,
+                weather_code: None,
+            };
+            let sp = sun::SunPosition {
+                elevation_deg: -30.0,
+                azimuth_deg: 0.0,
+            };
+            let mut e = 0.0;
+            step(
+                &mut s,
+                &h,
+                0.0,
+                sp,
+                classes()[0],
+                1750.0,
+                &Params::default(),
+                &mut e,
+            );
+            assert!((e + 15.0).abs() < 1e-9, "{e}");
+            (s.windblown, s.liquid)
+        };
+        let (w, l) = drift(0.7);
+        assert!(!w && (l - (0.7 - water_mm(15.0))).abs() < 1e-12, "{l}");
+        assert!(drift(0.3).0);
+    }
+
+    #[test]
+    fn longest_run_of_the_best_score() {
+        let t0 = NaiveDate::from_ymd_opt(2027, 1, 12)
+            .unwrap()
+            .and_hms_opt(8, 0, 0)
+            .unwrap();
+        let hs: Vec<HourState> = [3.0, 3.0, 1.0, 3.0, 3.0, 3.0, 2.5]
+            .iter()
+            .enumerate()
+            .map(|(i, sc)| HourState {
+                time: t0 + Duration::hours(i as i64),
+                quality: if *sc == 3.0 {
+                    Quality::Fresh
+                } else {
+                    Quality::OldDry
+                },
+                score: *sc,
+                energy_wm2: 0.0,
+                liquid_mm: 0.0,
+                crust_mm: 0.0,
+                fresh_cm: 0.0,
+                sun_elevation_deg: 0.0,
+            })
+            .collect();
+        let refs: Vec<&HourState> = hs.iter().collect();
+        let s = best_slot(&refs).unwrap();
+        // The second run (11 h to 14 h) is longer than the first (8 h to 10 h).
+        assert_eq!((s.start.hour(), s.end.hour(), s.hours()), (11, 14, 3));
+        assert_eq!(s.label_fr(), "de 11 h à 14 h");
+        // Two runs of the same length: the first.
+        let s = best_slot(&refs[..5]).unwrap();
+        assert_eq!((s.start.hour(), s.hours()), (8, 2));
+        assert_eq!(best_slot(&[]), None);
+    }
+
+    #[test]
+    fn the_morning_is_seven_and_the_history_24_hours() {
+        // 3 cm fall in the hour of 07 h only: old snow at 06 h, fresh at 07 h.
+        let p = point(44.85, "2027-01-10T00:00", 3, |i, h| {
+            let snow = if i >= 48 && h == 7 && i < 72 {
+                3.0
+            } else {
+                0.0
+            };
+            (cycle(h, -10.0, -4.0), 100.0, snow, 5.0)
+        });
+        let d = NaiveDate::from_ymd_opt(2027, 1, 12).unwrap();
+        let q = day_quality(&p, d, &Params::default(), None).unwrap();
+        let flat = class(&q, "flat");
+        assert_eq!(flat.hours[0].quality, Quality::OldDry);
+        assert_eq!(flat.morning, Quality::Fresh);
+        // The daylight ends 30 min before the sunset (17 h at the latest).
+        let (_, set) = skimap_core::ephemeris::sun_times(d, p.position).unwrap();
+        let end = (skimap_core::ephemeris::local_time(set) - Duration::minutes(30))
+            .min(d.and_hms_opt(17, 0, 0).unwrap());
+        assert_eq!(q.daylight.1, end);
+        // The mean score over the daylight hours.
+        let n = flat
+            .hours
+            .iter()
+            .filter(|h| h.time + Duration::minutes(30) >= q.daylight.0 && h.time < q.daylight.1)
+            .count();
+        let sum: f64 = flat
+            .hours
+            .iter()
+            .filter(|h| h.time + Duration::minutes(30) >= q.daylight.0 && h.time < q.daylight.1)
+            .map(|h| h.score)
+            .sum();
+        assert!((flat.mean_score - sum / n as f64).abs() < 1e-12);
+        // Exactly 24 h of history before 06 h is enough, 23 h is not.
+        let p = point(44.85, "2027-01-11T06:00", 2, |_, h| {
+            (cycle(h, -10.0, -4.0), 100.0, 0.0, 5.0)
+        });
+        assert!(day_quality(&p, d, &Params::default(), None).is_some());
+        let p = point(44.85, "2027-01-11T07:00", 2, |_, h| {
+            (cycle(h, -10.0, -4.0), 100.0, 0.0, 5.0)
+        });
+        assert!(day_quality(&p, d, &Params::default(), None).is_none());
     }
 }

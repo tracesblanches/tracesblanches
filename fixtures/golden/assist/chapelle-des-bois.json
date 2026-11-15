@@ -6,32 +6,32 @@
     "domaines",
     "avalanches historiques"
   ],
-  "suggest.village_120min_skating.0.eta_min": 114.0,
-  "suggest.village_120min_skating.0.length_km": 15.16,
+  "suggest.village_120min_skating.0.eta_min": 123.0,
+  "suggest.village_120min_skating.0.length_km": 16.9,
   "suggest.village_120min_skating.1.eta_min": 114.0,
-  "suggest.village_120min_skating.1.length_km": 15.53,
-  "suggest.village_120min_skating.2.eta_min": 128.0,
-  "suggest.village_120min_skating.2.length_km": 17.27,
+  "suggest.village_120min_skating.1.length_km": 15.16,
+  "suggest.village_120min_skating.2.eta_min": 114.0,
+  "suggest.village_120min_skating.2.length_km": 15.53,
   "suggest.village_120min_skating.suggestions": 3,
   "suggest.village_120min_skating.text": [
     "120 min depuis village le dimanche 22 février 2026 à 10 h 00 (heure limite de retour C7 : 18 h 10)",
-    "1. Combe Verte – Sylvain Guillaume – Combe David (score -1,59) : 15,2 km, D+ 368 m, environ 1 h 54 (modèle C5, skating), retour prévu vers 12 h 17 [-0,09] ; état des pistes inconnu ; neige estimée inconnue ici (hors de la carte du site ou sans tracé) : à vérifier [-1,50] ; 4,4 km en terrain exposé aux avalanches (modèle), pas de BERA dans ce massif [-0,50] ; pistes : Route des Pâturages, Chalet Pin, Combe Verte, Greffier, Jobez, La Beurrière, La Loge, Les Prés d'Haut, Nondance, Sylvain Guillaume, Combe David, La Thieulette, La Grande Combe, Chaumoz, La Norbiére, Les Mortes, Beauregard [+0,50].",
-    "2. Chaumoz – La Norbiére – Les Mortes (score -1,60) : 15,5 km, D+ 350 m, environ 1 h 54 (modèle C5, skating), retour prévu vers 12 h 16 [-0,10] ; état des pistes inconnu ; neige estimée inconnue ici (hors de la carte du site ou sans tracé) : à vérifier [-1,50] ; 1,1 km en terrain exposé aux avalanches (modèle), pas de BERA dans ce massif [-0,50] ; pistes : Route des Pâturages, Beauregard, Chaumoz, La Norbiére, Les Mortes, GTJ à ski de fond, La Chapelande, Le glacier, Le Petit Glacier, Les Cernois Roz, Combe David, Sylvain Guillaume, Combe Verte, Jobez, La Loge [+0,50].",
-    "3. Chalet Pin – Les Prés d'Haut – GTJ à ski de fond (score -1,76) : 17,3 km, D+ 401 m, environ 2 h 08 (modèle C5, skating), retour prévu vers 12 h 33 [-0,14] ; 6 % du parcours en aller-retour sur le même chemin [-0,12] ; état des pistes inconnu ; neige estimée inconnue ici (hors de la carte du site ou sans tracé) : à vérifier [-1,50] ; 1,8 km en terrain exposé aux avalanches (modèle), pas de BERA dans ce massif [-0,50] ; pistes : Route des Pâturages, Chalet Pin, Combe Verte, Greffier, Jobez, La Beurrière, La Loge, Les Prés d'Haut, Nondance, Sylvain Guillaume, La Sauge, Le Paradis, GTJ à ski de fond, La Passerelle, La Citadelle, La Citerne, La Faîvre, La petite Verrière, Le Griffond, Le Verdet, Fabrice Guy, Combe des Cives [+0,50].",
-    "Limites : 33 nœuds sur 649 (14,5 km de pistes) ne sont pas atteignables depuis village : réseau séparé ou sens uniques dans le graphe des pistes (C1) ; 40 boucles évaluées, 6 trop courtes et 11 trop longues (hors de 75 à 110 % du temps demandé)."
+    "1. La Norbiére – Combe David – Sylvain Guillaume (score -1,56) : 16,9 km, D+ 384 m, environ 2 h 03 (modèle C5, skating), retour prévu vers 12 h 28 [-0,06] ; état des pistes inconnu ; neige estimée inconnue ici (hors de la carte du site ou sans tracé) : à vérifier [-1,50] ; 4,3 km en terrain exposé aux avalanches (modèle), pas de BERA dans ce massif [-0,50] ; pistes : Route des Pâturages, Beauregard, Chaumoz, La Norbiére, Les Mortes, Combe David, Sylvain Guillaume, La Thieulette, Combe Verte, Jobez, La Loge [+0,50].",
+    "2. Combe Verte – Sylvain Guillaume – Combe David (score -1,59) : 15,2 km, D+ 368 m, environ 1 h 54 (modèle C5, skating), retour prévu vers 12 h 17 [-0,09] ; état des pistes inconnu ; neige estimée inconnue ici (hors de la carte du site ou sans tracé) : à vérifier [-1,50] ; 4,4 km en terrain exposé aux avalanches (modèle), pas de BERA dans ce massif [-0,50] ; pistes : Route des Pâturages, Chalet Pin, Combe Verte, Greffier, Jobez, La Beurrière, La Loge, Les Prés d'Haut, Nondance, Sylvain Guillaume, Combe David, La Thieulette, La Grande Combe, Chaumoz, La Norbiére, Les Mortes, Beauregard [+0,50].",
+    "3. Chaumoz – La Norbiére – Les Mortes (score -1,60) : 15,5 km, D+ 350 m, environ 1 h 54 (modèle C5, skating), retour prévu vers 12 h 16 [-0,10] ; état des pistes inconnu ; neige estimée inconnue ici (hors de la carte du site ou sans tracé) : à vérifier [-1,50] ; 1,1 km en terrain exposé aux avalanches (modèle), pas de BERA dans ce massif [-0,50] ; pistes : Route des Pâturages, Beauregard, Chaumoz, La Norbiére, Les Mortes, GTJ à ski de fond, La Chapelande, Le glacier, Le Petit Glacier, Les Cernois Roz, Combe David, Sylvain Guillaume, Combe Verte, Jobez, La Loge [+0,50].",
+    "Limites : 33 nœuds sur 649 (14,5 km de pistes) ne sont pas atteignables depuis village : réseau séparé ou sens uniques dans le graphe des pistes (C1) ; 46 boucles évaluées, 6 trop courtes et 17 trop longues (hors de 75 à 110 % du temps demandé)."
   ],
   "suggest.village_60min_classic.0.eta_min": 57.0,
   "suggest.village_60min_classic.0.length_km": 6.81,
-  "suggest.village_60min_classic.1.eta_min": 65.0,
-  "suggest.village_60min_classic.1.length_km": 8.18,
+  "suggest.village_60min_classic.1.eta_min": 60.0,
+  "suggest.village_60min_classic.1.length_km": 7.68,
   "suggest.village_60min_classic.2.eta_min": 56.0,
   "suggest.village_60min_classic.2.length_km": 6.66,
   "suggest.village_60min_classic.suggestions": 3,
   "suggest.village_60min_classic.text": [
     "60 min depuis village le vendredi 15 janvier 2027 à 13 h 30 (heure limite de retour C7 : 17 h 17)",
     "1. GTJ à ski de fond – Combe des Cives – Les Prés d'Haut (score -1,11) : 6,8 km, D+ 159 m, environ 57 min (modèle C5, classique), retour prévu vers 14 h 37 [-0,11] ; état des pistes inconnu ; neige estimée inconnue ici (hors de la carte du site ou sans tracé) : à vérifier [-1,50] ; pistes : Route des Pâturages, Beauregard, Chaumoz, La Norbiére, Les Mortes, GTJ à ski de fond, Combe des Cives, Les Prés d'Haut, Chalet Pin, Greffier, La Beurrière, Nondance [+0,50].",
-    "2. Combe Verte – Jobez – Sylvain Guillaume (score -1,68) : 8,2 km, D+ 176 m, environ 1 h 05 (modèle C5, classique), retour prévu vers 14 h 48 [-0,18] ; état des pistes inconnu ; neige estimée inconnue ici (hors de la carte du site ou sans tracé) : à vérifier [-1,50] ; 0,9 km en terrain exposé aux avalanches (modèle), pas de BERA dans ce massif [-0,50] ; pistes : Route des Pâturages, Chalet Pin, Combe Verte, Greffier, Jobez, La Beurrière, La Loge, Les Prés d'Haut, Nondance, Sylvain Guillaume, Chaumoz, La Norbiére, Les Mortes, Beauregard [+0,50].",
-    "3. Greffier – Les Prés d'Haut – Nondance (score -1,72) : 6,7 km, D+ 160 m, environ 56 min (modèle C5, classique), retour prévu vers 14 h 37 [-0,12] ; 5 % du parcours en aller-retour sur le même chemin [-0,10] ; état des pistes inconnu ; neige estimée inconnue ici (hors de la carte du site ou sans tracé) : à vérifier [-1,50] ; 0,1 km en terrain exposé aux avalanches (modèle), pas de BERA dans ce massif [-0,50] ; pistes : Route des Pâturages, Chalet Pin, Combe Verte, Greffier, Jobez, La Beurrière, La Loge, Les Prés d'Haut, Nondance, Sylvain Guillaume [+0,50].",
-    "Limites : 33 nœuds sur 649 (14,5 km de pistes) ne sont pas atteignables depuis village : réseau séparé ou sens uniques dans le graphe des pistes (C1) ; 40 boucles évaluées, 12 trop courtes et 4 trop longues (hors de 75 à 110 % du temps demandé)."
+    "2. Chaumoz – La Norbiére – Les Mortes (score -1,51) : 7,7 km, D+ 159 m, environ 1 h 00 (modèle C5, classique), retour prévu vers 14 h 42 [-0,01] ; état des pistes inconnu ; neige estimée inconnue ici (hors de la carte du site ou sans tracé) : à vérifier [-1,50] ; 0,9 km en terrain exposé aux avalanches (modèle), pas de BERA dans ce massif [-0,50] ; pistes : Route des Pâturages, Beauregard, Chaumoz, La Norbiére, Les Mortes, Combe David, Sylvain Guillaume, Combe Verte, Jobez, La Loge [+0,50].",
+    "3. Greffier – Les Prés d'Haut – Nondance (score -1,62) : 6,7 km, D+ 160 m, environ 56 min (modèle C5, classique), retour prévu vers 14 h 37 [-0,12] ; état des pistes inconnu ; neige estimée inconnue ici (hors de la carte du site ou sans tracé) : à vérifier [-1,50] ; 0,1 km en terrain exposé aux avalanches (modèle), pas de BERA dans ce massif [-0,50] ; pistes : Route des Pâturages, Chalet Pin, Combe Verte, Greffier, Jobez, La Beurrière, La Loge, Les Prés d'Haut, Nondance, Sylvain Guillaume [+0,50].",
+    "Limites : 33 nœuds sur 649 (14,5 km de pistes) ne sont pas atteignables depuis village : réseau séparé ou sens uniques dans le graphe des pistes (C1) ; 41 boucles évaluées, 12 trop courtes et 5 trop longues (hors de 75 à 110 % du temps demandé)."
   ]
 }
