@@ -202,6 +202,8 @@ pub struct BatchSummary {
     pub peak_rss_mb: Option<f64>,
     /// Refresh of the stations layer of France, once for the batch.
     pub stations: StepRecord,
+    /// AROME weather of every site to build, once for the batch (public mode only).
+    pub meteo: Option<StepRecord>,
     /// Per site.
     pub results: Vec<SiteResult>,
 }
@@ -322,6 +324,7 @@ pub fn build_many(
     );
     let mut built: Vec<(String, BuildOutcome)> = Vec::new();
     let mut stations = None;
+    let mut meteo = None;
     if n > 0 {
         let t = Instant::now();
         let planet = skimap_osm::extract::load_planet(&ctx.dl)?;
@@ -335,6 +338,8 @@ pub fn build_many(
         let srn = ctx.srn(&planet)?;
         println!("{} zones SRN hors stations", srn.areas.len());
         stations = Some(stations_step(ctx, opts.force));
+        let todo_sites: Vec<&Site> = todo.iter().map(|(s, _)| *s).collect();
+        meteo = (!ctx.cfg.personal_sources).then(|| meteo_step(ctx, &todo_sites));
         let shared = Shared {
             planet: Some(&planet),
             census: Some(&census),
@@ -514,6 +519,7 @@ pub fn build_many(
         downloads,
         peak_rss_mb: crate::build::peak_rss_mb(),
         stations,
+        meteo,
         results,
     };
     let dir = ctx.layout.france_dir().join("build-all");
@@ -665,6 +671,41 @@ pub fn write_status(layout: &DataLayout, sites: &[&'static Site]) -> Result<Path
         }),
     )?;
     Ok(path)
+}
+
+/// AROME weather (X17) of `sites` in one call: the run is downloaded and each file
+/// decoded once for every point of every site (the `meteo` step of each site then finds
+/// its layer at the latest run). A failure is recorded; the step of each site retries.
+pub fn meteo_step(ctx: &Ctx, sites: &[&Site]) -> StepRecord {
+    let t = Instant::now();
+    let (state, line) = match skimap_meteo::arome::refresh(sites, &ctx.layout, &ctx.dl) {
+        Ok(r) => {
+            let written = r.sites.iter().filter(|s| s.status == "written").count();
+            (
+                StepState::Ok,
+                format!(
+                    "run AROME {} : {written} sites écrits, {} déjà à ce run",
+                    r.run,
+                    r.sites.len() - written
+                ),
+            )
+        }
+        Err(e) => (StepState::Failed, format!("{e:#}")),
+    };
+    let seconds = t.elapsed().as_secs_f64();
+    match state {
+        StepState::Ok => println!("météo AROME : {line} ({seconds:.1} s)"),
+        _ => println!("météo AROME : ÉCHEC ({seconds:.1} s) : {line}"),
+    }
+    StepRecord {
+        name: "meteo-arome".into(),
+        state,
+        seconds,
+        line,
+        at: Some(now_rfc3339()),
+        outputs: None,
+        resumed: false,
+    }
 }
 
 /// Refreshes the stations layer of France once, printed and recorded like a step.

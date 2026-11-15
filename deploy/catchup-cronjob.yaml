@@ -1,4 +1,6 @@
 # Automatic catch-up (#118, #139): every 6 hours, `skimap-job catchup` runs
+# `skimap meteo-refresh` (AROME weather of every site at the latest run, X17: the 06:40
+# run takes the 03 UTC run of the morning; idempotent), then
 # `skimap build-all --all --stale` on the volume, then publishes every site pack
 # (`skimap-server publish --all-in`: an unchanged pack is not republished, a changed one
 # goes out as a delta bundle). To append to the pipeline manifest of the infrastructure repository once

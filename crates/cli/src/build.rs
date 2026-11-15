@@ -148,14 +148,14 @@ impl Ctx {
         )?)
     }
 
-    /// P19: hourly weather (personal use only).
+    /// P19 / X17: hourly weather, Open-Meteo with `personal_sources` (personal use only),
+    /// else Météo-France AROME 0.025° (Licence Ouverte), the same layer.
     pub fn meteo(&self, site: &Site) -> Result<skimap_meteo::hourly::HourlyFile> {
-        Ok(skimap_meteo::hourly::build(
-            site,
-            &self.layout,
-            &self.dl,
-            self.cfg.personal_sources,
-        )?)
+        Ok(if self.cfg.personal_sources {
+            skimap_meteo::hourly::build(site, &self.layout, &self.dl, true)?
+        } else {
+            skimap_meteo::arome::build(site, &self.layout, &self.dl)?
+        })
     }
 
     /// P13: one poll of the trail status (personal use only).
@@ -567,22 +567,28 @@ impl Ctx {
                 b.origin.as_deref().unwrap_or("-")
             ))
         });
+        // Public mode: AROME (Licence Ouverte); the assistant then gets its weather too.
+        run.step("meteo", &[], || {
+            let h = self.meteo(site)?;
+            let hours: usize = h.points.iter().map(|p| p.hours.len()).sum();
+            let first = h.points.first();
+            Ok(format!(
+                "{}{} points, {hours} heures, du {} au {}",
+                if self.cfg.personal_sources {
+                    ""
+                } else {
+                    "AROME : "
+                },
+                h.points.len(),
+                first
+                    .and_then(|p| p.hours.first())
+                    .map_or("?", |x| x.time.as_str()),
+                first
+                    .and_then(|p| p.hours.last())
+                    .map_or("?", |x| x.time.as_str())
+            ))
+        });
         if self.cfg.personal_sources {
-            run.step("meteo", &[], || {
-                let h = self.meteo(site)?;
-                let hours: usize = h.points.iter().map(|p| p.hours.len()).sum();
-                let first = h.points.first();
-                Ok(format!(
-                    "{} points, {hours} heures, du {} au {}",
-                    h.points.len(),
-                    first
-                        .and_then(|p| p.hours.first())
-                        .map_or("?", |x| x.time.as_str()),
-                    first
-                        .and_then(|p| p.hours.last())
-                        .map_or("?", |x| x.time.as_str())
-                ))
-            });
             run.step("status-poll", &["pistes"], || {
                 if !site.kind.has_groomed_trails() {
                     return not_applicable(&format!(
@@ -604,10 +610,6 @@ impl Ctx {
                 Ok(s.join(" | "))
             });
         } else {
-            run.skip(
-                "meteo",
-                "personal_sources désactivé (SKIMAP_PERSONAL_SOURCES)",
-            );
             run.skip(
                 "status-poll",
                 "personal_sources désactivé (SKIMAP_PERSONAL_SOURCES)",
@@ -884,6 +886,7 @@ pub fn step_dir(step: &str) -> Option<&'static str> {
         "offpiste-prepare" => "offpiste",
         "coverage" => "coverage",
         "bera" => "bera",
+        "meteo" => "meteo-hourly",
         "avalanche-historic" => "avalanche-historic",
         "build-pack" => "pack",
         "export" => "export",
