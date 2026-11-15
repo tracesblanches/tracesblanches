@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
+# Vendored forks of crates.io crates ([patch.crates-io] below): not workspace members.
+exclude = ["vendor/*"]
 
 [workspace.package]
 version = "0.1.0"
@@ -83,3 +85,8 @@ clap = { version = "4.6.7", features = ["derive"] }
 approx = "0.5"
 tempfile = "3.27.0"
 tiny_http = "0.12.0"
+
+# pmtiles 0.28.1 with one fix (vendor/pmtiles/VENDOR.md): without leaf directories the
+# writer left leaf_offset = 0, which `pmtiles verify` (go-pmtiles) rejects.
+[patch.crates-io]
+pmtiles = { path = "vendor/pmtiles" }

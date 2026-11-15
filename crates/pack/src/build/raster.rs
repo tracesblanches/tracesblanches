@@ -674,6 +674,38 @@ mod tests {
         assert_eq!(s.palette()[5][3], 0);
     }
 
+    /// An archive without leaf directories points its (empty) leaf section at the end of
+    /// the tile data, as go-pmtiles does: `pmtiles verify` rejects an offset of 0
+    /// (vendor/pmtiles/VENDOR.md).
+    #[test]
+    fn archive_without_leaves_has_a_leaf_offset() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.pmtiles");
+        let tiles: Vec<TileData> = vec![
+            ((12, 2132, 1474), vec![1, 2, 3]),
+            ((12, 2133, 1474), vec![4]),
+        ];
+        write_archive(
+            &path,
+            TileType::Png,
+            None,
+            &tiles,
+            &serde_json::json!({}),
+            BBox::new(44.8, 6.7, 44.9, 6.8),
+            12,
+            12,
+        )
+        .unwrap();
+        let b = std::fs::read(&path).unwrap();
+        let u64_at = |o: usize| u64::from_le_bytes(b[o..o + 8].try_into().unwrap());
+        assert_eq!(&b[..7], b"PMTiles");
+        let (leaf_offset, leaf_length) = (u64_at(40), u64_at(48));
+        let (data_offset, data_length) = (u64_at(56), u64_at(64));
+        assert_eq!(leaf_length, 0);
+        assert_ne!(leaf_offset, 0);
+        assert_eq!(leaf_offset, data_offset + data_length);
+    }
+
     #[test]
     fn mode_and_ties() {
         assert_eq!(mode4([1, 1, 2, 5], 5, 5, true), 1);

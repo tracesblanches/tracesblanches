@@ -50,3 +50,5 @@ Déclarées une fois dans `[workspace.dependencies]` du `Cargo.toml` racine :
 - HTTP : `reqwest` (bloquant, sans fonctions par défaut), `rustls` (ring), `webpki-roots`, `sha2`, `hex` ;
 - ligne de commande : `clap` ; tests : `approx`, `tempfile`, `tiny_http` ;
 - crates internes : `skimap-common`, `skimap-osm`, …, `skimap-voice` (chemins locaux).
+
+Copies corrigées de crates de crates.io dans `vendor/` (hors du workspace), branchées par `[patch.crates-io]` : `pmtiles` 0.28.1 (`leaf_offset` nul sans répertoire de feuilles, refusé par `pmtiles verify` ; voir `vendor/pmtiles/VENDOR.md`).

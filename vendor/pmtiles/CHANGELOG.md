@@ -1,0 +1,375 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.28.1](https://github.com/stadiamaps/pmtiles-rs/compare/v0.28.0...v0.28.1) - 2026-11-13
+
+### Added
+
+- make the archive's section offsets and directory entries readable ([#189](https://github.com/stadiamaps/pmtiles-rs/pull/189))
+
+### Other
+
+- *(deps)* bump taiki-e/install-action from 2.88.0 to 2.90.1 in the all-actions-version-updates group ([#188](https://github.com/stadiamaps/pmtiles-rs/pull/188))
+
+## [0.28.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.27.0...v0.28.0) - 2026-11-06
+
+### Added
+
+- keep other processes from writing to an open archive on Windows ([#186](https://github.com/stadiamaps/pmtiles-rs/pull/186))
+- [**breaking**] make `check_modified` catch renames and deletion ([#185](https://github.com/stadiamaps/pmtiles-rs/pull/185))
+
+## [0.27.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.26.0...v0.27.0) - 2026-11-05
+
+### ⚠️ Breaking changes
+
+- **`new_with_path` reads with positioned reads (`FileBackend`) instead of a memory map**, and `file-async-tokio` replaces `mmap-async-tokio` as a default feature. A page fault in a memory map blocks a Tokio worker; on Linux, `FileBackend` reads cached pages inline with `preadv2(RWF_NOWAIT)` and waits for the disk on the blocking pool ([#176](https://github.com/stadiamaps/pmtiles-rs/pull/176)). To keep the memory map, which suits archives much smaller than RAM:
+
+  ```toml
+  pmtiles = { version = "0.27", features = ["mmap-async-tokio"] }
+  ```
+
+  ```rust
+  // Before: AsyncPmTilesReader<MmapBackend>
+  let reader = AsyncPmTilesReader::new_with_path(path).await?;
+  // After
+  let reader = AsyncPmTilesReader::new_with_mmap_path(path).await?;
+  ```
+
+- **Features only add dependencies** ([#182](https://github.com/stadiamaps/pmtiles-rs/pull/182)):
+  - `iter-async` is renamed to `iter`.
+  - The new `tokio` feature decodes large directories, metadata and tiles on Tokio's blocking pool, and adds `blocking_decode_above`. Every backend enables it, so their behavior is unchanged.
+  - `iter` and `moka` no longer enable Tokio. With only a custom backend, add `tokio` to keep the offload.
+
+  ```toml
+  # Before
+  pmtiles = { version = "0.26", default-features = false, features = ["iter-async", "moka"] }
+  # After
+  pmtiles = { version = "0.27", default-features = false, features = ["iter", "moka", "tokio"] }
+  ```
+
+- **`DirCacheResult` and `PmtError::ResponseBodyTooLong` are removed.** A backend that returns more bytes than requested fails with `UnexpectedNumberOfBytesReturned`, now checked for every backend, including `ObjectStoreBackend` and custom ones ([#177](https://github.com/stadiamaps/pmtiles-rs/pull/177)).
+
+### Deprecated
+
+- The `new_with_cached_*` constructors are renamed to `*_and_cache`, with the cache as the last argument. The old names still work, with a warning ([#178](https://github.com/stadiamaps/pmtiles-rs/pull/178)).
+
+  ```rust
+  // Before
+  AsyncPmTilesReader::new_with_cached_path(cache, path).await?;
+  // After
+  AsyncPmTilesReader::new_with_path_and_cache(path, cache).await?;
+  ```
+
+  The same applies to `try_from_cached_source`, `new_with_cached_url`, `new_with_cached_bucket_path` and `new_with_cached_client_bucket_and_path`.
+
+### Added
+
+- `PmTilesReader`, a synchronous reader that needs no async runtime, with `SyncBackend` implemented for `std::fs::File` and `Bytes` ([#182](https://github.com/stadiamaps/pmtiles-rs/pull/182)).
+- Both readers, `AsyncBackend`, `HashMapCache` and `NoCache` need no feature. With `default-features = false` the crate pulls in no Tokio or other async crate, so a custom `AsyncBackend` works on any runtime ([#182](https://github.com/stadiamaps/pmtiles-rs/pull/182)).
+- `FileBackendOptions::check_modified` fails reads with `SourceModified` once the file's length or modification time changes ([#176](https://github.com/stadiamaps/pmtiles-rs/pull/176)).
+- `AsyncPmTilesReader::blocking_decode_above` sets when decoding moves to Tokio's blocking pool, 100 µs of estimated work by default ([#179](https://github.com/stadiamaps/pmtiles-rs/pull/179)).
+
+### Changed
+
+- Decompression calls `flate2`, `brotli` and `zstd` directly instead of `async-compression`, and gzip uses zlib-rs, about twice as fast as miniz_oxide. Archives written with gzip are no longer byte-identical to earlier versions; they decode the same ([#179](https://github.com/stadiamaps/pmtiles-rs/pull/179)).
+- Large decodes no longer stall the Tokio worker. With 8 concurrent lookups and no directory cache, throughput doubled and other tasks kept running ([#179](https://github.com/stadiamaps/pmtiles-rs/pull/179)).
+- `DirEntry::iter_coords` needs no feature, and `Compression` and `TileType` implement `TryFrom<u8>` ([#177](https://github.com/stadiamaps/pmtiles-rs/pull/177)).
+- The README documents every feature, including what `tokio` does and that `https` needs a `reqwest-*` feature ([#182](https://github.com/stadiamaps/pmtiles-rs/pull/182)).
+
+### Other
+
+- CI checks the MSRV (1.88) with the newest and the oldest allowed dependency versions ([#181](https://github.com/stadiamaps/pmtiles-rs/pull/181)), and dependency updates ([#175](https://github.com/stadiamaps/pmtiles-rs/pull/175)).
+
+### Thanks
+
+[@nyurik](https://github.com/nyurik) for most of the work in this release, [@johncarmack1984](https://github.com/johncarmack1984) for the `FileBackend` work in [maplibre/martin#3858](https://github.com/maplibre/martin/pull/3858), and [@CommanderStorm](https://github.com/CommanderStorm) and [@lseelenbinder](https://github.com/lseelenbinder) for reviews.
+
+## [0.26.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.25.0...v0.26.0) - 2026-10-29
+
+### ⚠️ Breaking changes
+
+- **Directory caches are created with constructors.** The `cache` field of `MokaCache` and `HashMapCache` is private, so one cache can no longer be shared by several archives by accident. Directories are keyed by offset, so archives sharing a cache read each other's directories ([#147](https://github.com/stadiamaps/pmtiles-rs/pull/147), [#150](https://github.com/stadiamaps/pmtiles-rs/pull/150)).
+
+  ```rust
+  // Before
+  let cache = MokaCache { cache: moka::future::Cache::new(100) };
+  // After
+  let cache = MokaCache::new(100);                         // up to 100 directories
+  let cache = MokaCache::with_max_bytes(64 * 1024 * 1024); // up to 64 MiB
+  let cache = HashMapCache::default();
+
+  // One memory budget for several archives: a separate cache for each
+  let shared = SharedMokaCache::with_max_bytes(256 * 1024 * 1024);
+  let a = AsyncPmTilesReader::new_with_cached_path(shared.new_cache(), "a.pmtiles").await?;
+  let b = AsyncPmTilesReader::new_with_cached_path(shared.new_cache(), "b.pmtiles").await?;
+  ```
+
+  Read statistics with `entry_count()` and `weighted_size()`. For other moka settings, such as expiration, implement `DirectoryCache` for your own type.
+- **Offsets are `u64` in custom backends and caches**, so archives over 4 GiB work on 32-bit targets. Lengths stay `usize` ([#161](https://github.com/stadiamaps/pmtiles-rs/pull/161)).
+
+  ```rust
+  impl AsyncBackend for MyBackend {
+      fn read(&self, offset: u64, length: usize) -> impl Future<Output = PmtResult<BackendResponse>> + Send { ... }
+  }
+  impl DirectoryCache for MyCache {
+      fn get_dir_entry_or_insert(&self, offset: u64, tile_id: TileId, fetcher: impl Future<Output = PmtResult<Directory>> + Send)
+          -> impl Future<Output = PmtResult<Option<DirEntry>>> + Send { ... }
+  }
+  ```
+
+- **Malformed archives return an error** instead of panicking, hanging or reading the wrong bytes. Archives that break the spec, such as a directory entry outside its section or of length 0, now fail with `InvalidHeader`, `InvalidEntry` or `InvalidMetadata`. A tile lookup through more than 6 levels of leaf directories is an `InvalidEntry` instead of `Ok(None)` ([#159](https://github.com/stadiamaps/pmtiles-rs/pull/159), [#160](https://github.com/stadiamaps/pmtiles-rs/pull/160), [#163](https://github.com/stadiamaps/pmtiles-rs/pull/163), [#164](https://github.com/stadiamaps/pmtiles-rs/pull/164), [#166](https://github.com/stadiamaps/pmtiles-rs/pull/166), [#167](https://github.com/stadiamaps/pmtiles-rs/pull/167), [#173](https://github.com/stadiamaps/pmtiles-rs/pull/173)).
+
+### Fixed
+
+- Archive offsets and writer positions above 4 GiB no longer truncate on 32-bit targets ([#161](https://github.com/stadiamaps/pmtiles-rs/pull/161), [#165](https://github.com/stadiamaps/pmtiles-rs/pull/165)).
+- `parse_tilejson` ignores numeric `minzoom` and `maxzoom` in metadata, as it did string ones, and keeps the header's values ([#151](https://github.com/stadiamaps/pmtiles-rs/pull/151)).
+- A v2 archive shorter than a v3 header is reported as `UnsupportedPmTilesVersion` ([#173](https://github.com/stadiamaps/pmtiles-rs/pull/173)).
+- Every combination of features builds without warnings ([#172](https://github.com/stadiamaps/pmtiles-rs/pull/172)).
+
+### Changed
+
+- `MokaCache` hits no longer copy the directory, and `get_metadata` and the rust-s3 backend copy less data ([#147](https://github.com/stadiamaps/pmtiles-rs/pull/147), [#173](https://github.com/stadiamaps/pmtiles-rs/pull/173)).
+- The core features build for WebAssembly (`wasm32-unknown-unknown`), and their tests run on `wasm32-wasip1`. CI checks both ([#174](https://github.com/stadiamaps/pmtiles-rs/pull/174)).
+- The README describes all features, with complete examples ([#174](https://github.com/stadiamaps/pmtiles-rs/pull/174)).
+- `DirEntry` is `Copy` ([#173](https://github.com/stadiamaps/pmtiles-rs/pull/173)).
+- The published crate leaves out the test fixtures, shrinking the download from about 4.5 MB to about 100 KB ([#156](https://github.com/stadiamaps/pmtiles-rs/pull/156)).
+- `varint-rs` is replaced by `integer-encoding`, and `countio` is no longer a dependency ([#163](https://github.com/stadiamaps/pmtiles-rs/pull/163), [#165](https://github.com/stadiamaps/pmtiles-rs/pull/165)).
+
+### Other
+
+- Testing and tooling: fuzzing of the reader ([#162](https://github.com/stadiamaps/pmtiles-rs/pull/162)), 32-bit CI ([#158](https://github.com/stadiamaps/pmtiles-rs/pull/158)), a `get_tile` benchmark ([#148](https://github.com/stadiamaps/pmtiles-rs/pull/148)), more tests ([#153](https://github.com/stadiamaps/pmtiles-rs/pull/153), [#171](https://github.com/stadiamaps/pmtiles-rs/pull/171)), stricter clippy lints ([#168](https://github.com/stadiamaps/pmtiles-rs/pull/168), [#169](https://github.com/stadiamaps/pmtiles-rs/pull/169)), `just update` with cargo-edit ([#170](https://github.com/stadiamaps/pmtiles-rs/pull/170)), an informational Codecov status ([#152](https://github.com/stadiamaps/pmtiles-rs/pull/152)) and dependency updates ([#145](https://github.com/stadiamaps/pmtiles-rs/pull/145), [#146](https://github.com/stadiamaps/pmtiles-rs/pull/146)).
+
+### Thanks
+
+[@AnthonyKrupko](https://github.com/AnthonyKrupko) for `Arc`-based `MokaCache` storage and the review that made cache hits faster, [@ameliamkg](https://github.com/ameliamkg) for the 32-bit offset work ([#157](https://github.com/stadiamaps/pmtiles-rs/pull/157)), [@weiznich](https://github.com/weiznich) for shrinking the package ([#154](https://github.com/stadiamaps/pmtiles-rs/pull/154)), and [@CommanderStorm](https://github.com/CommanderStorm) and [@lseelenbinder](https://github.com/lseelenbinder) for reviews.
+
+## [0.25.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.24.1...v0.25.0) - 2026-10-15
+
+### Added
+
+#### [**breaking**] Only `mmap-async-tokio` and `iter-async` are default features ([#143](https://github.com/stadiamaps/pmtiles-rs/pull/143))
+
+The AWS SDK and the other network backends are a heavy build that most users do not need, so they are now opt-in.
+If something like `PmTilesWriter` or `HttpBackend` is no longer found, enable its feature:
+
+```toml
+pmtiles = { version = "0.25", features = ["write", "http-async", "tilejson"] }
+```
+
+| Feature | Provides |
+|---|---|
+| `write` | `PmTilesWriter` |
+| `http-async` | `HttpBackend` |
+| `aws-s3-async` | `AwsS3Backend` |
+| `s3-async-rustls` or `s3-async-native` | `S3Backend` |
+| `object-store` | `ObjectStoreBackend` |
+| `moka` | `MokaCache` |
+| `tilejson` | `AsyncPmTilesReader::parse_tilejson` |
+| `brotli`, `zstd` | those compression codecs |
+
+#### [**breaking**] Dedup mode on the writer builder, precompressed tiles, and late header values ([#142](https://github.com/stadiamaps/pmtiles-rs/pull/142))
+
+How the stream writer finds identical tiles is now chosen on the builder, and the writer has a single `add_tile`.
+Callers that know which tiles repeat can skip hashing, and the header values can be set after the tiles.
+Identical tiles are now found by a 128-bit hash (was 64-bit), and identical bytes given to `add_tile` and `add_raw_tile` no longer
+share one stored copy, which returned one of them in the wrong encoding.
+
+```rust
+// Default: unchanged, the writer hashes tiles
+let mut writer = PmTilesWriter::new(TileType::Mvt).create(file)?;
+writer.add_tile(coord, data)?;
+
+// `add_raw_tile` is gone: declare already-compressed tiles on the builder
+let mut writer = PmTilesWriter::new(TileType::Mvt)
+    .precompressed(Compression::Gzip)
+    .create(file)?;
+writer.add_tile(coord, gzipped)?;
+
+// New: you know which tiles repeat, nothing is hashed
+let mut writer = PmTilesWriter::new(TileType::Mvt).dedup_by_key::<u64>().create(file)?;
+writer.add_tile(coord, ocean, Some(OCEAN))?; // same key => identical bytes, stored once
+writer.add_tile(coord, land, None)?;         // unique, not remembered
+
+// New: set the header after the tiles
+writer.set_metadata(json);
+writer.set_zoom_range(min_zoom, max_zoom);
+writer.set_bounds(west, south, east, north);
+writer.set_center(lon, lat, zoom);
+writer.finalize()?;
+```
+
+Also breaking:
+- A writer is either `precompressed` or compresses tiles itself, never both.
+- `PmTilesWriter` and `PmTilesStreamWriter` gain a dedup-mode type parameter that defaults to `ContentHash`, so `PmTilesStreamWriter<File>` still compiles.
+- `Compressor` requires `Send`, so custom compressors must not hold `Rc` or similar.
+- `PmTilesWriter::metadata` takes `impl Into<String>`; a `&String` argument needs `.as_str()`.
+- `write` now needs `twox-hash` 2.1 or newer.
+
+### Other
+
+- *(deps)* bump taiki-e/install-action from 2.85.12 to 2.87.22 in the all-actions-version-updates group ([#140](https://github.com/stadiamaps/pmtiles-rs/pull/140))
+- *(deps)* update rust-s3 requirement from 0.37.2 to 0.38.0 in the all-cargo-version-updates group across 1 directory ([#141](https://github.com/stadiamaps/pmtiles-rs/pull/141))
+  - `pmtiles::s3` re-exports `rust-s3`, so code using it moves to the 0.38 API. Applies to the `s3-async-*` features.
+
+## [0.24.1](https://github.com/stadiamaps/pmtiles-rs/compare/v0.24.0...v0.24.1) - 2026-10-01
+
+### Fixed
+
+- detect a modified source when reading directories and metadata ([#138](https://github.com/stadiamaps/pmtiles-rs/pull/138))
+
+### Other
+
+- *(deps)* bump the all-cargo-version-updates group across 1 directory with 3 updates ([#136](https://github.com/stadiamaps/pmtiles-rs/pull/136))
+- *(deps)* bump taiki-e/install-action from 2.85.4 to 2.85.12 in the all-actions-version-updates group across 1 directory ([#133](https://github.com/stadiamaps/pmtiles-rs/pull/133))
+
+## [0.24.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.23.1...v0.24.0) - 2026-08-11
+
+### Added
+
+- [**breaking**] replaced the `fmmap` dependency with `memmap2`
+- [**breaking**] removed the `reqwest-webpki-roots` and `reqwest-rustls-native-certs` features.
+
+### Other
+
+- *(deps)* bump the all-actions-version-updates group across 1 directory with 3 updates ([#129](https://github.com/stadiamaps/pmtiles-rs/pull/129))
+
+## [0.23.1](https://github.com/stadiamaps/pmtiles-rs/compare/v0.23.0...v0.23.1) - 2026-07-10
+
+### Other
+
+- *(deps)* bump object_store to 0.14 ([#126](https://github.com/stadiamaps/pmtiles-rs/pull/126))
+
+## [0.23.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.22.0...v0.23.0) - 2026-04-18
+
+### Added
+
+- [**breaking**] teach AsyncPmTilesReader to check data version strings ([#117](https://github.com/stadiamaps/pmtiles-rs/pull/117))
+
+### Other
+
+- *(deps)* bump the all-actions-version-updates group across 1 directory with 2 updates ([#118](https://github.com/stadiamaps/pmtiles-rs/pull/118))
+
+## [0.22.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.21.0...v0.22.0) - 2026-04-18
+
+### Fixed
+
+- directory offset encoding ([#111](https://github.com/stadiamaps/pmtiles-rs/pull/111))
+
+### Other
+
+- update object_store dependency and fix build ([#119](https://github.com/stadiamaps/pmtiles-rs/pull/119))
+- Configurable compression parameters via Compressor trait ([#112](https://github.com/stadiamaps/pmtiles-rs/pull/112))
+
+## [0.21.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.20.0...v0.21.0) - 2026-03-14
+
+### Added
+
+- *(header)* mlt support ([#113](https://github.com/stadiamaps/pmtiles-rs/pull/113))
+
+## [0.20.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.19.2...v0.20.0) - 2026-02-20
+
+### Other
+
+- Make header methods publicly readable ([#110](https://github.com/stadiamaps/pmtiles-rs/pull/110))
+- Return Result from TileId::new instead of Option ([#107](https://github.com/stadiamaps/pmtiles-rs/pull/107))
+
+## [0.19.2](https://github.com/stadiamaps/pmtiles-rs/compare/v0.19.1...v0.19.2) - 2026-01-29
+
+### Other
+
+- update CI config, justfile, MSRV lock file for testing ([#101](https://github.com/stadiamaps/pmtiles-rs/pull/101))
+- Add optional zstd compression support ([#105](https://github.com/stadiamaps/pmtiles-rs/pull/105))
+- *(deps)* update countio requirement from 0.2.19 to 0.3.0 in the all-cargo-version-updates group ([#104](https://github.com/stadiamaps/pmtiles-rs/pull/104))
+- [pre-commit.ci] pre-commit autoupdate ([#102](https://github.com/stadiamaps/pmtiles-rs/pull/102))
+
+## [0.19.1](https://github.com/stadiamaps/pmtiles-rs/compare/v0.19.0...v0.19.1) - 2026-01-13
+
+### Other
+
+- Add read and write support for brotli compression. ([#99](https://github.com/stadiamaps/pmtiles-rs/pull/99))
+
+## [0.19.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.18.2...v0.19.0) - 2026-01-09
+
+### Other
+
+- *(deps)* [**breaking**] bump `reqwest` and `object_store` dependencys, modifying the list of available features ([#98](https://github.com/stadiamaps/pmtiles-rs/pull/98))
+- Bump actions/checkout from 5 to 6 in the all-actions-version-updates group ([#94](https://github.com/stadiamaps/pmtiles-rs/pull/94))
+
+## [0.18.2](https://github.com/stadiamaps/pmtiles-rs/compare/v0.18.1...v0.18.2) - 2025-11-13
+
+### Other
+
+- Add AVIF to the list of tile types ([#92](https://github.com/stadiamaps/pmtiles-rs/pull/92))
+
+## [0.18.1](https://github.com/stadiamaps/pmtiles-rs/compare/v0.18.0...v0.18.1) - 2025-11-11
+
+### Other
+
+- Added a new atomic Caching interface ([#90](https://github.com/stadiamaps/pmtiles-rs/pull/90))
+
+## [0.18.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.17.1...v0.18.0) - 2025-10-29
+
+### Other
+
+- Don't ignore errors from Gzip `finish` ([#89](https://github.com/stadiamaps/pmtiles-rs/pull/89))
+- **Breaking:** losing lat/lon precision (10e-7) ([#87](https://github.com/stadiamaps/pmtiles-rs/pull/87))
+
+## [0.17.1](https://github.com/stadiamaps/pmtiles-rs/compare/v0.17.0...v0.17.1) - 2025-10-13
+
+### Fixed
+
+- make the `object-store` feature depend on `__async` ([#84](https://github.com/stadiamaps/pmtiles-rs/pull/84))
+
+### Other
+
+- use crates.io trusted publishing ([#86](https://github.com/stadiamaps/pmtiles-rs/pull/86))
+- move the backends to its own module ([#82](https://github.com/stadiamaps/pmtiles-rs/pull/82))
+- document all doc items ([#83](https://github.com/stadiamaps/pmtiles-rs/pull/83))
+
+## [0.17.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.16.0...v0.17.0) - 2025-09-23
+
+### Other
+
+- minor justfile/ci updates ([#81](https://github.com/stadiamaps/pmtiles-rs/pull/81))
+- Upgrade rust-s3 ([#80](https://github.com/stadiamaps/pmtiles-rs/pull/80))
+- cleanup Cargo.toml ([#79](https://github.com/stadiamaps/pmtiles-rs/pull/79))
+- Writer tile dedup ([#76](https://github.com/stadiamaps/pmtiles-rs/pull/76))
+- Fix range index errors on writing ([#75](https://github.com/stadiamaps/pmtiles-rs/pull/75))
+
+## [0.16.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.15.0...v0.16.0) - 2025-09-08
+
+### Added
+
+- *(object_store)* add an `object_store::ObjectStore` backend ([#71](https://github.com/stadiamaps/pmtiles-rs/pull/71))
+- `Coord::new` now returns Result ([#69](https://github.com/stadiamaps/pmtiles-rs/pull/69))
+
+### Other
+
+- Add an add_raw_tile that skips tile compression ([#74](https://github.com/stadiamaps/pmtiles-rs/pull/74))
+- [pre-commit.ci] pre-commit autoupdate ([#73](https://github.com/stadiamaps/pmtiles-rs/pull/73))
+- Bump actions/checkout from 4 to 5 in the all-actions-version-updates group ([#72](https://github.com/stadiamaps/pmtiles-rs/pull/72))
+
+## [0.15.0](https://github.com/stadiamaps/pmtiles-rs/compare/v0.14.0...v0.15.0) - 2025-07-02
+
+### Added
+
+- add `AsyncPmTilesReader::entries` to iterate all entries ([#49](https://github.com/stadiamaps/pmtiles-rs/pull/49))
+- rework tile coordinates ([#62](https://github.com/stadiamaps/pmtiles-rs/pull/62))
+
+### Fixed
+
+- fix readme link and obsolete docs badge ([#60](https://github.com/stadiamaps/pmtiles-rs/pull/60))
+
+### Other
+
+- enable all non-conflicting features by default ([#68](https://github.com/stadiamaps/pmtiles-rs/pull/68))
+- automate release process ([#66](https://github.com/stadiamaps/pmtiles-rs/pull/66))
+- use `u32` instead of `u64` for `(x,y)` ([#65](https://github.com/stadiamaps/pmtiles-rs/pull/65))
+- prevent/autofix tabs in text ([#64](https://github.com/stadiamaps/pmtiles-rs/pull/64))
+- upgrade to 2025 edition ([#61](https://github.com/stadiamaps/pmtiles-rs/pull/61))

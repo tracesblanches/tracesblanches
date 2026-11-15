@@ -1,0 +1,309 @@
+use std::path::Path;
+use std::{future, io};
+
+use bytes::Bytes;
+use memmap2::Mmap;
+use tokio::fs::File;
+
+use crate::async_reader::read_bytes;
+use crate::{
+    AsyncBackend, AsyncPmTilesReader, BackendResponse, DirectoryCache, NoCache, PmtError, PmtResult,
+};
+
+impl AsyncPmTilesReader<MmapBackend, NoCache> {
+    /// Creates a new `PMTiles` reader from a memory-mapped file, using the [`MmapBackend`].
+    ///
+    /// Prefer [`new_with_path`](AsyncPmTilesReader::new_with_path), which uses the
+    /// [`FileBackend`](crate::FileBackend), unless the archive is much smaller than the memory
+    /// available to the process. See [`MmapBackend`] for why.
+    ///
+    /// Fails if `path` does not exist or is an invalid archive.
+    ///
+    /// # Safety of memory mapping
+    ///
+    /// See [`MmapBackend::try_from`] - the file must not be modified or truncated by another
+    /// process while this reader, or any tile data obtained from it, is alive.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the
+    /// - file cannot be opened for memory mapping,
+    /// - backend fails to read the header/root directory or
+    /// - root directory is malformed
+    pub async fn new_with_mmap_path<P: AsRef<Path>>(path: P) -> PmtResult<Self> {
+        Self::new_with_mmap_path_and_cache(path, NoCache).await
+    }
+}
+
+impl<C: DirectoryCache + Sync + Send> AsyncPmTilesReader<MmapBackend, C> {
+    /// Creates a new `PMTiles` reader with a directory cache from a memory-mapped file, using
+    /// the [`MmapBackend`].
+    ///
+    /// Prefer [`new_with_path_and_cache`](AsyncPmTilesReader::new_with_path_and_cache), which
+    /// uses the [`FileBackend`](crate::FileBackend), unless the archive is much smaller than the
+    /// memory available to the process. See [`MmapBackend`] for why.
+    ///
+    /// Fails if `path` does not exist or is an invalid archive.
+    ///
+    /// # Safety of memory mapping
+    ///
+    /// See [`MmapBackend::try_from`] - the file must not be modified or truncated by another
+    /// process while this reader, or any tile data obtained from it, is alive.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the
+    /// - file cannot be opened for memory mapping,
+    /// - backend fails to read the header/root directory or
+    /// - root directory is malformed
+    pub async fn new_with_mmap_path_and_cache<P: AsRef<Path>>(
+        path: P,
+        cache: C,
+    ) -> PmtResult<Self> {
+        let backend = MmapBackend::try_from(path).await?;
+
+        Self::try_from_source_and_cache(backend, cache).await
+    }
+}
+
+/// Backend for reading `PMTiles` from a memory-mapped file.
+///
+/// Prefer the [`FileBackend`](crate::FileBackend) for local files. Use this backend only when
+/// the archive is much smaller than the memory available to the process, including any
+/// container (cgroup) limit, so that it stays in the page cache once read. Its one advantage is
+/// that reads of cached data are not copied: in the `local_file` benchmark, a cached 17 KB tile
+/// takes 1.6 µs instead of 4.0 µs. A server spends far more than that per tile on HTTP and
+/// compression.
+///
+/// Otherwise, it is slower and less robust:
+/// - Every read of data not in the page cache is a page fault, which blocks a Tokio worker
+///   thread, and with it every task on that thread, for the whole disk read.
+/// - Each page fault reads up to the kernel's readahead size around it, 128 KiB to 2 MiB,
+///   evicting other data to cache tiles nobody asked for. On a 139 GB archive with 32
+///   concurrent requests, reads were 1.6-6.7x slower than with the `FileBackend`, and read
+///   2.6-10x more from disk.
+/// - If another process truncates the file, the next read of a lost page crashes the process
+///   (`SIGBUS` on Unix). See [`MmapBackend::try_from`].
+/// - The whole file is mapped into the address space at once. On 32-bit targets, which have at
+///   most 4 GiB of it, mapping an archive of more than 1-2 GiB can fail for lack of contiguous
+///   space, and one of 4 GiB or more always fails. The `FileBackend` reads archives of any size
+///   there.
+pub struct MmapBackend {
+    /// The entire mapping, viewed as [`Bytes`].
+    ///
+    /// [`Bytes::from_owner`] keeps the underlying [`Mmap`] alive for as long as this value, or
+    /// any slice taken from it, is alive. Reads are therefore zero-copy: they only bump a
+    /// reference count.
+    bytes: Bytes,
+}
+
+impl MmapBackend {
+    /// Creates a new memory-mapped file backend.
+    ///
+    /// # Safety of memory mapping
+    ///
+    /// Memory mapping requires that the file not be modified or truncated by another process for
+    /// as long as this backend, or any tile data returned from it, remains alive. If the file
+    /// is truncated, reads through the mapping abort the process (`SIGBUS` on Unix, an SEH
+    /// exception on Windows). Because tile data borrows directly from the mapping, that
+    /// requirement extends to the lifetime of the returned bytes, not just of this backend.
+    ///
+    /// Use a different backend if the file may change underneath you.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the file cannot be opened for memory mapping.
+    pub async fn try_from<P: AsRef<Path>>(p: P) -> PmtResult<Self> {
+        let file = File::open(p)
+            .await
+            .map_err(|_| PmtError::UnableToOpenMmapFile)?
+            .into_std()
+            .await;
+
+        #[expect(
+            unsafe_code,
+            reason = "mmap of a file cannot be made safe; the contract is documented on the constructors"
+        )]
+        // SAFETY: Memory mapping a file is inherently unsafe - another process truncating or
+        // rewriting the file invalidates the mapped pages, and reading them is undefined
+        // behavior. That cannot be enforced from here, so the requirement is documented on
+        // this function and on every public constructor that reaches it.
+        let mmap = unsafe { Mmap::map(&file) }.map_err(|_| PmtError::UnableToOpenMmapFile)?;
+
+        Ok(Self {
+            bytes: Bytes::from_owner(mmap),
+        })
+    }
+}
+
+/// The error returned when a read runs past the end of the mapping.
+fn eof() -> PmtError {
+    PmtError::Reading(io::Error::from(io::ErrorKind::UnexpectedEof))
+}
+
+impl AsyncBackend for MmapBackend {
+    fn read_exact(
+        &self,
+        offset: u64,
+        length: usize,
+    ) -> impl Future<Output = PmtResult<BackendResponse>> + Send {
+        let range = usize::try_from(offset)
+            .ok()
+            .and_then(|offset| Some(offset..offset.checked_add(length)?))
+            .filter(|range| range.end <= self.bytes.len());
+        let response = match range {
+            Some(range) => Ok(BackendResponse::new(self.bytes.slice(range))),
+            None => Err(eof()),
+        };
+        future::ready(response)
+    }
+
+    fn read(
+        &self,
+        offset: u64,
+        length: usize,
+    ) -> impl Future<Output = PmtResult<BackendResponse>> + Send {
+        future::ready(read_bytes(&self.bytes, offset, length))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use super::*;
+    use crate::tests::RASTER_FILE;
+    use crate::{AsyncPmTilesReader, HashMapCache, TileCoord};
+
+    #[tokio::test]
+    async fn reader_reads_tiles() {
+        let tile = TileCoord::new(3, 4, 2).unwrap();
+
+        let reader = AsyncPmTilesReader::new_with_mmap_path(RASTER_FILE)
+            .await
+            .unwrap();
+        assert!(reader.get_tile(tile).await.unwrap().is_some());
+
+        let reader =
+            AsyncPmTilesReader::new_with_mmap_path_and_cache(RASTER_FILE, HashMapCache::default())
+                .await
+                .unwrap();
+        assert!(reader.get_tile(tile).await.unwrap().is_some());
+    }
+
+    async fn backend() -> (MmapBackend, usize) {
+        let backend = MmapBackend::try_from(RASTER_FILE).await.unwrap();
+        let len = backend.bytes.len();
+        assert!(
+            len > 100,
+            "fixture is too small to exercise the bounds logic"
+        );
+        (backend, len)
+    }
+
+    #[tokio::test]
+    async fn read_whole_file() {
+        let (backend, len) = backend().await;
+        let expected = fs::read(RASTER_FILE).unwrap();
+
+        let res = backend.read(0, len).await.unwrap();
+        assert_eq!(res.bytes.len(), len);
+        assert_eq!(&res.bytes[..], &expected[..]);
+        assert!(res.data_version_string.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_clamps_to_eof_at_offset_zero() {
+        let (backend, len) = backend().await;
+
+        let res = backend.read(0, len * 2).await.unwrap();
+        assert_eq!(res.bytes.len(), len);
+    }
+
+    /// Regression test: clamping must account for `offset`, not just the total length.
+    #[tokio::test]
+    async fn read_clamps_relative_to_offset() {
+        let (backend, len) = backend().await;
+        let offset = len - 10;
+
+        let res = backend.read(offset as u64, 100).await.unwrap();
+        assert_eq!(res.bytes.len(), 10);
+
+        let expected = fs::read(RASTER_FILE).unwrap();
+        assert_eq!(&res.bytes[..], &expected[offset..]);
+    }
+
+    #[tokio::test]
+    async fn read_at_eof_is_empty() {
+        let (backend, len) = backend().await;
+
+        let res = backend.read(len as u64, 10).await.unwrap();
+        assert!(res.bytes.is_empty());
+    }
+
+    #[tokio::test]
+    async fn read_past_eof_errors() {
+        let (backend, len) = backend().await;
+
+        assert!(matches!(
+            backend.read(len as u64 + 1, 10).await,
+            Err(PmtError::Reading(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn read_exact_matches_the_file() {
+        let (backend, _) = backend().await;
+        let expected = fs::read(RASTER_FILE).unwrap();
+
+        let res = backend.read_exact(20, 50).await.unwrap();
+        assert_eq!(&res.bytes[..], &expected[20..70]);
+    }
+
+    #[tokio::test]
+    async fn read_exact_past_eof_errors() {
+        let (backend, len) = backend().await;
+
+        assert!(matches!(
+            backend.read_exact(len as u64 - 5, 10).await,
+            Err(PmtError::Reading(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn read_exact_does_not_overflow() {
+        let (backend, _) = backend().await;
+
+        assert!(matches!(
+            backend.read_exact(u64::MAX, 1).await,
+            Err(PmtError::Reading(_))
+        ));
+    }
+
+    /// Reads must be views into the mapping, not copies of it. Two reads of the same range
+    /// return the same address; a copy would allocate a fresh buffer each time.
+    #[tokio::test]
+    async fn reads_are_zero_copy() {
+        let (backend, _) = backend().await;
+
+        let a = backend.read_exact(64, 32).await.unwrap().bytes;
+        let b = backend.read_exact(64, 32).await.unwrap().bytes;
+        assert_eq!(a.as_ptr(), b.as_ptr());
+
+        // ...and a read at a different offset lands the same distance further into the map.
+        let c = backend.read_exact(96, 32).await.unwrap().bytes;
+        assert_eq!(c.as_ptr() as usize - a.as_ptr() as usize, 32);
+    }
+
+    /// Reads must be independent of each other - there is no shared cursor.
+    #[tokio::test]
+    async fn reads_are_position_independent() {
+        let (backend, _) = backend().await;
+
+        let (a, b) = tokio::join!(backend.read_exact(0, 40), backend.read_exact(60, 40));
+        let expected = fs::read(RASTER_FILE).unwrap();
+
+        assert_eq!(&a.unwrap().bytes[..], &expected[0..40]);
+        assert_eq!(&b.unwrap().bytes[..], &expected[60..100]);
+    }
+}

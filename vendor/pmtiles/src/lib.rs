@@ -1,0 +1,52 @@
+#![cfg_attr(feature = "__all_non_conflicting", doc = include_str!("../README.md"))]
+// Only here because we warn on `missing_docs`.
+// The first `cfg_attr` is exported to https://docs.rs
+#![cfg_attr(not(feature = "__all_non_conflicting"), doc = "# `PMTiles` (for Rust)")]
+
+mod async_reader;
+pub use async_reader::{AsyncBackend, AsyncPmTilesReader, BackendResponse};
+mod sync_reader;
+pub use sync_reader::{PmTilesReader, SyncBackend};
+
+mod backends;
+#[allow(unused_imports, reason = "only a warning if no backends are enabled")]
+pub use backends::*;
+
+mod cache;
+pub use cache::{DirectoryCache, HashMapCache, NoCache};
+#[cfg(feature = "moka")]
+pub use cache::{MokaCache, SharedMokaCache};
+
+mod directory;
+mod error;
+mod header;
+mod tile;
+#[cfg(feature = "write")]
+mod writer;
+
+/// Re-export of crate exposed in our API to simplify dependency management
+#[cfg(feature = "__async-aws-s3")]
+pub use aws_sdk_s3;
+pub use directory::{DirEntry, DirEntryCoordsIter, Directory};
+pub use error::{PmtError, PmtResult};
+pub use header::{Compression, Header, TileType};
+/// Re-export of crate exposed in our API to simplify dependency management
+#[cfg(feature = "http-async")]
+pub use reqwest;
+/// Re-export of crate exposed in our API to simplify dependency management
+#[cfg(feature = "__async-s3")]
+pub use s3;
+pub use tile::{MAX_TILE_ID, MAX_ZOOM, PYRAMID_SIZE_BY_ZOOM, TileCoord, TileId};
+/// Re-export of crate exposed in our API to simplify dependency management
+#[cfg(feature = "tilejson")]
+pub use tilejson;
+#[cfg(feature = "write")]
+pub use writer::{
+    CallerKey, Compressor, ContentHash, DedupMode, PmTilesStreamWriter, PmTilesWriter,
+};
+
+#[cfg(test)]
+mod tests {
+    pub const RASTER_FILE: &str = "fixtures/stamen_toner(raster)CC-BY+ODbL_z3.pmtiles";
+    pub const VECTOR_FILE: &str = "fixtures/protomaps(vector)ODbL_firenze.pmtiles";
+}

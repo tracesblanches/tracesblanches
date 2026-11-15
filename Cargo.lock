@@ -1544,8 +1544,6 @@ checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 [[package]]
 name = "pmtiles"
 version = "0.28.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61219486719a766150c032f14204184ebcb97e83e79e4be124bc13d2fca29b14"
 dependencies = [
  "bytes",
  "fast_hilbert",
