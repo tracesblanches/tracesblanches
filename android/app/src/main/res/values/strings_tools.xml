@@ -29,6 +29,11 @@
     <string name="settings_prep">Preparation of the next days</string>
     <string name="settings_alert">Non-return alert by the server</string>
     <string name="settings_layers">Map</string>
+    <string name="settings_earcons">Short sounds</string>
+    <string name="earcons_explain">Before the words: two beeps on the left or on the right to turn, three low sounds off the route. Taken into account when the outing starts.</string>
+    <string name="earcons_on">Short sounds before the voice</string>
+    <string name="earcons_volume">Volume: %1$d %%</string>
+    <string name="earcons_listen">Listen: left then right</string>
     <string name="fog_permission">The guidance needs the precise position.</string>
 
     <!-- V1 off-piste -->

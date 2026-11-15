@@ -3,6 +3,9 @@ package fr.skimap.app
 import android.hardware.SensorManager
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasScrollAction
@@ -30,6 +33,7 @@ import fr.skimap.app.prep.AlertState
 import fr.skimap.app.prep.HttpAnswer
 import fr.skimap.app.prep.PrepActions
 import fr.skimap.app.prep.PrepScreen
+import fr.skimap.app.prep.PrepTags
 import fr.skimap.app.prep.PrepUi
 import fr.skimap.app.prep.ReturnAlert
 import fr.skimap.app.prep.TripsApi
@@ -294,6 +298,33 @@ class ToolsTest {
         rule.onNodeWithText("mis à jour le 15/11 à 14 h 05").assertIsDisplayed()
         rule.onNodeWithText("Batterie insuffisante", substring = true).assertIsDisplayed()
         capture("tools_prep")
+    }
+
+    @Test
+    fun settingsShortSoundsFoldedThenSet() {
+        var ui by mutableStateOf(PrepUi(PrepState(emptyList(), emptyList())))
+        var listened = 0
+        rule.setContent {
+            Themed {
+                Surface(Modifier.fillMaxSize()) {
+                    PrepScreen(ui, PrepActions(earcons = { ui = ui.copy(earcons = it) }, listenEarcons = { listened++ }))
+                }
+            }
+        }
+        // Folded: only its title.
+        rule.onNodeWithTag(PrepTags.EARCON_SWITCH).assertDoesNotExist()
+        rule.onNodeWithText("Sons courts").performClick()
+        rule.onNodeWithTag(PrepTags.EARCON_VOLUME).assertIsDisplayed()
+        rule.onNodeWithText("Volume : 50 %").assertIsDisplayed()
+        capture("tools_settings_earcons")
+        rule.onNodeWithTag(PrepTags.EARCON_LISTEN).performClick()
+        assertEquals(1, listened)
+        rule.onNodeWithTag(PrepTags.EARCON_SWITCH).performClick()
+        assertFalse(ui.earcons.enabled)
+        rule.onNodeWithTag(PrepTags.EARCON_VOLUME).assertDoesNotExist()
+        rule.onNodeWithTag(PrepTags.EARCON_SWITCH).performClick()
+        assertTrue(ui.earcons.enabled)
+        assertEquals(0.5f, ui.earcons.volume, 0f)
     }
 
     @Test

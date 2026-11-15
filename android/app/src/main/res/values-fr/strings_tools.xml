@@ -27,6 +27,11 @@
     <string name="settings_prep">Préparation des jours suivants</string>
     <string name="settings_alert">Alerte de non-retour par le serveur</string>
     <string name="settings_layers">Carte</string>
+    <string name="settings_earcons">Sons courts</string>
+    <string name="earcons_explain">Avant les mots : deux bips à gauche ou à droite pour tourner, trois sons graves hors de l\'itinéraire. Pris en compte au départ de la sortie.</string>
+    <string name="earcons_on">Sons courts avant la voix</string>
+    <string name="earcons_volume">Volume : %1$d %%</string>
+    <string name="earcons_listen">Écouter : gauche puis droite</string>
     <string name="fog_permission">Le guidage a besoin de la position précise.</string>
 
     <string name="offpiste_title">Itinéraire hors piste</string>

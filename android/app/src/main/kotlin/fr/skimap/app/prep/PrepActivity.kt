@@ -23,6 +23,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -57,12 +58,17 @@ import fr.skimap.core.PreparedDay
 import fr.skimap.core.prepRead
 import fr.skimap.core.prepTake
 import fr.skimap.core.readDayPlan
+import fr.skimap.tracking.Announcer
+import fr.skimap.tracking.Earcon
+import fr.skimap.tracking.EarconSettings
+import fr.skimap.tracking.Tracking
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
 import java.time.LocalDate
+import kotlin.math.roundToInt
 
 /** Test tags of the trip screen. */
 object PrepTags {
@@ -70,6 +76,10 @@ object PrepTags {
     const val SKI = "prep_ski"
     const val TAKE = "prep_take"
     const val PREP = "prep_section"
+    const val EARCONS = "prep_earcons"
+    const val EARCON_SWITCH = "prep_earcon_switch"
+    const val EARCON_VOLUME = "prep_earcon_volume"
+    const val EARCON_LISTEN = "prep_earcon_listen"
 }
 
 /** What the trip screen shows. */
@@ -81,6 +91,8 @@ data class PrepUi(
     val running: Boolean = false,
     val battery: BatteryView? = null,
     val lowExposure: Boolean = false,
+    /** Short sounds of the guidance (K6): on, volume. */
+    val earcons: EarconSettings = EarconSettings(true, EarconSettings.DEFAULT_VOLUME),
 )
 
 /** Callbacks of [PrepScreen]. */
@@ -90,6 +102,8 @@ data class PrepActions(
     val now: () -> Unit = {},
     val take: (PreparedDay) -> Unit = {},
     val lowExposure: (Boolean) -> Unit = {},
+    val earcons: (EarconSettings) -> Unit = {},
+    val listenEarcons: () -> Unit = {},
 )
 
 /**
@@ -105,7 +119,13 @@ class PrepActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         fr.skimap.app.rules.LowExposure
             .load(this)
-        ui = ui.copy(auto = PrepWork.auto(this), ski = PrepWork.skiMode(this), lowExposure = fr.skimap.app.rules.LowExposure.shown.value)
+        ui =
+            ui.copy(
+                auto = PrepWork.auto(this),
+                ski = PrepWork.skiMode(this),
+                lowExposure = fr.skimap.app.rules.LowExposure.shown.value,
+                earcons = Tracking.earcons(this),
+            )
         lifecycleScope.launch { reload() }
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -137,6 +157,11 @@ class PrepActivity : ComponentActivity() {
                                 fr.skimap.app.rules.LowExposure
                                     .set(this, it)
                             },
+                            earcons = {
+                                ui = ui.copy(earcons = it)
+                                Tracking.setEarcons(this, it.enabled, it.volume)
+                            },
+                            listenEarcons = ::listenEarcons,
                         ),
                     )
                 }
@@ -160,6 +185,14 @@ class PrepActivity : ComponentActivity() {
                 Triple(s, l, Battery.forecast(ctx, null, null))
             }
         ui = ui.copy(state = state, last = last, battery = battery)
+    }
+
+    /** The turn sounds at the volume chosen: left, then right (in the headset, each on its side). */
+    private fun listenEarcons() {
+        val a = Announcer(applicationContext)
+        a.earcon(Earcon.LEFT, ui.earcons.volume)
+        a.earcon(Earcon.RIGHT, ui.earcons.volume)
+        a.afterQueue { a.close() }
     }
 
     /** Skis a prepared plan: copied as a new outing, then started like a validated day. */
@@ -239,8 +272,37 @@ fun PrepScreen(
                 if (ui.lowExposure) Text(stringResource(R.string.low_exposure_warning), style = MaterialTheme.typography.bodyMedium)
             }
         }
+        item { Folded(stringResource(R.string.settings_earcons), Modifier.testTag(PrepTags.EARCONS)) { EarconLines(ui.earcons, actions) } }
     }
 }
+
+/** The short sounds of the guidance (K6): on or off, their volume, heard at once. */
+@Composable
+private fun EarconLines(
+    e: EarconSettings,
+    actions: PrepActions,
+) {
+    Text(stringResource(R.string.earcons_explain), style = MaterialTheme.typography.bodyMedium)
+    SwitchLine(
+        stringResource(R.string.earcons_on),
+        e.enabled,
+        { actions.earcons(e.copy(enabled = it)) },
+        Modifier.testTag(PrepTags.EARCON_SWITCH),
+    )
+    if (!e.enabled) return
+    Text(stringResource(R.string.earcons_volume, (e.volume * PERCENT).roundToInt()), style = MaterialTheme.typography.bodyLarge)
+    Slider(
+        value = e.volume,
+        onValueChange = { actions.earcons(e.copy(volume = it)) },
+        modifier = Modifier.fillMaxWidth().heightIn(min = GloveTarget).testTag(PrepTags.EARCON_VOLUME),
+    )
+    OutlinedButton(
+        onClick = actions.listenEarcons,
+        modifier = Modifier.fillMaxWidth().heightIn(min = GloveTarget).testTag(PrepTags.EARCON_LISTEN),
+    ) { Text(stringResource(R.string.earcons_listen)) }
+}
+
+private const val PERCENT = 100
 
 /** A section folded until touched. */
 @Composable
