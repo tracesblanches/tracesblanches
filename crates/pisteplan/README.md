@@ -16,6 +16,8 @@ On ne redistribue pas le plan, et on ne l'affiche pas en image sur la carte. Il 
 
 Téléchargés par le téléchargeur commun (sources `nordicfrance`, `enj`, cache 30 jours). Les rendus restent dans `data/cache/pisteplan/`.
 
+**Collecteur** (`collect`, exemple `collect_plans`) : médiathèque WordPress de Nordic France (recherches « plan » et « piste », station de rattachement → domaine du recensement) et pages des massifs de l'ENJ. Les fichiers sont choisis sur leur titre (raquettes, piétons, alpin, navettes… écartés). Sources propres, une requête toutes les 5 s. Au 15/11/2026 : 298 candidats, 257 plans distincts (41 doublons, 0 erreur), dont 114 PDF avec couche texte, 105 PDF-image, 15 PDF vectoriels sans texte, 22 images. 157 sont rattachés à un domaine ; 92 des 219 domaines ont au moins un plan. Dates de création de 2009 à 2026, surtout 2018-2026. Sortie : `data/out/france/plans/catalogue.json` (usage personnel).
+
 ## Chaîne
 
 1. Entrée : `pdftoppm` (rendu PPM) et `pdftotext -bbox-layout` (couche texte), outils poppler appelés en sous-processus. Tout le reste est en Rust.

@@ -70,3 +70,7 @@ required-features = ["pipeline"]
 [[example]]
 name = "auto_compare"
 required-features = ["pipeline"]
+
+[[example]]
+name = "collect_plans"
+required-features = ["pipeline"]
