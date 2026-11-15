@@ -1,8 +1,9 @@
 //! Disk cache of the downloader: one body file and one JSON metadata file per request.
 //!
-//! The key is the SHA-256 of `method \n public URL \n body`, followed by `\nRange: <value>`
-//! for a range request (two parts of one file are two entries; a request without `Range`
-//! keeps the key it always had); secrets (query parameters or
+//! The key is the SHA-256 of `method \n public URL \n`, then for a request with a body
+//! `body <length> <content type>\n<body>` (POST: Overpass `data=`), then `\nRange: <value>`
+//! for a range request (two parts of one file are two entries; a request without body nor
+//! `Range` keeps the key it always had); secrets (query parameters or
 //! headers added with [`super::Request::secret_query`] / [`super::Request::secret_header`])
 //! never enter the key, the metadata or the file names.
 
@@ -43,11 +44,21 @@ pub struct CacheMeta {
     pub range: Option<String>,
 }
 
-/// Cache key of a request.
+/// Body of a request as it enters the cache key: bytes and `Content-Type`.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct KeyBody<'a> {
+    pub(crate) bytes: &'a [u8],
+    pub(crate) content_type: Option<&'a str>,
+}
+
+/// Cache key of a request: SHA-256 of the method, the public URL, the body framed by its
+/// length and content type (a body can hold any byte, including what follows it in the
+/// key), and the `Range` header. Without a body the key is that of the first cache format
+/// (existing GET and range entries stay valid).
 pub(crate) fn key(
     method: &str,
     public_url: &str,
-    body: Option<&[u8]>,
+    body: Option<KeyBody<'_>>,
     range: Option<&str>,
 ) -> String {
     let mut h = Sha256::new();
@@ -56,7 +67,16 @@ pub(crate) fn key(
     h.update(public_url.as_bytes());
     h.update(b"\n");
     if let Some(b) = body {
-        h.update(b);
+        // A header value holds no line break: the content type ends at the first one.
+        h.update(
+            format!(
+                "body {} {}\n",
+                b.bytes.len(),
+                b.content_type.unwrap_or("").trim()
+            )
+            .as_bytes(),
+        );
+        h.update(b.bytes);
     }
     if let Some(r) = range {
         h.update(b"\nRange: ");
@@ -160,16 +180,43 @@ pub(crate) fn store_body(
 mod tests {
     use super::*;
 
+    fn body<'a>(bytes: &'a [u8], content_type: &'a str) -> Option<KeyBody<'a>> {
+        Some(KeyBody {
+            bytes,
+            content_type: Some(content_type),
+        })
+    }
+
     #[test]
     fn keys_depend_on_method_url_and_body() {
+        const FORM: &str = "application/x-www-form-urlencoded";
         let a = key("GET", "https://x/a", None, None);
         assert_eq!(a.len(), 64);
         assert_eq!(a, key("GET", "https://x/a", None, None));
         assert_ne!(a, key("POST", "https://x/a", None, None));
         assert_ne!(a, key("GET", "https://x/b", None, None));
         assert_ne!(
-            key("POST", "u", Some(b"q=1"), None),
-            key("POST", "u", Some(b"q=2"), None)
+            key("POST", "u", body(b"q=1", FORM), None),
+            key("POST", "u", body(b"q=2", FORM), None)
+        );
+        // An empty body is a body; the content type is part of it.
+        assert_ne!(
+            key("POST", "u", None, None),
+            key("POST", "u", body(b"", FORM), None)
+        );
+        assert_ne!(
+            key("POST", "u", body(b"{}", FORM), None),
+            key("POST", "u", body(b"{}", "application/json"), None)
+        );
+        // The body is framed: bytes that look like the range part do not collide with a
+        // real range, nor a body with the URL of another request.
+        assert_ne!(
+            key("POST", "u", body(b"q\nRange: bytes=0-9", FORM), None),
+            key("POST", "u", body(b"q", FORM), Some("bytes=0-9"))
+        );
+        assert_ne!(
+            key("POST", "u\nv", None, None),
+            key("POST", "u", body(b"v", ""), None)
         );
         // Range requests: one entry per range, none shared with the whole resource.
         let r1 = key("GET", "https://x/a", None, Some("bytes=0-99"));
@@ -177,10 +224,13 @@ mod tests {
         assert_ne!(r1, r2);
         assert_ne!(r1, a);
         assert_eq!(r1, key("GET", "https://x/a", None, Some(" bytes=0-99 ")));
-        // Keys without a range are unchanged (existing cache entries stay valid).
+        // Keys without a body are unchanged (existing cache entries stay valid).
         let mut h = Sha256::new();
         h.update(b"GET\nhttps://x/a\n");
         assert_eq!(a, hex::encode(h.finalize()));
+        let mut h = Sha256::new();
+        h.update(b"GET\nhttps://x/a\n\nRange: bytes=0-99");
+        assert_eq!(r1, hex::encode(h.finalize()));
     }
 
     #[test]

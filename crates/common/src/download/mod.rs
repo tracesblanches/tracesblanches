@@ -145,7 +145,8 @@ impl Request {
         Self::post(source, url, body, "application/x-www-form-urlencoded")
     }
 
-    /// Adds a public header (not logged; part of the cache key only for `Range`).
+    /// Adds a public header (not logged; part of the cache key only for `Range`, and
+    /// `Content-Type` with a body).
     pub fn header(mut self, name: &str, value: &str) -> Self {
         self.headers.push((name.to_owned(), value.to_owned()));
         self
@@ -160,10 +161,15 @@ impl Request {
 
     /// Value of the `Range` header, if any (last one wins, as for the request sent).
     pub fn range_header(&self) -> Option<&str> {
+        self.header_value("range")
+    }
+
+    /// Value of a public header, if any (last one wins, as for the request sent).
+    fn header_value(&self, name: &str) -> Option<&str> {
         self.headers
             .iter()
             .rev()
-            .find(|(k, _)| k.eq_ignore_ascii_case("range"))
+            .find(|(k, _)| k.eq_ignore_ascii_case(name))
             .map(|(_, v)| v.as_str())
     }
 
@@ -423,7 +429,10 @@ impl Downloader {
         let key = cache::key(
             req.method.as_str(),
             &req.url,
-            req.body.as_deref(),
+            req.body.as_deref().map(|bytes| cache::KeyBody {
+                bytes,
+                content_type: req.header_value("content-type"),
+            }),
             req.range_header(),
         );
         let entry = Entry::new(&dir, &key);

@@ -540,9 +540,24 @@ fn post_bodies_are_part_of_the_cache_key() {
         "answer to data=node%281%29%3Bout%3B"
     );
     assert_eq!(dl.fetch(&q2).unwrap().origin, Origin::Downloaded);
-    assert_eq!(dl.fetch(&q1).unwrap().origin, Origin::Cache);
+    let again = dl.fetch(&q1).unwrap();
+    assert_eq!(again.origin, Origin::Cache);
+    assert_eq!(again.text().unwrap(), "answer to data=node%281%29%3Bout%3B");
+    let again = dl.fetch(&q2).unwrap();
+    assert_eq!(again.origin, Origin::Cache);
+    assert_eq!(again.text().unwrap(), "answer to data=node%282%29%3Bout%3B");
+    // Same bytes under another content type: another request, another entry.
+    let raw = Request::post(
+        "overpass-test",
+        &url,
+        "data=node%281%29%3Bout%3B",
+        "text/plain",
+    );
+    assert_eq!(dl.fetch(&raw).unwrap().origin, Origin::Downloaded);
+    assert_eq!(dl.fetch(&raw).unwrap().origin, Origin::Cache);
     let seen = srv.seen();
-    assert_eq!(seen.len(), 2);
+    assert_eq!(seen.len(), 3);
+    assert_eq!(seen[2].header("content-type"), Some("text/plain"));
     assert_eq!(seen[0].method, "POST");
     assert_eq!(
         seen[0].header("content-type"),
