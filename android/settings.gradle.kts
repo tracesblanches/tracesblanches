@@ -18,3 +18,5 @@ rootProject.name = "skimap"
 include(":app", ":benchmark")
 // Pack download (K2): the network module of the app.
 include(":sync")
+// The outing (K4, K5, K13): the location service, the voice, the buttons.
+include(":tracking")

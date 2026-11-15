@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tracking_channel">Guidage</string>
+    <string name="tracking_channel_description">Prochaine direction, temps restant et arrivée pendant la sortie</string>
+    <string name="reminder_channel">Rappel de retour</string>
+    <string name="tracking_starting">Suivi de la sortie : recherche de la position…</string>
+    <string name="accept">Accepter</string>
+    <string name="decline">Refuser</string>
+    <string name="refuse_switch">Garder l\'itinéraire</string>
+    <string name="switched">Itinéraire changé : %1$s</string>
+    <string name="bring_me_back">Ramène-moi</string>
+    <string name="back_stop">Reprendre le plan</string>
+    <string name="reminder_sms">Prévenir : bien rentré</string>
+</resources>

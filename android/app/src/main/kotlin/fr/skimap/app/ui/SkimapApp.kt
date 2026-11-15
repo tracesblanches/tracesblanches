@@ -50,6 +50,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import fr.skimap.app.R
 import fr.skimap.app.data.PackProblem
 import fr.skimap.app.data.Practice
+import fr.skimap.app.guidance.GuidanceOverlay
 import fr.skimap.app.ui.domains.DomainPickerDialog
 import fr.skimap.app.ui.domains.DomainsViewModel
 import fr.skimap.app.ui.map.MapController
@@ -222,6 +223,7 @@ fun MapScreen(
                 .padding(8.dp),
         ) {
             StatusChip(info, siteName, texts, today, state.error, Modifier.align(Alignment.TopStart))
+            GuidanceOverlay(info.siteId)
             Column(
                 Modifier.align(Alignment.BottomEnd),
                 horizontalAlignment = Alignment.End,

@@ -75,8 +75,10 @@ class MapScreenTest {
         rule.onNodeWithText("Cervières · 0 ouverte, 8 fermées").assertIsDisplayed()
         // The validity is in the sheet, not on the map while the pack is valid.
         rule.onNodeWithText("Valable jusqu'au 17 novembre 2026").assertDoesNotExist()
-        // Primary action and ⓘ only; no zoom button, no recentre while the view is automatic.
-        assertEquals(2, rule.onAllNodes(hasClickAction()).fetchSemanticsNodes().size)
+        // Primary action, ⓘ and « Ma journée » (the day, J5) only; no zoom button, no
+        // recentre while the view is automatic.
+        assertEquals(3, rule.onAllNodes(hasClickAction()).fetchSemanticsNodes().size)
+        rule.onNodeWithTag(fr.skimap.app.guidance.GuidanceTags.DAY).assertIsDisplayed()
         rule.onNodeWithTag(Tags.PRIMARY).assertIsDisplayed()
         rule.onNodeWithTag(Tags.ATTRIBUTION).assertIsDisplayed()
         rule.onNodeWithTag(Tags.RECENTER).assertDoesNotExist()
@@ -108,7 +110,7 @@ class MapScreenTest {
     fun autoViewButtonOnceTheMapWasMoved() {
         var recenter = 0
         rule.setContent { Themed { TestMapScreen(readyState(), MapActions(recenter = { recenter++ }), mapMoved = true) } }
-        assertEquals(3, rule.onAllNodes(hasClickAction()).fetchSemanticsNodes().size)
+        assertEquals(4, rule.onAllNodes(hasClickAction()).fetchSemanticsNodes().size)
         rule.onAllNodes(hasClickAction()).assertTargetsAtLeast(48)
         rule.onNodeWithContentDescription("Vue auto : recentrer sur Cervières").performClick()
         assertEquals(1, recenter)
