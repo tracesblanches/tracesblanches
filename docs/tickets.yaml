@@ -1273,3 +1273,253 @@ tickets:
     Conseils : peaux courtes ou écailles selon les montées, technique de descente (chasse-neige, conversion) selon les pentes, glisse si long plat, passages à éviter, demi-tour conseillé, équipement.
     Calibrage sur des tracés cotés par des sources publiées (Camptocamp, topos SRN, parcs) avec évaluation séparée par itinéraire ; règles lisibles avant tout modèle opaque ; jamais « facile » pour un tracé qui traverse une zone exposée aux avalanches.
     Critère : cotation et conseils relus à la main sur 20 tracés variés (GTJ, Vercors, Queyras, Vosges, Jura), accord mesuré avec les cotations publiées.
+
+# ---------- Réserves à corriger (X) ----------
+- key: X1
+  title: "Plans de pistes en perspective et pages multiples"
+  milestone: M3 Client v1
+  labels: [algo, carte]
+  deps: [P22]
+  body: |
+    112 plans sur 158 ne se calent pas : panoramas en perspective (64, aucun accord étiquettes/repères) et pages à plusieurs cartes ou trop peu de paires (48). Les 22 plans en JPEG/PNG ne sont pas lus.
+    Piste de correction : découper les pages en cartes ; pour les panoramas, estimer le point de vue en rendant une vue 3D du relief LiDAR (position, cap, focale) et apparier le dessin à ce rendu plutôt qu'à une carte à plat ; lire les images comme les PDF-image.
+    Critère : part des plans calés mesurée avant/après, par type de plan.
+
+- key: X2
+  title: "Plan de Cervières illisible (image floue)"
+  milestone: M3 Client v1
+  labels: [algo, carte]
+  deps: [P22]
+  body: |
+    Le plan de Cervières est une image de 1 280 px : bleu proche du fond turquoise, OCR qui ne lit ni Savare ni Izoard, longueurs fausses (« 75km » pour 7,5) ; 3 pistes sur 8 transcrites, 6 points d'appui seulement.
+    Pistes de correction : demander à la station le plan source (vectoriel) ; segmentation des couleurs dans un espace perceptuel avec masque du fond ; OCR avec lexique des noms OSM et IGN du domaine ; contrôle des longueurs lues contre les longueurs OSM.
+    Critère : au moins 6 pistes sur 8 transcrites, erreur médiane des points d'appui mesurée sur plus de 15 points.
+
+- key: X3
+  title: "Modèle d'appariement entraîné presque seulement sur le Jura"
+  milestone: M3 Client v1
+  labels: [algo, carte]
+  deps: [P22, X1]
+  body: |
+    3 groupes de domaines, presque tous jurassiens, 75 paires positives : la tenue sur les plans alpins, pyrénéens, vosgiens et du Massif central n'est pas mesurée ; la précision ne vaut que pour les pistes que l'appariement exact sait déjà trancher.
+    Pistes de correction : élargir l'étiquetage grâce à X1 ; évaluation par massif ; jeu de vérification relu à la main hors Jura ; étiquettes indépendantes du nom pour mesurer le cas sans nom.
+    Critère : précision et rappel par massif, au moins 4 massifs.
+
+- key: X4
+  title: "Appariement exact fragile"
+  milestone: M3 Client v1
+  labels: [algo, carte]
+  deps: [P22]
+  body: |
+    À Chapelle-des-Bois, de petits écarts de fiche de lecture font varier le résultat de 25 à 32 pistes ; le Chemin du Sioux de Cervières est refusé à 48 % pour un seuil de 50 %.
+    Pistes de correction : test de couverture tolérant au décalage local (après calage non rigide) ; seuil justifié par une courbe précision/rappel ; stabilité mesurée par perturbation de la fiche.
+    Critère : résultat stable (± 1 piste) sous perturbations réalistes de la fiche.
+
+- key: X5
+  title: "Ne plus dépendre d'Overpass"
+  milestone: M3 Client v1
+  labels: [pipeline, carte]
+  deps: [P2]
+  body: |
+    Overpass refuse les connexions depuis le 15/11/2026 et son miroir répond 504 ; les repères des plans passent en secours par la toponymie IGN.
+    Piste de correction : lire tous les objets OSM nécessaires depuis un extrait local (Geofabrik France, mis à jour par le pipeline) plutôt que par une API distante ; Overpass jamais indispensable.
+    Critère : build-all et P22 complets sans aucune requête Overpass.
+
+- key: X6
+  title: "Style SRN trop chargé près des pentes raides"
+  milestone: M3 Client v1
+  labels: [client, carte]
+  deps: [K15]
+  body: |
+    Exposition aux avalanches (rose), pentes (rouge, jaune) et couloirs connus se superposent près des pentes raides de Cervières.
+    Pistes de correction : n'afficher l'exposition qu'en vue large et les pentes de près, ou un choix exclusif pentes/exposition ; hachures pour l'une des deux ; tester avec l'utilisateur sur le Pixel au soleil.
+    Critère : vue raide jugée lisible par l'utilisateur.
+
+- key: X7
+  title: "Neige estimée encore en raster et état inconnu dessiné comme ouvert"
+  milestone: M3 Client v1
+  labels: [client, carte]
+  deps: [K15, P6]
+  body: |
+    La neige reste un raster de 25 m masqué par défaut ; une piste sans état connu est dessinée comme ouverte.
+    Pistes de correction : classes de neige en polygones vectoriels comme les pentes ; état inconnu avec un rendu propre (trait neutre, mention « état inconnu » dans la fiche).
+    Critère : neige native en clair et en sombre ; aucune piste à l'état inconnu présentée comme ouverte.
+
+- key: X8
+  title: "Exposition aux avalanches sans la CLPA dans les packs publics"
+  milestone: M3 Client v1
+  labels: [algo, sécurité]
+  deps: [P18, L6]
+  body: |
+    Sans la CLPA (non publiable tant que la DDT 05 n'a pas répondu), 1,68 % de la surface des avalanches connues de Cervières est affiché « peu exposé » dans le pack public.
+    Pistes de correction : recalibrer le modèle (frottement de forêt, alpha, #31) pour couvrir ces emprises sans la CLPA ; obtenir l'accord de la DDT 05 (courrier prêt) ; en attendant, mention claire dans la fiche que le modèle seul ignore les avalanches historiques.
+    Critère : part des emprises CLPA classées « peu exposé » par le modèle seul réduite et mesurée.
+
+- key: X9
+  title: "Départs de pistes absents des données"
+  milestone: M3 Client v1
+  labels: [pipeline, carte]
+  deps: [P2, H1]
+  body: |
+    Il n'existe pas de couche « départs » : parkings et accueils OSM en tiennent lieu.
+    Pistes de correction : départs déduits (extrémités du graphe proches d'un parking ou d'un accueil), départs lus sur les plans (P22), départs des sources des stations (H1).
+    Critère : départs vérifiés à la main sur 10 domaines.
+
+- key: X10
+  title: "Fausses pauses dans les montées lentes"
+  milestone: M3 Client v1
+  labels: [algo, pendant]
+  deps: [J3]
+  body: |
+    Une fausse pause en 3 h à Cervières avec un GPS à σ 10 m, deux avec un GPS dégradé, sept en montée à 0,3–0,5 m/s ; un aller-retour d'enfant de moins de 40 m compte comme un arrêt.
+    Pistes de correction : détection d'arrêt par capteurs de mouvement (accéléromètre, pas) en plus du GPS ; seuils dépendant de la pente ; tests sur traces réelles (T1).
+    Critère : zéro fausse pause sur les scénarios de montée lente et sur des traces réelles.
+
+- key: X11
+  title: "Itinéraires recalculés sans annonces de sécurité"
+  milestone: M3 Client v1
+  labels: [algo, sécurité]
+  deps: [J2, C8]
+  body: |
+    Un itinéraire calculé pendant la sortie n'annonce ni les zones sans réseau ni les couloirs d'avalanche ni les zones protégées.
+    Piste de correction : le recalcul produit les mêmes annonces que le plan du matin (fonction commune), testé par scénario Q9.
+    Critère : un scénario Q9 de recalcul qui traverse une zone sans réseau et un couloir, annonces vérifiées.
+
+- key: X12
+  title: "Fermetures ENJ seulement sur voies OSM"
+  milestone: M3 Client v1
+  labels: [algo, pendant]
+  deps: [J2, P13]
+  body: |
+    Les fermetures sont exprimées en voies OSM ; les itinéraires ENJ donnés en géométrie ne sont rattachés qu'à 80 % des points à moins de 20 m.
+    Piste de correction : appariement des géométries ENJ au graphe par HMM (comme le rattachement C2), contrôle des 20 % restants.
+    Critère : taux de rattachement des itinéraires ENJ ≥ 98 %, écarts relus.
+
+- key: X13
+  title: "Table de suivi du plan trop lourde"
+  milestone: M3 Client v1
+  labels: [algo, pendant]
+  deps: [J1, E1]
+  body: |
+    La table à plat répète la géométrie commune de chaque plan B : 560 Ko pour un plan de 3 h à Chapelle.
+    Piste de correction : géométrie partagée et plans B en références sur elle.
+    Critère : taille divisée et coût par fix inchangé (mesure).
+
+- key: X14
+  title: "Temps estimé de l'adulte au rythme du modèle"
+  milestone: M3 Client v1
+  labels: [algo, planifier]
+  deps: [C11]
+  body: |
+    Pour un adulte au rythme du modèle, l'apprentissage n'apporte rien le matin et sa fourchette est trop étroite (40 à 75 % de couverture au lieu de 80 %) ; sans profil choisi, la première proposition faite à une famille sous-estime son retour (+23 min).
+    Pistes de correction : variance du rythme apprise par profil et calibrée (couverture mesurée) ; proposer le choix du profil au départ quand le rythme observé ne colle pas au profil adulte.
+    Critère : couverture de la fourchette à 80 % ± 5 sur les jeux de validation ; erreur de la première proposition famille réduite.
+
+- key: X15
+  title: "Assistant faiblement testé"
+  milestone: M3 Client v1
+  labels: [infra, planifier]
+  deps: [Q4]
+  body: |
+    Score de mutation de l'assistant à 49,8 % : le code qui dépend de la météo n'est jamais exercé sans Open-Meteo.
+    Piste de correction : jeux de météo synthétiques versionnés couvrant froid, vent, brouillard, neige fraîche, redoux ; tests du briefing, du fartage, de la qualité de neige et des alertes sur ces jeux.
+    Critère : score de mutation de l'assistant ≥ 75 %.
+
+- key: X16
+  title: "Boucles proposées trop souvent en aller-retour"
+  milestone: M3 Client v1
+  labels: [algo, planifier]
+  deps: [A5]
+  body: |
+    La boucle proposée à Cervières est à 49 % en aller-retour.
+    Piste de correction : pénaliser la réutilisation des tronçons dans le classement, chercher de vraies boucles (cycles) avant les allers-retours, et le dire quand un aller-retour est la seule option.
+    Critère : part d'aller-retour mesurée sur les boucles proposées des deux sites, avant/après.
+
+- key: X17
+  title: "Packs publics sans état des pistes ni météo ni assistant"
+  milestone: M3 Client v1
+  labels: [décision, planifier]
+  deps: [S0, L4, G3]
+  body: |
+    Le serveur public n'utilise pas les sources d'usage personnel : ses packs perdent l'état des pistes, la météo heure par heure et le briefing, le fartage, la qualité de neige et les suggestions.
+    Pistes de correction : canal privé réservé à l'utilisateur derrière Cloudflare Access ; sources publiables de remplacement (Météo-France AROME en Licence Ouverte pour la météo ; accords Nordic France et ENJ pour l'état) ; l'assistant tourne sur le téléphone avec la météo publiable.
+    Critère : décision écrite ; pack public avec météo publiable et assistant actif.
+
+- key: X18
+  title: "Limites du serveur avant de nombreux utilisateurs"
+  milestone: M3 Client v1
+  labels: [serveur, planifier]
+  deps: [S0, S2]
+  body: |
+    R2 à activer au-delà de quelques milliers d'utilisateurs (moyen de paiement, conditions du CDN gratuit pour les gros fichiers) ; règle Cloudflare à ajouter pour couper le contrôle de navigateur sur l'API ; alerte facultative par Gmail limitée à 400 envois par 24 h.
+    Pistes de correction : bascule R2 préparée et testée ; règle Cloudflare en gitops ; canal d'alerte de secours documenté.
+    Critère : test de charge simulé et coût mesuré à 10 000 utilisateurs.
+
+- key: X19
+  title: "Trous de couverture des tests"
+  milestone: M3 Client v1
+  labels: [infra]
+  deps: [Q1, Q6]
+  body: |
+    La couverture ARCEP n'est pas recalculée en CI (pas de GeoPackage réduit) ; les licences INPN et geo.api.gouv.fr restent « non vérifié » dans les fixtures ; fuzz/Cargo.lock est un fichier de verrouillage séparé ; le lecteur du téléphone doit borner l'inflation skr+gzip comme le harnais (64 Mio) ; job de couverture et catégorie full_data_ à brancher dans la CI.
+    Critère : chaque point fermé ou justifié, CI verte.
+
+- key: X20
+  title: "Mode libre limité aux packs installés"
+  milestone: M3 Client v1
+  labels: [client, carte]
+  deps: [H2, K2]
+  body: |
+    Le mode libre n'affiche que les packs installés et un blanc neige couvre les zones sans tuiles ; la vue France du visualiseur n'a pas de fond de carte.
+    Pistes de correction : fond de France très léger embarqué (bas zooms) ; emprises des packs disponibles dessinées ; téléchargement par zone d'un geste.
+    Critère : navigation fluide sur toute la France sans pack, avec fond lisible.
+
+- key: X21
+  title: "Précalculs encore faits par le téléphone"
+  milestone: M3 Client v1
+  labels: [algo, pendant]
+  deps: [E1]
+  body: |
+    Le téléphone calcule à l'ouverture les points des noms de pistes (~10 ms) et le dédoublonnage des refuges.
+    Piste de correction : les précalculer dans le pack.
+    Critère : ouverture d'un pack sans ce calcul, mesurée.
+
+- key: X22
+  title: "Domaines SRN sans tracé ouvert"
+  milestone: M3 Client v1
+  labels: [recherche, carte]
+  deps: [G5]
+  body: |
+    Aucun tracé ouvert trouvé pour la Chartreuse, les crêtes des Vosges, l'Aubrac, le Cézallier, le Cantal, le Mont Lozère, les Glières ; 196 indices d'itinéraires sans tracé ; instances Geotrek illisibles (Lozère, Ariège, Hautes-Pyrénées, Volcans d'Auvergne, Monts d'Ardèche, Alpes-Maritimes, Serre-Ponçon, CD64) ; licences du PNR du Vercors et du GPX de la GTJ à confirmer.
+    Pistes de correction : demandes aux parcs et départements (courriers types) ; zones propices calculées (pente, forêt, neige, accès) une fois le relief disponible ; contribution OSM des tracés publiés sous licence compatible.
+    Critère : tracés ou zones propices pour chacun de ces massifs ; licences confirmées par écrit.
+
+- key: X23
+  title: "Préparer la publication sans fuite"
+  milestone: M3 Client v1
+  labels: [infra]
+  deps: [O1, F2]
+  body: |
+    L'audit de fuites a trouvé du détail d'infra dans la documentation (registre, clusters, secrets, autre service, règles Cloudflare), le chemin /home/<utilisateur> dans l'historique, des commentaires d'issues (#50, #60, #85, #123), une dépendance au projet privé speak, et des objets git orphelins non élagués.
+    Pistes de correction : déplacer le détail d'infra dans le dépôt d'infra privé ; réécriture d'historique en une passe (git filter-repo) ; supprimer et reposter les commentaires concernés ; rendre la génération de voix indépendante de speak (scripts dans le dépôt) ; git gc ; nouvel audit complet juste avant la publication.
+    Critère : audit sans aucun point à corriger.
+
+- key: X24
+  title: "Site : cartes à régénérer et mode sombre"
+  milestone: M3 Client v1
+  labels: [client, carte]
+  deps: [O1]
+  body: |
+    Les cartes du site viennent d'un pack antérieur à la mise à jour des pentes et restent claires en mode sombre.
+    Piste de correction : régénérer juste avant publication avec les packs publics finaux, versions claire et sombre.
+    Critère : cartes à jour et adaptées au thème.
+
+- key: X25
+  title: "Exposition aux avalanches trop lente pour 219 domaines"
+  milestone: M3 Client v1
+  labels: [algo, sécurité]
+  deps: [P17, G2]
+  body: |
+    L'étape exposition aux avalanches domine build-all (81 à 324 s à Cervières selon la charge, 86 % du temps).
+    Piste de correction : profiler le cas dominant ; parallélisme, tuiles, réutilisation entre domaines voisins ; calcul limité aux reliefs utiles.
+    Critère : temps total des 219 domaines mesuré et divisé, résultats identiques.
