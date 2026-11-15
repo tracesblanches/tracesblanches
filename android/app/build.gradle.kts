@@ -230,20 +230,31 @@ val cargoNdk =
 
 val cargoHost =
     tasks.register<CargoTask>("cargoHost") {
-        description = "Builds libskimap_ffi.so and uniffi-bindgen for this machine (bindings, JVM tests)."
+        description = "Builds libskimap_ffi.so for this machine (bindings, JVM tests)."
         sources.from(rustSources)
         workspace.set(repoRoot)
-        arguments.set(listOf("build", "--release", "--locked", "-p", "skimap-ffi", "--features", "bindgen"))
+        arguments.set(listOf("build", "--release", "--locked", "-p", "skimap-ffi"))
         environment.set(emptyMap())
-        products.set(listOf("target/release/libskimap_ffi.so", "target/release/uniffi-bindgen"))
+        products.set(listOf("target/release/libskimap_ffi.so"))
         outputDir.set(layout.buildDirectory.dir("rust/host"))
+    }
+
+val bindgenTool =
+    tasks.register<CargoTask>("bindgenTool") {
+        description = "Builds the UniFFI binding generator (android/uniffi-bindgen, its own Cargo project)."
+        sources.from(fileTree(rootDir.resolve("uniffi-bindgen")) { include("src/**", "Cargo.toml", "Cargo.lock") })
+        workspace.set(repoRoot)
+        arguments.set(listOf("build", "--release", "--locked", "--manifest-path", "android/uniffi-bindgen/Cargo.toml"))
+        environment.set(emptyMap())
+        products.set(listOf("android/uniffi-bindgen/target/release/uniffi-bindgen"))
+        outputDir.set(layout.buildDirectory.dir("rust/bindgen"))
     }
 
 val uniffiBindings =
     tasks.register<UniffiBindgenTask>("uniffiBindings") {
         description = "Generates the Kotlin bindings of crates/ffi (UniFFI)."
         library.set(cargoHost.flatMap { it.outputDir.file("libskimap_ffi.so") })
-        bindgen.set(cargoHost.flatMap { it.outputDir.file("uniffi-bindgen") })
+        bindgen.set(bindgenTool.flatMap { it.outputDir.file("uniffi-bindgen") })
         workspace.set(repoRoot)
         outputDir.set(layout.buildDirectory.dir("generated/uniffi/kotlin"))
     }

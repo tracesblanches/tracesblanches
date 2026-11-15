@@ -11,20 +11,15 @@ publish.workspace = true
 crate-type = ["cdylib", "lib"]
 name = "skimap_ffi"
 
-[features]
-default = []
-# Binding generator (`uniffi-bindgen generate --library ...`), host only: the Android
-# library is built without it.
-bindgen = ["uniffi/cli"]
-
 [dependencies]
 skimap-pack = { workspace = true }
 geojson.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-# Not in [workspace.dependencies] (only this crate uses it).
-uniffi = "0.32.2"
+# Not in [workspace.dependencies] (only this crate uses it). Same version as the binding
+# generator of the app (android/uniffi-bindgen), outside the workspace.
+uniffi = "=0.32.2"
 
 [dev-dependencies]
 # Test pack generator (example `test_pack`): the pack builder of the pipeline, offline.
@@ -35,11 +30,6 @@ geo.workspace = true
 chrono.workspace = true
 flate2.workspace = true
 tempfile.workspace = true
-
-[[bin]]
-name = "uniffi-bindgen"
-path = "src/bin/uniffi-bindgen.rs"
-required-features = ["bindgen"]
 
 [lints]
 workspace = true

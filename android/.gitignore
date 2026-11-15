@@ -2,6 +2,7 @@
 .gradle/
 .kotlin/
 build/
+uniffi-bindgen/target/
 local.properties
 .idea/
 *.iml

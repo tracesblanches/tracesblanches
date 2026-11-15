@@ -698,7 +698,7 @@ type WayMiddle = (f64, [f64; 2]);
 const LABEL_SPACING_M: f64 = 1_500.0;
 
 /// Label points of the pistes: for each name and difficulty, the middle of its longest
-/// way, then of every other way farther than [`LABEL_SPACING_M`] from the labels kept.
+/// way, then of every other way farther than 1.5 km from the labels kept.
 pub fn piste_labels(pack: &Pack) -> Result<Value, PackError> {
     let fc = pack.read_geojson("pistes")?;
     // (name, difficulty) -> [(length, middle)]

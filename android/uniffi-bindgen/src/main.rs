@@ -1,4 +1,4 @@
-//! UniFFI binding generator (host only, feature `bindgen`):
+//! UniFFI binding generator (host only):
 //! `uniffi-bindgen generate --library libskimap_ffi.so --language kotlin --out-dir DIR`.
 
 fn main() {
