@@ -267,6 +267,10 @@ pub trait RasterValue: Copy + PartialEq + Send + Sync + 'static {
     fn to_u32(self) -> u32;
     /// From the header no-data field.
     fn from_u32(v: u32) -> Option<Self>;
+    /// `self − other`, wrapping (row-delta encoding).
+    fn wrapping_sub(self, other: Self) -> Self;
+    /// `self + other`, wrapping (row-delta decoding).
+    fn wrapping_add(self, other: Self) -> Self;
 }
 
 impl RasterValue for u8 {
@@ -283,6 +287,12 @@ impl RasterValue for u8 {
     }
     fn from_u32(v: u32) -> Option<Self> {
         u8::try_from(v).ok()
+    }
+    fn wrapping_sub(self, other: Self) -> Self {
+        u8::wrapping_sub(self, other)
+    }
+    fn wrapping_add(self, other: Self) -> Self {
+        u8::wrapping_add(self, other)
     }
 }
 
@@ -301,7 +311,29 @@ impl RasterValue for u16 {
     fn from_u32(v: u32) -> Option<Self> {
         u16::try_from(v).ok()
     }
+    fn wrapping_sub(self, other: Self) -> Self {
+        u16::wrapping_sub(self, other)
+    }
+    fn wrapping_add(self, other: Self) -> Self {
+        u16::wrapping_add(self, other)
+    }
 }
+
+/// Cell layout of a raster file (bit 7 of the type byte).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Encoding {
+    /// Cells as they are, row-major, little-endian.
+    Raw,
+    /// Each row: first cell as is, then the wrapping difference with the cell to its left;
+    /// for multi-byte cells, the row is stored byte plane by byte plane (all low bytes,
+    /// then all high bytes). Lossless; the small differences of a terrain model compress
+    /// about twice as well (gzip in the pack).
+    RowDelta,
+}
+
+/// Flag of [`Encoding::RowDelta`] in the type byte. A reader that only knows
+/// [`Encoding::Raw`] rejects such a file (unknown type) instead of misreading it.
+pub const ROW_DELTA_FLAG: u8 = 0x80;
 
 fn crs_of_epsg(epsg: u32) -> Result<Crs> {
     match epsg {
@@ -312,16 +344,30 @@ fn crs_of_epsg(epsg: u32) -> Result<Crs> {
     }
 }
 
-/// Encodes a raster: header (magic `SKR1`, type code, 3 reserved bytes, width `u32`,
-/// height `u32`, EPSG `u32`, no-data `u32`, GDAL geotransform `6 × f64`), then the cells,
-/// row-major, little-endian.
+/// Encodes a raster with [`Encoding::Raw`] cells.
 pub fn encode_raster<T: RasterValue>(grid: &Grid<T>, nodata: T) -> Result<Vec<u8>> {
+    encode_raster_with(grid, nodata, Encoding::Raw)
+}
+
+/// Encodes a raster: header (magic `SKR1`, type byte = type code, plus
+/// [`ROW_DELTA_FLAG`] for [`Encoding::RowDelta`], 3 reserved bytes, width `u32`, height
+/// `u32`, EPSG `u32`, no-data `u32`, GDAL geotransform `6 × f64`), then the cells, row by
+/// row, little-endian, laid out as `encoding` says.
+pub fn encode_raster_with<T: RasterValue>(
+    grid: &Grid<T>,
+    nodata: T,
+    encoding: Encoding,
+) -> Result<Vec<u8>> {
     let (w, h) = (grid.width(), grid.height());
     let w32 = u32::try_from(w).map_err(|_| Error::Format("width too large".into()))?;
     let h32 = u32::try_from(h).map_err(|_| Error::Format("height too large".into()))?;
     let mut out = Vec::with_capacity(HEADER_LEN + w * h * T::SIZE);
     out.extend_from_slice(MAGIC);
-    out.extend_from_slice(&[T::CODE, 0, 0, 0]);
+    let code = match encoding {
+        Encoding::Raw => T::CODE,
+        Encoding::RowDelta => T::CODE | ROW_DELTA_FLAG,
+    };
+    out.extend_from_slice(&[code, 0, 0, 0]);
     out.extend_from_slice(&w32.to_le_bytes());
     out.extend_from_slice(&h32.to_le_bytes());
     out.extend_from_slice(&grid.crs().epsg().to_le_bytes());
@@ -330,8 +376,31 @@ pub fn encode_raster<T: RasterValue>(grid: &Grid<T>, nodata: T) -> Result<Vec<u8
         out.extend_from_slice(&v.to_le_bytes());
     }
     debug_assert_eq!(out.len(), HEADER_LEN);
-    for v in grid.data() {
-        v.put(&mut out);
+    match encoding {
+        Encoding::Raw => {
+            for v in grid.data() {
+                v.put(&mut out);
+            }
+        }
+        Encoding::RowDelta => {
+            let mut bytes = Vec::with_capacity(T::SIZE);
+            let mut planes = vec![Vec::with_capacity(w); T::SIZE];
+            for row in grid.data().chunks_exact(w.max(1)) {
+                let mut prev: Option<T> = None;
+                for &v in row {
+                    let d = prev.map_or(v, |p| v.wrapping_sub(p));
+                    prev = Some(v);
+                    bytes.clear();
+                    d.put(&mut bytes);
+                    for (k, b) in bytes.iter().enumerate() {
+                        planes[k].push(*b);
+                    }
+                }
+                for p in &mut planes {
+                    out.append(p);
+                }
+            }
+        }
     }
     Ok(out)
 }
@@ -341,13 +410,18 @@ pub fn decode_raster<T: RasterValue>(bytes: &[u8]) -> Result<Grid<T>> {
     if bytes.len() < HEADER_LEN || &bytes[0..4] != MAGIC {
         return Err(Error::Format("not an SKR1 raster".into()));
     }
-    if bytes[4] != T::CODE {
+    let encoding = if bytes[4] == T::CODE {
+        Encoding::Raw
+    } else if bytes[4] == T::CODE | ROW_DELTA_FLAG {
+        Encoding::RowDelta
+    } else {
         return Err(Error::Format(format!(
-            "value type {} instead of {}",
+            "value type {} instead of {} (raw) or {} (row delta)",
             bytes[4],
-            T::CODE
+            T::CODE,
+            T::CODE | ROW_DELTA_FLAG
         )));
-    }
+    };
     let u32_at =
         |o: usize| u32::from_le_bytes([bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3]]);
     let f64_at = |o: usize| {
@@ -375,15 +449,46 @@ pub fn decode_raster<T: RasterValue>(bytes: &[u8]) -> Result<Grid<T>> {
             T::SIZE
         )));
     }
-    let data: Vec<T> = body.chunks_exact(T::SIZE).map(T::get).collect();
+    let data: Vec<T> = match encoding {
+        Encoding::Raw => body.chunks_exact(T::SIZE).map(T::get).collect(),
+        Encoding::RowDelta => {
+            let mut data = Vec::with_capacity(n);
+            let mut cell = vec![0u8; T::SIZE];
+            for row in body.chunks_exact((w * T::SIZE).max(1)).take(h) {
+                let mut prev: Option<T> = None;
+                for c in 0..w {
+                    for (k, b) in cell.iter_mut().enumerate() {
+                        *b = row[k * w + c];
+                    }
+                    let d = T::get(&cell);
+                    let v = prev.map_or(d, |p| p.wrapping_add(d));
+                    data.push(v);
+                    prev = Some(v);
+                }
+            }
+            data
+        }
+    };
     Ok(Grid::from_vec(w, h, transform, crs, data)
         .map_err(|e| Error::Format(e.to_string()))?
         .with_nodata(nodata))
 }
 
-/// Writes a raster file; returns its size in bytes.
+/// Writes a raster file with [`Encoding::RowDelta`] cells (the pack gzips them: Cervières
+/// elevation 17.1 → 8.6 MB, slope 7.2 → 5.8 MB; the class rasters do not change);
+/// returns its size in bytes.
 pub fn write_raster<T: RasterValue>(path: &Path, grid: &Grid<T>, nodata: T) -> Result<u64> {
-    let bytes = encode_raster(grid, nodata)?;
+    write_raster_with(path, grid, nodata, Encoding::RowDelta)
+}
+
+/// Writes a raster file with the given cell layout; returns its size in bytes.
+pub fn write_raster_with<T: RasterValue>(
+    path: &Path,
+    grid: &Grid<T>,
+    nodata: T,
+    encoding: Encoding,
+) -> Result<u64> {
+    let bytes = encode_raster_with(grid, nodata, encoding)?;
     std::fs::write(path, &bytes).map_err(|e| io_err(path, e))?;
     Ok(bytes.len() as u64)
 }
@@ -1596,6 +1701,45 @@ mod tests {
         let mut bad = bytes.clone();
         bad[0] = b'X';
         assert!(decode_raster::<u16>(&bad).is_err());
+    }
+
+    #[test]
+    fn row_delta_round_trip_and_layout() {
+        // Elevation-like rows with no-data cells and a wrap (65535 then 3).
+        let g = grid_of(6, 3, |c, r| match (c, r) {
+            (2, 1) => ELEVATION_NODATA,
+            (3, 1) => 3,
+            _ => (20_000 + c * 7 + r * 1000) as u16,
+        })
+        .with_nodata(ELEVATION_NODATA);
+        let b = encode_raster_with(&g, ELEVATION_NODATA, Encoding::RowDelta).unwrap();
+        assert_eq!(b[4], 2 | ROW_DELTA_FLAG);
+        assert_eq!(b.len(), HEADER_LEN + 6 * 3 * 2);
+        // Row 0: first cell 20000 (0x4E20), then deltas of 7: low plane, then high plane.
+        let row0 = &b[HEADER_LEN..HEADER_LEN + 12];
+        assert_eq!(&row0[..6], &[0x20, 7, 7, 7, 7, 7]);
+        assert_eq!(&row0[6..], &[0x4E, 0, 0, 0, 0, 0]);
+        let back: Grid<u16> = decode_raster(&b).unwrap();
+        assert_eq!(back, g);
+        assert_eq!(back.nodata(), Some(&ELEVATION_NODATA));
+        // u8 rasters too; raw files still read.
+        let g8 = grid_of(5, 4, |c, r| ((c * 37 + r * 91) % 256) as u8).with_nodata(255);
+        let b8 = encode_raster_with(&g8, 255, Encoding::RowDelta).unwrap();
+        assert_eq!(b8[4], 1 | ROW_DELTA_FLAG);
+        assert_eq!(decode_raster::<u8>(&b8).unwrap(), g8);
+        assert_eq!(
+            decode_raster::<u8>(&encode_raster(&g8, 255).unwrap()).unwrap(),
+            g8
+        );
+        // Files are written row-delta.
+        let p = std::env::temp_dir().join(format!("skimap-row-delta-{}.skr", std::process::id()));
+        write_raster(&p, &g, ELEVATION_NODATA).unwrap();
+        let (head, back) = (std::fs::read(&p).unwrap()[4], read_raster::<u16>(&p));
+        std::fs::remove_file(&p).unwrap();
+        assert_eq!(head, 2 | ROW_DELTA_FLAG);
+        assert_eq!(back.unwrap(), g);
+        // A raw-only reader (type byte check) rejects them: here, the wrong type width.
+        assert!(decode_raster::<u8>(&b).is_err());
     }
 
     #[test]

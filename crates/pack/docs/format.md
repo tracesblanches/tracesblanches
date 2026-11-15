@@ -81,7 +81,7 @@ Packs construits avec `personal_sources` (usage personnel de l'auteur) et sans l
 | Couches à usage personnel incluses | 0,09 Mo | 0,55 Mo |
 | Option tuiles IGN des pentes (z11-15, RGBA) | +22,63 Mo | +13,17 Mo |
 
-L'altitude 5 m du routeur hors piste pèse un tiers du pack : un codage par différences le long des lignes la ramènerait de 17,1 à 8,0 Mo à Cervières (estimation hors dépôt, zlib 6, octets forts et faibles séparés). Le format SKR1 appartient à core.
+L'altitude 5 m du routeur hors piste pesait un tiers du pack : core écrit maintenant ses rasters SKR1 en différences le long des lignes (octets faibles puis forts), et le gzip de l'altitude passe de 17,1 à 8,6 Mo à Cervières, de 10,5 à 5,7 Mo à Chapelle-des-Bois (zlib 6). Le format SKR1 appartient à core (`crates/core/docs/horspiste.md`).
 
 Temps de construction depuis les caches : 1,0 à 1,1 s par site ; la pente (z10-15, 540 tuiles à Cervières) se calcule en 0,2 s et s'encode en 0,25 s.
 

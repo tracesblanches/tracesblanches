@@ -563,7 +563,7 @@ pub fn prepare(s: &Site, layout: &DataLayout, snow_dirs: &[PathBuf]) -> Result<L
             meta.sources.push(src);
         }
     }
-    let format = "SKR1 : en-tête de 72 octets little-endian (magic SKR1, type 1 = u8 / 2 = u16, 3 octets réservés, largeur u32, hauteur u32, EPSG u32, valeur absente u32, géotransformation GDAL 6 × f64), puis les cellules ligne par ligne (skimap_core::offpiste::encode_raster)";
+    let format = "SKR1 : en-tête de 72 octets little-endian (magic SKR1, type 1 = u8 / 2 = u16, + 0x80 = cellules en différences le long des lignes, 3 octets réservés, largeur u32, hauteur u32, EPSG u32, valeur absente u32, géotransformation GDAL 6 × f64), puis les cellules ligne par ligne ; en différences (0x80) : premier point de la ligne tel quel puis différence avec le voisin de gauche (modulo 2^8 ou 2^16), octets faibles de la ligne puis octets forts (skimap_core::offpiste::encode_raster_with)";
     let describe = |name: &str| -> &'static str {
         match name {
             offpiste::FILE_ELEVATION => "altitude, décimètres (u16), 65535 = absente",
