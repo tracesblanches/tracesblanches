@@ -132,8 +132,9 @@ fn count_inliers(a: &Affine, cands: &[LabelMatch], tol_m: f64) -> (usize, Vec<us
     (out.len(), out)
 }
 
-/// Exhaustive RANSAC over pairs of candidates (similarity), then affine refinement.
-pub fn coarse(cands: &[LabelMatch], tol_pt: f64) -> Option<Coarse> {
+/// Exhaustive RANSAC over pairs of candidates (similarity of rotation at most
+/// `max_rot_deg`), then affine refinement.
+pub fn coarse(cands: &[LabelMatch], tol_pt: f64, max_rot_deg: f64) -> Option<Coarse> {
     let n = cands.len();
     if n < 2 {
         return None;
@@ -155,7 +156,7 @@ pub fn coarse(cands: &[LabelMatch], tol_pt: f64) -> Option<Coarse> {
             )?;
             let s = a.scale();
             let theta = a.m[1][1].atan2(a.m[0][1]).to_degrees();
-            if theta.abs() > 45.0 || !(0.5..500.0).contains(&s) {
+            if theta.abs() > max_rot_deg || !(0.5..500.0).contains(&s) {
                 return None;
             }
             let (k, _) = count_inliers(&a, cands, tol_pt * s);
@@ -275,7 +276,10 @@ pub fn compatible(spec: &PlanSpec, ink: usize, osm: &OsmRef, way: usize) -> bool
     if ski != nordic {
         return false;
     }
-    match (spec.inks[ink].difficulty, osm.ways[way].colour.as_deref()) {
+    match (
+        spec.inks[ink].difficulty.as_deref(),
+        osm.ways[way].colour.as_deref(),
+    ) {
         (Some(d), Some(c)) => {
             d == c
                 || osm.ways[way]
@@ -618,7 +622,7 @@ mod tests {
             let m = [910_000.0 + 3000.0 * i as f64, 6_590_000.0];
             cands.push(cand(i, 100 + i, [100.0, 80.0], m));
         }
-        let co = coarse(&cands, 15.0).unwrap();
+        let co = coarse(&cands, 15.0, 45.0).unwrap();
         assert_eq!(co.inliers.len(), 12);
         assert!(co.inliers.iter().all(|c| c.landmark < 100));
         assert!((co.scale - 17.0).abs() < 0.5, "{}", co.scale);

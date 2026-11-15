@@ -33,7 +33,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let sites: Vec<String> = if args.len() > 2 {
         args[2..].to_vec()
     } else {
-        spec::PLANS.iter().map(|p| p.site.to_owned()).collect()
+        spec::manual_plans().into_iter().map(|p| p.site).collect()
     };
     let cfg = Config::from_env()?;
     let dl = Downloader::from_config(&cfg)?;
@@ -45,6 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let spec = spec::plan_for(&site).ok_or("no plan")?;
         let t = Instant::now();
         let r = register(spec, &cfg.layout(), &dl, &planet, Some(&engine))?;
+        let spec = &r.spec;
         println!(
             "\n== {} ({:.1} s) {:?}",
             spec.id,
@@ -66,7 +67,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!(
                 "  legend {:40} ink {:7} {:5.1} km  [{}]",
                 e.name,
-                e.ink.map_or("?", |i| spec.inks[i].name),
+                e.ink.map_or("?", |i| spec.inks[i].name.as_str()),
                 e.length_km.unwrap_or(f64::NAN),
                 e.departure.as_deref().unwrap_or("-")
             );

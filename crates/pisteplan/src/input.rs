@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
+use serde::Serialize;
 use skimap_common::download::{Downloader, Fetched, Request};
 use skimap_common::layout::DataLayout;
 
@@ -22,7 +23,7 @@ pub const CACHE: &str = "pisteplan";
 pub const PDF_MAX_AGE: Duration = Duration::from_secs(30 * 86_400);
 
 /// A word or line of the text layer, page points.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize)]
 pub struct TextBox {
     /// Text.
     pub text: String,
@@ -63,18 +64,23 @@ pub struct PlanInput {
 
 /// Downloads the PDF of a plan.
 pub fn fetch(spec: &PlanSpec, dl: &Downloader) -> Result<Fetched> {
-    Ok(dl.fetch(&Request::get(spec.source, spec.url).max_age(PDF_MAX_AGE))?)
+    Ok(dl.fetch(&Request::get(&spec.source, &spec.url).max_age(PDF_MAX_AGE))?)
 }
 
 /// Downloads, renders and reads the text layer of a plan (cached by the PDF's SHA-256).
 pub fn load(spec: &PlanSpec, layout: &DataLayout, dl: &Downloader) -> Result<PlanInput> {
-    let fetched = fetch(spec, dl)?;
+    load_fetched(fetch(spec, dl)?, spec.dpi, layout)
+}
+
+/// Renders (at `dpi`) and reads the text layer of a downloaded plan (cached by the PDF's
+/// SHA-256).
+pub fn load_fetched(fetched: Fetched, dpi: u32, layout: &DataLayout) -> Result<PlanInput> {
     let dir = layout.cache_dir(CACHE)?;
     DataLayout::ensure(&dir)?;
-    let stem = format!("{}-{}", &fetched.meta.sha256[..16], spec.dpi);
+    let stem = format!("{}-{}", &fetched.meta.sha256[..16], dpi);
     let ppm = dir.join(format!("{stem}.ppm"));
     if !ppm.exists() {
-        render(&fetched.path, spec.dpi, &ppm)?;
+        render(&fetched.path, dpi, &ppm)?;
     }
     let image = Rgb::read_ppm(&ppm)?;
     let txt = dir.join(format!("{}.bbox.html", &fetched.meta.sha256[..16]));
@@ -86,9 +92,136 @@ pub fn load(spec: &PlanSpec, layout: &DataLayout, dl: &Downloader) -> Result<Pla
     Ok(PlanInput {
         fetched,
         image,
-        pt_per_px: pt_per_px(spec.dpi),
+        pt_per_px: pt_per_px(dpi),
         text,
     })
+}
+
+/// An image drawn on page 1 of a PDF (`pdfimages -list`).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct PdfImage {
+    /// Width, pixels.
+    pub w: u32,
+    /// Height, pixels.
+    pub h: u32,
+    /// Resolution on the page, pixels per inch (horizontal).
+    pub ppi: f64,
+}
+
+/// What a PDF holds, before any reading: pages, page size, images and text of page 1.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Probe {
+    /// Number of pages.
+    pub pages: usize,
+    /// Size of page 1, points.
+    pub page_pt: [f64; 2],
+    /// Images of page 1 (masks excluded).
+    pub images: Vec<PdfImage>,
+    /// Words of the text layer of page 1.
+    pub words: usize,
+    /// Creation date (`pdfinfo`), as printed.
+    pub created: Option<String>,
+    /// Producer software (`pdfinfo` `Creator`, else `Producer`).
+    pub creator: Option<String>,
+}
+
+impl Probe {
+    /// The largest image of page 1, if it covers at least 80 % of the page width.
+    pub fn page_image(&self) -> Option<PdfImage> {
+        self.images
+            .iter()
+            .copied()
+            .filter(|i| i.ppi > 0.0 && i.w as f64 / i.ppi * 72.0 >= 0.8 * self.page_pt[0])
+            .max_by_key(|i| i.w as u64 * i.h as u64)
+    }
+
+    /// A picture saved as PDF: almost no text, one image covering the page.
+    pub fn picture_only(&self) -> bool {
+        self.words < 20 && self.page_image().is_some()
+    }
+}
+
+/// Parses `pdfinfo` output: pages, page size, creation date, creator.
+pub fn parse_pdfinfo(s: &str) -> (usize, [f64; 2], Option<String>, Option<String>) {
+    let field = |k: &str| {
+        s.lines()
+            .find_map(|l| l.strip_prefix(k))
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty())
+    };
+    let pages = field("Pages:").and_then(|v| v.parse().ok()).unwrap_or(0);
+    let size = field("Page size:")
+        .and_then(|v| {
+            let t: Vec<&str> = v.split_whitespace().collect();
+            Some([t.first()?.parse().ok()?, t.get(2)?.parse().ok()?])
+        })
+        .unwrap_or([0.0, 0.0]);
+    let creator = field("Creator:").or_else(|| field("Producer:"));
+    (pages, size, field("CreationDate:"), creator)
+}
+
+/// Parses `pdfimages -list` output (images only, soft masks skipped).
+pub fn parse_pdfimages(s: &str) -> Vec<PdfImage> {
+    s.lines()
+        .skip(2)
+        .filter_map(|l| {
+            let t: Vec<&str> = l.split_whitespace().collect();
+            if t.get(2) != Some(&"image") {
+                return None;
+            }
+            Some(PdfImage {
+                w: t.get(3)?.parse().ok()?,
+                h: t.get(4)?.parse().ok()?,
+                ppi: t.get(12)?.parse().ok()?,
+            })
+        })
+        .collect()
+}
+
+/// Probes a PDF (`pdfinfo`, `pdfimages -list` on page 1) with its text layer.
+pub fn probe(pdf: &Path, text: &TextLayer) -> Result<Probe> {
+    let info = run_capture("pdfinfo", &[pdf.as_os_str()])?;
+    let (pages, page_pt, created, creator) = parse_pdfinfo(&info);
+    let list = run_capture(
+        "pdfimages",
+        &[
+            "-list".as_ref(),
+            "-f".as_ref(),
+            "1".as_ref(),
+            "-l".as_ref(),
+            "1".as_ref(),
+            pdf.as_os_str(),
+        ],
+    )?;
+    Ok(Probe {
+        pages,
+        page_pt,
+        images: parse_pdfimages(&list),
+        words: text.lines.iter().map(|(_, w)| w.len()).sum(),
+        created,
+        creator,
+    })
+}
+
+fn run_capture(tool: &str, args: &[&std::ffi::OsStr]) -> Result<String> {
+    let out = Command::new(tool)
+        .args(args)
+        .output()
+        .map_err(|e| Error::Tool {
+            tool: tool.to_owned(),
+            message: format!("{e} (poppler-utils installed?)"),
+        })?;
+    if !out.status.success() {
+        return Err(Error::Tool {
+            tool: tool.to_owned(),
+            message: format!(
+                "{}: {}",
+                out.status,
+                String::from_utf8_lossy(&out.stderr).trim()
+            ),
+        });
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 fn run(tool: &str, args: &[&std::ffi::OsStr]) -> Result<()> {
@@ -133,6 +266,18 @@ pub fn render(pdf: &Path, dpi: u32, out: &Path) -> Result<()> {
     // pdftoppm appends `.ppm` to the prefix.
     let written = PathBuf::from(format!("{}.ppm", tmp.display()));
     std::fs::rename(&written, out).map_err(|e| Error::io(out, e))
+}
+
+/// Text layer of page 1 of a downloaded PDF (cached by its SHA-256).
+pub fn text_layer(fetched: &Fetched, layout: &DataLayout) -> Result<TextLayer> {
+    let dir = layout.cache_dir(CACHE)?;
+    DataLayout::ensure(&dir)?;
+    let txt = dir.join(format!("{}.bbox.html", &fetched.meta.sha256[..16]));
+    if !txt.exists() {
+        text_layer_file(&fetched.path, &txt)?;
+    }
+    let html = std::fs::read_to_string(&txt).map_err(|e| Error::io(&txt, e))?;
+    Ok(parse_bbox_layout(&html))
 }
 
 /// Writes the text layer of page 1 (`pdftotext -bbox-layout`, XHTML).
@@ -255,5 +400,25 @@ mod tests {
         assert_eq!(t.lines[0].1.len(), 3);
         assert_eq!(t.lines[1].0.text, "Ch&co");
         assert_eq!(t.lines[1].0.center(), [20.0, 30.0]);
+    }
+
+    #[test]
+    fn parses_pdfinfo_and_pdfimages() {
+        let info = "Creator:         Canva\nProducer:        Canva\nCreationDate:    Wed Mar 27 10:12:01 2024 CET\nPages:           1\nPage size:       595.5 x 595.5 pts\n";
+        let (pages, size, created, creator) = parse_pdfinfo(info);
+        assert_eq!(pages, 1);
+        assert_eq!(size, [595.5, 595.5]);
+        assert_eq!(created.as_deref(), Some("Wed Mar 27 10:12:01 2024 CET"));
+        assert_eq!(creator.as_deref(), Some("Canva"));
+        let list = "page   num  type   width height color comp bpc  enc interp  object ID x-ppi y-ppi size ratio\n--------------------------------------------------------------------------------------------\n   1     0 image    1280  1255  rgb     3   8  image  no        11  0   155   155 2176K  46%\n   1     2 smask      69    79  gray    1   8  jpeg   no       671  0   146   145 1379B  25%\n";
+        let imgs = parse_pdfimages(list);
+        assert_eq!(
+            imgs,
+            vec![PdfImage {
+                w: 1280,
+                h: 1255,
+                ppi: 155.0
+            }]
+        );
     }
 }

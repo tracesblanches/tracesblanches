@@ -34,9 +34,18 @@ fn transcriptions_are_read_back() {
             lms.len() as u64,
             meta["stats"]["landmarks"].as_u64().unwrap()
         );
+        let threshold = meta["stats"]["model"]["threshold"].as_f64();
         for p in &pistes {
-            assert_eq!(p.properties.method, MatchMethod::Exact);
-            assert!(p.properties.score >= 0.5, "{}", p.properties.name);
+            match p.properties.method {
+                // Exact: drawn share of at least half the geometry.
+                MatchMethod::Exact => assert!(p.properties.score >= 0.5, "{}", p.properties.name),
+                // Learnt: probability at the model's threshold (0.9 at least).
+                MatchMethod::Ml => {
+                    let t = threshold.expect("an ml piste needs the model in the metadata");
+                    assert!(t >= skimap_pisteplan::evaluate::MIN_THRESHOLD);
+                    assert!(p.properties.score >= t, "{}", p.properties.name);
+                }
+            }
             assert!(!p.properties.osm_way_ids.is_empty());
             assert_eq!(p.geometry["type"], "MultiLineString");
         }

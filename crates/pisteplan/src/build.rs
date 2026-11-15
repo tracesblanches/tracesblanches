@@ -3,9 +3,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
+use rayon::prelude::*;
 use serde::Serialize;
 use serde_json::{Value, json};
-use skimap_common::download::{Downloader, Fetched};
+use skimap_common::download::Downloader;
 use skimap_common::layout::DataLayout;
 use skimap_common::meta::{FileMeta, LayerMeta, SourceRef};
 use skimap_common::output;
@@ -65,7 +66,7 @@ pub const ARROW_RADIUS_PT: f64 = 4.0;
 /// Everything learnt about a plan.
 pub struct Registration {
     /// The plan.
-    pub spec: &'static PlanSpec,
+    pub spec: PlanSpec,
     /// Input (rendering, text layer).
     pub input: PlanInput,
     /// All text lines used (text layer or OCR), page points.
@@ -84,8 +85,8 @@ pub struct Registration {
     pub union: SkelGraph,
     /// OSM reference.
     pub osm: OsmRef,
-    /// Overpass answer of the landmarks.
-    pub landmarks_fetched: Fetched,
+    /// Source of the landmarks (Overpass answer or BD TOPO toponyms).
+    pub landmarks_source: osmref::LandmarkSource,
     /// Label ↔ landmark candidates.
     pub candidates: Vec<LabelMatch>,
     /// RANSAC result.
@@ -130,38 +131,119 @@ impl ErrStats {
     }
 }
 
+/// OCR of the rendering, raw or text-enhanced (top-hat), in tiles of 800 px, cached in
+/// `data/cache/pisteplan/` by PDF, resolution, tiling and enhancement.
+pub fn ocr_page(
+    engine: &ocrs::OcrEngine,
+    inp: &PlanInput,
+    enhanced: bool,
+    layout: &DataLayout,
+) -> Result<Vec<TextBox>> {
+    let dir = layout.cache_dir(input::CACHE)?;
+    DataLayout::ensure(&dir)?;
+    let dpi = (72.0 / inp.pt_per_px).round() as u32;
+    let key = if enhanced {
+        format!("tophat-r{OCR_TOPHAT_R}-g{OCR_TOPHAT_GAIN}")
+    } else {
+        "raw".to_owned()
+    };
+    let path = dir.join(format!(
+        "{}-{dpi}-ocr-{key}-t{OCR_TILE}-o{OCR_OVERLAP}.json",
+        &inp.fetched.meta.sha256[..16]
+    ));
+    let img = if enhanced {
+        ocr::enhance_text(&inp.image, OCR_TOPHAT_R, OCR_TOPHAT_GAIN)
+    } else {
+        inp.image.clone()
+    };
+    ocr::read_lines_cached(engine, &img, OCR_TILE, OCR_OVERLAP, inp.pt_per_px, &path)
+}
+
 /// Registers a plan on OSM.
 pub fn register(
-    spec: &'static PlanSpec,
+    spec: PlanSpec,
     layout: &DataLayout,
     dl: &Downloader,
     planet: &Planet,
     ocr_engine: Option<&ocrs::OcrEngine>,
 ) -> Result<Registration> {
-    let mut timings = Vec::new();
+    let t = Instant::now();
+    let inp = input::load(&spec, layout, dl)?;
+    let load_s = t.elapsed().as_secs_f64();
+    register_input(spec, inp, load_s, layout, dl, planet, ocr_engine, None)
+}
+
+/// Geographic extent of a page rectangle carried onto the map by `fit` (page point →
+/// Lambert-93; a 5 × 5 grid of its points), grown by `margin_m`.
+pub fn extent_of(
+    area: &crate::spec::PageRect,
+    fit: &dyn Fn(crate::warp::P2) -> crate::warp::P2,
+    margin_m: f64,
+) -> Result<skimap_common::geom::BBox> {
+    use skimap_common::crs::from_lambert93;
+    let (mut x0, mut y0, mut x1, mut y1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+    for i in 0..5 {
+        for j in 0..5 {
+            let q = fit([
+                area[0] + (area[2] - area[0]) * i as f64 / 4.0,
+                area[1] + (area[3] - area[1]) * j as f64 / 4.0,
+            ]);
+            x0 = x0.min(q[0]);
+            y0 = y0.min(q[1]);
+            x1 = x1.max(q[0]);
+            y1 = y1.max(q[1]);
+        }
+    }
+    let m = margin_m;
+    let c = [
+        from_lambert93(x0 - m, y0 - m)?,
+        from_lambert93(x1 + m, y1 + m)?,
+        from_lambert93(x0 - m, y1 + m)?,
+        from_lambert93(x1 + m, y0 - m)?,
+    ];
+    Ok(skimap_common::geom::BBox::new(
+        c.iter().map(|p| p.lat).fold(f64::MAX, f64::min),
+        c.iter().map(|p| p.lon).fold(f64::MAX, f64::min),
+        c.iter().map(|p| p.lat).fold(f64::MIN, f64::max),
+        c.iter().map(|p| p.lon).fold(f64::MIN, f64::max),
+    ))
+}
+
+/// Registers a plan already loaded (`load_s`: time taken by the input step). With
+/// `refine_extent_m`, the sheet's extent is a hint: once the labels place the plan, the
+/// OSM pistes are taken on the extent drawn, grown by that margin.
+#[allow(clippy::too_many_arguments)]
+pub fn register_input(
+    mut spec: PlanSpec,
+    inp: PlanInput,
+    load_s: f64,
+    layout: &DataLayout,
+    dl: &Downloader,
+    planet: &Planet,
+    ocr_engine: Option<&ocrs::OcrEngine>,
+    refine_extent_m: Option<f64>,
+) -> Result<Registration> {
+    let mut timings = vec![("input".to_owned(), load_s)];
     let mut t = Instant::now();
     let mut lap = |name: &str, t: &mut Instant| {
         timings.push((name.to_owned(), t.elapsed().as_secs_f64()));
         *t = Instant::now();
     };
-    let inp = input::load(spec, layout, dl)?;
-    lap("input", &mut t);
     let k = inp.pt_per_px;
     // OCR in tiles of 800 px. Picture plans: the map is read on the text-enhanced image
     // (top-hat: letters over textured backgrounds), the legend panels (plain background)
     // on the image itself.
     let raw_ocr = match ocr_engine {
-        Some(e) => ocr::read_lines_tiled(e, &inp.image, OCR_TILE, OCR_OVERLAP, k)?,
+        Some(e) => ocr_page(e, &inp, false, layout)?,
         None => Vec::new(),
     };
     let ocr_lines: Vec<TextBox> = match (ocr_engine, spec.labels) {
         (Some(e), LabelSource::Ocr) => {
-            let enhanced = ocr::enhance_text(&inp.image, OCR_TOPHAT_R, OCR_TOPHAT_GAIN);
             let on_map = |l: &TextBox| {
                 let c = l.center();
                 spec.on_map(c[0], c[1])
             };
-            ocr::read_lines_tiled(e, &enhanced, OCR_TILE, OCR_OVERLAP, k)?
+            ocr_page(e, &inp, true, layout)?
                 .into_iter()
                 .filter(|l| on_map(l))
                 .chain(raw_ocr.into_iter().filter(|l| !on_map(l)))
@@ -183,11 +265,12 @@ pub fn register(
         .cloned()
         .collect();
     let legend = match spec.labels {
-        LabelSource::TextLayer => labels::legend(spec, &lines, &inp.image, k),
-        LabelSource::Ocr => labels::legend_ocr(spec, &lines),
+        LabelSource::TextLayer => labels::legend(&spec, &lines, &inp.image, k),
+        LabelSource::Ocr => labels::legend_ocr(&spec, &lines, &inp.image, k),
     };
-    let classes = segment::classify(spec, &inp.image, k);
+    let classes = segment::classify(&spec, &inp.image, k);
     let graphs: Vec<(usize, SkelGraph)> = (0..spec.inks.len())
+        .into_par_iter()
         .map(|i| {
             let (_, g) =
                 segment::ink_lines(&classes, inp.image.w, inp.image.h, i as u8, &spec.line);
@@ -205,7 +288,7 @@ pub fn register(
     };
     lap("segmentation", &mut t);
     let mut osm = osmref::pistes(planet, &spec.extent)?;
-    let (lms, landmarks_fetched) = osmref::landmarks(dl, &spec.extent)?;
+    let (lms, landmarks_source) = osmref::landmarks_any(dl, &spec.extent)?;
     osm.landmarks = lms;
     lap("osm", &mut t);
     let (min_sim, ele_tol) = match spec.labels {
@@ -213,27 +296,73 @@ pub fn register(
         LabelSource::Ocr => (0.75, None),
     };
     let candidates = align::label_candidates(&map_labels, &osm.landmarks, min_sim, ele_tol);
-    let coarse = align::coarse(&candidates, RANSAC_TOL_PT).ok_or_else(|| {
-        crate::Error::Fit(format!(
-            "{}: no consistent label ↔ landmark set ({} candidates)",
-            spec.id,
-            candidates.len()
-        ))
-    })?;
-    lap("ransac", &mut t);
-    let drawn = align::sample_lines(&graphs, k, 3.0);
-    let tree = align::osm_tree(&osm, 10.0);
-    let (warp, pairs, steps) = align::icp(
-        spec,
-        &drawn,
-        &osm,
-        &tree,
-        &coarse.affine,
-        ICP_SCHEDULE,
-        ICP_CELL_PT,
-    )
-    .ok_or_else(|| crate::Error::Fit(format!("{}: ICP found too few pairs", spec.id)))?;
-    lap("icp", &mut t);
+    // Placement: the RANSAC allows a rotation of 45° at most (north up, give or take);
+    // an automatic sheet may be any plan, drawn rotated to fit its page: when the first
+    // placement fails (no consistent set, or an ICP without pairs), any rotation is tried,
+    // with five consistent labels at least.
+    let rotations: &[f64] = if refine_extent_m.is_some() {
+        &[45.0, 180.0]
+    } else {
+        &[45.0]
+    };
+    let hint = spec.extent;
+    let mut placed = None;
+    let mut failure = format!(
+        "{}: no consistent label ↔ landmark set ({} candidates)",
+        spec.id,
+        candidates.len()
+    );
+    for &max_rot in rotations {
+        let Some(coarse) = align::coarse(&candidates, RANSAC_TOL_PT, max_rot) else {
+            continue;
+        };
+        if max_rot > 45.0 && coarse.inliers.len() < 5 {
+            continue;
+        }
+        // Automatic sheets: the extent is a hint around the domains; once the plan is
+        // placed, the OSM pistes are those of the extent actually drawn (map area carried
+        // onto the map by the coarse fit, plus the margin).
+        if let Some(margin) = refine_extent_m {
+            let fit = |p: crate::warp::P2| coarse.affine.apply(align::up(p));
+            let drawn_extent = extent_of(&spec.map_area, &fit, margin)?;
+            let overlaps = drawn_extent.south < hint.north
+                && drawn_extent.north > hint.south
+                && drawn_extent.west < hint.east
+                && drawn_extent.east > hint.west;
+            if !overlaps {
+                failure = format!(
+                    "{}: the plan placed by its labels ({drawn_extent:?}) is outside the hint",
+                    spec.id
+                );
+                continue;
+            }
+            spec.extent = drawn_extent;
+            let lms = std::mem::take(&mut osm.landmarks);
+            osm = osmref::pistes(planet, &spec.extent)?;
+            osm.landmarks = lms;
+        }
+        let drawn = align::sample_lines(&graphs, k, 3.0);
+        let tree = align::osm_tree(&osm, 10.0);
+        match align::icp(
+            &spec,
+            &drawn,
+            &osm,
+            &tree,
+            &coarse.affine,
+            ICP_SCHEDULE,
+            ICP_CELL_PT,
+        ) {
+            Some(r) => {
+                placed = Some((coarse, r));
+                break;
+            }
+            None => failure = format!("{}: ICP found too few pairs", spec.id),
+        }
+    }
+    let Some((coarse, (warp, pairs, steps))) = placed else {
+        return Err(crate::Error::Fit(failure));
+    };
+    lap("ransac_icp", &mut t);
     let ties = align::junction_ties(&union, k, &osm, &warp, TIE_MAX_PT * coarse.scale);
     let tie_pairs: Vec<_> = ties.iter().map(|t| (t.plan, t.map)).collect();
     let kinds = [
@@ -266,7 +395,7 @@ pub fn register(
         graphs,
         union,
         osm,
-        landmarks_fetched,
+        landmarks_source,
         candidates,
         coarse,
         warp,
@@ -390,12 +519,20 @@ pub fn transcribe_and_write(
     layout: &DataLayout,
     planet_source: &SourceRef,
 ) -> Result<BuildReport> {
-    let site = skimap_common::site::site(reg.spec.site)?;
+    let site = skimap_common::site::site(&reg.spec.site)?;
     let dir = layout.layer_dir(site, LAYER)?;
     DataLayout::ensure(&dir)?;
     let plan = transcribe::entries(reg);
     let dmap = transcribe::InkDistance::new(reg);
-    let (decisions, validation) = transcribe::decide(reg, &dmap, &plan);
+    let (mut decisions, validation) = transcribe::decide(reg, &dmap, &plan);
+    // Learnt matches for the lines the exact matching left out, when a model trained on
+    // the other domains is there (`data/out/france/plan_training/model.json`).
+    let model_path = layout.france_layer_dir("plan_training")?.join("model.json");
+    let model = crate::learn::Model::read(&model_path);
+    let ml = match &model {
+        Some(m) => crate::learn::apply_model(reg, &dmap, &mut decisions, m),
+        None => 0,
+    };
     let lms = transcribe::landmarks(reg);
     // Pistes.
     let mut features = Vec::new();
@@ -548,6 +685,8 @@ pub fn transcribe_and_write(
         "legend_lines": plan.len(),
         "plan_pistes": decisions.len(),
         "transcribed": transcribed,
+        "transcribed_ml": ml,
+        "model": model.as_ref().map(|m| json!({"file": model_path.display().to_string(), "threshold": m.threshold, "trees": m.model.trees.len()})),
         "transcribed_share": if decisions.is_empty() { 0.0 } else { transcribed as f64 / decisions.len() as f64 },
         "with_osm_name_candidate": decisions.iter().filter(|d| !d.ways.is_empty()).count(),
         "status": transcribe::status_counts(&decisions),
@@ -579,26 +718,26 @@ pub fn transcribe_and_write(
                 "landmarks": reg.osm.landmarks.len(), "junctions": reg.osm.junctions.len()},
         "timings_s": reg.timings,
     });
-    let spec = reg.spec;
+    let spec = &reg.spec;
     let mut meta = LayerMeta::new(LAYER, site.id);
     meta.tickets = vec!["P22 (#121)".to_owned()];
     meta.crs = Some("EPSG:4326 (WGS84, longitude, latitude)".to_owned());
     meta.validity = Some(format!("édition du plan : {}", spec.edition));
     meta.sources = vec![
-        SourceRef::from_fetched(spec.title, spec.rights, spec.publisher, &reg.input.fetched)
+        SourceRef::from_fetched(&spec.title, &spec.rights, &spec.publisher, &reg.input.fetched)
             .personal_use_only()
-            .producer(spec.publisher)
-            .edition(spec.edition)
+            .producer(&spec.publisher)
+            .edition(&spec.edition)
             .note(format!(
                 "plan officiel de la station, lien publié sur {} ; image du plan jamais redistribuée (entrée locale du pipeline seulement)",
                 spec.page_url
             )),
         planet_source.clone(),
         SourceRef::from_fetched(
-            "OpenStreetMap, repères nommés (Overpass)",
-            "ODbL 1.0",
-            "© les contributeurs d'OpenStreetMap (ODbL)",
-            &reg.landmarks_fetched,
+            reg.landmarks_source.name,
+            reg.landmarks_source.licence,
+            reg.landmarks_source.attribution,
+            &reg.landmarks_source.fetched,
         ),
     ];
     meta.files = vec![

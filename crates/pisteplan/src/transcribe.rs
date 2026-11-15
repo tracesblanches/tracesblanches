@@ -202,6 +202,18 @@ pub fn drawn_samples(
     lines: &[&[P2]],
     ink: usize,
 ) -> Vec<(P2, f64)> {
+    ink_samples(d, &warped_samples(reg, lines), ink)
+}
+
+/// Distances to the ink of samples already carried onto the plan ([`warped_samples`]).
+pub fn ink_samples(d: &InkDistance, warped: &[(P2, P2)], ink: usize) -> Vec<(P2, f64)> {
+    warped.iter().map(|&(p, t)| (p, d.at(ink, p, t))).collect()
+}
+
+/// Samples of a Lambert-93 polyline set every [`SHARE_STEP_M`], carried onto the plan:
+/// page point and unit direction of the line there, on the map part only. Independent of
+/// the ink (the costly part: two evaluations of the warp per sample).
+pub fn warped_samples(reg: &Registration, lines: &[&[P2]]) -> Vec<(P2, P2)> {
     let mut out = Vec::new();
     for line in lines {
         for s in line.windows(2) {
@@ -229,7 +241,7 @@ pub fn drawn_samples(
                     continue;
                 }
                 let t = [(p2[0] - p[0]) / tl, (p2[1] - p[1]) / tl];
-                out.push((p, d.at(ink, p, t)));
+                out.push((p, t));
             }
         }
     }
@@ -339,7 +351,7 @@ pub fn candidates(reg: &Registration, plan: &[PlanEntry]) -> Vec<Decision> {
                 entry: e.clone(),
                 ink: ink.map(|i| i.name.to_owned()),
                 kind: ink.map(|i| i.kind),
-                colour: ink.and_then(|i| i.difficulty).map(str::to_owned),
+                colour: ink.and_then(|i| i.difficulty.clone()),
                 name: e.name_read.clone(),
                 status: None,
                 method: None,
@@ -495,26 +507,54 @@ pub struct PisteTest {
 
 /// Runs the test of a candidate.
 pub fn piste_test(reg: &Registration, d: &InkDistance, ways: &[usize], ink: usize) -> PisteTest {
-    let truth = drawn_samples(reg, d, &way_lines(&reg.osm, ways), ink);
-    let mut shift_max = vec![0.0f64; RADII_PT.len()];
-    for k in 0..8 * NEGATIVE_SHIFTS_M.len() {
-        let a = k as f64 * std::f64::consts::FRAC_PI_4;
-        let m = NEGATIVE_SHIFTS_M[k / 8];
-        let (dx, dy) = (m * a.cos(), m * a.sin());
-        let shifted: Vec<Vec<P2>> = ways
-            .iter()
-            .map(|&w| {
-                reg.osm.ways[w]
-                    .xy
+    piste_test_warped(d, &TestSamples::new(reg, ways), ink)
+}
+
+/// The samples of a candidate geometry and of its shifted copies, carried onto the plan
+/// once (they do not depend on the ink).
+#[derive(Debug, Clone)]
+pub struct TestSamples {
+    /// The geometry.
+    pub truth: Vec<(P2, P2)>,
+    /// The copies shifted by [`NEGATIVE_SHIFTS_M`] in eight directions.
+    pub shifted: Vec<Vec<(P2, P2)>>,
+}
+
+impl TestSamples {
+    /// Samples of OSM ways.
+    pub fn new(reg: &Registration, ways: &[usize]) -> TestSamples {
+        let truth = warped_samples(reg, &way_lines(&reg.osm, ways));
+        let shifted = (0..8 * NEGATIVE_SHIFTS_M.len())
+            .map(|k| {
+                let a = k as f64 * std::f64::consts::FRAC_PI_4;
+                let m = NEGATIVE_SHIFTS_M[k / 8];
+                let (dx, dy) = (m * a.cos(), m * a.sin());
+                let lines: Vec<Vec<P2>> = ways
                     .iter()
-                    .map(|p| [p[0] + dx, p[1] + dy])
-                    .collect()
+                    .map(|&w| {
+                        reg.osm.ways[w]
+                            .xy
+                            .iter()
+                            .map(|p| [p[0] + dx, p[1] + dy])
+                            .collect()
+                    })
+                    .collect();
+                let refs: Vec<&[P2]> = lines.iter().map(Vec::as_slice).collect();
+                warped_samples(reg, &refs)
             })
             .collect();
-        let refs: Vec<&[P2]> = shifted.iter().map(Vec::as_slice).collect();
-        let s = drawn_samples(reg, d, &refs, ink);
+        TestSamples { truth, shifted }
+    }
+}
+
+/// [`piste_test`] on samples already carried onto the plan.
+pub fn piste_test_warped(d: &InkDistance, s: &TestSamples, ink: usize) -> PisteTest {
+    let truth = ink_samples(d, &s.truth, ink);
+    let mut shift_max = vec![0.0f64; RADII_PT.len()];
+    for sh in &s.shifted {
+        let sv = ink_samples(d, sh, ink);
         for (i, &r) in RADII_PT.iter().enumerate() {
-            shift_max[i] = shift_max[i].max(share_within(&s, r));
+            shift_max[i] = shift_max[i].max(share_within(&sv, r));
         }
     }
     PisteTest {

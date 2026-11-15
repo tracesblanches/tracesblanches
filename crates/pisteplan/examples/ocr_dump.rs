@@ -10,7 +10,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cfg = Config::from_env()?;
     let dl = Downloader::from_config(&cfg)?;
     let spec = spec::plan_for(&site).ok_or("no plan")?;
-    let inp = input::load(spec, &cfg.layout(), &dl)?;
+    let inp = input::load(&spec, &cfg.layout(), &dl)?;
     let e = ocr::engine(&dl)?;
     let t = std::time::Instant::now();
     let mode = std::env::args().nth(2).unwrap_or_default();

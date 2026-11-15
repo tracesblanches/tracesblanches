@@ -16,6 +16,8 @@ On ne redistribue pas le plan, et on ne l'affiche pas en image sur la carte. Il 
 
 Téléchargés par le téléchargeur commun (sources `nordicfrance`, `enj`, cache 30 jours). Les rendus restent dans `data/cache/pisteplan/`.
 
+**Collecteur** (`collect`, exemple `collect_plans`) : médiathèque WordPress de Nordic France (recherches « plan » et « piste », station de rattachement → domaine du recensement) et pages des massifs de l'ENJ. Les fichiers sont choisis sur leur titre (raquettes, piétons, alpin, navettes… écartés). Sources propres, une requête toutes les 5 s. Au 15/11/2026 : 298 candidats, 257 plans distincts (41 doublons, 0 erreur), dont 114 PDF avec couche texte, 105 PDF-image, 15 PDF vectoriels sans texte, 22 images. 159 sont rattachés à un domaine (station, sites ou nom de la page) ; 99 des 219 domaines ont au moins un plan. Dates de création de 2009 à 2026, surtout 2018-2026. Sortie : `data/out/france/plans/catalogue.json` (usage personnel).
+
 ## Chaîne
 
 1. Entrée : `pdftoppm` (rendu PPM) et `pdftotext -bbox-layout` (couche texte), outils poppler appelés en sous-processus. Tout le reste est en Rust.
@@ -25,11 +27,20 @@ Téléchargés par le téléchargeur commun (sources `nordicfrance`, `enj`, cach
 5. Calage. Un RANSAC exhaustif apparie étiquettes et repères (similitude ≤ 45°, tolérance 15 pt), puis une ICP non rigide ajuste une spline plaque mince. Elle apparie les encres de ski aux voies nordiques de même couleur, avec un rayon qui décroît de 600 à 70 m. Points d'appui : jonctions du dessin et jonctions OSM nordiques, plus proches voisins mutuels, sans ambiguïté.
 6. Appariement **exact**. Il faut d'abord un nom certain : clé identique sur une couche texte, ou une lecture OCR unique (similarité ≥ 0,6 et écart ≥ 0,15). Les homonymes non reliés sont départagés par la proximité de l'encadré. Il faut ensuite que l'encre de la piste soit dessinée le long de la géométrie OSM, dans le même sens (≤ 30°), sur au moins 50 %. Cette part doit aussi dépasser celle des 16 copies décalées (400 et 800 m) : test de permutation, p ≤ 1/17. Le rayon (3, 5, 8 ou 12 pt) est choisi par validation sur les candidats. Une piste qui échoue n'est pas transcrite : elle est listée avec la raison.
 
+**Fiche automatique** (`autospec`, `register_auto`) : la fiche de lecture (`PlanSpec`) est déduite du plan seul. Résolution et source des étiquettes viennent du PDF (`pdfinfo`, `pdfimages`). Les encres sont lues sur la légende (tiret de chaque piste, mot de couleur), puis ajustées sur les lignes de la carte (pixels contrastés, même teinte). Une couleur tracée sans entrée de légende devient une encre non ski. L'épaisseur des traits donne les paramètres de ligne. Les panneaux et encadrés sont des aplats rectangulaires. La zone de carte entoure le réseau dessiné. L'emprise est l'étendue du plan une fois placé par le RANSAC, plus 3 km.
+
+## Apprentissage (étiquetage automatique, modèle)
+
+1. **Étiquetage** (`learn::pairs`, exemple `train_pairs`) : chaque PDF du catalogue rattaché à un domaine est lu avec une fiche automatique et calé ; les repères viennent de l'IGN (BD TOPO, toponymie) quand Overpass est injoignable. Pour chaque ligne de légende, les candidats sont les pistes OSM (relations d'un même nom, reliées) où l'encre est dessinée sur au moins 10 % (à 12 pt). Une paire vaut 1 si l'appariement exact a porté la ligne sur cette piste, 0 si l'exact l'a portée sur une autre ; les lignes sans appariement exact ne sont pas étiquetées. Sortie : `data/out/france/plan_training/plans/<plan>.json` (usage personnel). Au 15/11/2026 : 158 PDF tentés, 46 calés (112 échecs : 64 sans ensemble cohérent étiquettes ↔ repères, 48 sans paires d'ICP ; surtout des panoramas et des plans-images), 18 avec des appariements exacts ; 181 paires positives, 6 419 négatives, 11 532 non étiquetées. Plans calés et positifs : massifs du Jura (ENJ, Les Rousses, Retord, Pontarlier) et 3 plans-images alpins. 34 min pour les 156 premiers plans (3 en parallèle, machine chargée) ; l'OCR des plans-images domine.
+2. **Descripteurs** (27, `learn::FEATURES`) : part dessinée à 3, 5, 8, 12 pt et la même pour les 16 copies décalées, autres encres, couleur OSM, longueur / longueur imprimée, distance à l'encadré du départ, étiquettes de la carte près de la géométrie, boucle, rang parmi les candidats, qualité du calage, similarité du nom de légende avec le nom OSM.
+3. **Modèle** : arbres de décision renforcés (`gbdt`, Rust pur, 200 arbres de profondeur 3). Évaluation par domaine (`evaluate`) : plans regroupés par domaine dessiné (au plus 5 plis), jamais un domaine en entraînement et en test. Les plans des deux sites et tout plan qui dessine un de leurs domaines sont exclus de l'entraînement. Décision par ligne : meilleur candidat si p ≥ seuil et aucun autre candidat au seuil. Seuil : plus petit seuil à partir duquel la précision mesurée reste ≥ 99 %, et pas moins de 0,9. Oracle Python (scikit-learn, hors dépôt) sur les mêmes plis. Résultat : 10 plans d'entraînement, 3 groupes de domaines seulement (les plans du Jura se recouvrent), 1 973 paires dont 75 positives ; AUC hors pli 0,9995 (oracle 0,987) ; au seuil 0,9 : 61 lignes décidées, 61 justes (précision 100 %, borne basse 95 % 0,94), rappel 0,81. Entraînement : 0,3 s.
+4. **Transcription** : `transcribe_and_write` applique `data/out/france/plan_training/model.json` s'il existe aux lignes que l'exact a laissées : `method` = `ml`, `score` = probabilité, `osm_status` = `name_missing` si la piste OSM porte un autre nom. Les étiquettes exigent le nom : la précision mesurée vaut pour les lignes que l'exact tranche ; sur les autres, elle est vérifiée à la main sur les deux sites.
+
 ## Sorties (`data/out/<site>/plan_pistes/`)
 
 | Fichier | Contenu |
 |---|---|
-| `plan_pistes.geojson` | une `MultiLineString` OSM par piste du plan appariée : `name`, `name_read`, `colour`, `ink`, `kind`, `lengths_km_plan` (pas pour un plan lu par OCR), `departures`, `length_m`, `loop`, `method` (`exact`), `score`, `geometry_source`, `osm_status` (`match`, `colour_differs`, `colour_missing`, `name_missing`), `osm_name`, `osm_colour`, `osm_relation_ids`, `osm_way_ids` |
+| `plan_pistes.geojson` | une `MultiLineString` OSM par piste du plan appariée : `name`, `name_read`, `colour`, `ink`, `kind`, `lengths_km_plan` (pas pour un plan lu par OCR), `departures`, `length_m`, `loop`, `method` (`exact` ou `ml`), `score`, `geometry_source`, `osm_status` (`match`, `colour_differs`, `colour_missing`, `name_missing`), `osm_name`, `osm_colour`, `osm_relation_ids`, `osm_way_ids` |
 | `plan_ways.geojson` | voies OSM des pistes transcrites qui portent des flèches sur le plan : `direction` (`forward`/`backward` par rapport à l'ordre de la voie, `both`), nombre de flèches, `osm_oneway`, `oneway_status` (`match`, `missing_in_osm`, `opposite`…) |
 | `plan_landmarks.geojson` | repères du plan appariés à OSM (lieux, sommets, cols, refuges, départs) |
 | `plan_pistes.meta.json` | sources (plan : `personal_use_only`), paramètres, `stats` : décisions, raisons des refus, validation, RANSAC, ICP, points d'appui, validation croisée, OCR |
@@ -40,6 +51,8 @@ SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-pisteplan --features pip
 cargo test -p skimap-pisteplan --features pipeline
 cargo test -p skimap-pisteplan --test real_outputs -- --ignored   # lecteur sur les sorties réelles
 # diagnostics locaux (images du plan, jamais publiées) : examples inspect, register, ocr_dump
+SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-pisteplan --features pipeline --example auto_compare  # fiche auto / à la main
+# collect_plans, train_pairs [jobs], train_model [rows.csv] : collecte, étiquetage, modèle (data/out/france/)
 ```
 
 Démo : `demo/compare.html?site=…&view=osm|plan` (style et couleurs du visualiseur, sans image du plan), à servir depuis la racine par `skimap serve`.
@@ -51,6 +64,8 @@ Démo : `demo/compare.html?site=…&view=osm|plan` (style et couleurs du visuali
 | Pistes de la légende (lignes) | 8 lues sur 9 (OCR) | 56 (59 lignes) |
 | Avec une piste OSM du même nom | 6 | 39 |
 | Transcrites (exact) | 3 (Gibera, Pinatelle, Chemin du Sioux) | 30 (54 % du plan, 77 % des candidats) |
+| Fiche automatique : transcrites (exact) | 2 sur les 3 (Chemin du Sioux : 48 % < 50 %) ; avec le modèle, 3 (Sioux, p = 0,91) | 32 : les 30 + La Chaux Mourant, Le Petit Glacier (justes, vérifiées à l'écran) |
+| Transcrites, exact + modèle (sorties) | 3 + 0 | **30 + 6 = 36** (64 %) : Le Pré d'Haut (OSM « Les Prés d'Haut »), Combe des Cives, Le Griffon (« Le Griffond »), Élodie Bourgois Pin (« Elodie Bourgeois Pin »), La Passerelle, Le Petit Glacier ; 6/6 justes à l'écran |
 | Couleur du plan = couleur OSM | 3 / 3 | 30 / 30 |
 | Repères appariés | 14 | 16 |
 | Voies avec flèches (sens) : même sens qu'OSM / sens absent d'OSM / opposé | sans flèches | 29 / 19 / 0 (+ 1 dans les deux sens) |
@@ -73,6 +88,8 @@ La relecture a aussi trouvé deux erreurs, corrigées depuis : « Combe Verte »
 ## Limites
 
 - Cervières : image floue de 1 280 px. Les lignes y sont fines, la piste bleue a presque la couleur du fond turquoise, et l'OCR ne lit pas « Savare » (ambigu), « Izoard » ni les deux liaisons. Les longueurs lues par OCR sont fausses (« 75km » pour 7,5 km), elles ne sont pas transcrites.
-- 17 pistes de Chapelle-des-Bois n'ont aucune relation OSM du même nom (Le Pré d'Haut, Combe des Cives, les liaisons, Le Gy, La Lanterne…). Elles sont listées, pas devinées : c'est l'entrée de G1.
+- 17 pistes de Chapelle-des-Bois n'ont aucune relation OSM du même nom ; le modèle en rattache 4 à une relation d'une autre graphie. Restent 13 (les liaisons, Le Gy, La Lanterne…), listées, pas devinées : c'est l'entrée de G1, sans tracé estimé à ce jour. Combe des Cives : la relation OSM (7,4 km) déborde le trait du plan (11 km imprimés).
 - Sens : flèches lues à Chapelle-des-Bois seulement. Le plan de Cervières n'en dessine pas. Une flèche est un trou de l'encre (triangle blanc cerné) ; son sens est le signe de l'asymétrie de ses pixels le long de la ligne. Dans un extrait relu à la main, 10 flèches sur 12 sont trouvées. Le sens est donné par voie (`plan_ways.geojson`), pas par piste.
 - Les PDF n'ont ni `ETag` ni `Last-Modified` : un nouveau plan n'est vu qu'à l'expiration du cache (30 jours).
+- Le test exact est sensible au calage : à Chapelle-des-Bois, de petits écarts de fiche (zone de carte au point près, masques, encres) font varier le nombre de pistes transcrites de 25 à 32. Les pistes qui basculent sont celles dont la part dessinée est proche de 50 % ou des copies décalées.
+- Fiche automatique : les plans-dessins en perspective (panoramas des stations alpines), les pages à plusieurs cartes et les légendes sans tiret coloré ne sont pas lus ; seuls les plans calés par leurs étiquettes servent à l'apprentissage.
