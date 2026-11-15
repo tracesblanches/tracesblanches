@@ -72,9 +72,11 @@ impl SiteNames {
             .collect();
         let dates: BTreeSet<DayMonth> = known.public.dates.iter().copied().collect();
         let mut out = Self::unclassified(names, sources);
-        out.public.pistes.clear();
-        out.public.places.clear();
-        out.public.dates.clear();
+        for n in [&mut out.public, &mut out.personal] {
+            n.pistes.clear();
+            n.places.clear();
+            n.dates.clear();
+        }
         for p in &names.pistes {
             if pistes.contains(&p.clip_id()) {
                 out.public.pistes.push(p.clone());
@@ -696,9 +698,11 @@ mod tests {
 
         // The same names given without their provenance: classified against the layers.
         let given = s.all();
-        let c = SiteNames::classify(&given, &[], &s);
-        assert_eq!(c.public, s.public);
-        assert_eq!(c.personal, s.personal);
+        for sources in [&[][..], &s.personal_sources[..]] {
+            let c = SiteNames::classify(&given, sources, &s);
+            assert_eq!(c.public, s.public);
+            assert_eq!(c.personal, s.personal);
+        }
         // Unknown provenance, a personal source among those given: nothing is public.
         let u = SiteNames::unclassified(&given, &s.personal_sources);
         assert!(u.public.pistes.is_empty() && u.public.places.is_empty());
