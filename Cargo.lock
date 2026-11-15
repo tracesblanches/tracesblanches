@@ -2454,6 +2454,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "skimap-styles"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "geo",
+ "serde",
+ "serde_json",
+ "skimap-common",
+ "skimap-pack",
+ "skimap-zones",
+ "thiserror",
+]
+
+[[package]]
 name = "skimap-terrain"
 version = "0.1.0"
 dependencies = [

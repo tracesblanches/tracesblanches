@@ -1,0 +1,2687 @@
+{
+  "glyphs": "basemap/plan-ign/fonts/{fontstack}/{range}.pbf",
+  "layers": [
+    {
+      "id": "background",
+      "paint": {
+        "background-color": "#ffffff"
+      },
+      "type": "background"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "symbo"
+        ],
+        "ZONE_BATI"
+      ],
+      "id": "ign-built",
+      "maxzoom": 15,
+      "paint": {
+        "fill-color": "#f1eeea"
+      },
+      "source": "ign",
+      "source-layer": "bati_zone_surf",
+      "type": "fill"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "symbo"
+        ],
+        [
+          "ZONE_BOISEE",
+          "ZONE_FORET_FERMEE_CONI",
+          "ZONE_FORET_FERMEE_FEUIL",
+          "ZONE_FORET_FERMEE_MIXTE"
+        ],
+        true,
+        false
+      ],
+      "id": "ign-forest",
+      "paint": {
+        "fill-color": "#c6dfb5"
+      },
+      "source": "ign",
+      "source-layer": "ocs_vegetation_surf",
+      "type": "fill"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "symbo"
+        ],
+        [
+          "ZONE_FORET_OUVERTE",
+          "ZONE_LANDE_LIGNEUSE"
+        ],
+        true,
+        false
+      ],
+      "id": "ign-forest-open",
+      "paint": {
+        "fill-color": "#e2eed6"
+      },
+      "source": "ign",
+      "source-layer": "ocs_vegetation_surf",
+      "type": "fill"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "symbo"
+        ],
+        [
+          "ZONE_ROCHEUSE",
+          "ZONE_EBOULIS",
+          "ZONE_RAVINEE"
+        ],
+        true,
+        false
+      ],
+      "id": "ign-rock",
+      "paint": {
+        "fill-color": "#ebe8e4"
+      },
+      "source": "ign",
+      "source-layer": "ocs_nature_sol_surf",
+      "type": "fill"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "symbo"
+        ],
+        "ZONE_GLACIER"
+      ],
+      "id": "ign-glacier",
+      "paint": {
+        "fill-color": "#e3f1fb"
+      },
+      "source": "ign",
+      "source-layer": "ocs_nature_sol_surf",
+      "type": "fill"
+    },
+    {
+      "id": "avalanche-exposure",
+      "layout": {
+        "visibility": "visible"
+      },
+      "paint": {
+        "raster-fade-duration": 0,
+        "raster-opacity": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          11.0,
+          0.0,
+          12.0,
+          0.35,
+          13.0,
+          0.35,
+          14.0,
+          0.0
+        ],
+        "raster-resampling": "nearest"
+      },
+      "source": "avalanche-exposure",
+      "type": "raster"
+    },
+    {
+      "id": "slope",
+      "layout": {
+        "visibility": "visible"
+      },
+      "paint": {
+        "raster-fade-duration": 0,
+        "raster-opacity": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          13.0,
+          0.0,
+          14.0,
+          0.55
+        ],
+        "raster-resampling": "nearest"
+      },
+      "source": "slope",
+      "type": "raster"
+    },
+    {
+      "id": "snow-srn",
+      "layout": {
+        "visibility": "none"
+      },
+      "paint": {
+        "raster-fade-duration": 0,
+        "raster-opacity": 0.6,
+        "raster-resampling": "nearest"
+      },
+      "source": "snow-srn",
+      "type": "raster"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "symbo"
+        ],
+        [
+          "SURFACE_D_EAU",
+          "BASSIN",
+          "SURFACE_D_EAU_TEMP"
+        ],
+        true,
+        false
+      ],
+      "id": "ign-water",
+      "paint": {
+        "fill-color": "#9fd0f2"
+      },
+      "source": "ign",
+      "source-layer": "hydro_surf",
+      "type": "fill"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "symbo"
+        ],
+        [
+          "COURS_D_EAU",
+          "COURS_D_EAU_LAR",
+          "COURS_D_EAU_MOY",
+          "CANAL"
+        ],
+        true,
+        false
+      ],
+      "id": "ign-stream",
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "minzoom": 12.0,
+      "paint": {
+        "line-color": "#4f9fd9",
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          11.0,
+          0.5,
+          14.0,
+          1.0,
+          16.0,
+          2.0
+        ]
+      },
+      "source": "ign",
+      "source-layer": "hydro_reseau",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "symbo"
+        ],
+        "LIGNE_DESC_ZONE_ROCHEUSE"
+      ],
+      "id": "ign-rock-line",
+      "minzoom": 13,
+      "paint": {
+        "line-color": "#a8a29a",
+        "line-width": 0.8
+      },
+      "source": "ign",
+      "source-layer": "ocs_lin",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "symbo"
+        ],
+        [
+          "CNV_NORMALE",
+          "CNV_GLACIER_NORMALE",
+          "CNV_ROCHER_NORMALE",
+          "CUVETTE_NORMALE"
+        ],
+        true,
+        false
+      ],
+      "id": "ign-contour",
+      "minzoom": 12,
+      "paint": {
+        "line-color": "#b69772",
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          12.0,
+          0.4,
+          14.0,
+          0.8,
+          16.0,
+          1.1
+        ]
+      },
+      "source": "ign",
+      "source-layer": "oro_courbe",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "symbo"
+        ],
+        [
+          "CNV_MAITRESSE",
+          "CNV_GLACIER_MAITRESSE",
+          "CNV_ROCHER_MAITRESSE"
+        ],
+        true,
+        false
+      ],
+      "id": "ign-contour-index",
+      "minzoom": 10,
+      "paint": {
+        "line-color": "#8a6a43",
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          10.0,
+          0.6,
+          13.0,
+          1.2,
+          16.0,
+          1.8
+        ]
+      },
+      "source": "ign",
+      "source-layer": "oro_courbe",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "symbo"
+        ],
+        [
+          "NON_REVETUE_CARRO",
+          "NON_REVETUE_CARRO_RESTREINT"
+        ],
+        true,
+        false
+      ],
+      "id": "ign-road-track",
+      "layout": {
+        "line-cap": "round"
+      },
+      "minzoom": 13,
+      "paint": {
+        "line-color": "#c9c2b8",
+        "line-dasharray": [
+          3,
+          2
+        ],
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          13.0,
+          0.6,
+          16.0,
+          1.5
+        ]
+      },
+      "source": "ign",
+      "source-layer": "routier_route",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "symbo"
+        ],
+        [
+          "LOCALE_1",
+          "LOCALE_2",
+          "LOCALE_3",
+          "NON_CLASSEE",
+          "NON_CLASSEE_RESTREINT"
+        ],
+        true,
+        false
+      ],
+      "id": "ign-road-minor",
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "minzoom": 11.0,
+      "paint": {
+        "line-color": "#c9c2b8",
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          11.0,
+          0.6,
+          14.0,
+          1.5,
+          16.0,
+          3.0
+        ]
+      },
+      "source": "ign",
+      "source-layer": "routier_route",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "symbo"
+        ],
+        [
+          "AUTOROU_LIBRE",
+          "AUTOROU_PEAGE",
+          "PRINCIPALE_1",
+          "PRINCIPALE_2",
+          "PRINCIPALE_3",
+          "PRINCIPALE_4",
+          "REGIONALE_1",
+          "REGIONALE_2",
+          "REGIONALE_4"
+        ],
+        true,
+        false
+      ],
+      "id": "ign-road-major",
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "paint": {
+        "line-color": "#a39887",
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          9.0,
+          0.8,
+          13.0,
+          1.8,
+          16.0,
+          4.0
+        ]
+      },
+      "source": "ign",
+      "source-layer": "routier_route",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "symbo"
+        ],
+        [
+          "NON_REVETUE_CARRO_SUP",
+          "NON_REVETUE_CARRO_RESTREINT_SUP"
+        ],
+        true,
+        false
+      ],
+      "id": "ign-road-track-bridge",
+      "layout": {
+        "line-cap": "round"
+      },
+      "minzoom": 13,
+      "paint": {
+        "line-color": "#c9c2b8",
+        "line-dasharray": [
+          3,
+          2
+        ],
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          13.0,
+          0.6,
+          16.0,
+          1.5
+        ]
+      },
+      "source": "ign",
+      "source-layer": "routier_route_sup",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "symbo"
+        ],
+        [
+          "LOCALE_1_SUP",
+          "LOCALE_2_SUP",
+          "NON_CLASSEE_SUP",
+          "NON_CLASSEE_RESTREINT_SUP"
+        ],
+        true,
+        false
+      ],
+      "id": "ign-road-minor-bridge",
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "minzoom": 11.0,
+      "paint": {
+        "line-color": "#c9c2b8",
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          11.0,
+          0.6,
+          14.0,
+          1.5,
+          16.0,
+          3.0
+        ]
+      },
+      "source": "ign",
+      "source-layer": "routier_route_sup",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "symbo"
+        ],
+        [
+          "AUTOROU_LIBRE_SUP",
+          "AUTOROU_PEAGE_SUP",
+          "PRINCIPALE_1_SUP",
+          "PRINCIPALE_2_SUP",
+          "PRINCIPALE_3_SUP",
+          "PRINCIPALE_4_SUP",
+          "REGIONALE_1_SUP",
+          "REGIONALE_2_SUP"
+        ],
+        true,
+        false
+      ],
+      "id": "ign-road-major-bridge",
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "paint": {
+        "line-color": "#a39887",
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          9.0,
+          0.8,
+          13.0,
+          1.8,
+          16.0,
+          4.0
+        ]
+      },
+      "source": "ign",
+      "source-layer": "routier_route_sup",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "symbo"
+        ],
+        [
+          "CHEMIN",
+          "SENTIER"
+        ],
+        true,
+        false
+      ],
+      "id": "ign-path",
+      "minzoom": 13,
+      "paint": {
+        "line-color": "#7d5a35",
+        "line-dasharray": [
+          3,
+          2
+        ],
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          13.0,
+          0.8,
+          16.0,
+          1.8
+        ]
+      },
+      "source": "ign",
+      "source-layer": "routier_chemin",
+      "type": "line"
+    },
+    {
+      "id": "ign-building",
+      "minzoom": 14,
+      "paint": {
+        "fill-color": "#cfc8bd"
+      },
+      "source": "ign",
+      "source-layer": "bati_surf",
+      "type": "fill"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "symbo"
+        ],
+        "REMONTEE_MEC"
+      ],
+      "id": "ign-lift",
+      "minzoom": 12,
+      "paint": {
+        "line-color": "#4a4a4a",
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          12.0,
+          0.8,
+          16.0,
+          1.6
+        ]
+      },
+      "source": "ign",
+      "source-layer": "bati_lin",
+      "type": "line"
+    },
+    {
+      "id": "no-network-fill",
+      "paint": {
+        "fill-color": "#5b2a86",
+        "fill-opacity": 0.07
+      },
+      "source": "no-network",
+      "type": "fill"
+    },
+    {
+      "id": "no-network-line",
+      "metadata": {
+        "skimap:contrast": "background"
+      },
+      "minzoom": 12,
+      "paint": {
+        "line-color": "#5b2a86",
+        "line-dasharray": [
+          2,
+          2
+        ],
+        "line-width": 1.2
+      },
+      "source": "no-network",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "any",
+        [
+          "all",
+          [
+            "==",
+            [
+              "get",
+              "kind"
+            ],
+            "biodiv_sports"
+          ],
+          [
+            "in",
+            "terrestre",
+            [
+              "coalesce",
+              [
+                "get",
+                "practices"
+              ],
+              [
+                "literal",
+                []
+              ]
+            ]
+          ]
+        ],
+        [
+          "match",
+          [
+            "get",
+            "kind"
+          ],
+          [
+            "appb",
+            "reserve_naturelle_nationale",
+            "reserve_naturelle_regionale",
+            "reserve_biologique",
+            "parc_national",
+            "district_franc"
+          ],
+          true,
+          false
+        ]
+      ],
+      "id": "zones-fill",
+      "paint": {
+        "fill-color": "#c24e00",
+        "fill-opacity": 0.07
+      },
+      "source": "zones",
+      "type": "fill"
+    },
+    {
+      "filter": [
+        "any",
+        [
+          "all",
+          [
+            "==",
+            [
+              "get",
+              "kind"
+            ],
+            "biodiv_sports"
+          ],
+          [
+            "in",
+            "terrestre",
+            [
+              "coalesce",
+              [
+                "get",
+                "practices"
+              ],
+              [
+                "literal",
+                []
+              ]
+            ]
+          ]
+        ],
+        [
+          "match",
+          [
+            "get",
+            "kind"
+          ],
+          [
+            "appb",
+            "reserve_naturelle_nationale",
+            "reserve_naturelle_regionale",
+            "reserve_biologique",
+            "parc_national",
+            "district_franc"
+          ],
+          true,
+          false
+        ]
+      ],
+      "id": "zones-line",
+      "metadata": {
+        "skimap:contrast": "background"
+      },
+      "paint": {
+        "line-color": "#c24e00",
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          10.0,
+          1.2,
+          15.0,
+          2.5
+        ]
+      },
+      "source": "zones",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "all",
+        [
+          "in",
+          "Bivouac : interdit",
+          [
+            "coalesce",
+            [
+              "get",
+              "rules_text"
+            ],
+            ""
+          ]
+        ],
+        [
+          "!",
+          [
+            "any",
+            [
+              "all",
+              [
+                "==",
+                [
+                  "get",
+                  "kind"
+                ],
+                "biodiv_sports"
+              ],
+              [
+                "in",
+                "terrestre",
+                [
+                  "coalesce",
+                  [
+                    "get",
+                    "practices"
+                  ],
+                  [
+                    "literal",
+                    []
+                  ]
+                ]
+              ]
+            ],
+            [
+              "match",
+              [
+                "get",
+                "kind"
+              ],
+              [
+                "appb",
+                "reserve_naturelle_nationale",
+                "reserve_naturelle_regionale",
+                "reserve_biologique",
+                "parc_national",
+                "district_franc"
+              ],
+              true,
+              false
+            ]
+          ]
+        ]
+      ],
+      "id": "zones-bivouac",
+      "minzoom": 12,
+      "paint": {
+        "line-color": "#7b2d9b",
+        "line-dasharray": [
+          3,
+          2
+        ],
+        "line-width": 1.5
+      },
+      "source": "zones",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "any",
+        [
+          "all",
+          [
+            "==",
+            [
+              "get",
+              "kind"
+            ],
+            "biodiv_sports"
+          ],
+          [
+            "in",
+            "terrestre",
+            [
+              "coalesce",
+              [
+                "get",
+                "practices"
+              ],
+              [
+                "literal",
+                []
+              ]
+            ]
+          ]
+        ],
+        [
+          "match",
+          [
+            "get",
+            "kind"
+          ],
+          [
+            "appb",
+            "reserve_naturelle_nationale",
+            "reserve_naturelle_regionale",
+            "reserve_biologique",
+            "parc_national",
+            "district_franc"
+          ],
+          true,
+          false
+        ]
+      ],
+      "id": "zones-label",
+      "layout": {
+        "symbol-placement": "line",
+        "symbol-spacing": 500,
+        "text-field": [
+          "get",
+          "name"
+        ],
+        "text-font": [
+          "Source Sans Pro Semibold"
+        ],
+        "text-max-angle": 30,
+        "text-offset": [
+          0,
+          0.8
+        ],
+        "text-size": 12
+      },
+      "minzoom": 13,
+      "paint": {
+        "text-color": "#c24e00",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 2.0
+      },
+      "source": "zones",
+      "type": "symbol"
+    },
+    {
+      "id": "avalanche-areas-line",
+      "metadata": {
+        "skimap:contrast": "background"
+      },
+      "minzoom": 13,
+      "paint": {
+        "line-color": "#c4001a",
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          13.0,
+          0.7,
+          16.0,
+          1.6
+        ]
+      },
+      "source": "avalanche-areas",
+      "type": "line"
+    },
+    {
+      "filter": [
+        ">=",
+        [
+          "coalesce",
+          [
+            "get",
+            "exposure"
+          ],
+          0
+        ],
+        2
+      ],
+      "id": "avalanche-segments",
+      "layout": {
+        "line-cap": "butt",
+        "line-join": "round"
+      },
+      "metadata": {
+        "skimap:contrast": "background"
+      },
+      "minzoom": 11,
+      "paint": {
+        "line-color": [
+          "match",
+          [
+            "get",
+            "exposure"
+          ],
+          3,
+          "#c4001a",
+          "#d06a00"
+        ],
+        "line-dasharray": [
+          0.45,
+          0.35
+        ],
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          10.0,
+          4.0,
+          13.0,
+          7.0,
+          16.0,
+          12.0
+        ]
+      },
+      "source": "avalanche-segments",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "all",
+        [
+          "in",
+          "hike",
+          [
+            "coalesce",
+            [
+              "get",
+              "uses"
+            ],
+            [
+              "literal",
+              []
+            ]
+          ]
+        ],
+        [
+          "!",
+          [
+            "in",
+            "nordic",
+            [
+              "coalesce",
+              [
+                "get",
+                "uses"
+              ],
+              [
+                "literal",
+                []
+              ]
+            ]
+          ]
+        ]
+      ],
+      "id": "pistes-hike",
+      "layout": {
+        "line-cap": "round"
+      },
+      "minzoom": 12,
+      "paint": {
+        "line-color": "#6a5f55",
+        "line-dasharray": [
+          1,
+          2
+        ],
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          12.0,
+          1.0,
+          16.0,
+          2.5
+        ]
+      },
+      "source": "pistes",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "in",
+        "nordic",
+        [
+          "coalesce",
+          [
+            "get",
+            "uses"
+          ],
+          [
+            "literal",
+            []
+          ]
+        ]
+      ],
+      "id": "pistes-casing",
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "paint": {
+        "line-color": [
+          "match",
+          [
+            "coalesce",
+            [
+              "get",
+              "difficulty"
+            ],
+            ""
+          ],
+          "advanced",
+          "#ffffff",
+          "#ffffff"
+        ],
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          10.0,
+          2.0,
+          13.0,
+          3.0,
+          16.0,
+          6.0
+        ]
+      },
+      "source": "pistes",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "all",
+        [
+          "in",
+          "nordic",
+          [
+            "coalesce",
+            [
+              "get",
+              "uses"
+            ],
+            [
+              "literal",
+              []
+            ]
+          ]
+        ],
+        [
+          "!=",
+          [
+            "get",
+            "grooming"
+          ],
+          "backcountry"
+        ]
+      ],
+      "id": "pistes-line",
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "metadata": {
+        "skimap:contrast": "pistes-casing"
+      },
+      "paint": {
+        "line-color": [
+          "match",
+          [
+            "coalesce",
+            [
+              "get",
+              "difficulty"
+            ],
+            ""
+          ],
+          "novice",
+          "#008c45",
+          "easy",
+          "#0062c4",
+          "intermediate",
+          "#d81e1e",
+          "advanced",
+          "#111111",
+          "#6b6b6b"
+        ],
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          10.0,
+          1.0,
+          13.0,
+          1.6,
+          16.0,
+          3.5
+        ]
+      },
+      "source": "pistes",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "all",
+        [
+          "in",
+          "nordic",
+          [
+            "coalesce",
+            [
+              "get",
+              "uses"
+            ],
+            [
+              "literal",
+              []
+            ]
+          ]
+        ],
+        [
+          "==",
+          [
+            "get",
+            "grooming"
+          ],
+          "backcountry"
+        ]
+      ],
+      "id": "pistes-backcountry",
+      "layout": {
+        "line-cap": "butt"
+      },
+      "metadata": {
+        "skimap:contrast": "pistes-casing"
+      },
+      "paint": {
+        "line-color": [
+          "match",
+          [
+            "coalesce",
+            [
+              "get",
+              "difficulty"
+            ],
+            ""
+          ],
+          "novice",
+          "#008c45",
+          "easy",
+          "#0062c4",
+          "intermediate",
+          "#d81e1e",
+          "advanced",
+          "#111111",
+          "#6b6b6b"
+        ],
+        "line-dasharray": [
+          2,
+          1.5
+        ],
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          10.0,
+          1.0,
+          13.0,
+          1.6,
+          16.0,
+          3.5
+        ]
+      },
+      "source": "pistes",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "all",
+        [
+          "==",
+          [
+            "get",
+            "state"
+          ],
+          "closed"
+        ],
+        [
+          "match",
+          [
+            "get",
+            "practice"
+          ],
+          [
+            "nordic",
+            "Ski de fond",
+            "Pistes multi-activités"
+          ],
+          true,
+          false
+        ]
+      ],
+      "id": "status-closed",
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "paint": {
+        "line-color": "#ffffff",
+        "line-opacity": 0.4,
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          10.0,
+          1.5,
+          13.0,
+          2.2,
+          16.0,
+          4.5
+        ]
+      },
+      "source": "status",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "all",
+        [
+          "==",
+          [
+            "get",
+            "state"
+          ],
+          "closed"
+        ],
+        [
+          "match",
+          [
+            "get",
+            "practice"
+          ],
+          [
+            "nordic",
+            "Ski de fond",
+            "Pistes multi-activités"
+          ],
+          true,
+          false
+        ]
+      ],
+      "id": "status-closed-dash",
+      "layout": {
+        "line-join": "round"
+      },
+      "paint": {
+        "line-color": "#ffffff",
+        "line-dasharray": [
+          2,
+          2
+        ],
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          10.0,
+          0.6,
+          13.0,
+          0.9,
+          16.0,
+          1.6
+        ]
+      },
+      "source": "status",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "all",
+        [
+          "==",
+          [
+            "get",
+            "kind"
+          ],
+          "parking"
+        ],
+        [
+          "<=",
+          [
+            "get",
+            "min_zoom"
+          ],
+          16
+        ]
+      ],
+      "id": "osm-parking",
+      "minzoom": 13,
+      "paint": {
+        "circle-color": "#1f5fbf",
+        "circle-radius": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          13.0,
+          7.0,
+          16.0,
+          10.0
+        ],
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 1.5
+      },
+      "source": "osm",
+      "source-layer": "pois",
+      "type": "circle"
+    },
+    {
+      "filter": [
+        "all",
+        [
+          "==",
+          [
+            "get",
+            "kind"
+          ],
+          "parking"
+        ],
+        [
+          "<=",
+          [
+            "get",
+            "min_zoom"
+          ],
+          16
+        ]
+      ],
+      "id": "osm-parking-p",
+      "layout": {
+        "text-allow-overlap": true,
+        "text-field": "P",
+        "text-font": [
+          "Source Sans Pro Bold"
+        ],
+        "text-ignore-placement": true,
+        "text-size": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          13.0,
+          11.0,
+          16.0,
+          15.0
+        ]
+      },
+      "metadata": {
+        "skimap:contrast": "osm-parking"
+      },
+      "minzoom": 13,
+      "paint": {
+        "text-color": "#ffffff"
+      },
+      "source": "osm",
+      "source-layer": "pois",
+      "type": "symbol"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "type_label"
+        ],
+        "point d'eau"
+      ],
+      "id": "water-point",
+      "minzoom": 14,
+      "paint": {
+        "circle-color": "#1f78d1",
+        "circle-radius": 5,
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 1.5
+      },
+      "source": "refuges-info",
+      "type": "circle"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "type_label"
+        ],
+        "passage délicat"
+      ],
+      "id": "hazard",
+      "minzoom": 12,
+      "paint": {
+        "circle-color": "#c4001a",
+        "circle-radius": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          12.0,
+          7.0,
+          16.0,
+          10.0
+        ],
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 2
+      },
+      "source": "refuges-info",
+      "type": "circle"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "type_label"
+        ],
+        "passage délicat"
+      ],
+      "id": "hazard-mark",
+      "layout": {
+        "text-allow-overlap": true,
+        "text-field": "!",
+        "text-font": [
+          "Source Sans Pro Bold"
+        ],
+        "text-ignore-placement": true,
+        "text-size": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          12.0,
+          12.0,
+          16.0,
+          16.0
+        ]
+      },
+      "metadata": {
+        "skimap:contrast": "hazard"
+      },
+      "minzoom": 12,
+      "paint": {
+        "text-color": "#ffffff"
+      },
+      "source": "refuges-info",
+      "type": "symbol"
+    },
+    {
+      "filter": [
+        "all",
+        [
+          "match",
+          [
+            "get",
+            "type_label"
+          ],
+          [
+            "refuge gardé",
+            "gîte d'étape",
+            "cabane non gardée"
+          ],
+          true,
+          false
+        ],
+        [
+          "!",
+          [
+            "match",
+            [
+              "get",
+              "state"
+            ],
+            [
+              "Détruite",
+              "Inutilisable"
+            ],
+            true,
+            false
+          ]
+        ]
+      ],
+      "id": "huts-dot-info",
+      "maxzoom": 13.0,
+      "metadata": {
+        "skimap:contrast": "background"
+      },
+      "minzoom": 10.0,
+      "paint": {
+        "circle-color": "#8a4b08",
+        "circle-radius": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          10.0,
+          3.5,
+          13.0,
+          5.0
+        ],
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 1.5
+      },
+      "source": "refuges-info",
+      "type": "circle"
+    },
+    {
+      "filter": [
+        "all",
+        [
+          "!",
+          [
+            "has",
+            "refuges_info_id"
+          ]
+        ],
+        [
+          "match",
+          [
+            "get",
+            "kind"
+          ],
+          [
+            "alpine_hut",
+            "wilderness_hut",
+            "shelter"
+          ],
+          true,
+          false
+        ]
+      ],
+      "id": "huts-dot-osm",
+      "maxzoom": 13.0,
+      "metadata": {
+        "skimap:contrast": "background"
+      },
+      "minzoom": 10.0,
+      "paint": {
+        "circle-color": "#8a4b08",
+        "circle-radius": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          10.0,
+          3.5,
+          13.0,
+          5.0
+        ],
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 1.5
+      },
+      "source": "refuges-osm",
+      "type": "circle"
+    },
+    {
+      "filter": [
+        "!",
+        [
+          "has",
+          "link"
+        ]
+      ],
+      "id": "huts-dot-camptocamp",
+      "maxzoom": 13.0,
+      "metadata": {
+        "skimap:contrast": "background"
+      },
+      "minzoom": 10.0,
+      "paint": {
+        "circle-color": "#8a4b08",
+        "circle-radius": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          10.0,
+          3.5,
+          13.0,
+          5.0
+        ],
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 1.5
+      },
+      "source": "refuges-camptocamp",
+      "type": "circle"
+    },
+    {
+      "filter": [
+        "all",
+        [
+          "match",
+          [
+            "get",
+            "type_label"
+          ],
+          [
+            "refuge gardé",
+            "gîte d'étape",
+            "cabane non gardée"
+          ],
+          true,
+          false
+        ],
+        [
+          "!",
+          [
+            "match",
+            [
+              "get",
+              "state"
+            ],
+            [
+              "Détruite",
+              "Inutilisable"
+            ],
+            true,
+            false
+          ]
+        ]
+      ],
+      "id": "huts-info",
+      "layout": {
+        "icon-allow-overlap": true,
+        "icon-image": [
+          "match",
+          [
+            "get",
+            "type_label"
+          ],
+          "refuge gardé",
+          "Refugegard",
+          "gîte d'étape",
+          "Refugegard",
+          "Refugenongard"
+        ],
+        "icon-size": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          13.0,
+          0.7,
+          16.0,
+          1.0
+        ],
+        "text-anchor": "top",
+        "text-field": [
+          "coalesce",
+          [
+            "get",
+            "name"
+          ],
+          ""
+        ],
+        "text-font": [
+          "Source Sans Pro Semibold"
+        ],
+        "text-max-width": 8,
+        "text-offset": [
+          0,
+          1.2
+        ],
+        "text-optional": true,
+        "text-size": [
+          "step",
+          [
+            "zoom"
+          ],
+          0,
+          13.0,
+          12.5
+        ]
+      },
+      "minzoom": 13.0,
+      "paint": {
+        "text-color": "#1b1f24",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 2.0
+      },
+      "source": "refuges-info",
+      "type": "symbol"
+    },
+    {
+      "filter": [
+        "all",
+        [
+          "!",
+          [
+            "has",
+            "refuges_info_id"
+          ]
+        ],
+        [
+          "match",
+          [
+            "get",
+            "kind"
+          ],
+          [
+            "alpine_hut",
+            "wilderness_hut",
+            "shelter"
+          ],
+          true,
+          false
+        ]
+      ],
+      "id": "huts-osm",
+      "layout": {
+        "icon-allow-overlap": true,
+        "icon-image": [
+          "match",
+          [
+            "get",
+            "kind"
+          ],
+          "alpine_hut",
+          "Refugegard",
+          "wilderness_hut",
+          "Refugenongard",
+          "Abri"
+        ],
+        "icon-size": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          13.0,
+          0.7,
+          16.0,
+          1.0
+        ]
+      },
+      "minzoom": 13.0,
+      "source": "refuges-osm",
+      "type": "symbol"
+    },
+    {
+      "filter": [
+        "!",
+        [
+          "has",
+          "link"
+        ]
+      ],
+      "id": "huts-camptocamp",
+      "layout": {
+        "icon-allow-overlap": true,
+        "icon-image": [
+          "match",
+          [
+            "get",
+            "waypoint_type"
+          ],
+          "shelter",
+          "Abri",
+          "hut",
+          "Refugenongard",
+          "Refugegard"
+        ],
+        "icon-size": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          13.0,
+          0.7,
+          16.0,
+          1.0
+        ],
+        "text-anchor": "top",
+        "text-field": [
+          "coalesce",
+          [
+            "get",
+            "title"
+          ],
+          ""
+        ],
+        "text-font": [
+          "Source Sans Pro Semibold"
+        ],
+        "text-max-width": 8,
+        "text-offset": [
+          0,
+          1.2
+        ],
+        "text-optional": true,
+        "text-size": [
+          "step",
+          [
+            "zoom"
+          ],
+          0,
+          13.0,
+          12.5
+        ]
+      },
+      "minzoom": 13.0,
+      "paint": {
+        "text-color": "#1b1f24",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 2.0
+      },
+      "source": "refuges-camptocamp",
+      "type": "symbol"
+    },
+    {
+      "filter": [
+        "all",
+        [
+          "match",
+          [
+            "get",
+            "symbo"
+          ],
+          [
+            "CNV_MAITRESSE",
+            "CNV_GLACIER_MAITRESSE",
+            "CNV_ROCHER_MAITRESSE"
+          ],
+          true,
+          false
+        ],
+        [
+          "has",
+          "texte"
+        ]
+      ],
+      "id": "ign-contour-label",
+      "layout": {
+        "symbol-placement": "line",
+        "symbol-spacing": 400,
+        "text-field": [
+          "get",
+          "texte"
+        ],
+        "text-font": [
+          "Source Sans Pro Semibold"
+        ],
+        "text-max-angle": 25,
+        "text-padding": 10,
+        "text-size": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          13.0,
+          11.0,
+          16.0,
+          13.0
+        ]
+      },
+      "minzoom": 13,
+      "paint": {
+        "text-color": "#8a6a43",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 2.0
+      },
+      "source": "ign",
+      "source-layer": "oro_courbe",
+      "type": "symbol"
+    },
+    {
+      "filter": [
+        "all",
+        [
+          "in",
+          "nordic",
+          [
+            "coalesce",
+            [
+              "get",
+              "uses"
+            ],
+            [
+              "literal",
+              []
+            ]
+          ]
+        ],
+        [
+          "has",
+          "name"
+        ]
+      ],
+      "id": "pistes-label",
+      "layout": {
+        "symbol-placement": "line",
+        "symbol-spacing": 350,
+        "text-field": [
+          "get",
+          "name"
+        ],
+        "text-font": [
+          "Source Sans Pro Semibold"
+        ],
+        "text-max-angle": 30,
+        "text-padding": 8,
+        "text-size": 12.0
+      },
+      "minzoom": 15.0,
+      "paint": {
+        "text-color": "#1b1f24",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 2.5
+      },
+      "source": "pistes",
+      "type": "symbol"
+    },
+    {
+      "filter": [
+        "all",
+        [
+          "match",
+          [
+            "get",
+            "symbo"
+          ],
+          [
+            "POINT_COTE",
+            "POINT_COTE_TOPO"
+          ],
+          true,
+          false
+        ],
+        [
+          "has",
+          "texte"
+        ]
+      ],
+      "id": "ign-spot-height",
+      "layout": {
+        "text-field": [
+          "get",
+          "texte"
+        ],
+        "text-font": [
+          "Source Sans Pro Regular"
+        ],
+        "text-padding": 6,
+        "text-size": 11
+      },
+      "minzoom": 14,
+      "paint": {
+        "text-color": "#5a4632",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 2.0
+      },
+      "source": "ign",
+      "source-layer": "oro_ponc",
+      "type": "symbol"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "symbo"
+        ],
+        "LIEU-DIT_NON_HABITE"
+      ],
+      "id": "ign-lieu-dit",
+      "layout": {
+        "text-field": [
+          "get",
+          "texte"
+        ],
+        "text-font": [
+          "Source Sans Pro Italic"
+        ],
+        "text-max-width": 8,
+        "text-padding": 6,
+        "text-size": 11.5
+      },
+      "minzoom": 14,
+      "paint": {
+        "text-color": "#5a4632",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 2.0
+      },
+      "source": "ign",
+      "source-layer": "toponyme_ocs_ponc",
+      "type": "symbol"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "txt_typo"
+        ],
+        [
+          "BAT_CHEF_LIEU_COM",
+          "BAT_CHEF_LIEU_COM_T",
+          "BAT_COMMUNE_3",
+          "BAT_COMMUNE_3_T",
+          "BAT_COMMUNE_4",
+          "BAT_COMMUNE_4_T",
+          "BAT_COMMUNE_5",
+          "BAT_COMMUNE_5_T",
+          "BAT_COMMUNE_ASSOCIEE"
+        ],
+        true,
+        false
+      ],
+      "id": "ign-place-commune-low",
+      "layout": {
+        "text-field": [
+          "get",
+          "texte"
+        ],
+        "text-font": [
+          "Source Sans Pro Bold"
+        ],
+        "text-max-width": 8,
+        "text-padding": 6,
+        "text-size": 14.0
+      },
+      "maxzoom": 13.0,
+      "minzoom": 10.0,
+      "paint": {
+        "text-color": "#1b1f24",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 2.5
+      },
+      "source": "ign",
+      "source-layer": "toponyme_localite_ponc",
+      "type": "symbol"
+    },
+    {
+      "filter": [
+        "all",
+        [
+          "match",
+          [
+            "get",
+            "symbo"
+          ],
+          [
+            "COMMUNE_CHEF_LIEU",
+            "COMMUNE_FUSIONNEE"
+          ],
+          true,
+          false
+        ],
+        [
+          "match",
+          [
+            "get",
+            "txt_typo"
+          ],
+          [
+            "TYPO_A_1",
+            "TYPO_A_2",
+            "TYPO_A_3",
+            "TYPO_A_4",
+            "TYPO_A_5",
+            "TYPO_A_6"
+          ],
+          true,
+          false
+        ]
+      ],
+      "id": "ign-place-commune",
+      "layout": {
+        "text-field": [
+          "get",
+          "texte"
+        ],
+        "text-font": [
+          "Source Sans Pro Bold"
+        ],
+        "text-max-width": 8,
+        "text-padding": 6,
+        "text-size": 15.0
+      },
+      "maxzoom": 24.0,
+      "minzoom": 13.0,
+      "paint": {
+        "text-color": "#1b1f24",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 2.5
+      },
+      "source": "ign",
+      "source-layer": "toponyme_localite_ponc",
+      "type": "symbol"
+    },
+    {
+      "filter": [
+        "all",
+        [
+          "==",
+          [
+            "get",
+            "symbo"
+          ],
+          "LIEU-DIT-HABITE"
+        ],
+        [
+          "match",
+          [
+            "get",
+            "txt_typo"
+          ],
+          [
+            "TYPO_A_5",
+            "TYPO_A_6",
+            "TYPO_A_7"
+          ],
+          true,
+          false
+        ]
+      ],
+      "id": "ign-place-hamlet",
+      "layout": {
+        "text-field": [
+          "get",
+          "texte"
+        ],
+        "text-font": [
+          "Source Sans Pro Semibold"
+        ],
+        "text-max-width": 8,
+        "text-padding": 6,
+        "text-size": 12.0
+      },
+      "maxzoom": 24.0,
+      "minzoom": 12.0,
+      "paint": {
+        "text-color": "#1b1f24",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 2.5
+      },
+      "source": "ign",
+      "source-layer": "toponyme_localite_ponc",
+      "type": "symbol"
+    },
+    {
+      "filter": [
+        "all",
+        [
+          "==",
+          [
+            "get",
+            "symbo"
+          ],
+          "LIEU-DIT-HABITE"
+        ],
+        [
+          "match",
+          [
+            "get",
+            "txt_typo"
+          ],
+          [
+            "TYPO_A_8",
+            "TYPO_A_9"
+          ],
+          true,
+          false
+        ]
+      ],
+      "id": "ign-place-small",
+      "layout": {
+        "text-field": [
+          "get",
+          "texte"
+        ],
+        "text-font": [
+          "Source Sans Pro Regular"
+        ],
+        "text-max-width": 8,
+        "text-padding": 6,
+        "text-size": 11.0
+      },
+      "maxzoom": 24.0,
+      "minzoom": 14.0,
+      "paint": {
+        "text-color": "#1b1f24",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 2.5
+      },
+      "source": "ign",
+      "source-layer": "toponyme_localite_ponc",
+      "type": "symbol"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "txt_typo"
+        ],
+        [
+          "ORO_SOMMET_1",
+          "ORO_SOMMET_2",
+          "ORO_COL_1",
+          "ORO_RELIEF_2_T",
+          "ORO_RELIEF_3_T",
+          "TYPO_G_4",
+          "TYPO_G_5",
+          "TYPO_G_6"
+        ],
+        true,
+        false
+      ],
+      "id": "ign-oro-main",
+      "layout": {
+        "text-field": [
+          "get",
+          "texte"
+        ],
+        "text-font": [
+          "Source Sans Pro Italic"
+        ],
+        "text-max-width": 8,
+        "text-padding": 4,
+        "text-size": 13.5
+      },
+      "minzoom": 11.0,
+      "paint": {
+        "text-color": "#5a4632",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 2.0
+      },
+      "source": "ign",
+      "source-layer": "toponyme_oro_ponc",
+      "type": "symbol"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "txt_typo"
+        ],
+        [
+          "ORO_SOMMET_3",
+          "ORO_COL_2",
+          "ORO_RELIEF_3",
+          "ORO_RELIEF_4",
+          "ORO_RELIEF_4_T",
+          "TYPO_G_7"
+        ],
+        true,
+        false
+      ],
+      "id": "ign-oro",
+      "layout": {
+        "text-field": [
+          "get",
+          "texte"
+        ],
+        "text-font": [
+          "Source Sans Pro Italic"
+        ],
+        "text-max-width": 8,
+        "text-padding": 4,
+        "text-size": 12.0
+      },
+      "minzoom": 11.0,
+      "paint": {
+        "text-color": "#5a4632",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 2.0
+      },
+      "source": "ign",
+      "source-layer": "toponyme_oro_ponc",
+      "type": "symbol"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "txt_typo"
+        ],
+        [
+          "TYPO_G_8"
+        ],
+        true,
+        false
+      ],
+      "id": "ign-oro-minor",
+      "layout": {
+        "text-field": [
+          "get",
+          "texte"
+        ],
+        "text-font": [
+          "Source Sans Pro Italic"
+        ],
+        "text-max-width": 8,
+        "text-padding": 4,
+        "text-size": 11.5
+      },
+      "minzoom": 15.0,
+      "paint": {
+        "text-color": "#5a4632",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 2.0
+      },
+      "source": "ign",
+      "source-layer": "toponyme_oro_ponc",
+      "type": "symbol"
+    },
+    {
+      "id": "position-accuracy",
+      "paint": {
+        "circle-color": "#0a6cff",
+        "circle-opacity": 0.15,
+        "circle-radius": [
+          "interpolate",
+          [
+            "exponential",
+            2
+          ],
+          [
+            "zoom"
+          ],
+          0,
+          [
+            "*",
+            [
+              "coalesce",
+              [
+                "get",
+                "accuracy_m"
+              ],
+              0
+            ],
+            0.000018292898017845273
+          ],
+          22,
+          [
+            "*",
+            [
+              "coalesce",
+              [
+                "get",
+                "accuracy_m"
+              ],
+              0
+            ],
+            76.7259753278405
+          ]
+        ],
+        "circle-stroke-color": "#0a6cff",
+        "circle-stroke-opacity": 0.4,
+        "circle-stroke-width": 1
+      },
+      "source": "position",
+      "type": "circle"
+    },
+    {
+      "id": "position-dot",
+      "metadata": {
+        "skimap:contrast": "background"
+      },
+      "paint": {
+        "circle-color": "#0a6cff",
+        "circle-radius": 9,
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 3
+      },
+      "source": "position",
+      "type": "circle"
+    }
+  ],
+  "metadata": {
+    "skimap:generator": "crates/styles (cargo run -p skimap-styles --example write_styles)",
+    "skimap:optional_layers": [
+      "snow-srn"
+    ],
+    "skimap:relative_urls": true,
+    "skimap:runtime_sources": {
+      "position": {
+        "geometry": "Point",
+        "properties": {
+          "accuracy_m": "number"
+        }
+      }
+    },
+    "skimap:style": "srn",
+    "skimap:theme": "clair"
+  },
+  "name": "skimap SRN (hors piste) (clair)",
+  "sources": {
+    "avalanche-areas": {
+      "data": "layers/avalanche-areas.geojson",
+      "type": "geojson"
+    },
+    "avalanche-exposure": {
+      "tileSize": 256,
+      "type": "raster",
+      "url": "pmtiles://rasters/avalanche-exposure.pmtiles"
+    },
+    "avalanche-segments": {
+      "data": "layers/avalanche-segments.geojson",
+      "type": "geojson"
+    },
+    "ign": {
+      "attribution": "© IGN Plan IGN v2",
+      "type": "vector",
+      "url": "pmtiles://basemap/plan-ign.pmtiles"
+    },
+    "no-network": {
+      "data": "layers/no-network.geojson",
+      "type": "geojson"
+    },
+    "osm": {
+      "attribution": "Protomaps © OpenStreetMap",
+      "type": "vector",
+      "url": "pmtiles://basemap/osm.pmtiles"
+    },
+    "pistes": {
+      "data": "layers/pistes.geojson",
+      "type": "geojson"
+    },
+    "position": {
+      "data": {
+        "features": [],
+        "type": "FeatureCollection"
+      },
+      "type": "geojson"
+    },
+    "refuges-camptocamp": {
+      "data": "layers/refuges-camptocamp.geojson",
+      "type": "geojson"
+    },
+    "refuges-info": {
+      "data": "layers/refuges-info.geojson",
+      "type": "geojson"
+    },
+    "refuges-osm": {
+      "data": "layers/refuges-osm.geojson",
+      "type": "geojson"
+    },
+    "slope": {
+      "tileSize": 256,
+      "type": "raster",
+      "url": "pmtiles://rasters/slope.pmtiles"
+    },
+    "snow-srn": {
+      "tileSize": 256,
+      "type": "raster",
+      "url": "pmtiles://rasters/snow-srn.pmtiles"
+    },
+    "status": {
+      "data": "layers/status.geojson",
+      "type": "geojson"
+    },
+    "zones": {
+      "data": "layers/zones.geojson",
+      "type": "geojson"
+    }
+  },
+  "sprite": "basemap/plan-ign/sprite/PlanIgn",
+  "version": 8
+}

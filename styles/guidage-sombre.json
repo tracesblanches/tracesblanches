@@ -1,0 +1,599 @@
+{
+  "glyphs": "basemap/plan-ign/fonts/{fontstack}/{range}.pbf",
+  "layers": [
+    {
+      "id": "background",
+      "paint": {
+        "background-color": "#11151a"
+      },
+      "type": "background"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "symbo"
+        ],
+        "ZONE_BATI"
+      ],
+      "id": "ign-built",
+      "maxzoom": 15,
+      "paint": {
+        "fill-color": "#1b2027"
+      },
+      "source": "ign",
+      "source-layer": "bati_zone_surf",
+      "type": "fill"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "symbo"
+        ],
+        [
+          "ZONE_BOISEE",
+          "ZONE_FORET_FERMEE_CONI",
+          "ZONE_FORET_FERMEE_FEUIL",
+          "ZONE_FORET_FERMEE_MIXTE",
+          "ZONE_FORET_OUVERTE"
+        ],
+        true,
+        false
+      ],
+      "id": "ign-forest",
+      "paint": {
+        "fill-color": "#17221b"
+      },
+      "source": "ign",
+      "source-layer": "ocs_vegetation_surf",
+      "type": "fill"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "symbo"
+        ],
+        "ZONE_GLACIER"
+      ],
+      "id": "ign-glacier",
+      "paint": {
+        "fill-color": "#1a2a38"
+      },
+      "source": "ign",
+      "source-layer": "ocs_nature_sol_surf",
+      "type": "fill"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "symbo"
+        ],
+        [
+          "SURFACE_D_EAU",
+          "BASSIN"
+        ],
+        true,
+        false
+      ],
+      "id": "ign-water",
+      "paint": {
+        "fill-color": "#1d4a73"
+      },
+      "source": "ign",
+      "source-layer": "hydro_surf",
+      "type": "fill"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "symbo"
+        ],
+        [
+          "AUTOROU_LIBRE",
+          "AUTOROU_PEAGE",
+          "PRINCIPALE_1",
+          "PRINCIPALE_2",
+          "PRINCIPALE_3",
+          "PRINCIPALE_4",
+          "REGIONALE_1",
+          "REGIONALE_2",
+          "REGIONALE_4"
+        ],
+        true,
+        false
+      ],
+      "id": "ign-road-major",
+      "paint": {
+        "line-color": "#3b4149",
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          10.0,
+          1.0,
+          16.0,
+          3.0
+        ]
+      },
+      "source": "ign",
+      "source-layer": "routier_route",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "in",
+        "nordic",
+        [
+          "coalesce",
+          [
+            "get",
+            "uses"
+          ],
+          [
+            "literal",
+            []
+          ]
+        ]
+      ],
+      "id": "pistes-context",
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "paint": {
+        "line-color": "#7b8088",
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          10.0,
+          1.0,
+          16.0,
+          3.0
+        ]
+      },
+      "source": "pistes",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "part"
+        ],
+        "done"
+      ],
+      "id": "route-done",
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "paint": {
+        "line-color": "#6f6f6f",
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          10.0,
+          4.0,
+          16.0,
+          9.0
+        ]
+      },
+      "source": "route",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "!=",
+        [
+          "get",
+          "part"
+        ],
+        "done"
+      ],
+      "id": "route-casing",
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "paint": {
+        "line-color": "#0b0e12",
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          10.0,
+          9.0,
+          16.0,
+          18.0
+        ]
+      },
+      "source": "route",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "!=",
+        [
+          "get",
+          "part"
+        ],
+        "done"
+      ],
+      "id": "route-line",
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "metadata": {
+        "skimap:contrast": "background"
+      },
+      "paint": {
+        "line-color": "#ff4fd8",
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          10.0,
+          5.0,
+          16.0,
+          11.0
+        ]
+      },
+      "source": "route",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "txt_typo"
+        ],
+        [
+          "BAT_CHEF_LIEU_COM",
+          "BAT_CHEF_LIEU_COM_T",
+          "BAT_COMMUNE_3",
+          "BAT_COMMUNE_3_T",
+          "BAT_COMMUNE_4",
+          "BAT_COMMUNE_4_T",
+          "BAT_COMMUNE_5",
+          "BAT_COMMUNE_5_T",
+          "BAT_COMMUNE_ASSOCIEE"
+        ],
+        true,
+        false
+      ],
+      "id": "ign-place-commune-low",
+      "layout": {
+        "text-field": [
+          "get",
+          "texte"
+        ],
+        "text-font": [
+          "Source Sans Pro Bold"
+        ],
+        "text-max-width": 8,
+        "text-padding": 6,
+        "text-size": 17.0
+      },
+      "maxzoom": 13.0,
+      "minzoom": 10.0,
+      "paint": {
+        "text-color": "#eef2f6",
+        "text-halo-color": "#0b0e12",
+        "text-halo-width": 2.5
+      },
+      "source": "ign",
+      "source-layer": "toponyme_localite_ponc",
+      "type": "symbol"
+    },
+    {
+      "filter": [
+        "all",
+        [
+          "match",
+          [
+            "get",
+            "symbo"
+          ],
+          [
+            "COMMUNE_CHEF_LIEU",
+            "COMMUNE_FUSIONNEE"
+          ],
+          true,
+          false
+        ],
+        [
+          "match",
+          [
+            "get",
+            "txt_typo"
+          ],
+          [
+            "TYPO_A_1",
+            "TYPO_A_2",
+            "TYPO_A_3",
+            "TYPO_A_4",
+            "TYPO_A_5",
+            "TYPO_A_6"
+          ],
+          true,
+          false
+        ]
+      ],
+      "id": "ign-place-commune",
+      "layout": {
+        "text-field": [
+          "get",
+          "texte"
+        ],
+        "text-font": [
+          "Source Sans Pro Bold"
+        ],
+        "text-max-width": 8,
+        "text-padding": 6,
+        "text-size": 18.0
+      },
+      "maxzoom": 24.0,
+      "minzoom": 13.0,
+      "paint": {
+        "text-color": "#eef2f6",
+        "text-halo-color": "#0b0e12",
+        "text-halo-width": 2.5
+      },
+      "source": "ign",
+      "source-layer": "toponyme_localite_ponc",
+      "type": "symbol"
+    },
+    {
+      "filter": [
+        "all",
+        [
+          "==",
+          [
+            "get",
+            "symbo"
+          ],
+          "LIEU-DIT-HABITE"
+        ],
+        [
+          "match",
+          [
+            "get",
+            "txt_typo"
+          ],
+          [
+            "TYPO_A_5",
+            "TYPO_A_6",
+            "TYPO_A_7"
+          ],
+          true,
+          false
+        ]
+      ],
+      "id": "ign-place-hamlet",
+      "layout": {
+        "text-field": [
+          "get",
+          "texte"
+        ],
+        "text-font": [
+          "Source Sans Pro Semibold"
+        ],
+        "text-max-width": 8,
+        "text-padding": 6,
+        "text-size": 15.0
+      },
+      "maxzoom": 24.0,
+      "minzoom": 14.0,
+      "paint": {
+        "text-color": "#eef2f6",
+        "text-halo-color": "#0b0e12",
+        "text-halo-width": 2.5
+      },
+      "source": "ign",
+      "source-layer": "toponyme_localite_ponc",
+      "type": "symbol"
+    },
+    {
+      "id": "decision",
+      "metadata": {
+        "skimap:contrast": "background"
+      },
+      "paint": {
+        "circle-color": "#ffd400",
+        "circle-radius": 15,
+        "circle-stroke-color": "#111111",
+        "circle-stroke-width": 4
+      },
+      "source": "decision",
+      "type": "circle"
+    },
+    {
+      "id": "decision-label",
+      "layout": {
+        "text-allow-overlap": true,
+        "text-anchor": "left",
+        "text-field": [
+          "get",
+          "label"
+        ],
+        "text-font": [
+          "Source Sans Pro Bold"
+        ],
+        "text-max-width": 12,
+        "text-offset": [
+          1.4,
+          0
+        ],
+        "text-size": 20
+      },
+      "paint": {
+        "text-color": "#eef2f6",
+        "text-halo-color": "#0b0e12",
+        "text-halo-width": 3.0
+      },
+      "source": "decision",
+      "type": "symbol"
+    },
+    {
+      "id": "position-accuracy",
+      "paint": {
+        "circle-color": "#4ea8ff",
+        "circle-opacity": 0.15,
+        "circle-radius": [
+          "interpolate",
+          [
+            "exponential",
+            2
+          ],
+          [
+            "zoom"
+          ],
+          0,
+          [
+            "*",
+            [
+              "coalesce",
+              [
+                "get",
+                "accuracy_m"
+              ],
+              0
+            ],
+            0.000018292898017845273
+          ],
+          22,
+          [
+            "*",
+            [
+              "coalesce",
+              [
+                "get",
+                "accuracy_m"
+              ],
+              0
+            ],
+            76.7259753278405
+          ]
+        ],
+        "circle-stroke-color": "#4ea8ff",
+        "circle-stroke-opacity": 0.4,
+        "circle-stroke-width": 1
+      },
+      "source": "position",
+      "type": "circle"
+    },
+    {
+      "id": "position-dot",
+      "metadata": {
+        "skimap:contrast": "background"
+      },
+      "paint": {
+        "circle-color": "#4ea8ff",
+        "circle-radius": 9,
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 3
+      },
+      "source": "position",
+      "type": "circle"
+    }
+  ],
+  "metadata": {
+    "skimap:generator": "crates/styles (cargo run -p skimap-styles --example write_styles)",
+    "skimap:optional_layers": [],
+    "skimap:relative_urls": true,
+    "skimap:runtime_sources": {
+      "decision": {
+        "geometry": "Point",
+        "properties": {
+          "label": "string"
+        }
+      },
+      "position": {
+        "geometry": "Point",
+        "properties": {
+          "accuracy_m": "number"
+        }
+      },
+      "route": {
+        "geometry": "LineString",
+        "properties": {
+          "part": [
+            "ahead",
+            "done"
+          ]
+        }
+      }
+    },
+    "skimap:style": "guidage",
+    "skimap:theme": "sombre"
+  },
+  "name": "skimap Guidage (sombre)",
+  "sources": {
+    "decision": {
+      "data": {
+        "features": [],
+        "type": "FeatureCollection"
+      },
+      "type": "geojson"
+    },
+    "ign": {
+      "attribution": "© IGN Plan IGN v2",
+      "type": "vector",
+      "url": "pmtiles://basemap/plan-ign.pmtiles"
+    },
+    "pistes": {
+      "data": "layers/pistes.geojson",
+      "type": "geojson"
+    },
+    "position": {
+      "data": {
+        "features": [],
+        "type": "FeatureCollection"
+      },
+      "type": "geojson"
+    },
+    "route": {
+      "data": {
+        "features": [],
+        "type": "FeatureCollection"
+      },
+      "type": "geojson"
+    }
+  },
+  "sprite": "basemap/plan-ign/sprite/PlanIgn",
+  "version": 8
+}
