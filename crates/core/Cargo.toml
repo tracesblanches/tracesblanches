@@ -26,6 +26,22 @@ thiserror.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+# Benchmarks (Q5, #105): instruction counts under Valgrind, gzipped inputs in benches/data.
+gungraun.workspace = true
+flate2.workspace = true
+
+[[bench]]
+name = "dominant"
+harness = false
+
+[[bench]]
+name = "wall"
+harness = false
+
+[[bench]]
+name = "make_data"
+harness = false
+required-features = ["pipeline"]
 
 [[example]]
 name = "routes"
