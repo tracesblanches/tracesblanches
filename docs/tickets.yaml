@@ -1124,7 +1124,31 @@ tickets:
   title: Publication sur le Play Store (test interne)
   milestone: M3 Client v1
   labels: [client, infra]
-  deps: [K1, Q8]
+  deps: [K1, Q8, O1]
   body: |
-    Reprendre l'outillage de ../tablonaute (compte développeur Android existant, fastlane, signature d'envoi, store_assets, page de confidentialité, liste de contrôle de publication) ; ne pas reprendre son interface. Fiche, captures, politique de confidentialité hébergée sur le serveur (S0). Piste de test interne d'abord.
+    Reprendre l'outillage de ../tablonaute (compte développeur Android existant, fastlane, signature d'envoi, store_assets, page de confidentialité, liste de contrôle de publication) ; ne pas reprendre son interface. Fiche, captures, politique de confidentialité publiée sur le site statique du projet (O1). Piste de test interne d'abord.
     Critère : build signé envoyé sur la piste de test interne et installé sur le Pixel depuis le Play Store.
+
+- key: K15
+  title: Fonds de carte par pratique (fond, SRN, guidage)
+  milestone: M3 Client v1
+  labels: [client, carte]
+  deps: [K1, K3]
+  body: |
+    Un même jeu de tuiles vectorielles (Plan IGN, OSM) et nos couches, plusieurs styles natifs MapLibre qui n'affichent pas la même chose. Plan IGN v2 est trop dense pour un coup d'œil.
+    - Fond : pistes par couleur et technique, état et damage, sens, départs, parkings, foyers ; relief discret ; peu de toponymes.
+    - SRN : courbes de niveau marquées, pentes, exposition aux avalanches, forêt, zones protégées et bivouac, refuges, zones sans réseau ; pistes en second plan.
+    - Guidage : minimal, pour un coup d'œil avec des gants en plein soleil : itinéraire du jour, prochaine décision, position.
+    Le style suit le mode (journée planifiée, pratique choisie) sans manipulation ; même jeu de styles dans le visualiseur du poste.
+    Critère : chaque style jugé lisible sur le Pixel au soleil ; captures comparées ; aucune tuile supplémentaire dans le pack.
+
+- key: O1
+  title: Organisation GitHub, site statique et ouverture aux contributions
+  milestone: M3 Client v1
+  labels: [infra]
+  deps: [F2]
+  body: |
+    Comme les autres projets de l'utilisateur (un autre projet : org GitHub, dépôt `.github` avec profil et bannière, site `<org>.github.io` statique avec accueil, démarrage, FAQ, confidentialité) : organisation dédiée, transfert du dépôt au moment de le rendre public, site statique soigné.
+    Contributions bienvenues, contributions assistées par IA bienvenues : CONTRIBUTING (tests et références dorées obligatoires, exception boutiques acceptée par chaque contributeur, IA autorisée avec relecture humaine et preuves), modèles d'issues et de PR, code de conduite.
+    Textes publics : règles d'écriture de l'utilisateur (voix active, faits vérifiés, pas d'autopromotion).
+    Critère : org créée par l'utilisateur, site en ligne, dépôt transféré et public.
