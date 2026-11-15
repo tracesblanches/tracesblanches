@@ -797,3 +797,178 @@ fn range_ignored_by_the_server_is_an_error() {
         Err(Error::NotCached { .. })
     ));
 }
+
+#[test]
+fn invalid_bodies_are_fetched_again_and_never_kept() {
+    // The Géoplateforme once answered a WFS request with the Prometheus metrics of a JVM
+    // (status 200), and the WMS with a 400 for a tile served a minute later (15/11/2026).
+    let srv = TestServer::start(|_, n| match n {
+        1 => Reply::ok("# HELP jvm_threads_current"),
+        2 => Reply::status(400),
+        _ => Reply::ok("{\"type\":\"FeatureCollection\"}"),
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let dl = downloader(dir.path(), policy("t"));
+    let req = Request::get("t", &srv.url("/wfs"));
+    let check = |f: &skimap_common::download::Fetched| {
+        let t = f.text().map_err(|e| e.to_string())?;
+        if t.starts_with('{') {
+            Ok(t)
+        } else {
+            Err(format!("not JSON: {t}"))
+        }
+    };
+    let t = dl
+        .fetch_checked(&req, 4, Duration::from_millis(5), &[400], check)
+        .unwrap();
+    assert_eq!(t, "{\"type\":\"FeatureCollection\"}");
+    assert_eq!(srv.count(), 3);
+    // The good body replaced the bad one in the cache: no request now.
+    let again = dl
+        .fetch_checked(&req, 4, Duration::from_millis(5), &[400], check)
+        .unwrap();
+    assert_eq!(again, t);
+    assert_eq!(srv.count(), 3);
+}
+
+#[test]
+fn invalid_bodies_give_up_after_the_attempts() {
+    let srv = TestServer::start(|_, _| Reply::ok("<html>maintenance</html>"));
+    let dir = tempfile::tempdir().unwrap();
+    let dl = downloader(dir.path(), policy("t"));
+    let req = Request::get("t", &srv.url("/x"));
+    let err = dl
+        .fetch_checked(&req, 3, Duration::from_millis(1), &[], |_| {
+            Err::<(), _>("bad".to_owned())
+        })
+        .unwrap_err();
+    assert!(matches!(err, Error::Invalid { attempts: 3, .. }), "{err}");
+    assert_eq!(srv.count(), 3);
+    // A status not listed is not retried.
+    let srv = TestServer::start(|_, _| Reply::status(403));
+    let req = Request::get("t", &srv.url("/y"));
+    let err = dl
+        .fetch_checked(&req, 3, Duration::from_millis(1), &[400], |_| Ok(()))
+        .unwrap_err();
+    assert!(matches!(err, Error::Status { status: 403, .. }), "{err}");
+    assert_eq!(srv.count(), 1);
+}
+
+#[test]
+fn a_source_down_is_paused_then_tried_again() {
+    let down = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let d = down.clone();
+    let srv = TestServer::start(move |_, _| {
+        if d.load(std::sync::atomic::Ordering::SeqCst) {
+            Reply::status(502)
+        } else {
+            Reply::ok("back")
+        }
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let dl = downloader(
+        dir.path(),
+        policy("t")
+            .retries(1, Duration::from_millis(1), Duration::from_millis(2))
+            .breaker(3, Duration::from_millis(300)),
+    );
+    // Three requests fail after their retry (2 requests each), then the source is paused.
+    for i in 0..3 {
+        let e = dl
+            .fetch(&Request::get("t", &srv.url(&format!("/{i}"))))
+            .unwrap_err();
+        assert!(matches!(e, Error::Status { status: 502, .. }), "{e}");
+    }
+    assert_eq!(srv.count(), 6);
+    let e = dl.fetch(&Request::get("t", &srv.url("/3"))).unwrap_err();
+    assert!(matches!(e, Error::SourceDown { failures: 3, .. }), "{e}");
+    assert_eq!(srv.count(), 6, "no request while the source is paused");
+    // After the pause, the source is back: one request, success, breaker closed.
+    down.store(false, std::sync::atomic::Ordering::SeqCst);
+    thread::sleep(Duration::from_millis(350));
+    let f = dl.fetch(&Request::get("t", &srv.url("/3"))).unwrap();
+    assert_eq!(f.text().unwrap(), "back");
+    assert_eq!(srv.count(), 7);
+    let f = dl.fetch(&Request::get("t", &srv.url("/4"))).unwrap();
+    assert_eq!(f.text().unwrap(), "back");
+}
+
+#[test]
+fn client_errors_do_not_trip_the_breaker() {
+    let srv = TestServer::start(|s, _| {
+        if s.url == "/ok" {
+            Reply::ok("fine")
+        } else {
+            Reply::status(404)
+        }
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let dl = downloader(dir.path(), policy("t").breaker(2, Duration::from_secs(60)));
+    for i in 0..4 {
+        assert!(
+            dl.fetch(&Request::get("t", &srv.url(&format!("/missing{i}"))))
+                .is_err()
+        );
+    }
+    assert_eq!(
+        dl.fetch(&Request::get("t", &srv.url("/ok")))
+            .unwrap()
+            .text()
+            .unwrap(),
+        "fine"
+    );
+}
+
+#[test]
+fn old_entries_of_a_purged_source_are_removed_on_first_use() {
+    let srv = TestServer::start(|_, _| Reply::ok("run"));
+    let dir = tempfile::tempdir().unwrap();
+    // A first process downloads two files.
+    {
+        let dl = downloader(dir.path(), policy("t"));
+        dl.fetch(&Request::get("t", &srv.url("/old"))).unwrap();
+        dl.fetch(&Request::get("t", &srv.url("/new"))).unwrap();
+    }
+    // Age the first entry by three days.
+    let src = dir.path().join("t");
+    let mut aged = 0;
+    for e in std::fs::read_dir(&src).unwrap().flatten() {
+        let p = e.path();
+        if p.extension().is_some_and(|x| x == "json") && !p.ends_with("ratelimit.json") {
+            let mut m: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
+            if m["url"].as_str().unwrap().ends_with("/old") {
+                m["fetched_at_unix"] =
+                    serde_json::json!(m["fetched_at_unix"].as_u64().unwrap() - 3 * 86_400);
+                std::fs::write(&p, serde_json::to_vec(&m).unwrap()).unwrap();
+                aged += 1;
+            }
+        }
+    }
+    assert_eq!(aged, 1);
+    let bodies = || {
+        std::fs::read_dir(&src)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.path().extension().is_some_and(|x| x == "body"))
+            .count()
+    };
+    assert_eq!(bodies(), 2);
+    // A new process with a purge after 2 days: the old entry goes at the first use.
+    let dl = downloader(
+        dir.path(),
+        policy("t").purge_after(Duration::from_secs(2 * 86_400)),
+    );
+    let n = srv.count();
+    dl.fetch(&Request::get("t", &srv.url("/new"))).unwrap();
+    assert_eq!(
+        srv.count(),
+        n,
+        "the recent entry is still served from the cache"
+    );
+    assert_eq!(bodies(), 1);
+    assert!(matches!(
+        dl.fetch(&Request::get("t", &srv.url("/old")).cache(CachePolicy::Offline)),
+        Err(Error::NotCached { .. })
+    ));
+}

@@ -155,15 +155,16 @@ struct Fiches {
     clusters: usize,
 }
 
-fn fiches_part(dl: &Downloader, ds: &[domains::Domain], census_dir: &Path) -> Result<Fiches> {
-    let pf = pois::fetch(dl, ds)?;
-    let cf = contacts::fetch(dl, ds, census_dir)?;
-    let checked = pf
-        .answers
-        .iter()
-        .map(|f| f.meta.fetched_at_unix)
-        .min()
-        .and_then(|t| skimap_common::meta::unix_to_rfc3339(t as i64));
+fn fiches_part(
+    layout: &DataLayout,
+    dl: &Downloader,
+    ds: &[domains::Domain],
+    census_dir: &Path,
+) -> Result<Fiches> {
+    let pf = pois::fetch(layout, dl, ds)?;
+    let cf = contacts::fetch(layout, dl, ds, census_dir)?;
+    // Date of the OSM data read (replication timestamp of the extracts).
+    let checked = pf.valid_at.clone();
     let cards = ds
         .iter()
         .map(|d| {
@@ -187,22 +188,12 @@ fn fiches_part(dl: &Downloader, ds: &[domains::Domain], census_dir: &Path) -> Re
             feature(point(p.pos), v)
         })
         .collect();
-    let mut sources: Vec<SourceRef> = pf
-        .answers
-        .iter()
-        .enumerate()
-        .map(|(i, f)| {
-            SourceRef::from_fetched(
-                format!(
-                    "OpenStreetMap (Overpass), points des stations, requête {}",
-                    i + 1
-                ),
-                pois::LICENCE,
-                pois::ATTRIBUTION,
-                f,
-            )
-        })
-        .collect();
+    let mut sources: Vec<SourceRef> = pf.sources.clone();
+    for s in &cf.osm_sources {
+        if !sources.iter().any(|x| x.url == s.url) {
+            sources.push(s.clone());
+        }
+    }
     for (name, lic, attr, f) in &cf.sources {
         sources.push(SourceRef::from_fetched(
             name.clone(),
@@ -249,7 +240,7 @@ pub fn refresh(
         ran.push("fiches".to_owned());
         let part = state.parts.entry("fiches".into()).or_default();
         part.last_run = Some(at.clone());
-        match fiches_part(dl, &ds, &census_dir) {
+        match fiches_part(layout, dl, &ds, &census_dir) {
             Ok(f) => {
                 part.last_ok = Some(at.clone());
                 part.error = None;
@@ -276,7 +267,7 @@ pub fn refresh(
                 changes.push(refresh::Change {
                     at: at.clone(),
                     part: "sources".into(),
-                    id: "overpass".into(),
+                    id: "osm-local".into(),
                     change: "unreachable".into(),
                     detail: vec![e.to_string()],
                 });
@@ -389,7 +380,7 @@ pub fn refresh(
 
     let mut stats = card_figures(&cards_path);
     if let Some(c) = clusters {
-        stats["overpass_requests"] = json!(c);
+        stats["osm_queries"] = json!(c);
     }
     if !personal_stats.is_null() {
         stats["personal"] = personal_stats;
@@ -849,7 +840,7 @@ fn write_meta(
         ],
         parameters: json!({
             "reach_m": {"secours (poste, premiers secours)": 1000, "secours de montagne, ambulance, centre de secours": 3000, "défibrillateur": 500, "téléphone d'urgence": 200, "point de rencontre des secours": 100, "vente": 1000, "office de tourisme, école de ski (2 plus proches)": 6000, "parking": 300},
-            "overpass_endpoints": pois::ENDPOINTS,
+            "osm_source": "extraits Geofabrik locaux (skimap_osm::local)",
             "personal_sources": personal_sources,
         }),
         stats: stats.clone(),

@@ -1,0 +1,96 @@
+# Automatic catch-up (#118, #139): every 6 hours, `skimap-job catchup` runs
+# `skimap meteo-refresh` (AROME weather of every site at the latest run, X17: the 06:40
+# run takes the 03 UTC run of the morning; idempotent), then
+# `skimap build-all --all --stale` on the volume, then publishes every site pack
+# (`skimap-server publish --all-in`: an unchanged pack is not republished, a changed one
+# goes out as a delta bundle). To append to the pipeline manifest of the infrastructure repository once
+# the pipeline image contains `build-all --stale` (same image, volume and security context
+# as the other pipeline CronJobs).
+#
+# What it redoes, source by source and site by site: only the steps that failed (source
+# down: the previous outputs stay published with their date), whose outputs no longer
+# match their fingerprint (altered, removed, half written: `--stale`), or older than
+# `--max-age-hours` (a week here: the daily layers have their own CronJobs), and the steps
+# that depend on them; the rest is taken over (`build-all.json`, one journal per site).
+# Downloads go through the shared cache (ETag / If-Modified-Since): a run with nothing to
+# catch up sends no request to the sources and publishes nothing. Idempotent.
+#
+# A source that is still down fails its step again (retries with backoff in the
+# downloader; the run goes on with the other steps and sites) and the Job ends non-zero;
+# the next run tries again. data/out/france/status.json says, per site and step, the date
+# of the data in use, the last attempt and the error.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: skimap-catchup
+  namespace: skimap
+  labels:
+    app.kubernetes.io/name: skimap-pipeline
+    app.kubernetes.io/part-of: skimap
+spec:
+  schedule: "40 */6 * * *"          # 00:40, 06:40, 12:40, 18:40
+  timeZone: Europe/Paris
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      # A catch-up after a long outage of a heavy source (LiDAR) may rebuild many sites;
+      # it waits on the pipeline lock and stops starting sites after 4 h (the next run
+      # resumes).
+      activeDeadlineSeconds: 18000
+      ttlSecondsAfterFinished: 259200
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: skimap-pipeline
+            app.kubernetes.io/part-of: skimap
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: pipeline
+              image: skimap-pipeline
+              imagePullPolicy: IfNotPresent
+              args: ["catchup"]
+              env:
+                - { name: SKIMAP_DATA_DIR, value: /data/pipeline }
+                - { name: SKIMAP_STORE, value: /data/store }
+                - { name: SKIMAP_CATCHUP_JOBS, value: "2" }
+                - { name: SKIMAP_CATCHUP_MAX_AGE_HOURS, value: "168" }
+                - { name: SKIMAP_CATCHUP_STOP_AFTER_MIN, value: "240" }
+                - { name: TMPDIR, value: /tmp }
+                - { name: RUST_LOG, value: warn }
+              envFrom:
+                - secretRef:
+                    name: skimap-pipeline-keys
+                    optional: true
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: ["ALL"] }
+              volumeMounts:
+                - { name: data, subPath: pipeline, mountPath: /data/pipeline }
+                - { name: data, subPath: store, mountPath: /data/store }
+                - { name: tmp, mountPath: /tmp }
+              # Workstation (15/11/2026, 8 sites at once): 7.3 GB peak for the process;
+              # 2 sites at once stay under 4 GiB except the GTJ sections (5.6 GB alone),
+              # built on the workstation.
+              resources:
+                requests: { cpu: 500m, memory: 1Gi }
+                limits: { cpu: "3", memory: 4Gi }
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: data
+            - name: tmp
+              emptyDir:
+                sizeLimit: 2Gi

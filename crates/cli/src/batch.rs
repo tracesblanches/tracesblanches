@@ -37,6 +37,80 @@ pub struct BatchOptions {
     pub max_age: Duration,
     /// No site is started after this duration (the running ones finish).
     pub stop_after: Option<Duration>,
+    /// Check the output fingerprints of the sites that look up to date: a site whose
+    /// outputs no longer match its record (altered, removed, half written) is rebuilt
+    /// (`build-all --stale`).
+    pub verify: bool,
+}
+
+/// Whether every output recorded for the steps of `rec` is still on disk unchanged.
+pub fn outputs_intact(layout: &DataLayout, site: &Site, rec: &BuildRecord) -> bool {
+    let dir = layout.out_dir(site);
+    rec.outcome
+        .steps
+        .iter()
+        .all(|s| match (&s.outputs, crate::build::step_dir(&s.name)) {
+            (Some(f), Some(d)) => crate::build::fingerprint(&dir.join(d)).as_ref() == Some(f),
+            _ => true,
+        })
+}
+
+/// Removes the temporary files (`*.tmp*`) left in a directory by an interrupted write.
+pub fn remove_orphan_tmp(dir: &Path) -> usize {
+    let mut n = 0;
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    for e in rd.flatten() {
+        let p = e.path();
+        if e.file_type().is_ok_and(|t| t.is_dir()) {
+            n += remove_orphan_tmp(&p);
+        } else if p
+            .file_name()
+            .and_then(|f| f.to_str())
+            .is_some_and(|f| f.contains(".tmp"))
+            && std::fs::remove_file(&p).is_ok()
+        {
+            n += 1;
+        }
+    }
+    n
+}
+
+/// Box area from which a site is built alone among the big ones (9 sites of the registry
+/// on 15/11/2026: the GTJ and Vercors traverse sections, Haute-Joux, Les Fourgs…).
+pub const HEAVY_SITE_KM2: f64 = 300.0;
+
+/// Area of the box of a site, km².
+pub fn site_area_km2(site: &Site) -> f64 {
+    let b = site.bbox;
+    let lat = ((b.north + b.south) / 2.0).to_radians();
+    (b.north - b.south) * 111.2 * (b.east - b.west) * 111.2 * lat.cos()
+}
+
+/// Lock file of a site build, in its output directory.
+pub const LOCK_FILE: &str = ".build-all.lock";
+
+/// Takes the build lock of a site (no two builds of one site at once, whatever the
+/// process); released when the returned file is dropped (or the process dies).
+pub fn lock_site(dir: &Path) -> Result<std::fs::File> {
+    let p = dir.join(LOCK_FILE);
+    let f = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&p)
+        .with_context(|| format!("{}", p.display()))?;
+    match f.try_lock() {
+        Ok(()) => Ok(f),
+        Err(std::fs::TryLockError::WouldBlock) => {
+            anyhow::bail!(
+                "{} : une autre construction de ce site est en cours",
+                dir.display()
+            )
+        }
+        Err(std::fs::TryLockError::Error(e)) => Err(e).with_context(|| format!("{}", p.display())),
+    }
 }
 
 /// Downloads of the run, per source: files and bytes added to the cache.
@@ -128,6 +202,8 @@ pub struct BatchSummary {
     pub peak_rss_mb: Option<f64>,
     /// Refresh of the stations layer of France, once for the batch.
     pub stations: StepRecord,
+    /// AROME weather of every site to build, once for the batch (public mode only).
+    pub meteo: Option<StepRecord>,
     /// Per site.
     pub results: Vec<SiteResult>,
 }
@@ -140,6 +216,7 @@ fn inputs(ctx: &Ctx, registry: &Registry, site: &Site) -> Result<BuildInputs> {
             .clone(),
         version: env!("CARGO_PKG_VERSION").to_owned(),
         personal_sources: ctx.cfg.personal_sources,
+        revision: france::BUILD_REVISION,
     })
 }
 
@@ -219,7 +296,11 @@ pub fn build_many(
     for s in sites {
         let inp = inputs(ctx, registry, s)?;
         match france::read_record(&ctx.layout, s.id) {
-            Some(r) if !opts.force && up_to_date(&r, &inp, opts.max_age, now) => {
+            Some(r)
+                if !opts.force
+                    && up_to_date(&r, &inp, opts.max_age, now)
+                    && (!opts.verify || outputs_intact(&ctx.layout, s, &r)) =>
+            {
                 println!("{:<34} à jour (construit le {})", s.id, r.finished_at);
                 results.push(SiteResult {
                     site: s.id.to_owned(),
@@ -244,6 +325,7 @@ pub fn build_many(
     );
     let mut built: Vec<(String, BuildOutcome)> = Vec::new();
     let mut stations = None;
+    let mut meteo = None;
     if n > 0 {
         let t = Instant::now();
         let planet = skimap_osm::extract::load_planet(&ctx.dl)?;
@@ -257,16 +339,23 @@ pub fn build_many(
         let srn = ctx.srn(&planet)?;
         println!("{} zones SRN hors stations", srn.areas.len());
         stations = Some(stations_step(ctx, opts.force));
+        let todo_sites: Vec<&Site> = todo.iter().map(|(s, _)| *s).collect();
+        meteo = (!ctx.cfg.personal_sources).then(|| meteo_step(ctx, &todo_sites));
         let shared = Shared {
             planet: Some(&planet),
             census: Some(&census),
             srn: Some(&srn),
             stations_once: true,
             force_stations: opts.force,
+            resume: None,
+            journal: None,
         };
         let queue = Mutex::new(todo);
         let done = Mutex::new(Vec::new());
         let counter = Mutex::new(0usize);
+        // Big sites one at a time: a GTJ section alone peaks at 5.6 GB (G2), several at
+        // once with the other sites would exhaust the memory of the machine.
+        let heavy = Mutex::new(());
         let deadline = opts.stop_after.map(|d| t0 + d);
         std::thread::scope(|scope| {
             for _ in 0..opts.jobs.max(1) {
@@ -278,7 +367,9 @@ pub fn build_many(
                         let Some((site, inp)) = queue.lock().expect("queue").pop_front() else {
                             break;
                         };
-                        let r = build_one(ctx, site, inp, shared);
+                        let _heavy = (site_area_km2(site) >= HEAVY_SITE_KM2)
+                            .then(|| heavy.lock().unwrap_or_else(|p| p.into_inner()));
+                        let r = build_one(ctx, site, inp, shared, opts);
                         let k = {
                             let mut c = counter.lock().expect("counter");
                             *c += 1;
@@ -429,6 +520,7 @@ pub fn build_many(
         downloads,
         peak_rss_mb: crate::build::peak_rss_mb(),
         stations,
+        meteo,
         results,
     };
     let dir = ctx.layout.france_dir().join("build-all");
@@ -436,7 +528,186 @@ pub fn build_many(
     let stamp = Utc::now().format("%Y%m%dT%H%M%SZ");
     skimap_common::output::write_json(&dir.join(format!("summary_{stamp}.json")), &summary)?;
     skimap_common::output::write_json(&dir.join("summary.json"), &summary)?;
+    // Every site of the registry, not only those of this batch.
+    write_status(&ctx.layout, &registry.buildable())?;
     Ok(summary)
+}
+
+/// State of one step of a site in `status.json`.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct StepStatus {
+    /// Step.
+    pub step: String,
+    /// `ok`, `failed`, `blocked`, `not_applicable`, `disabled`.
+    pub state: StepState,
+    /// Date of the outputs in use (the last successful run of the step), RFC 3339.
+    pub updated_at: Option<String>,
+    /// Last attempt, RFC 3339 (for a failed step: when it failed).
+    pub tried_at: Option<String>,
+    /// Error of a failed step.
+    pub error: Option<String>,
+    /// First failure of a step that has been failing since (kept from one `status.json`
+    /// to the next), RFC 3339.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failing_since: Option<String>,
+}
+
+/// Days of failure after which a step is listed in `status.json` `alerts`.
+pub const ALERT_AFTER_DAYS: i64 = 3;
+
+/// One site in `status.json`.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct SiteStatus {
+    /// Site.
+    pub site: String,
+    /// `ok` (every step done or not applicable), `failed` (at least one step failed: its
+    /// previous outputs, if any, are kept and published with their date), `never_built`.
+    pub state: String,
+    /// Last run of the site, RFC 3339.
+    pub built_at: Option<String>,
+    /// Steps that are not done, with their cause.
+    pub failed_steps: Vec<StepStatus>,
+    /// Every step.
+    pub steps: Vec<StepStatus>,
+}
+
+/// `data/out/france/status.json`: state of every site of the batch from its record
+/// (`build-all.json`), for the scheduled catch-up and the server. The dates are the dates
+/// of the data in use: a step that failed keeps the outputs of its last success, shown
+/// with their date, without any other qualifier.
+pub fn write_status(layout: &DataLayout, sites: &[&'static Site]) -> Result<PathBuf> {
+    let path = layout.france_dir().join("status.json");
+    // First failure of each (site, step) still failing, from the previous status.
+    let mut since: BTreeMap<(String, String), String> = BTreeMap::new();
+    if let Some(v) = std::fs::read(&path)
+        .ok()
+        .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+    {
+        for site in v["by_site"].as_array().into_iter().flatten() {
+            for st in site["failed_steps"].as_array().into_iter().flatten() {
+                if let (Some(a), Some(b), Some(t)) = (
+                    site["site"].as_str(),
+                    st["step"].as_str(),
+                    st["failing_since"].as_str(),
+                ) {
+                    since.insert((a.to_owned(), b.to_owned()), t.to_owned());
+                }
+            }
+        }
+    }
+    let now = Utc::now();
+    let mut alerts = Vec::new();
+    let mut out = Vec::new();
+    for s in sites {
+        let Some(rec) = france::read_record(layout, s.id) else {
+            out.push(SiteStatus {
+                site: s.id.to_owned(),
+                state: "never_built".into(),
+                built_at: None,
+                failed_steps: Vec::new(),
+                steps: Vec::new(),
+            });
+            continue;
+        };
+        let steps: Vec<StepStatus> = rec
+            .outcome
+            .steps
+            .iter()
+            .map(|st| {
+                let failed = matches!(st.state, StepState::Failed | StepState::Blocked);
+                let tried_at = st.at.clone().or_else(|| Some(rec.finished_at.clone()));
+                let failing_since = failed.then(|| {
+                    since
+                        .get(&(s.id.to_owned(), st.name.clone()))
+                        .cloned()
+                        .or_else(|| tried_at.clone())
+                        .unwrap_or_default()
+                });
+                if let Some(t) = failing_since
+                    .as_deref()
+                    .and_then(|t| DateTime::parse_from_rfc3339(t).ok())
+                    && (now - t.to_utc()).num_days() >= ALERT_AFTER_DAYS
+                {
+                    alerts.push(format!(
+                        "{} : {} en échec depuis le {}",
+                        s.id,
+                        st.name,
+                        t.format("%d/%m/%Y")
+                    ));
+                }
+                StepStatus {
+                    step: st.name.clone(),
+                    state: st.state,
+                    updated_at: if failed { None } else { st.at.clone() },
+                    tried_at,
+                    error: failed.then(|| first_line(&st.line, 300)),
+                    failing_since,
+                }
+            })
+            .collect();
+        let failed_steps: Vec<StepStatus> = steps
+            .iter()
+            .filter(|x| matches!(x.state, StepState::Failed | StepState::Blocked))
+            .cloned()
+            .collect();
+        out.push(SiteStatus {
+            site: s.id.to_owned(),
+            state: if rec.ok { "ok" } else { "failed" }.into(),
+            built_at: Some(rec.finished_at.clone()),
+            failed_steps,
+            steps,
+        });
+    }
+    let count = |k: &str| out.iter().filter(|x| x.state == k).count();
+    skimap_common::output::write_json(
+        &path,
+        &serde_json::json!({
+            "generated_at": now_rfc3339(),
+            "sites": out.len(),
+            "ok": count("ok"),
+            "failed": count("failed"),
+            "never_built": count("never_built"),
+            "alert_after_days": ALERT_AFTER_DAYS,
+            "alerts": alerts,
+            "by_site": out,
+        }),
+    )?;
+    Ok(path)
+}
+
+/// AROME weather (X17) of `sites` in one call: the run is downloaded and each file
+/// decoded once for every point of every site (the `meteo` step of each site then finds
+/// its layer at the latest run). A failure is recorded; the step of each site retries.
+pub fn meteo_step(ctx: &Ctx, sites: &[&Site]) -> StepRecord {
+    let t = Instant::now();
+    let (state, line) = match skimap_meteo::arome::refresh(sites, &ctx.layout, &ctx.dl) {
+        Ok(r) => {
+            let written = r.sites.iter().filter(|s| s.status == "written").count();
+            (
+                StepState::Ok,
+                format!(
+                    "run AROME {} : {written} sites écrits, {} déjà à ce run",
+                    r.run,
+                    r.sites.len() - written
+                ),
+            )
+        }
+        Err(e) => (StepState::Failed, format!("{e:#}")),
+    };
+    let seconds = t.elapsed().as_secs_f64();
+    match state {
+        StepState::Ok => println!("météo AROME : {line} ({seconds:.1} s)"),
+        _ => println!("météo AROME : ÉCHEC ({seconds:.1} s) : {line}"),
+    }
+    StepRecord {
+        name: "meteo-arome".into(),
+        state,
+        seconds,
+        line,
+        at: Some(now_rfc3339()),
+        outputs: None,
+        resumed: false,
+    }
 }
 
 /// Refreshes the stations layer of France once, printed and recorded like a step.
@@ -456,7 +727,74 @@ fn stations_step(ctx: &Ctx, force: bool) -> StepRecord {
         state,
         seconds,
         line,
+        at: Some(now_rfc3339()),
+        outputs: None,
+        resumed: false,
     }
+}
+
+/// Builds one site under its lock: orphan temporary files removed, steps of the previous
+/// (or interrupted) run taken over when still valid ([`crate::build::Resume`]), the record
+/// written after every step.
+fn build_site(
+    ctx: &Ctx,
+    site: &'static Site,
+    inp: BuildInputs,
+    shared: Shared<'_>,
+    force: bool,
+    max_age: Duration,
+    log: &mut dyn std::io::Write,
+) -> Result<BuildOutcome> {
+    let dir = ctx.layout.out_dir(site);
+    DataLayout::ensure(&dir)?;
+    let _lock = lock_site(&dir)?;
+    let removed = remove_orphan_tmp(&dir);
+    if removed > 0 {
+        tracing::warn!(site = site.id, removed, "orphan temporary files removed");
+    }
+    let previous =
+        france::read_record(&ctx.layout, site.id).filter(|r| !force && r.inputs.resumable_by(&inp));
+    let resume = previous.as_ref().map(|r| crate::build::Resume {
+        previous: &r.outcome.steps,
+        max_age,
+        pack_bytes: r.outcome.pack_bytes,
+        export_bytes: r.outcome.export_bytes,
+    });
+    let started_at = now_rfc3339();
+    let record_path = france::record_path(&ctx.layout, site.id);
+    let journal = |steps: &[StepRecord]| {
+        let rec = BuildRecord {
+            inputs: inp.clone(),
+            started_at: started_at.clone(),
+            finished_at: now_rfc3339(),
+            ok: false,
+            outcome: BuildOutcome {
+                site: site.id.to_owned(),
+                steps: steps.to_vec(),
+                seconds: 0.0,
+                pack_bytes: None,
+                export_bytes: None,
+            },
+        };
+        if let Err(e) = skimap_common::output::write_json(&record_path, &rec) {
+            tracing::warn!(site = site.id, error = %e, "journal not written");
+        }
+    };
+    let shared = Shared {
+        resume,
+        journal: Some(&journal),
+        ..shared
+    };
+    let o = ctx.build_all_with(site, &shared, log);
+    let rec = BuildRecord {
+        inputs: inp.clone(),
+        started_at: started_at.clone(),
+        finished_at: now_rfc3339(),
+        ok: o.ok(),
+        outcome: o.clone(),
+    };
+    skimap_common::output::write_json(&record_path, &rec)?;
+    Ok(o)
 }
 
 fn build_one(
@@ -464,6 +802,7 @@ fn build_one(
     site: &'static Site,
     inp: BuildInputs,
     shared: Shared<'_>,
+    opts: &BatchOptions,
 ) -> Result<BuildOutcome> {
     let dir = ctx.layout.out_dir(site);
     DataLayout::ensure(&dir)?;
@@ -471,17 +810,7 @@ fn build_one(
     let mut log = std::io::BufWriter::new(
         std::fs::File::create(&log_path).with_context(|| format!("{}", log_path.display()))?,
     );
-    let started_at = now_rfc3339();
-    let o = ctx.build_all_with(site, &shared, &mut log);
-    let rec = BuildRecord {
-        inputs: inp,
-        started_at,
-        finished_at: now_rfc3339(),
-        ok: o.ok(),
-        outcome: o.clone(),
-    };
-    skimap_common::output::write_json(&france::record_path(&ctx.layout, site.id), &rec)?;
-    Ok(o)
+    build_site(ctx, site, inp, shared, opts.force, opts.max_age, &mut log)
 }
 
 /// `build-all <site>`: the steps printed on stdout, the record written as in a batch
@@ -491,23 +820,22 @@ pub fn build_single(
     registry: &Registry,
     site: &'static Site,
     force: bool,
+    max_age: Duration,
 ) -> Result<()> {
     let inp = inputs(ctx, registry, site)?;
-    let started_at = now_rfc3339();
     let shared = Shared {
         force_stations: force,
         ..Shared::default()
     };
-    let o = ctx.build_all_with(site, &shared, &mut std::io::stdout());
-    let rec = BuildRecord {
-        inputs: inp,
-        started_at,
-        finished_at: now_rfc3339(),
-        ok: o.ok(),
-        outcome: o.clone(),
-    };
-    DataLayout::ensure(&ctx.layout.out_dir(site))?;
-    skimap_common::output::write_json(&france::record_path(&ctx.layout, site.id), &rec)?;
+    let o = build_site(
+        ctx,
+        site,
+        inp,
+        shared,
+        force,
+        max_age,
+        &mut std::io::stdout(),
+    )?;
     o.into_result()
 }
 
@@ -590,6 +918,7 @@ mod tests {
                 record: skimap_common::site::evaluation_records()[0].clone(),
                 version: "0.1.0".into(),
                 personal_sources: false,
+                revision: france::BUILD_REVISION,
             },
             started_at: "2026-11-15T10:00:00Z".into(),
             finished_at: "2026-11-15T10:01:00Z".into(),
@@ -622,6 +951,20 @@ mod tests {
         let mut failed = rec.clone();
         failed.ok = false;
         assert!(!up_to_date(&failed, &rec.inputs, day, now));
+        // A new revision of the steps: not up to date, but its steps can be taken over.
+        let mut older = rec.inputs.clone();
+        older.revision = 1;
+        assert!(!up_to_date(
+            &BuildRecord {
+                inputs: older.clone(),
+                ..rec.clone()
+            },
+            &rec.inputs,
+            day,
+            now
+        ));
+        assert!(older.resumable_by(&rec.inputs));
+        assert!(!other.resumable_by(&rec.inputs), "another site record");
     }
 
     #[test]

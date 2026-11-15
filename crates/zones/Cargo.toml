@@ -31,6 +31,10 @@ tracing-subscriber.workspace = true
 name = "build_zones"
 required-features = ["pipeline"]
 
+[[example]]
+name = "departments_check"
+required-features = ["pipeline"]
+
 [[test]]
 name = "real_sites"
 required-features = ["pipeline"]

@@ -1,8 +1,8 @@
 //! Writing layer files: JSON, raw bytes and GeoJSON (WGS84), always atomically.
 //!
 //! Every writer creates the parent directory, writes `<file>.tmp` next to the target and
-//! renames it, so that a reader never sees a half-written file. JSON is pretty-printed
-//! and ends with a newline.
+//! renames it (after `fsync`), so that a reader never sees a half-written file, even after
+//! a crash or a power cut. JSON is pretty-printed and ends with a newline.
 
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -33,7 +33,12 @@ fn ensure_parent(path: &Path) -> Result<()> {
 pub fn write_bytes(path: &Path, body: &[u8]) -> Result<()> {
     ensure_parent(path)?;
     let tmp = tmp_path(path);
-    std::fs::write(&tmp, body).map_err(|e| Error::io(&tmp, e))?;
+    let io = |e| Error::io(&tmp, e);
+    let mut f = std::fs::File::create(&tmp).map_err(io)?;
+    f.write_all(body).map_err(io)?;
+    // On disk before the rename: a crash never leaves the new name on empty content.
+    f.sync_all().map_err(io)?;
+    drop(f);
     std::fs::rename(&tmp, path).map_err(|e| Error::io(path, e))
 }
 
@@ -96,8 +101,9 @@ pub fn write_geojson(path: &Path, features: &[Value]) -> Result<()> {
             .map_err(|e| Error::json(path.display().to_string(), e))?;
     }
     w.write_all(b"\n]}\n").map_err(io)?;
-    w.flush().map_err(io)?;
-    drop(w);
+    let f = w.into_inner().map_err(|e| io(e.into_error()))?;
+    f.sync_all().map_err(io)?;
+    drop(f);
     std::fs::rename(&tmp, path).map_err(|e| Error::io(path, e))
 }
 

@@ -6,4 +6,6 @@ Extraction des pistes nordiques OSM et recensement des domaines de fond (pipelin
 - [P2 : connexité du réseau et corrections OSM à faire](docs/connexite.md) : composantes et requêtes sans itinéraire, sens uniques à contresens à Chapelle-des-Bois, trou du Laus à Cervières.
 - [P3 : domaines de fond, France](docs/domaines.md) : regroupement, recensement, sorties, résultats.
 
+- [X5 : extraits OSM locaux](docs/local.md) : extraits Geofabrik `.osm.pbf` lus en Rust à la place d'Overpass (refuges, points des stations).
+
 API : `extract::build(site, &layout, &downloader)` (P2), `census::build(site, &layout, &downloader)` (P3) ; `extract::load_planet` pour lire l'extrait une seule fois. Exemples : `cargo run --release -p skimap-osm --example pistes`, `--example domaines`.

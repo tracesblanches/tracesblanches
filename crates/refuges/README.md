@@ -8,7 +8,7 @@ Refuges et abris : refuges.info, OSM, Camptocamp (pipeline). Tickets : P11 (#24)
 |---|---|---|---|
 | refuges.info | `/api/bbox?detail=complet&nb_points=all` (source `refuges-info`, 1 req/s) | CC BY-SA 2.0 | type, état, places, matelas, poêle, cheminée, eau, couvertures, latrines, mur manquant, accès, remarques, date de modification |
 | refuges.info, commentaires | `/api/commentaires?id_point=a,b,c` (40 points par requête) | CC BY-SA 2.0 | date du dernier commentaire de chaque point (ni texte ni auteur, H1) |
-| OpenStreetMap | Overpass public (source `overpass`, 1 requête / 5 s), une requête par site : `tourism=alpine_hut`, `tourism=wilderness_hut`, `amenity=shelter`, `ref:refuges.info` | ODbL | type (`kind`), `ref:refuges.info`, étiquettes utiles (capacité, `winter_room`, cheminée, horaires…) |
+| OpenStreetMap | extraits Geofabrik locaux (`skimap_osm::local`, X5 #139 ; source `geofabrik`), même filtre que l'ancienne requête Overpass : `tourism=alpine_hut`, `tourism=wilderness_hut`, `amenity=shelter`, `ref:refuges.info` | ODbL | type (`kind`), `ref:refuges.info`, étiquettes utiles (capacité, `winter_room`, cheminée, horaires…) |
 | Camptocamp | `/waypoints?wtyp=hut,shelter,gite&bbox=` (EPSG:3857) puis `/waypoints/<id>?cook=fr` | CC BY-SA 3.0 (licence par document) | capacité hors gardiennage (`capacity`), gardée, gardiennage, matelas, couvertures, gaz, chauffage hors gardiennage, période de gardiennage, auteurs |
 | geo.api.gouv.fr | `communes?lat=&lon=` | Licence Ouverte 2.0 | `in_france` (les emprises débordent sur l'Italie et la Suisse) |
 

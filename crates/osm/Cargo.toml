@@ -18,6 +18,9 @@ rstar.workspace = true
 geo.workspace = true
 geo-types.workspace = true
 csv.workspace = true
+# Geofabrik `.osm.pbf` extracts (X5, #139): not in the workspace table (owned crate).
+osmpbf = "0.3.8"
+rayon.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

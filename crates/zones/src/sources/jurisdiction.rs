@@ -1,9 +1,10 @@
 //! French jurisdictions inside a site box: communes, départements and the French part of
 //! the box, from the commune outlines of geo.api.gouv.fr.
 //!
-//! The départements are discovered by asking geo.api.gouv.fr which commune contains each
-//! point of an 11 × 11 grid over the box (one cached request per point, ~1.5 km apart on
-//! the two sites), so that a new site needs no hand-written list.
+//! The départements are discovered by asking geo.api.gouv.fr which commune contains the
+//! points of an 11 × 11 grid over the box (one cached request per point, ~1.5 km apart on
+//! the two sites; a point inside a commune of a département already found is not asked),
+//! so that a new site needs no hand-written list.
 
 use std::collections::BTreeSet;
 
@@ -33,23 +34,79 @@ pub struct French {
     pub country: RawZone,
 }
 
-/// Départements having a commune under one of the grid points.
-pub fn departments_in_bbox(dl: &Downloader, b: BBox) -> Result<BTreeSet<String>> {
-    let mut out = BTreeSet::new();
+/// Points of the discovery grid, the centre first, then the corners, then the others
+/// row by row (the first points find the main départements, whose communes then cover
+/// most of the other points).
+fn grid_points(b: BBox) -> Vec<(f64, f64)> {
+    let mut idx: Vec<(usize, usize)> = vec![(GRID / 2, GRID / 2)];
+    for c in [(0, 0), (0, GRID - 1), (GRID - 1, 0), (GRID - 1, GRID - 1)] {
+        idx.push(c);
+    }
     for i in 0..GRID {
         for j in 0..GRID {
-            let lat = b.south + (b.north - b.south) * i as f64 / (GRID - 1) as f64;
-            let lon = b.west + (b.east - b.west) * j as f64 / (GRID - 1) as f64;
-            let url = format!(
-                "{API}/communes?lat={lat:.5}&lon={lon:.5}&fields=code,codeDepartement&format=json"
-            );
-            let v = fetch_json(dl, "geo-api", &url)?;
-            let arr = v
-                .as_array()
-                .ok_or_else(|| Error::data(&url, "expected an array"))?;
-            for c in arr {
-                if let Some(d) = c.get("codeDepartement").and_then(|d| d.as_str()) {
-                    out.insert(d.to_owned());
+            if !idx.contains(&(i, j)) {
+                idx.push((i, j));
+            }
+        }
+    }
+    idx.into_iter()
+        .map(|(i, j)| {
+            (
+                b.south + (b.north - b.south) * i as f64 / (GRID - 1) as f64,
+                b.west + (b.east - b.west) * j as f64 / (GRID - 1) as f64,
+            )
+        })
+        .collect()
+}
+
+/// Commune outlines of a département (the request [`french`] makes anyway, cached).
+fn department_communes(dl: &Downloader, d: &str) -> Result<Vec<MultiPolygon<f64>>> {
+    let url = format!("{API}/departements/{d}/communes?format=geojson&geometry=contour");
+    let fc = fetch_fc(dl, "geo-api", &url)?;
+    let mut out = Vec::with_capacity(fc.features.len());
+    for f in fc.features {
+        out.push(feature_parts(f, &url)?.1);
+    }
+    Ok(out)
+}
+
+/// Départements having a commune under one of the grid points.
+///
+/// A grid point inside a commune of a département already found needs no request: its
+/// département is that one. Only the other points are asked to geo.api.gouv.fr (one
+/// cached request each): the result is the same as asking every point, with a few
+/// requests instead of 121 for a box inside one or two départements (the point requests,
+/// 1 to 6 s each under load, dominated the first build of a site, 15/11/2026).
+pub fn departments_in_bbox(dl: &Downloader, b: BBox) -> Result<BTreeSet<String>> {
+    use geo::Contains;
+    let mut out = BTreeSet::new();
+    let mut known: Vec<(geo::Rect<f64>, MultiPolygon<f64>)> = Vec::new();
+    for (lat, lon) in grid_points(b) {
+        let pt = geo::Point::new(lon, lat);
+        if known.iter().any(|(r, g)| {
+            lon >= r.min().x
+                && lon <= r.max().x
+                && lat >= r.min().y
+                && lat <= r.max().y
+                && g.contains(&pt)
+        }) {
+            continue;
+        }
+        let url = format!(
+            "{API}/communes?lat={lat:.5}&lon={lon:.5}&fields=code,codeDepartement&format=json"
+        );
+        let v = fetch_json(dl, "geo-api", &url)?;
+        let arr = v
+            .as_array()
+            .ok_or_else(|| Error::data(&url, "expected an array"))?;
+        for c in arr {
+            if let Some(d) = c.get("codeDepartement").and_then(|d| d.as_str())
+                && out.insert(d.to_owned())
+            {
+                for g in department_communes(dl, d)? {
+                    if let Some(r) = g.bounding_rect() {
+                        known.push((r, g));
+                    }
                 }
             }
         }

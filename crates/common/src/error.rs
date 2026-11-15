@@ -91,6 +91,35 @@ pub enum Error {
         wait: Duration,
     },
 
+    /// The server kept answering a body that is not what was asked for (an error page or
+    /// another service's output with status 200, a raster without georeferencing), after
+    /// every reload of [`crate::download::Downloader::fetch_checked`].
+    #[error("invalid answer from {url} after {attempts} attempts: {message}")]
+    Invalid {
+        /// Public URL (without secrets).
+        url: String,
+        /// Attempts made.
+        attempts: u32,
+        /// Why the last body was refused.
+        message: String,
+    },
+
+    /// The source failed several requests in a row (circuit breaker of the downloader):
+    /// no request is sent to it until `until`.
+    #[error(
+        "source `{source_name}` down ({failures} requests failed in a row), not asked again before {until}: {url}"
+    )]
+    SourceDown {
+        /// Source name.
+        source_name: String,
+        /// Public URL (without secrets) of the request refused.
+        url: String,
+        /// Failed requests in a row.
+        failures: u32,
+        /// End of the pause, RFC 3339.
+        until: String,
+    },
+
     /// Offline (cache-only) request for an entry that is not cached.
     #[error("not in cache (offline mode): {url}")]
     NotCached {

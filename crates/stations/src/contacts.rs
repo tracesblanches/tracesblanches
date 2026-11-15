@@ -1,7 +1,7 @@
 //! Station-level contacts: web sites and phones of the station itself.
 //!
 //! - OSM `site=piste` relation of the domain (ODbL): `website`, `contact:website`, `phone`,
-//!   `contact:phone`, `operator` (one Overpass query for all relations);
+//!   `contact:phone`, `operator` (local OSM extracts, `skimap_osm::local`);
 //! - OpenSkiMap `ski_areas.csv` (ODbL): `websites` of the areas overlapping the domain;
 //! - SkiRadar geo-feed (« Données factuelles réutilisables avec attribution « skiradar.fr »
 //!   et lien vers la fiche »): official site and ski school (name, site) of the station
@@ -157,27 +157,24 @@ pub struct Fetch {
     pub by_domain: BTreeMap<String, StationContacts>,
     /// Downloads, for the metadata: (source name, licence, attribution, answer).
     pub sources: Vec<(String, String, String, Fetched)>,
+    /// Local OSM extracts read for the `site=piste` relations.
+    pub osm_sources: Vec<skimap_common::meta::SourceRef>,
 }
 
 /// Reads the station contacts of every domain.
-pub fn fetch(dl: &Downloader, domains: &[Domain], census_dir: &Path) -> Result<Fetch> {
+pub fn fetch(
+    layout: &skimap_common::layout::DataLayout,
+    dl: &Downloader,
+    domains: &[Domain],
+    census_dir: &Path,
+) -> Result<Fetch> {
     let mut sources = Vec::new();
     // OSM site relations.
     let rels: Vec<i64> = domains.iter().filter_map(|d| d.site_relation).collect();
-    let ids = rels
-        .iter()
-        .map(i64::to_string)
-        .collect::<Vec<_>>()
-        .join(",");
-    let q = format!("[out:json][timeout:120];rel(id:{ids});out tags;");
-    let (f, v) = crate::pois::overpass(dl, &q, &std::cell::Cell::new(0))?;
+    let idx = skimap_osm::local::load(layout, dl)?;
+    let v = idx.relations(&rels);
     let rel_tags = parse_relations(&v);
-    sources.push((
-        "OpenStreetMap (Overpass), relations site=piste des domaines".to_owned(),
-        crate::pois::LICENCE.to_owned(),
-        crate::pois::ATTRIBUTION.to_owned(),
-        f,
-    ));
+    let osm_sources = idx.sources.clone();
     // OpenSkiMap.
     let f = dl.fetch(&Request::get("openskimap", OPENSKIMAP_AREAS_URL))?;
     let osk = parse_openskimap_websites(&f.bytes()?)?;
@@ -270,7 +267,11 @@ pub fn fetch(dl: &Downloader, domains: &[Domain], census_dir: &Path) -> Result<F
         }
         by_domain.insert(d.id.clone(), c);
     }
-    Ok(Fetch { by_domain, sources })
+    Ok(Fetch {
+        by_domain,
+        sources,
+        osm_sources,
+    })
 }
 
 #[cfg(test)]

@@ -12,6 +12,10 @@
 #   skimap-job refresh   cervieres chapelle-des-bois   # station cards and titles of France
 #                                                      # (once), huts of each site; daily
 #                                                      # 1 Nov-30 Apr, weekly otherwise
+#   skimap-job catchup                                 # every site: AROME weather of the
+#                                                      # latest run, then only what failed,
+#                                                      # is altered or old (build-all
+#                                                      # --stale), then every pack published
 #
 # Environment: SKIMAP_DATA_DIR (pipeline data), SKIMAP_STORE (published store),
 # METEOFRANCE_API_KEY and the other keys of the pipeline.
@@ -34,6 +38,21 @@ step() {
 # rebuilt and published: the job then ends non-zero.
 if [ "$task" = refresh ]; then
   step skimap refresh "$@"
+fi
+
+# Catch-up of every site of the registry (deploy/catchup-cronjob.yaml): the failed,
+# altered (fingerprints) and old steps only, then every pack; the publication sends only
+# the packs that changed. The packs are published even when some step is still failing
+# (its previous outputs, with their date, are in the pack).
+if [ "$task" = catchup ]; then
+  # Weather of every site at the latest AROME run (idempotent: nothing written when the
+  # run has not changed); the packs that change are published below.
+  step skimap meteo-refresh
+  step skimap build-all --all --stale --jobs "${SKIMAP_CATCHUP_JOBS:-2}" \
+    --max-age-hours "${SKIMAP_CATCHUP_MAX_AGE_HOURS:-168}" \
+    --stop-after-min "${SKIMAP_CATCHUP_STOP_AFTER_MIN:-240}"
+  step skimap-server publish --all-in "$SKIMAP_DATA_DIR/out"
+  exit $rc
 fi
 
 for site in "$@"; do

@@ -375,6 +375,8 @@ pub struct Downloader {
 
 /// Shared state of one source: rate limiter, in-flight slots, one lock per request key.
 struct SourceState {
+    /// Failed requests in a row and end of the pause (unix ms) of the circuit breaker.
+    breaker: Mutex<(u32, u64)>,
     limiter: Mutex<Limiter>,
     in_flight: Mutex<usize>,
     slot_freed: std::sync::Condvar,
@@ -469,8 +471,15 @@ impl Downloader {
         if let Some(s) = states.get(&policy.name) {
             return Ok(s.clone());
         }
+        if let Some(age) = policy.purge_after {
+            let (n, bytes) = purge(dir, self.now_unix().saturating_sub(age.as_secs()));
+            if n > 0 {
+                tracing::info!(source = %policy.name, entries = n, bytes, "old cache entries purged");
+            }
+        }
         let l = Limiter::load(policy.limits.clone(), Some(dir.join("ratelimit.json")))?;
         let s = Arc::new(SourceState {
+            breaker: Mutex::new((0, 0)),
             limiter: Mutex::new(l),
             in_flight: Mutex::new(0),
             slot_freed: std::sync::Condvar::new(),
@@ -534,6 +543,54 @@ impl Downloader {
         out
     }
 
+    /// Fetches `req` and checks the body with `check`. A body the check refuses (an
+    /// error page or another service's output served with status 200, a raster without
+    /// georeferencing: Géoplateforme WMS-R and WFS, 15/11/2026) is fetched again,
+    /// bypassing the cache, so it never stays there once a good one is served; a status
+    /// listed in `retry_status` (on top of the retries of [`Downloader::fetch`]) is
+    /// retried the same way. At most `attempts` requests, `backoff` × 2ⁿ apart.
+    pub fn fetch_checked<T>(
+        &self,
+        req: &Request,
+        attempts: u32,
+        backoff: Duration,
+        retry_status: &[u16],
+        check: impl Fn(&Fetched) -> std::result::Result<T, String>,
+    ) -> Result<T> {
+        let attempts = attempts.max(1);
+        let mut policy = req.cache;
+        let mut last = String::new();
+        for attempt in 0..attempts {
+            if attempt > 0 {
+                self.clock
+                    .sleep(backoff.saturating_mul(1u32 << (attempt - 1).min(16)));
+            }
+            let r = req.clone().cache(policy);
+            match self.fetch(&r) {
+                Ok(f) => match check(&f) {
+                    Ok(v) => return Ok(v),
+                    Err(m) => {
+                        tracing::warn!(source = %req.source, url = %req.url, attempt = attempt + 1, error = %m, "invalid answer, fetched again");
+                        last = m;
+                    }
+                },
+                Err(Error::Status { status, .. }) if retry_status.contains(&status) => {
+                    tracing::warn!(source = %req.source, url = %req.url, attempt = attempt + 1, status, "status retried");
+                    last = format!("HTTP status {status}");
+                }
+                Err(e) => return Err(e),
+            }
+            if policy != CachePolicy::Offline {
+                policy = CachePolicy::Reload;
+            }
+        }
+        Err(Error::Invalid {
+            url: req.url.clone(),
+            attempts,
+            message: last,
+        })
+    }
+
     fn fetch_locked(
         &self,
         req: &Request,
@@ -557,6 +614,45 @@ impl Downloader {
             cached
         };
 
+        // Circuit breaker: a source that failed several requests in a row is not asked
+        // again before the end of its pause (the run goes on with the other sources).
+        {
+            let (failures, until) = *lock(&state.breaker);
+            let now = unix_ms(self.clock.now());
+            if failures >= policy.breaker_failures && now < until {
+                return Err(Error::SourceDown {
+                    source_name: req.source.clone(),
+                    url: req.url.clone(),
+                    failures,
+                    until: crate::meta::unix_to_rfc3339((until / 1000) as i64).unwrap_or_default(),
+                });
+            }
+        }
+        let out = self.fetch_network(req, policy, state, entry, conditional);
+        let mut b = lock(&state.breaker);
+        match &out {
+            Ok(_) => *b = (0, 0),
+            Err(e) if is_outage(e) => {
+                b.0 += 1;
+                if b.0 >= policy.breaker_failures {
+                    b.1 = unix_ms(self.clock.now())
+                        + u64::try_from(policy.breaker_open.as_millis()).unwrap_or(u64::MAX);
+                    tracing::warn!(source = %req.source, failures = b.0, "source down, paused");
+                }
+            }
+            Err(_) => {}
+        }
+        out
+    }
+
+    fn fetch_network(
+        &self,
+        req: &Request,
+        policy: &SourcePolicy,
+        state: &SourceState,
+        entry: &Entry,
+        conditional: Option<CacheMeta>,
+    ) -> Result<Fetched> {
         let mut attempt = 0u32;
         loop {
             let sent =
@@ -734,6 +830,45 @@ impl Downloader {
         } else {
             Attempt::Fatal(err)
         }
+    }
+}
+
+/// Removes the cache entries of `dir` downloaded before `before_unix` (body and metadata)
+/// and their orphan temporary files; returns the entries removed and their bytes.
+pub fn purge(dir: &Path, before_unix: u64) -> (usize, u64) {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return (0, 0);
+    };
+    let (mut n, mut bytes) = (0, 0);
+    for e in rd.flatten() {
+        let p = e.path();
+        if p.extension().is_none_or(|x| x != "json")
+            || p.file_name().is_some_and(|f| f == "ratelimit.json")
+        {
+            continue;
+        }
+        let old = std::fs::read(&p)
+            .ok()
+            .and_then(|b| serde_json::from_slice::<CacheMeta>(&b).ok())
+            .is_some_and(|m| m.fetched_at_unix < before_unix);
+        if old {
+            let body = p.with_extension("body");
+            bytes += std::fs::metadata(&body).map_or(0, |m| m.len());
+            let _ = std::fs::remove_file(&body);
+            let _ = std::fs::remove_file(&p);
+            n += 1;
+        }
+    }
+    (n, bytes)
+}
+
+/// Whether an error after all retries means the source is down (transport error, 408,
+/// 429, 5xx), not that this request is wrong (4xx).
+fn is_outage(e: &Error) -> bool {
+    match e {
+        Error::Http { .. } => true,
+        Error::Status { status, .. } => matches!(status, 408 | 429 | 500..=599),
+        _ => false,
     }
 }
 

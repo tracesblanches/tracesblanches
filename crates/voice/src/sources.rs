@@ -396,10 +396,16 @@ pub fn site_names(layout: &DataLayout, site: &Site) -> Result<SiteNames> {
     // The piste layer: one personal source would make every piste name personal.
     let pistes_personal = pistes_meta.sources.iter().any(personal);
     pistes_meta.sources.into_iter().for_each(&mut add);
+    // Names come from refuges.info and OSM: the OSM huts are read from the local Geofabrik
+    // extracts (X5); layers built before X5 name the Overpass endpoint.
     refuges_meta
         .sources
         .into_iter()
-        .filter(|s| s.url.contains("refuges.info/api/bbox") || s.url.contains("overpass"))
+        .filter(|s| {
+            s.url.contains("refuges.info/api/bbox")
+                || s.url.contains("download.geofabrik.de")
+                || s.url.contains("overpass")
+        })
         .for_each(&mut add);
     for key in ["inpn", "biodiv-sports", "geo-admin"] {
         if let Some(s) = zone_source(key, &zones_meta.sources) {
@@ -617,6 +623,12 @@ mod tests {
                 "refuges.info",
             ),
             SourceRef::new(
+                "OpenStreetMap, extrait Geofabrik rhone-alpes",
+                "https://download.geofabrik.de/europe/france/rhone-alpes-latest.osm.pbf",
+                "ODbL 1.0",
+                "© OSM",
+            ),
+            SourceRef::new(
                 "Camptocamp /waypoints",
                 "https://api.camptocamp.org/waypoints",
                 "CC BY-SA 3.0",
@@ -688,11 +700,16 @@ mod tests {
         assert_eq!(names.len(), 2, "{names:?}");
         assert!(names.iter().any(|n| n.starts_with("Biodiv'sports")));
         assert!(names.iter().any(|n| n.starts_with("Plan des pistes")));
-        // Camptocamp gives no name.
+        // Camptocamp gives no name; the OSM extract does.
         assert!(
             s.public_sources
                 .iter()
                 .all(|x| !x.name.starts_with("Camptocamp"))
+        );
+        assert!(
+            s.public_sources
+                .iter()
+                .any(|x| x.url.contains("download.geofabrik.de"))
         );
         assert_eq!(s.all().places.len(), 3);
 

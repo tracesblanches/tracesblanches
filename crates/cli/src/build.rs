@@ -148,14 +148,14 @@ impl Ctx {
         )?)
     }
 
-    /// P19: hourly weather (personal use only).
+    /// P19 / X17: hourly weather, Open-Meteo with `personal_sources` (personal use only),
+    /// else Météo-France AROME 0.025° (Licence Ouverte), the same layer.
     pub fn meteo(&self, site: &Site) -> Result<skimap_meteo::hourly::HourlyFile> {
-        Ok(skimap_meteo::hourly::build(
-            site,
-            &self.layout,
-            &self.dl,
-            self.cfg.personal_sources,
-        )?)
+        Ok(if self.cfg.personal_sources {
+            skimap_meteo::hourly::build(site, &self.layout, &self.dl, true)?
+        } else {
+            skimap_meteo::arome::build(site, &self.layout, &self.dl)?
+        })
     }
 
     /// P13: one poll of the trail status (personal use only).
@@ -286,7 +286,7 @@ impl Ctx {
         shared: &Shared<'_>,
         log: &mut dyn std::io::Write,
     ) -> BuildOutcome {
-        let mut run = Run::new(site, log);
+        let mut run = Run::new(site, self.layout.out_dir(site), shared, log);
         let mut own_planet = None;
         run.step("planet", &[], || match shared.planet {
             Some(p) => Ok(format!(
@@ -312,6 +312,19 @@ impl Ctx {
                 .ok_or_else(|| anyhow!("extrait non lu"))
         };
         let mut graph_edges = None;
+        if run.resumable("pistes", &["planet"]).is_some() {
+            // Taken over: the edge count of the routing test comes from the layer.
+            graph_edges = LayerMeta::read(
+                &self
+                    .layout
+                    .out_dir(site)
+                    .join("pistes")
+                    .join("pistes.meta.json"),
+            )
+            .ok()
+            .and_then(|m| m.stats["graph_edges"].as_u64())
+            .map(|n| n as usize);
+        }
         run.step("pistes", &["planet"], || {
             let s = self.pistes(site, Some(planet_ref()?))?.stats;
             graph_edges = Some(s.graph_edges);
@@ -554,22 +567,28 @@ impl Ctx {
                 b.origin.as_deref().unwrap_or("-")
             ))
         });
+        // Public mode: AROME (Licence Ouverte); the assistant then gets its weather too.
+        run.step("meteo", &[], || {
+            let h = self.meteo(site)?;
+            let hours: usize = h.points.iter().map(|p| p.hours.len()).sum();
+            let first = h.points.first();
+            Ok(format!(
+                "{}{} points, {hours} heures, du {} au {}",
+                if self.cfg.personal_sources {
+                    ""
+                } else {
+                    "AROME : "
+                },
+                h.points.len(),
+                first
+                    .and_then(|p| p.hours.first())
+                    .map_or("?", |x| x.time.as_str()),
+                first
+                    .and_then(|p| p.hours.last())
+                    .map_or("?", |x| x.time.as_str())
+            ))
+        });
         if self.cfg.personal_sources {
-            run.step("meteo", &[], || {
-                let h = self.meteo(site)?;
-                let hours: usize = h.points.iter().map(|p| p.hours.len()).sum();
-                let first = h.points.first();
-                Ok(format!(
-                    "{} points, {hours} heures, du {} au {}",
-                    h.points.len(),
-                    first
-                        .and_then(|p| p.hours.first())
-                        .map_or("?", |x| x.time.as_str()),
-                    first
-                        .and_then(|p| p.hours.last())
-                        .map_or("?", |x| x.time.as_str())
-                ))
-            });
             run.step("status-poll", &["pistes"], || {
                 if !site.kind.has_groomed_trails() {
                     return not_applicable(&format!(
@@ -591,10 +610,6 @@ impl Ctx {
                 Ok(s.join(" | "))
             });
         } else {
-            run.skip(
-                "meteo",
-                "personal_sources désactivé (SKIMAP_PERSONAL_SOURCES)",
-            );
             run.skip(
                 "status-poll",
                 "personal_sources désactivé (SKIMAP_PERSONAL_SOURCES)",
@@ -718,12 +733,26 @@ impl Ctx {
                 r.skipped.len()
             ))
         });
+        let resumed = |n: &str| run.steps.iter().any(|s| s.name == n && s.resumed);
+        let (pack_resumed, export_resumed) = (resumed("build-pack"), resumed("export"));
+        let previous = shared.resume;
         let mut out = run.finish();
-        out.pack_bytes = pack_bytes;
-        out.export_bytes = export_bytes;
+        out.pack_bytes = if pack_resumed {
+            previous.and_then(|r| r.pack_bytes)
+        } else {
+            pack_bytes
+        };
+        out.export_bytes = if export_resumed {
+            previous.and_then(|r| r.export_bytes)
+        } else {
+            export_bytes
+        };
         out
     }
 }
+
+/// Writes the steps done so far (journal of a site build).
+pub type Journal<'a> = dyn Fn(&[StepRecord]) + Sync + 'a;
 
 /// Inputs read once and shared by the `build-all` of several sites.
 #[derive(Default, Clone, Copy)]
@@ -739,6 +768,11 @@ pub struct Shared<'a> {
     pub stations_once: bool,
     /// Refresh every part of the stations layer, due or not (`build-all --force`).
     pub force_stations: bool,
+    /// Steps taken over from the previous run of the site.
+    pub resume: Option<Resume<'a>>,
+    /// Called with the steps so far after every step (journal of the site, so that an
+    /// interrupted run is taken over where it stopped).
+    pub journal: Option<&'a Journal<'a>>,
 }
 
 /// French line of a refresh of the stations layer: parts run, cards, changes, failures.
@@ -768,7 +802,7 @@ pub fn describe_stations(r: &skimap_stations::RefreshReport) -> String {
     }
     if !r.stale_titres.is_empty() {
         s.push_str(&format!(
-            " ; titres périmés ou anciens : {}",
+            " ; titres non relus (dernière lecture réussie gardée, avec sa date) : {}",
             r.stale_titres.join(", ")
         ));
     }
@@ -825,6 +859,109 @@ pub struct StepRecord {
     pub seconds: f64,
     /// Key figures, error or reason.
     pub line: String,
+    /// When the outputs of the step were produced (RFC 3339): the time of the run that
+    /// computed them, kept when a later run takes them over ([`Resume`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at: Option<String>,
+    /// Fingerprint of the step's output directory ([`fingerprint`]) after the step: a
+    /// later run takes the step over only if the directory still has it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outputs: Option<String>,
+    /// Taken over from the previous run, not run again.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub resumed: bool,
+}
+
+/// Output directory (layer) of a step that can be taken over by a later run: its
+/// outputs are all in that directory of the site.
+pub fn step_dir(step: &str) -> Option<&'static str> {
+    Some(match step {
+        "pistes" => "pistes",
+        "terrain" => "terrain",
+        "snow" => "snow",
+        "refuges" => "refuges",
+        "zones" => "zones",
+        "avalanche-exposure" => "avalanche-exposure",
+        "routing" => "routes",
+        "offpiste-prepare" => "offpiste",
+        "coverage" => "coverage",
+        "bera" => "bera",
+        "meteo" => "meteo-hourly",
+        "avalanche-historic" => "avalanche-historic",
+        "build-pack" => "pack",
+        "export" => "export",
+        _ => return None,
+    })
+}
+
+/// Fingerprint of a directory: sha256 over its files (relative path, size, sha256 of
+/// the content), in path order; temporary files (`*.tmp*`) left out. `None` when the
+/// directory does not exist.
+pub fn fingerprint(dir: &Path) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    fn walk(base: &Path, dir: &Path, out: &mut Vec<(String, PathBuf)>) {
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for e in rd.flatten() {
+            let p = e.path();
+            if e.file_type().is_ok_and(|t| t.is_dir()) {
+                walk(base, &p, out);
+            } else {
+                let rel = p
+                    .strip_prefix(base)
+                    .unwrap_or(&p)
+                    .to_string_lossy()
+                    .into_owned();
+                if !rel.contains(".tmp") {
+                    out.push((rel, p));
+                }
+            }
+        }
+    }
+    if !dir.is_dir() {
+        return None;
+    }
+    let mut files = Vec::new();
+    walk(dir, dir, &mut files);
+    files.sort();
+    let mut h = Sha256::new();
+    for (rel, p) in files {
+        let mut fh = Sha256::new();
+        let mut f = std::fs::File::open(&p).ok()?;
+        let mut buf = vec![0u8; 1 << 16];
+        let mut n = 0u64;
+        loop {
+            let k = std::io::Read::read(&mut f, &mut buf).ok()?;
+            if k == 0 {
+                break;
+            }
+            fh.update(&buf[..k]);
+            n += k as u64;
+        }
+        h.update(rel.as_bytes());
+        h.update([0]);
+        h.update(n.to_le_bytes());
+        h.update(fh.finalize());
+    }
+    Some(hex::encode(h.finalize()))
+}
+
+/// What a run takes over from the previous run of the site (`build-all.json`): a step
+/// done less than `max_age` ago whose output directory still has its fingerprint and
+/// whose dependencies did not change in this run is not run again. The pack and the
+/// export are rebuilt as soon as any step changed its outputs.
+#[derive(Clone, Copy)]
+pub struct Resume<'a> {
+    /// Steps of the previous run (or of the interrupted one: the journal is written after
+    /// every step).
+    pub previous: &'a [StepRecord],
+    /// Age beyond which a step is run again.
+    pub max_age: std::time::Duration,
+    /// Pack and export sizes of the previous run.
+    pub pack_bytes: Option<u64>,
+    /// Export size of the previous run.
+    pub export_bytes: Option<u64>,
 }
 
 /// Result of the `build-all` of one site.
@@ -877,15 +1014,25 @@ impl BuildOutcome {
 /// Steps of a `build-all` run.
 struct Run<'a> {
     site: &'a Site,
+    out_dir: PathBuf,
     t0: Instant,
     failed: BTreeSet<&'static str>,
     not_applicable: BTreeSet<&'static str>,
+    /// Steps whose outputs differ from the previous run (run again, failed, or new).
+    changed: BTreeSet<&'static str>,
     steps: Vec<StepRecord>,
+    resume: Option<Resume<'a>>,
+    journal: Option<&'a Journal<'a>>,
     log: &'a mut dyn std::io::Write,
 }
 
 impl<'a> Run<'a> {
-    fn new(site: &'a Site, log: &'a mut dyn std::io::Write) -> Self {
+    fn new(
+        site: &'a Site,
+        out_dir: PathBuf,
+        shared: &Shared<'a>,
+        log: &'a mut dyn std::io::Write,
+    ) -> Self {
         let _ = writeln!(
             log,
             "build-all {} ({}, {})",
@@ -895,16 +1042,41 @@ impl<'a> Run<'a> {
         );
         Self {
             site,
+            out_dir,
             t0: Instant::now(),
             failed: BTreeSet::new(),
             not_applicable: BTreeSet::new(),
+            changed: BTreeSet::new(),
             steps: Vec::new(),
+            resume: shared.resume,
+            journal: shared.journal,
             log,
         }
     }
 
     fn record(&mut self, name: &str, state: StepState, seconds: f64, line: String) {
-        let shown = match state {
+        self.record_full(StepRecord {
+            name: name.to_owned(),
+            state,
+            seconds,
+            line,
+            at: None,
+            outputs: None,
+            resumed: false,
+        });
+    }
+
+    fn record_full(&mut self, r: StepRecord) {
+        let (name, seconds, line) = (&r.name, r.seconds, &r.line);
+        let shown = match r.state {
+            StepState::Ok if r.resumed => format!(
+                "{name:<19} {:>8}  repris (fait le {}) : {line}",
+                "-",
+                r.at.as_deref().unwrap_or("?")
+            ),
+            StepState::NotApplicable if r.resumed => {
+                format!("{name:<19} {:>8}  sans objet (repris) : {line}", "-")
+            }
             StepState::Ok => format!("{name:<19} {seconds:>7.2}s  {line}"),
             StepState::Failed => format!("{name:<19} {seconds:>7.2}s  ÉCHEC : {line}"),
             StepState::Blocked => format!("{name:<19} {:>8}  IGNORÉ : {line}", "-"),
@@ -915,12 +1087,41 @@ impl<'a> Run<'a> {
         };
         let _ = writeln!(self.log, "{shown}");
         let _ = self.log.flush();
-        self.steps.push(StepRecord {
-            name: name.to_owned(),
-            state,
-            seconds,
-            line,
-        });
+        self.steps.push(r);
+        if let Some(j) = self.journal {
+            j(&self.steps);
+        }
+    }
+
+    /// The previous record of `name` when the step can be taken over ([`Resume`]).
+    fn resumable(&self, name: &str, deps: &[&'static str]) -> Option<StepRecord> {
+        let r = self.resume?;
+        let dir = step_dir(name)?;
+        let prev = r.previous.iter().find(|s| s.name == name)?;
+        if !matches!(prev.state, StepState::Ok | StepState::NotApplicable) {
+            return None;
+        }
+        let at = DateTime::parse_from_rfc3339(prev.at.as_deref()?).ok()?;
+        let age = (Utc::now() - at.to_utc()).to_std().ok()?;
+        if age >= r.max_age {
+            return None;
+        }
+        // The pack and the export take every layer: rebuilt when any step changed.
+        let deps_changed = if matches!(name, "build-pack" | "export") {
+            !self.changed.is_empty()
+        } else {
+            deps.iter().any(|d| self.changed.contains(d))
+        };
+        if deps_changed {
+            return None;
+        }
+        if prev.state == StepState::Ok
+            && (prev.outputs.is_none() || fingerprint(&self.out_dir.join(dir)) != prev.outputs)
+        {
+            // Outputs missing, incomplete or altered since: run again.
+            return None;
+        }
+        Some(prev.clone())
     }
 
     fn step(
@@ -944,23 +1145,65 @@ impl<'a> Run<'a> {
             );
             return;
         }
+        if let Some(prev) = self.resumable(name, deps) {
+            if prev.state == StepState::NotApplicable {
+                self.not_applicable.insert(name);
+            }
+            self.record_full(StepRecord {
+                seconds: 0.0,
+                resumed: true,
+                ..prev
+            });
+            return;
+        }
         let t = Instant::now();
-        let r = f();
+        // A panic in a step fails that step only: the other steps of the site and the other
+        // sites of the batch go on.
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_or_else(|p| {
+            let msg = p
+                .downcast_ref::<&str>()
+                .map(|s| (*s).to_owned())
+                .or_else(|| p.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "?".to_owned());
+            Err(anyhow::anyhow!("panique : {msg}"))
+        });
         let s = t.elapsed().as_secs_f64();
-        match r {
-            Ok(line) => self.record(name, StepState::Ok, s, line),
+        let at = Some(skimap_common::meta::now_rfc3339());
+        let previous = self
+            .resume
+            .and_then(|r| r.previous.iter().find(|p| p.name == name).cloned());
+        let (state, line) = match r {
+            Ok(line) => (StepState::Ok, line),
             Err(e) => match e.downcast_ref::<NotApplicable>() {
                 Some(na) => {
                     self.not_applicable.insert(name);
-                    let why = na.0.clone();
-                    self.record(name, StepState::NotApplicable, s, why);
+                    (StepState::NotApplicable, na.0.clone())
                 }
                 None => {
                     self.failed.insert(name);
-                    self.record(name, StepState::Failed, s, format!("{e:#}"));
+                    (StepState::Failed, format!("{e:#}"))
                 }
             },
+        };
+        let outputs = match (state, step_dir(name)) {
+            (StepState::Ok, Some(d)) => fingerprint(&self.out_dir.join(d)),
+            _ => None,
+        };
+        let same = previous
+            .as_ref()
+            .is_some_and(|p| p.state == state && p.outputs == outputs);
+        if !same {
+            self.changed.insert(name);
         }
+        self.record_full(StepRecord {
+            name: name.to_owned(),
+            state,
+            seconds: s,
+            line,
+            at,
+            outputs,
+            resumed: false,
+        });
     }
 
     fn skip(&mut self, name: &'static str, why: &str) {
@@ -1116,5 +1359,384 @@ mod tests {
         let at = parse_instant("2027-01-10").unwrap();
         let e = zones_at(&layout, &skimap_common::site::CERVIERES, 44.85, 6.77, at).unwrap_err();
         assert!(format!("{e:#}").contains("skimap zones cervieres"), "{e:#}");
+    }
+}
+
+/// Steps taken over, run again, isolated (journal, fingerprints, panics): `Run` with
+/// stand-in steps writing into a temporary site directory.
+#[cfg(test)]
+mod resume_tests {
+    use super::*;
+    use std::cell::Cell;
+    use std::sync::Mutex;
+
+    /// A run of three stand-in steps: `terrain` writes `terrain/dem`, `refuges` writes
+    /// `refuges/r` (or fails, or panics), `build-pack` writes `pack/p` from both.
+    fn run(
+        dir: &Path,
+        resume: Option<Resume<'_>>,
+        refuges: &str,
+        calls: &Cell<[u32; 3]>,
+        journal: &Mutex<Vec<Vec<StepRecord>>>,
+    ) -> BuildOutcome {
+        let site = &skimap_common::site::CERVIERES;
+        let j = |s: &[StepRecord]| journal.lock().unwrap().push(s.to_vec());
+        let shared = Shared {
+            resume,
+            journal: Some(&j),
+            ..Shared::default()
+        };
+        let mut log = Vec::new();
+        let mut r = Run::new(site, dir.to_path_buf(), &shared, &mut log);
+        let bump = |i: usize| {
+            let mut c = calls.get();
+            c[i] += 1;
+            calls.set(c);
+        };
+        r.step("terrain", &[], || {
+            bump(0);
+            std::fs::create_dir_all(dir.join("terrain"))?;
+            std::fs::write(dir.join("terrain/dem"), b"dem")?;
+            Ok("terrain".into())
+        });
+        r.step("refuges", &[], || {
+            bump(1);
+            match refuges {
+                "fail" => bail!("HTTP status 502"),
+                "panic" => panic!("boom"),
+                v => {
+                    std::fs::create_dir_all(dir.join("refuges"))?;
+                    std::fs::write(dir.join("refuges/r"), v)?;
+                    Ok(format!("refuges {v}"))
+                }
+            }
+        });
+        r.step("build-pack", &[], || {
+            bump(2);
+            std::fs::create_dir_all(dir.join("pack"))?;
+            let t = std::fs::read(dir.join("terrain/dem"))?;
+            let f = std::fs::read(dir.join("refuges/r")).unwrap_or_default();
+            std::fs::write(dir.join("pack/p"), [t, f].concat())?;
+            Ok("pack".into())
+        });
+        r.finish()
+    }
+
+    fn resume(steps: &[StepRecord]) -> Resume<'_> {
+        Resume {
+            previous: steps,
+            max_age: std::time::Duration::from_secs(3600),
+            pack_bytes: None,
+            export_bytes: None,
+        }
+    }
+
+    #[test]
+    fn failed_steps_only_are_run_again_and_the_rest_is_taken_over() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        let calls = Cell::new([0; 3]);
+        let journal = Mutex::new(Vec::new());
+        // Source down: refuges fails, the pack is still built (with what exists).
+        let o1 = run(dir, None, "fail", &calls, &journal);
+        assert!(!o1.ok());
+        assert_eq!(calls.get(), [1, 1, 1]);
+        assert!(dir.join("pack/p").exists());
+        // Journal written after every step.
+        assert_eq!(
+            journal
+                .lock()
+                .unwrap()
+                .iter()
+                .map(Vec::len)
+                .collect::<Vec<_>>(),
+            [1, 2, 3]
+        );
+        // Source back: only refuges runs again, then the pack (its input changed).
+        let o2 = run(dir, Some(resume(&o1.steps)), "v1", &calls, &journal);
+        assert!(o2.ok(), "{:?}", o2.steps);
+        assert_eq!(calls.get(), [1, 2, 2]);
+        assert!(o2.steps[0].resumed && !o2.steps[1].resumed && !o2.steps[2].resumed);
+        assert_eq!(o2.steps[0].at, o1.steps[0].at, "date of the outputs kept");
+        // Nothing to do: everything taken over, no step body called (idempotent).
+        let o3 = run(dir, Some(resume(&o2.steps)), "v1", &calls, &journal);
+        assert!(o3.ok());
+        assert_eq!(calls.get(), [1, 2, 2]);
+        assert!(o3.steps.iter().all(|s| s.resumed));
+        // A corrupted output is detected and rebuilt; rebuilt identical, what depends on
+        // it is still valid and taken over.
+        std::fs::write(dir.join("terrain/dem"), b"de").unwrap();
+        let o4 = run(dir, Some(resume(&o3.steps)), "v1", &calls, &journal);
+        assert_eq!(calls.get(), [2, 2, 2]);
+        assert!(o4.ok() && o4.steps[2].resumed);
+        assert_eq!(std::fs::read(dir.join("pack/p")).unwrap(), b"demv1");
+        // A corrupted pack is rebuilt.
+        std::fs::write(dir.join("pack/p"), b"x").unwrap();
+        let o4 = run(dir, Some(resume(&o4.steps)), "v1", &calls, &journal);
+        assert_eq!(calls.get(), [2, 2, 3]);
+        assert_eq!(std::fs::read(dir.join("pack/p")).unwrap(), b"demv1");
+        // An output removed and rebuilt different: the pack follows.
+        std::fs::remove_dir_all(dir.join("refuges")).unwrap();
+        let o5 = run(dir, Some(resume(&o4.steps)), "v2", &calls, &journal);
+        assert_eq!(calls.get(), [2, 3, 4]);
+        assert_eq!(std::fs::read(dir.join("pack/p")).unwrap(), b"demv2");
+        // A step run again with identical outputs does not rebuild the pack.
+        let mut stale = o5.steps.clone();
+        stale[1].at = Some("2000-01-01T00:00:00Z".into());
+        let o6 = run(dir, Some(resume(&stale)), "v2", &calls, &journal);
+        assert_eq!(
+            calls.get(),
+            [2, 4, 4],
+            "refuges older than max_age: run again"
+        );
+        assert!(o6.steps[2].resumed);
+    }
+
+    #[test]
+    fn a_panic_fails_its_step_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        let calls = Cell::new([0; 3]);
+        let journal = Mutex::new(Vec::new());
+        let o = run(tmp.path(), None, "panic", &calls, &journal);
+        assert_eq!(calls.get(), [1, 1, 1]);
+        assert_eq!(o.steps[1].state, StepState::Failed);
+        assert!(
+            o.steps[1].line.contains("panique : boom"),
+            "{}",
+            o.steps[1].line
+        );
+        assert_eq!(o.steps[2].state, StepState::Ok);
+    }
+
+    /// Chaos: a run killed after k steps (journal of the k first steps, outputs of a
+    /// half-done step left as a temporary file), then resumed, gives the outputs of a run
+    /// without incident; at least 20 interruption points.
+    #[test]
+    fn interrupted_runs_resume_to_the_same_result() {
+        let reference = {
+            let tmp = tempfile::tempdir().unwrap();
+            let o = run(
+                tmp.path(),
+                None,
+                "v1",
+                &Cell::new([0; 3]),
+                &Mutex::new(Vec::new()),
+            );
+            assert!(o.ok());
+            (
+                std::fs::read(tmp.path().join("pack/p")).unwrap(),
+                fingerprint(tmp.path()),
+            )
+        };
+        let mut trials = 0;
+        for kill_after in 0..=3usize {
+            for garbage in 0..6u8 {
+                trials += 1;
+                let tmp = tempfile::tempdir().unwrap();
+                let dir = tmp.path();
+                let journal = Mutex::new(Vec::new());
+                // Full run, then « kill »: keep only the journal of the first steps, and
+                // drop or damage the outputs of the steps after them.
+                let full = run(dir, None, "v1", &Cell::new([0; 3]), &journal);
+                let names = ["terrain", "refuges", "build-pack"];
+                for (i, n) in names.iter().enumerate().skip(kill_after) {
+                    let d = dir.join(step_dir(n).unwrap());
+                    match (garbage + i as u8) % 3 {
+                        0 => {
+                            let _ = std::fs::remove_dir_all(&d);
+                        }
+                        1 => {
+                            let f = std::fs::read_dir(&d).unwrap().next().unwrap().unwrap();
+                            std::fs::write(f.path(), &[garbage][..]).unwrap();
+                        }
+                        _ => {
+                            std::fs::write(d.join("x.tmp"), b"half").unwrap();
+                            let f = std::fs::read_dir(&d)
+                                .unwrap()
+                                .flatten()
+                                .find(|e| !e.file_name().to_string_lossy().contains(".tmp"))
+                                .unwrap();
+                            std::fs::write(f.path(), b"").unwrap();
+                        }
+                    }
+                }
+                let journaled: Vec<StepRecord> = full.steps[..kill_after].to_vec();
+                crate::batch::remove_orphan_tmp(dir);
+                let calls = Cell::new([0; 3]);
+                let o = run(dir, Some(resume(&journaled)), "v1", &calls, &journal);
+                assert!(o.ok());
+                for (i, s) in o.steps.iter().enumerate() {
+                    assert_eq!(s.resumed, i < kill_after, "trial {trials}: {s:?}");
+                }
+                assert_eq!(
+                    std::fs::read(dir.join("pack/p")).unwrap(),
+                    reference.0,
+                    "trial {trials}"
+                );
+                assert_eq!(fingerprint(dir), reference.1, "trial {trials}");
+            }
+        }
+        assert!(trials >= 20);
+    }
+}
+
+/// A source down, then back: the first run keeps the previous outputs of the failed step
+/// (with their date) and still builds the pack; the next run sends requests only for the
+/// failed step. Local HTTP server, real downloader, requests counted.
+#[cfg(test)]
+mod outage_tests {
+    use super::*;
+    use std::collections::BTreeMap;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+
+    struct Server {
+        base: String,
+        hits: Arc<Mutex<BTreeMap<String, usize>>>,
+        down: Arc<AtomicBool>,
+        server: Arc<tiny_http::Server>,
+        thread: Option<std::thread::JoinHandle<()>>,
+    }
+
+    impl Server {
+        /// `/terrain` always answers; `/refuges` answers `v<n>` (n-th good answer), or
+        /// 502 while `down`.
+        fn start() -> Self {
+            let server = Arc::new(tiny_http::Server::http("127.0.0.1:0").unwrap());
+            let port = server.server_addr().to_ip().unwrap().port();
+            let hits = Arc::new(Mutex::new(BTreeMap::new()));
+            let down = Arc::new(AtomicBool::new(false));
+            let (srv, h, d) = (server.clone(), hits.clone(), down.clone());
+            let thread = std::thread::spawn(move || {
+                let mut good = 0;
+                for rq in srv.incoming_requests() {
+                    let path = rq.url().to_owned();
+                    *h.lock().unwrap().entry(path.clone()).or_insert(0) += 1;
+                    let resp = if path == "/refuges" && d.load(Ordering::SeqCst) {
+                        tiny_http::Response::from_string("bad gateway").with_status_code(502)
+                    } else if path == "/refuges" {
+                        good += 1;
+                        tiny_http::Response::from_string(format!("v{good}"))
+                    } else {
+                        tiny_http::Response::from_string("dem")
+                    };
+                    let _ = rq.respond(resp);
+                }
+            });
+            Self {
+                base: format!("http://127.0.0.1:{port}"),
+                hits,
+                down,
+                server,
+                thread: Some(thread),
+            }
+        }
+
+        fn hits(&self) -> BTreeMap<String, usize> {
+            self.hits.lock().unwrap().clone()
+        }
+    }
+
+    impl Drop for Server {
+        fn drop(&mut self) {
+            self.server.unblock();
+            if let Some(t) = self.thread.take() {
+                let _ = t.join();
+            }
+        }
+    }
+
+    fn run(dir: &Path, dl: &Downloader, base: &str, resume: Option<Resume<'_>>) -> BuildOutcome {
+        let site = &skimap_common::site::CERVIERES;
+        let shared = Shared {
+            resume,
+            ..Shared::default()
+        };
+        let mut log = Vec::new();
+        let mut r = Run::new(site, dir.to_path_buf(), &shared, &mut log);
+        let get = |path: &str| -> Result<Vec<u8>> {
+            // Max age 0: every run asks the source (the cache would hide the outage).
+            let req = skimap_common::download::Request::get("t", &format!("{base}{path}"))
+                .max_age(std::time::Duration::ZERO);
+            Ok(dl.fetch(&req)?.bytes()?)
+        };
+        r.step("terrain", &[], || {
+            let b = get("/terrain")?;
+            std::fs::create_dir_all(dir.join("terrain"))?;
+            std::fs::write(dir.join("terrain/dem"), b)?;
+            Ok("terrain".into())
+        });
+        r.step("refuges", &[], || {
+            let b = get("/refuges")?;
+            std::fs::create_dir_all(dir.join("refuges"))?;
+            std::fs::write(dir.join("refuges/r"), b)?;
+            Ok("refuges".into())
+        });
+        r.step("build-pack", &[], || {
+            std::fs::create_dir_all(dir.join("pack"))?;
+            let t = std::fs::read(dir.join("terrain/dem"))?;
+            let f = std::fs::read(dir.join("refuges/r")).unwrap_or_default();
+            std::fs::write(dir.join("pack/p"), [t, f].concat())?;
+            Ok("pack".into())
+        });
+        r.finish()
+    }
+
+    fn resume(steps: &[StepRecord], max_age_s: u64) -> Resume<'_> {
+        Resume {
+            previous: steps,
+            max_age: std::time::Duration::from_secs(max_age_s),
+            pack_bytes: None,
+            export_bytes: None,
+        }
+    }
+
+    #[test]
+    fn a_source_down_keeps_the_previous_outputs_and_only_the_failed_step_runs_again() {
+        let srv = Server::start();
+        let tmp = tempfile::tempdir().unwrap();
+        let (dir, cache) = (tmp.path().join("out"), tmp.path().join("cache"));
+        let dl = Downloader::builder(&cache)
+            .policy(
+                skimap_common::download::SourcePolicy::new("t")
+                    .limits(Vec::new())
+                    .retries(
+                        2,
+                        std::time::Duration::from_millis(1),
+                        std::time::Duration::from_millis(5),
+                    ),
+            )
+            .build()
+            .unwrap();
+        // A first good build.
+        let o0 = run(&dir, &dl, &srv.base, None);
+        assert!(o0.ok());
+        assert_eq!(std::fs::read(dir.join("pack/p")).unwrap(), b"demv1");
+        // The refuges source goes down; everything is due again (max age 0).
+        srv.down.store(true, Ordering::SeqCst);
+        let o1 = run(&dir, &dl, &srv.base, Some(resume(&o0.steps, 0)));
+        assert_eq!(o1.steps[1].state, StepState::Failed);
+        assert!(o1.steps[1].line.contains("502"), "{}", o1.steps[1].line);
+        // The previous outputs stay, the pack is built with them.
+        assert_eq!(std::fs::read(dir.join("refuges/r")).unwrap(), b"v1");
+        assert_eq!(o1.steps[2].state, StepState::Ok);
+        assert_eq!(std::fs::read(dir.join("pack/p")).unwrap(), b"demv1");
+        let h1 = srv.hits();
+        assert_eq!(h1["/terrain"], 2);
+        assert_eq!(h1["/refuges"], 1 + 3, "one good answer, then 1 + 2 retries");
+        // The source is back: the next run (normal max age) asks only for the failed
+        // step; terrain is taken over without a request.
+        srv.down.store(false, Ordering::SeqCst);
+        let o2 = run(&dir, &dl, &srv.base, Some(resume(&o1.steps, 3600)));
+        assert!(o2.ok(), "{:?}", o2.steps);
+        assert!(o2.steps[0].resumed && !o2.steps[1].resumed);
+        let h2 = srv.hits();
+        assert_eq!(h2["/terrain"], h1["/terrain"], "no request for terrain");
+        assert_eq!(h2["/refuges"], h1["/refuges"] + 1);
+        assert_eq!(std::fs::read(dir.join("pack/p")).unwrap(), b"demv2");
+        // Nothing left to catch up: no request at all.
+        let o3 = run(&dir, &dl, &srv.base, Some(resume(&o2.steps, 3600)));
+        assert!(o3.ok() && o3.steps.iter().all(|s| s.resumed));
+        assert_eq!(srv.hits(), h2);
     }
 }

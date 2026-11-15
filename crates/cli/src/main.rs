@@ -99,6 +99,13 @@ enum Command {
         /// Sites whose hut layer is refreshed (default: every site with a `refuges` layer).
         sites: Vec<String>,
     },
+    /// Publishable hourly weather (Météo-France AROME 0.025°, X17) of these sites, or of
+    /// every site of the registry: one download and decoding of the latest run for all of
+    /// them; a site already at that run is not rewritten (idempotent).
+    MeteoRefresh {
+        /// Sites (default: every buildable site of the registry).
+        sites: Vec<String>,
+    },
     /// Catalogue of France, `data/out/france/catalog.json` and `catalog.geojson`: every
     /// site with its box, centre, km and the state of its pack (G2).
     Catalog,
@@ -334,6 +341,12 @@ struct BuildAllArgs {
     /// Start no site after this many minutes (running ones finish; run again to resume).
     #[arg(long)]
     stop_after_min: Option<f64>,
+    /// Also check the outputs of the sites that look up to date (fingerprints recorded
+    /// in `build-all.json`): an altered, removed or half-written output is rebuilt. In
+    /// every case only the failed, older than `--max-age-hours`, altered steps and those
+    /// depending on them are run again.
+    #[arg(long)]
+    stale: bool,
 }
 
 /// Arguments of a subcommand not implemented yet.
@@ -483,7 +496,13 @@ fn not_implemented(name: &str, tickets: &str) -> Result<()> {
 fn build_all(cfg: &Config, registry: &Registry, a: BuildAllArgs) -> Result<()> {
     let c = build::Ctx::new(cfg)?;
     if let Some(id) = &a.site {
-        return batch::build_single(&c, registry, registry.get(id)?, a.force);
+        return batch::build_single(
+            &c,
+            registry,
+            registry.get(id)?,
+            a.force,
+            Duration::from_secs_f64(a.max_age_hours.max(0.0) * 3600.0),
+        );
     }
     let sites: Vec<&'static Site> = if a.all {
         registry.buildable()
@@ -500,6 +519,7 @@ fn build_all(cfg: &Config, registry: &Registry, a: BuildAllArgs) -> Result<()> {
         stop_after: a
             .stop_after_min
             .map(|m| Duration::from_secs_f64(m.max(0.0) * 60.0)),
+        verify: a.stale,
     };
     let summary = batch::build_many(&c, registry, &sites, &opts)?;
     for l in batch::describe(&summary) {
@@ -603,6 +623,19 @@ fn run(cli: Cli) -> Result<()> {
                     "refresh : {} sources ou parties en échec (valeurs précédentes gardées)",
                     summary.failures.len()
                 );
+            }
+            Ok(())
+        }
+        Command::MeteoRefresh { sites } => {
+            let c = ctx()?;
+            let sites: Vec<&Site> = if sites.is_empty() {
+                registry.buildable()
+            } else {
+                sites.iter().map(|s| site(s)).collect::<Result<_>>()?
+            };
+            let r = batch::meteo_step(&c, &sites);
+            if r.state == build::StepState::Failed {
+                anyhow::bail!("meteo-refresh : {}", r.line);
             }
             Ok(())
         }

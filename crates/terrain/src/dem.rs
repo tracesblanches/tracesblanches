@@ -15,10 +15,10 @@
 //! Licence: Licence Ouverte 2.0 (Etalab), IGN; some military areas (ZICAD) are masked.
 
 use skimap_common::crs::{Crs, project_bbox};
-use skimap_common::download::{CachePolicy, Downloader, Request};
+use skimap_common::download::{Downloader, Request};
 use skimap_common::geom::BBox;
 use skimap_common::grid::{GeoTransform, Grid};
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::error::{Error, Result};
 use skimap_common::geotiff::decode_f32;
@@ -38,8 +38,13 @@ pub const CELL: f64 = 5.0;
 pub const TILE_PX: usize = 200;
 /// Offset of the tile grid relative to whole kilometres, metres.
 pub const TILE_SHIFT: f64 = 0.25;
-/// Attempts when the WMS answers 200 with a service exception instead of an image.
-const EXCEPTION_ATTEMPTS: u32 = 4;
+/// Requests per tile when the WMS answers something else than the tile: a 200 with a
+/// service exception (report 07), a 400 for a tile served a minute later, a GeoTIFF whose
+/// geokeys lack a projection parameter or without georeferencing (15/11/2026, see
+/// [`fetch_tile`]).
+pub const TILE_ATTEMPTS: u32 = 6;
+/// First delay between two requests of a tile (then doubled).
+pub const TILE_BACKOFF: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// An axis-aligned Lambert-93 extent in metres.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -138,40 +143,42 @@ pub fn tiles_for(e: &Extent) -> Vec<TileId> {
 }
 
 /// Downloads (or reads from cache) one tile and decodes it.
+///
+/// The WMS-R behind `data.geopf.fr` is served by several back ends that do not answer
+/// alike (15/11/2026, building every domain of France): some answers are a 400 for a
+/// valid tile, a GeoTIFF whose geokeys lack `ProjStdParallel1` (projection then
+/// undefined) or a GeoTIFF without any georeferencing, while the same URL a moment later
+/// gives the full tile (pixels identical, checked on 0947-6674). Such an answer is never
+/// kept: the tile is fetched again, bypassing the cache, up to [`TILE_ATTEMPTS`] times
+/// ([`Downloader::fetch_checked`]).
 pub fn fetch_tile(t: TileId, dl: &Downloader) -> Result<Grid<f32>> {
     let url = t.url();
-    let mut policy = CachePolicy::Normal;
-    let mut last_err = None;
-    for attempt in 0..EXCEPTION_ATTEMPTS {
-        let f = dl.fetch(&Request::get(SOURCE, &url).cache(policy))?;
-        let bytes = f.bytes()?;
-        match decode_f32(&bytes) {
-            Ok(g) => {
-                check_tile(t, &g)?;
-                return Ok(g);
-            }
-            Err(e) if bytes.starts_with(b"II*\0") || bytes.starts_with(b"MM\0*") => {
-                // A real TIFF we cannot read: reloading would not help.
-                return Err(Error::BadData {
-                    source_name: url,
-                    message: e.to_string(),
-                });
-            }
-            Err(e) => {
-                // The WMS sometimes answers 200 with a ServiceException (`LayerNotDefined`)
-                // that then succeeds on retry (report 07): do not keep it in the cache.
-                let head = String::from_utf8_lossy(&bytes[..bytes.len().min(200)]).to_string();
-                warn!(tile = %t.name(), attempt, %head, "WMS answer is not a GeoTIFF, reloading");
-                last_err = Some(Error::BadData {
-                    source_name: url.clone(),
-                    message: format!("{e}; body starts with {head:?}"),
-                });
-                policy = CachePolicy::Reload;
-                std::thread::sleep(std::time::Duration::from_secs(1 << attempt));
-            }
-        }
-    }
-    Err(last_err.expect("at least one attempt"))
+    dl.fetch_checked(
+        &Request::get(SOURCE, &url),
+        TILE_ATTEMPTS,
+        TILE_BACKOFF,
+        &[400, 404],
+        |f| {
+            let bytes = f.bytes().map_err(|e| e.to_string())?;
+            let g = decode_f32(&bytes).map_err(|e| {
+                let head = if bytes.starts_with(b"II*\0") || bytes.starts_with(b"MM\0*") {
+                    "TIFF".to_owned()
+                } else {
+                    String::from_utf8_lossy(&bytes[..bytes.len().min(200)]).to_string()
+                };
+                format!("{e}; body starts with {head:?}")
+            })?;
+            check_tile(t, &g).map_err(|e| e.to_string())?;
+            Ok(g)
+        },
+    )
+    .map_err(|e| match e {
+        skimap_common::Error::Invalid { url, message, .. } => Error::BadData {
+            source_name: url,
+            message,
+        },
+        e => e.into(),
+    })
 }
 
 fn check_tile(t: TileId, g: &Grid<f32>) -> Result<()> {

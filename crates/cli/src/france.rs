@@ -645,6 +645,24 @@ pub struct BuildInputs {
     pub version: String,
     /// `personal_sources`.
     pub personal_sources: bool,
+    /// [`BUILD_REVISION`] of the steps (0 for records written before it existed).
+    #[serde(default)]
+    pub revision: u32,
+}
+
+/// Revision of the steps of `build-all`, bumped when a step is added or starts to run in
+/// a mode where it did not (a site built with another revision is not up to date; its
+/// steps are still taken over when their outputs are intact, [`crate::build::Resume`]).
+/// 2: `meteo` in public mode (AROME, X17).
+pub const BUILD_REVISION: u32 = 2;
+
+impl BuildInputs {
+    /// Whether the steps of a build with `self` can be taken over by a build with `other`:
+    /// same site record and same `personal_sources` (the pipeline version and revision
+    /// may differ: the fingerprints of the outputs decide).
+    pub fn resumable_by(&self, other: &BuildInputs) -> bool {
+        self.record == other.record && self.personal_sources == other.personal_sources
+    }
 }
 
 /// `data/out/<site>/build-all.json`: the last `build-all` of a site.

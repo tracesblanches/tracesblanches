@@ -1,5 +1,6 @@
-//! OpenStreetMap huts and shelters (ODbL) through the public Overpass API (one query per
-//! site, rate-limited by the shared downloader, cached a day).
+//! OpenStreetMap huts and shelters (ODbL), read from the local Geofabrik extracts
+//! (`skimap_osm::local`, X5 #139) with the filter of the former Overpass query ([`query`],
+//! kept for reference: the public instances were down for hours on 15/11/2026).
 //!
 //! Kept: `tourism=alpine_hut`, `tourism=wilderness_hut`, `amenity=shelter` (every
 //! `shelter_type`, bus shelters included and flagged) and anything carrying
@@ -9,8 +10,10 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 use serde_json::Value;
-use skimap_common::download::{Downloader, Fetched, Request};
+use skimap_common::download::Downloader;
 use skimap_common::geom::{BBox, LonLat};
+use skimap_common::layout::DataLayout;
+use skimap_common::meta::SourceRef;
 
 use crate::error::{RefugesError, Result};
 use crate::privacy::{self, Phone};
@@ -18,10 +21,8 @@ use crate::privacy::{self, Phone};
 /// Phone tags read on staffed huts only (`tourism=alpine_hut`), never kept as tags.
 pub const PHONE_TAGS: &[&str] = &["phone", "contact:phone"];
 
-/// Downloader source name.
-pub const SOURCE: &str = "overpass";
-/// Public Overpass endpoint.
-pub const ENDPOINT: &str = "https://overpass-api.de/api/interpreter";
+/// Source name in errors.
+pub const SOURCE: &str = "osm-local";
 /// Licence.
 pub const LICENCE: &str = "ODbL 1.0";
 /// Attribution.
@@ -79,7 +80,8 @@ pub struct Hut {
     pub url: String,
 }
 
-/// Overpass QL query for the huts and shelters of a box.
+/// Overpass QL query for the huts and shelters of a box (the former request; the local
+/// index applies the same filter, [`skimap_osm::local::is_hut`]).
 pub fn query(b: &BBox) -> String {
     let bb = b.overpass();
     format!(
@@ -189,12 +191,26 @@ pub fn parse(v: &Value) -> Result<Vec<Hut>> {
     Ok(out)
 }
 
-/// Downloads the huts and shelters of `bbox`.
-pub fn fetch(dl: &Downloader, bbox: &BBox) -> Result<(Vec<Hut>, Fetched)> {
-    let q = query(bbox);
-    let f = dl.fetch(&Request::post_form(SOURCE, ENDPOINT, &[("data", &q)]))?;
-    let huts = parse(&f.json()?)?;
-    Ok((huts, f))
+/// What [`read`] found.
+#[derive(Debug, Clone)]
+pub struct Read {
+    /// Huts and shelters of the box.
+    pub huts: Vec<Hut>,
+    /// Extracts covering the box.
+    pub sources: Vec<SourceRef>,
+    /// Date of the OSM data (replication timestamp of the oldest extract), RFC 3339.
+    pub valid_at: Option<String>,
+}
+
+/// Reads the huts and shelters of `bbox` from the local extracts.
+pub fn read(layout: &DataLayout, dl: &Downloader, bbox: &BBox) -> Result<Read> {
+    let idx = skimap_osm::local::load(layout, dl)?;
+    let v = idx.query(&[*bbox], |e| skimap_osm::local::is_hut(|k| e.get(k)));
+    Ok(Read {
+        huts: parse(&v)?,
+        sources: idx.sources_for(bbox),
+        valid_at: idx.valid_at.clone(),
+    })
 }
 
 #[cfg(test)]

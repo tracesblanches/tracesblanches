@@ -36,6 +36,16 @@ pub struct SourcePolicy {
     /// Terms allow personal, non-commercial use only: the downloader refuses the source
     /// unless `personal_sources` is on ([`crate::config::Config::personal_sources`]).
     pub personal_use_only: bool,
+    /// Circuit breaker: after this many requests in a row that failed after all their
+    /// retries (transport error, 408, 429, 5xx), the source is considered down...
+    pub breaker_failures: u32,
+    /// ...and every request to it fails at once, without reaching the network, for this
+    /// long ([`crate::error::Error::SourceDown`]); then one request tries again.
+    pub breaker_open: Duration,
+    /// Cache entries downloaded longer ago than this are removed the first time the
+    /// source is used in a process (sources whose files are only useful for a short time
+    /// and large: model runs).
+    pub purge_after: Option<Duration>,
 }
 
 const SECOND: Duration = Duration::from_secs(1);
@@ -57,7 +67,23 @@ impl SourcePolicy {
             timeout: 30 * MINUTE,
             max_in_flight: 1,
             personal_use_only: false,
+            breaker_failures: 3,
+            breaker_open: 10 * MINUTE,
+            purge_after: None,
         }
+    }
+
+    /// Removes the cache entries older than `d` when the source is first used.
+    pub fn purge_after(mut self, d: Duration) -> Self {
+        self.purge_after = Some(d);
+        self
+    }
+
+    /// Sets the circuit breaker (failures in a row, time open).
+    pub fn breaker(mut self, failures: u32, open: Duration) -> Self {
+        self.breaker_failures = failures.max(1);
+        self.breaker_open = open;
+        self
     }
 
     /// Marks the source personal use only.
@@ -112,6 +138,14 @@ pub fn known_sources() -> Vec<SourcePolicy> {
         SourcePolicy::new("overpass")
             .limits([RateLimit::new(1, 5 * SECOND), RateLimit::per_day(10_000)])
             .max_wait(5 * MINUTE),
+        // Geofabrik OSM extracts (.osm.pbf, X5): about 20 files, 4.9 GB, published once a
+        // day, downloaded one at a time; a week-old copy is enough for huts and points of
+        // interest, and the conditional request (ETag, Last-Modified) avoids downloading
+        // it twice.
+        SourcePolicy::new("geofabrik")
+            .limits([RateLimit::new(1, 10 * SECOND)])
+            .max_age(7 * DAY)
+            .timeout(3 * HOUR),
         // OpenSnowMap daily extract planet_pistes.osm.gz (published once a day).
         SourcePolicy::new("opensnowmap").limits([RateLimit::new(1, MINUTE)]),
         // Biodiv'sports: no published quota, to confirm.
@@ -160,6 +194,14 @@ pub fn known_sources() -> Vec<SourcePolicy> {
             .limits([RateLimit::new(20, SECOND)])
             .max_age(365 * DAY)
             .max_in_flight(8),
+        // Météo-France open AROME 0.025° packages (X17, public S3 bucket listed on
+        // data.gouv.fr, Licence Ouverte, no published quota: prudence, non sourcé). A run's
+        // files never change once published; about 810 MB per refresh, 290 MB of them
+        // reused by the next run; the bucket keeps two days: older entries are purged.
+        SourcePolicy::new("meteofrance-pnt")
+            .limits([RateLimit::new(1, SECOND)])
+            .max_age(DAY)
+            .purge_after(2 * DAY),
         // Météo-France public BERA archive (donneespubliques.meteofrance.fr), one index and
         // one bulletin a day: no published quota (prudence, non sourcé).
         SourcePolicy::new("meteofrance-archive").max_age(DAY),
@@ -242,6 +284,9 @@ mod tests {
             let parallel = matches!(p.name.as_str(), "ign" | "ign-lidar-wms" | "geo-api");
             assert_eq!(p.max_in_flight > 1, parallel, "{}", p.name);
         }
+        let pnt = all.iter().find(|p| p.name == "meteofrance-pnt").unwrap();
+        assert_eq!(pnt.purge_after, Some(2 * DAY));
+        assert!(pnt.limits.contains(&RateLimit::new(1, SECOND)));
         for n in [
             "meteofrance-archive",
             "geoide",
