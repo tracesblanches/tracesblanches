@@ -3,9 +3,10 @@
 //! with exponential backoff, a generic User-Agent.
 //!
 //! Model: **blocking** (`reqwest::blocking`). Requests to one source are serialised (one
-//! in flight at a time, which also keeps us polite); different sources may be fetched in
-//! parallel from different threads (`std::thread::scope`, rayon). See
-//! `docs/architecture.md`.
+//! in flight at a time, which also keeps us polite) unless its policy allows more
+//! ([`SourcePolicy::max_in_flight`], latency-bound sources only); concurrent fetches of
+//! the same request always send one request. Different sources may be fetched in parallel
+//! from different threads (`std::thread::scope`, rayon). See `docs/architecture.md`.
 //!
 //! ```no_run
 //! use skimap_common::config::Config;
@@ -357,9 +358,58 @@ pub struct Downloader {
     cache_root: PathBuf,
     client: reqwest::blocking::Client,
     policies: HashMap<String, SourcePolicy>,
-    states: Mutex<HashMap<String, Arc<Mutex<Limiter>>>>,
+    states: Mutex<HashMap<String, Arc<SourceState>>>,
     clock: Arc<dyn Clock>,
     offline: bool,
+}
+
+/// Shared state of one source: rate limiter, in-flight slots, one lock per request key.
+struct SourceState {
+    limiter: Mutex<Limiter>,
+    in_flight: Mutex<usize>,
+    slot_freed: std::sync::Condvar,
+    max_in_flight: usize,
+    keys: Mutex<HashMap<String, Arc<Mutex<()>>>>,
+}
+
+/// An in-flight slot of a source, given back on drop.
+struct Slot<'a>(&'a SourceState);
+
+impl SourceState {
+    fn slot(&self) -> Slot<'_> {
+        let mut n = lock(&self.in_flight);
+        while *n >= self.max_in_flight {
+            n = self
+                .slot_freed
+                .wait(n)
+                .unwrap_or_else(|p| p.into_inner());
+        }
+        *n += 1;
+        Slot(self)
+    }
+
+    fn key_lock(&self, key: &str) -> Arc<Mutex<()>> {
+        lock(&self.keys)
+            .entry(key.to_owned())
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone()
+    }
+
+    /// Forgets the lock of `key` when nobody else holds it.
+    fn release_key(&self, key: &str, held: Arc<Mutex<()>>) {
+        let mut keys = lock(&self.keys);
+        // The map and `held` are the two remaining references.
+        if Arc::strong_count(&held) == 2 {
+            keys.remove(key);
+        }
+    }
+}
+
+impl Drop for Slot<'_> {
+    fn drop(&mut self) {
+        *lock(&self.0.in_flight) -= 1;
+        self.0.slot_freed.notify_one();
+    }
 }
 
 /// Outcome of one attempt.
@@ -405,13 +455,19 @@ impl Downloader {
         &self.cache_root
     }
 
-    fn limiter(&self, policy: &SourcePolicy, dir: &Path) -> Result<Arc<Mutex<Limiter>>> {
+    fn source_state(&self, policy: &SourcePolicy, dir: &Path) -> Result<Arc<SourceState>> {
         let mut states = lock(&self.states);
         if let Some(s) = states.get(&policy.name) {
             return Ok(s.clone());
         }
         let l = Limiter::load(policy.limits.clone(), Some(dir.join("ratelimit.json")))?;
-        let s = Arc::new(Mutex::new(l));
+        let s = Arc::new(SourceState {
+            limiter: Mutex::new(l),
+            in_flight: Mutex::new(0),
+            slot_freed: std::sync::Condvar::new(),
+            max_in_flight: policy.max_in_flight.max(1),
+            keys: Mutex::new(HashMap::new()),
+        });
         states.insert(policy.name.clone(), s.clone());
         Ok(s)
     }
@@ -449,10 +505,29 @@ impl Downloader {
             return Ok(self.done(req, &entry, meta, Origin::Cache));
         }
 
-        // One request in flight per source: the lock covers the freshness check, the rate
-        // limiter, the request and the retries.
-        let state = self.limiter(&policy, &dir)?;
-        let mut limiter = lock(&state);
+        // One lock per request (concurrent fetches of the same request send one request:
+        // the others then find it in the cache), then an in-flight slot of the source (one
+        // by default) held for the freshness check, the request and the retries; the rate
+        // limiter is shared by every slot.
+        let state = self.source_state(&policy, &dir)?;
+        let key_lock = state.key_lock(&key);
+        let out = {
+            let _same_request = lock(&key_lock);
+            let _slot = state.slot();
+            self.fetch_locked(req, &policy, &state, &entry, mode)
+        };
+        state.release_key(&key, key_lock);
+        out
+    }
+
+    fn fetch_locked(
+        &self,
+        req: &Request,
+        policy: &SourcePolicy,
+        state: &SourceState,
+        entry: &Entry,
+        mode: CachePolicy,
+    ) -> Result<Fetched> {
 
         let cached = entry.load()?;
         let max_age = req.max_age.unwrap_or(policy.max_age);
@@ -461,7 +536,7 @@ impl Downloader {
             && self.now_unix().saturating_sub(meta.validated_at_unix) < max_age.as_secs()
         {
             let meta = meta.clone();
-            return Ok(self.done(req, &entry, meta, Origin::Cache));
+            return Ok(self.done(req, entry, meta, Origin::Cache));
         }
         let conditional = if mode == CachePolicy::Reload {
             None
@@ -471,9 +546,13 @@ impl Downloader {
 
         let mut attempt = 0u32;
         loop {
-            let sent = limiter.acquire(&req.source, self.clock.as_ref(), policy.max_wait)?;
-            let outcome = self.attempt(req, &policy, conditional.as_ref(), &entry);
-            limiter.finish(sent, unix_ms(self.clock.now()))?;
+            let sent = lock(&state.limiter).acquire(
+                &req.source,
+                self.clock.as_ref(),
+                policy.max_wait,
+            )?;
+            let outcome = self.attempt(req, policy, conditional.as_ref(), entry);
+            lock(&state.limiter).finish(sent, unix_ms(self.clock.now()))?;
             match outcome {
                 Attempt::Done(f) => return Ok(f),
                 Attempt::Fatal(e) => return Err(e),

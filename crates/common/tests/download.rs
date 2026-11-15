@@ -202,6 +202,72 @@ fn concurrent_fetches_of_one_url_send_one_request() {
     assert_eq!(origins.iter().filter(|o| **o == Origin::Cache).count(), 3);
 }
 
+/// Server answering from `workers` threads after `delay`, recording the largest number of
+/// requests it held at once.
+fn parallel_server(workers: usize, delay: Duration) -> (String, Arc<Mutex<(usize, usize)>>) {
+    let server = Arc::new(tiny_http::Server::http("127.0.0.1:0").unwrap());
+    let port = server.server_addr().to_ip().unwrap().port();
+    let gauge = Arc::new(Mutex::new((0usize, 0usize)));
+    for _ in 0..workers {
+        let (srv, g) = (server.clone(), gauge.clone());
+        thread::spawn(move || {
+            while let Ok(rq) = srv.recv() {
+                {
+                    let mut g = g.lock().unwrap();
+                    g.0 += 1;
+                    g.1 = g.1.max(g.0);
+                }
+                thread::sleep(delay);
+                g.lock().unwrap().0 -= 1;
+                let _ = rq.respond(tiny_http::Response::from_string("ok"));
+            }
+        });
+    }
+    (format!("http://127.0.0.1:{port}"), gauge)
+}
+
+#[test]
+fn in_flight_requests_are_bounded_per_source() {
+    let delay = Duration::from_millis(150);
+    for (allowed, expect_max) in [(1, 1), (4, 4)] {
+        let (base, gauge) = parallel_server(8, delay);
+        let dir = tempfile::tempdir().unwrap();
+        let dl = downloader(dir.path(), policy("t").max_in_flight(allowed));
+        let t0 = Instant::now();
+        thread::scope(|s| {
+            for i in 0..8 {
+                let (dl, url) = (&dl, format!("{base}/{i}"));
+                s.spawn(move || dl.fetch(&Request::get("t", &url)).unwrap());
+            }
+        });
+        let took = t0.elapsed();
+        assert_eq!(gauge.lock().unwrap().1, expect_max, "max_in_flight {allowed}");
+        // 8 requests of 150 ms: 1.2 s one at a time, 0.3 s four at a time.
+        let rounds = 8 / expect_max as u32;
+        assert!(took >= delay * rounds, "{took:?}");
+        assert!(took < delay * rounds + Duration::from_millis(600), "{took:?}");
+    }
+}
+
+#[test]
+fn rate_limit_holds_with_several_requests_in_flight() {
+    // 4 in flight but 5 requests per second: 10 requests need about 1 s.
+    let (base, _) = parallel_server(8, Duration::from_millis(20));
+    let dir = tempfile::tempdir().unwrap();
+    let p = policy("t")
+        .max_in_flight(4)
+        .limits([RateLimit::new(5, Duration::from_secs(1))]);
+    let dl = downloader(dir.path(), p);
+    let t0 = Instant::now();
+    thread::scope(|s| {
+        for i in 0..10 {
+            let (dl, url) = (&dl, format!("{base}/{i}"));
+            s.spawn(move || dl.fetch(&Request::get("t", &url)).unwrap());
+        }
+    });
+    assert!(t0.elapsed() >= Duration::from_millis(1000), "{:?}", t0.elapsed());
+}
+
 #[test]
 fn etag_revalidation_uses_304() {
     let version = Arc::new(Mutex::new("v1"));

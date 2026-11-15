@@ -28,6 +28,11 @@ pub struct SourcePolicy {
     pub backoff_max: Duration,
     /// Whole-request timeout (large archives need minutes).
     pub timeout: Duration,
+    /// Requests in flight at once for this source, all threads of the process together
+    /// (default 1: requests to one source are serialised). The rate limits apply to all
+    /// of them; more than one only helps a source whose latency, not its quota, bounds
+    /// the throughput (IGN tiles, geo.api.gouv.fr), when many sites are built at once.
+    pub max_in_flight: usize,
 }
 
 const SECOND: Duration = Duration::from_secs(1);
@@ -47,7 +52,14 @@ impl SourcePolicy {
             backoff_base: 2 * SECOND,
             backoff_max: MINUTE,
             timeout: 30 * MINUTE,
+            max_in_flight: 1,
         }
+    }
+
+    /// Sets the number of requests in flight at once (at least 1).
+    pub fn max_in_flight(mut self, n: usize) -> Self {
+        self.max_in_flight = n.max(1);
+        self
     }
 
     /// Replaces the rate limits.
@@ -109,24 +121,30 @@ pub fn known_sources() -> Vec<SourcePolicy> {
         SourcePolicy::new("refuges-info").max_age(7 * DAY),
         // Camptocamp API: no published quota.
         SourcePolicy::new("camptocamp").max_age(7 * DAY),
-        // IGN Géoplateforme (data.geopf.fr): vector TMS limited to 400 req/s per IP.
+        // IGN Géoplateforme (data.geopf.fr): vector TMS limited to 400 req/s per IP. About
+        // 0.2 to 0.3 s per tile measured (15/11/2026): one request at a time gives 3 to 5
+        // tiles/s; 8 in flight reach the 20/s limit (G2, every domain of France).
         SourcePolicy::new("ign")
             .limits([RateLimit::new(20, SECOND)])
-            .max_age(30 * DAY),
+            .max_age(30 * DAY)
+            .max_in_flight(8),
         // ENJ Snowmap Geotrek API: trail status polled for everyone.
         SourcePolicy::new("enj").max_age(15 * MINUTE),
         // data.gouv.fr static files (ARCEP, DATAtourisme CSV, snowpack simulation).
         SourcePolicy::new("datagouv").max_age(DAY),
-        // geo.api.gouv.fr (commune outlines).
+        // geo.api.gouv.fr (commune outlines). 0.75 to 1.3 s per request measured
+        // (15/11/2026): 4 in flight, still at most 10/s.
         SourcePolicy::new("geo-api")
             .limits([RateLimit::new(10, SECOND)])
-            .max_age(30 * DAY),
+            .max_age(30 * DAY)
+            .max_in_flight(4),
         // IGN Géoplateforme WMS-R, LiDAR HD terrain tiles (P5): the answers carry neither
         // ETag nor Last-Modified, so nothing can be revalidated; LiDAR HD editions change
         // rarely. Same per-IP rate as `ign`. Cache 1 year: prudence, non sourcé.
         SourcePolicy::new("ign-lidar-wms")
             .limits([RateLimit::new(20, SECOND)])
-            .max_age(365 * DAY),
+            .max_age(365 * DAY)
+            .max_in_flight(8),
         // Météo-France public BERA archive (donneespubliques.meteofrance.fr), one index and
         // one bulletin a day: no published quota (prudence, non sourcé).
         SourcePolicy::new("meteofrance-archive").max_age(DAY),
@@ -182,6 +200,11 @@ mod tests {
         assert!(om.limits.contains(&RateLimit::per_day(10_000)));
         let lidar = all.iter().find(|p| p.name == "ign-lidar-wms").unwrap();
         assert_eq!(lidar.max_age, 365 * DAY);
+        // Only the latency-bound sources have several requests in flight.
+        for p in &all {
+            let parallel = matches!(p.name.as_str(), "ign" | "ign-lidar-wms" | "geo-api");
+            assert_eq!(p.max_in_flight > 1, parallel, "{}", p.name);
+        }
         for n in [
             "meteofrance-archive",
             "geoide",

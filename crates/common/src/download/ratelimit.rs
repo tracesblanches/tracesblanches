@@ -118,9 +118,10 @@ impl Limiter {
         self.persist()
     }
 
-    /// Moves the time of the request recorded at `started_ms` (the latest one: the caller
-    /// holds the source lock from [`Limiter::acquire`] to the end of the request) to
-    /// `done_ms`, when its response has arrived, and persists the state.
+    /// Moves the time of the request recorded at `started_ms` (the latest one when the
+    /// source has one request in flight; with several, the latest entry with that time) to
+    /// `done_ms`, when its response has arrived, keeps the history sorted and persists the
+    /// state.
     ///
     /// The request is recorded before it is sent, so that a crash cannot lose it from a
     /// daily quota; but the time that matters to the server is when it received the
@@ -129,14 +130,16 @@ impl Limiter {
     /// window, whatever the time spent between the record and the send (state written
     /// with `fsync`, connection, a busy machine).
     pub(crate) fn finish(&mut self, started_ms: u64, done_ms: u64) -> Result<()> {
-        if let Some(last) = self.history.back_mut()
-            && *last == started_ms
-            && done_ms > started_ms
-        {
-            *last = done_ms;
-            return self.persist();
+        if done_ms <= started_ms {
+            return Ok(());
         }
-        Ok(())
+        let Some(i) = self.history.iter().rposition(|&t| t == started_ms) else {
+            return Ok(());
+        };
+        self.history.remove(i);
+        let at = self.history.partition_point(|&t| t <= done_ms);
+        self.history.insert(at, done_ms);
+        self.persist()
     }
 
     fn persist(&self) -> Result<()> {
