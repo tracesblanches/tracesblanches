@@ -3006,6 +3006,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "skimap-stations"
+version = "0.1.0"
+dependencies = [
+ "csv",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "skimap-common",
+ "skimap-osm",
+ "skimap-refuges",
+ "thiserror",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "skimap-status"
 version = "0.1.0"
 dependencies = [
