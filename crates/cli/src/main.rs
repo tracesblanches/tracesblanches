@@ -334,6 +334,12 @@ struct BuildAllArgs {
     /// Start no site after this many minutes (running ones finish; run again to resume).
     #[arg(long)]
     stop_after_min: Option<f64>,
+    /// Also check the outputs of the sites that look up to date (fingerprints recorded
+    /// in `build-all.json`): an altered, removed or half-written output is rebuilt. In
+    /// every case only the failed, older than `--max-age-hours`, altered steps and those
+    /// depending on them are run again.
+    #[arg(long)]
+    stale: bool,
 }
 
 /// Arguments of a subcommand not implemented yet.
@@ -483,7 +489,13 @@ fn not_implemented(name: &str, tickets: &str) -> Result<()> {
 fn build_all(cfg: &Config, registry: &Registry, a: BuildAllArgs) -> Result<()> {
     let c = build::Ctx::new(cfg)?;
     if let Some(id) = &a.site {
-        return batch::build_single(&c, registry, registry.get(id)?, a.force);
+        return batch::build_single(
+            &c,
+            registry,
+            registry.get(id)?,
+            a.force,
+            Duration::from_secs_f64(a.max_age_hours.max(0.0) * 3600.0),
+        );
     }
     let sites: Vec<&'static Site> = if a.all {
         registry.buildable()
@@ -500,6 +512,7 @@ fn build_all(cfg: &Config, registry: &Registry, a: BuildAllArgs) -> Result<()> {
         stop_after: a
             .stop_after_min
             .map(|m| Duration::from_secs_f64(m.max(0.0) * 60.0)),
+        verify: a.stale,
     };
     let summary = batch::build_many(&c, registry, &sites, &opts)?;
     for l in batch::describe(&summary) {
