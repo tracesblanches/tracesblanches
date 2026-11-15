@@ -177,7 +177,7 @@ fn operator_coverage(
                     .cloned()
                     .collect();
             let n = polys.len();
-            (n, MultiPolygon::new(polys).intersection(area))
+            (n, MultiPolygon::new(polys))
         })
         .collect::<Vec<_>>()
         .into_iter()
@@ -186,12 +186,15 @@ fn operator_coverage(
             mp
         })
         .collect();
+    // Not clipped to the area here: clipping each operator, then taking the difference
+    // of the area with their union, computes the area boundary several times with
+    // different rounding and leaves thousands of zero-area slivers along it.
     let covered = union_all(pieces.iter());
     let stats = OperatorStats {
         operator: op.name().into(),
         features: feats.len(),
         polygons_near: near,
-        covered_km2: km2(&covered),
+        covered_km2: km2(&covered.intersection(area)),
         covered_pct: 0.0,
         extract_s: extract_t.map(secs),
         read_s: secs(read_t),
@@ -223,6 +226,37 @@ fn feature(mp: &MultiPolygon<f64>, props: serde_json::Value) -> Feature {
 
 fn to_geojson(fc: FeatureCollection) -> Result<String> {
     serde_json::to_string(&fc).map_err(|e| skimap_common::Error::json("coverage GeoJSON", e).into())
+}
+
+/// One feature per polygon of `none` (Lambert-93) and its WGS84 copy `none_wgs`.
+///
+/// A piece narrower than the output precision (1e-6 degree, about 0.1 m) vanishes once
+/// rounded: two tracings of the national border (ARCEP and geo.api.gouv.fr) a few
+/// millimetres apart. It is not written (no feature without geometry).
+fn no_network_features(
+    none: &MultiPolygon<f64>,
+    none_wgs: &MultiPolygon<f64>,
+    release: Release,
+) -> Vec<Feature> {
+    none.0
+        .iter()
+        .zip(&none_wgs.0)
+        .filter(|(_, wgs)| {
+            !round_multipolygon(&MultiPolygon::new(vec![(*wgs).clone()]), 1e6)
+                .0
+                .is_empty()
+        })
+        .map(|(l93, wgs)| {
+            feature(
+                &MultiPolygon::new(vec![wgs.clone()]),
+                serde_json::json!({
+                    "kind": "no_voice_network_any_operator",
+                    "area_ha": round2(l93.unsigned_area() / 1e4),
+                    "release": release.tag(),
+                }),
+            )
+        })
+        .collect()
 }
 
 /// Computes the no-network areas of `site` and writes the `coverage` layer.
@@ -268,21 +302,7 @@ pub fn build(
     let none_km2 = km2(&none);
 
     let none_wgs = reproject(&none, Crs::Lambert93, Crs::Wgs84)?;
-    let features: Vec<Feature> = none
-        .0
-        .iter()
-        .zip(&none_wgs.0)
-        .map(|(l93, wgs)| {
-            feature(
-                &MultiPolygon::new(vec![wgs.clone()]),
-                serde_json::json!({
-                    "kind": "no_voice_network_any_operator",
-                    "area_ha": round2(l93.unsigned_area() / 1e4),
-                    "release": release.tag(),
-                }),
-            )
-        })
-        .collect();
+    let features = no_network_features(&none, &none_wgs, release);
     let n_polys = features.len();
     let none_json = to_geojson(FeatureCollection::new(features))?;
     let area_wgs = reproject(&area, Crs::Lambert93, Crs::Wgs84)?;
@@ -359,6 +379,7 @@ fn layer_meta(site: &Site, r: &CoverageReport, opts: &CoverageOptions) -> LayerM
 #[cfg(test)]
 mod tests {
     use super::*;
+    use geo::polygon;
 
     #[test]
     fn crate_name() {
@@ -392,5 +413,48 @@ mod tests {
         assert!((km2(&none) - 49.0).abs() < 1e-9, "{}", km2(&none));
         assert_eq!(none.0.len(), 1);
         assert_eq!(none.0[0].interiors().len(), 1);
+    }
+
+    /// The old order (each operator clipped to the area, then the area minus their
+    /// union) computes the area boundary once per operator; the new one clips once. With
+    /// a skewed area edge, the difference must not leave slivers; and a sub-precision
+    /// piece is never written as a feature without geometry.
+    #[test]
+    fn single_clip_leaves_no_slivers() {
+        // Area: a quadrilateral with skewed edges (like a reprojected, densified box).
+        let area = MultiPolygon::new(vec![polygon![
+            (x: 0.123_456_7, y: 0.0),
+            (x: 10_000.0, y: 3.333_333),
+            (x: 9_999.777_7, y: 10_000.0),
+            (x: 0.0, y: 9_998.888_8),
+        ]]);
+        // Three operators: overlapping vertical bands crossing the skewed edges.
+        let band = |x0: f64, x1: f64| {
+            MultiPolygon::new(vec![
+                geo::Rect::new(
+                    geo::coord! { x: x0, y: -500.0 },
+                    geo::coord! { x: x1, y: 10_500.0 },
+                )
+                .to_polygon(),
+            ])
+        };
+        let ops = [
+            band(-300.0, 4000.0),
+            band(3000.0, 6000.0),
+            band(5500.0, 8000.0),
+        ];
+        let single = area.difference(&union_all(ops.iter()));
+        let clipped: Vec<MultiPolygon<f64>> = ops.iter().map(|o| o.intersection(&area)).collect();
+        let twice = area.difference(&union_all(clipped.iter()));
+        assert!((km2(&single) - km2(&twice)).abs() < 1e-6);
+        assert_eq!(single.0.len(), 1, "one real piece east of 8 km");
+        assert!(single.0.iter().all(|p| p.unsigned_area() > 1.0));
+        // Output: a sliver 1 µm wide is dropped, the real piece kept.
+        let sliver = polygon![(x: 6.7, y: 44.8), (x: 6.71, y: 44.8), (x: 6.71, y: 44.800_000_01)];
+        let real = polygon![(x: 6.7, y: 44.8), (x: 6.71, y: 44.8), (x: 6.71, y: 44.81)];
+        let wgs = MultiPolygon::new(vec![sliver.clone(), real.clone()]);
+        let f = no_network_features(&wgs, &wgs, Release::LATEST_KNOWN);
+        assert_eq!(f.len(), 1);
+        assert!(f.iter().all(|f| f.geometry.is_some()));
     }
 }

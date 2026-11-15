@@ -29,10 +29,12 @@ cargo test -p skimap-coverage --test real_sites -- --ignored     # chiffres comp
 
 | | Orange | SFR | Free | Bouygues | Au moins un | Aucun réseau |
 |---|---|---|---|---|---|---|
-| Cervières (225,6 km²) | 37,7 % | 69,3 % | 54,2 % | 69,4 % | 77,3 % | 51,2 km² (22,7 %), 2 740 polygones, 558 Ko |
-| Chapelle-des-Bois (172,7 km²) | 73,2 % | 84,8 % | 76,9 % | 77,7 % | 89,8 % | 17,6 km² (10,2 %), 3 455 polygones, 659 Ko |
+| Cervières (225,6 km²) | 37,7 % | 69,3 % | 54,2 % | 69,4 % | 77,3 % | 51,2 km² (22,7 %), 117 polygones, 79 Ko |
+| Chapelle-des-Bois (172,7 km²) | 73,2 % | 84,8 % | 76,9 % | 77,7 % | 89,8 % | 17,6 km² (10,2 %), 100 polygones, 75 Ko |
 
 Identiques au rapport 06 au dixième près.
+
+Avant le 15/11/2026, chaque opérateur était découpé par la zone analysée avant l'union, puis la zone moins l'union : le bord de la zone était calculé une fois par opérateur, avec des arrondis différents, et la différence laissait des milliers de lamelles d'aire nulle (2 740 polygones dont 2 071 vides une fois arrondis au millionième de degré à Cervières, 3 455 dont 2 937 à Chapelle-des-Bois ; 558 et 659 Ko). Le découpage se fait maintenant une seule fois (zone moins l'union des couvertures non découpées) ; les rares morceaux plus étroits que la précision de sortie (deux tracés de la frontière, ARCEP et geo.api.gouv.fr, à quelques millimètres) ne sont pas écrits. Surfaces inchangées (51,25 et 17,64 km², somme des `area_ha` identique à 0,01 ha près).
 
 ## Temps (poste de développement, 20 cœurs)
 

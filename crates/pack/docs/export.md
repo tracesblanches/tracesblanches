@@ -12,7 +12,7 @@
 | `osmand/*.sqlitedb` | mêmes tuiles au format SQLiteDB d'OsmAnd : `tiles(x, y, z, s, image)`, table `info` avec `tilenumbering='simple'` (zoom non inversé, lu dans `SQLiteTileSource.java`), sans URL (hors ligne), `timecolumn='no'`, `tilesize=256` |
 | `LISEZMOI.md`, `aide/*.md` | mode d'emploi en français : contenu et tailles, copie sur le téléphone, import Locus, import OsmAnd, liste de vérification, sources |
 
-Surcouches : pentes (classes de la carte des pentes IGN, moins de 30° transparent) et neige (hauteur, classes piste damée et hors piste). OsmAnd n'affiche une surcouche que jusqu'à deux zooms au-dessus de son zoom maximal (`MapTileLayer.OVERZOOM_IN = 2`) : l'export ajoute un ou deux zooms agrandis (plus proche voisin, exact) au-dessus du zoom calculé du pack, jusqu'au zoom 16 pour la pente (affichée jusqu'au 18) et 15 pour la neige. Les tuiles IGN de comparaison ne sont pas exportées (usage hors ligne à confirmer). Abribus OSM écartés ; entités sans géométrie (2 071 / 2 740 polygones vides dans `no_network.geojson` de Cervières, 2 937 / 3 455 à Chapelle-des-Bois) ignorées.
+Surcouches : pentes (classes de la carte des pentes IGN, moins de 30° transparent) et neige (hauteur, classes piste damée et hors piste). OsmAnd n'affiche une surcouche que jusqu'à deux zooms au-dessus de son zoom maximal (`MapTileLayer.OVERZOOM_IN = 2`) : l'export ajoute un ou deux zooms agrandis (plus proche voisin, exact) au-dessus du zoom calculé du pack, jusqu'au zoom 16 pour la pente (affichée jusqu'au 18) et 15 pour la neige. Les tuiles IGN de comparaison ne sont pas exportées (usage hors ligne à confirmer). Abribus OSM écartés.
 
 ```sh
 cargo run --release -p skimap-pack --features pipeline --example export_pack
