@@ -78,8 +78,9 @@ class SendOutingTest {
             store.setTokens(null)
             // The browser comes back from skimap-server's callback with the code and the state.
             store.setOauthState("state-1")
+            val uri = "skimap://strava/callback?code=${FakeStrava.CODE}&scope=read,activity:write&state=state-1"
             val callback =
-                Intent(Intent.ACTION_VIEW, "skimap://strava/callback?code=${FakeStrava.CODE}&scope=read,activity:write&state=state-1".toUri())
+                Intent(Intent.ACTION_VIEW, uri.toUri())
                     .setClass(context, SportActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             ActivityScenario.launch<SportActivity>(callback).use {
