@@ -5,6 +5,15 @@
 //! `data/out/france/plan_training/model.json` and `evaluation.json`; with a path argument,
 //! also the rows as CSV (for the Python oracle, outside the repository).
 //!
+//! Then precision and recall per massif (département of the domains drawn): each massif
+//! held out of the training in turn, and the cross-validated scores restricted to it; the
+//! same for a model without the name descriptors (the case of a piste whose OSM name is
+//! not the plan's).
+//!
+//! `TRAIN_PLANS_DIR=<name>`: the labelled plans of another directory under plan_training
+//! (a measurement run of `train_pairs`); the model and the evaluation are then written as
+//! `<name>_model.json` and `<name>_evaluation.json` beside it, not over the model in use.
+//!
 //! `SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-pisteplan --features pipeline --example train_model [rows.csv]`
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -35,7 +44,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     let mut plans: Vec<Value> = Vec::new();
-    for e in std::fs::read_dir(dir.join("plans"))? {
+    let sub = std::env::var("TRAIN_PLANS_DIR").unwrap_or_else(|_| "plans".to_owned());
+    let (model_path, eval_path) = if sub == "plans" {
+        (dir.join("model.json"), dir.join("evaluation.json"))
+    } else {
+        (
+            dir.join(format!("{sub}_model.json")),
+            dir.join(format!("{sub}_evaluation.json")),
+        )
+    };
+    let dep_of: BTreeMap<&str, &str> = census
+        .iter()
+        .map(|d| (d.id.as_str(), d.departement.as_str()))
+        .collect();
+    for e in std::fs::read_dir(dir.join(&sub))? {
         let p = e?.path();
         if p.extension().is_some_and(|x| x == "json") {
             let v: Value = serde_json::from_slice(&std::fs::read(&p)?)?;
@@ -79,26 +101,52 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let mut train: Vec<Row> = Vec::new();
     let mut plan_domains: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut massif_of: BTreeMap<String, String> = BTreeMap::new();
     let mut excluded = Vec::new();
+    // Every labelled plan, the test ones included, for the evaluation per massif (a
+    // massif is held out whole: no domain in training and in test).
+    let mut all_rows: Vec<Row> = Vec::new();
+    let mut all_domains: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for v in &plans {
         let id = v["id"].as_str().unwrap_or_default().to_owned();
-        if is_test(v) {
-            excluded.push(id);
-            continue;
-        }
         let rows: Vec<Row> = rows_of(v)
             .into_iter()
             .filter(|r| r.label.is_some())
             .collect();
+        let test = is_test(v);
+        if test {
+            excluded.push(id.clone());
+        }
         if !rows.iter().any(|r| r.label == Some(1)) {
             continue;
         }
         let mut d = doms(v);
+        // Massif: the domains drawn, else those the plan was read for.
+        let deps: Vec<&str> = d
+            .iter()
+            .map(String::as_str)
+            .chain(
+                d.is_empty()
+                    .then(|| v["domains"].as_array().into_iter().flatten())
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str),
+            )
+            .filter_map(|x| dep_of.get(x).copied())
+            .collect();
+        massif_of.insert(
+            id.clone(),
+            evaluate::plan_massif(&deps).unwrap_or("inconnu").to_owned(),
+        );
         if d.is_empty() {
             d.push(format!("plan:{id}"));
         }
-        plan_domains.insert(id, d);
-        train.extend(rows);
+        all_domains.insert(id.clone(), d.clone());
+        all_rows.extend(rows.iter().cloned());
+        if !test {
+            plan_domains.insert(id, d);
+            train.extend(rows);
+        }
     }
     let group_of = evaluate::domain_groups(&plan_domains);
     let features: Vec<String> = learn::FEATURES.iter().map(|s| (*s).to_owned()).collect();
@@ -152,6 +200,56 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .collect();
     let model = Gbdt::fit(&features, &x, &y, params);
     let threshold = cv.threshold_99.unwrap_or(1.0);
+    // Per massif, with and without the name descriptors, at the threshold.
+    let print_massifs = |label: &str, ms: &[evaluate::MassifReport]| {
+        println!("{label} (seuil {threshold:.2}) :");
+        for m in ms {
+            println!(
+                "  {:15} {:2} plans, {:4} paires ({:3} +) | massif tenu à l'écart : {:3} décidées, {:3} justes, précision {:.3} (borne 95 % {:.3}), rappel {:.3} | validation croisée : {:3} décidées, précision {:.3}, rappel {:.3}",
+                m.massif,
+                m.plans,
+                m.rows,
+                m.positive_rows,
+                m.held_out.decided,
+                m.held_out.correct,
+                m.held_out.precision,
+                m.held_out.precision_low95,
+                m.held_out.recall,
+                m.cross_validated.decided,
+                m.cross_validated.precision,
+                m.cross_validated.recall
+            );
+        }
+    };
+    let all_groups = evaluate::domain_groups(&all_domains);
+    println!(
+        "évaluation par massif : {} plans étiquetés (sites d'essai compris), {} groupes de domaines, {} paires ({} positives)",
+        all_domains.len(),
+        all_groups.values().collect::<BTreeSet<_>>().len(),
+        all_rows.len(),
+        all_rows.iter().filter(|r| r.label == Some(1)).count()
+    );
+    let (oof_all, cv_all) = cross_validate(&features, &all_rows, &all_groups, 5, params);
+    println!(
+        "  validation croisée (tous les plans) : AUC {:.4}, seuil 99 % {:?}",
+        cv_all.auc, cv_all.threshold_99
+    );
+    let massifs = evaluate::by_massif(
+        &features, &all_rows, &oof_all, &massif_of, threshold, params,
+    );
+    print_massifs("Par massif, modèle complet", &massifs);
+    let (nf, nrows) = evaluate::select_columns(
+        &all_rows,
+        &features,
+        &["name_similarity", "map_label_similarity"],
+    );
+    let (oof_nn, cv_nn) = cross_validate(&nf, &nrows, &all_groups, 5, params);
+    println!(
+        "sans les descripteurs de nom : AUC {:.4}, seuil 99 % {:?}",
+        cv_nn.auc, cv_nn.threshold_99
+    );
+    let massifs_nn = evaluate::by_massif(&nf, &nrows, &oof_nn, &massif_of, threshold, params);
+    print_massifs("Par massif, sans les descripteurs de nom", &massifs_nn);
     // The two sites.
     let mut sites = Vec::new();
     for v in plans.iter().filter(|v| v["test"].as_bool() == Some(true)) {
@@ -188,17 +286,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sites.push(json!({"plan": v["id"], "lines": lines}));
     }
     skimap_common::output::write_json(
-        &dir.join("model.json"),
+        &model_path,
         &json!({"model": model, "threshold": threshold, "features": features}),
     )?;
     skimap_common::output::write_json(
-        &dir.join("evaluation.json"),
+        &eval_path,
         &json!({
             "training_plans": plan_domains.keys().collect::<Vec<_>>(),
             "excluded_test_plans": excluded,
             "test_domains": test_domains,
             "cross_validation": cv,
             "threshold_99": threshold,
+            "massif_of_plan": massif_of,
+            "by_massif": massifs,
+            "all_plans_cross_validation": cv_all,
+            "without_name": {"features": nf, "cross_validation": cv_nn, "by_massif": massifs_nn},
             "sites": sites,
         }),
     )?;

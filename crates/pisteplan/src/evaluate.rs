@@ -285,9 +285,141 @@ pub fn cross_validate(
     )
 }
 
+/// Mountain range of a French département (the nordic départements; the national split
+/// into massifs of the mountain law, Ain with the Jura, Drôme with the Northern Alps).
+pub fn massif_of_departement(dep: &str) -> Option<&'static str> {
+    Some(match dep {
+        "01" | "25" | "39" => "Jura",
+        "26" | "38" | "73" | "74" => "Alpes du Nord",
+        "04" | "05" | "06" => "Alpes du Sud",
+        "54" | "57" | "67" | "68" | "70" | "88" | "90" => "Vosges",
+        "03" | "07" | "12" | "15" | "19" | "23" | "30" | "34" | "42" | "43" | "48" | "63"
+        | "81" | "87" => "Massif central",
+        "09" | "11" | "31" | "64" | "65" | "66" => "Pyrénées",
+        "2A" | "2B" => "Corse",
+        _ => return None,
+    })
+}
+
+/// Massif of a plan: the most frequent massif of its domains (ties: the first in name
+/// order); `None` when none of them has one.
+pub fn plan_massif(departements: &[&str]) -> Option<&'static str> {
+    let mut n: BTreeMap<&'static str, usize> = BTreeMap::new();
+    for d in departements {
+        if let Some(m) = massif_of_departement(d) {
+            *n.entry(m).or_default() += 1;
+        }
+    }
+    n.into_iter()
+        .max_by(|a, b| a.1.cmp(&b.1).then(b.0.cmp(a.0)))
+        .map(|(m, _)| m)
+}
+
+/// Precision and recall of one massif held out.
+#[derive(Debug, Clone, Serialize)]
+pub struct MassifReport {
+    /// Massif.
+    pub massif: String,
+    /// Plans of the massif (with labelled rows).
+    pub plans: usize,
+    /// Labelled rows, positive rows.
+    pub rows: usize,
+    /// Positive rows.
+    pub positive_rows: usize,
+    /// Leave-one-massif-out: the model trained on the other massifs only, at the
+    /// threshold.
+    pub held_out: PrPoint,
+    /// Out-of-fold scores of the grouped cross-validation (folds by group of domains), at
+    /// the threshold, restricted to the massif.
+    pub cross_validated: PrPoint,
+}
+
+/// Columns of `features` kept, in order (the others dropped: a model without some
+/// descriptors).
+pub fn select_columns(rows: &[Row], features: &[String], drop: &[&str]) -> (Vec<String>, Vec<Row>) {
+    let keep: Vec<usize> = (0..features.len())
+        .filter(|&i| !drop.contains(&features[i].as_str()))
+        .collect();
+    let names = keep.iter().map(|&i| features[i].clone()).collect();
+    let rows = rows
+        .iter()
+        .map(|r| Row {
+            x: keep.iter().map(|&i| r.x[i]).collect(),
+            ..r.clone()
+        })
+        .collect();
+    (names, rows)
+}
+
+/// Precision and recall per massif at threshold `t`: for each massif, the model trained
+/// on the rows of the other massifs scores the massif's rows (never a massif in training
+/// and in test), and the grouped cross-validation's out-of-fold scores (`oof`) are
+/// restricted to it. `massif_of`: plan → massif.
+pub fn by_massif(
+    features: &[String],
+    rows: &[Row],
+    oof: &[f64],
+    massif_of: &BTreeMap<String, String>,
+    t: f64,
+    params: Params,
+) -> Vec<MassifReport> {
+    let massifs: BTreeSet<&String> = rows.iter().filter_map(|r| massif_of.get(&r.plan)).collect();
+    let mut out = Vec::new();
+    for m in massifs {
+        let inside = |r: &Row| massif_of.get(&r.plan) == Some(m);
+        let test: Vec<usize> = (0..rows.len()).filter(|&i| inside(&rows[i])).collect();
+        let train: Vec<usize> = (0..rows.len()).filter(|&i| !inside(&rows[i])).collect();
+        let test_rows: Vec<Row> = test.iter().map(|&i| rows[i].clone()).collect();
+        let held_p: Vec<f64> = if train.iter().any(|&i| rows[i].label == Some(1)) {
+            let x: Vec<Vec<f64>> = train.iter().map(|&i| rows[i].x.clone()).collect();
+            let y: Vec<f64> = train
+                .iter()
+                .map(|&i| f64::from(rows[i].label.unwrap_or(0)))
+                .collect();
+            let model = Gbdt::fit(features, &x, &y, params);
+            test_rows.iter().map(|r| model.predict(&r.x)).collect()
+        } else {
+            vec![0.0; test_rows.len()]
+        };
+        let oof_m: Vec<f64> = test.iter().map(|&i| oof[i]).collect();
+        let plans: BTreeSet<&str> = test_rows.iter().map(|r| r.plan.as_str()).collect();
+        out.push(MassifReport {
+            massif: m.clone(),
+            plans: plans.len(),
+            rows: test_rows.len(),
+            positive_rows: test_rows.iter().filter(|r| r.label == Some(1)).count(),
+            held_out: pr_at(&line_decisions(&test_rows, &held_p), &test_rows, t),
+            cross_validated: pr_at(&line_decisions(&test_rows, &oof_m), &test_rows, t),
+        });
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn massifs_of_departements_and_plans() {
+        assert_eq!(massif_of_departement("25"), Some("Jura"));
+        assert_eq!(massif_of_departement("05"), Some("Alpes du Sud"));
+        assert_eq!(massif_of_departement("75"), None);
+        assert_eq!(plan_massif(&["25", "39", "74"]), Some("Jura"));
+        assert_eq!(plan_massif(&["75"]), None);
+        let rows = vec![Row {
+            plan: "p".into(),
+            entry: 0,
+            entry_name: "x".into(),
+            relations: vec![],
+            unit_name: None,
+            x: vec![1.0, 2.0, 3.0],
+            label: Some(1),
+        }];
+        let f: Vec<String> = ["a", "b", "c"].iter().map(|s| (*s).to_owned()).collect();
+        let (names, r) = select_columns(&rows, &f, &["b"]);
+        assert_eq!(names, vec!["a".to_owned(), "c".to_owned()]);
+        assert_eq!(r[0].x, vec![1.0, 3.0]);
+    }
 
     #[test]
     fn plans_sharing_a_domain_are_one_group() {
