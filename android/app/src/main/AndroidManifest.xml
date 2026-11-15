@@ -26,5 +26,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- The morning and the plan of the day (J5, K9, K10). -->
+        <activity
+            android:name=".day.DayActivity"
+            android:exported="false" />
+        <!-- The one location service of an outing (K4, report 09), module :tracking. -->
+        <service
+            android:name=".guidance.SkiTrackingService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
     </application>
 </manifest>
