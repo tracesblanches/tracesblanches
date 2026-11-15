@@ -75,6 +75,8 @@ pub enum DecisionKind {
     NoNetworkEnd = 2,
     /// A historic avalanche path ahead.
     Avalanche = 3,
+    /// A protected zone ahead (X11).
+    ProtectedZone = 4,
     /// Anything else.
     Other = 255,
 }
@@ -86,6 +88,7 @@ impl DecisionKind {
             "no_network" => DecisionKind::NoNetwork,
             "no_network_end" => DecisionKind::NoNetworkEnd,
             "avalanche_path" => DecisionKind::Avalanche,
+            "protected_zone" => DecisionKind::ProtectedZone,
             _ => DecisionKind::Other,
         }
     }
@@ -96,6 +99,7 @@ impl DecisionKind {
             1 => DecisionKind::NoNetwork,
             2 => DecisionKind::NoNetworkEnd,
             3 => DecisionKind::Avalanche,
+            4 => DecisionKind::ProtectedZone,
             _ => DecisionKind::Other,
         }
     }

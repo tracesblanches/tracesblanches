@@ -2928,6 +2928,7 @@ dependencies = [
  "skimap-common",
  "skimap-core",
  "skimap-voice",
+ "skimap-zones",
  "thiserror",
 ]
 

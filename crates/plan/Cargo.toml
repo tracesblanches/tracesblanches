@@ -11,6 +11,9 @@ publish.workspace = true
 [dependencies]
 skimap-common = { workspace = true }
 skimap-core.workspace = true
+# Zones and rules (C8) of the protected zones said along the plans B and the routes
+# computed during the outing (X11); the schema only, no network.
+skimap-zones.workspace = true
 skimap-assist.workspace = true
 skimap-voice.workspace = true
 chrono.workspace = true

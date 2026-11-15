@@ -23,6 +23,7 @@
 
 use chrono::{DateTime, Duration, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
+use skimap_assist::inputs::SiteData;
 use skimap_common::geom::LonLat;
 use skimap_core::graph::{HalfEdge, LocalPlane, PisteGraph};
 use skimap_core::matching::synth::{Noise, Rng, Truth, add_noise};
@@ -429,7 +430,23 @@ pub fn run(
     g: &PisteGraph,
     params: TrackerParams,
 ) -> Result<Run> {
+    run_with_layers(sc, plan, track, g, params, None)
+}
+
+/// [`run`] with the layers of the day given to the tracker
+/// ([`Tracker::with_layers`]: the routes computed during the outing announce them, X11).
+pub fn run_with_layers(
+    sc: &Scenario,
+    plan: &DayPlan,
+    track: TrackView<'_>,
+    g: &PisteGraph,
+    params: TrackerParams,
+    layers: Option<&SiteData>,
+) -> Result<Run> {
     let mut tr = Tracker::new(plan, track, g, None, params)?;
+    if let Some(d) = layers {
+        tr = tr.with_layers(d);
+    }
     let mut legs = plan.route.legs.clone();
     for st in &sc.steps {
         if let Step::WrongTurn {
@@ -800,7 +817,22 @@ pub fn replay(
     g: &PisteGraph,
     params: TrackerParams,
 ) -> Result<Vec<Output>> {
+    replay_with_layers(inputs, plan, track, g, params, None)
+}
+
+/// [`replay`] with the layers of the day ([`run_with_layers`]).
+pub fn replay_with_layers(
+    inputs: &[Input],
+    plan: &DayPlan,
+    track: TrackView<'_>,
+    g: &PisteGraph,
+    params: TrackerParams,
+    layers: Option<&SiteData>,
+) -> Result<Vec<Output>> {
     let mut tr = Tracker::new(plan, track, g, None, params)?;
+    if let Some(d) = layers {
+        tr = tr.with_layers(d);
+    }
     let mut out = Vec::new();
     for i in inputs {
         tr.push(i, &mut out);

@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use chrono::NaiveTime;
+use skimap_assist::inputs::SiteData;
 use skimap_common::layout::DataLayout;
 use skimap_common::site::{CERVIERES, CHAPELLE_DES_BOIS, Site};
 use skimap_core::calibration::{self, GroupProfile};
@@ -33,6 +34,9 @@ struct Built {
     plan: DayPlan,
     track: Vec<u8>,
     graph: PisteGraph,
+    /// Layers of the day (without the graph) and the inputs of the plan (voice of the
+    /// pack).
+    layers: Arc<(SiteData, plan::Context)>,
 }
 
 fn layout() -> DataLayout {
@@ -75,6 +79,7 @@ fn built(site: &'static Site, key: &str, edit: impl FnOnce(&mut PlanRequest)) ->
         plan: p,
         track,
         graph,
+        layers: Arc::new((data, ctx)),
     });
     cache.lock().unwrap().insert(id, b.clone());
     b
@@ -496,6 +501,196 @@ fn q9_06_chapelle_wrong_turn_rerouted() {
     assert!(t[1] - t[0] >= 60.0 - 1e-9, "{t:?}");
 }
 
+/// Spoken kinds after an instant, in order.
+fn said_after(run: &Run, t: f64) -> Vec<(f64, &'static str, Priority)> {
+    let mut v = Vec::new();
+    for o in &run.outputs {
+        let s = scenario::rel(run, o.t());
+        if let Output::Spoken { spoken, .. } = o
+            && s >= t
+        {
+            for c in &spoken.items {
+                for k in [
+                    "no_network",
+                    "no_network_end",
+                    "avalanche_path",
+                    "protected_zone",
+                ] {
+                    if c.kind == k {
+                        v.push((s, k, c.priority));
+                    }
+                }
+            }
+        }
+    }
+    v
+}
+
+#[test]
+fn q9_33_cervieres_rerouted_route_says_the_hazards() {
+    // X11: Cervières, 1 h 30 from Les Fonts at 14 h 30; a wrong turn at the third junction
+    // and skiing on: the route computed then crosses a zone without any network and a
+    // historic avalanche path. With the layers of the day (the pack's), it announces them
+    // as the plan's routes do (the same function); without, as before, nothing.
+    let b = built(&CERVIERES, "1h30", |r| {
+        *r = presets::requests(&CERVIERES, presets::past_day(&CERVIERES))[1].clone()
+    });
+    let sc = scen(
+        &b,
+        "Cervières, écart puis nouvel itinéraire à travers une zone sans réseau et un couloir",
+        vec![
+            Step::WaitAtStart { secs: 60.0 },
+            Step::WrongTurn {
+                junction: 2,
+                length_m: 600.0,
+                back: false,
+            },
+        ],
+    );
+    let params = TrackerParams::default();
+    let view = TrackView::new(&b.track).expect("track");
+    let run = scenario::run_with_layers(
+        &sc,
+        &b.plan,
+        view,
+        &b.graph,
+        params.clone(),
+        Some(&b.layers.0),
+    )
+    .expect("run");
+    println!("== {} ({} fixes, {} lots)", sc.name, run.fixes, run.batches);
+    for l in scenario::timeline(&run) {
+        println!("{l}");
+    }
+    // Deterministic with the same layers.
+    let again = scenario::replay_with_layers(
+        &run.inputs,
+        &b.plan,
+        view,
+        &b.graph,
+        params.clone(),
+        Some(&b.layers.0),
+    )
+    .unwrap();
+    assert_eq!(again, run.outputs);
+    no_manipulation(&run);
+    let t = expect(
+        &run,
+        &[
+            (M::Switched("deviation"), 0.0, 1e6),
+            (M::Said("rerouted"), 0.0, 1e6),
+            (M::Said("no_network"), 0.0, 1e6),
+            (M::Said("avalanche_path"), 0.0, 1e6),
+            (M::Said("no_network_end"), 0.0, 1e6),
+            (M::Finished(End::Arrived), 0.0, 1e6),
+        ],
+    );
+    let live = run.outputs.iter().find_map(|o| match o {
+        Output::Switched {
+            to: RouteRef::Live(n),
+            cause: Cause::Deviation,
+            ..
+        } => Some(*n),
+        _ => None,
+    });
+    assert!(live.is_some(), "a route computed on the phone");
+    let after = said_after(&run, t[0]);
+    println!(
+        "{} : après le nouvel itinéraire ({:.0} s) : {after:?}",
+        run.scenario, t[0]
+    );
+    assert!(
+        after
+            .iter()
+            .filter(|(_, k, _)| *k != "no_network_end")
+            .all(|(_, _, p)| *p == Priority::Safety),
+        "safety announcements: {after:?}"
+    );
+    for o in &run.outputs {
+        if let Output::Spoken { spoken, .. } = o {
+            assert!(never_safe(&spoken.announcement.text()));
+        }
+    }
+    // The same outing without the layers: the same new route, nothing said of them (the
+    // bug of X11).
+    let bare = scenario::run(&sc, &b.plan, view, &b.graph, params).expect("run");
+    let tb = expect(&bare, &[(M::Switched("deviation"), t[0], t[0])])[0];
+    assert!(
+        said_after(&bare, tb).is_empty(),
+        "{:?}",
+        said_after(&bare, tb)
+    );
+}
+
+#[test]
+fn x11_protected_zones_of_a_route_said_by_the_common_function() {
+    // The Chapelle-des-Bois loop of 2 h crosses the winter quiet zone of the capercaillie:
+    // told in the morning for the loop (A7), not along it; a route that crosses it without
+    // the loop (`zones_told` without it) says it at its entry, with its rule, clips of the
+    // pack.
+    let b = chapelle();
+    let c = skimap_plan::course::Course::new(&b.graph, &b.plan.route.legs, &b.plan.eta).unwrap();
+    let zones = plan::protected_zones(
+        c.line().points(),
+        (0.0, f64::INFINITY),
+        &b.layers.0,
+        b.plan.date,
+    );
+    println!("{zones:?}");
+    let z = zones.first().expect("a protected zone on the loop");
+    assert!(z.name.contains("tétras"), "{}", z.name);
+    let anns = |told: &std::collections::BTreeSet<String>| {
+        let h = plan::Hazards {
+            data: &b.layers.0,
+            date: b.plan.date,
+            zones_told: Some(told),
+            zones_range: (0.0, f64::INFINITY),
+        };
+        let j = skimap_plan::guidance::junctions(&b.graph, &c);
+        plan::announcements(
+            &b.graph,
+            &c,
+            &j,
+            b.layers.1.voice.as_ref(),
+            Some(&h),
+            b.plan.departure,
+        )
+    };
+    let all: std::collections::BTreeSet<String> = zones.iter().map(|z| z.id.clone()).collect();
+    assert!(anns(&all).iter().all(|a| a.kind != "protected_zone"));
+    // The plan's loop: none along it (said in the morning).
+    assert!(
+        b.plan
+            .announcements
+            .iter()
+            .all(|a| a.kind != "protected_zone")
+    );
+    let none = std::collections::BTreeSet::new();
+    let said: Vec<_> = anns(&none)
+        .into_iter()
+        .filter(|a| a.kind == "protected_zone")
+        .collect();
+    assert_eq!(said.len(), zones.len(), "{said:?}");
+    let a = &said[0];
+    println!("{:?} : « {} »", a.trigger, a.text);
+    assert!(
+        matches!(a.trigger, plan::Trigger::At { s, .. } if (s - (z.runs[0].0 - plan::ZONE_LEAD_M).max(0.0)).abs() < 1e-6)
+    );
+    assert!(
+        a.text.contains("tétras") && never_safe(&a.text),
+        "{}",
+        a.text
+    );
+    let mut check = skimap_plan::phrases::ClipCheck::default();
+    b.layers
+        .1
+        .voice
+        .as_ref()
+        .expect("voice of the pack")
+        .check(&a.announcement, &mut check);
+    assert!(check.missing.is_empty(), "{check:?}");
+}
+
 // ---------------------------------------------------------------------------------------
 // Closed trails.
 
@@ -786,6 +981,7 @@ fn with_weather(b: &Built, f: impl Fn(&mut skimap_assist::layers::WeatherHour)) 
         plan,
         track: b.track.clone(),
         graph: b.graph.clone(),
+        layers: b.layers.clone(),
     }
 }
 
@@ -1385,6 +1581,7 @@ fn q9_29_chapelle_family_with_its_learned_profile() {
         plan,
         track: b.track.clone(),
         graph: b.graph.clone(),
+        layers: b.layers.clone(),
     };
     let mut sc = scen(
         &fam,
@@ -1487,6 +1684,7 @@ fn for_group(b: &Built, model: &calibration::ProfileModel) -> Built {
         plan,
         track: b.track.clone(),
         graph: b.graph.clone(),
+        layers: b.layers.clone(),
     }
 }
 
