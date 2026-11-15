@@ -580,13 +580,27 @@ pub fn establishment_phones(text: &str, establishment: bool, source: &str) -> Ve
 }
 
 /// A phone from a structured field of an establishment (Camptocamp `phone`, OSM `phone`).
+/// A field holding only a French number without its leading 0 (« 3 84 33 59 45 ») is
+/// read as that number.
 pub fn structured_phone(raw: &str, label: &str, source: &str) -> Vec<Phone> {
     raw.split([';', ','])
         .filter_map(|part| {
-            let p = find_phones(part.trim()).into_iter().next()?;
+            let part = part.trim();
+            let e164 = match find_phones(part).into_iter().next() {
+                Some(p) => p.e164,
+                None => {
+                    let only_number = part.chars().all(|c| c.is_ascii_digit() || is_sep(c));
+                    let d: String = part.chars().filter(char::is_ascii_digit).collect();
+                    if only_number && d.len() == 9 && !d.starts_with('0') {
+                        format!("+33{d}")
+                    } else {
+                        return None;
+                    }
+                }
+            };
             Some(Phone {
-                display: display_phone(&p.e164),
-                e164: p.e164,
+                display: display_phone(&e164),
+                e164,
                 label: label.to_owned(),
                 source: source.to_owned(),
             })
@@ -778,6 +792,16 @@ mod tests {
         let p = establishment_phones("Contact PC sécurité 0700000003.", false, "x");
         assert_eq!(p[0].label, "pc_securite");
         assert!(establishment_phones("Tél. 06 00 00 00 02", false, "x").is_empty());
+    }
+
+    #[test]
+    fn structured() {
+        let p = structured_phone("3 00 00 00 05", "etablissement", "camptocamp");
+        assert_eq!(p[0].display, "03 00 00 00 05");
+        let p = structured_phone("+33 3 00 00 00 06;04 00 00 00 07", "x", "openstreetmap");
+        assert_eq!(p.len(), 2);
+        assert!(structured_phone("voir le site", "x", "y").is_empty());
+        assert!(structured_phone("12345", "x", "y").is_empty());
     }
 
     #[test]

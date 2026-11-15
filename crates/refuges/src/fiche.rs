@@ -227,8 +227,13 @@ pub fn fiche(p: &Point, c2c: &[&Waypoint], in_france: bool) -> Fiche {
     let (winter_access, winter_access_text, winter_access_source) = winter_access(p, kind, c2c);
     let first = |f: &dyn Fn(&Waypoint) -> Option<i64>| c2c.iter().find_map(|w| f(w));
     let firstb = |f: &dyn Fn(&Waypoint) -> Option<bool>| c2c.iter().find_map(|w| f(w));
-    let mut phones = p.phones.clone();
-    for w in c2c {
+    // A closed place has no phone to call (« Fermé définitivement »...).
+    let mut phones = if p.state.is_none() {
+        p.phones.clone()
+    } else {
+        Vec::new()
+    };
+    for w in c2c.iter().filter(|_| p.state.is_none()) {
         for ph in &w.phones {
             if !phones.iter().any(|x| x.e164 == ph.e164) {
                 phones.push(ph.clone());
