@@ -12,7 +12,7 @@ cargo run --release -p skimap-pack --features pipeline --example serve -- . 127.
 google-chrome "http://127.0.0.1:8765/tools/viewer/index.html?pack=../../data/out/cervieres/pack/"
 ```
 
-Le menu en haut du panneau passe d'un site à l'autre (Cervières, Chapelle-des-Bois) ; `?pack=<chemin>` ouvre n'importe quel pack servi par le même serveur.
+Le menu en haut du panneau passe d'un site à l'autre (Cervières, Chapelle-des-Bois) ; `?pack=<chemin>` ouvre n'importe quel pack servi par le même serveur. Autres paramètres : `style=fond|srn|guidage|plan-ign|osm|none`, `theme=clair|sombre`, `layers=none` (fond d'origine sans couche), `panel=0` (panneau replié), `focus=decision` (cadre la position et la prochaine décision) ; la page met `window.__skimapIdle` à `true` quand la carte est chargée (captures).
 
 ## Sur le Pixel (Chrome Android)
 
@@ -26,8 +26,9 @@ puis, dans Chrome sur le téléphone : `http://localhost:8765/tools/viewer/index
 
 ## Ce qu'il montre
 
-- **Fond de carte** : Plan IGN v2 ou OpenStreetMap (Protomaps), ou aucun.
-- **Couches** : toutes celles du manifeste, à cocher ; les rasters (pentes LiDAR HD, pentes IGN pour comparer, neige estimée et ses classes) avec légende et curseur d'opacité.
+- **Style** : les trois styles par pratique de `styles/` (K15, #123) — fond (pistes damées), SRN (hors piste), guidage —, en clair ou en sombre, les mêmes fichiers que l'app ; ou, pour comparer, le style d'origine d'un fond du pack (Plan IGN v2, OpenStreetMap Protomaps) avec les couches du visualiseur par-dessus, ou aucun fond.
+- **Couches** : avec un style par pratique, une case par couche du pack qu'il dessine (y compris les couches masquées par défaut, comme la neige), avec la légende des rasters ; avec un fond d'origine, toutes les couches du manifeste, à cocher, rasters avec légende et curseur d'opacité.
+- **Guidage (démonstration)** : le style guidage montre le premier itinéraire de preuve du pack (couche `routes`), le skieur à 35 % du parcours (partie faite en gris) et le prochain carrefour du graphe des pistes avec le sens à prendre (« À droite dans 690 m »). Le bouton ◎ remplace la position de démonstration par celle du GPS, dessinée par le style (source `position`), comme dans l'app.
 - **Fiches** : toucher un objet ouvre une fiche, avec un format dédié pour les pistes (difficulté, damage, longueur, itinéraires), les zones (type, mois sensibles, **règles** en clair), les refuges (état, places, **dernier commentaire daté**), les tronçons en zone d'avalanche (**longueur dans l'emprise**, texte d'alerte), les zones sans réseau, l'état des pistes ENJ et les itinéraires de preuve ; les autres couches affichent leurs propriétés brutes.
 - **Infos du pack** : validité du pack et de chaque couche, BERA (ou message « pas de BERA » pour le Jura), synthèse des avalanches historiques, état des pistes, voix.
 - **Attributions** : celles du manifeste, puis chaque source avec sa licence et la mention « usage personnel » quand elle s'applique.
