@@ -18,6 +18,7 @@ Toutes les crates sont dans `crates/`, nommées `skimap-<dossier>` (bibliothèqu
 | `refuges` | refuges et abris (refuges.info, OSM, Camptocamp), fiches pratiques filtrées des données personnelles, rafraîchissement planifié (`refresh`) ; voir `crates/refuges/README.md` | pipeline | P11 #24, H1 #132 |
 | `stations` | fiches des 219 stations nordiques (secours, 112 en tête ; points de vente ; contacts ; parkings), titres de redevance, prix datés et zones de validité lus sur les pages des émetteurs (usage personnel), rafraîchissement planifié, `data/out/france/stations/` ; voir `crates/stations/README.md` | pipeline | H1 #132, H2 #133 |
 | `srn` | domaines de jeu et traversées du ski de randonnée nordique hors stations damées, `data/out/france/srn/` ; voir `crates/srn/README.md` | pipeline | G5 #131 |
+| `srndiff` | difficulté d'un tracé SRN dans les deux sens (facile à très difficile), raisons classées et conseils ; profils le long du tracé avec la fonction `pipeline` ; voir `crates/srndiff/README.md` | les deux | SR1 #134 |
 | `pisteplan` | plan des pistes officiel transcrit sur nos géométries OSM (nom, couleur, départs, boucle), jamais redistribué ; lecteur de la transcription sans fonction, construction avec la fonction `pipeline` | les deux | P22 #121 |
 | `status` | état des pistes ENJ | pipeline | P13 #26 |
 | `avalanche` | exposition aux avalanches (oracle, Rust, validation) | pipeline | P16 #29, P17 #30, P18 #31 |
@@ -56,6 +57,6 @@ Déclarées une fois dans `[workspace.dependencies]` du `Cargo.toml` racine :
 - temps : `chrono`, `httpdate` ; calcul : `rayon` ;
 - HTTP : `reqwest` (bloquant, sans fonctions par défaut), `rustls` (ring), `webpki-roots`, `sha2`, `hex` ;
 - ligne de commande : `clap` ; tests : `approx`, `tempfile`, `tiny_http` ;
-- crates internes : `skimap-common`, `skimap-osm`, …, `skimap-plan`, `skimap-srn`, `skimap-stations` (chemins locaux ; `pisteplan`, `styles`, `ffi` et `server` n'y figurent pas : aucune autre crate n'en dépend).
+- crates internes : `skimap-common`, `skimap-osm`, …, `skimap-plan`, `skimap-srn`, `skimap-stations` (chemins locaux ; `srndiff`, `pisteplan`, `styles`, `ffi` et `server` n'y figurent pas : aucune autre crate n'en dépend).
 
 Copies corrigées de crates de crates.io dans `vendor/` (hors du workspace), branchées par `[patch.crates-io]` : `pmtiles` 0.28.1 (`leaf_offset` nul sans répertoire de feuilles, refusé par `pmtiles verify` ; voir `vendor/pmtiles/VENDOR.md`).
