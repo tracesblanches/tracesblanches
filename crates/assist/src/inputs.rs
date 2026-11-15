@@ -9,6 +9,7 @@
 use std::path::{Path, PathBuf};
 
 use chrono::NaiveDate;
+use skimap_common::grid::Grid;
 use skimap_common::layout::DataLayout;
 use skimap_common::meta::SourceRef;
 use skimap_common::site::Site;
@@ -62,6 +63,11 @@ pub struct SiteData {
     pub zones: Option<(skimap_zones::ZoneLayer, skimap_zones::RuleSet)>,
     /// Planned route.
     pub route: Option<Route>,
+    /// Trail graph with elevation profiles (`routes/piste_graph.json`, C1).
+    pub graph: Option<skimap_core::graph::PisteGraph>,
+    /// Avalanche exposure (`avalanche-exposure/exposure_5m.tif`, P16–P18): 1 terrain peu
+    /// exposé (modèle), 2 exposé, 3 très exposé; Lambert-93, 5 m.
+    pub exposure: Option<Grid<u8>>,
     /// Layers that could not be read, with the reason.
     pub missing: Vec<String>,
     /// Sources of the layers read (from their `<layer>.meta.json`).
@@ -92,6 +98,14 @@ impl SiteData {
     /// BERA of a day (the bulletin date must match).
     pub fn bera_for(&self, date: NaiveDate) -> Option<&Bera> {
         self.beras.iter().find(|b| b.date() == Some(date))
+    }
+
+    /// Avalanche exposure class at a position (1 to 3), when the layer covers it.
+    pub fn exposure_at(&self, p: skimap_common::geom::LonLat) -> Option<u8> {
+        let g = self.exposure.as_ref()?;
+        let (x, y) = skimap_common::crs::to_lambert93(p).ok()?;
+        let v = *g.value_at(x, y)?;
+        (1..=3).contains(&v).then_some(v)
     }
 
     /// Whether the site's massif has no BERA (Jura), from the layer or the site table.
@@ -198,6 +212,29 @@ impl SiteData {
             None => None,
         };
 
+        let rdir = dir("routes")?;
+        add_sources(&rdir, "routes");
+        let graph = keep(
+            std::fs::read_to_string(rdir.join(skimap_core::routing::GRAPH_FILE))
+                .map_err(|source| crate::error::Error::Io {
+                    path: rdir.join(skimap_core::routing::GRAPH_FILE),
+                    source,
+                })
+                .and_then(|t| {
+                    skimap_core::graph::PisteGraph::from_json(&t)
+                        .map_err(|e| crate::error::Error::format(rdir.join("piste_graph.json"), e))
+                }),
+            "graphe des pistes",
+            &mut missing,
+        );
+        let edir = dir("avalanche-exposure")?;
+        add_sources(&edir, "avalanche-exposure");
+        let exposure = keep(
+            crate::layers::read_class_u8(&edir.join("exposure_5m.tif")),
+            "exposition aux avalanches",
+            &mut missing,
+        );
+
         // Nordic France pistes have no geometry: the OSM ways whose relation (or way)
         // name matches.
         if let Some(st) = status.as_mut() {
@@ -226,6 +263,8 @@ impl SiteData {
             no_network,
             zones,
             route,
+            graph,
+            exposure,
             missing,
             sources,
             files,

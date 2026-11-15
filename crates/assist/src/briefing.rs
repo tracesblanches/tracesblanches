@@ -266,11 +266,11 @@ pub fn date_fr(d: NaiveDate) -> String {
     )
 }
 
-fn fmt_num(x: f64, decimals: usize) -> String {
+pub(crate) fn fmt_num(x: f64, decimals: usize) -> String {
     format!("{x:.decimals$}").replace('.', ",")
 }
 
-fn reason(out: &mut Vec<Reason>, factor: Factor, points: f64, text: String) {
+pub(crate) fn reason(out: &mut Vec<Reason>, factor: Factor, points: f64, text: String) {
     out.push(Reason {
         factor,
         points,
@@ -319,7 +319,7 @@ fn domain_of<'a>(data: &'a SiteData, it: &Itinerary) -> Option<&'a str> {
         .map(|(d, _)| d.id.as_str())
 }
 
-fn crowd_points(level: CrowdLevel) -> f64 {
+pub(crate) fn crowd_points(level: CrowdLevel) -> f64 {
     match level {
         CrowdLevel::Calm => 0.0,
         CrowdLevel::Moderate => -0.25,
@@ -329,7 +329,7 @@ fn crowd_points(level: CrowdLevel) -> f64 {
 }
 
 /// Weather reasons of a candidate.
-fn weather_reasons(out: &mut Vec<Reason>, w: &DayWeather) {
+pub(crate) fn weather_reasons(out: &mut Vec<Reason>, w: &DayWeather) {
     if let Some(g) = w.gust_max_kmh {
         if g >= 60.0 {
             reason(
@@ -427,7 +427,7 @@ fn weather_reasons(out: &mut Vec<Reason>, w: &DayWeather) {
     }
 }
 
-fn snow_reasons(out: &mut Vec<Reason>, s: &Option<SnowStats>, fresh24: Option<f64>) {
+pub(crate) fn snow_reasons(out: &mut Vec<Reason>, s: &Option<SnowStats>, fresh24: Option<f64>) {
     match s {
         Some(s) => {
             let d = s.depth_cm();
@@ -475,7 +475,7 @@ fn snow_reasons(out: &mut Vec<Reason>, s: &Option<SnowStats>, fresh24: Option<f6
     }
 }
 
-fn surface_reason(out: &mut Vec<Reason>, q: Option<Quality>) {
+pub(crate) fn surface_reason(out: &mut Vec<Reason>, q: Option<Quality>) {
     let Some(q) = q else { return };
     let p = match q {
         Quality::Fresh | Quality::Transformed => 0.5,
@@ -628,7 +628,7 @@ fn common_reasons(
     }
 }
 
-fn status_for(data: &SiteData, date: NaiveDate) -> &'static str {
+pub(crate) fn status_for(data: &SiteData, date: NaiveDate) -> &'static str {
     match &data.status {
         Some(s) => {
             let polled = skimap_core::ephemeris::local_time(s.polled_at).date();
@@ -1248,6 +1248,8 @@ mod tests {
             no_network: None,
             zones: None,
             route: None,
+            graph: None,
+            exposure: None,
             missing: vec![],
             sources: vec![],
             files: vec![],

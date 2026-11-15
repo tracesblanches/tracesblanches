@@ -18,6 +18,8 @@ geo.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+# UInt8 class GeoTIFF of the avalanche exposure (common reads Float32 only); pure Rust.
+tiff.workspace = true
 
 [dev-dependencies]
 # `history` example only (workstation side): fetches past weather from the Open-Meteo

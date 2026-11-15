@@ -231,33 +231,41 @@ impl WeatherPoint {
 
     /// Summary of the skiing window of a day (`h0`..`h1`, local hours).
     pub fn summary(&self, date: NaiveDate, h0: u32, h1: u32) -> DayWeather {
-        let hs = self.window(date, h0, h1);
-        let t: Vec<f64> = hs.iter().filter_map(|h| h.temperature_c).collect();
-        let cc: Vec<f64> = hs.iter().filter_map(|h| h.cloud_cover_pct).collect();
-        let rh: Vec<f64> = hs.iter().filter_map(|h| h.relative_humidity_pct).collect();
-        let max = |f: fn(&WeatherHour) -> Option<f64>| hs.iter().filter_map(f).reduce(f64::max);
-        let min = |f: fn(&WeatherHour) -> Option<f64>| hs.iter().filter_map(f).reduce(f64::min);
-        DayWeather {
-            hours: hs.len(),
-            temperature_mean_c: mean(&t),
-            temperature_min_c: min(|h| h.temperature_c),
-            temperature_max_c: max(|h| h.temperature_c),
-            wind_max_kmh: max(|h| h.wind_kmh),
-            gust_max_kmh: max(|h| h.gust_kmh),
-            wind_chill_min_c: min(|h| h.wind_chill_c),
-            fog_hours: hs.iter().filter(|h| h.fog == Some(true)).count(),
-            snowfall_cm: hs.iter().filter_map(|h| h.snowfall_cm).sum(),
-            rain_mm: hs
-                .iter()
-                .filter(|h| {
-                    h.snowfall_cm.unwrap_or(0.0) <= 0.0 && h.temperature_c.is_some_and(|t| t > 0.5)
-                })
-                .filter_map(|h| h.precipitation_mm)
-                .sum(),
-            cloud_mean_pct: mean(&cc),
-            freezing_level_min_m: min(|h| h.freezing_level_m),
-            humidity_mean_pct: mean(&rh),
-        }
+        summarise(self.window(date, h0, h1))
+    }
+
+    /// Summary of the hours from `from` (included) to `to` (excluded).
+    pub fn summary_between(&self, from: NaiveDateTime, to: NaiveDateTime) -> DayWeather {
+        summarise(self.between(from, to))
+    }
+}
+
+fn summarise(hs: &[WeatherHour]) -> DayWeather {
+    let t: Vec<f64> = hs.iter().filter_map(|h| h.temperature_c).collect();
+    let cc: Vec<f64> = hs.iter().filter_map(|h| h.cloud_cover_pct).collect();
+    let rh: Vec<f64> = hs.iter().filter_map(|h| h.relative_humidity_pct).collect();
+    let max = |f: fn(&WeatherHour) -> Option<f64>| hs.iter().filter_map(f).reduce(f64::max);
+    let min = |f: fn(&WeatherHour) -> Option<f64>| hs.iter().filter_map(f).reduce(f64::min);
+    DayWeather {
+        hours: hs.len(),
+        temperature_mean_c: mean(&t),
+        temperature_min_c: min(|h| h.temperature_c),
+        temperature_max_c: max(|h| h.temperature_c),
+        wind_max_kmh: max(|h| h.wind_kmh),
+        gust_max_kmh: max(|h| h.gust_kmh),
+        wind_chill_min_c: min(|h| h.wind_chill_c),
+        fog_hours: hs.iter().filter(|h| h.fog == Some(true)).count(),
+        snowfall_cm: hs.iter().filter_map(|h| h.snowfall_cm).sum(),
+        rain_mm: hs
+            .iter()
+            .filter(|h| {
+                h.snowfall_cm.unwrap_or(0.0) <= 0.0 && h.temperature_c.is_some_and(|t| t > 0.5)
+            })
+            .filter_map(|h| h.precipitation_mm)
+            .sum(),
+        cloud_mean_pct: mean(&cc),
+        freezing_level_min_m: min(|h| h.freezing_level_m),
+        humidity_mean_pct: mean(&rh),
     }
 }
 
@@ -1144,6 +1152,45 @@ impl SnowMap {
     pub fn date(&self) -> NaiveDate {
         self.valid_at.date_naive()
     }
+}
+
+// ---------------------------------------------------------------------------------------
+// Avalanche exposure (P16–P18)
+
+/// Reads a UInt8 class GeoTIFF (the `avalanche-exposure` classes: Lambert-93, square
+/// cells, `GDAL_NODATA` 255). `skimap_common::geotiff` reads Float32 only.
+pub fn read_class_u8(path: &Path) -> Result<Grid<u8>> {
+    use tiff::decoder::{Decoder, DecodingResult, Limits};
+    use tiff::tags::Tag;
+    let bytes = std::fs::read(path).map_err(|source| Error::Io {
+        path: path.to_owned(),
+        source,
+    })?;
+    let e = |m: tiff::TiffError| Error::format(path, m);
+    let mut dec = Decoder::new(std::io::Cursor::new(bytes))
+        .map_err(e)?
+        .with_limits(Limits::unlimited());
+    let (w, h) = dec.dimensions().map_err(e)?;
+    let scale = dec.get_tag_f64_vec(Tag::ModelPixelScaleTag).map_err(e)?;
+    let tie = dec.get_tag_f64_vec(Tag::ModelTiepointTag).map_err(e)?;
+    if scale.len() < 2 || tie.len() < 6 || (scale[0] - scale[1]).abs() > 1e-9 {
+        return Err(Error::format(path, "georeferencing tags"));
+    }
+    let origin_x = tie[3] - tie[0] * scale[0];
+    let origin_y = tie[4] + tie[1] * scale[1];
+    let data = match dec.read_image().map_err(e)? {
+        DecodingResult::U8(v) => v,
+        _ => return Err(Error::format(path, "not a UInt8 raster")),
+    };
+    let gt = skimap_common::grid::GeoTransform::north_up(origin_x, origin_y, scale[0]);
+    Ok(Grid::from_vec(
+        w as usize,
+        h as usize,
+        gt,
+        skimap_common::crs::Crs::Lambert93,
+        data,
+    )?
+    .with_nodata(255))
 }
 
 // ---------------------------------------------------------------------------------------

@@ -584,6 +584,8 @@ mod tests {
             no_network: None,
             zones: None,
             route: None,
+            graph: None,
+            exposure: None,
             missing: vec![],
             sources: vec![],
             files: vec![],
