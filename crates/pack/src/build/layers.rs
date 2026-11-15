@@ -160,6 +160,24 @@ pub fn catalog() -> Vec<Spec> {
             "coverage.meta.json",
             false,
         ),
+        // SRN areas and itineraries outside groomed domains touching the site box
+        // (G5, written by `skimap build-all` in `srn/`): the content of an SRN site.
+        vector(
+            "srn-areas",
+            "Domaines de jeu et traversées SRN (hors stations)",
+            "srn",
+            "srn_areas.geojson",
+            "srn.meta.json",
+            true,
+        ),
+        vector(
+            "srn-routes",
+            "Itinéraires SRN (hors stations)",
+            "srn",
+            "srn_routes.geojson",
+            "srn.meta.json",
+            true,
+        ),
         vector(
             "avalanche-areas",
             "Avalanches historiques (emprises CLPA)",

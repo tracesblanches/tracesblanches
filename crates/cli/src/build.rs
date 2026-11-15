@@ -367,8 +367,9 @@ impl Ctx {
             };
             let count =
                 |k: skimap_srn::areas::Kind| srn.areas.iter().filter(|a| a.kind == k).count();
+            let (areas, routes) = crate::france::write_site_srn(&self.layout, site)?;
             Ok(format!(
-                "France : {} zones SRN hors stations ({} domaines de jeu, {} traversées){}",
+                "site : {areas} zones et {routes} itinéraires SRN dans l'emprise ; France : {} zones SRN hors stations ({} domaines de jeu, {} traversées){}",
                 srn.areas.len(),
                 count(skimap_srn::areas::Kind::Domaine),
                 count(skimap_srn::areas::Kind::Traversee),

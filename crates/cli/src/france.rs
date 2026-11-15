@@ -555,6 +555,84 @@ pub fn build_registry(ctx: &Ctx) -> Result<RegistrySummary> {
     })
 }
 
+// --- SRN layer of a site ------------------------------------------------------------
+
+fn geometry_box(g: &Value) -> Option<BBox> {
+    fn walk(v: &Value, b: &mut BBox) {
+        match v.as_array() {
+            Some(a) if a.len() >= 2 && a[0].is_number() => {
+                let (x, y) = (a[0].as_f64().unwrap_or(0.0), a[1].as_f64().unwrap_or(0.0));
+                b.west = b.west.min(x);
+                b.east = b.east.max(x);
+                b.south = b.south.min(y);
+                b.north = b.north.max(y);
+            }
+            Some(a) => a.iter().for_each(|x| walk(x, b)),
+            None => {}
+        }
+    }
+    let mut b = BBox::new(
+        f64::INFINITY,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::NEG_INFINITY,
+    );
+    walk(&g["coordinates"], &mut b);
+    b.west.is_finite().then_some(b)
+}
+
+fn boxes_meet(a: &BBox, b: &BBox) -> bool {
+    a.west <= b.east && b.west <= a.east && a.south <= b.north && b.south <= a.north
+}
+
+/// Writes `data/out/<site>/srn/`: the SRN areas and itineraries of the France layer
+/// (`data/out/france/srn/`, G5) whose box meets the site box, with the France metadata
+/// (site, counts). Returns the numbers of areas and itineraries written; nothing is
+/// written (and a previous layer is removed) when none meets the box.
+pub fn write_site_srn(
+    layout: &DataLayout,
+    site: &skimap_common::site::Site,
+) -> Result<(usize, usize)> {
+    let france = layout.france_layer_dir(skimap_srn::build::LAYER)?;
+    let pick = |file: &str| -> Result<Vec<Value>> {
+        Ok(read_features(&france.join(file))?
+            .into_iter()
+            .filter(|f| geometry_box(&f["geometry"]).is_some_and(|b| boxes_meet(&b, &site.bbox)))
+            .collect())
+    };
+    let areas = pick(skimap_srn::build::AREAS_FILE)?;
+    let routes = pick(skimap_srn::build::ROUTES_FILE)?;
+    let dir = layout.layer_dir(site, skimap_srn::build::LAYER)?;
+    if areas.is_empty() && routes.is_empty() {
+        if dir.is_dir() {
+            std::fs::remove_dir_all(&dir).with_context(|| format!("{}", dir.display()))?;
+        }
+        return Ok((0, 0));
+    }
+    DataLayout::ensure(&dir)?;
+    skimap_common::output::write_geojson(&dir.join(skimap_srn::build::AREAS_FILE), &areas)?;
+    skimap_common::output::write_geojson(&dir.join(skimap_srn::build::ROUTES_FILE), &routes)?;
+    let mut meta = LayerMeta::read(&france.join(LayerMeta::file_name(skimap_srn::build::LAYER)))?;
+    meta.site = site.id.to_owned();
+    meta.generated_at = now_rfc3339();
+    for f in &mut meta.files {
+        if f.name == skimap_srn::build::AREAS_FILE {
+            f.count = Some(areas.len());
+        } else if f.name == skimap_srn::build::ROUTES_FILE {
+            f.count = Some(routes.len());
+        }
+    }
+    meta.files.retain(|f| {
+        f.name == skimap_srn::build::AREAS_FILE || f.name == skimap_srn::build::ROUTES_FILE
+    });
+    meta.notes.push(format!(
+        "Zones et itinéraires de la couche France (data/out/france/srn/) dont l'emprise rencontre celle du site ({}).",
+        site.bbox.overpass()
+    ));
+    meta.write(&dir)?;
+    Ok((areas.len(), routes.len()))
+}
+
 // --- Build records and catalogue ------------------------------------------------------
 
 /// What makes a build of a site out of date: the site record, the pipeline version and
@@ -778,6 +856,16 @@ mod tests {
             (x0 + s, y0 + s),
             (x0, y0 + s),
         ]]]
+    }
+
+    #[test]
+    fn feature_boxes() {
+        let g = json!({"type": "MultiLineString", "coordinates": [[[6.0, 46.0], [6.2, 46.1]], [[5.9, 46.3], [6.0, 46.2]]]});
+        let b = geometry_box(&g).unwrap();
+        assert_eq!(b, BBox::new(46.0, 5.9, 46.3, 6.2));
+        assert!(boxes_meet(&b, &BBox::new(46.25, 6.1, 46.5, 6.4)));
+        assert!(!boxes_meet(&b, &BBox::new(46.4, 6.1, 46.5, 6.4)));
+        assert!(geometry_box(&json!({"type": "Point", "coordinates": []})).is_none());
     }
 
     #[test]
