@@ -1,0 +1,157 @@
+# Scheduled refresh of the layers that follow their sources (H1 #132, H2 #133), to append
+# to the pipeline manifest of the infrastructure repository (same image, volume and security context as
+# the other pipeline CronJobs). `skimap-job refresh` runs `skimap refresh` once (station
+# cards and titles of France, `data/out/france/stations/`; hut cards of each site), then
+# rebuilds and publishes the pack of each site (skimap-server publish: an unchanged pack
+# is not republished, a changed one goes out as a delta bundle).
+#
+# Daily from 1 November to 30 April, weekly (Wednesday) otherwise. `skimap refresh` is
+# idempotent and keeps its own schedule (huts daily in season and weekly otherwise,
+# station cards weekly, titles daily in season), so a run that is not due does nothing
+# and publishes nothing. A broken source fails the Job (previous values kept, summary in
+# data/out/france/refresh/status.json); backoffLimit 0: a retry would find the same
+# source broken. Needs the census (data/out/france/domaines/, skimap-build-all).
+#
+# Without SKIMAP_PERSONAL_SOURCES (server default) titles and prices are not built: the
+# issuers display no reuse licence (crates/stations/README.md).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: skimap-refresh-season
+  namespace: skimap
+  labels:
+    app.kubernetes.io/name: skimap-pipeline
+    app.kubernetes.io/part-of: skimap
+spec:
+  schedule: "0 6 * 11,12,1,2,3,4 *"   # daily 06:00, 1 November to 30 April
+  timeZone: Europe/Paris
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      # First pass of the station cards: 98 Overpass queries, about 2 h when the public
+      # instances are overloaded (15/11/2026); then minutes. Waits on the pipeline lock.
+      activeDeadlineSeconds: 14400
+      ttlSecondsAfterFinished: 259200
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: skimap-pipeline
+            app.kubernetes.io/part-of: skimap
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: pipeline
+              image: skimap-pipeline
+              imagePullPolicy: IfNotPresent
+              args: ["refresh", "cervieres", "chapelle-des-bois"]
+              env:
+                - { name: SKIMAP_DATA_DIR, value: /data/pipeline }
+                - { name: SKIMAP_STORE, value: /data/store }
+                - { name: TMPDIR, value: /tmp }
+                - { name: RUST_LOG, value: warn }
+              envFrom:
+                - secretRef:
+                    name: skimap-pipeline-keys
+                    optional: true
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: ["ALL"] }
+              volumeMounts:
+                - { name: data, subPath: pipeline, mountPath: /data/pipeline }
+                - { name: data, subPath: store, mountPath: /data/store }
+                - { name: tmp, mountPath: /tmp }
+              # Measured on the workstation (15/11/2026): refresh 53 MB, pack of
+              # Cervières 534 MB peak.
+              resources:
+                requests: { cpu: 250m, memory: 256Mi }
+                limits: { cpu: "2", memory: 1Gi }
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: data
+            - name: tmp
+              emptyDir:
+                sizeLimit: 1Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: skimap-refresh-offseason
+  namespace: skimap
+  labels:
+    app.kubernetes.io/name: skimap-pipeline
+    app.kubernetes.io/part-of: skimap
+spec:
+  schedule: "0 6 * 5-10 3"            # Wednesdays 06:00, May to October
+  timeZone: Europe/Paris
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      # First pass of the station cards: 98 Overpass queries, about 2 h when the public
+      # instances are overloaded (15/11/2026); then minutes. Waits on the pipeline lock.
+      activeDeadlineSeconds: 14400
+      ttlSecondsAfterFinished: 259200
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: skimap-pipeline
+            app.kubernetes.io/part-of: skimap
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: pipeline
+              image: skimap-pipeline
+              imagePullPolicy: IfNotPresent
+              args: ["refresh", "cervieres", "chapelle-des-bois"]
+              env:
+                - { name: SKIMAP_DATA_DIR, value: /data/pipeline }
+                - { name: SKIMAP_STORE, value: /data/store }
+                - { name: TMPDIR, value: /tmp }
+                - { name: RUST_LOG, value: warn }
+              envFrom:
+                - secretRef:
+                    name: skimap-pipeline-keys
+                    optional: true
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: ["ALL"] }
+              volumeMounts:
+                - { name: data, subPath: pipeline, mountPath: /data/pipeline }
+                - { name: data, subPath: store, mountPath: /data/store }
+                - { name: tmp, mountPath: /tmp }
+              # Measured on the workstation (15/11/2026): refresh 53 MB, pack of
+              # Cervières 534 MB peak.
+              resources:
+                requests: { cpu: 250m, memory: 256Mi }
+                limits: { cpu: "2", memory: 1Gi }
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: data
+            - name: tmp
+              emptyDir:
+                sizeLimit: 1Gi
