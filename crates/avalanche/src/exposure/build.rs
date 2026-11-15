@@ -283,17 +283,68 @@ fn write_layer(
     let (clpa_model, clpa_fused, clpa_raised) = match footprints {
         Some((polys, src)) => {
             clpa_source = Some(src.personal_use_only());
-            let before = validation::validate(m, &m.exposure, &polys, &nordic, &all)?;
-            let raised = validation::fuse_clpa(&mut exposure, &polys);
-            let after = validation::validate(m, &exposure, &polys, &nordic, &all)?;
-            (Some(before), Some(after), raised)
+            // Footprint cells rasterized once for both validations and the fusion; the
+            // validation of the model alone runs next to the fusion and its validation.
+            let refs: Vec<_> = polys.iter().collect();
+            let inside = validation::rasterize(&exposure, &refs);
+            let (before, (raised, after)) = rayon::join(
+                || validation::validate(m, &m.exposure, &polys, &inside, &nordic, &all),
+                || {
+                    let raised = validation::fuse_clpa(&mut exposure, &inside);
+                    let after = validation::validate(m, &exposure, &polys, &inside, &nordic, &all);
+                    (raised, after)
+                },
+            );
+            (Some(before?), Some(after?), raised)
         }
         None => (None, None, 0),
     };
 
+    // The model alone, kept for the diagnostic only when the fusion changed cells; a
+    // previous fused build never lingers.
+    let model_path = dir.join(files::EXPOSURE_MODEL);
+    if clpa_raised == 0 && model_path.exists() {
+        std::fs::remove_file(&model_path).map_err(|e| skimap_common::Error::io(&model_path, e))?;
+    }
+    // The rasters (Deflate, one thread each) and the piste runs are independent: written
+    // in parallel, the bytes of every file are those of a sequential build.
+    let ((exposure_bytes, model_bytes), (ates_bytes, (canopy_bytes, runs))) = rayon::join(
+        || {
+            rayon::join(
+                || raster::write_u8(&dir.join(files::EXPOSURE), &exposure),
+                || {
+                    if clpa_raised > 0 {
+                        raster::write_u8(&model_path, &m.exposure).map(Some)
+                    } else {
+                        Ok(None)
+                    }
+                },
+            )
+        },
+        || {
+            rayon::join(
+                || raster::write_u8(&dir.join(files::ATES), &m.ates.classes),
+                || {
+                    rayon::join(
+                        || raster::write_f32(&dir.join(files::CANOPY), canopy),
+                        || -> Result<_> {
+                            let ex = segments::lines(lines, &exposure)?;
+                            let feats = segments::features(&ex)?;
+                            skimap_common::output::write_geojson(
+                                &dir.join(files::SEGMENTS),
+                                &feats,
+                            )?;
+                            Ok((ex, feats.len()))
+                        },
+                    )
+                },
+            )
+        },
+    );
+    let (ex, n_features) = runs?;
+
     let mut fmeta = Vec::new();
-    let p = dir.join(files::EXPOSURE);
-    let bytes = raster::write_u8(&p, &exposure)?;
+    let bytes = exposure_bytes?;
     fmeta.push(tif_meta(
         files::EXPOSURE,
         "Exposition aux avalanches (modèle) : 1 = terrain peu exposé (modèle), 2 = exposé, 3 = très exposé ; dans les Hautes-Alpes, les emprises CLPA sont au moins « exposé » ; même grille que terrain/dem_5m.tif (calque `Overlay` du routeur hors piste)",
@@ -302,15 +353,7 @@ fn write_layer(
         bytes,
         "255",
     ));
-    // The model alone, kept for the diagnostic only when the fusion changed cells; a
-    // previous fused build never lingers.
-    let model_path = dir.join(files::EXPOSURE_MODEL);
-    if clpa_raised == 0 && model_path.exists() {
-        std::fs::remove_file(&model_path).map_err(|e| skimap_common::Error::io(&model_path, e))?;
-    }
-    if clpa_raised > 0 {
-        let p = dir.join(files::EXPOSURE_MODEL);
-        let bytes = raster::write_u8(&p, &m.exposure)?;
+    if let Some(bytes) = model_bytes? {
         fmeta.push(tif_meta(
             files::EXPOSURE_MODEL,
             "Diagnostic (validation P18) : classes du modèle seul, avant la fusion des emprises CLPA ; mêmes codes",
@@ -320,8 +363,7 @@ fn write_layer(
             "255",
         ));
     }
-    let p = dir.join(files::ATES);
-    let bytes = raster::write_u8(&p, &m.ates.classes)?;
+    let bytes = ates_bytes?;
     fmeta.push(tif_meta(
         files::ATES,
         "Diagnostic, ne pas afficher : classes 0 à 4 du classifieur dev8 d'AutoATES v3.0 (portage), identiques à la référence ; la classe 0 peut tomber dans une zone d'écoulement modélisée",
@@ -330,8 +372,7 @@ fn write_layer(
         bytes,
         "255",
     ));
-    let p = dir.join(files::CANOPY);
-    let bytes = raster::write_f32(&p, canopy)?;
+    let bytes = canopy_bytes?;
     fmeta.push(FileMeta::geotiff_f32(
         files::CANOPY,
         "Couvert forestier : part des cellules de 5 m de hauteur de canopée ≥ 3 m dans la fenêtre 3 × 3 (MNH LiDAR HD)",
@@ -341,16 +382,13 @@ fn write_layer(
     ));
 
     // Piste runs.
-    let ex = segments::lines(lines, &exposure)?;
-    let feats = segments::features(&ex)?;
-    skimap_common::output::write_geojson(&dir.join(files::SEGMENTS), &feats)?;
     fmeta.push(
         FileMeta::new(
             files::SEGMENTS,
             "Tronçons des pistes et itinéraires de la couche pistes, coupés là où la classe d'exposition change (classe la plus haute à 10 m de la trace)",
         )
         .licence("ODbL 1.0 (géométrie OSM)")
-        .count(feats.len())
+        .count(n_features)
         .properties([
             ("osm_way_id", "identifiant du way OSM"),
             ("run", "rang du tronçon le long du way"),

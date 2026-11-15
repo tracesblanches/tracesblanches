@@ -75,7 +75,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let low_cells = ex.data.iter().filter(|v| **v == class::LOW).count();
             match &clpa {
                 Some(p) => {
-                    let v = validation::validate(&m, &ex, p, &nordic, &all)?;
+                    let inside = validation::rasterize(&ex, &p.iter().collect::<Vec<_>>());
+                    let v = validation::validate(&m, &ex, p, &inside, &nordic, &all)?;
                     println!(
                         "{name:<24} marge {margin:>4} m | CLPA peu exposé {:.4} (recall {:.4}), atteint rare {:.4} | pistes CLPA peu exposé {:.3} / {:.3} km | réseau nordique peu exposé {:.2} km | cellules peu exposé {low_cells} | runout {:.1} s",
                         v.area.low,

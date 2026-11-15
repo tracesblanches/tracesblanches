@@ -164,15 +164,13 @@ pub fn clpa_footprints(site: &Site, dl: &Downloader) -> Result<Option<(Vec<Poly>
     Ok(Some((polys, src)))
 }
 
-/// Raises every valid cell inside a CLPA footprint to at least « exposé »: a known
-/// avalanche footprint is never shown as « terrain peu exposé (modèle) ». Returns the
-/// number of cells raised.
-pub fn fuse_clpa(exposure: &mut Raster<u8>, clpa: &[Poly]) -> u64 {
-    let refs: Vec<&Poly> = clpa.iter().collect();
-    let inside = rasterize(exposure, &refs);
+/// Raises every valid cell inside a CLPA footprint (`inside`, from [`rasterize`] on the
+/// same grid) to at least « exposé »: a known avalanche footprint is never shown as
+/// « terrain peu exposé (modèle) ». Returns the number of cells raised.
+pub fn fuse_clpa(exposure: &mut Raster<u8>, inside: &[bool]) -> u64 {
     let mut n = 0;
     for (v, i) in exposure.data.iter_mut().zip(inside) {
-        if i && *v == class::LOW {
+        if *i && *v == class::LOW {
             *v = class::EXPOSED;
             n += 1;
         }
@@ -181,18 +179,18 @@ pub fn fuse_clpa(exposure: &mut Raster<u8>, clpa: &[Poly]) -> u64 {
 }
 
 /// Validates exposure classes (`exposure`, from `model` or after [`fuse_clpa`]) against
-/// CLPA footprints. `nordic` are the nordic lines of the site
+/// CLPA footprints (`inside`: their cells, from [`rasterize`] on the same grid, computed
+/// once for both validations and the fusion). `nordic` are the nordic lines of the site
 /// (vertex mean in the commune, the rule of `historic` and report 07), `all` every line
 /// of the pistes layer.
 pub fn validate(
     model: &Model,
     exposure: &Raster<u8>,
     clpa: &[Poly],
+    inside: &[bool],
     nordic: &[&PisteLine],
     all: &[&PisteLine],
 ) -> Result<ClpaValidation> {
-    let refs: Vec<&Poly> = clpa.iter().collect();
-    let inside = rasterize(exposure, &refs);
     let ex = &exposure.data;
     let (mut n, mut nd, mut low, mut exp, mut high) = (0u64, 0u64, 0u64, 0u64, 0u64);
     let mut ates = [0u64; 5];

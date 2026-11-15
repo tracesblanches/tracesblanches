@@ -194,19 +194,26 @@ pub fn windshelter(z: &Raster<f32>, radius_m: f64, prob: f64) -> Raster<f32> {
                         if v.is_nan() || v == 0.0 {
                             continue;
                         }
-                        vals.push(((f64::from(v) - centre) / d).atan());
+                        vals.push((f64::from(v) - centre) / d);
                     }
                     if vals.is_empty() {
                         return 0.0;
                     }
-                    vals.sort_by(f64::total_cmp);
+                    // The quantile only needs the order statistics i and i + 1 of the
+                    // angles; `atan` is monotonic, so they are the `atan` of the same order
+                    // statistics of the slopes: select them instead of sorting the ~450
+                    // angles of the disc, and take two `atan` instead of all of them.
                     let p = prob * (vals.len() - 1) as f64;
                     let i = p.floor() as usize;
                     let frac = p - i as f64;
-                    let v = if i + 1 < vals.len() {
-                        vals[i] + frac * (vals[i + 1] - vals[i])
-                    } else {
-                        vals[i]
+                    let (_, lo, above) = vals.select_nth_unstable_by(i, f64::total_cmp);
+                    let lo = lo.atan();
+                    let v = match above.iter().copied().min_by(f64::total_cmp) {
+                        Some(hi) => {
+                            let hi = hi.atan();
+                            lo + frac * (hi - lo)
+                        }
+                        None => lo,
                     };
                     v as f32
                 })
@@ -975,6 +982,72 @@ mod tests {
         // m = 0.5, mean = (1 + 0.5 + 1) / 3.
         assert!((c.data[0] - (0.25 + 0.5 * 2.5 / 3.0)).abs() < 1e-6);
         assert_eq!(c.data[1], 0.0);
+    }
+
+    #[test]
+    fn windshelter_selection_matches_the_sorted_quantile() {
+        // Rough terrain with no-data holes and exact zeros: the selection of two order
+        // statistics gives the quantile of the fully sorted angles, bit for bit.
+        let (w, h) = (61usize, 47usize);
+        let mut seed = 0x2545_f491_4f6c_dd1du64;
+        let mut z = Vec::with_capacity(w * h);
+        for i in 0..w * h {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            let v =
+                1800.0 + (i % w) as f32 * 3.7 - (i / w) as f32 * 2.1 + (seed % 4000) as f32 / 97.0;
+            z.push(match seed % 53 {
+                0 => f32::NAN,
+                1 => 0.0,
+                _ => v,
+            });
+        }
+        let dem = r(w, h, z.clone());
+        for prob in [0.5, 0.25, 0.9, 1.0, 0.0] {
+            let fast = windshelter(&dem, 60.0, prob);
+            let rad = 12usize;
+            for row in rad..h - rad {
+                for col in rad..w - rad {
+                    let centre = f64::from(z[row * w + col]);
+                    if centre.is_nan() {
+                        continue;
+                    }
+                    let mut vals = Vec::new();
+                    for di in 0..=2 * rad {
+                        for dj in 0..=2 * rad {
+                            let (y, x) = (di as i64 - rad as i64, dj as i64 - rad as i64);
+                            if (x * x + y * y) as usize > rad * rad || (x == 0 && y == 0) {
+                                continue;
+                            }
+                            let d = (((di as f64 - rad as f64).powi(2)
+                                + (dj as f64 - rad as f64).powi(2))
+                            .sqrt())
+                                * 5.0;
+                            let v = z[(row as i64 + y) as usize * w + (col as i64 + x) as usize];
+                            if v.is_nan() || v == 0.0 {
+                                continue;
+                            }
+                            vals.push(((f64::from(v) - centre) / d).atan());
+                        }
+                    }
+                    vals.sort_by(f64::total_cmp);
+                    let p = prob * (vals.len() - 1) as f64;
+                    let i = p.floor() as usize;
+                    let frac = p - i as f64;
+                    let v = if i + 1 < vals.len() {
+                        vals[i] + frac * (vals[i + 1] - vals[i])
+                    } else {
+                        vals[i]
+                    };
+                    assert_eq!(
+                        fast.data[row * w + col].to_bits(),
+                        (v as f32).to_bits(),
+                        "{row} {col} {prob}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]
