@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use serde::Serialize;
+use serde_json::Value;
 use skimap_common::download::Downloader;
 use skimap_common::layout::DataLayout;
 use skimap_common::site::Site;
@@ -344,21 +345,32 @@ fn absent_voice(note: &str) -> VoiceSlot {
     }
 }
 
+/// File of the voice layer that lists the clips of names read only from personal-use
+/// sources (`clips`: ids; `skimap_voice::pack::PERSONAL_FILE`).
+pub const VOICE_PERSONAL_FILE: &str = "personal.json";
+
 /// Copies the voice clips (`data/out/<site>/voice/manifest.json` and `clips/`) if present.
+///
+/// The clips speak names read from the layers (pistes, refuges, zones, piste plans). With
+/// `personal_sources` every clip is copied. Without, a layer with its list of personal
+/// clips ([`VOICE_PERSONAL_FILE`]) is copied without them (names read only from
+/// personal-use sources: Biodiv'sports, piste plans), with a manifest without them and
+/// `voice.meta.json` without the personal-use sources; a layer without that list (built
+/// before it) is left out whole when one of its sources is personal use.
 fn voice_slot(out: &Path, root: &Path, personal_sources: bool) -> Result<VoiceSlot> {
     let src = out.join("voice");
-    // Clips spoken from layer names (zones, pistes, refuges): personal use when one of
-    // their sources is (Biodiv'sports zone names).
-    if let Some(m) = layers::read_meta(&src.join("voice.meta.json"))?
-        && layers::restricted(&m.meta.sources)
-        && !personal_sources
-    {
-        return Ok(absent_voice(
-            "clips écartés : ils disent des noms tirés d'une source à usage personnel (option personal_sources désactivée) ; reconstruire la voix sans ces sources",
-        ));
-    }
+    let meta_path = src.join("voice.meta.json");
+    let restricted = layers::read_meta(&meta_path)?
+        .as_ref()
+        .is_some_and(|m| layers::restricted(&m.meta.sources));
     let manifest = src.join("manifest.json");
     let clips = src.join("clips");
+    let marked = src.join(VOICE_PERSONAL_FILE).is_file();
+    if restricted && !personal_sources && !marked {
+        return Ok(absent_voice(
+            "clips écartés : couche sans liste des noms à usage personnel (personal.json), et une source de la voix est à usage personnel (option personal_sources désactivée) ; reconstruire la voix",
+        ));
+    }
     if !manifest.is_file() || !clips.is_dir() {
         return Ok(absent_voice(
             "emplacement réservé : la crate voice (VO3) n'a pas encore produit de clips pour ce site",
@@ -366,6 +378,9 @@ fn voice_slot(out: &Path, root: &Path, personal_sources: bool) -> Result<VoiceSl
     }
     let dst = root.join("voice");
     create_dir(&dst.join("clips"))?;
+    if !personal_sources && marked {
+        return public_voice(&src, &dst);
+    }
     let mut bytes = copy_file(&manifest, &dst.join("manifest.json"))?;
     let mut n = 0u64;
     let mut entries: Vec<_> = read_dir_sorted(&clips)?;
@@ -377,7 +392,6 @@ fn voice_slot(out: &Path, root: &Path, personal_sources: bool) -> Result<VoiceSl
         bytes += copy_file(&p, &dst.join("clips").join(name))?;
         n += 1;
     }
-    let meta_path = src.join("voice.meta.json");
     let sources = match layers::read_meta(&meta_path)? {
         Some(m) => {
             bytes += copy_file(&meta_path, &dst.join("voice.meta.json"))?;
@@ -394,6 +408,141 @@ fn voice_slot(out: &Path, root: &Path, personal_sources: bool) -> Result<VoiceSl
         sources,
         note: "clips Ogg/Opus de la crate voice ; format du manifeste des clips défini par VO3"
             .to_owned(),
+    })
+}
+
+fn read_value(path: &Path) -> Result<Value> {
+    let b = std::fs::read(path).map_err(|e| Error::io(path, e))?;
+    serde_json::from_slice(&b).map_err(|e| Error::json(path.display().to_string(), e))
+}
+
+/// The voice of a published pack: the clips not listed in [`VOICE_PERSONAL_FILE`], the
+/// manifest without the others, `voice.meta.json` without the personal-use sources and
+/// with its counts redone.
+fn public_voice(src: &Path, dst: &Path) -> Result<VoiceSlot> {
+    let manifest = src.join("manifest.json");
+    let personal_path = src.join(VOICE_PERSONAL_FILE);
+    let personal: BTreeSet<String> = read_value(&personal_path)?
+        .get("clips")
+        .and_then(Value::as_array)
+        .ok_or_else(|| Error::Pack(format!("{}: no clips list", personal_path.display())))?
+        .iter()
+        .map(|c| {
+            c.as_str().map(str::to_owned).ok_or_else(|| {
+                Error::Pack(format!("{}: clip id not a string", personal_path.display()))
+            })
+        })
+        .collect::<Result<_>>()?;
+    let mut vm = read_value(&manifest)?;
+    let all = vm
+        .get("clips")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let (kept, dropped): (Vec<Value>, Vec<Value>) = all.into_iter().partition(|c| {
+        c.get("id")
+            .and_then(Value::as_str)
+            .is_none_or(|id| !personal.contains(id))
+    });
+    let mut bytes = 0;
+    let mut clip_bytes = 0;
+    for c in &kept {
+        let file = c.get("file").and_then(Value::as_str).unwrap_or_default();
+        let name = file
+            .strip_prefix("clips/")
+            .filter(|f| !f.is_empty() && !f.contains('/') && !f.contains(".."))
+            .ok_or_else(|| {
+                Error::Pack(format!(
+                    "clip file {file:?} outside clips/ in {}",
+                    manifest.display()
+                ))
+            })?;
+        let b = copy_file(&src.join("clips").join(name), &dst.join("clips").join(name))?;
+        bytes += b;
+        clip_bytes += b;
+    }
+    let n = kept.len() as u64;
+    let kind_count = |k: &str| kept.iter().filter(|c| c["kind"] == k).count();
+    let audio_ms: u64 = kept.iter().filter_map(|c| c["duration_ms"].as_u64()).sum();
+    let counts = (kind_count("fixed"), kind_count("value"), kind_count("name"));
+    vm["clips"] = Value::Array(kept);
+    bytes += write_json(&dst.join("manifest.json"), &vm)?;
+    let meta_path = src.join("voice.meta.json");
+    let mut sources = Vec::new();
+    if meta_path.is_file() {
+        let mut mv = read_value(&meta_path)?;
+        let keep: Vec<bool> = layers::lenient_meta(&mv)
+            .sources
+            .iter()
+            .map(|s| !layers::unauthorised(s))
+            .collect();
+        if let Some(arr) = mv.get_mut("sources").and_then(Value::as_array_mut) {
+            let mut i = 0;
+            arr.retain(|_| {
+                let k = keep.get(i).copied().unwrap_or(false);
+                i += 1;
+                k
+            });
+        }
+        if let Some(files) = mv.get_mut("files").and_then(Value::as_array_mut) {
+            // The list of personal clips stays out of the published pack.
+            files.retain(|f| f["name"] != VOICE_PERSONAL_FILE);
+            for f in files {
+                if f.get("count").is_some() {
+                    f["count"] = n.into();
+                }
+                if f["name"] == "clips/<id>.opus" {
+                    f["bytes"] = clip_bytes.into();
+                }
+            }
+        }
+        if let Some(st) = mv.get_mut("stats").and_then(Value::as_object_mut) {
+            st.insert("clips".into(), n.into());
+            st.insert("clips_fixed".into(), counts.0.into());
+            st.insert("clips_value".into(), counts.1.into());
+            st.insert("clips_name".into(), counts.2.into());
+            st.insert("clips_personal".into(), 0.into());
+            st.insert("bytes_personal".into(), 0.into());
+            st.insert("bytes".into(), clip_bytes.into());
+            st.insert(
+                "audio_s".into(),
+                ((audio_ms as f64 / 100.0).round() / 10.0).into(),
+            );
+            st.remove("names_personal");
+            st.insert("public_pack_clips_removed".into(), dropped.len().into());
+        }
+        if let Some(notes) = mv.get_mut("notes").and_then(Value::as_array_mut) {
+            notes.push(
+                format!(
+                    "Pack publié : {} clips de noms lus seulement dans des sources à usage personnel écartés, avec ces sources.",
+                    dropped.len()
+                )
+                .into(),
+            );
+        }
+        let path = dst.join("voice.meta.json");
+        bytes += write_json(&path, &mv)?;
+        let m = layers::read_meta(&path)?
+            .ok_or_else(|| Error::Pack(format!("{} not written", path.display())))?;
+        if layers::restricted(&m.meta.sources) {
+            return Err(Error::Pack(format!(
+                "{}: a personal-use source is left in the published voice",
+                path.display()
+            )));
+        }
+        sources = m.meta.sources;
+    }
+    Ok(VoiceSlot {
+        status: "present".to_owned(),
+        manifest: Some("voice/manifest.json".to_owned()),
+        clips_dir: Some("voice/clips".to_owned()),
+        clips: n,
+        bytes,
+        sources,
+        note: format!(
+            "clips Ogg/Opus de la crate voice ; format du manifeste des clips défini par VO3 ; pack publié : {} clips de noms à usage personnel écartés",
+            dropped.len()
+        ),
     })
 }
 

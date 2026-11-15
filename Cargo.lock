@@ -2889,6 +2889,7 @@ dependencies = [
  "sha2",
  "skimap-common",
  "skimap-terrain",
+ "skimap-voice",
  "skimap-zones",
  "tempfile",
  "thiserror",
