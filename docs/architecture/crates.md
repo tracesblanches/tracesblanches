@@ -22,11 +22,12 @@ Toutes les crates sont dans `crates/`, nommées `skimap-<dossier>` (bibliothèqu
 | `core` | routage, rattachement, hors piste, temps estimé, demi-tour, zones, batterie (un module par ticket) | téléphone | C1 #33 à C10 #42 |
 | `assist` | briefing, fartage, qualité de neige, affluence, suggestions, équipement, synthèse, alertes, meilleur moment, bilan, questions (un module par ticket) | téléphone | A1 #88 à A11 #98 |
 | `voice` | banque de phrases, clips pré-générés | les deux | VO2 #84, VO3 #85 |
+| `plan` | plan de journée (matin : boucle, heures de passage, demi-tour, annonces prévues, plans B), suivi sans manipulation (départ, pause, refuge, fin, écart, bascule sur un plan B, modes GPS), politique de parole, banc de scénarios ; voir `crates/plan/README.md` | téléphone | J1 #110 à J4 #113, Q9 #109, E1 #125 |
 | `server` | catalogue et paquets immuables des packs, mises à jour différentielles, minuterie de non-retour facultative, échange OAuth Strava ; voir `crates/server/README.md` et `deploy/README.md` | serveur | S0 #50, S1 #62, S2 #60 |
 | `cli` | binaire `skimap` : une sous-commande par constructeur, `build-all` (voir [compiler.md](compiler.md#ligne-de-commande)) | outil | F1 #1, F4 #4 |
 | `deps` | dépend de toutes les dépendances externes : `Cargo.lock` les fixe déjà, la CI prouve qu'elles compilent | outil | F1 #1 (orchestrateur) |
 
-Les crates « téléphone » (`core`, `assist`, `voice`, lecteur de `pack`) dépendent de `skimap-common` **sans** la fonction `download` : elles n'embarquent aucune pile HTTP (`cargo tree -p skimap-core` le montre). Les crates du pipeline l'activent : `skimap-common = { workspace = true, features = ["download"] }` (plus `"geotiff"` pour terrain et snow).
+Les crates « téléphone » (`core`, `assist`, `voice`, `plan`, lecteur de `pack`) dépendent de `skimap-common` **sans** la fonction `download` : elles n'embarquent aucune pile HTTP (`cargo tree -p skimap-core` le montre). Les crates du pipeline l'activent : `skimap-common = { workspace = true, features = ["download"] }` (plus `"geotiff"` pour terrain et snow).
 
 Dépendances entre crates du pipeline : `snow` → `terrain` (dalles et pente) ; `status` lit la couche `pistes` (géométrie des pistes de Cervières) ; `avalanche` → `meteo` (BERA du jour) ; `refuges` → `osm` (comparaison de noms) ; `coverage` → `zones` (partie française de l'emprise) ; `core` → `zones` (schéma). Les métadonnées et l'écriture des couches passent par `common`, pas par une autre crate.
 
@@ -50,6 +51,6 @@ Déclarées une fois dans `[workspace.dependencies]` du `Cargo.toml` racine :
 - temps : `chrono`, `httpdate` ; calcul : `rayon` ;
 - HTTP : `reqwest` (bloquant, sans fonctions par défaut), `rustls` (ring), `webpki-roots`, `sha2`, `hex` ;
 - ligne de commande : `clap` ; tests : `approx`, `tempfile`, `tiny_http` ;
-- crates internes : `skimap-common`, `skimap-osm`, …, `skimap-voice` (chemins locaux).
+- crates internes : `skimap-common`, `skimap-osm`, …, `skimap-voice`, `skimap-plan` (chemins locaux).
 
 Copies corrigées de crates de crates.io dans `vendor/` (hors du workspace), branchées par `[patch.crates-io]` : `pmtiles` 0.28.1 (`leaf_offset` nul sans répertoire de feuilles, refusé par `pmtiles verify` ; voir `vendor/pmtiles/VENDOR.md`).

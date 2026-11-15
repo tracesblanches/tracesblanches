@@ -34,6 +34,7 @@ skimap-pack = { path = "crates/pack" }
 skimap-core = { path = "crates/core" }
 skimap-assist = { path = "crates/assist" }
 skimap-voice = { path = "crates/voice" }
+skimap-plan = { path = "crates/plan" }
 
 # --- Errors, logging ---
 anyhow = "1.0.104"

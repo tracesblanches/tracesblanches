@@ -2397,6 +2397,7 @@ dependencies = [
  "skimap-meteo",
  "skimap-osm",
  "skimap-pack",
+ "skimap-plan",
  "skimap-refuges",
  "skimap-snow",
  "skimap-status",
