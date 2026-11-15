@@ -71,6 +71,57 @@ pub enum MatchMethod {
     Exact,
     /// Learnt model (score = model probability).
     Ml,
+    /// Estimated trace (G1): the plan's line, carried onto the map, followed on the IGN
+    /// paths and tracks of its corridor (score = confidence of the estimate).
+    EstimatedPaths,
+    /// Estimated trace (G1): the plan's line carried onto the map as drawn, no path of
+    /// the corridor follows it (score = confidence of the estimate).
+    EstimatedDrawing,
+}
+
+/// How sure the geometry of a piste of the plan is. An `incertain` trace is never shown
+/// as sure: the map draws it dotted and its card says so.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Certainty {
+    /// Exact matching onto an OSM piste.
+    #[serde(rename = "exact")]
+    Exact,
+    /// Learnt matching onto an OSM piste, above the validated threshold.
+    #[serde(rename = "appris")]
+    Learnt,
+    /// Estimated trace, the piste being absent from OSM.
+    #[serde(rename = "incertain")]
+    Uncertain,
+}
+
+impl MatchMethod {
+    /// Certainty of a geometry matched this way.
+    pub fn certainty(self) -> Certainty {
+        match self {
+            MatchMethod::Exact => Certainty::Exact,
+            MatchMethod::Ml => Certainty::Learnt,
+            MatchMethod::EstimatedPaths | MatchMethod::EstimatedDrawing => Certainty::Uncertain,
+        }
+    }
+}
+
+/// How an estimated trace was obtained (`plan_pistes.geojson`, pistes with certainty
+/// `incertain`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Estimate {
+    /// What located the piste's line on the plan: `map_label` (its name written on the
+    /// map beside the line) or `legend_box` (its departure box, the only piste of its ink
+    /// there).
+    pub anchor: String,
+    /// Half width of the corridor around the carried line, m (registration error).
+    pub corridor_m: f64,
+    /// Share of the carried line followed by the estimated geometry (within half the
+    /// corridor).
+    pub drawn_covered: f64,
+    /// Length of the plan's line carried onto the map, m.
+    pub drawn_length_m: f64,
+    /// Sources of the geometry (`ign_bdtopo` paths and tracks, `plan_drawing`).
+    pub sources: Vec<String>,
 }
 
 /// Properties of a feature of `plan_pistes.geojson`.
@@ -127,6 +178,24 @@ pub struct PlanPiste {
     pub osm_way_ids: Vec<i64>,
     /// Plan identifier.
     pub plan: String,
+    /// How sure the geometry is (`exact`, `appris`, `incertain`); absent in files written
+    /// before G1, then read from `method`.
+    #[serde(default)]
+    pub certainty: Option<Certainty>,
+    /// Public address of the official plan of the resort (PDF or page): a link only, the
+    /// plan itself is never redistributed.
+    #[serde(default)]
+    pub source_plan_url: Option<String>,
+    /// How the trace was estimated (certainty `incertain` only).
+    #[serde(default)]
+    pub estimate: Option<Estimate>,
+}
+
+impl PlanPiste {
+    /// Certainty of the geometry, from `certainty` or else from `method`.
+    pub fn certainty(&self) -> Certainty {
+        self.certainty.unwrap_or_else(|| self.method.certainty())
+    }
 }
 
 /// Direction compared with the OSM `piste:oneway` tag of the way.
@@ -259,8 +328,32 @@ mod tests {
         assert_eq!(p.method, MatchMethod::Exact);
         assert_eq!(p.departures, vec!["Chapelle-des-Bois".to_owned()]);
         assert_eq!(p.number, None);
+        assert_eq!(p.certainty(), Certainty::Exact);
         // Round trip.
         let back: PlanPiste = serde_json::from_value(serde_json::to_value(p).unwrap()).unwrap();
         assert_eq!(&back, p);
+    }
+
+    #[test]
+    fn reads_an_estimated_piste() {
+        let s = r#"{"type":"FeatureCollection","features":[{"type":"Feature",
+          "geometry":{"type":"MultiLineString","coordinates":[[[6.1,46.6],[6.11,46.61]]]},
+          "properties":{"name":"Le Gy","name_read":"Le Gy","colour":"green","ink":"green",
+          "kind":"ski","length_m":1200.0,"loop":false,"method":"estimated_paths","score":0.62,
+          "geometry_source":"estimated_from_plan","osm_status":"missing","plan":"p",
+          "certainty":"incertain","source_plan_url":"https://example.org/plan.pdf",
+          "estimate":{"anchor":"map_label","corridor_m":80.0,"drawn_covered":0.8,
+          "drawn_length_m":1100.0,"sources":["ign_bdtopo"]}}}]}"#;
+        let f = read_pistes(s).unwrap();
+        let p = &f[0].properties;
+        assert_eq!(p.certainty(), Certainty::Uncertain);
+        assert_eq!(p.method, MatchMethod::EstimatedPaths);
+        assert_eq!(p.geometry_source, GeometrySource::EstimatedFromPlan);
+        assert_eq!(p.osm_status, OsmStatus::Missing);
+        assert_eq!(p.estimate.as_ref().unwrap().anchor, "map_label");
+        let v = serde_json::to_value(p).unwrap();
+        assert_eq!(v["certainty"], "incertain");
+        assert_eq!(MatchMethod::Ml.certainty(), Certainty::Learnt);
+        assert_eq!(serde_json::to_value(Certainty::Learnt).unwrap(), "appris");
     }
 }

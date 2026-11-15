@@ -33,7 +33,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let t = Instant::now();
         let (reg, tried) = register_site(site, &layout, &dl, &planet, &engine)?;
         let p = &reg.spec;
-        let rep = transcribe_and_write(&reg, site, &tried, &layout, &planet.source)?;
+        let rep = transcribe_and_write(&reg, site, &tried, &layout, &planet.source, &dl)?;
         println!(
             "\n== {} -> {} ({:.1} s)",
             p.id,
