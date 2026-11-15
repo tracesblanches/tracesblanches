@@ -10,6 +10,10 @@ mod fixtures;
 mod history;
 mod plan;
 mod route;
+/// Test support of the reference data set (Q1, Q2), shared with the other crates.
+#[cfg(test)]
+#[path = "../../../fixtures/support/mod.rs"]
+mod test_fixtures;
 mod voice;
 
 use std::path::PathBuf;

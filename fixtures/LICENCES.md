@@ -16,6 +16,7 @@ Avant d'écrire, le générateur prouve la fidélité de chaque extrait : couche
 - `inputs/osm/planet_pistes_sites.osm.gz` : extrait OpenSnowMap réduit aux ways de la région que regarde le constructeur de pistes autour de chaque site (avec tous leurs nœuds et les relations qui les atteignent).
 - `inputs/<site>/dem_profile_cells_5m.tif` : MNT LiDAR HD 5 m réduit aux cellules lues par les profils d'altitude du graphe (NaN ailleurs).
 - `inputs/<site>/dem_window_5m.tif` : fenêtre de 1 km × 1 km du MNT (la plus grande variété de pentes).
+- `golden/` : empreintes chiffrées de référence (ticket Q2, #102), chiffres et phrases calculés par les tests sur ce jeu (`golden/full/` : sur les données complètes) ; mises à jour seulement avec `SKIMAP_BLESS=1`.
 - `data/out/<site>/<couche>/` : sorties du pipeline lues par les crates du téléphone (pistes, graphe, zones, couverture, refuges, neige, exposition de Chapelle-des-Bois) ; les `.meta.json` modifiés le disent dans `notes`.
 
 ## Clés de licence

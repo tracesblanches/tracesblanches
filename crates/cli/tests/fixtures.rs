@@ -391,3 +391,66 @@ fn strip_volatile(v: Value) -> Value {
         v => v,
     }
 }
+
+/// The golden machinery of `fixtures/support/golden.rs` (Q2): creation by blessing,
+/// acceptance within tolerance, failure with the differing keys and lines, bless that
+/// rewrites only what is out of tolerance.
+#[test]
+fn golden_check_and_bless() {
+    use fixtures::golden::{Golden, Tol};
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("g.json");
+    let make = |eta: f64, km: f64, count: i64, line: &str| {
+        let mut g = Golden::new("test");
+        g.num("eta_s", eta, Tol::Rel(0.01))
+            .num("km", km, Tol::Abs(0.1))
+            .count("n", count)
+            .lines("text", &format!("first\n{line}"));
+        g
+    };
+    let missing = std::panic::catch_unwind(|| make(100.0, 1.0, 3, "x").check_at(&path, false));
+    assert!(missing.is_err(), "a missing reference must fail");
+    make(100.0, 1.0, 3, "x").check_at(&path, true);
+    let written = std::fs::read_to_string(&path).unwrap();
+    assert!(written.contains("\"eta_s\": 100.0") && written.contains("\"first\""));
+    // Within tolerance: passes, and blessing keeps the reference unchanged.
+    make(100.9, 1.05, 3, "x").check_at(&path, false);
+    make(100.9, 1.05, 3, "x").check_at(&path, true);
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), written);
+    // Out of tolerance: fails with each differing key and line, not the others.
+    let err =
+        std::panic::catch_unwind(|| make(102.0, 1.0, 4, "y").check_at(&path, false)).unwrap_err();
+    let msg = err.downcast_ref::<String>().cloned().unwrap_or_default();
+    assert!(msg.contains("3 of 4 values differ"), "{msg}");
+    assert!(
+        msg.contains("eta_s") && msg.contains("+2 (+2.000 %)"),
+        "{msg}"
+    );
+    assert!(msg.contains("line 2") && msg.contains("golden x") && msg.contains("now    y"));
+    assert!(!msg.contains("  km"), "{msg}");
+    // Bless rewrites only the values out of tolerance; the others keep their text.
+    let before = std::fs::read_to_string(&path).unwrap();
+    make(102.0, 1.05, 4, "x").check_at(&path, true);
+    let after = std::fs::read_to_string(&path).unwrap();
+    let changed: Vec<(&str, &str)> = before
+        .lines()
+        .zip(after.lines())
+        .filter(|(a, b)| a != b)
+        .collect();
+    assert_eq!(
+        changed,
+        [
+            ("  \"eta_s\": 100.0,", "  \"eta_s\": 102.0,"),
+            ("  \"n\": 3,", "  \"n\": 4,")
+        ]
+    );
+    make(102.0, 1.05, 4, "y").check_at(&path, true);
+    let v: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(v["eta_s"], 102.0);
+    assert_eq!(v["km"], 1.0);
+    assert_eq!(v["n"], 4);
+    // A key that disappears is a difference too.
+    let mut g = Golden::new("test");
+    g.num("eta_s", 102.0, Tol::FLOAT);
+    assert!(std::panic::catch_unwind(|| g.check_at(&path, false)).is_err());
+}

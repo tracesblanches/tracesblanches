@@ -16,16 +16,20 @@
 //!   the complete local data (`$SKIMAP_DATA_DIR`, default `data/`), run by the weekly
 //!   job with `cargo test --workspace --features skimap-core/pipeline,skimap-pack/pipeline
 //!   -- --ignored full_data_`. A missing directory fails the test as well.
+//!
+//! Golden fingerprints (Q2): [`golden`].
 
 #![allow(dead_code)]
 
+pub mod golden;
 pub mod privacy;
 
 use std::path::{Path, PathBuf};
 
 /// Root of the reference data set (`fixtures/` at the root of the repository).
 pub fn root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures")
+    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures");
+    p.canonicalize().unwrap_or(p)
 }
 
 /// Fails with a clear message when a fixture file is missing.

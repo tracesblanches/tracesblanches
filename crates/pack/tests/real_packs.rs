@@ -99,13 +99,39 @@ fn fixture_packs() -> FixturePacks {
 }
 
 /// Both checks below on the packs built from the fixtures (one build: the raster tiles
-/// dominate the time of this test).
+/// dominate the time of this test), and the golden fingerprint of each pack (Q2, #102):
+/// layers with their feature counts, files, sampled raster classes.
+///
+/// References `fixtures/golden/pack/<site>.json`; update with `SKIMAP_BLESS=1 cargo test
+/// -p skimap-pack --features pipeline --test real_packs` and review the diff. Exact:
+/// fixed layers, deterministic tiling and classification; a changed class count is a
+/// changed raster in the pack.
 #[test]
 fn fixture_packs_match_their_sources_and_geotiffs() {
     let p = fixture_packs();
     for site in SITES {
         sources(&p.layout, site);
-        rasters(&p.layout, site);
+        let classes = rasters(&p.layout, site);
+        let pack = Pack::open(pack_dir(site, &p.layout).unwrap()).unwrap();
+        let m = pack.manifest();
+        let mut k = fixtures::golden::Golden::new(&format!("pack/{}", site.id));
+        k.count("files", m.files.len())
+            .count("layers", m.layers.len())
+            .text("format", m.format.clone())
+            .count("format_version", m.format_version)
+            .count("attributions", m.attributions.len());
+        for l in &m.layers {
+            k.text(&format!("layer.{}.kind", l.id), format!("{:?}", l.kind));
+            if let Some(n) = l.features {
+                k.count(&format!("layer.{}.features", l.id), n);
+            }
+        }
+        for (id, counts) in classes {
+            for (class, n) in counts {
+                k.count(&format!("raster.{id}.class_{class}"), n);
+            }
+        }
+        k.check();
     }
     // Slope and avalanche exposure are vector class polygons in the pack.
     class_polygons(&p.layout);
@@ -128,7 +154,7 @@ fn full_data_packs_match_their_sources() {
 fn full_data_rasters_match_their_geotiffs() {
     let layout = full_layout();
     for site in SITES {
-        rasters(&layout, site);
+        let _ = rasters(&layout, site);
     }
 }
 
@@ -183,7 +209,9 @@ fn sources(layout: &DataLayout, site: &Site) {
     }
 }
 
-fn rasters(layout: &DataLayout, site: &Site) {
+/// Checks the rasters of the pack of `site`; returns the sampled class counts by raster.
+fn rasters(layout: &DataLayout, site: &Site) -> Vec<(String, BTreeMap<u8, u64>)> {
+    let mut all = Vec::new();
     {
         let pack = Pack::open(pack_dir(site, layout).unwrap()).unwrap();
         for spec in raster::catalog() {
@@ -249,8 +277,10 @@ fn rasters(layout: &DataLayout, site: &Site) {
                 .raster_value_at(spec.id, LonLat::new(c.lon, c.lat))
                 .unwrap();
             println!("  value at the commune centre: {v:?}");
+            all.push((spec.id.to_owned(), counts));
         }
     }
+    all
 }
 
 /// Basemaps: archives readable, styles point to files of the pack, glyphs present (the

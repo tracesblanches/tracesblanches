@@ -45,9 +45,12 @@ use skimap_osm::extract::{self, Planet};
 use skimap_osm::parse::{MemberKind, OsmData};
 use skimap_terrain::geotiff;
 
-/// E-mail and phone patterns, shared with the fixtures tests.
+/// E-mail and phone patterns, shared with the fixtures tests (one copy in a test build).
+#[cfg(not(test))]
 #[path = "../../../fixtures/support/privacy.rs"]
 mod privacy;
+#[cfg(test)]
+use crate::test_fixtures::privacy;
 use privacy::personal_pattern;
 
 /// Planet extract of the fixtures, relative to the fixtures root.
