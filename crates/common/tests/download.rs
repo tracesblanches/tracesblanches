@@ -853,3 +853,68 @@ fn invalid_bodies_give_up_after_the_attempts() {
     assert!(matches!(err, Error::Status { status: 403, .. }), "{err}");
     assert_eq!(srv.count(), 1);
 }
+
+#[test]
+fn a_source_down_is_paused_then_tried_again() {
+    let down = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let d = down.clone();
+    let srv = TestServer::start(move |_, _| {
+        if d.load(std::sync::atomic::Ordering::SeqCst) {
+            Reply::status(502)
+        } else {
+            Reply::ok("back")
+        }
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let dl = downloader(
+        dir.path(),
+        policy("t")
+            .retries(1, Duration::from_millis(1), Duration::from_millis(2))
+            .breaker(3, Duration::from_millis(300)),
+    );
+    // Three requests fail after their retry (2 requests each), then the source is paused.
+    for i in 0..3 {
+        let e = dl
+            .fetch(&Request::get("t", &srv.url(&format!("/{i}"))))
+            .unwrap_err();
+        assert!(matches!(e, Error::Status { status: 502, .. }), "{e}");
+    }
+    assert_eq!(srv.count(), 6);
+    let e = dl.fetch(&Request::get("t", &srv.url("/3"))).unwrap_err();
+    assert!(matches!(e, Error::SourceDown { failures: 3, .. }), "{e}");
+    assert_eq!(srv.count(), 6, "no request while the source is paused");
+    // After the pause, the source is back: one request, success, breaker closed.
+    down.store(false, std::sync::atomic::Ordering::SeqCst);
+    thread::sleep(Duration::from_millis(350));
+    let f = dl.fetch(&Request::get("t", &srv.url("/3"))).unwrap();
+    assert_eq!(f.text().unwrap(), "back");
+    assert_eq!(srv.count(), 7);
+    let f = dl.fetch(&Request::get("t", &srv.url("/4"))).unwrap();
+    assert_eq!(f.text().unwrap(), "back");
+}
+
+#[test]
+fn client_errors_do_not_trip_the_breaker() {
+    let srv = TestServer::start(|s, _| {
+        if s.url == "/ok" {
+            Reply::ok("fine")
+        } else {
+            Reply::status(404)
+        }
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let dl = downloader(dir.path(), policy("t").breaker(2, Duration::from_secs(60)));
+    for i in 0..4 {
+        assert!(
+            dl.fetch(&Request::get("t", &srv.url(&format!("/missing{i}"))))
+                .is_err()
+        );
+    }
+    assert_eq!(
+        dl.fetch(&Request::get("t", &srv.url("/ok")))
+            .unwrap()
+            .text()
+            .unwrap(),
+        "fine"
+    );
+}

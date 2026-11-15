@@ -36,6 +36,12 @@ pub struct SourcePolicy {
     /// Terms allow personal, non-commercial use only: the downloader refuses the source
     /// unless `personal_sources` is on ([`crate::config::Config::personal_sources`]).
     pub personal_use_only: bool,
+    /// Circuit breaker: after this many requests in a row that failed after all their
+    /// retries (transport error, 408, 429, 5xx), the source is considered down...
+    pub breaker_failures: u32,
+    /// ...and every request to it fails at once, without reaching the network, for this
+    /// long ([`crate::error::Error::SourceDown`]); then one request tries again.
+    pub breaker_open: Duration,
 }
 
 const SECOND: Duration = Duration::from_secs(1);
@@ -57,7 +63,16 @@ impl SourcePolicy {
             timeout: 30 * MINUTE,
             max_in_flight: 1,
             personal_use_only: false,
+            breaker_failures: 3,
+            breaker_open: 10 * MINUTE,
         }
+    }
+
+    /// Sets the circuit breaker (failures in a row, time open).
+    pub fn breaker(mut self, failures: u32, open: Duration) -> Self {
+        self.breaker_failures = failures.max(1);
+        self.breaker_open = open;
+        self
     }
 
     /// Marks the source personal use only.

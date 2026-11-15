@@ -375,6 +375,8 @@ pub struct Downloader {
 
 /// Shared state of one source: rate limiter, in-flight slots, one lock per request key.
 struct SourceState {
+    /// Failed requests in a row and end of the pause (unix ms) of the circuit breaker.
+    breaker: Mutex<(u32, u64)>,
     limiter: Mutex<Limiter>,
     in_flight: Mutex<usize>,
     slot_freed: std::sync::Condvar,
@@ -471,6 +473,7 @@ impl Downloader {
         }
         let l = Limiter::load(policy.limits.clone(), Some(dir.join("ratelimit.json")))?;
         let s = Arc::new(SourceState {
+            breaker: Mutex::new((0, 0)),
             limiter: Mutex::new(l),
             in_flight: Mutex::new(0),
             slot_freed: std::sync::Condvar::new(),
@@ -605,6 +608,45 @@ impl Downloader {
             cached
         };
 
+        // Circuit breaker: a source that failed several requests in a row is not asked
+        // again before the end of its pause (the run goes on with the other sources).
+        {
+            let (failures, until) = *lock(&state.breaker);
+            let now = unix_ms(self.clock.now());
+            if failures >= policy.breaker_failures && now < until {
+                return Err(Error::SourceDown {
+                    source_name: req.source.clone(),
+                    url: req.url.clone(),
+                    failures,
+                    until: crate::meta::unix_to_rfc3339((until / 1000) as i64).unwrap_or_default(),
+                });
+            }
+        }
+        let out = self.fetch_network(req, policy, state, entry, conditional);
+        let mut b = lock(&state.breaker);
+        match &out {
+            Ok(_) => *b = (0, 0),
+            Err(e) if is_outage(e) => {
+                b.0 += 1;
+                if b.0 >= policy.breaker_failures {
+                    b.1 = unix_ms(self.clock.now())
+                        + u64::try_from(policy.breaker_open.as_millis()).unwrap_or(u64::MAX);
+                    tracing::warn!(source = %req.source, failures = b.0, "source down, paused");
+                }
+            }
+            Err(_) => {}
+        }
+        out
+    }
+
+    fn fetch_network(
+        &self,
+        req: &Request,
+        policy: &SourcePolicy,
+        state: &SourceState,
+        entry: &Entry,
+        conditional: Option<CacheMeta>,
+    ) -> Result<Fetched> {
         let mut attempt = 0u32;
         loop {
             let sent =
@@ -782,6 +824,16 @@ impl Downloader {
         } else {
             Attempt::Fatal(err)
         }
+    }
+}
+
+/// Whether an error after all retries means the source is down (transport error, 408,
+/// 429, 5xx), not that this request is wrong (4xx).
+fn is_outage(e: &Error) -> bool {
+    match e {
+        Error::Http { .. } => true,
+        Error::Status { status, .. } => matches!(status, 408 | 429 | 500..=599),
+        _ => false,
     }
 }
 
