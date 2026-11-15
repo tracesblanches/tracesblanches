@@ -77,6 +77,17 @@ pub fn remove_orphan_tmp(dir: &Path) -> usize {
     n
 }
 
+/// Box area from which a site is built alone among the big ones (9 sites of the registry
+/// on 15/11/2026: the GTJ and Vercors traverse sections, Haute-Joux, Les Fourgs…).
+pub const HEAVY_SITE_KM2: f64 = 300.0;
+
+/// Area of the box of a site, km².
+pub fn site_area_km2(site: &Site) -> f64 {
+    let b = site.bbox;
+    let lat = ((b.north + b.south) / 2.0).to_radians();
+    (b.north - b.south) * 111.2 * (b.east - b.west) * 111.2 * lat.cos()
+}
+
 /// Lock file of a site build, in its output directory.
 pub const LOCK_FILE: &str = ".build-all.lock";
 
@@ -336,6 +347,9 @@ pub fn build_many(
         let queue = Mutex::new(todo);
         let done = Mutex::new(Vec::new());
         let counter = Mutex::new(0usize);
+        // Big sites one at a time: a GTJ section alone peaks at 5.6 GB (G2), several at
+        // once with the other sites would exhaust the memory of the machine.
+        let heavy = Mutex::new(());
         let deadline = opts.stop_after.map(|d| t0 + d);
         std::thread::scope(|scope| {
             for _ in 0..opts.jobs.max(1) {
@@ -347,6 +361,8 @@ pub fn build_many(
                         let Some((site, inp)) = queue.lock().expect("queue").pop_front() else {
                             break;
                         };
+                        let _heavy = (site_area_km2(site) >= HEAVY_SITE_KM2)
+                            .then(|| heavy.lock().unwrap_or_else(|p| p.into_inner()));
                         let r = build_one(ctx, site, inp, shared, opts);
                         let k = {
                             let mut c = counter.lock().expect("counter");
@@ -522,7 +538,14 @@ pub struct StepStatus {
     pub tried_at: Option<String>,
     /// Error of a failed step.
     pub error: Option<String>,
+    /// First failure of a step that has been failing since (kept from one `status.json`
+    /// to the next), RFC 3339.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failing_since: Option<String>,
 }
+
+/// Days of failure after which a step is listed in `status.json` `alerts`.
+pub const ALERT_AFTER_DAYS: i64 = 3;
 
 /// One site in `status.json`.
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -545,6 +568,27 @@ pub struct SiteStatus {
 /// of the data in use: a step that failed keeps the outputs of its last success, shown
 /// with their date, without any other qualifier.
 pub fn write_status(layout: &DataLayout, sites: &[&'static Site]) -> Result<PathBuf> {
+    let path = layout.france_dir().join("status.json");
+    // First failure of each (site, step) still failing, from the previous status.
+    let mut since: BTreeMap<(String, String), String> = BTreeMap::new();
+    if let Some(v) = std::fs::read(&path)
+        .ok()
+        .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+    {
+        for site in v["by_site"].as_array().into_iter().flatten() {
+            for st in site["failed_steps"].as_array().into_iter().flatten() {
+                if let (Some(a), Some(b), Some(t)) = (
+                    site["site"].as_str(),
+                    st["step"].as_str(),
+                    st["failing_since"].as_str(),
+                ) {
+                    since.insert((a.to_owned(), b.to_owned()), t.to_owned());
+                }
+            }
+        }
+    }
+    let now = Utc::now();
+    let mut alerts = Vec::new();
     let mut out = Vec::new();
     for s in sites {
         let Some(rec) = france::read_record(layout, s.id) else {
@@ -563,12 +607,33 @@ pub fn write_status(layout: &DataLayout, sites: &[&'static Site]) -> Result<Path
             .iter()
             .map(|st| {
                 let failed = matches!(st.state, StepState::Failed | StepState::Blocked);
+                let tried_at = st.at.clone().or_else(|| Some(rec.finished_at.clone()));
+                let failing_since = failed.then(|| {
+                    since
+                        .get(&(s.id.to_owned(), st.name.clone()))
+                        .cloned()
+                        .or_else(|| tried_at.clone())
+                        .unwrap_or_default()
+                });
+                if let Some(t) = failing_since
+                    .as_deref()
+                    .and_then(|t| DateTime::parse_from_rfc3339(t).ok())
+                    && (now - t.to_utc()).num_days() >= ALERT_AFTER_DAYS
+                {
+                    alerts.push(format!(
+                        "{} : {} en échec depuis le {}",
+                        s.id,
+                        st.name,
+                        t.format("%d/%m/%Y")
+                    ));
+                }
                 StepStatus {
                     step: st.name.clone(),
                     state: st.state,
                     updated_at: if failed { None } else { st.at.clone() },
-                    tried_at: st.at.clone().or_else(|| Some(rec.finished_at.clone())),
+                    tried_at,
                     error: failed.then(|| first_line(&st.line, 300)),
+                    failing_since,
                 }
             })
             .collect();
@@ -586,7 +651,6 @@ pub fn write_status(layout: &DataLayout, sites: &[&'static Site]) -> Result<Path
         });
     }
     let count = |k: &str| out.iter().filter(|x| x.state == k).count();
-    let path = layout.france_dir().join("status.json");
     skimap_common::output::write_json(
         &path,
         &serde_json::json!({
@@ -595,6 +659,8 @@ pub fn write_status(layout: &DataLayout, sites: &[&'static Site]) -> Result<Path
             "ok": count("ok"),
             "failed": count("failed"),
             "never_built": count("never_built"),
+            "alert_after_days": ALERT_AFTER_DAYS,
+            "alerts": alerts,
             "by_site": out,
         }),
     )?;

@@ -1576,3 +1576,164 @@ mod resume_tests {
         assert!(trials >= 20);
     }
 }
+
+/// A source down, then back: the first run keeps the previous outputs of the failed step
+/// (with their date) and still builds the pack; the next run sends requests only for the
+/// failed step. Local HTTP server, real downloader, requests counted.
+#[cfg(test)]
+mod outage_tests {
+    use super::*;
+    use std::collections::BTreeMap;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+
+    struct Server {
+        base: String,
+        hits: Arc<Mutex<BTreeMap<String, usize>>>,
+        down: Arc<AtomicBool>,
+        server: Arc<tiny_http::Server>,
+        thread: Option<std::thread::JoinHandle<()>>,
+    }
+
+    impl Server {
+        /// `/terrain` always answers; `/refuges` answers `v<n>` (n-th good answer), or
+        /// 502 while `down`.
+        fn start() -> Self {
+            let server = Arc::new(tiny_http::Server::http("127.0.0.1:0").unwrap());
+            let port = server.server_addr().to_ip().unwrap().port();
+            let hits = Arc::new(Mutex::new(BTreeMap::new()));
+            let down = Arc::new(AtomicBool::new(false));
+            let (srv, h, d) = (server.clone(), hits.clone(), down.clone());
+            let thread = std::thread::spawn(move || {
+                let mut good = 0;
+                for rq in srv.incoming_requests() {
+                    let path = rq.url().to_owned();
+                    *h.lock().unwrap().entry(path.clone()).or_insert(0) += 1;
+                    let resp = if path == "/refuges" && d.load(Ordering::SeqCst) {
+                        tiny_http::Response::from_string("bad gateway").with_status_code(502)
+                    } else if path == "/refuges" {
+                        good += 1;
+                        tiny_http::Response::from_string(format!("v{good}"))
+                    } else {
+                        tiny_http::Response::from_string("dem")
+                    };
+                    let _ = rq.respond(resp);
+                }
+            });
+            Self {
+                base: format!("http://127.0.0.1:{port}"),
+                hits,
+                down,
+                server,
+                thread: Some(thread),
+            }
+        }
+
+        fn hits(&self) -> BTreeMap<String, usize> {
+            self.hits.lock().unwrap().clone()
+        }
+    }
+
+    impl Drop for Server {
+        fn drop(&mut self) {
+            self.server.unblock();
+            if let Some(t) = self.thread.take() {
+                let _ = t.join();
+            }
+        }
+    }
+
+    fn run(dir: &Path, dl: &Downloader, base: &str, resume: Option<Resume<'_>>) -> BuildOutcome {
+        let site = &skimap_common::site::CERVIERES;
+        let shared = Shared {
+            resume,
+            ..Shared::default()
+        };
+        let mut log = Vec::new();
+        let mut r = Run::new(site, dir.to_path_buf(), &shared, &mut log);
+        let get = |path: &str| -> Result<Vec<u8>> {
+            // Max age 0: every run asks the source (the cache would hide the outage).
+            let req = skimap_common::download::Request::get("t", &format!("{base}{path}"))
+                .max_age(std::time::Duration::ZERO);
+            Ok(dl.fetch(&req)?.bytes()?)
+        };
+        r.step("terrain", &[], || {
+            let b = get("/terrain")?;
+            std::fs::create_dir_all(dir.join("terrain"))?;
+            std::fs::write(dir.join("terrain/dem"), b)?;
+            Ok("terrain".into())
+        });
+        r.step("refuges", &[], || {
+            let b = get("/refuges")?;
+            std::fs::create_dir_all(dir.join("refuges"))?;
+            std::fs::write(dir.join("refuges/r"), b)?;
+            Ok("refuges".into())
+        });
+        r.step("build-pack", &[], || {
+            std::fs::create_dir_all(dir.join("pack"))?;
+            let t = std::fs::read(dir.join("terrain/dem"))?;
+            let f = std::fs::read(dir.join("refuges/r")).unwrap_or_default();
+            std::fs::write(dir.join("pack/p"), [t, f].concat())?;
+            Ok("pack".into())
+        });
+        r.finish()
+    }
+
+    fn resume(steps: &[StepRecord], max_age_s: u64) -> Resume<'_> {
+        Resume {
+            previous: steps,
+            max_age: std::time::Duration::from_secs(max_age_s),
+            pack_bytes: None,
+            export_bytes: None,
+        }
+    }
+
+    #[test]
+    fn a_source_down_keeps_the_previous_outputs_and_only_the_failed_step_runs_again() {
+        let srv = Server::start();
+        let tmp = tempfile::tempdir().unwrap();
+        let (dir, cache) = (tmp.path().join("out"), tmp.path().join("cache"));
+        let dl = Downloader::builder(&cache)
+            .policy(
+                skimap_common::download::SourcePolicy::new("t")
+                    .limits(Vec::new())
+                    .retries(
+                        2,
+                        std::time::Duration::from_millis(1),
+                        std::time::Duration::from_millis(5),
+                    ),
+            )
+            .build()
+            .unwrap();
+        // A first good build.
+        let o0 = run(&dir, &dl, &srv.base, None);
+        assert!(o0.ok());
+        assert_eq!(std::fs::read(dir.join("pack/p")).unwrap(), b"demv1");
+        // The refuges source goes down; everything is due again (max age 0).
+        srv.down.store(true, Ordering::SeqCst);
+        let o1 = run(&dir, &dl, &srv.base, Some(resume(&o0.steps, 0)));
+        assert_eq!(o1.steps[1].state, StepState::Failed);
+        assert!(o1.steps[1].line.contains("502"), "{}", o1.steps[1].line);
+        // The previous outputs stay, the pack is built with them.
+        assert_eq!(std::fs::read(dir.join("refuges/r")).unwrap(), b"v1");
+        assert_eq!(o1.steps[2].state, StepState::Ok);
+        assert_eq!(std::fs::read(dir.join("pack/p")).unwrap(), b"demv1");
+        let h1 = srv.hits();
+        assert_eq!(h1["/terrain"], 2);
+        assert_eq!(h1["/refuges"], 1 + 3, "one good answer, then 1 + 2 retries");
+        // The source is back: the next run (normal max age) asks only for the failed
+        // step; terrain is taken over without a request.
+        srv.down.store(false, Ordering::SeqCst);
+        let o2 = run(&dir, &dl, &srv.base, Some(resume(&o1.steps, 3600)));
+        assert!(o2.ok(), "{:?}", o2.steps);
+        assert!(o2.steps[0].resumed && !o2.steps[1].resumed);
+        let h2 = srv.hits();
+        assert_eq!(h2["/terrain"], h1["/terrain"], "no request for terrain");
+        assert_eq!(h2["/refuges"], h1["/refuges"] + 1);
+        assert_eq!(std::fs::read(dir.join("pack/p")).unwrap(), b"demv2");
+        // Nothing left to catch up: no request at all.
+        let o3 = run(&dir, &dl, &srv.base, Some(resume(&o2.steps, 3600)));
+        assert!(o3.ok() && o3.steps.iter().all(|s| s.resumed));
+        assert_eq!(srv.hits(), h2);
+    }
+}

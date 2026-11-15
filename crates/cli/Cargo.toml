@@ -42,5 +42,9 @@ flate2.workspace = true
 sha2.workspace = true
 hex.workspace = true
 
+[dev-dependencies]
+# Source outage test of build-all (local HTTP server that answers 502, then recovers).
+tiny_http.workspace = true
+
 [lints]
 workspace = true

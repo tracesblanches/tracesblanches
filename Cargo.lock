@@ -2983,6 +2983,7 @@ dependencies = [
  "skimap-voice",
  "skimap-zones",
  "tempfile",
+ "tiny_http",
  "tracing",
  "tracing-subscriber",
 ]
