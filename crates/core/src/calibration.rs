@@ -1042,7 +1042,25 @@ impl DayPace {
     /// Remaining duration for `rem_model_s` model seconds per terrain; `paused_for`: the
     /// group is stopped since that many seconds.
     pub fn predict(&self, rem_model_s: [f64; TERRAINS], paused_for: Option<f64>) -> Prediction {
-        let (d, vd) = self.day_effect();
+        self.predict_with(self.day_effect(), rem_model_s, paused_for)
+    }
+
+    /// As [`DayPace::predict`] at the group's own pace (the day effect at its prior: what
+    /// the first minutes say of the day is not used), the day's stops still counted.
+    pub fn predict_prior(
+        &self,
+        rem_model_s: [f64; TERRAINS],
+        paused_for: Option<f64>,
+    ) -> Prediction {
+        self.predict_with((0.0, self.v0), rem_model_s, paused_for)
+    }
+
+    fn predict_with(
+        &self,
+        (d, vd): (f64, f64),
+        rem_model_s: [f64; TERRAINS],
+        paused_for: Option<f64>,
+    ) -> Prediction {
         let mut med = 0.0;
         for (c, m) in rem_model_s.iter().enumerate() {
             med += m.max(0.0) * (-(self.base.pace[c].m + d)).exp();
@@ -1335,5 +1353,40 @@ mod tests {
         // Stopped for 10 min: more time left than moving.
         let q = d.predict(rem, Some(600.0));
         assert!(q.mean_s > p.mean_s);
+        // At the group's own pace: the day ignored, its stops kept.
+        let fresh = DayPace::new(&base, route);
+        let r = d.predict_prior(rem, None);
+        let f = fresh.predict(rem, None);
+        assert!((r.moving_s / f.moving_s - 1.0).abs() < 1e-9, "{r:?} {f:?}");
+        assert!(r.stop_s > f.stop_s, "{r:?} {f:?}");
+    }
+
+    #[test]
+    fn a_stop_not_decided_at_the_start_is_not_the_day() {
+        // A family two minutes after the start, stopped but not yet decided (it counts as
+        // moving without progress): its day pace collapses, its own pace does not.
+        let base = PaceParams::prior(&GroupProfile::family(2, &[6, 9], Style::Classic));
+        let route = [4000.0, 4000.0, 2000.0];
+        let mut d = DayPace::new(&base, route);
+        for _ in 0..30 {
+            d.moving(1.0, [0.0, 0.6, 0.0]);
+        }
+        for _ in 0..90 {
+            d.moving(1.0, [0.0, 0.0, 0.0]);
+        }
+        let fresh = DayPace::new(&base, route);
+        let day = d.predict(route, None);
+        let own = d.predict_prior(route, None);
+        let prior = fresh.predict(route, None);
+        assert!(day.median_s > 1.5 * prior.median_s, "{day:?} {prior:?}");
+        // (Two minutes without a stop barely move the stop rate.)
+        assert!(
+            (own.median_s / prior.median_s - 1.0).abs() < 0.02,
+            "{own:?} {prior:?}"
+        );
+        assert!(
+            (own.moving_s / prior.moving_s - 1.0).abs() < 1e-9,
+            "{own:?} {prior:?}"
+        );
     }
 }

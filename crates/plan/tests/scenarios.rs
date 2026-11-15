@@ -342,10 +342,31 @@ fn normal(b: &Built, name: &str) -> Run {
             M::Proposal(None),
         ],
     );
-    let said_turns = count(&run, &M::Said("turn"));
+    // Turns said, one by one: two close turns are said in one group (« Dans cent
+    // cinquante mètres, tournez à droite… Dans deux cent cinquante mètres… »).
+    let said: std::collections::BTreeSet<&str> = run
+        .outputs
+        .iter()
+        .filter_map(|o| match o {
+            Output::Spoken { spoken, .. } => Some(spoken.items.iter()),
+            _ => None,
+        })
+        .flatten()
+        .filter(|c| c.kind == "turn")
+        .map(|c| c.key.as_str())
+        .collect();
+    let planned: Vec<&str> = b
+        .plan
+        .announcements
+        .iter()
+        .filter(|a| a.kind == "turn")
+        .map(|a| a.key.as_str())
+        .collect();
+    let said_turns = planned.iter().filter(|k| said.contains(*k)).count();
     assert!(
         said_turns + 1 >= turns,
-        "{name}: {said_turns} turns said of {turns}"
+        "{name}: {said_turns} turns said of {turns} ({} groups; said {said:?}, planned {planned:?})",
+        count(&run, &M::Said("turn"))
     );
     let (per_hour, _) = rate(&run);
     println!(
@@ -421,12 +442,17 @@ fn q9_04_cervieres_arrival_by_car() {
 #[test]
 fn q9_05_cervieres_wrong_turn_and_back() {
     let b = cervieres();
-    let j = b
-        .plan
-        .junctions
-        .iter()
-        .position(|j| j.s > 1000.0 && j.branches > 0)
+    // A junction with a branch off the whole route: the loop of Le Laus passes some trails
+    // twice (#150), so a branch not taken at one passage may be taken at another.
+    let j = (0..b.plan.junctions.len())
+        .find(|&i| {
+            let j = &b.plan.junctions[i];
+            j.s > 1000.0
+                && j.branches > 0
+                && scenario::wrong_turn(&b.plan, &b.graph, i, 250.0, true).is_ok()
+        })
         .expect("junction");
+    println!("carrefour {j} à {:.0} m", b.plan.junctions[j].s);
     // 250 m on the wrong branch and back; the new route would come after 10 min only
     // (user setting), so that the way back is the skier's own.
     let sc = scen(
@@ -1069,7 +1095,18 @@ fn q9_15_cervieres_pause_at_the_refuge() {
         .find(|k| k.kind == plan::KeyKind::Refuge)
         .map(|k| k.s)
         .unwrap();
-    // Stops on the trail next to the refuge for 20 min.
+    // Stops on the trail next to the refuge for 20 min. On the loop of Le Laus (#150) the
+    // refuge is the Refuge Napoléon, 77 m from the end of the trail at the Col d'Izoard
+    // (within the 150 m of the plan, beyond the 50 m of the session): the pause is taken
+    // at the col, the session's radius set to 100 m (a user setting).
+    let d = skimap_plan::course::Course::new(&b.graph, &b.plan.route.legs, &b.plan.eta)
+        .unwrap()
+        .line()
+        .point_at(s)
+        .haversine_m(r.pos);
+    println!("refuge {:?} à {d:.0} m du parcours", r.name);
+    let mut params = TrackerParams::default();
+    params.session.refuge_m = params.session.refuge_m.max(d + 20.0);
     let sc = scen(
         &b,
         "Cervières, pause au refuge",
@@ -1078,7 +1115,7 @@ fn q9_15_cervieres_pause_at_the_refuge() {
             secs: 1200.0,
         }],
     );
-    let run = play(&b, &sc, TrackerParams::default());
+    let run = play(&b, &sc, params);
     no_manipulation(&run);
     let t = expect(
         &run,
@@ -1110,8 +1147,16 @@ fn q9_15_cervieres_pause_at_the_refuge() {
         _ => None,
     });
     assert!((refuge.unwrap() - paused.unwrap() - 300.0).abs() < 1e-6);
-    // Resumed within 90 s of the end of the 20 min stop (40 m to leave the pause).
-    assert!((t[3] - t[0] - 1200.0).abs() < 90.0, "{t:?}");
+    // Resumed within 90 s of the end of the 20 min stop (40 m to leave the pause), from
+    // the simulation's truth: at the col the forest outliers delay the pause itself
+    // (decided 3 to 4 min after the stop, see #150).
+    let (stop_t, stop_s) = run.stops[0];
+    println!(
+        "arrêt réel {stop_t:.0} s ({stop_s:.0} s), pause datée {:.0} s",
+        t[0]
+    );
+    assert!((t[3] - (stop_t + stop_s)).abs() < 90.0, "{t:?}");
+    assert!(t[0] >= stop_t && t[0] - stop_t < 300.0, "{t:?}");
     // Nothing but safety while paused.
     let (p0, p1) = (t[0], t[3]);
     for o in &run.outputs {
@@ -1859,9 +1904,11 @@ fn q9_31_cervieres_family_turnaround_at_its_pace() {
     // The app's default family (beginner children) on its short loop (75 min of model
     // time) from 13 h, tired: well slower than even the slow side of its range. Its plan
     // keeps an hour of light (16:43, not 17:13); the turnaround of A8 runs at the group's
-    // planned time: moved earlier and said (the late shortening at the start refused),
-    // then « turn around now » before its limit. The same family on the plan without a
-    // group is judged at the model pace: a later turnaround, and no « now ».
+    // planned time: moved earlier and said, then « turn around now » before its limit. No
+    // shortening at the start: the pace of the day decides a change of route only after
+    // 20 min of the group's planned time (#150: a minute of data sent families on a
+    // shorter loop). The same family on the plan without a group is judged at the model
+    // pace: a later turnaround, and no « now ».
     let b = built(&CERVIERES, "famille-13h", |r| {
         *r = presets::family_request(&CERVIERES, presets::past_day(&CERVIERES));
         r.start_time = NaiveTime::from_hms_opt(13, 0, 0)
@@ -1895,7 +1942,7 @@ fn q9_31_cervieres_family_turnaround_at_its_pace() {
         detour_m: 30.0,
         seed: 11,
     };
-    let steps = vec![Step::RefuseNext { after_s: 15.0 }];
+    let steps = Vec::new();
     let run = group(
         &fam,
         "Cervières, famille, demi-tour avancé à son rythme",
@@ -1912,8 +1959,6 @@ fn q9_31_cervieres_family_turnaround_at_its_pace() {
     expect(
         &run,
         &[
-            (M::Switched("late"), t0, t0 + 600.0),
-            (M::Reverted(false), t0, t0 + 700.0),
             (M::Alert(Alert::TurnaroundAdvanced), t0 + 1200.0, 1e6),
             (M::Said("turnaround_advanced"), t0 + 1200.0, 1e6),
             (M::Alert(Alert::TurnaroundNow), t0 + 1200.0, 1e6),

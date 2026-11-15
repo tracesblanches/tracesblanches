@@ -222,7 +222,14 @@ impl Speech {
             .filter(|c| eligible(c))
             .map(|c| c.t)
             .fold(f64::INFINITY, f64::min);
-        if !oldest.is_finite() || !(safety || oldest + self.p.group_s <= now) {
+        // A candidate with less than two grouping windows left (a turn close ahead at
+        // speed: its expiry is the time to pass the point) does not wait for the group.
+        let urgent = self.pending.iter().any(|c| {
+            eligible(c)
+                && c.priority != Priority::Safety
+                && c.expires.is_some_and(|e| e < oldest + 2.0 * self.p.group_s)
+        });
+        if !oldest.is_finite() || !(safety || urgent || oldest + self.p.group_s <= now) {
             return None;
         }
         let mut order: Vec<usize> = (0..self.pending.len())

@@ -210,7 +210,7 @@ fn the_testimony_falls_in_the_prior_range() {
 }
 
 /// The morning of the app's default family with 6 h, classic, up to red, from 9 h, on
-/// both sites: loops planned on the slow side of the range (12 to 16 km), the loop of
+/// both sites: loops planned on the slow side of the range (9 to 16 km), the loop of
 /// about 20 km only as the last option « si tout va bien »; an hour of light kept.
 #[test]
 fn a_family_morning_is_cautious() {
@@ -242,8 +242,12 @@ fn a_family_morning_is_cautious() {
         assert!(!cautious.is_empty());
         for x in &cautious {
             let gt = x.group.as_ref().unwrap();
+            // 9 km and more: since X16 (#150) real loops come before out-and-backs, and
+            // Le Laus has only 23.5 km of trails in cycles: its cautious loop is a real
+            // one of 9.8 km (4 h 48 planned on the slow side, back about 13 h 50 for a
+            // limit at 16 h 43), no longer an out-and-back of 12 to 16 km.
             assert!(
-                (12.0..=16.0).contains(&x.length_km),
+                (9.0..=16.0).contains(&x.length_km),
                 "{}: {:.1} km",
                 site.id,
                 x.length_km
