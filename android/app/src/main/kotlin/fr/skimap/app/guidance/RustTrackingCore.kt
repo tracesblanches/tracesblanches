@@ -33,8 +33,7 @@ import fr.skimap.tracking.Utterance
 /** The core's tracking session (Rust, UniFFI) behind the location service's interface, call for call. */
 @Suppress("TooManyFunctions")
 class RustTrackingCore(
-    // Read by the voice commands (« Où suis-je ? » from the core's guidance).
-    internal val session: TrackingSession,
+    private val session: TrackingSession,
 ) : TrackingCore {
     override fun pushFixes(packed: ByteArray): Batch = map(session.pushFixes(packed))
 

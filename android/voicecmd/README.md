@@ -10,7 +10,7 @@ Une question à la fois, après un geste (bouton du casque maintenu, voir « Lim
 | Fin de la question | `Endpointer` + `SileroVad` | Silero VAD v6.2.3 (sherpa-onnx `Vad.compute`, 64 échantillons de contexte comme speak), trames de 32 ms : parole après 3 trames ≥ 0,5 ; fin après 700 ms < 0,35 ; coupure à 8 s ; rien en 5 s : abandon ; 300 ms gardées avant la parole |
 | Transcription | `ParakeetTranscriber` | Parakeet-TDT-0.6B-v3 int8, sherpa-onnx 1.13.8 `OfflineRecognizer`, recherche en faisceau biaisée vers les questions de la liste (hotwords, score 2 comme speak), 500 ms de silence devant (speak : sinon Parakeet perd ou déforme le début) |
 | Classification | le noyau (`crates/intent`, via `crates/ffi/src/voicecmd.rs`) | sans LLM : normalisation, lexique FR/EN de synonymes, distance d'édition, mots-clés ; liste fermée ; sinon « je n'ai pas compris » et la liste des questions |
-| Réponse | l'app (`app/.../voicecmd/CommandAnswers`) | toujours un appel du noyau ou une phrase de la banque vocale, dite par le service de la sortie (clips du pack, voix Android pour ce qui n'a pas de clip) |
+| Réponse | l'app (`app/.../voicecmd/CommandAnswers`, retiré de l'app le 15/11/2026, dans l'historique : commit 95537a2) | toujours un appel du noyau ou une phrase de la banque vocale, dite par le service de la sortie (clips du pack, voix Android pour ce qui n'a pas de clip) |
 | Libération | `VoiceCommands.listen` | les deux moteurs sont libérés après chaque question (batterie) : rien ne reste chargé entre deux commandes |
 
 Le module ne connaît pas les liaisons UniFFI : l'app adapte le classifieur du noyau à `CommandClassifier` (`RustCommandClassifier`) ; les tests JVM du module tournent avec des moteurs factices, et ceux de l'app avec les vrais (sherpa-onnx JNI pour Linux x86_64, même version) et le vrai classifieur (bibliothèque Rust de l'hôte).
@@ -58,7 +58,7 @@ Le premier test de l'app installe le modèle depuis `~/.cache/skimap/voicecmd/` 
 
 ## Mesures
 
-Voir le commentaire des tickets #87 et #98 et la section « Commandes vocales » de `docs/voix.md`.
+Voir le commentaire des tickets #87 et #98 et `docs/voix/commandes-vocales.md` (le module n'est plus dans l'app depuis le 15/11/2026).
 
 ## Limites
 

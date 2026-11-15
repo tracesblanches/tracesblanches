@@ -43,7 +43,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import fr.skimap.app.R
 import fr.skimap.app.day.DayActivity
-import fr.skimap.app.voicecmd.VoiceCommandButton
 import fr.skimap.tracking.Guidance
 import fr.skimap.tracking.GuidanceLabels
 import fr.skimap.tracking.GuidanceText
@@ -89,7 +88,6 @@ fun GuidanceOverlay(
             Tracking.command(context, SkiTrackingService::class.java, if (accept) Tracking.ACTION_ACCEPT else Tracking.ACTION_DECLINE)
         },
         onRefuseSwitch = { Tracking.command(context, SkiTrackingService::class.java, Tracking.ACTION_REFUSE_SWITCH) },
-        showVoice = true,
     )
 }
 
@@ -108,7 +106,6 @@ fun GuidanceOverlayContent(
     onAnswer: (Boolean) -> Unit,
     onRefuseSwitch: () -> Unit,
     modifier: Modifier = Modifier,
-    showVoice: Boolean = false,
 ) {
     Box(modifier.fillMaxSize()) {
         when (state) {
@@ -118,7 +115,6 @@ fun GuidanceOverlayContent(
                     onOpen = onOpen,
                     onAnswer = onAnswer,
                     onRefuseSwitch = onRefuseSwitch,
-                    showVoice = showVoice,
                     modifier =
                         Modifier
                             .align(Alignment.BottomCenter)
@@ -171,8 +167,6 @@ fun GuidanceBar(
     onAnswer: (Boolean) -> Unit,
     onRefuseSwitch: () -> Unit,
     modifier: Modifier = Modifier,
-    // The microphone of the voice commands (V3, VO5): off in the captures.
-    showVoice: Boolean = false,
 ) {
     val open = stringResource(R.string.guidance_open)
     val context = LocalContext.current
@@ -221,7 +215,6 @@ fun GuidanceBar(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                if (showVoice) VoiceCommandButton()
             }
             val p = g.proposal
             val s = g.switch

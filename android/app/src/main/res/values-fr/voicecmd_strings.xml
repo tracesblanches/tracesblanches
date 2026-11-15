@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Commandes vocales (V3, VO5, A11). -->
-<resources>
-    <string name="voicecmd_ask">Demander à la voix</string>
-</resources>
