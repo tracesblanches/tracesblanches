@@ -26,6 +26,7 @@
 //! [`day_replay`] runs the weather rules over a whole day (an outing from 10 h, planned
 //! return at 16 h) to replay the archived forecasts.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 use chrono::{Duration, NaiveDateTime, Timelike};
@@ -115,11 +116,16 @@ pub struct Alert {
 }
 
 /// Monitor of an outing.
+///
+/// The route profile and the weather point are borrowed ([`Monitor::new`]) or owned
+/// ([`Monitor::with`] with `Cow::Owned`, for a caller that computes routes on the fly);
+/// [`Monitor::replace_route`] switches to another route from the same start without
+/// forgetting which alerts were already said.
 #[derive(Debug, Clone)]
 pub struct Monitor<'a> {
     start: NaiveDateTime,
-    profile: &'a Profile,
-    point: &'a WeatherPoint,
+    profile: Cow<'a, Profile>,
+    point: Cow<'a, WeatherPoint>,
     p: Params,
     deadline: Option<NaiveDateTime>,
     base_gust: f64,
@@ -148,10 +154,20 @@ impl<'a> Monitor<'a> {
         point: &'a WeatherPoint,
         p: Params,
     ) -> Self {
+        Self::with(start, Cow::Borrowed(profile), Cow::Borrowed(point), p)
+    }
+
+    /// Monitor of a route started at `start`, with a borrowed or owned profile and point.
+    pub fn with(
+        start: NaiveDateTime,
+        profile: Cow<'a, Profile>,
+        point: Cow<'a, WeatherPoint>,
+        p: Params,
+    ) -> Self {
         let deadline =
             turnaround::deadline(start.date(), point.position, &TurnaroundParams::default())
                 .map(|d| skimap_core::ephemeris::local_time(d.deadline));
-        let base_gust = hour_at(point, start)
+        let base_gust = hour_at(&point, start)
             .and_then(|h| h.gust_kmh)
             .unwrap_or(0.0);
         let mut m = Self {
@@ -175,7 +191,7 @@ impl<'a> Monitor<'a> {
     fn latest_turn(&self, now: NaiveDateTime, along_m: f64, pace: f64) -> Option<NaiveDateTime> {
         let d = self.deadline?;
         let f = TurnaroundParams::default().eta_factor;
-        let pr = self.profile;
+        let pr: &Profile = &self.profile;
         let i0 = pr.index_at(along_m);
         let secs = |s: f64| Duration::seconds(s.round() as i64);
         let finish = now + secs(pace * f * (pr.total_s() - pr.out_s[i0]));
@@ -209,21 +225,41 @@ impl<'a> Monitor<'a> {
         // The conditions known at the departure are the briefing's (A1, A7): weather alerts
         // start 10 minutes after it, and only look at hours before the planned return.
         let cur = (now >= self.start + Duration::minutes(10))
-            .then(|| hour_at(self.point, now).cloned())
+            .then(|| hour_at(&self.point, now).cloned())
             .flatten();
         let end = self.start
             + Duration::seconds(
                 (self.profile.total_s() * TurnaroundParams::default().eta_factor) as i64,
             );
         let end = end.max(now + Duration::minutes(30));
-        let ahead: Vec<WeatherHour> = self
-            .point
-            .between(now, (now + Duration::minutes(p.lookahead_min)).min(end))
-            .to_vec();
-        let three: Vec<WeatherHour> = self
-            .point
-            .between(now, (now + Duration::hours(3)).min(end))
-            .to_vec();
+        // Aggregates of the hours ahead (computed on the slices, without copying them: the
+        // phone calls this once a minute during the outing).
+        let (g_max, fog_ahead, s_ahead) = {
+            let ahead = self
+                .point
+                .between(now, (now + Duration::minutes(p.lookahead_min)).min(end));
+            (
+                ahead.iter().filter_map(|h| h.gust_kmh).fold(0.0, f64::max),
+                ahead.iter().any(|h| h.fog == Some(true)),
+                ahead
+                    .iter()
+                    .filter_map(|h| h.snowfall_cm)
+                    .fold(0.0, f64::max),
+            )
+        };
+        let (chill_min, t_min) = {
+            let three = self.point.between(now, (now + Duration::hours(3)).min(end));
+            (
+                three
+                    .iter()
+                    .filter_map(|h| h.wind_chill_c)
+                    .fold(f64::MAX, f64::min),
+                three
+                    .iter()
+                    .filter_map(|h| h.temperature_c)
+                    .fold(f64::MAX, f64::min),
+            )
+        };
         let mut push = |m: &mut Self, kind: Kind, text: String, event: Event| {
             m.last.insert(kind, now);
             let spoken = event.announce().text();
@@ -237,7 +273,6 @@ impl<'a> Monitor<'a> {
         };
         if let Some(c) = &cur {
             let g_now = c.gust_kmh.unwrap_or(0.0);
-            let g_max = ahead.iter().filter_map(|h| h.gust_kmh).fold(0.0, f64::max);
             if g_max >= p.gust_kmh
                 && g_max >= self.base_gust + p.gust_rise_kmh
                 && g_now < p.gust_kmh
@@ -254,10 +289,7 @@ impl<'a> Monitor<'a> {
                     Event::ConditionChange(Change::WindRising),
                 );
             }
-            if c.fog != Some(true)
-                && ahead.iter().any(|h| h.fog == Some(true))
-                && self.may(Kind::Fog, now)
-            {
+            if c.fog != Some(true) && fog_ahead && self.may(Kind::Fog, now) {
                 push(
                     self,
                     Kind::Fog,
@@ -265,10 +297,6 @@ impl<'a> Monitor<'a> {
                     Event::ConditionChange(Change::Fog),
                 );
             }
-            let s_ahead = ahead
-                .iter()
-                .filter_map(|h| h.snowfall_cm)
-                .fold(0.0, f64::max);
             if c.snowfall_cm.unwrap_or(0.0) < 0.2
                 && s_ahead >= p.snow_cm_h
                 && self.may(Kind::Snow, now)
@@ -280,14 +308,6 @@ impl<'a> Monitor<'a> {
                     Event::ConditionChange(Change::Snow),
                 );
             }
-            let chill_min = three
-                .iter()
-                .filter_map(|h| h.wind_chill_c)
-                .fold(f64::MAX, f64::min);
-            let t_min = three
-                .iter()
-                .filter_map(|h| h.temperature_c)
-                .fold(f64::MAX, f64::min);
             // A drop is said once: again only when it goes further than what was said.
             let chill_drop = c
                 .wind_chill_c
@@ -309,7 +329,7 @@ impl<'a> Monitor<'a> {
             }
         }
         // Turnaround.
-        let pr = self.profile;
+        let pr: &Profile = &self.profile;
         let i = pr.index_at(along_m);
         let planned = pr.out_s[i];
         let elapsed = (now - self.start).num_seconds() as f64;
@@ -374,6 +394,19 @@ impl<'a> Monitor<'a> {
     /// Latest turnaround at the planned pace (`None`: the route ends before the deadline).
     pub fn planned_turnaround(&self) -> Option<NaiveDateTime> {
         self.planned_turn
+    }
+
+    /// Follows another route from the same start (a plan B that shares the way travelled
+    /// so far): the planned turnaround is recomputed on it, the alerts already said and
+    /// the weather baselines are kept, so nothing is said twice because of the switch.
+    pub fn replace_route(&mut self, profile: Cow<'a, Profile>) {
+        self.profile = profile;
+        self.planned_turn = self.latest_turn(self.start, 0.0, 1.0);
+    }
+
+    /// Profile of the route followed.
+    pub fn profile(&self) -> &Profile {
+        &self.profile
     }
 
     /// C7 deadline, local.

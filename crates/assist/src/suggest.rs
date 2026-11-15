@@ -45,7 +45,7 @@ use skimap_common::geom::LonLat;
 use skimap_core::eta::{Conditions, EtaModel, SnowClass};
 use skimap_core::graph::{Difficulty, EdgeAttrs, HalfEdge, PisteGraph, Snap};
 use skimap_core::matching::PolylineIndex;
-use skimap_core::routing::{CostModel, Piece, Route, Router, Style};
+use skimap_core::routing::{CostModel, Leg, Piece, Route, Router, Style};
 use skimap_core::turnaround::{self, TurnaroundParams};
 
 use crate::briefing::{self, Factor, Reason, SnowStats};
@@ -116,6 +116,14 @@ pub struct Suggestion {
     /// Edges used.
     #[serde(skip)]
     pub edges: BTreeSet<usize>,
+    /// Legs of the loop in travel order (way out, then way back): the route itself, for a
+    /// day plan (`skimap-plan`) that follows it on the graph.
+    #[serde(skip)]
+    pub legs: Vec<Leg>,
+    /// Time model of the loop (C5 with the conditions of the day), the one of `eta_min`
+    /// and `profile`.
+    #[serde(skip)]
+    pub eta: EtaModel,
     /// Time profile along the loop (C5 model): distance, time from the start, time back to
     /// the start the same way reversed (for the turnaround of A8).
     #[serde(skip)]
@@ -217,8 +225,9 @@ impl CostModel for LoopCost<'_> {
     }
 }
 
-/// Snap at a node of the graph.
-fn node_snap(g: &PisteGraph, node: usize) -> Option<Snap> {
+/// Snap at a node of the graph (on its first incident edge), for routing to or from a
+/// node.
+pub fn node_snap(g: &PisteGraph, node: usize) -> Option<Snap> {
     let h: HalfEdge = *g.incident_edges(node).first()?;
     let e = g.edge(h.edge);
     let along_m = if e.from == node {
@@ -676,6 +685,8 @@ pub fn suggest(data: &SiteData, req: &Request) -> Suggestions {
             line,
             edges: legs.iter().map(|l| l.edge).collect(),
             profile: Profile::of(&eta, &pieces),
+            legs,
+            eta,
         });
     }
     if no_way_back > 0 {

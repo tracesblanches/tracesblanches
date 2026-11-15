@@ -1,0 +1,27 @@
+[package]
+name = "skimap-plan"
+description = "Plan de journée : itinéraire validé, heures de passage, demi-tour, annonces prévues, plans B, suivi sans manipulation, politique de parole."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+# Runs on the phone: no networking, no `download` feature of skimap-common. The plan is
+# built from the layers read by skimap-assist and followed on the trail graph of the pack.
+[dependencies]
+skimap-common = { workspace = true }
+skimap-core.workspace = true
+skimap-assist.workspace = true
+skimap-voice.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+# Not in [workspace.dependencies]: property tests of the speech policy (J4) and of the
+# tracker. Only the `std` feature (no fork, no timeout, no regex).
+proptest = { version = "1.12.0", default-features = false, features = ["std"] }
+
+[lints]
+workspace = true
