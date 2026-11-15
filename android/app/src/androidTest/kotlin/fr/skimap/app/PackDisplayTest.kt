@@ -80,7 +80,11 @@ class PackDisplayTest {
     fun lightThemeAndFond() {
         shell("cmd uimode night no")
         // Practice back to cross-country (fond), last mode forgotten.
-        target.getSharedPreferences("skimap", Context.MODE_PRIVATE).edit().clear().commit()
+        target
+            .getSharedPreferences("skimap", Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .commit()
     }
 
     /**
@@ -110,8 +114,12 @@ class PackDisplayTest {
         var counts = emptyMap<String, Int>()
         instrumentation.runOnMainSync {
             val map: MapLibreMap = checkNotNull(MapProbe.map)
-            val w = target.resources.displayMetrics.widthPixels.toFloat()
-            val h = target.resources.displayMetrics.heightPixels.toFloat()
+            val w =
+                target.resources.displayMetrics.widthPixels
+                    .toFloat()
+            val h =
+                target.resources.displayMetrics.heightPixels
+                    .toFloat()
             counts = layers.associateWith { map.queryRenderedFeatures(RectF(0f, 0f, w, h), it).size }
         }
         return counts
@@ -311,7 +319,11 @@ class PackDisplayTest {
                 android.util.Log.i("skimap-test", "$site dark: $dark")
             }
             shell("cmd uimode night no")
-            target.getSharedPreferences("skimap", Context.MODE_PRIVATE).edit().clear().commit()
+            target
+                .getSharedPreferences("skimap", Context.MODE_PRIVATE)
+                .edit()
+                .clear()
+                .commit()
         }
     }
 

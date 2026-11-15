@@ -229,7 +229,11 @@ class PackDownloadTest {
         assumeTrue("instrumentation argument skimapRealServer not given", real != null)
         val src = "/data/local/tmp/skimap-packs/cervieres"
         assumeTrue("needs the pipeline's pack in $src", shell("ls $src/manifest.json").contains("manifest.json"))
-        target.getSharedPreferences("skimap", Context.MODE_PRIVATE).edit().putString("server_url", real).commit()
+        target
+            .getSharedPreferences("skimap", Context.MODE_PRIVATE)
+            .edit()
+            .putString("server_url", real)
+            .commit()
         val index = "/v1/sites/cervieres/index.json"
 
         fun run(what: String) {
