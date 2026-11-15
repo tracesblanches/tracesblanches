@@ -373,8 +373,8 @@ pub const PROPOSAL_PHRASES: [Fixed; 7] = [
     Fixed::PlanProposalAccepted,
 ];
 
-/// « Vous allez moins vite que prévu, avec plus de pauses. Je propose la boucle courte,
-/// retour vers quinze heures et quart. »: the reason, the proposal, the return time (the
+/// « Vous allez moins vite que prévu, avec plus de pauses. Je vous propose la boucle
+/// courte, retour vers quinze heures quinze. »: the reason, the proposal, the return time (the
 /// bank's `loop.back.*` clips, to the nearest quarter hour).
 pub fn proposal_announcement(
     reason: PaceReason,
@@ -411,7 +411,7 @@ pub fn proposal_announcement(
 }
 
 /// The screen text of a proposal: « Vous allez 40 % moins vite que prévu, avec plus de
-/// pauses. Je propose la boucle courte, retour 15 h 20 (15 h 05 à 15 h 40). »
+/// pauses. Je vous propose la boucle courte, retour 15 h 20 (15 h 05 à 15 h 40). »
 pub fn proposal_text(
     reason: PaceReason,
     slower_pct: f64,
@@ -429,9 +429,9 @@ pub fn proposal_text(
         }
     };
     let what = match kind {
-        ProposalKind::ShortLoop => "Je propose la boucle courte",
-        ProposalKind::NearestExit => "Je propose la sortie la plus proche",
-        ProposalKind::Keep => "Je propose de garder la boucle",
+        ProposalKind::ShortLoop => "Je vous propose la boucle courte",
+        ProposalKind::NearestExit => "Je vous propose la sortie la plus proche",
+        ProposalKind::Keep => "Je vous propose de garder la boucle",
     };
     let saved = saved_min
         .filter(|m| *m >= 5.0)
@@ -487,7 +487,7 @@ mod tests {
         let a = proposal_announcement(PaceReason::SlowerAndPauses, ProposalKind::ShortLoop, t);
         assert_eq!(
             a.text(),
-            "Vous allez moins vite que prévu, avec plus de pauses. Je propose la boucle courte, retour vers quinze heures et quart."
+            "Vous allez moins vite que prévu, avec plus de pauses. Je vous propose la boucle courte, retour vers quinze heures quinze."
         );
         let s = proposal_text(
             PaceReason::SlowerAndPauses,
@@ -498,7 +498,7 @@ mod tests {
         );
         assert_eq!(
             s,
-            "Vous allez 40 % moins vite que prévu, avec plus de pauses. Je propose la boucle courte, retour 15 h 20 (15 h 05 à 15 h 40), 45 min de moins. Accepter ou refuser."
+            "Vous allez 40 % moins vite que prévu, avec plus de pauses. Je vous propose la boucle courte, retour 15 h 20 (15 h 05 à 15 h 40), 45 min de moins. Accepter ou refuser."
         );
         assert!(never_safe(&s));
     }

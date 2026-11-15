@@ -311,7 +311,7 @@ fn cases() -> Vec<(Event, &'static str)> {
                     minute: 13,
                 },
             },
-            "Boucle de treize kilomètres, environ deux heures, retour vers midi et quart.",
+            "Boucle de treize kilomètres, environ deux heures, retour vers midi quinze.",
         ),
         (
             Event::LoopSummary {

@@ -119,7 +119,7 @@ pub struct Suggestion {
     /// Reasons.
     pub reasons: Vec<Reason>,
     /// Spoken summary (voice bank): « Boucle de treize kilomètres, environ deux heures,
-    /// retour vers midi et quart. »
+    /// retour vers midi quinze. »
     pub voice: skimap_voice::Event,
     /// Geometry.
     #[serde(skip)]
@@ -992,7 +992,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             loop_voice(12.8, 118.0 * 60.0, at).announce().text(),
-            "Boucle de treize kilomètres, environ deux heures, retour vers midi et quart."
+            "Boucle de treize kilomètres, environ deux heures, retour vers midi quinze."
         );
     }
     use skimap_common::site::CHAPELLE_DES_BOIS;
