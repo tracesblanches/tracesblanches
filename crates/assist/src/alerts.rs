@@ -581,7 +581,7 @@ mod tests {
         assert!(
             adv[0]
                 .spoken
-                .starts_with("Vous êtes en retard sur l'horaire prévu.")
+                .starts_with("Vous êtes en retard sur l'heure prévue. Le demi-tour est avancé.")
         );
         let on_time = replay(
             start,

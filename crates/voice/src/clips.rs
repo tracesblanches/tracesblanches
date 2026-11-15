@@ -350,7 +350,7 @@ fixed_phrases! {
     /// Label before a clock time.
     TurnaroundDeadline = "turnaround-deadline" => "Heure limite de demi-tour.",
     /// Turnaround moved earlier because of a delay.
-    TurnaroundLate = "turnaround-late" => "Vous êtes en retard sur l'horaire prévu. L'heure de demi-tour est avancée.",
+    TurnaroundLate = "turnaround-late" => "Vous êtes en retard sur l'heure prévue. Le demi-tour est avancé.",
     /// Protected zone ahead.
     ZoneAhead = "zone-ahead" => "Attention, zone protégée devant.",
     /// Protected zone entered.

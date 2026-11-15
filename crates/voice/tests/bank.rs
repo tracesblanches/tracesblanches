@@ -119,7 +119,7 @@ fn cases() -> Vec<(Event, &'static str)> {
             Event::TurnaroundAdvanced {
                 deadline: clock(15, 15),
             },
-            "Vous êtes en retard sur l'horaire prévu. L'heure de demi-tour est avancée. Heure limite de demi-tour. Quinze heures quinze.",
+            "Vous êtes en retard sur l'heure prévue. Le demi-tour est avancé. Heure limite de demi-tour. Quinze heures quinze.",
         ),
         (
             Event::Slope { degrees: 34.6 },
