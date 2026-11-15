@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Reports (V8 to V11): sent to skimap-server by a WorkManager job with a network
+         constraint (offline queue), listed around the area when the reports screen opens,
+         voted on by a tap. OSM notes (V12): sent to api.openstreetmap.org only when the
+         user taps « Envoyer » after reading the text. Nothing else, never in the background
+         otherwise. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- The place of a report: one fix when the report screen opens (the module :tracking
+         declares the same permissions for the outing). -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <application>
+        <!-- Report, reports around, OSM note, « Mes sorties ». -->
+        <activity
+            android:name=".CommunityActivity"
+            android:exported="false" />
+    </application>
+</manifest>

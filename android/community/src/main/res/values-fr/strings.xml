@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="kind_track">Trace faite</string>
+    <string name="kind_groomed">Piste damée</string>
+    <string name="kind_ice">Glace</string>
+    <string name="kind_wind_blown">Neige soufflée</string>
+    <string name="kind_obstacle">Obstacle</string>
+    <string name="kind_closed">Fermée sur le terrain</string>
+
+    <string name="report_title">Signaler</string>
+    <string name="report_where">Un appui signale ici, maintenant (position %1$s).</string>
+    <string name="report_locating">Recherche de la position…</string>
+    <string name="report_no_position">Pas de position : autorisez la localisation pour signaler.</string>
+    <string name="report_done">Signalé : %1$s. Envoyé dès qu\'il y a du réseau.</string>
+    <string name="report_cancel">Annuler</string>
+    <string name="report_all_sent">Tous les signalements sont envoyés.</string>
+    <plurals name="report_pending">
+        <item quantity="one">%1$d signalement attend le réseau.</item>
+        <item quantity="many">%1$d signalements attendent le réseau.</item>
+        <item quantity="other">%1$d signalements attendent le réseau.</item>
+    </plurals>
+    <string name="photo_add">Ajouter une photo</string>
+    <string name="photo_added">Photo ajoutée</string>
+
+    <string name="around_title">Signalements autour</string>
+    <string name="around_loading">Chargement des signalements…</string>
+    <string name="around_offline">Pas de réseau : les signalements autour ne sont pas affichés.</string>
+    <string name="around_none">Aucun signalement autour.</string>
+    <string name="around_votes">Toujours là : %1$d, plus là : %2$d · %3$s</string>
+    <string name="around_mine">Votre signalement.</string>
+    <string name="around_rules">Les signalements expirent d\'eux-mêmes (24 h pour la neige et la glace, 48 h pour une trace, 3 jours pour une fermeture, 7 jours pour un obstacle) sauf confirmation. Jamais une garantie de sécurité.</string>
+    <string name="vote_confirm">Toujours là</string>
+    <string name="vote_deny">Plus là</string>
+    <string name="vote_thanks">Merci.</string>
+
+    <string name="age_minutes">il y a %1$d min</string>
+    <string name="age_hours">il y a %1$d h</string>
+    <string name="age_days">il y a %1$d j</string>
+    <string name="left_hours">encore %1$d h</string>
+    <string name="left_days">encore %1$d j</string>
+
+    <string name="outings_title">Mes sorties</string>
+    <string name="outings_loading">Calcul sur le téléphone…</string>
+    <string name="outings_list">Sorties</string>
+    <string name="outings_none">Pas encore de sortie.</string>
+    <string name="outing_line">%1$.1f km · %2$d min en mouvement · %3$d m de montée</string>
+    <string name="challenges_title">Défis</string>
+    <string name="challenge_route">%1$s en entier</string>
+    <string name="challenge_domain">Toutes les pistes de %1$s</string>
+    <string name="challenge_distance">%1$.0f km cette saison</string>
+    <string name="challenge_progress">%1$.1f km sur %2$.1f (%3$d %%), sorties : %4$d</string>
+    <string name="challenge_done">fait le %1$s</string>
+    <string name="strava_title">Historique Strava</string>
+    <string name="strava_explain">Demandez votre archive à Strava (Paramètres, Mon compte, Télécharger ou supprimer votre compte), puis choisissez le zip ici. Elle est lue sur le téléphone : rien n\'est envoyé, l\'API Strava n\'est pas utilisée. Vos sorties de ski de fond et de randonnée nordique comptent dans vos défis et apprennent son rythme à votre groupe.</string>
+    <string name="strava_import">Importer l\'archive Strava</string>
+    <string name="strava_importing">Lecture de l\'archive…</string>
+    <string name="strava_result">Importées : %1$d, déjà là : %2$d, autres sports ignorés : %3$d, sans trace : %4$d ; apprises par votre groupe : %5$d.</string>
+    <string name="strava_error">Pas importée : %1$s</string>
+
+    <string name="osm_title">Corriger la carte (OpenStreetMap)</string>
+    <string name="osm_explain">skimap ne modifie pas la carte lui-même : il prépare une note pour les cartographes d\'OpenStreetMap, à votre position. Relisez-la, puis envoyez-la vous-même.</string>
+    <string name="osm_missing_piste">Une piste passe ici mais manque</string>
+    <string name="osm_piste_gone">Cette piste n\'existe plus</string>
+    <string name="osm_wrong_name">Nom faux</string>
+    <string name="osm_wrong_difficulty">Difficulté (couleur) fausse</string>
+    <string name="osm_wrong_grooming">Damage faux</string>
+    <string name="osm_wrong_oneway">Sens unique faux</string>
+    <string name="osm_other">Autre chose</string>
+    <string name="osm_comment">Ce que vous avez vu (facultatif, public)</string>
+    <string name="osm_preview">Texte de la note</string>
+    <string name="osm_public">Publique sur %1$s, anonyme, à votre position.</string>
+    <string name="osm_send">Envoyer à OpenStreetMap</string>
+    <string name="osm_sending">Envoi…</string>
+    <string name="osm_sent">Note créée : %1$s</string>
+</resources>

@@ -456,6 +456,8 @@ dependencies {
     implementation(project(":tracking"))
     // Sending the outing (K11): Health Connect and Strava.
     implementation(project(":sport"))
+    // Reports, OSM notes, « Mes sorties » (V8 to V15).
+    implementation(project(":community"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)

@@ -43,6 +43,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.toColorInt
 import fr.skimap.app.R
+import fr.skimap.app.community.CommunityEntries
 import fr.skimap.app.data.Appearance
 import fr.skimap.app.data.Practice
 import fr.skimap.app.ui.theme.GloveTarget
@@ -158,6 +159,8 @@ fun MapSheetContent(
                 Text(stringResource(R.string.sheet_sport_open), style = MaterialTheme.typography.labelLarge)
             }
         }
+        // On the ground (V8 to V15, module :community): report, « Mes sorties », fix OSM.
+        CommunityEntries(info.siteId)
         SectionTitle(stringResource(R.string.sheet_updates))
         SwitchRow(stringResource(R.string.auto_update), checked = autoUpdate) { actions.setAutoUpdate(it) }
         Button(onClick = onClose, modifier = Modifier.fillMaxWidth().heightIn(min = GloveTarget)) {

@@ -17,6 +17,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import fr.skimap.app.community.RustCommunityCore
 import fr.skimap.app.data.Appearance
 import fr.skimap.app.data.AppearanceSetting
 import fr.skimap.app.data.AssetStyleSource
@@ -35,6 +36,7 @@ import fr.skimap.app.ui.SkimapApp
 import fr.skimap.app.ui.domains.DomainsViewModel
 import fr.skimap.app.ui.map.MapEngine
 import fr.skimap.app.ui.theme.SkimapTheme
+import fr.skimap.community.Community
 import fr.skimap.sport.SportActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -69,6 +71,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         MapEngine.start(this, lifecycleScope)
+        Community.core = Community.core ?: RustCommunityCore(applicationContext) { packsDir(applicationContext) }
         val settings = PreferencesSettingsStore { getSharedPreferences("skimap", Context.MODE_PRIVATE) }
         var autoUpdate by mutableStateOf(true)
         val choices = UiChoices { getSharedPreferences("skimap", Context.MODE_PRIVATE) }

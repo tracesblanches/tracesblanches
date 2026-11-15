@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="kind_track">Track made</string>
+    <string name="kind_groomed">Groomed</string>
+    <string name="kind_ice">Ice</string>
+    <string name="kind_wind_blown">Wind-blown snow</string>
+    <string name="kind_obstacle">Obstacle</string>
+    <string name="kind_closed">Closed on the ground</string>
+
+    <string name="report_title">Report</string>
+    <string name="report_where">One tap reports here, now (position %1$s).</string>
+    <string name="report_locating">Finding your position…</string>
+    <string name="report_no_position">No position: allow location to report.</string>
+    <string name="report_done">Reported: %1$s. Sent as soon as there is network.</string>
+    <string name="report_cancel">Cancel</string>
+    <string name="report_all_sent">All reports sent.</string>
+    <plurals name="report_pending">
+        <item quantity="one">%1$d report waiting for network.</item>
+        <item quantity="other">%1$d reports waiting for network.</item>
+    </plurals>
+    <string name="photo_add">Add a photo</string>
+    <string name="photo_added">Photo added</string>
+
+    <string name="around_title">Reports around</string>
+    <string name="around_loading">Loading the reports…</string>
+    <string name="around_offline">No network: the reports around are not shown.</string>
+    <string name="around_none">No report around.</string>
+    <string name="around_votes">Still there: %1$d, gone: %2$d · %3$s</string>
+    <string name="around_mine">Your report.</string>
+    <string name="around_rules">Reports expire on their own (24 h for snow and ice, 48 h for a track, 3 days for a closure, 7 days for an obstacle) unless someone confirms them. Never a safety guarantee.</string>
+    <string name="vote_confirm">Still there</string>
+    <string name="vote_deny">Gone</string>
+    <string name="vote_thanks">Thanks.</string>
+
+    <string name="age_minutes">%1$d min ago</string>
+    <string name="age_hours">%1$d h ago</string>
+    <string name="age_days">%1$d d ago</string>
+    <string name="left_hours">%1$d h left</string>
+    <string name="left_days">%1$d d left</string>
+
+    <string name="outings_title">My outings</string>
+    <string name="outings_loading">Computing on the phone…</string>
+    <string name="outings_list">Outings</string>
+    <string name="outings_none">No outing yet.</string>
+    <string name="outing_line">%1$.1f km · %2$d min moving · %3$d m climb</string>
+    <string name="challenges_title">Challenges</string>
+    <string name="challenge_route">Whole %1$s</string>
+    <string name="challenge_domain">Every piste of %1$s</string>
+    <string name="challenge_distance">%1$.0f km this season</string>
+    <string name="challenge_progress">%1$.1f of %2$.1f km (%3$d %%), outings: %4$d</string>
+    <string name="challenge_done">done on %1$s</string>
+    <string name="strava_title">Strava history</string>
+    <string name="strava_explain">Ask Strava for your archive (Settings, My account, Download or delete your account), then choose the zip here. It is read on the phone: nothing is sent, the Strava API is not used. Your cross-country and backcountry outings join your challenges and teach your group its pace.</string>
+    <string name="strava_import">Import the Strava archive</string>
+    <string name="strava_importing">Reading the archive…</string>
+    <string name="strava_result">Imported: %1$d, already there: %2$d, other sports skipped: %3$d, without track: %4$d; learned by your group: %5$d.</string>
+    <string name="strava_error">Not imported: %1$s</string>
+
+    <string name="osm_title">Fix the map (OpenStreetMap)</string>
+    <string name="osm_explain">skimap does not change the map itself: it prepares a note for the OpenStreetMap mappers, at your position. Read it, then send it yourself.</string>
+    <string name="osm_missing_piste">A piste is here but missing</string>
+    <string name="osm_piste_gone">This piste no longer exists</string>
+    <string name="osm_wrong_name">Wrong name</string>
+    <string name="osm_wrong_difficulty">Wrong difficulty (colour)</string>
+    <string name="osm_wrong_grooming">Wrong grooming</string>
+    <string name="osm_wrong_oneway">Wrong one-way</string>
+    <string name="osm_other">Something else</string>
+    <string name="osm_comment">What you saw (optional, public)</string>
+    <string name="osm_preview">Text of the note</string>
+    <string name="osm_public">Public on %1$s, anonymous, at your position.</string>
+    <string name="osm_send">Send to OpenStreetMap</string>
+    <string name="osm_sending">Sending…</string>
+    <string name="osm_sent">Note created: %1$s</string>
+</resources>
