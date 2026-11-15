@@ -10,7 +10,7 @@
 | `exposure_model_5m.tif` | diagnostic : mêmes codes, modèle seul avant fusion CLPA (écrit si la fusion change des cellules) |
 | `ates_5m.tif` | diagnostic, à ne pas afficher : classes 0 à 4 du classifieur dev8 d'AutoATES v3.0 porté (255 = pas de donnée) |
 | `canopy_5m.tif` | couvert forestier, %, Float32 |
-| `segments.geojson` | pistes et itinéraires coupés en tronçons de classe constante ; propriétés `osm_way_id`, `run`, `name`, `relations`, `network`, `exposure` (1 à 3 ou null), `label`, `length_m`, `way_length_m`, `way_max_exposure` |
+| `segments.geojson` | pistes et itinéraires coupés en tronçons de classe constante ; propriétés `osm_way_id`, `run`, `name`, `relations`, `network`, `exposure` (1 à 3 ou null), `label`, `length_m`, `way_length_m`, `way_max_exposure` ; classe échantillonnée tous les mètres, mais géométrie réduite aux sommets de la piste OSM plus un sommet interpolé à chaque changement de classe (Cervières 6 043 sommets au lieu de 71 444, 288 ko au lieu de 1,8 Mo ; Chapelle-des-Bois 14 093 au lieu de 318 967, 838 ko au lieu de 7,8 Mo ; longueurs par tronçon inchangées) |
 | `summary.json` | parts des classes, kilomètres de pistes par classe, comparaison au rapport 07, validation CLPA (modèle seul et après fusion), temps |
 | `avalanche-exposure.meta.json` | sources, licences, paramètres, avertissements |
 
