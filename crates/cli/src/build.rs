@@ -379,8 +379,16 @@ impl Ctx {
                         e["cells_high"], e["cells_exposed"]
                     ),
                 };
+                let r = &m.stats["snow_retention"];
+                let len = |v: &serde_json::Value| v.as_array().map_or(0, Vec::len);
+                let snow = format!(
+                    "neige : {} dates (dont {} reprises, {} supprimées)",
+                    len(&m.stats["snow"]),
+                    len(&r["carried_over"]),
+                    len(&r["deleted"])
+                );
                 Ok(format!(
-                    "grille {} x {} cellules de {} m, pente ≥ 30° {:.1} %, {} classes de zones (écarts de contrôle {}), {} cellules de piste damée, {exposure}, {} fichiers",
+                    "grille {} x {} cellules de {} m, pente ≥ 30° {:.1} %, {} classes de zones (écarts de contrôle {}), {} cellules de piste damée, {exposure}, {snow}, {} fichiers",
                     g["size_cells"][0],
                     g["size_cells"][1],
                     g["cell_size"],

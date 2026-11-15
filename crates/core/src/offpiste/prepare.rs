@@ -15,7 +15,11 @@
 //!   segment passes through): groomed nordic pistes (`kind = piste`, not `backcountry`,
 //!   `uses` contains `nordic`) and other marked itineraries;
 //! - snow classes of each snow layer (`class_srn.tif`, `class_groomed.tif`, 25 m), date
-//!   taken from `snow.meta.json` (`valid_from`).
+//!   taken from `snow.meta.json` (`valid_from`), one `snow_<date>.skr` per date. The
+//!   layer keeps at most [`SNOW_DATES_KEPT`] dates ([`plan_snow_retention`]): the dates
+//!   written by the run, then the most recent ones listed by the previous
+//!   `offpiste.meta.json`; every kept raster is listed in the metadata and every other
+//!   `snow_*.skr` of the directory is deleted.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -237,6 +241,86 @@ impl XorShift {
         self.0 ^= self.0 << 17;
         self.0
     }
+}
+
+/// Most snow dates kept in the layer directory (one `snow_<date>.skr` each, about 0.4 MB
+/// per site): a week of daily builds, enough to replay the router on the past days.
+pub const SNOW_DATES_KEPT: usize = 7;
+
+/// Snow rasters kept and deleted by a run ([`plan_snow_retention`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SnowRetention {
+    /// `stats.snow` entries of the kept rasters, most recent date first.
+    pub kept: Vec<Value>,
+    /// Names carried over from the previous metadata.
+    pub carried: Vec<String>,
+    /// `snow_*.skr` files of the directory to delete, sorted.
+    pub deleted: Vec<String>,
+}
+
+/// `snow_YYYY-MM-DD.skr`.
+fn is_snow_file(name: &str) -> bool {
+    name.strip_prefix("snow_")
+        .and_then(|r| r.strip_suffix(".skr"))
+        .is_some_and(|d| {
+            d.len() == 10
+                && d.bytes().enumerate().all(|(i, b)| {
+                    if i == 4 || i == 7 {
+                        b == b'-'
+                    } else {
+                        b.is_ascii_digit()
+                    }
+                })
+        })
+}
+
+/// Which snow rasters of `dir` stay: every raster written by the run (`written`, the
+/// `stats.snow` entries in input order; a date written twice keeps the last entry, as the
+/// file holds the last layer), then the entries of the previous `stats.snow` (`previous`)
+/// whose file is still there with the recorded size, most recent first, until the layer
+/// has [`SNOW_DATES_KEPT`] dates. Every other `snow_<date>.skr` of `dir` is to be deleted.
+pub fn plan_snow_retention(
+    dir: &Path,
+    written: Vec<Value>,
+    previous: &[Value],
+) -> Result<SnowRetention> {
+    let name_of = |v: &Value| v["name"].as_str().unwrap_or_default().to_owned();
+    let date_of = |v: &Value| v["valid_from"].as_str().unwrap_or_default().to_owned();
+    let mut kept: Vec<Value> = Vec::new();
+    for w in written {
+        kept.retain(|k| name_of(k) != name_of(&w));
+        kept.push(w);
+    }
+    let mut older: Vec<&Value> = previous
+        .iter()
+        .filter(|p| {
+            let name = name_of(p);
+            is_snow_file(&name)
+                && !kept.iter().any(|k| name_of(k) == name)
+                && std::fs::metadata(dir.join(&name))
+                    .is_ok_and(|m| m.is_file() && Some(m.len()) == p["bytes"].as_u64())
+        })
+        .collect();
+    older.sort_by_key(|p| std::cmp::Reverse(date_of(p)));
+    older.dedup_by_key(|p| name_of(p));
+    let room = SNOW_DATES_KEPT.saturating_sub(kept.len());
+    let carried: Vec<String> = older.iter().take(room).map(|p| name_of(p)).collect();
+    kept.extend(older.into_iter().take(room).cloned());
+    kept.sort_by_key(|k| std::cmp::Reverse(date_of(k)));
+    let mut deleted = Vec::new();
+    for e in std::fs::read_dir(dir).map_err(|e| Error::io(dir, e))? {
+        let e = e.map_err(|e| Error::io(dir, e))?;
+        let name = e.file_name().to_string_lossy().into_owned();
+        if is_snow_file(&name) && !kept.iter().any(|k| name_of(k) == name) {
+            deleted.push(name);
+        }
+    }
+    deleted.sort();
+    Ok(SnowRetention {
+        kept,
+        carried,
+        deleted,
+    })
 }
 
 fn containing_ids(layer: &ZoneLayer, p: LonLat) -> Vec<String> {
@@ -580,6 +664,23 @@ pub fn prepare_with_exposure(
         }));
     }
 
+    // Bounded set of dated snow rasters: this run's, then the previous metadata's.
+    let meta_path = out.join(LayerMeta::file_name(LAYER));
+    let (previous_snow, previous_meta) = if meta_path.is_file() {
+        match LayerMeta::read(&meta_path) {
+            Ok(m) => (
+                m.stats["snow"].as_array().cloned().unwrap_or_default(),
+                "lue".to_owned(),
+            ),
+            // Unreadable: nothing is known to be listed, every older raster goes.
+            Err(e) => (Vec::new(), format!("illisible : {e}")),
+        }
+    } else {
+        (Vec::new(), "absente".to_owned())
+    };
+    let retention = plan_snow_retention(&out, snow_files, &previous_snow)?;
+    let snow_files = retention.kept.clone();
+
     // `<layer>.meta.json` (common schema): sources of the input layers.
     let mut meta = LayerMeta::new(LAYER, s.id);
     meta.tickets = vec!["C3 (#35)".into(), "C4 (#36)".into()];
@@ -663,6 +764,8 @@ pub fn prepare_with_exposure(
         .map(str::to_owned);
     meta.stats = json!({
         "snow": snow_files,
+        "snow_retention": {"max_dates": SNOW_DATES_KEPT, "previous_meta": previous_meta,
+                           "carried_over": retention.carried, "deleted": retention.deleted},
         "grid": {"size_cells": [w, h], "cell_size": t.pixel_width, "origin": [t.origin_x, t.origin_y],
                  "cells_without_terrain": missing, "share_without_terrain": missing as f64 / n as f64,
                  "cells_slope_ge_30": steep, "share_slope_ge_30_of_valid": steep as f64 / (n - missing).max(1) as f64},
@@ -677,9 +780,16 @@ pub fn prepare_with_exposure(
     meta.notes = vec![
         "Les rasters gardent les entrées du coût (altitude, pente, classes de zones, pistes, neige) : la pente maximale, les poids et la date sont des paramètres de la requête sur le téléphone.".into(),
         "Itinéraires balisés = graphe des pistes OSM (ski de fond, raquettes, randonnée) : approximation des itinéraires autorisés des arrêtés (annexe 5 de l'APPB Haut-Jura), non vérifiée.".into(),
+        format!("Neige : un fichier snow_<date>.skr par date, au plus {SNOW_DATES_KEPT} dates, la plus récente en tête de stats.snow : celles de l'exécution, puis les plus récentes de l'exécution précédente ; tout autre snow_<date>.skr du répertoire est supprimé (stats.snow_retention)."),
         "Exposition aux avalanches (exposure_5m.skr, si la couche avalanche-exposure existe) : surcouche du routeur par défaut, « exposé » ×3, « très exposé » bloqué sauf choix contraire de l'utilisateur (offpiste::ExposureFactors). « Peu exposé » est une sortie de modèle, jamais « sûr ». Pas encore de couche forêt.".into(),
     ];
     meta.write(&out)?;
+    // After the metadata, so that a crash leaves extra files (deleted by the next run),
+    // never listed files that are missing.
+    for name in &retention.deleted {
+        let p = out.join(name);
+        std::fs::remove_file(&p).map_err(|e| Error::io(&p, e))?;
+    }
     Ok(meta)
 }
 
@@ -690,4 +800,153 @@ fn proc_status(key: &str) -> Option<u64> {
         .find(|l| l.starts_with(key))
         .and_then(|l| l.split_whitespace().nth(1))
         .and_then(|v| v.parse().ok())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct TempDir(PathBuf);
+    impl TempDir {
+        fn new(tag: &str) -> Self {
+            let p = std::env::temp_dir().join(format!(
+                "skimap-snow-retention-{tag}-{}",
+                std::process::id()
+            ));
+            let _ = std::fs::remove_dir_all(&p);
+            std::fs::create_dir_all(&p).unwrap();
+            Self(p)
+        }
+        fn file(&self, name: &str, len: usize) {
+            std::fs::write(self.0.join(name), vec![0u8; len]).unwrap();
+        }
+        fn names(&self) -> Vec<String> {
+            let mut v: Vec<String> = std::fs::read_dir(&self.0)
+                .unwrap()
+                .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+                .collect();
+            v.sort();
+            v
+        }
+    }
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn entry(date: &str, bytes: u64, tag: &str) -> Value {
+        json!({"name": format!("snow_{date}.skr"), "bytes": bytes,
+               "valid_from": format!("{date}T06:00:00Z"), "source_dir": tag})
+    }
+
+    fn names(v: &[Value]) -> Vec<&str> {
+        v.iter().map(|e| e["name"].as_str().unwrap()).collect()
+    }
+
+    #[test]
+    fn snow_file_names() {
+        assert!(is_snow_file("snow_2026-11-13.skr"));
+        assert!(!is_snow_file("snow_2026-11-13.skr.tmp"));
+        assert!(!is_snow_file("snow_latest.skr"));
+        assert!(!is_snow_file("slope_5m.skr"));
+        assert!(!is_snow_file("snow_2026_11_13.skr"));
+    }
+
+    #[test]
+    fn written_dates_then_the_most_recent_listed_ones_up_to_the_bound() {
+        let d = TempDir::new("bound");
+        // Previous run: ten dates listed, one of them since removed, one with another
+        // size on disk; an unlisted raster and unrelated files.
+        let mut previous = Vec::new();
+        for day in 1..=10 {
+            let date = format!("2026-01-{day:02}");
+            previous.push(entry(&date, 100, "old"));
+            if day != 9 {
+                d.file(&format!("snow_{date}.skr"), if day == 8 { 50 } else { 100 });
+            }
+        }
+        d.file("snow_2025-12-31.skr", 100);
+        d.file("slope_5m.skr", 10);
+        d.file("offpiste.meta.json", 10);
+        // This run: today and a date written twice (the second entry wins).
+        d.file("snow_2026-11-13.skr", 120);
+        d.file("snow_2026-01-05.skr", 130);
+        let written = vec![
+            entry("2026-11-13", 120, "new"),
+            entry("2026-01-05", 999, "first"),
+            entry("2026-01-05", 130, "second"),
+        ];
+        let r = plan_snow_retention(&d.0, written, &previous).unwrap();
+        assert_eq!(r.kept.len(), SNOW_DATES_KEPT);
+        // Written first (today, 01-05), then 10, (9 missing, 8 resized), 7, 6, 4, 3.
+        assert_eq!(
+            names(&r.kept),
+            vec![
+                "snow_2026-11-13.skr",
+                "snow_2026-01-10.skr",
+                "snow_2026-01-07.skr",
+                "snow_2026-01-06.skr",
+                "snow_2026-01-05.skr",
+                "snow_2026-01-04.skr",
+                "snow_2026-01-03.skr",
+            ]
+        );
+        assert_eq!(r.kept[4]["source_dir"], "second");
+        assert_eq!(
+            r.carried,
+            vec![
+                "snow_2026-01-10.skr",
+                "snow_2026-01-07.skr",
+                "snow_2026-01-06.skr",
+                "snow_2026-01-04.skr",
+                "snow_2026-01-03.skr",
+            ]
+        );
+        assert_eq!(
+            r.deleted,
+            vec![
+                "snow_2025-12-31.skr",
+                "snow_2026-01-01.skr",
+                "snow_2026-01-02.skr",
+                "snow_2026-01-08.skr",
+            ]
+        );
+    }
+
+    #[test]
+    fn without_previous_metadata_only_the_written_rasters_stay() {
+        let d = TempDir::new("fresh");
+        d.file("snow_2026-11-13.skr", 120);
+        d.file("snow_2026-02-15.skr", 120);
+        d.file("zones_5m.skr", 10);
+        let r = plan_snow_retention(&d.0, vec![entry("2026-11-13", 120, "new")], &[]).unwrap();
+        assert_eq!(names(&r.kept), vec!["snow_2026-11-13.skr"]);
+        assert!(r.carried.is_empty());
+        assert_eq!(r.deleted, vec!["snow_2026-02-15.skr"]);
+        // Deleting the planned files leaves the listed raster and the others.
+        for n in &r.deleted {
+            std::fs::remove_file(d.0.join(n)).unwrap();
+        }
+        assert_eq!(d.names(), vec!["snow_2026-11-13.skr", "zones_5m.skr"]);
+    }
+
+    #[test]
+    fn more_written_dates_than_the_bound_are_all_kept() {
+        let d = TempDir::new("many");
+        let written: Vec<Value> = (1..=9)
+            .map(|day| {
+                let date = format!("2026-02-{day:02}");
+                d.file(&format!("snow_{date}.skr"), 10);
+                entry(&date, 10, "new")
+            })
+            .collect();
+        d.file("snow_2026-11-13.skr", 10);
+        let previous = vec![entry("2026-11-13", 10, "old")];
+        let r = plan_snow_retention(&d.0, written, &previous).unwrap();
+        assert_eq!(r.kept.len(), 9);
+        assert_eq!(r.kept[0]["name"], "snow_2026-02-09.skr");
+        assert!(r.carried.is_empty());
+        assert_eq!(r.deleted, vec!["snow_2026-11-13.skr"]);
+    }
 }

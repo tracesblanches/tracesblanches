@@ -167,7 +167,8 @@ enum Command {
     OffpistePrepare {
         /// Site identifier.
         site: String,
-        /// Snow layer directories (default: the site's `snow` layer); repeatable.
+        /// Snow layer directories (default: the site's `snow` layer); repeatable. The layer
+        /// keeps at most 7 dates: these, then the most recent ones of the previous run.
         #[arg(long = "snow-dir")]
         snow_dirs: Vec<PathBuf>,
     },
