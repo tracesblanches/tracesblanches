@@ -5,6 +5,7 @@
 //! a reader never sees a half-written pack.
 
 pub mod assets;
+pub mod extract;
 pub mod layers;
 pub mod osm;
 pub mod plan_ign;
@@ -44,10 +45,8 @@ pub struct BuildOptions {
     pub osm_maxzoom: u8,
     /// Build the Plan IGN basemap.
     pub plan_ign: bool,
-    /// Build the OSM basemap (needs [`BuildOptions::pmtiles_bin`]).
+    /// Build the OSM basemap (extract of the Protomaps build by range requests).
     pub osm: bool,
-    /// Official `pmtiles` CLI (go-pmtiles) used for the Protomaps extract.
-    pub pmtiles_bin: Option<PathBuf>,
     /// Protomaps daily build (`AAAAMMJJ`); `None`: the latest listed.
     pub protomaps_build: Option<String>,
     /// Include layers whose sources are personal-use only (status, hourly weather).
@@ -70,7 +69,6 @@ impl Default for BuildOptions {
             osm_maxzoom: OSM_MAXZOOM,
             plan_ign: true,
             osm: true,
-            pmtiles_bin: None,
             protomaps_build: None,
             personal_sources: false,
             ign_slopes: false,
@@ -164,24 +162,14 @@ fn build_into(
     }
     if opts.osm {
         let t = Instant::now();
-        match &opts.pmtiles_bin {
-            Some(bin) => {
-                basemaps.push(osm::build(
-                    site,
-                    layout,
-                    dl,
-                    root,
-                    bin,
-                    opts.protomaps_build.as_deref(),
-                    opts.osm_maxzoom,
-                )?);
-            }
-            None => missing.push(Missing {
-                id: "basemap-osm".to_owned(),
-                reason: "outil pmtiles (go-pmtiles) non fourni : extrait Protomaps non construit"
-                    .to_owned(),
-            }),
-        }
+        basemaps.push(osm::build(
+            site,
+            layout,
+            dl,
+            root,
+            opts.protomaps_build.as_deref(),
+            opts.osm_maxzoom,
+        )?);
         timings.push(("basemap osm".to_owned(), t.elapsed().as_secs_f64()));
     }
 

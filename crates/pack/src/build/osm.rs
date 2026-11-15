@@ -1,26 +1,23 @@
 //! OSM basemap (P4): extract of the Protomaps daily planet build for the site box.
 //!
-//! The extract reads the 139 GB planet archive by HTTP range requests. The shared
-//! downloader keys its cache on the URL only (not on the `Range` header), so it cannot
-//! serve range requests yet; the extract is done by the official `pmtiles` CLI
-//! (go-pmtiles, BSD-3-Clause), given by path, which coalesces the ranges. The result is
-//! kept in `data/cache/protomaps/extracts/` and reused while the build key, the box and
-//! the zoom do not change. The build list, the sprite and the glyphs go through the
-//! downloader.
+//! The extract reads the 139 GB planet archive by HTTP range requests through the shared
+//! downloader ([`crate::build::extract`]: each range is its own cache entry, the tile
+//! ranges are merged). The result is kept in `data/cache/protomaps/extracts/` and reused
+//! while the build key, the box and the zoom do not change. The build list, the sprite
+//! and the glyphs go through the downloader too.
 //!
 //! Licence: ODbL, « Produced Work » of OpenStreetMap; attribution Protomaps and
 //! OpenStreetMap contributors (report 03).
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::Duration;
 
 use serde_json::Value;
 use skimap_common::download::{Downloader, Request};
-use skimap_common::geom::BBox;
 use skimap_common::layout::DataLayout;
 use skimap_common::site::Site;
 
+use crate::build::extract::{ExtractStats, HttpRanges};
 use crate::build::{assets, copy_file, create_dir, dir_size, source, write_bytes};
 use crate::error::{Error, Result};
 use crate::manifest::Basemap;
@@ -105,43 +102,12 @@ pub fn select_build(dl: &Downloader, wanted: Option<&str>) -> Result<BuildInfo> 
     }
 }
 
-/// Runs `pmtiles extract <url> <out> --bbox=W,S,E,N --maxzoom=Z`.
-pub fn extract(bin: &Path, url: &str, bbox: BBox, maxzoom: u8, out: &Path) -> Result<()> {
-    let tool = || bin.display().to_string();
-    let output = Command::new(bin)
-        .arg("extract")
-        .arg(url)
-        .arg(out)
-        .arg(format!(
-            "--bbox={},{},{},{}",
-            bbox.west, bbox.south, bbox.east, bbox.north
-        ))
-        .arg(format!("--maxzoom={maxzoom}"))
-        .output()
-        .map_err(|e| Error::Tool {
-            tool: tool(),
-            message: e.to_string(),
-        })?;
-    if !output.status.success() {
-        return Err(Error::Tool {
-            tool: tool(),
-            message: format!(
-                "{}: {}",
-                output.status,
-                String::from_utf8_lossy(&output.stderr).trim()
-            ),
-        });
-    }
-    tracing::info!(stderr = %String::from_utf8_lossy(&output.stderr).trim(), "pmtiles extract");
-    Ok(())
-}
-
 /// Cached extract of a site (`data/cache/protomaps/extracts/<site>-<build>-z<zoom>.pmtiles`),
 /// made if absent.
 pub fn cached_extract(
     site: &Site,
     layout: &DataLayout,
-    bin: &Path,
+    dl: &Downloader,
     build: &BuildInfo,
     maxzoom: u8,
 ) -> Result<PathBuf> {
@@ -155,13 +121,25 @@ pub fn cached_extract(
     ));
     if !path.is_file() {
         let tmp = path.with_extension("pmtiles.part");
-        extract(
-            bin,
-            &format!("{BUILD_BASE}{}", build.key),
+        let url = format!("{BUILD_BASE}{}", build.key);
+        let t = std::time::Instant::now();
+        let s: ExtractStats = crate::build::extract::extract(
+            &HttpRanges {
+                dl,
+                source: SOURCE,
+                url: &url,
+            },
             site.bbox,
             maxzoom,
             &tmp,
         )?;
+        tracing::info!(
+            site = site.id,
+            url,
+            ?s,
+            seconds = t.elapsed().as_secs_f64(),
+            "Protomaps extract"
+        );
         std::fs::rename(&tmp, &path).map_err(|e| Error::io(&tmp, e))?;
     }
     Ok(path)
@@ -173,12 +151,11 @@ pub fn build(
     layout: &DataLayout,
     dl: &Downloader,
     root: &Path,
-    bin: &Path,
     wanted_build: Option<&str>,
     maxzoom: u8,
 ) -> Result<Basemap> {
     let build = select_build(dl, wanted_build)?;
-    let extract = cached_extract(site, layout, bin, &build, maxzoom)?;
+    let extract = cached_extract(site, layout, dl, &build, maxzoom)?;
     let archive_rel = format!("basemap/{ID}.pmtiles");
     let archive_bytes = copy_file(&extract, &root.join(&archive_rel))?;
     let tiles = TileArchive::open(root.join(&archive_rel))?;
@@ -243,7 +220,7 @@ pub fn build(
         ],
         notes: vec![
             format!(
-                "Extrait par `pmtiles extract` (go-pmtiles) de {BUILD_BASE}{} : emprise du site, zooms {minzoom} à {maxz}.",
+                "Extrait par requêtes partielles (skimap_pack::build::extract) de {BUILD_BASE}{} : emprise du site, zooms {minzoom} à {maxz}.",
                 build.key
             ),
             format!(

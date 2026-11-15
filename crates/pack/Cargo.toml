@@ -67,5 +67,9 @@ required-features = ["pipeline"]
 name = "real_packs"
 required-features = ["pipeline"]
 
+[[test]]
+name = "protomaps_extract"
+required-features = ["pipeline"]
+
 [lints]
 workspace = true

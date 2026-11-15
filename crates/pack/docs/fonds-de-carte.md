@@ -13,7 +13,7 @@ Deux fonds vectoriels par pack, chacun en PMTiles avec son style MapLibre, son s
 ## OpenStreetMap, Protomaps (`build::osm`)
 
 - Extrait du build quotidien `https://build.protomaps.com/AAAAMMJJ.pmtiles` (139 Go, liste `build-metadata.protomaps.dev/builds.json` lue par le téléchargeur, source `protomaps`), emprise du site, zooms 0 à 15 (le maximum des builds).
-- L'extrait se fait par requêtes partielles ; le téléchargeur ne met pas l'en-tête `Range` dans sa clé de cache, donc l'outil officiel `pmtiles extract` (go-pmtiles 1.31.2, BSD-3, binaire Linux x86_64 vérifié par SHA-256 `3ed7dbf4…a312f`, rangé dans `data/tools/`) fait l'extraction, chemin donné par `SKIMAP_PMTILES_BIN`. L'extrait est gardé dans `data/cache/protomaps/extracts/<site>-<build>-z<zoom>-<emprise>.pmtiles` et réutilisé.
+- L'extrait se fait en Rust par requêtes partielles du téléchargeur commun (`build::extract` : en-tête et répertoire racine dans les 16 premiers Kio, répertoires feuilles des seules tuiles de l'emprise, données lues en plages fusionnées quand l'écart est d'au plus 256 Kio ; chaque plage est une entrée du cache). Build 20261114 : Cervières 581 tuiles, 9 répertoires feuilles, 26 lectures de données (5,7 Mo lus), 58 s au premier passage (1 requête/s) ; Chapelle-des-Bois 537 tuiles, 8 feuilles, 26 lectures, 35 s. Les tuiles sont identiques octet pour octet à celles de `pmtiles extract` (go-pmtiles 1.31.2), qui n'est plus nécessaire (test `protomaps_extract`, ignoré par défaut). L'extrait est gardé dans `data/cache/protomaps/extracts/<site>-<build>-z<zoom>-<emprise>.pmtiles` et réutilisé.
 - Style : `assets/protomaps/style-light-fr.json`, généré une fois par `assets/protomaps/generate.mjs` avec `@protomaps/basemaps` 5.7.2 (thème « light », libellés en français) ; polices Noto Sans (Regular, Medium, Italic) et sprite `v4/light` téléchargés depuis `protomaps.github.io/basemaps-assets` (source `protomaps-assets`). La pile Devanagari du style n'est pas copiée.
 - Licence ODbL (Produced Work), attribution « Protomaps © OpenStreetMap ».
 
@@ -38,7 +38,7 @@ Les zooms 0 à 12 pèsent déjà 2 à 2,5 Mo : peu de tuiles, mais chacune couvr
 - OSM : 3,6 et 4,6 Mo pour tous les zooms du build ; aucune raison de couper.
 - Avec style, sprite et glyphes : Plan IGN 13,1 Mo (Cervières) et 13,0 Mo (Chapelle-des-Bois), OSM 4,6 et 5,6 Mo.
 
-L'extrait de `pmtiles extract` fait 3,57 et 4,53 Mo (581 et 537 tuiles), autant que l'archive réécrite par la crate : même contenu.
+L'extrait de `pmtiles extract` faisait 3,57 et 4,53 Mo (581 et 537 tuiles), l'extrait Rust 3,59 et 4,55 Mo (mêmes tuiles, répertoires écrits par la crate `pmtiles`).
 
 Temps : à froid, le téléchargement des tuiles IGN domine (≈ 2 000 tuiles par site, 3 à 4 tuiles/s observées avec une requête à la fois, soit 8 à 10 min) ; l'extrait Protomaps prend 13 s ; depuis le cache, chaque fond s'écrit en 0,2 à 0,3 s.
 

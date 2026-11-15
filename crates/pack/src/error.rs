@@ -78,16 +78,6 @@ pub enum Error {
         #[source]
         source: rusqlite::Error,
     },
-
-    /// External tool failure (`pmtiles extract`).
-    #[cfg(feature = "pipeline")]
-    #[error("external tool {tool}: {message}")]
-    Tool {
-        /// Tool name.
-        tool: String,
-        /// What went wrong.
-        message: String,
-    },
 }
 
 impl Error {

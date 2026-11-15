@@ -2,14 +2,13 @@
 //!
 //! ```sh
 //! cargo run --release -p skimap-pack --features pipeline --example basemap_sizes -- \
-//!     <path/to/pmtiles> [ign_maxzoom=17] [site...]
+//!     [ign_maxzoom=17] [site...]
 //! ```
 //!
 //! Downloads (shared downloader, cache) the Plan IGN tiles up to `ign_maxzoom`, extracts the
-//! Protomaps build to zoom 15 with the `pmtiles` CLI, then writes one PMTiles per candidate
+//! Protomaps build to zoom 15 by range requests, then writes one PMTiles per candidate
 //! highest zoom into a temporary directory and prints the sizes.
 
-use std::path::PathBuf;
 use std::time::Instant;
 
 use serde_json::json;
@@ -60,15 +59,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(std::env::var("RUST_LOG").unwrap_or_else(|_| "warn".to_owned()))
         .init();
-    let mut args = std::env::args().skip(1);
-    let first = args
-        .next()
-        .ok_or("usage: basemap_sizes <pmtiles-bin> [ign_maxzoom] [site...] | warm <site> <maxzoom> <seconds>")?;
-    if first == "warm" {
+    // usage: basemap_sizes [ign_maxzoom] [site...] | warm <site> <maxzoom> <seconds>
+    let mut args = std::env::args().skip(1).peekable();
+    if args.peek().map(String::as_str) == Some("warm") {
+        args.next();
         return warm(args);
     }
-    let bin = PathBuf::from(first);
-    let ign_max: u8 = args.next().map(|s| s.parse()).transpose()?.unwrap_or(17);
+    let ign_max: u8 = match args.peek().map(|a| a.parse::<u8>()) {
+        Some(Ok(z)) => {
+            args.next();
+            z
+        }
+        _ => 17,
+    };
     let ids: Vec<String> = args.collect();
     let sites: Vec<_> = if ids.is_empty() {
         SITES.iter().collect()
@@ -115,7 +118,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // OSM (Protomaps).
         let t = Instant::now();
         let build = osm::select_build(&dl, None)?;
-        let ext = osm::cached_extract(s, &layout, &bin, &build, 15)?;
+        let ext = osm::cached_extract(s, &layout, &dl, &build, 15)?;
         println!(
             "osm: {} extract z0-15 ready in {:.1} s ({})",
             build.key,

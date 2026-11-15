@@ -9,8 +9,7 @@ Pack hors ligne par site : fonds de carte, format de pack, lecteur côté télé
 
 ```sh
 # pack des deux sites (data/out/<site>/pack/)
-SKIMAP_PMTILES_BIN=data/tools/go-pmtiles-1.31.2/pmtiles \
-  cargo run --release -p skimap-pack --features pipeline --example build_pack
+cargo run --release -p skimap-pack --features pipeline --example build_pack
 # export Locus Map / OsmAnd (data/out/<site>/export/)
 cargo run --release -p skimap-pack --features pipeline --example export_pack
 # visualiseur
@@ -18,13 +17,13 @@ cargo run --release -p skimap-pack --features pipeline --example serve -- . 127.
 google-chrome "http://127.0.0.1:8765/tools/viewer/index.html?pack=../../data/out/cervieres/pack/"
 # mesures P4 (warm : remplit le cache IGN par tranches de temps bornées)
 cargo run --release -p skimap-pack --features pipeline --example basemap_sizes -- warm cervieres 17 150
-cargo run --release -p skimap-pack --features pipeline --example basemap_sizes -- data/tools/go-pmtiles-1.31.2/pmtiles 17 cervieres
+cargo run --release -p skimap-pack --features pipeline --example basemap_sizes -- 17 cervieres
 # contrôles
 cargo test -p skimap-pack --features pipeline
 cargo test --release -p skimap-pack --features pipeline --test real_packs -- --ignored --nocapture
 ```
 
-Variables de `build_pack` : `SKIMAP_PMTILES_BIN` (sans elle, le fond OSM est noté absent), `SKIMAP_PERSONAL_SOURCES=1` (`Config::personal_sources` : état des pistes, météo heure par heure), `SKIMAP_PLAN_IGN_MAXZOOM`, `SKIMAP_PROTOMAPS_BUILD=AAAAMMJJ`, `SKIMAP_PACK_IGN_SLOPES=1` (tuiles IGN des pentes pour comparer, +13 à +23 Mo), `SKIMAP_PACK_SKIP=plan-ign,osm,voice` (développement).
+Variables de `build_pack` : `SKIMAP_PERSONAL_SOURCES=1` (`Config::personal_sources` : état des pistes, météo heure par heure), `SKIMAP_PLAN_IGN_MAXZOOM`, `SKIMAP_PROTOMAPS_BUILD=AAAAMMJJ`, `SKIMAP_PACK_IGN_SLOPES=1` (tuiles IGN des pentes pour comparer, +13 à +23 Mo), `SKIMAP_PACK_SKIP=plan-ign,osm,voice` (développement).
 
 API : `skimap_pack::build::build(site, &layout, &downloader, &BuildOptions) -> BuildReport` ; `skimap_pack::export::export(&Pack, dir) -> ExportReport` ; `skimap_pack::Pack::open(dir)`.
 
@@ -41,6 +40,5 @@ Le serveur `serve` (bibliothèque standard, une connexion par fil, `GET`/`HEAD`,
 
 - Plan IGN v2 : stockage hors ligne ni interdit ni autorisé expressément par les CGU (L2, #7) ; carte des pentes IGN : usage hors ligne à confirmer (features.md n° 5). Usage personnel.
 - Les fichiers PMTiles écrits par la crate `pmtiles` 0.28.1 sans répertoire de feuilles ont `leaf_offset = 0` : `pmtiles verify` (go-pmtiles 1.31.2) les refuse (« Leaf directories offset=0 must not be 0 ») alors que `pmtiles show`, `pmtiles tile`, le client JavaScript et notre lecteur les lisent. Correction à faire dans la crate (mettre l'offset à la fin des données comme go-pmtiles).
-- Le téléchargeur commun ne met pas l'en-tête `Range` dans sa clé de cache : l'extrait Protomaps passe donc par l'outil officiel `pmtiles extract`.
 - Le visualiseur charge MapLibre et PMTiles depuis le CDN (cache du navigateur ensuite) ; les données ne viennent que du pack.
 - Import sur le Pixel (Locus Map, OsmAnd) et essai du visualiseur sur le vrai téléphone : à faire (téléphone non branché le 15/11).

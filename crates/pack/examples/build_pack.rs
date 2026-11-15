@@ -1,18 +1,15 @@
 //! Builds the pack of one or both sites into `data/out/<site>/pack/` (P14).
 //!
 //! ```sh
-//! SKIMAP_PMTILES_BIN=/path/to/pmtiles \
-//!   cargo run --release -p skimap-pack --features pipeline --example build_pack -- [site...]
+//! cargo run --release -p skimap-pack --features pipeline --example build_pack -- [site...]
 //! ```
 //!
-//! Environment: `SKIMAP_PMTILES_BIN` (official go-pmtiles CLI, for the OSM basemap;
-//! without it the OSM basemap is listed as missing), `SKIMAP_PERSONAL_SOURCES=1`
+//! Environment: `SKIMAP_PERSONAL_SOURCES=1`
 //! (include personal-use-only layers: trail status, hourly weather),
 //! `SKIMAP_PLAN_IGN_MAXZOOM`, `SKIMAP_PROTOMAPS_BUILD` (`AAAAMMJJ`),
 //! `SKIMAP_PACK_IGN_SLOPES=1` (IGN slope tiles for comparison),
 //! `SKIMAP_PACK_SKIP=plan-ign,osm,voice` (development).
 
-use std::path::PathBuf;
 use std::time::Instant;
 
 use skimap_common::config::Config;
@@ -37,7 +34,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let layout = cfg.layout();
     let dl = Downloader::from_config(&cfg)?;
     let mut opts = BuildOptions {
-        pmtiles_bin: std::env::var_os("SKIMAP_PMTILES_BIN").map(PathBuf::from),
         personal_sources: cfg.personal_sources,
         protomaps_build: std::env::var("SKIMAP_PROTOMAPS_BUILD").ok(),
         ..BuildOptions::default()
