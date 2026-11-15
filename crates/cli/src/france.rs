@@ -115,7 +115,16 @@ fn polygons_93(geometry: &Value, half_width: f64) -> Result<Polys> {
 /// massif, main first, those of at least 5 %; `fallback` (representative point) when no
 /// grid point falls inside (tiny envelope).
 fn massifs_of(polys: &Polys, fallback: (f64, f64), all: &[Massif]) -> Vec<MassifRecord> {
-    let r = extent(polys);
+    massifs_within(polys, extent(polys), fallback, all)
+}
+
+/// [`massifs_of`] counting only the points inside `r` (a section).
+fn massifs_within(
+    polys: &Polys,
+    r: Rect93,
+    fallback: (f64, f64),
+    all: &[Massif],
+) -> Vec<MassifRecord> {
     let mut pts = Vec::new();
     let mut y = r.1 + MASSIF_SAMPLE_M / 2.0;
     while y < r.3 {
@@ -239,7 +248,7 @@ fn massif_note(massifs: &[MassifRecord]) -> String {
 
 /// Box of the envelope's rectangle grown by `margin`, and its sections when it is larger
 /// than [`MAX_SITE_SIDE_M`].
-fn boxes(polys: &Polys, margin: f64) -> Result<(BBox, Vec<BBox>)> {
+fn boxes(polys: &Polys, margin: f64) -> Result<(BBox, Vec<(BBox, Rect93)>)> {
     let r = site::grow(extent(polys), margin);
     let whole = site::bbox_of_lambert93(r)?;
     if (r.2 - r.0).max(r.3 - r.1) <= MAX_SITE_SIDE_M {
@@ -249,12 +258,20 @@ fn boxes(polys: &Polys, margin: f64) -> Result<(BBox, Vec<BBox>)> {
     let rings: Vec<Vec<(f64, f64)>> = polys.iter().flatten().cloned().collect();
     let sections = site::split_extent(&rings, MAX_SITE_SIDE_M, margin + SECTION_OVERLAP_M)
         .into_iter()
-        .map(site::bbox_of_lambert93)
-        .collect::<std::result::Result<Vec<_>, _>>()?;
+        .map(|r| Ok((site::bbox_of_lambert93(r)?, r)))
+        .collect::<Result<Vec<_>>>()?;
     Ok((whole, sections))
 }
 
-fn add_sections(out: &mut Vec<SiteRecord>, mut parent: SiteRecord, sections: Vec<BBox>) {
+/// Adds a record, or its sections (each with the massifs of its part of the envelope)
+/// after it.
+fn add_sections(
+    out: &mut Vec<SiteRecord>,
+    mut parent: SiteRecord,
+    sections: Vec<(BBox, Rect93)>,
+    polys: &Polys,
+    all: &[Massif],
+) {
     if sections.is_empty() {
         out.push(parent);
         return;
@@ -262,8 +279,16 @@ fn add_sections(out: &mut Vec<SiteRecord>, mut parent: SiteRecord, sections: Vec
     let n = sections.len();
     let width = n.to_string().len();
     let mut children = Vec::new();
-    for (k, b) in sections.into_iter().enumerate() {
+    for (k, (b, r)) in sections.into_iter().enumerate() {
         let mut c = parent.clone();
+        let centre = ((r.0 + r.2) / 2.0, (r.1 + r.3) / 2.0);
+        let found = massifs_within(polys, r, centre, all);
+        if !found.is_empty() {
+            c.has_bera = has_bera(&found);
+            c.massif_status = MassifStatus::Verified;
+            c.massif_note = Some(format!("tronçon : {}", massif_note(&found)));
+            c.massifs = found;
+        }
         c.id = format!("{}-{:0width$}", parent.id, k + 1);
         c.name = format!("{} ({}/{n})", parent.name, k + 1);
         c.parent = Some(parent.id.clone());
@@ -356,7 +381,7 @@ fn census_records(features: &[Value], massifs: &[Massif]) -> Result<Vec<SiteReco
             sections: Vec::new(),
             local: None,
         };
-        add_sections(&mut out, rec, sections);
+        add_sections(&mut out, rec, sections, &polys, massifs);
     }
     Ok(out)
 }
@@ -403,7 +428,7 @@ fn extra_records(features: &[Value], massifs: &[Massif]) -> Result<Vec<SiteRecor
             sections: Vec::new(),
             local: None,
         };
-        add_sections(&mut out, rec, sections);
+        add_sections(&mut out, rec, sections, &polys, massifs);
     }
     Ok(out)
 }
@@ -598,7 +623,10 @@ fn bbox_json(b: BBox) -> Value {
 }
 
 /// Writes `data/out/france/catalog.json` and `catalog.geojson`: every site of the
-/// registry with its box, centre, km, massifs, status source and the state of its pack.
+/// registry (`domains[]`: stations, SRN areas, traverse sections) with its box
+/// `[west, south, east, north]`, centre `[lon, lat]`, km, commune `{name, insee,
+/// departement}`, massifs, status source, build state and pack (`dir` relative to
+/// `data/out/`, `bytes`, `version`, `generated_at`), as read by `tools/viewer`.
 pub fn write_catalog(layout: &DataLayout, registry: &Registry) -> Result<CatalogSummary> {
     let mut entries = Vec::new();
     let mut features = Vec::new();
@@ -632,7 +660,8 @@ pub fn write_catalog(layout: &DataLayout, registry: &Registry) -> Result<Catalog
                 .unwrap_or_else(|| dir_bytes(&pack_dir));
             total += bytes;
             json!({
-                "dir": format!("{}/{}", r.id, skimap_pack::build::PACK_LAYER),
+                "built": true,
+                "dir": format!("{}/{}/", r.id, skimap_pack::build::PACK_LAYER),
                 "version": m["pack_version"],
                 "generated_at": m["generated_at"],
                 "bytes": bytes,
@@ -670,8 +699,7 @@ pub fn write_catalog(layout: &DataLayout, registry: &Registry) -> Result<Catalog
             "sections": r.sections,
             "census_id": r.census_id,
             "department": r.department,
-            "commune": r.commune,
-            "insee": r.insee,
+            "commune": {"name": r.commune, "insee": r.insee, "departement": r.department},
             "center": [center.lon, center.lat],
             "bbox": bbox_json(r.bbox),
             "envelope_bbox": r.envelope_bbox.map(bbox_json),
@@ -713,7 +741,7 @@ pub fn write_catalog(layout: &DataLayout, registry: &Registry) -> Result<Catalog
             "format_version": 1,
             "generated_at": now_rfc3339(),
             "registry": Registry::path(layout)?.display().to_string(),
-            "sites": entries,
+            "domains": entries,
             "by_state": by_state,
             "pack_bytes": total,
         }),
@@ -766,7 +794,7 @@ mod tests {
         );
         let (_, s) = boxes(&square(x, y, 60_000.0), 0.0).unwrap();
         assert!(s.len() >= 9, "{}", s.len());
-        for b in &s {
+        for (b, _) in &s {
             let (w, h) = b.size_m();
             assert!(
                 w <= MAX_SITE_SIDE_M * 1.05 && h <= MAX_SITE_SIDE_M * 1.05,
@@ -777,7 +805,8 @@ mod tests {
         let mut rec = site::evaluation_records()[1].clone();
         rec.id = "grand".into();
         rec.name = "Grand".into();
-        add_sections(&mut out, rec, s.clone());
+        let polys = square(x, y, 60_000.0);
+        add_sections(&mut out, rec, s.clone(), &polys, &[]);
         assert_eq!(out.len(), s.len() + 1);
         assert_eq!(out[0].sections.len(), s.len());
         assert_eq!(out[1].parent.as_deref(), Some("grand"));

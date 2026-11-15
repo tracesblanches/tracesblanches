@@ -380,7 +380,7 @@ fn print_sites(registry: &Registry, json: bool) -> Result<()> {
         return Ok(());
     }
     println!(
-        "{} sites ({}), {} construits",
+        "{} sites ({}), {} construits par build-all (les autres en tronçons)",
         registry.all().len(),
         registry.source().map_or(
             "sites d'évaluation : `skimap domaines` pour toute la France".to_owned(),

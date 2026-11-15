@@ -123,6 +123,8 @@ pub struct BatchSummary {
     pub export_bytes: u64,
     /// Downloads of the run per source.
     pub downloads: BTreeMap<String, CacheDelta>,
+    /// Peak resident memory of the process, MB (all parallel sites together).
+    pub peak_rss_mb: Option<f64>,
     /// Per site.
     pub results: Vec<SiteResult>,
 }
@@ -407,6 +409,7 @@ pub fn build_many(
         pack_bytes: built.iter().filter_map(|(_, o)| o.pack_bytes).sum(),
         export_bytes: built.iter().filter_map(|(_, o)| o.export_bytes).sum(),
         downloads,
+        peak_rss_mb: crate::build::peak_rss_mb(),
         results,
     };
     let dir = ctx.layout.france_dir().join("build-all");
@@ -449,9 +452,11 @@ pub fn describe(s: &BatchSummary) -> Vec<String> {
         s.sites, s.seconds, s.jobs, s.built, s.failed, s.up_to_date, s.not_started
     )];
     l.push(format!(
-        "packs : {:.1} Mo ; exports : {:.1} Mo",
+        "packs : {:.1} Mo ; exports : {:.1} Mo ; mémoire maximale du processus : {}",
         s.pack_bytes as f64 / 1e6,
-        s.export_bytes as f64 / 1e6
+        s.export_bytes as f64 / 1e6,
+        s.peak_rss_mb
+            .map_or("?".to_owned(), |m| format!("{m:.0} Mo"))
     ));
     l.push("temps par étape (somme sur les sites construits) :".into());
     for (k, v) in &s.step_seconds {

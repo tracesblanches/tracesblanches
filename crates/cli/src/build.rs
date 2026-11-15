@@ -615,6 +615,13 @@ impl Ctx {
                     "aucun jour archivé pour ce site (table des sites ; `skimap history`, usage personnel)",
                 );
             }
+            let history = self.layout.layer_dir(site, "assist")?.join("history");
+            if !history.is_dir() {
+                return not_applicable(&format!(
+                    "jour archivé absent : {} (`skimap history`, météo à usage personnel)",
+                    history.display()
+                ));
+            }
             let r = crate::plan::plan(&self.layout, site, &crate::plan::PlanArgs::default())?;
             let missing: usize = r.plans.iter().map(|p| p.clips.missing.len()).sum();
             Ok(format!(
@@ -865,7 +872,10 @@ impl<'a> Run<'a> {
 
     fn finish(self) -> BuildOutcome {
         let total = self.t0.elapsed().as_secs_f64();
-        let _ = writeln!(self.log, "{:<19} {total:>7.2}s", "total");
+        let peak = peak_rss_mb().map_or_else(String::new, |m| {
+            format!("  mémoire maximale du processus {m:.0} Mo")
+        });
+        let _ = writeln!(self.log, "{:<19} {total:>7.2}s{peak}", "total");
         BuildOutcome {
             site: self.site.id.to_owned(),
             steps: self.steps,
@@ -874,6 +884,15 @@ impl<'a> Run<'a> {
             export_bytes: None,
         }
     }
+}
+
+/// Peak resident memory of the process so far, MB (`VmHWM` of `/proc/self/status`;
+/// `None` elsewhere than on Linux). Process-wide: per site only when one site is built.
+pub fn peak_rss_mb() -> Option<f64> {
+    let s = std::fs::read_to_string("/proc/self/status").ok()?;
+    let line = s.lines().find(|l| l.starts_with("VmHWM:"))?;
+    let kb: f64 = line.split_whitespace().nth(1)?.parse().ok()?;
+    Some(kb / 1024.0)
 }
 
 /// Parses `YYYY-MM-DD`.
