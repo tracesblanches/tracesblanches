@@ -1138,6 +1138,11 @@ fn proposals(run: &Run) -> Vec<(f64, pace::Proposal)> {
 /// Rules of every proposal: at most 3, 30 min apart, not before 20 min of outing plus
 /// 10 min of lasting delay, never « sans danger », said as schedule (not safety).
 fn proposal_rules(run: &Run, t0: f64) -> Vec<(f64, pace::Proposal)> {
+    proposal_rules_from(run, t0, 1200.0)
+}
+
+/// [`proposal_rules`], none before `min_elapsed` seconds of outing (15 min with children).
+fn proposal_rules_from(run: &Run, t0: f64, min_elapsed: f64) -> Vec<(f64, pace::Proposal)> {
     let ps = proposals(run);
     assert!(ps.len() <= 3, "{}: {} proposals", run.scenario, ps.len());
     for w in ps.windows(2) {
@@ -1150,7 +1155,7 @@ fn proposal_rules(run: &Run, t0: f64) -> Vec<(f64, pace::Proposal)> {
         );
     }
     for (t, p) in &ps {
-        assert!(*t - t0 >= 1200.0, "{}: proposal at {t}", run.scenario);
+        assert!(*t - t0 >= min_elapsed, "{}: proposal at {t}", run.scenario);
         assert!(never_safe(&p.text) && never_safe(&p.announcement.text()));
         println!("{} : proposition à {:.0} s : {}", run.scenario, t, p.text);
     }
@@ -1472,4 +1477,181 @@ fn group_started(run: &Run) -> f64 {
         run.scenario
     );
     s
+}
+
+/// The plan of `b` for a group (C11, `pace::with_pace`).
+fn for_group(b: &Built, model: &calibration::ProfileModel) -> Built {
+    let mut plan = b.plan.clone();
+    pace::with_pace(&mut plan, &b.graph, model).unwrap();
+    Built {
+        plan,
+        track: b.track.clone(),
+        graph: b.graph.clone(),
+    }
+}
+
+/// The turnaround said (« Le demi-tour est avancé. Heure limite de demi-tour. … »): when
+/// and the time said (`clock.HHMM`).
+fn turnaround_said(run: &Run) -> Option<(f64, String)> {
+    run.outputs.iter().find_map(|o| match o {
+        Output::Spoken { spoken, .. }
+            if spoken.items.iter().any(|c| c.kind == "turnaround_advanced") =>
+        {
+            let clock = spoken
+                .announcement
+                .clip_ids()
+                .into_iter()
+                .find(|id| id.starts_with("clock."))?
+                .trim_start_matches("clock.")
+                .to_owned();
+            println!(
+                "{} : {:.0} s « {} »",
+                run.scenario,
+                event_time(run, o),
+                spoken.announcement.text()
+            );
+            Some((event_time(run, o), clock))
+        }
+        _ => None,
+    })
+}
+
+#[test]
+fn q9_31_cervieres_family_turnaround_at_its_pace() {
+    // The app's default family (beginner children) on its short loop (75 min of model
+    // time) from 13 h, tired: well slower than even the slow side of its range. Its plan
+    // keeps an hour of light (16:43, not 17:13); the turnaround of A8 runs at the group's
+    // planned time: moved earlier and said (the late shortening at the start refused),
+    // then « turn around now » before its limit. The same family on the plan without a
+    // group is judged at the model pace: a later turnaround, and no « now ».
+    let b = built(&CERVIERES, "famille-13h", |r| {
+        *r = presets::family_request(&CERVIERES, presets::past_day(&CERVIERES));
+        r.start_time = NaiveTime::from_hms_opt(13, 0, 0)
+    });
+    let model = calibration::ProfileModel::new(GroupProfile::app_default());
+    let fam = for_group(&b, &model);
+    let (tf, tb) = (&fam.plan.turnaround, &b.plan.turnaround);
+    let pc = fam.plan.pace.as_ref().unwrap();
+    println!(
+        "{}\nlimite {:?} (sans groupe {:?}), arrivée prévue {} (médiane {}), demi-tour au plus tard {:?} (sans groupe {:?})",
+        pc.text,
+        tf.limit,
+        tb.limit,
+        pc.planned,
+        pc.arrival,
+        tf.latest_turnaround,
+        tb.latest_turnaround
+    );
+    assert_eq!(
+        tf.limit.unwrap(),
+        tb.limit.unwrap() - chrono::Duration::minutes(30),
+        "an hour of light kept with children"
+    );
+    assert!(pc.planned > pc.arrival, "planned on the slow side");
+    let tired = Behaviour {
+        speed: [0.4, 0.45, 0.4],
+        stops_per_h: 3.0,
+        stop_median_s: 360.0,
+        stop_sigma: 0.5,
+        detours_per_h: 4.0,
+        detour_m: 30.0,
+        seed: 11,
+    };
+    let steps = vec![Step::RefuseNext { after_s: 15.0 }];
+    let run = group(
+        &fam,
+        "Cervières, famille, demi-tour avancé à son rythme",
+        tired,
+        steps.clone(),
+    );
+    let plain = group(
+        &b,
+        "Cervières, la même famille sur le plan sans groupe",
+        tired,
+        steps,
+    );
+    let t0 = group_started(&run);
+    expect(
+        &run,
+        &[
+            (M::Switched("late"), t0, t0 + 600.0),
+            (M::Reverted(false), t0, t0 + 700.0),
+            (M::Alert(Alert::TurnaroundAdvanced), t0 + 1200.0, 1e6),
+            (M::Said("turnaround_advanced"), t0 + 1200.0, 1e6),
+            (M::Alert(Alert::TurnaroundNow), t0 + 1200.0, 1e6),
+            (M::Switched("no_time"), t0 + 1200.0, 1e6),
+            (M::Finished(End::Arrived), 0.0, 1e6),
+        ],
+    );
+    let (_, at_group) = turnaround_said(&run).expect("said with the group");
+    let (_, at_model) = turnaround_said(&plain).expect("said without");
+    assert!(
+        at_group < at_model,
+        "the group's turnaround {at_group} earlier than the model's {at_model}"
+    );
+    never(&plain, &[M::Alert(Alert::TurnaroundNow)]);
+    // « Now » before the group's limit, back home in the hour of light kept.
+    let now = run
+        .outputs
+        .iter()
+        .find(|o| is(o, &M::Alert(Alert::TurnaroundNow)))
+        .unwrap();
+    assert!(scenario::local(now.t()) < tf.limit.unwrap());
+    let back = run.t0 + chrono::Duration::seconds(arrival_rel(&run) as i64);
+    println!(
+        "retour {} (limite du groupe {}, limite de lumière moins 30 min {})",
+        scenario::local(back),
+        tf.limit.unwrap(),
+        tb.limit.unwrap()
+    );
+    assert!(scenario::local(back) <= tb.limit.unwrap());
+}
+
+#[test]
+fn q9_32_chapelle_children_are_offered_a_shorter_loop_sooner() {
+    // The same pace parameters and the same slow day (a family of 6 and 9 skiing): with
+    // children on the profile, the short loop is offered sooner than to adults alone at
+    // that pace (C11: thresholds of two thirds, 5 min, 15 min, more likely than not).
+    let b = chapelle();
+    let kids = calibration::ProfileModel::new(GroupProfile::app_default());
+    let mut adults = kids.clone();
+    adults.profile.children.clear();
+    adults.profile.name = "adultes au même rythme".into();
+    let mut first = Vec::new();
+    for (model, name, min) in [
+        (&kids, "avec enfants", 900.0),
+        (&adults, "adultes seuls", 1200.0),
+    ] {
+        let bb = for_group(&b, model);
+        let run = group(
+            &bb,
+            &format!("Chapelle-des-Bois, même rythme, {name}"),
+            Behaviour::family(),
+            vec![],
+        );
+        let t0 = group_started(&run);
+        let ps = proposal_rules_from(&run, t0, min);
+        println!(
+            "{name} : propositions {:?}",
+            ps.iter()
+                .map(|p| ((p.0 - t0).round(), p.1.kind))
+                .collect::<Vec<_>>()
+        );
+        never(&run, &[M::Switched("pace")]);
+        first.push(
+            ps.first()
+                .map(|p| (p.0 - t0, p.1.kind))
+                .expect("a proposal"),
+        );
+    }
+    let (kids_first, adults_first) = (first[0], first[1]);
+    assert!(
+        kids_first.0 + 1800.0 < adults_first.0,
+        "{kids_first:?} vs {adults_first:?}"
+    );
+    assert_eq!(
+        kids_first.1,
+        ProposalKind::ShortLoop,
+        "a shorter loop first"
+    );
 }

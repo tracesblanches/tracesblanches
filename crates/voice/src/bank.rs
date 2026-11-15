@@ -459,7 +459,7 @@ pub enum Event {
     /// Daily briefing line.
     Briefing(Briefing),
     /// Summary of a suggested loop (A5): « Boucle de treize kilomètres, environ deux
-    /// heures, retour vers midi et quart. »
+    /// heures, retour vers midi quinze. »
     LoopSummary {
         /// Length, km (rounded; 1 to 60 km have clips).
         km: f64,

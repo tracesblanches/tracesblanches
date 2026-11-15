@@ -502,18 +502,18 @@ fixed_phrases! {
     /// Proposal reason: more stops than planned (C11).
     PlanPacePauses = "plan-pace-pauses" => "Vous faites plus de pauses que prévu.",
     /// Proposal, first part (then `loop.back.*`): the short loop (C11).
-    PlanProposeShort = "plan-propose-short" => "Je propose la boucle courte,",
+    PlanProposeShort = "plan-propose-short" => "Je vous propose la boucle courte,",
     /// Proposal, first part (then `loop.back.*`): the nearest exit (C11).
-    PlanProposeExit = "plan-propose-exit" => "Je propose la sortie la plus proche,",
+    PlanProposeExit = "plan-propose-exit" => "Je vous propose la sortie la plus proche,",
     /// Proposal, first part (then `loop.back.*`): keep the loop, new return time (C11).
-    PlanProposeKeep = "plan-propose-keep" => "Je propose de garder la boucle,",
+    PlanProposeKeep = "plan-propose-keep" => "Je vous propose de garder la boucle,",
     /// A proposal was accepted (C11).
     PlanProposalAccepted = "plan-proposal-accepted" => "Proposition acceptée.",
 }
 
 impl Fixed {
     /// Whether the phrase is the first part of a sentence that a value clip ends
-    /// (« Je propose la boucle courte, » then « retour vers quinze heures et quart. »): it
+    /// (« Je vous propose la boucle courte, » then « retour vers quinze heures quinze. »): it
     /// ends with a comma instead of a full stop.
     pub fn continued(self) -> bool {
         matches!(
@@ -546,7 +546,7 @@ pub fn loop_about(minutes: u32) -> Clip {
     )
 }
 
-/// "retour vers midi et quart." (last part of a loop summary): the time said as people
+/// "retour vers midi quinze." (last part of a loop summary): the time said as people
 /// say it, to the quarter hour.
 pub fn loop_back(c: Clock) -> Clip {
     Clip::new(

@@ -370,10 +370,18 @@ fn suggestions_and_turnaround_for_a_family() {
             );
             for x in &fam.suggestions {
                 let g = x.group.as_ref().unwrap();
+                // Planned on the slow side of its range (children); the option « si tout
+                // va bien » on its median.
+                let t = if x.if_all_goes_well {
+                    g.median_min
+                } else {
+                    g.plan_min
+                };
                 assert!(
-                    (0.75 * r.budget_min..=1.1 * r.budget_min).contains(&g.median_min),
+                    (0.75 * r.budget_min..=1.1 * r.budget_min).contains(&t),
                     "{g:?}"
                 );
+                assert!(g.plan_min > g.median_min);
                 assert!(x.eta_min < g.median_min);
                 if let Some(l) = r.return_before {
                     assert!(x.arrival.time() <= l);

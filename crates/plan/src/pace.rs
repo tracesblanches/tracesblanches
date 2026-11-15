@@ -32,10 +32,12 @@
 
 use chrono::{Duration, NaiveDateTime, Timelike};
 use serde::{Deserialize, Serialize};
+use skimap_assist::alerts;
 use skimap_core::calibration::{
     GroupProfile, OutingObs, PaceParams, Prediction, ProfileModel, TERRAINS, Terrain, terrain_ratio,
 };
 use skimap_core::graph::PisteGraph;
+use skimap_core::turnaround;
 use skimap_voice::bank::{Announcement, Pause, Segment};
 use skimap_voice::clips::{self, Fixed};
 use skimap_voice::quantity::Clock;
@@ -144,6 +146,12 @@ pub struct PlanPace {
     pub arrival_lo: NaiveDateTime,
     /// 90 % quantile.
     pub arrival_hi: NaiveDateTime,
+    /// Quantile of the total time the group is planned on (`ProfileModel::plan_quantile`:
+    /// the slow side of the range with children, else the median).
+    pub plan_q: f64,
+    /// Arrival planned on (the median, or the slow side with children): the return time
+    /// said, the reference of the proposals.
+    pub planned: NaiveDateTime,
     /// A range is shown (little history or a wide spread), else a figure.
     pub range: bool,
     /// Text, French.
@@ -177,6 +185,8 @@ pub fn plan_pace(plan: &DayPlan, g: &PisteGraph, model: &ProfileModel) -> Result
     let route = PaceRoute::of(&c, terrain_ratio(&plan.eta));
     let model_s = route.total();
     let p = model.params.predict(model_s);
+    let plan_q = model.plan_quantile();
+    let planned_s = model.plan_s(&p);
     let dep = plan.departure;
     let range = model.outings < FIGURE_AFTER_OUTINGS || p.spread() > FIGURE_SPREAD;
     let c5 = c.model_s();
@@ -195,7 +205,16 @@ pub fn plan_pace(plan: &DayPlan, g: &PisteGraph, model: &ProfileModel) -> Result
             duration_fr(p.hi_s)
         )
     };
-    let back = if range {
+    let back = if plan_q > 0.5 {
+        // With children: planned on the slow side of the range, the median said too.
+        format!(
+            "médiane {}, prévu sur {} (côté lent : {} chances sur 10 d'avoir fini), retour prévu vers {}",
+            duration_fr(p.median_s),
+            duration_fr(planned_s),
+            (plan_q * 10.0).round(),
+            clock_fr(dep + secs(planned_s))
+        )
+    } else if range {
         format!(
             "retour entre {} et {}",
             clock_fr(dep + secs(p.lo_s)),
@@ -220,15 +239,64 @@ pub fn plan_pace(plan: &DayPlan, g: &PisteGraph, model: &ProfileModel) -> Result
         arrival: dep + secs(p.median_s),
         arrival_lo: dep + secs(p.lo_s),
         arrival_hi: dep + secs(p.hi_s),
+        plan_q,
+        planned: dep + secs(planned_s),
         range,
         text,
     })
 }
 
-/// Sets the group of a plan (its estimated time, the tracker's starting point).
+/// Sets the group of a plan: its estimated time (the tracker's starting point), its limit
+/// to be back (C7 with the group's light margin: an hour with children,
+/// `GroupProfile::turnaround_params`) and the latest turnaround of A8 at its pace
+/// (`alerts::Monitor::for_model`: the loop's model profile at the time the group is planned
+/// on, the slow side of its range with children; none without weather, as
+/// [`crate::plan::build`]). The plans B stay those of the plan (computed by
+/// [`crate::plan::build`] on the limit of the morning's group, if any).
 pub fn with_pace(plan: &mut DayPlan, g: &PisteGraph, model: &ProfileModel) -> Result<()> {
-    plan.pace = Some(plan_pace(plan, g, model)?);
+    let pace = plan_pace(plan, g, model)?;
+    let c = Course::new(g, &plan.route.legs, &plan.eta)?;
+    let ta = &mut plan.turnaround;
+    let tp = model.profile.turnaround_params();
+    let dl = turnaround::deadline(plan.date, plan.request.start, &tp);
+    let deadline = dl.map(|d| skimap_core::ephemeris::local_time(d.deadline));
+    let limit = match (deadline, ta.return_before) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (a, b) => a.or(b),
+    };
+    // The latest passages at the exits keep their margin to the limit.
+    if let (Some(old), Some(new)) = (ta.limit, limit) {
+        for (_, at) in &mut ta.latest_exit {
+            *at += new - old;
+        }
+    }
+    ta.deadline = deadline;
+    ta.limit = limit;
+    ta.margin_min =
+        limit.map(|l| ((l - ta.arrival_with_margin).num_seconds() as f64 / 60.0).round());
+    ta.latest_turnaround = plan.weather.as_ref().and_then(|w| {
+        alerts::Monitor::for_model(
+            plan.departure,
+            c.profile(),
+            std::borrow::Cow::Borrowed(w),
+            alerts::Params::default(),
+            model,
+            terrain_ratio(&plan.eta),
+        )
+        .planned_turnaround()
+    });
+    plan.pace = Some(pace);
     Ok(())
+}
+
+/// The group of a plan as a model (what the tracker plans on).
+pub fn plan_model(p: &PlanPace) -> ProfileModel {
+    ProfileModel {
+        profile: p.profile.clone(),
+        params: p.params,
+        outings: p.outings,
+        plan_q: Some(p.plan_q),
+    }
 }
 
 /// The parameters the tracker starts from: the plan's group, else a group nobody
@@ -303,6 +371,23 @@ impl Default for ProposeParams {
     }
 }
 
+impl ProposeParams {
+    /// With children: a shorter loop offered sooner than to adults (a choice of caution,
+    /// not a measurement: children tire faster than their pace so far says, and an exit
+    /// left behind is gone): late by two thirds of the thresholds (10 min and 10 % with the
+    /// defaults), for half as long (5 min), from three quarters of the outing time (15
+    /// min), and on the median (more likely late than not) rather than nine chances in ten.
+    pub fn with_children(self) -> Self {
+        Self {
+            min_delay_s: self.min_delay_s * 2.0 / 3.0,
+            delay_frac: self.delay_frac * 2.0 / 3.0,
+            durable_s: self.durable_s * 0.5,
+            min_elapsed_s: self.min_elapsed_s * 0.75,
+            ..self
+        }
+    }
+}
+
 /// What is proposed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -373,8 +458,8 @@ pub const PROPOSAL_PHRASES: [Fixed; 7] = [
     Fixed::PlanProposalAccepted,
 ];
 
-/// « Vous allez moins vite que prévu, avec plus de pauses. Je propose la boucle courte,
-/// retour vers quinze heures et quart. »: the reason, the proposal, the return time (the
+/// « Vous allez moins vite que prévu, avec plus de pauses. Je vous propose la boucle
+/// courte, retour vers quinze heures quinze. »: the reason, the proposal, the return time (the
 /// bank's `loop.back.*` clips, to the nearest quarter hour).
 pub fn proposal_announcement(
     reason: PaceReason,
@@ -411,7 +496,7 @@ pub fn proposal_announcement(
 }
 
 /// The screen text of a proposal: « Vous allez 40 % moins vite que prévu, avec plus de
-/// pauses. Je propose la boucle courte, retour 15 h 20 (15 h 05 à 15 h 40). »
+/// pauses. Je vous propose la boucle courte, retour 15 h 20 (15 h 05 à 15 h 40). »
 pub fn proposal_text(
     reason: PaceReason,
     slower_pct: f64,
@@ -429,9 +514,9 @@ pub fn proposal_text(
         }
     };
     let what = match kind {
-        ProposalKind::ShortLoop => "Je propose la boucle courte",
-        ProposalKind::NearestExit => "Je propose la sortie la plus proche",
-        ProposalKind::Keep => "Je propose de garder la boucle",
+        ProposalKind::ShortLoop => "Je vous propose la boucle courte",
+        ProposalKind::NearestExit => "Je vous propose la sortie la plus proche",
+        ProposalKind::Keep => "Je vous propose de garder la boucle",
     };
     let saved = saved_min
         .filter(|m| *m >= 5.0)
@@ -487,7 +572,7 @@ mod tests {
         let a = proposal_announcement(PaceReason::SlowerAndPauses, ProposalKind::ShortLoop, t);
         assert_eq!(
             a.text(),
-            "Vous allez moins vite que prévu, avec plus de pauses. Je propose la boucle courte, retour vers quinze heures et quart."
+            "Vous allez moins vite que prévu, avec plus de pauses. Je vous propose la boucle courte, retour vers quinze heures quinze."
         );
         let s = proposal_text(
             PaceReason::SlowerAndPauses,
@@ -498,7 +583,7 @@ mod tests {
         );
         assert_eq!(
             s,
-            "Vous allez 40 % moins vite que prévu, avec plus de pauses. Je propose la boucle courte, retour 15 h 20 (15 h 05 à 15 h 40), 45 min de moins. Accepter ou refuser."
+            "Vous allez 40 % moins vite que prévu, avec plus de pauses. Je vous propose la boucle courte, retour 15 h 20 (15 h 05 à 15 h 40), 45 min de moins. Accepter ou refuser."
         );
         assert!(never_safe(&s));
     }

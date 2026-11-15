@@ -45,18 +45,29 @@
 //!
 //! # Priors
 //!
-//! See [`PaceParams::prior`]. Only the shape by terrain of the children's pace is from a
+//! See [`prior_row`]. Only the shape by terrain of the children's pace is from a
 //! publication (Sollie et al. 2021, Scand J Med Sci Sports, PMID 33231327: competitive
 //! skiers of 14 years 13 % slower than adults, 19 % uphill, 11 % on undulating terrain, 8 %
 //! downhill). No publication gives the speed of young children skiing for leisure, their
-//! stops or their detours: those priors are assumptions, wide (predictive standard
-//! deviation 0.35 in log, a factor 1.4) and marked as such, to be replaced by the groups'
-//! own outings (and checked on real outings, T1).
+//! stops or their detours. The rows of children of 8 and more are set on one testimony
+//! ([`TESTIMONY`], n = 1, not a study); the others are assumptions. All are wide
+//! (predictive standard deviation 0.30 to 0.45 in log) and marked as such, to be replaced
+//! by the groups' own outings (and checked on real outings, T1).
+//!
+//! # Caution with children (choices, not measurements)
+//!
+//! A group with children is planned on the slow side of its range
+//! ([`ProfileModel::plan_quantile`]: the 80 % quantile of the total time,
+//! [`PLAN_Q_CHILDREN`]) rather than its median, keeps a larger light margin
+//! ([`GroupProfile::turnaround_params`]: back [`CHILD_LIGHT_MARGIN_MIN`] minutes before the
+//! light limit instead of 30) and is offered a shorter loop sooner during the outing
+//! (`skimap_plan::pace`).
 
 use serde::{Deserialize, Serialize};
 
 use crate::eta::{EtaModel, FLAT_GRADE};
 use crate::routing::Style;
+use crate::turnaround::TurnaroundParams;
 
 /// Terrain classes (index of the arrays of model times): uphill, flat, downhill.
 pub const TERRAINS: usize = 3;
@@ -173,9 +184,38 @@ impl GroupProfile {
         }
     }
 
+    /// The profile the app offers first (C11): « Famille avec enfants débutants »,
+    /// a family with beginner children, classic (the group of
+    /// [`TESTIMONY`]).
+    pub fn app_default() -> Self {
+        Self {
+            name: "Famille avec enfants débutants".into(),
+            adults: 2,
+            children: vec![10, 14],
+            style: Style::Classic,
+            level: Level::Beginner,
+        }
+    }
+
     /// Age of the youngest child.
     pub fn youngest(&self) -> Option<u8> {
         self.children.iter().copied().min()
+    }
+
+    /// The group has children.
+    pub fn has_children(&self) -> bool {
+        !self.children.is_empty()
+    }
+
+    /// Light limit and margins of the turnaround (C7) for the group: with children, back
+    /// [`CHILD_LIGHT_MARGIN_MIN`] minutes before the light limit instead of 30 (a choice of
+    /// caution: see the module).
+    pub fn turnaround_params(&self) -> TurnaroundParams {
+        let mut t = TurnaroundParams::default();
+        if self.has_children() {
+            t.margin_min = CHILD_LIGHT_MARGIN_MIN;
+        }
+        t
     }
 
     /// Description, French.
@@ -357,6 +397,21 @@ pub const DAY_PRIOR_H: f64 = 1.0;
 pub const DAY_PRIOR_STOPS: f64 = 3.0;
 /// Two-sided 80 % quantile of the standard normal.
 pub const Z80: f64 = 1.281_551_565_545;
+/// Quantile of the total time a group with children is planned on (loops, return time,
+/// turnaround): the slow side of its range, 8 chances in 10 to be back by then. A choice of
+/// caution, not a measurement.
+pub const PLAN_Q_CHILDREN: f64 = 0.8;
+/// With children, back this long before the light limit (C7: 30 min for adults), minutes:
+/// tired children at the end of the day go slower than their morning pace, the cold comes
+/// with the shade and the dusk, and a child cannot be hurried. A choice of caution, not a
+/// measurement.
+pub const CHILD_LIGHT_MARGIN_MIN: f64 = 60.0;
+
+/// The one testimony the priors of children of 8 and more are set on (n = 1, not a study;
+/// a user of the app, November 2026). The prior of that group on the loops of about 20 km
+/// of Chapelle-des-Bois (C5: 3 h 15 to 3 h 40) gives 3 h 30 to 4 h 30 moving and 5 h 30 to
+/// 6 h 30 in total (median); tested in `skimap_plan` (`tests/pace.rs`).
+pub const TESTIMONY: &str = "famille avec enfants débutants, classique : « 20 bornes par jour et jusqu'à piste rouge. Ça nous a pris 4 h de ski et 6 h en tout peut-être, avec les pauses et les détours » (témoignage unique, n = 1)";
 
 fn huber(z: f64) -> f64 {
     if z.abs() <= HUBER_C {
@@ -400,25 +455,28 @@ pub struct PriorRow {
 /// downhill, i.e. 0.81 / 0.89 = 0.91 uphill and 0.92 / 0.89 = 1.03 downhill.
 pub const CHILD_SHAPE: [f64; TERRAINS] = [0.91, 1.0, 1.03];
 
-/// The prior of a group (assumptions except [`CHILD_SHAPE`], see the module).
+/// The prior of a group ([`CHILD_SHAPE`] from a publication, the rows of children of 8
+/// and more set on [`TESTIMONY`] (n = 1), the rest assumptions; see the module).
 ///
 /// | Group (youngest child) | Moving speed (C5 = 1) | Predictive sd (log) | Detours | Stops / h | Median stop |
 /// |---|---|---|---|---|---|
 /// | adult, intermediate | 1.0 | 0.25 | 3 % | 0.5 | 4 min |
-/// | adult, beginner / expert | 0.75 / 1.25 | 0.25 | 3 % | 0.5 | 4 min |
-/// | children 14–17 | 0.85 × shape | 0.30 | 4 % | 1 | 4 min |
-/// | children 11–13 | 0.75 × shape | 0.35 | 6 % | 1.5 | 4 min |
-/// | children 8–10 | 0.60 × shape | 0.35 | 10 % | 2 | 5 min |
-/// | children 5–7 | 0.45 × shape | 0.35 | 15 % | 3 | 5 min |
-/// | children under 5 | 0.30 × shape | 0.40 | 15 % | 4 | 6 min |
+/// | adult, beginner / expert | 0.9 / 1.2 | 0.25 | 3 % | 0.5 | 4 min |
+/// | children 14–17 | 1.0 × shape | 0.30 | 4 % | 1.5 | 6 min |
+/// | children 11–13 | 1.0 × shape | 0.35 | 5 % | 2.5 | 7 min |
+/// | children 8–10 | 1.0 × shape | 0.35 | 6 % | 3 | 8 min |
+/// | children 5–7 | 0.55 × shape | 0.40 | 12 % | 3.5 | 8 min |
+/// | children under 5 | 0.30 × shape | 0.45 | 15 % | 4 | 8.5 min |
 ///
-/// The adults' level multiplies the children's rows too, at half strength (the children
-/// set the pace).
+/// The adults' level multiplies the children's rows too, at half strength. With children
+/// of 8 and more, the testimony puts a beginner family at about the C5 pace moving (C5 is
+/// a leisure adult: 5.3 to 6 km/h on the loops of the two sites) and a third of the day
+/// stopped; under 8, nothing was observed: the rows stay slow (caution).
 pub fn prior_row(p: &GroupProfile) -> PriorRow {
     let level = match p.level {
-        Level::Beginner => 0.75,
+        Level::Beginner => 0.9,
         Level::Intermediate => 1.0,
-        Level::Expert => 1.25,
+        Level::Expert => 1.2,
     };
     let Some(age) = p.youngest() else {
         return PriorRow {
@@ -430,11 +488,11 @@ pub fn prior_row(p: &GroupProfile) -> PriorRow {
         };
     };
     let (k, sd, detour, stops, stop_min) = match age {
-        0..=4 => (0.30, 0.40, 0.15, 4.0, 6.0),
-        5..=7 => (0.45, 0.35, 0.15, 3.0, 5.0),
-        8..=10 => (0.60, 0.35, 0.10, 2.0, 5.0),
-        11..=13 => (0.75, 0.35, 0.06, 1.5, 4.0),
-        _ => (0.85, 0.30, 0.04, 1.0, 4.0),
+        0..=4 => (0.30, 0.45, 0.15, 4.0, 8.5),
+        5..=7 => (0.55, 0.40, 0.12, 3.5, 8.0),
+        8..=10 => (1.0, 0.35, 0.06, 3.0, 8.0),
+        11..=13 => (1.0, 0.35, 0.05, 2.5, 7.0),
+        _ => (1.0, 0.30, 0.04, 1.5, 6.0),
     };
     let k = k * (1.0 + 0.5 * (level - 1.0));
     PriorRow {
@@ -464,6 +522,16 @@ pub struct Prediction {
 }
 
 impl Prediction {
+    /// Quantile `q` of the total (log-normal through the median and the 90 % quantile),
+    /// seconds; `q` 0.5 is [`Prediction::median_s`] exactly.
+    pub fn quantile_s(&self, q: f64) -> f64 {
+        if q == 0.5 || self.median_s <= 0.0 || self.hi_s <= self.median_s {
+            return self.median_s;
+        }
+        let st = (self.hi_s / self.median_s).ln() / Z80;
+        self.median_s * (probit(q) * st).exp()
+    }
+
     /// Relative half-width of the 80 % interval.
     pub fn spread(&self) -> f64 {
         if self.median_s > 0.0 {
@@ -488,6 +556,21 @@ pub fn phi(x: f64) -> f64 {
     } else {
         0.5 * erfc
     }
+}
+
+/// Inverse of [`phi`] (bisection to 1e-10), for `q` in (0, 1).
+pub fn probit(q: f64) -> f64 {
+    let q = q.clamp(1e-9, 1.0 - 1e-9);
+    let (mut lo, mut hi) = (-8.0_f64, 8.0_f64);
+    for _ in 0..60 {
+        let mid = 0.5 * (lo + hi);
+        if phi(mid) < q {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    0.5 * (lo + hi)
 }
 
 /// Moving time (median `moving_median_s`, variance `var_log` of its log) plus stops, as a
@@ -685,6 +768,10 @@ pub struct ProfileModel {
     pub params: PaceParams,
     /// Outings learned.
     pub outings: u32,
+    /// Quantile of the total time the group is planned on, if set (`None`: from the
+    /// group, [`ProfileModel::plan_quantile`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_q: Option<f64>,
 }
 
 impl ProfileModel {
@@ -695,7 +782,24 @@ impl ProfileModel {
             profile,
             params,
             outings: 0,
+            plan_q: None,
         }
+    }
+
+    /// Quantile of the total time the group is planned on (loops, return time,
+    /// turnaround): [`PLAN_Q_CHILDREN`] with children (the slow side of the range), else
+    /// the median; [`ProfileModel::plan_q`] when set.
+    pub fn plan_quantile(&self) -> f64 {
+        self.plan_q.unwrap_or(if self.profile.has_children() {
+            PLAN_Q_CHILDREN
+        } else {
+            0.5
+        })
+    }
+
+    /// The time the group is planned on for a prediction, seconds.
+    pub fn plan_s(&self, p: &Prediction) -> f64 {
+        p.quantile_s(self.plan_quantile())
     }
 
     /// Learns one more outing.
@@ -932,14 +1036,40 @@ mod tests {
         let adult = PaceParams::prior(&GroupProfile::solo(Style::Classic, Level::Intermediate));
         let mut last = adult.progress_pace(Terrain::Flat);
         assert!((adult.moving_speed(Terrain::Flat) - 1.0).abs() < 1e-12);
+        let mut stopped = adult.stops.mean() * adult.stop_mean_s();
         for age in [15u8, 12, 9, 6, 3] {
             let p = PaceParams::prior(&GroupProfile::family(2, &[age, 16], Style::Classic));
             let v = p.progress_pace(Terrain::Flat);
             assert!(v < last, "{age}: {v} ≥ {last}");
             assert!(p.progress_pace(Terrain::Up) < v);
-            assert!(p.stops.mean() > adult.stops.mean());
+            // More stopped time per moving hour with younger children.
+            let s = p.stops.mean() * p.stop_mean_s();
+            assert!(s > stopped, "{age}: {s} ≤ {stopped}");
             last = v;
+            stopped = s;
         }
+        // Under 8 (nothing observed): far slower than from 8 (the testimony).
+        let p8 = PaceParams::prior(&GroupProfile::family(2, &[8], Style::Classic));
+        let p7 = PaceParams::prior(&GroupProfile::family(2, &[7], Style::Classic));
+        assert!(p7.moving_speed(Terrain::Flat) < 0.6 * p8.moving_speed(Terrain::Flat));
+        // Planned on the slow side with children, on the median without.
+        let fam = ProfileModel::new(GroupProfile::app_default());
+        let solo = ProfileModel::new(GroupProfile::solo(Style::Classic, Level::Beginner));
+        assert_eq!(fam.plan_quantile(), PLAN_Q_CHILDREN);
+        assert_eq!(solo.plan_quantile(), 0.5);
+        let pr = fam.params.predict([3600.0, 3600.0, 1800.0]);
+        assert!(fam.plan_s(&pr) > pr.median_s && fam.plan_s(&pr) < pr.hi_s);
+        assert_eq!(solo.plan_s(&pr), pr.median_s);
+        assert_eq!(
+            GroupProfile::app_default().turnaround_params().margin_min,
+            CHILD_LIGHT_MARGIN_MIN
+        );
+        assert_eq!(
+            GroupProfile::solo(Style::Classic, Level::Beginner)
+                .turnaround_params()
+                .margin_min,
+            TurnaroundParams::default().margin_min
+        );
         let fam = GroupProfile::family(2, &[9, 6], Style::Classic);
         assert_eq!(fam.youngest(), Some(6));
         assert!(
@@ -964,6 +1094,18 @@ mod tests {
         assert_eq!(t(0.01), Terrain::Flat);
         assert_eq!(t(-0.015), Terrain::Flat);
         assert_eq!(Terrain::of_grade(0.03), Terrain::Up);
+    }
+
+    #[test]
+    fn quantiles_of_a_prediction() {
+        assert!(probit(0.5).abs() < 1e-9);
+        assert!((probit(0.9) - Z80).abs() < 1e-6);
+        assert!((probit(0.8) - 0.841_621_233_572_914_3).abs() < 1e-6);
+        let p = PaceParams::prior(&GroupProfile::family(2, &[9], Style::Classic))
+            .predict([3600.0, 1800.0, 900.0]);
+        assert_eq!(p.quantile_s(0.5), p.median_s);
+        assert!((p.quantile_s(0.9) - p.hi_s).abs() < 1e-3 * p.hi_s);
+        assert!((p.quantile_s(0.1) - p.lo_s).abs() < 1e-3 * p.lo_s);
     }
 
     #[test]

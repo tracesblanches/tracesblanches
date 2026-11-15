@@ -9,8 +9,10 @@
 //! 1. briefing of the day (A1, `briefing::day`);
 //! 2. snow quality (A3) and wax (A2) at the forecast point nearest to the start;
 //! 3. best time to leave (A9) for the time available, unless a start time is given;
-//! 4. loops for the request from that start time (A5, `suggest::suggest`);
-//! 5. equipment of each loop (A6), with the grip wax reliability of A2.
+//! 4. loops for the request from that start time (A5, `suggest::suggest_for`), on the time
+//!    of the group of the day when one is given ([`morning_for`], C11), else on the model
+//!    time;
+//! 5. equipment of each loop (A6) for that time, with the grip wax reliability of A2.
 //!
 //! # The plan (one loop validated)
 //!
@@ -18,7 +20,7 @@
 //! |---|---|
 //! | route: legs on the trail graph, length, climb, model time | A5 loop, C1 graph, C5 model of the day |
 //! | key points with planned passage times (model pace) | start, junctions ([`crate::guidance`]), refuges within [`REFUGE_NEAR_M`], zones without network (P12), historic avalanche paths (P20), finish |
-//! | limit to be back, turnaround | C7 deadline (light limit minus 30 min), return time asked, A8 latest turnaround at the planned pace |
+//! | limit to be back, turnaround | C7 deadline (light limit minus 30 min), return time asked, A8 latest turnaround at the planned pace (the group's with C11, [`crate::pace::with_pace`]) |
 //! | planned announcements, each with its clips and whether the pack has them | phrase bank VO2, clips VO3 |
 //! | plans B | [`crate::fallback`] |
 //! | equipment, wax, briefing, best time, synthesis (A7 on the route), reasons of the loop | A6, A2, A1, A9, A7, A5 |
@@ -46,6 +48,7 @@ use skimap_common::geom::LonLat;
 use skimap_common::layout::DataLayout;
 use skimap_common::meta::{FileMeta, LayerMeta, now_rfc3339};
 use skimap_common::site::Site;
+use skimap_core::calibration::ProfileModel;
 use skimap_core::eta::EtaModel;
 use skimap_core::graph::{Difficulty, PisteGraph};
 use skimap_core::routing::Style;
@@ -135,10 +138,22 @@ pub struct Morning {
     pub equipment: Vec<Equipment>,
     /// Missing layers and limits.
     pub notes: Vec<String>,
+    /// The group of the day (C11) the loops are chosen for, if any: [`build`] gives its
+    /// time to the plan ([`crate::pace::with_pace`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group: Option<ProfileModel>,
 }
 
-/// The morning choices of a request.
+/// The morning choices of a request, on the model time (no group): [`morning_for`] with
+/// `None`.
 pub fn morning(data: &SiteData, req: &PlanRequest) -> Morning {
+    morning_for(data, req, None)
+}
+
+/// The morning choices of a request for the group of the day (C11, prior or learned):
+/// loops chosen on its time (`suggest::suggest_for`), equipment for that time; `None`:
+/// on the model time, as [`morning`].
+pub fn morning_for(data: &SiteData, req: &PlanRequest, group: Option<&ProfileModel>) -> Morning {
     let date = req.date;
     let point = data
         .weather
@@ -169,7 +184,7 @@ pub fn morning(data: &SiteData, req: &PlanRequest) -> Morning {
         .map(|t| date.and_time(t))
         .or_else(|| best.as_ref().and_then(|b| b.best.as_ref()).map(|s| s.start))
         .unwrap_or_else(|| date.and_time(req.earliest));
-    let suggestions = suggest::suggest(
+    let suggestions = suggest::suggest_for(
         data,
         &suggest::Request {
             label: req.label.clone(),
@@ -182,6 +197,7 @@ pub fn morning(data: &SiteData, req: &PlanRequest) -> Morning {
             max_difficulty: req.max_difficulty,
             max_results: req.max_results,
         },
+        group,
     );
     let kick_unreliable = wax
         .as_ref()
@@ -195,7 +211,8 @@ pub fn morning(data: &SiteData, req: &PlanRequest) -> Morning {
                 &equipment::Outing {
                     label: s.label.clone(),
                     start: start_time,
-                    duration_min: s.eta_min,
+                    // The group's median time when the loops are chosen for one.
+                    duration_min: s.group.as_ref().map_or(s.eta_min, |g| g.median_min),
                     route: s.line.clone(),
                     offpiste: false,
                     kick_unreliable,
@@ -227,6 +244,7 @@ pub fn morning(data: &SiteData, req: &PlanRequest) -> Morning {
         suggestions,
         equipment,
         notes,
+        group: group.cloned(),
     }
 }
 
@@ -500,8 +518,8 @@ pub struct Turnaround {
     pub arrival_with_margin: NaiveDateTime,
     /// Limit minus the arrival with margin, minutes.
     pub margin_min: Option<f64>,
-    /// Latest turnaround at the planned pace (A8): `None` when the loop ends before the
-    /// deadline.
+    /// Latest turnaround at the planned pace (A8), the group's when the plan has one (C11,
+    /// [`crate::pace::with_pace`]): `None` when the loop ends before the deadline.
     pub latest_turnaround: Option<NaiveDateTime>,
     /// Latest passage at each junction with an exit so that the exit still ends before
     /// the limit (model time × 1.2 from there): (junction index, time).
@@ -894,8 +912,12 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
     let junctions = guidance::junctions(g, &course);
     let hazards = Hazards { data, date };
     let anns = announcements(g, &course, &junctions, voice, Some(&hazards), departure);
-    // Limit and turnaround.
-    let tp = TurnaroundParams::default();
+    // Limit and turnaround (with the light margin of the morning's group: an hour with
+    // children, C11).
+    let tp = m
+        .group
+        .as_ref()
+        .map_or_else(TurnaroundParams::default, |g| g.profile.turnaround_params());
     let dl = turnaround::deadline(date, m.request.start, &tp);
     let local = skimap_core::ephemeris::local_time;
     let deadline = dl.map(|d| local(d.deadline));
@@ -1210,7 +1232,7 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
             clips.required.len()
         ));
     }
-    let plan = DayPlan {
+    let mut plan = DayPlan {
         format: FORMAT.into(),
         version: VERSION,
         site: data.site.id.into(),
@@ -1259,6 +1281,10 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
         never_safe: NEVER_SAFE.into(),
         pace: None,
     };
+    // The group of the morning: its time and the turnaround at its pace (C11).
+    if let Some(group) = &m.group {
+        crate::pace::with_pace(&mut plan, g, group)?;
+    }
     debug_assert!(never_safe(&plan.text_fr()));
     Ok(plan)
 }
@@ -1355,6 +1381,10 @@ impl DayPlan {
             t.push(p.text.clone());
         }
         t.push(match ta.latest_turnaround {
+            Some(x) if self.pace.is_some() => format!(
+                "Demi-tour au plus tard à {} au rythme prévu du groupe (A8, C11)",
+                hhmm(x)
+            ),
             Some(x) => format!("Demi-tour au plus tard à {} au rythme prévu (A8)", hhmm(x)),
             None => "La boucle finit avant la limite de lumière au rythme prévu : pas d'heure de demi-tour imposée".into(),
         });

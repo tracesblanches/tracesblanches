@@ -190,7 +190,7 @@ mod tests {
         assert_eq!(ours, bank);
         for p in all {
             let c = p.clip();
-            // « Je propose la boucle courte, » is continued by « retour vers … ».
+            // « Je vous propose la boucle courte, » is continued by « retour vers … ».
             let end = if p.continued() { ',' } else { '.' };
             assert!(c.text.ends_with(end), "{}", c.text);
             assert!(never_safe(&c.text), "{}", c.text);
@@ -206,9 +206,9 @@ mod tests {
                 "Vous allez moins vite que prévu.",
                 "Vous allez moins vite que prévu, avec plus de pauses.",
                 "Vous faites plus de pauses que prévu.",
-                "Je propose la boucle courte,",
-                "Je propose la sortie la plus proche,",
-                "Je propose de garder la boucle,",
+                "Je vous propose la boucle courte,",
+                "Je vous propose la sortie la plus proche,",
+                "Je vous propose de garder la boucle,",
                 "Proposition acceptée.",
             ]
         );

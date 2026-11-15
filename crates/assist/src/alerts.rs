@@ -36,7 +36,7 @@ use std::collections::HashMap;
 
 use chrono::{Duration, NaiveDateTime, Timelike};
 use serde::Serialize;
-use skimap_core::calibration::PaceParams;
+use skimap_core::calibration::{PaceParams, ProfileModel};
 use skimap_core::turnaround::{self, TurnaroundParams};
 use skimap_voice::Event;
 use skimap_voice::bank::Change;
@@ -183,6 +183,27 @@ impl<'a> Monitor<'a> {
         )
     }
 
+    /// Monitor of a route started at `start` by a group with what it learned (C11): as
+    /// [`Monitor::for_group`], on the time the group is planned on (the slow side of its
+    /// range with children, `ProfileModel::plan_quantile`) and with its light margin
+    /// (`GroupProfile::turnaround_params`).
+    pub fn for_model(
+        start: NaiveDateTime,
+        profile: &Profile,
+        point: Cow<'a, WeatherPoint>,
+        p: Params,
+        model: &ProfileModel,
+        ratio: f64,
+    ) -> Self {
+        Self::with_turnaround(
+            start,
+            Cow::Owned(profile.for_group_at(&model.params, ratio, model.plan_quantile())),
+            point,
+            p,
+            &model.profile.turnaround_params(),
+        )
+    }
+
     /// Monitor of a route started at `start`, with a borrowed or owned profile and point.
     pub fn with(
         start: NaiveDateTime,
@@ -190,9 +211,19 @@ impl<'a> Monitor<'a> {
         point: Cow<'a, WeatherPoint>,
         p: Params,
     ) -> Self {
-        let deadline =
-            turnaround::deadline(start.date(), point.position, &TurnaroundParams::default())
-                .map(|d| skimap_core::ephemeris::local_time(d.deadline));
+        Self::with_turnaround(start, profile, point, p, &TurnaroundParams::default())
+    }
+
+    /// [`Monitor::with`] with the light limit and margin `tp` (C7).
+    pub fn with_turnaround(
+        start: NaiveDateTime,
+        profile: Cow<'a, Profile>,
+        point: Cow<'a, WeatherPoint>,
+        p: Params,
+        tp: &TurnaroundParams,
+    ) -> Self {
+        let deadline = turnaround::deadline(start.date(), point.position, tp)
+            .map(|d| skimap_core::ephemeris::local_time(d.deadline));
         let base_gust = hour_at(&point, start)
             .and_then(|h| h.gust_kmh)
             .unwrap_or(0.0);

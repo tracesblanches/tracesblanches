@@ -258,7 +258,7 @@ fn samples(s: &Site, n: &PackNames) -> Res<Vec<(&'static str, Announcement)>> {
 }
 
 /// A proposal of C11 as the tracker says it (`skimap_plan::pace::proposal_announcement`):
-/// the reason, « Je propose …, », « retour vers … ».
+/// the reason, « Je vous propose …, », « retour vers … ».
 fn proposal(reason: Fixed, kind: Fixed, back: Clock) -> Announcement {
     Announcement {
         segments: vec![

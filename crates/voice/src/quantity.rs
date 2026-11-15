@@ -175,8 +175,12 @@ impl Clock {
         }
     }
 
-    /// The time as people say it: "midi et quart", "treize heures et demie", "seize heures
+    /// The time as people say it: "midi quinze", "treize heures et demie", "seize heures
     /// moins le quart", "minuit", other minutes as [`Clock::words`] ("quinze heures dix").
+    /// The quarter past is "quinze" and not "et quart": synthesised and transcribed over 20
+    /// seeds, the 16 times "… heures et quart" are heard right 51 % of the time (the quarter
+    /// dropped: « retour vers 15h »), "… heures quinze" 88 %, like "et demie" (88 %) and
+    /// "moins le quart" (92 %) (docs/voix.md).
     pub fn spoken(self) -> String {
         let name = |h: u32| match h % 24 {
             0 => "minuit".to_owned(),
@@ -187,7 +191,7 @@ impl Clock {
         let noon_or_midnight = h % 12 == 0;
         match self.minute {
             0 => name(h),
-            15 => format!("{} et quart", name(h)),
+            15 => format!("{} quinze", name(h)),
             30 if noon_or_midnight => format!("{} et demi", name(h)),
             30 => format!("{} et demie", name(h)),
             45 => format!("{} moins le quart", name(h + 1)),
@@ -211,13 +215,14 @@ mod tests {
     #[test]
     fn spoken_times() {
         let c = |hour, minute| Clock { hour, minute };
-        assert_eq!(c(12, 15).spoken(), "midi et quart");
+        assert_eq!(c(12, 15).spoken(), "midi quinze");
+        assert_eq!(c(15, 15).spoken(), "quinze heures quinze");
         assert_eq!(c(12, 30).spoken(), "midi et demi");
         assert_eq!(c(11, 45).spoken(), "midi moins le quart");
         assert_eq!(c(13, 0).spoken(), "treize heures");
         assert_eq!(c(14, 30).spoken(), "quatorze heures et demie");
         assert_eq!(c(15, 45).spoken(), "seize heures moins le quart");
-        assert_eq!(c(1, 15).spoken(), "une heure et quart");
+        assert_eq!(c(1, 15).spoken(), "une heure quinze");
         assert_eq!(c(23, 45).spoken(), "minuit moins le quart");
         assert_eq!(c(9, 10).spoken(), "neuf heures dix");
     }
