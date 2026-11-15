@@ -37,6 +37,9 @@ allow = [
     "ISC",
     "MIT",
     "MIT-0",
+    # UniFFI runtime (uniffi_* crates, Android bindings): file-level copyleft, unmodified sources;
+    # compatible with GPL-3.0-or-later as a "Secondary License" (MPL-2.0 section 3.3).
+    "MPL-2.0",
     "Unicode-3.0",
     "Unlicense",
     "Zlib",
