@@ -1,6 +1,12 @@
-# skimap pour Android (K1 #51, K12 #115, Q8 #108, E1 #125)
+# skimap pour Android (K1 #51, K12 #115, K15 #123, K2 #52, H2 #133, VO6 #129, Q8 #108, E1 #125)
 
-App Kotlin à une seule activité (Compose, Material 3) : la carte d'abord, MapLibre Native lisant les PMTiles des packs (Plan IGN v2 ou OSM), pistes (couleur, forme, nom, sens), état, refuges et points d'eau. Les packs sont lus par le noyau Rust (`crates/ffi`, UniFFI) : style MapLibre complet, symboles, légende, couches, fiches et catalogue des 219 domaines, en appels groupés. Aucune requête réseau (permission INTERNET retirée).
+App Kotlin à une seule activité (Compose, Material 3) : la carte d'abord, MapLibre Native, dans les **styles validés par l'utilisateur** (`styles/`, K15) : fond, SRN ou guidage, clair ou sombre. Les packs sont lus par le noyau Rust (`crates/ffi`, UniFFI) : instanciation des styles sur les packs, fiches, catalogue des 219 domaines, plan et installation des mises à jour, en appels groupés. Les packs se téléchargent et se mettent à jour depuis le serveur (K2), puis tout marche hors ligne. Interface en français et en anglais (langue du téléphone, anglais par défaut).
+
+## Sommaire
+
+1. [L'écran carte](docs/carte.md) : styles validés, mode libre sans couture, couches, légende, fiches
+2. [Téléchargement et mise à jour](docs/telechargement.md) : module réseau, synchro, WorkManager, carte de France, voix par langue, schémas des données à venir
+3. [Vérifier et mesurer](docs/verifier.md) : tests JVM et Compose, captures, test instrumenté avec le serveur local, banc
 
 ## Prérequis (poste)
 
@@ -12,9 +18,9 @@ cargo install cargo-ndk --version 4.1.2 --locked
 echo "sdk.dir=$HOME/Android/Sdk" > android/local.properties
 ```
 
-Gradle construit la bibliothèque Rust lui-même (tâches `cargoNdk`, `cargoHost`, `uniffiBindings`, `testPack`).
+Gradle construit la bibliothèque Rust lui-même (tâches `cargoNdk`, `cargoHost`, `uniffiBindings`), copie les styles validés dans les assets (`styleAssets`), et pour les tests écrit le pack de test en deux versions et le paquet de voix anglais (`testPack`, `testPackV2`, `testVoicePack`), construit `skimap-server` (`cargoServer`) et y publie ces packs (`testStore`).
 
-## Sur le Pixel 8 / 8 Pro (demain)
+## Sur le Pixel 8 / 8 Pro
 
 Débogage USB activé, téléphone branché, depuis la racine du dépôt :
 
@@ -22,59 +28,31 @@ Débogage USB activé, téléphone branché, depuis la racine du dépôt :
 adb devices                                    # le Pixel doit apparaître « device »
 cd android && ./gradlew :app:assembleDebug && cd ..
 adb install -r android/app/build/outputs/apk/debug/app-debug.apk
-# 1. Premier lancement, attendre l'écran « Aucun pack sur ce téléphone » : l'app a créé son
-#    dossier (créé par adb, il appartiendrait à adb et resterait illisible pour l'app)
 adb shell am start -n fr.skimap.app/.MainActivity
-# 2. Copie des packs (45 et 42 Mo), puis relance
+```
+
+Premier lancement : « Aucun pack sur ce téléphone » → « Domaines de France et téléchargements » → un domaine publié → « Télécharger ». Les gros packs attendent le Wi-Fi, sauf « Utiliser les données mobiles ». Pour copier un pack à la main (développement) :
+
+```sh
 D=/sdcard/Android/data/fr.skimap.app/files/packs
 adb push data/out/cervieres/pack/. $D/cervieres/
-adb push data/out/chapelle-des-bois/pack/. $D/chapelle-des-bois/
 adb shell am start -S -W -n fr.skimap.app/.MainActivity -e pack libre       # mode libre : tous les packs
 adb shell am start -S -W -n fr.skimap.app/.MainActivity -e pack cervieres   # un domaine
-adb logcat -s skimap        # « pack … opened in N ms », « map … fully rendered in N ms »
-adb exec-out screencap -p > pixel.png
+adb logcat -s skimap        # « packs … opened in N ms », « map … fully rendered in N ms », « sync … »
 ```
-
-L'app rouvre le dernier mode (libre par défaut). Mettre à jour un pack : recopier son dossier.
-
-## L'écran carte
-
-- Mode libre par défaut (tous les packs installés dans une seule carte) ; mode domaine depuis le menu ou la carte de France (219 domaines du recensement : recherche, « les plus proches » par une position grossière demandée au toucher, état du pack : installé, disponible, pas encore construit).
-- Gestes : pincement, double toucher, double toucher puis glisser. Aucun bouton de zoom ; « Vue auto » (48 dp) n'apparaît qu'après un geste. Menu « Carte et légende » et ⓘ (licences) en coins, petits, semi-transparents.
-- Menu : mode, fond, couches (refuges, points d'eau, zones sans réseau, noms du fond ; mémorisé par fond, visibilité basculée sans recharger le style ; pistes, sens et état toujours affichés), légende (forme et mot pour chaque couleur), licences.
-- Toucher un refuge : fiche (feuille du bas) avec gardiennage, places, équipements, accès, dernier commentaire daté, téléphones à composer (le composeur s'ouvre, l'app n'appelle jamais), liens, source.
-
-Schémas attendus des données à venir (crates `stations`, `refuges`) : couche de pack `stations` (points) : `name`, `emergency` `[{label, phone}]` (112 toujours en premier), `fee_outlets` `[{name, address, phone}]`, `prices` `[{label, price_eur, date}]`, `phones`, `websites` `[{label, url}]`, `source`, `updated` ; fiche prête (`crates/ffi/src/card.rs`). Zones de redevance : couche `fee-zones` (polygones `{fee_id, name, issuer}`) et titre de l'utilisateur mémorisé : interface à faire quand la couche existera.
-
-## Vérifier
-
-```sh
-cd android
-./gradlew build verifyRoborazziDebug detekt ktlintCheck   # tests JVM et Compose, captures, lint sans avertissement
-./gradlew recordRoborazziDebug                            # réenregistre les références de captures
-adb push data/out/cervieres/pack/. /data/local/tmp/skimap-packs/cervieres/   # vrais packs (facultatif)
-./gradlew :app:connectedDebugAndroidTest                  # émulateur ou téléphone, orchestrateur de tests
-cargo run -p skimap-ffi --example catalog                 # régénère assets/catalog.json (recensement)
-```
-
-## Mesurer
-
-```sh
-./gradlew :benchmark:connectedBenchmarkReleaseAndroidTest   # démarrage à froid jusqu'à la carte affichée
-./gradlew :app:generateBaselineProfile                       # app/src/release/generated/baselineProfiles/
-```
-
-Sur émulateur, chiffres indicatifs ; l'énergie se mesurera sur le Pixel (Perfetto, rails ODPM).
 
 ## Architecture
 
-- `data/` : `PackRepository` (Rust, `Dispatchers.IO`, un appel par ouverture et par fond), `DomainCatalog`, `SettingsStore`, `Locator` (une position, au toucher).
-- `ui/` : `MapViewModel` et `DomainsViewModel` (`StateFlow`), `MapScreen` (carte en paramètre), `MapSheet`, `CardSheet`, `domains/DomainPicker`, thème à fort contraste.
-- `ui/map/` : `PackMap` (style rechargé seulement au changement de pack ou de fond), `MapEngine` (MapLibre démarré hors du fil principal), `SymbolBitmaps`.
-- Sobriété (E1) : rien en arrière-plan, aucune minuterie ; StrictMode sans accès disque au démarrage ; R8 et profil de référence en release.
-- Futur service de localisation (K4, rapport 09) : `fr.skimap.app.location`, un seul service de premier plan `location` lancé par un geste, positions par lots au noyau. Pas écrit.
+- `data/` : `PackRepository` (Rust, `Dispatchers.IO`, un appel par ouverture et par style), `MapStyles` (pratique, thème, guidage → asset), `DomainCatalog`, `Downloads`, `SettingsStore`, `Locator` (une position, au toucher).
+- `sync/` : `PackSyncer`, `ServerCatalog`, `PackSync` et `PackSyncWorker` (WorkManager), `WorkManagerDownloads` ; module `:sync` : `HttpSource`, seul code réseau.
+- `ui/` : `MapViewModel` et `DomainsViewModel` (`StateFlow`), `MapScreen`, `MapSheet`, `CardSheet`, `PackTexts` (textes traduits), `domains/DomainPicker`, thème à fort contraste ; `ui/map/` : `PackMap` (style rechargé seulement au changement de packs ou de style), `MapEngine` (MapLibre démarré hors du fil principal).
+- Textes : `res/values` (anglais, défaut) et `res/values-fr` ; fiches traduites par le noyau (`Lang`).
+- Sobriété (E1) : rien en arrière-plan hors WorkManager sous contraintes ; aucune minuterie ; StrictMode sans accès disque au démarrage ; R8 et profil de référence en release.
+- Service de localisation, guidage, voix (K4, rapport 09) : agent B.
 
 ## Limites
 
-- Téléphone non branché le 15/11 : vérifié sur émulateur Pixel 8 (Android 17, x86_64, pages de 16 Ko).
-- Pas de suivi de position ni de zoom automatique (K4), pas de téléchargement (K2), pas encore les styles K15.
+- Téléphone non branché : vérifié sur émulateur Pixel 8 (Android 17, x86_64, pages de 16 Ko).
+- Packs par domaine seulement : le serveur ne publie pas encore de pack par zone (cadre, massif). Deux packs qui se recouvrent dessinent deux fois les couches translucides (pentes, exposition) dans le recouvrement.
+- Les styles validés dessinent le fond Plan IGN : un pack sans Plan IGN n'affiche que ses couches (les sources absentes sont retirées et listées dans `MapStyle.missing`).
+- Paquets de voix à part et zones de redevance : côté app prêts et testés sur données de test ; attendent le serveur (catalogue `voice`), les données (crate `stations`) et une couche de style.
