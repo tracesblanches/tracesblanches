@@ -24,6 +24,8 @@ skimap-collab = { path = "../collab", features = ["phone"] }
 # Voice commands (V3, VO5, A11): classification without a language model. Path
 # dependency: the crate is not in [workspace.dependencies] (root manifest not ours).
 skimap-intent = { path = "../intent" }
+# Group mode (N2, #128): frames, table, alerts; no radio, no network.
+skimap-group = { path = "../group" }
 chrono.workspace = true
 geojson.workspace = true
 serde.workspace = true

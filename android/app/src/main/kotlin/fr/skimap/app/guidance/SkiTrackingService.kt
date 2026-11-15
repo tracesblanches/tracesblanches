@@ -7,8 +7,12 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import fr.skimap.app.R
 import fr.skimap.app.day.DayStore
+import fr.skimap.app.group.RustGroupBackend
+import fr.skimap.group.GroupLink
+import fr.skimap.group.GroupStore
 import fr.skimap.sport.Sport
 import fr.skimap.tracking.GuidanceNotifier
+import fr.skimap.tracking.OutingExtension
 import fr.skimap.tracking.Recap
 import fr.skimap.tracking.ReturnReminder
 import fr.skimap.tracking.TrackingCore
@@ -22,6 +26,9 @@ import fr.skimap.tracking.TrackingState
  */
 class SkiTrackingService : TrackingService() {
     override fun openCore(planDir: String): TrackingCore = RustTrackingCore.open(planDir)
+
+    /** The group mode (N2): BLE advertising and batched scan during the outing, if this phone has a group. */
+    override fun extensions(planDir: String): List<OutingExtension> = listOf(GroupLink(RustGroupBackend(), GroupStore(this), planDir))
 
     @SuppressLint("MissingPermission")
     override fun onEnded(

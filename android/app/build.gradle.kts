@@ -464,6 +464,8 @@ dependencies {
     implementation(project(":community"))
     // Offline voice commands (V3, VO5, A11).
     implementation(project(":voicecmd"))
+    // Group mode (N2): the BLE radio in the location service, the group screen.
+    implementation(project(":group"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)

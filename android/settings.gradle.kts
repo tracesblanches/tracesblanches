@@ -26,3 +26,5 @@ include(":sport")
 include(":community")
 // Offline voice commands (V3, VO5, A11): speech model on demand, released after each command.
 include(":voicecmd")
+// Group mode (N2): BLE advertising and batched scan inside the location service, the group screen.
+include(":group")

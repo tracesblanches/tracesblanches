@@ -63,6 +63,10 @@
                 <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
             </intent-filter>
         </activity-alias>
+        <!-- The group (N2): create, show or scan its QR code, the members. -->
+        <activity
+            android:name=".group.GroupActivity"
+            android:exported="false" />
         <!-- The one location service of an outing (K4, report 09), module :tracking. -->
         <service
             android:name=".guidance.SkiTrackingService"

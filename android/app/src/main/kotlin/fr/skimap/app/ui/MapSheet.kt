@@ -1,5 +1,6 @@
 package fr.skimap.app.ui
 
+import android.content.Intent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,6 +35,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -46,6 +48,7 @@ import fr.skimap.app.R
 import fr.skimap.app.community.CommunityEntries
 import fr.skimap.app.data.Appearance
 import fr.skimap.app.data.Practice
+import fr.skimap.app.group.GroupActivity
 import fr.skimap.app.ui.theme.GloveTarget
 import fr.skimap.core.LayerGroup
 import fr.skimap.core.LegendEntry
@@ -115,6 +118,15 @@ fun MapSheetContent(
         }
         OutlinedButton(onClick = actions.chooseDomain, modifier = Modifier.fillMaxWidth().heightIn(min = GloveTarget)) {
             Text(stringResource(R.string.choose_domain), style = MaterialTheme.typography.labelLarge)
+        }
+        // The group (N2): its own screen.
+        SectionTitle(stringResource(fr.skimap.group.R.string.group_title))
+        val context = LocalContext.current
+        OutlinedButton(
+            onClick = { context.startActivity(Intent(context, GroupActivity::class.java)) },
+            modifier = Modifier.fillMaxWidth().heightIn(min = GloveTarget).testTag(GROUP_ENTRY),
+        ) {
+            Text(stringResource(fr.skimap.group.R.string.group_open), style = MaterialTheme.typography.labelLarge)
         }
         SectionTitle(stringResource(R.string.sheet_practice))
         Column(Modifier.selectableGroup()) {
@@ -315,3 +327,6 @@ private const val DASH_OFF = 10f
 private const val DOT_ON = 4f
 private const val DOT_OFF = 8f
 private const val AREA_ALPHA = 0.7f
+
+/** Test tag of the group entry of the sheet. */
+const val GROUP_ENTRY = "sheet_group"

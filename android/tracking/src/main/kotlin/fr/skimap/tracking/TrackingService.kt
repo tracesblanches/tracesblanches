@@ -57,6 +57,12 @@ abstract class TrackingService : Service() {
         gpx: String?,
     ) = Unit
 
+    /** What else runs during the outing, on the service's thread (the group mode). */
+    protected open fun extensions(planDir: String): List<OutingExtension> = emptyList()
+
+    private var running: List<OutingExtension> = emptyList()
+    private var batchFix: Location? = null
+
     private lateinit var thread: HandlerThread
     private lateinit var handler: Handler
     private lateinit var executor: java.util.concurrent.Executor
@@ -256,6 +262,8 @@ abstract class TrackingService : Service() {
         screenOn = interactive
         controls?.screen(interactive)
         apply(GpsPolicy.START)
+        running = extensions(dir)
+        running.forEach { it.start(this, handler, ::extensionAlert) }
         if (replay) {
             publish()
             return
@@ -285,7 +293,16 @@ abstract class TrackingService : Service() {
         lastFixT = locations.last().time
         stats.batches++
         stats.fixes += locations.size
+        batchFix = locations.last()
         handle(c.pushFixes(FixPacker.pack(locations)))
+        batchFix = null
+    }
+
+    /** An extension's safety alert: said and vibrated as the core's. */
+    private fun extensionAlert(text: String) {
+        if (ended) return
+        say(Utterance(text, emptyList(), allClips = false, safety = true, kinds = listOf("group")))
+        haptics.play(HapticPatterns.SAFETY)
     }
 
     /** Location provider used: `fused` where the platform has it, else `gps`. */
@@ -338,6 +355,7 @@ abstract class TrackingService : Service() {
         if (r != null && (b.utterances.any { "finished" in it.kinds } || lastFixT - recapAt >= END_GRACE_MS)) {
             end(r, stopped = false)
         }
+        running.forEach { it.onBatch(b, batchFix) }
     }
 
     /** Applies the core's GPS request (only what changed: no yoyo of the chip). */
@@ -437,6 +455,8 @@ abstract class TrackingService : Service() {
         getSharedPreferences(Tracking.PREFS, MODE_PRIVATE).edit { remove(Tracking.KEY_ACTIVE) }
         Tracking.publish(TrackingState.Ended(dir ?: "", recap, gpx))
         stopListening()
+        running.forEach { it.stop() }
+        running = emptyList()
         // The last words are said before the service goes (sound needs the foreground service).
         announcer.afterQueue { handler.post { stopSelf() } }
     }
@@ -454,6 +474,8 @@ abstract class TrackingService : Service() {
     override fun onDestroy() {
         handler.post {
             stopListening()
+            running.forEach { it.stop() }
+            running = emptyList()
             if (screenRegistered) unregisterReceiver(screen)
             screenRegistered = false
             controls?.close()
