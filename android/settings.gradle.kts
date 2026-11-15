@@ -22,3 +22,5 @@ include(":sync")
 include(":tracking")
 // Sending the outing (K11): Health Connect and Strava.
 include(":sport")
+// Group mode (N2): BLE advertising and batched scan inside the location service, the group screen.
+include(":group")

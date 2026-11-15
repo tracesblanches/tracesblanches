@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="group_title">Group</string>
+    <string name="group_back">Back</string>
+    <string name="group_intro">Phones of the group share their positions over Bluetooth during the outing, within a few dozen metres (less with the phone in a pocket). Each one passes on the last positions it heard. You see each member\'s last known position and its age. No account, no server, no network. Not an avalanche transceiver: it finds no one under the snow.</string>
+    <string name="group_create">Create a group</string>
+    <string name="group_join">Join: scan the QR code</string>
+    <string name="group_your_name">Your name</string>
+    <string name="group_member_name">Member %1$d</string>
+    <string name="group_add_member">Add a member</string>
+    <string name="group_create_done">Create and show the QR code</string>
+    <string name="group_cancel">Cancel</string>
+    <string name="group_plan_common">The group shares the plan of the day validated on this phone.</string>
+    <string name="group_plan_none">No plan of the day validated: members are compared by distance only.</string>
+    <string name="group_who_are_you">Who are you?</string>
+    <string name="group_code">Group %1$s</string>
+    <string name="group_qr_description">QR code of group %1$s, to scan by the other members</string>
+    <string name="group_show_qr">Let the others scan this code before leaving.</string>
+    <string name="group_members">Members</string>
+    <string name="group_you">%1$s (you)</string>
+    <string name="group_never_heard">no position yet</string>
+    <string name="group_just_now">position just now</string>
+    <string name="group_minutes_ago">position %1$d min old</string>
+    <string name="group_hours_ago">position age %1$d:%2$02d</string>
+    <string name="group_distance_m">%1$d m away</string>
+    <string name="group_distance_km">%1$s km away</string>
+    <string name="group_direct">heard directly</string>
+    <string name="group_relayed">relayed %1$d×</string>
+    <string name="group_stopped">stopped for long</string>
+    <string name="group_off_route">off the route</string>
+    <string name="group_battery_low">battery low</string>
+    <string name="group_leave">Leave the group</string>
+    <string name="group_radio_off">Bluetooth is off or not permitted: positions are neither sent nor received.</string>
+    <string name="group_outside_outing">Positions are shared during the outing (« Valider la journée »).</string>
+    <string name="group_invalid_qr">This QR code is not a skimap group.</string>
+    <string name="group_scan_hint">Point the camera at the group\'s QR code.</string>
+    <string name="group_camera_needed">The camera is needed to scan the QR code.</string>
+    <string name="group_bluetooth_needed">« Nearby devices » is needed to share the positions.</string>
+</resources>
