@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Android lint runs with warningsAsErrors: no warning is tolerated. -->
+<lint>
+    <!-- Timber is only a transitive dependency of MapLibre; the module logs one line per
+         run of the send job with android.util.Log, like the app. -->
+    <issue id="LogNotTimber" severity="ignore" />
+</lint>

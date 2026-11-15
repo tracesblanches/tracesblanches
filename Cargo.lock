@@ -2874,6 +2874,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "skimap-collab"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "csv",
+ "flate2",
+ "hex",
+ "quick-xml",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "skimap-core",
+ "tempfile",
+ "thiserror",
+ "zip",
+]
+
+[[package]]
 name = "skimap-common"
 version = "0.1.0"
 dependencies = [
@@ -2983,6 +3002,7 @@ dependencies = [
  "serde",
  "serde_json",
  "skimap-assist",
+ "skimap-collab",
  "skimap-common",
  "skimap-core",
  "skimap-pack",
@@ -3119,6 +3139,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "skimap-collab",
  "skimap-common",
  "skimap-pack",
  "tempfile",

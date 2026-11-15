@@ -22,3 +22,5 @@ include(":sync")
 include(":tracking")
 // Sending the outing (K11): Health Connect and Strava.
 include(":sport")
+// Collaborative and sport (V8 to V15): reports, offline queue, OSM notes, « Mes sorties ».
+include(":community")

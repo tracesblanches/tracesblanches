@@ -21,6 +21,7 @@ Serveur de skimap sur le cluster k3s (arm64) : il **distribue** les packs et leu
 | `GET /v1/bundles/<sha256>.skb` | paquet, immuable, requêtes partielles |
 | `POST /v1/trips`, `GET /v1/trips/<id>`, `POST …/checkin`, `…/extend`, `…/position`, `…/cancel` (ou `DELETE`) | alerte de non-retour (S2), jeton `Bearer` rendu à la création |
 | `GET /v1/strava/config`, `GET /v1/strava/callback`, `POST /v1/strava/token`, `…/refresh`, `…/revoke` | échange OAuth Strava (S1) |
+| `GET /v1/collab/reports?bbox=…`, `POST /v1/collab/reports`, `…/<id>/confirm`, `…/deny`, `…/photo` | signalements collaboratifs (V8 à V11) : [docs/collab.md](docs/collab.md), base `SKIMAP_COLLAB_DB` (défaut : `collab.sqlite` à côté de `SKIMAP_SERVER_DB`) |
 
 Référence pour l'app (K2) : [docs/api.md](docs/api.md). Alerte : [docs/alerte.md](docs/alerte.md). Strava : [docs/strava.md](docs/strava.md). Coûts : [docs/couts.md](docs/couts.md). Déploiement et lieux de calcul : [`deploy/README.md`](../../deploy/README.md).
 

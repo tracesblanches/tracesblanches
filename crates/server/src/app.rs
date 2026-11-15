@@ -45,6 +45,8 @@ pub struct App {
     pub public_url: String,
     /// Time.
     pub clock: Arc<dyn Clock>,
+    /// Collaborative reports (V8; absent: 503).
+    pub collab: Option<Arc<crate::collab::Collab>>,
     limiter: Limiter,
 }
 
@@ -75,6 +77,7 @@ impl App {
             contact_email: contact_email.to_owned(),
             public_url: public_url.to_owned(),
             clock,
+            collab: None,
             limiter: Limiter::default(),
         }
     }
@@ -298,6 +301,9 @@ impl Handler for App {
             ["v1", "bundles", name] if read => self.bundle(req, name),
             ["v1", "trips", rest @ ..] => self.trips(req, rest),
             ["v1", "strava", rest @ ..] => self.strava(req, rest),
+            ["v1", "collab", rest @ ..] => {
+                crate::collab::route(self.collab.as_ref(), self.clock.as_ref(), req, rest)
+            }
             _ if !read && !matches!(req.method.as_str(), "POST" | "DELETE") => {
                 Reply::error(405, "method_not_allowed", "method not allowed")
                     .with("Allow", "GET, HEAD, POST, DELETE, OPTIONS")
