@@ -441,7 +441,7 @@ impl Ctx {
                         .map_or("?", |x| x.time.as_str())
                 ))
             });
-            run.step("status-poll", &[], || {
+            run.step("status-poll", &["pistes"], || {
                 let r = self.status_poll(site)?;
                 let s: Vec<String> = r
                     .sources

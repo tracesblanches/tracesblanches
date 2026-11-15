@@ -25,6 +25,11 @@ pub enum Error {
     )]
     PersonalSourcesDisabled(String),
 
+    /// The `pistes` layer, whose OSM ways give the geometry of the Cervières pistes, is
+    /// missing.
+    #[error("pistes layer missing ({0}): run `skimap pistes` first")]
+    MissingPistes(std::path::PathBuf),
+
     /// No status source for the site.
     #[error("no trail status source for site `{0}`")]
     NoSource(String),

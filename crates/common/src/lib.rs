@@ -11,6 +11,7 @@
 //! - [`config`]: configuration from the environment, secrets, rate-limit specs.
 //! - [`error`]: shared error type.
 //! - [`meta`]: `<layer>.meta.json` schema shared by every layer.
+//! - [`names`]: comparison of piste names across sources.
 //! - [`output`]: atomic JSON / GeoJSON / bytes writers.
 //! - `download` (feature `download`): cached, rate-limited HTTP downloader.
 //! - `geotiff` (feature `geotiff`): single-band GeoTIFF: Float32 read and write, UInt8 read, lenient read of any sample type and CRS.
@@ -26,6 +27,7 @@ pub mod geotiff;
 pub mod grid;
 pub mod layout;
 pub mod meta;
+pub mod names;
 pub mod output;
 pub mod site;
 

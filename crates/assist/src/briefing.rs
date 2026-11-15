@@ -1206,6 +1206,7 @@ mod tests {
             difficulty: None,
             comment: None,
             line: vec![p, LonLat::new(p.lon + 0.001, p.lat)],
+            osm_way_ids: Vec::new(),
         };
         SiteData {
             site: CHAPELLE_DES_BOIS,

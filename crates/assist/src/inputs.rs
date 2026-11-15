@@ -17,7 +17,7 @@ use skimap_common::site::Site;
 use crate::error::Result;
 use crate::layers::{
     Areas, Bera, Clpa, Domain, Piste, Route, SnowMap, Status, Weather, layer_sources, load_domains,
-    load_pistes, load_zones, same_name,
+    load_pistes, load_zones,
 };
 
 /// Oldest snow map used for a day, days (snowfall since the map is added on top).
@@ -178,7 +178,7 @@ impl SiteData {
         let status_dir = paths.status_dir.clone().unwrap_or(dir("status")?);
         add_sources(&status_dir, "status");
         files.push(status_dir.display().to_string());
-        let mut status = keep(Status::load(&status_dir), "état des pistes", &mut missing);
+        let status = keep(Status::load(&status_dir), "état des pistes", &mut missing);
 
         let ddir = dir("domaines")?;
         add_sources(&ddir, "domaines");
@@ -237,22 +237,6 @@ impl SiteData {
             &mut missing,
         );
 
-        // Nordic France pistes have no geometry: the OSM ways whose relation (or way)
-        // name matches.
-        if let Some(st) = status.as_mut() {
-            for it in st.itineraries.iter_mut().filter(|i| i.line.is_empty()) {
-                let parts: Vec<&Piste> = pistes
-                    .iter()
-                    .filter(|p| {
-                        p.relations.iter().any(|r| same_name(r, &it.name))
-                            || p.name.as_deref().is_some_and(|n| same_name(n, &it.name))
-                    })
-                    .collect();
-                for p in parts {
-                    it.line.extend(p.line.iter().copied());
-                }
-            }
-        }
         Ok(SiteData {
             site: *site,
             weather,

@@ -7,11 +7,22 @@ Instantané de l'état des pistes (pipeline), interrogé une fois pour tous les 
 | Fichier | Contenu |
 |---|---|
 | `status.json` | dernier contenu normalisé de chaque source du site |
-| `status.geojson` | (ENJ) itinéraires en WGS84 avec `state` (`open`, `closed`), `route`, `notes`, `update_datetime`, `practice`, `difficulty`, `length_m`, `gtj`, lien `gpx`, `polled_at` |
+| `status.geojson` | itinéraires en WGS84 avec `itinerary` (identifiant lu par l'assistant : `enj:<id>`, `nordicfrance:<mots du nom>`, `cervieres-mairie:<mots du nom>`), `source`, `name`, `state` (`open`, `closed`, `unknown`), `polled_at`. ENJ : géométrie de l'API, `id`, `route`, `notes`, `update_datetime`, `practice`, `difficulty`, `length_m`, `gtj`, lien `gpx`. Cervières : `MultiLineString` des voies OSM de la couche `pistes` rattachées par le nom (voir plus bas), `sector`, `activity`, `practice` (`nordic`, `foot`, `any`), `state_label`, `length_km` publié, `flag`, `comment`, `mairie` (ligne de la page de la mairie : état, damage, classique, skating, commentaire), `conflict`, `osm_way_ids`, `osm_length_m` |
 | `<source>/polls.jsonl` | une ligne par interrogation : heure, origine (`downloaded`, `not_modified`, `cache`), changement ou non, instantané |
 | `<source>/snapshots/AAAAMMJJTHHMMSSZ.json` | contenu normalisé, écrit seulement quand il change |
 | `<source>/history.json` | fréquence observée : nombre d'interrogations, durée couverte, contenus distincts, heures des changements, intervalle moyen, dates publiées par la source et leur première observation ; pour l'ENJ, transitions d'état par itinéraire et heures de la journée des notes d'état |
-| `status.meta.json` | sources, licences, attributions |
+| `status.meta.json` | sources (dont OpenSnowMap pour la géométrie OSM à Cervières), licences, attributions ; `stats.join` à Cervières : pistes du widget rattachées ou non, lignes de la mairie liées au widget, à OSM seul ou à rien, désaccords d'état |
+
+## Géométrie des pistes de Cervières
+
+Ni le widget Nordic France ni la page de la mairie ne donnent de géométrie : jusqu'au 15/11/2026, `status.geojson` n'existait qu'à Chapelle-des-Bois, et le pack de Cervières n'avait pas d'état par piste. `poll` lit maintenant la couche `pistes` (P2, à construire avant) et rattache chaque nom (`skimap_status::join`) :
+
+- une piste du widget prend les voies OSM de l'emprise dont une **relation** porte son nom (`skimap_common::names::same_name` : mêmes mots sans articles, accents, longueurs ni mots génériques, ou tous les mots du nom le plus court dans l'autre) ; seulement si aucune relation ne correspond, les voies dont le nom propre correspond (le nom d'une voie est souvent celui de la route, « Route du Col d'Izoard », qui continue au-delà de la piste, côté Arvieux) ;
+- les voies doivent convenir à la pratique de la ligne d'activité : ski (`uses` contient `nordic`) pour « Ski de fond », marche (`hike`) pour « Raquettes », « Marche/trail », « Fatbike », toutes pour les deux ;
+- une ligne de la mairie va à la piste du widget dont le nom est le plus proche (`names::name_score`) ; une ligne sans piste du widget est rattachée à OSM elle-même ;
+- les noms sans voie sont listés dans `stats.join`, jamais devinés.
+
+Le 15/11/2026 : 8 pistes du widget sur 12 rattachées (sans voie OSM : « Liaison les Aittes par la carrière », « Liaison les Aittes par la route », « Piéton les Fonts », « Piéton les Oules ») ; 9 lignes de la mairie sur 10 liées au widget, « Liaison Cervières-le Laus 1.5m » liée à rien ; aucun désaccord d'état. Longueurs OSM rattachées comparées aux longueurs publiées : Gibera 1,42 / 1,5 km, Savare 2,23 / 2,5, Cancel 4,22 / 3,5, Pinatelle 7,83 / 7,5, Aigalan 5,77 / 8, Sioux 12,96 / 6 (14 km sur la page de la mairie), Izoard 7,83 / 16 (la relation OSM « Izoard » s'arrête au col, à 44,820° N).
 
 ## Sources
 

@@ -553,9 +553,13 @@ pub struct Itinerary {
     pub difficulty: Option<String>,
     /// Comment of the source.
     pub comment: Option<String>,
-    /// Geometry (ENJ: from `status.geojson`; Nordic France: OSM ways matched by name).
+    /// Geometry from `status.geojson`, parts concatenated (ENJ: the API geometry; Nordic
+    /// France: the OSM ways joined by name in the status layer).
     #[serde(skip)]
     pub line: Vec<LonLat>,
+    /// OSM ways of the piste (Nordic France, joined by the status layer; empty for ENJ).
+    #[serde(skip)]
+    pub osm_way_ids: Vec<i64>,
 }
 
 /// Snapshot of the status layer.
@@ -651,49 +655,7 @@ fn state_of(s: &str) -> OpenState {
     }
 }
 
-/// Lower-case words of a name without accents, articles and generic words
-/// (« Le Chemin du Sioux » → `sioux`; « L'Izoard » → `izoard`).
-pub fn name_key(name: &str) -> Vec<String> {
-    const STOP: &[&str] = &[
-        "le", "la", "les", "l", "de", "du", "des", "d", "chemin", "piste", "route", "col", "et",
-        "a", "au", "aux", "en",
-    ];
-    let folded: String = name
-        .chars()
-        .map(|c| match c {
-            'à' | 'â' | 'ä' | 'À' | 'Â' => 'a',
-            'é' | 'è' | 'ê' | 'ë' | 'É' | 'È' | 'Ê' => 'e',
-            'î' | 'ï' | 'Î' => 'i',
-            'ô' | 'ö' | 'Ô' => 'o',
-            'ù' | 'û' | 'ü' | 'Û' => 'u',
-            'ç' | 'Ç' => 'c',
-            c if c.is_alphanumeric() => c.to_ascii_lowercase(),
-            _ => ' ',
-        })
-        .collect();
-    folded
-        .split_whitespace()
-        .filter(|w| !STOP.contains(w))
-        // « 1.5km », « 16km », « 3 », « km »: lengths written in the names of the mairie.
-        .filter(|w| !w.chars().next().is_some_and(|c| c.is_ascii_digit()) && *w != "km")
-        .map(str::to_owned)
-        .collect()
-}
-
-/// Whether two names designate the same piste: same significant words, or every word of
-/// the shorter name in the longer one.
-pub fn same_name(a: &str, b: &str) -> bool {
-    let (ka, kb) = (name_key(a), name_key(b));
-    if ka.is_empty() || kb.is_empty() {
-        return false;
-    }
-    let (short, long) = if ka.len() <= kb.len() {
-        (&ka, &kb)
-    } else {
-        (&kb, &ka)
-    };
-    short.iter().all(|w| long.contains(w))
-}
+pub use skimap_common::names::{name_key, same_name};
 
 fn practice_of(text: &str) -> Practice {
     let t = text.to_lowercase();
@@ -709,7 +671,8 @@ fn practice_of(text: &str) -> Practice {
 }
 
 impl Status {
-    /// Reads `status.json` and, when present, the ENJ geometries of `status.geojson`.
+    /// Reads `status.json` and, when present, the geometries of `status.geojson` (by
+    /// `itinerary` identifier).
     pub fn load(dir: &Path) -> Result<Self> {
         let path = dir.join("status.json");
         let raw: RawStatus = read_json(&path)?;
@@ -722,7 +685,6 @@ impl Status {
         if let Some(v) = raw.sources.get("enj") {
             let enj: RawEnj =
                 serde_json::from_value(v.clone()).map_err(|e| Error::format(&path, e))?;
-            let geoms = enj_geometries(&dir.join("status.geojson")).unwrap_or_default();
             for t in enj.treks {
                 itineraries.push(Itinerary {
                     id: format!("enj:{}", t.id),
@@ -734,7 +696,8 @@ impl Status {
                     length_km: t.length_m.map(|m| m / 1000.0),
                     difficulty: t.difficulty,
                     comment: None,
-                    line: geoms.get(&t.id).cloned().unwrap_or_default(),
+                    line: Vec::new(),
+                    osm_way_ids: Vec::new(),
                 });
             }
         }
@@ -761,6 +724,7 @@ impl Status {
                         difficulty: p.flag,
                         comment: p.comment,
                         line: Vec::new(),
+                        osm_way_ids: Vec::new(),
                     });
                 }
             }
@@ -801,6 +765,16 @@ impl Status {
                 }
             }
         }
+        let geojson = dir.join("status.geojson");
+        if geojson.is_file() {
+            let geoms = status_geometries(&geojson)?;
+            for it in &mut itineraries {
+                if let Some((line, ways)) = geoms.get(&it.id) {
+                    it.line.clone_from(line);
+                    it.osm_way_ids.clone_from(ways);
+                }
+            }
+        }
         Ok(Status {
             polled_at,
             itineraries,
@@ -810,17 +784,25 @@ impl Status {
     }
 }
 
-fn enj_geometries(path: &Path) -> Result<BTreeMap<i64, Vec<LonLat>>> {
+/// Geometry (parts concatenated) and OSM ways of one feature of `status.geojson`.
+type StatusGeometry = (Vec<LonLat>, Vec<i64>);
+
+/// Geometry and OSM ways of each `itinerary` of `status.geojson`.
+fn status_geometries(path: &Path) -> Result<BTreeMap<String, StatusGeometry>> {
     let v: Value = read_json(path)?;
     let mut out = BTreeMap::new();
     for f in v["features"].as_array().into_iter().flatten() {
-        let Some(id) = f["properties"]["id"].as_i64() else {
-            continue;
+        let p = &f["properties"];
+        let Some(id) = p["itinerary"].as_str() else {
+            return Err(Error::format(path, "feature without `itinerary`"));
         };
-        let line = line_coords(&f["geometry"]);
-        if !line.is_empty() {
-            out.insert(id, line);
-        }
+        let ways = p["osm_way_ids"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_i64)
+            .collect();
+        out.insert(id.to_owned(), (line_coords(&f["geometry"]), ways));
     }
     Ok(out)
 }
@@ -1261,14 +1243,46 @@ mod tests {
     use super::*;
 
     #[test]
-    fn names_match_across_sources() {
-        assert_eq!(name_key("Le Chemin du Sioux"), vec!["sioux"]);
-        assert_eq!(name_key("L’Aigalan 8km"), vec!["aigalan"]);
-        assert!(same_name("Le Sioux", "Le Chemin du Sioux"));
-        assert!(same_name("L'Izoard", "Izoard 16km"));
-        assert!(same_name("Le Gibera 1.5km", "Le Gibera"));
-        assert!(!same_name("Le Savare", "Le Cancel"));
-        assert!(!same_name("Piéton les Fonts", "L'Aigalan"));
+    fn status_geometries_by_itinerary() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("status.json"),
+            serde_json::json!({
+                "polled_at": "2026-11-15T00:46:13Z",
+                "sources": {
+                    "nordicfrance": {"sectors": [{"name": "LE LAUS", "pistes": [
+                        {"name": "Le Gibera", "activity": "1.5km - Ski de fond", "state": "open"},
+                        {"name": "Le Savare", "activity": "2.5km - Ski de fond", "state": "closed"}
+                    ]}]}
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        // Without status.geojson: no geometry.
+        let st = Status::load(dir.path()).unwrap();
+        assert!(st.itineraries.iter().all(|i| i.line.is_empty()));
+        std::fs::write(
+            dir.path().join("status.geojson"),
+            serde_json::json!({"type": "FeatureCollection", "features": [{
+                "type": "Feature",
+                "geometry": {"type": "MultiLineString", "coordinates": [
+                    [[6.70, 44.80], [6.71, 44.80]], [[6.72, 44.80], [6.73, 44.81]]
+                ]},
+                "properties": {"itinerary": "nordicfrance:gibera", "osm_way_ids": [11, 12]}
+            }]})
+            .to_string(),
+        )
+        .unwrap();
+        let st = Status::load(dir.path()).unwrap();
+        let gibera = &st.itineraries[0];
+        assert_eq!(gibera.id, "nordicfrance:gibera");
+        assert_eq!(gibera.state, OpenState::Open);
+        assert_eq!(gibera.line.len(), 4);
+        assert_eq!(gibera.osm_way_ids, vec![11, 12]);
+        // Not joined by the status layer: no geometry, no ways.
+        assert!(st.itineraries[1].line.is_empty());
+        assert!(st.itineraries[1].osm_way_ids.is_empty());
     }
 
     #[test]

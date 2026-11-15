@@ -8,7 +8,7 @@ Toutes les crates sont dans `crates/`, nommées `skimap-<dossier>` (bibliothèqu
 
 | Crate | Rôle | Côté | Tickets |
 |---|---|---|---|
-| `common` | sites, géométrie, grilles, projections, arborescence `data/`, configuration, erreurs, schéma `<couche>.meta.json` (`meta`), écrivains atomiques JSON / GeoJSON (`output`) ; téléchargeur (fonction `download`), GeoTIFF Float32 (fonction `geotiff`) | les deux | F1 #1, P1 #14 |
+| `common` | sites, géométrie, grilles, projections, arborescence `data/`, configuration, erreurs, schéma `<couche>.meta.json` (`meta`), écrivains atomiques JSON / GeoJSON (`output`), comparaison des noms de pistes entre sources (`names`) ; téléchargeur (fonction `download`), GeoTIFF Float32 (fonction `geotiff`) | les deux | F1 #1, P1 #14 |
 | `osm` | pistes nordiques OSM, domaines de fond | pipeline | P2 #15, P3 #16 |
 | `terrain` | relief IGN, pente, orientation | pipeline | P5 #18 |
 | `snow` | carte d'enneigement estimée, validation | pipeline | P6 #19, P7 #20 |
@@ -27,7 +27,7 @@ Toutes les crates sont dans `crates/`, nommées `skimap-<dossier>` (bibliothèqu
 
 Les crates « téléphone » (`core`, `assist`, `voice`, lecteur de `pack`) dépendent de `skimap-common` **sans** la fonction `download` : elles n'embarquent aucune pile HTTP (`cargo tree -p skimap-core` le montre). Les crates du pipeline l'activent : `skimap-common = { workspace = true, features = ["download"] }` (plus `"geotiff"` pour terrain et snow).
 
-Dépendances entre crates du pipeline : `snow` → `terrain` (dalles et pente) ; `avalanche` → `meteo` (BERA du jour) ; `refuges` → `osm` (comparaison de noms) ; `coverage` → `zones` (partie française de l'emprise) ; `core` → `zones` (schéma). Les métadonnées et l'écriture des couches passent par `common`, pas par une autre crate.
+Dépendances entre crates du pipeline : `snow` → `terrain` (dalles et pente) ; `status` lit la couche `pistes` (géométrie des pistes de Cervières) ; `avalanche` → `meteo` (BERA du jour) ; `refuges` → `osm` (comparaison de noms) ; `coverage` → `zones` (partie française de l'emprise) ; `core` → `zones` (schéma). Les métadonnées et l'écriture des couches passent par `common`, pas par une autre crate.
 
 ## Règle de propriété
 

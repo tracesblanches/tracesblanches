@@ -184,7 +184,7 @@ pub fn catalog() -> Vec<Spec> {
         ),
         vector(
             "status",
-            "État des pistes (ENJ)",
+            "État des pistes",
             "status",
             "status.geojson",
             "status.meta.json",

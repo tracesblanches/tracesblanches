@@ -50,7 +50,7 @@ use skimap_core::turnaround::{self, TurnaroundParams};
 
 use crate::briefing::{self, Factor, Reason, SnowStats};
 use crate::inputs::SiteData;
-use crate::layers::{DayWeather, OpenState, densify, same_name};
+use crate::layers::{DayWeather, OpenState, densify};
 use crate::snow_quality::{self, Quality};
 
 /// A request: « 2 h, skating, back before 16 h ».
@@ -256,9 +256,10 @@ fn edge_states(data: &SiteData, g: &PisteGraph, date: NaiveDate) -> Vec<OpenStat
             .filter(|(idx, _)| idx.distance_m(mid) <= 30.0)
             .map(|(_, st)| *st)
             .collect();
-        if let Some(name) = &g.edge(e).attrs.name {
+        // Nordic France pistes: the OSM ways joined to them by the status layer.
+        if let Some(way) = g.edge(e).attrs.osm_way_id {
             for it in st.itineraries.iter().filter(|i| i.source != "enj") {
-                if name.split(" / ").any(|n| same_name(n, &it.name)) {
+                if it.osm_way_ids.contains(&way) {
                     found.push(it.state);
                 }
             }

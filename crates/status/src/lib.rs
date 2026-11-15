@@ -14,7 +14,9 @@
 //!
 //! Output (`data/out/<site>/status/`):
 //! - `status.json`: latest normalised content of every source of the site;
-//! - `status.geojson` (ENJ): itineraries with geometry (WGS84) and state;
+//! - `status.geojson`: itineraries with geometry (WGS84) and state; ENJ: the geometry of
+//!   the API; Cervières: the OSM ways of the `pistes` layer joined by name to the widget
+//!   pistes and the town hall rows ([`join`]), unmatched names in `status.meta.json`;
 //! - `<source>/polls.jsonl`, `<source>/snapshots/*.json`: history;
 //! - `<source>/history.json`: observed frequency ([`store::Frequency`]), and for ENJ the
 //!   state transitions and the times of day of the status notes;
@@ -27,6 +29,7 @@
 pub mod enj;
 pub mod error;
 pub mod html;
+pub mod join;
 pub mod mairie;
 pub mod nordicfrance;
 pub mod store;
@@ -132,7 +135,9 @@ fn poll_enj(
                 "type": "Feature",
                 "geometry": strip_z(geometry),
                 "properties": {
-                    "id": t.id,
+                        "id": t.id,
+                    "itinerary": format!("{}:{}", enj::SOURCE, t.id),
+                    "source": enj::SOURCE,
                     "name": t.name,
                     "practice": t.practice,
                     "difficulty": t.difficulty,
@@ -275,6 +280,7 @@ pub fn poll(
     let mut latest = serde_json::Map::new();
     let mut sources = Vec::new();
     let mut refs = Vec::new();
+    let mut stats = serde_json::Map::new();
     let mut files = vec![
         FileMeta::new("status.json", "dernier contenu normalisé de chaque source"),
         FileMeta::new(
@@ -334,12 +340,12 @@ pub fn poll(
             min_interval: mairie::MIN_INTERVAL,
             stamps: mairie::stamps,
         };
-        let (mut p, v) = poll_page(&dir, dl, &page, now, mairie::parse, &mut latest)?;
+        let (mut p, mv) = poll_page(&dir, dl, &page, now, mairie::parse, &mut latest)?;
         p.summary = format!(
             "{} secteurs, page modifiée {}, « {} »",
-            v["sectors"].as_array().map_or(0, Vec::len),
-            v["modified_time"].as_str().unwrap_or("?"),
-            v["message"].as_str().unwrap_or("")
+            mv["sectors"].as_array().map_or(0, Vec::len),
+            mv["modified_time"].as_str().unwrap_or("?"),
+            mv["message"].as_str().unwrap_or("")
         );
         sources.push(p);
         refs.push(source_ref(
@@ -348,6 +354,65 @@ pub fn poll(
             "aucune licence affichée : usage personnel, faible fréquence",
             "Commune de Cervières",
         ));
+
+        // Geometry: the OSM pistes of the site joined by name.
+        let pistes_dir = layout.layer_dir(site, "pistes")?;
+        let pistes_path = pistes_dir.join("pistes.geojson");
+        if !pistes_path.is_file() {
+            return Err(Error::MissingPistes(pistes_path));
+        }
+        let ways = join::read_pistes(&pistes_path)?;
+        let station: nordicfrance::NfStation = serde_json::from_value(v)
+            .map_err(|e| skimap_common::Error::json(nordicfrance::SOURCE, e))?;
+        let page: mairie::MairiePage = serde_json::from_value(mv)
+            .map_err(|e| skimap_common::Error::json(mairie::SOURCE, e))?;
+        let (features, report) = join::features(&station, Some(&page), &ways, &rfc3339(now));
+        write_json(
+            &dir.join("status.geojson"),
+            &json!({ "type": "FeatureCollection", "features": features }),
+        )?;
+        if let Some(nf) = sources
+            .iter_mut()
+            .find(|s| s.source == nordicfrance::SOURCE)
+        {
+            nf.summary.push_str(&format!(
+                ", {}/{} pistes sur OSM (sans : {})",
+                report.nordicfrance_matched,
+                report.nordicfrance_pistes,
+                if report.nordicfrance_unmatched.is_empty() {
+                    "aucune".to_owned()
+                } else {
+                    report.nordicfrance_unmatched.join(", ")
+                }
+            ));
+        }
+        if let Some(m) = sources.iter_mut().find(|s| s.source == mairie::SOURCE) {
+            m.summary.push_str(&format!(
+                ", {} lignes dont {} liées à Nordic France, {} à OSM seul, sans lien : {}",
+                report.mairie_rows,
+                report.mairie_with_nordicfrance,
+                report.mairie_with_osm_only,
+                if report.mairie_unmatched.is_empty() {
+                    "aucune".to_owned()
+                } else {
+                    report.mairie_unmatched.join(", ")
+                }
+            ));
+        }
+        let pistes_meta = LayerMeta::read(&pistes_dir.join(LayerMeta::file_name("pistes")))?;
+        refs.extend(pistes_meta.sources);
+        files.push(FileMeta {
+            count: Some(features.len()),
+            ..FileMeta::new(
+                "status.geojson",
+                "pistes du widget Nordic France et lignes de la page de la mairie avec leur état, géométrie des voies OSM de la couche pistes rattachées par le nom (MultiLineString, WGS84)",
+            )
+        });
+        stats.insert(
+            "join".to_owned(),
+            serde_json::to_value(&report)
+                .map_err(|e| skimap_common::Error::json("join report", e))?,
+        );
     }
     if sources.is_empty() {
         return Err(Error::NoSource(site.id.to_owned()));
@@ -363,9 +428,11 @@ pub fn poll(
         crs: Some("EPSG:4326 (WGS84, longitude, latitude)".to_owned()),
         sources: refs,
         files,
+        stats: Value::Object(stats),
         notes: vec![
             "Sources sans licence affichée : activées seulement avec personal_sources.".into(),
             "L'état publié n'est pas un état en temps réel ; afficher l'heure de la source.".into(),
+            "Cervières : les pistes du widget et de la mairie n'ont pas de géométrie ; status.geojson prend les voies OSM de la couche pistes dont la relation (sinon le nom de la voie) désigne la piste, selon la pratique ; noms sans voie dans stats.join, jamais devinés.".into(),
         ],
         ..LayerMeta::new(LAYER, site.id)
     }
