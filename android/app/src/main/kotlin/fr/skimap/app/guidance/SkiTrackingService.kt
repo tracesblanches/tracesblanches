@@ -7,11 +7,13 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import fr.skimap.app.R
 import fr.skimap.app.day.DayStore
+import fr.skimap.sport.Sport
 import fr.skimap.tracking.GuidanceNotifier
 import fr.skimap.tracking.Recap
 import fr.skimap.tracking.ReturnReminder
 import fr.skimap.tracking.TrackingCore
 import fr.skimap.tracking.TrackingService
+import fr.skimap.tracking.TrackingState
 
 /**
  * The app's location service: the core's tracker of the plan (Rust), and at the end the
@@ -33,6 +35,8 @@ class SkiTrackingService : TrackingService() {
             .onSuccess { g -> g?.let { Log.i(TAG, "group ${it.spec.name}: ${it.learned}") } }
             .onFailure { Log.w(TAG, "group learning", it) }
         ReturnReminder.cancel(this)
+        // « Envoyer automatiquement » (K11): queued now, sent when the network allows.
+        OutingExport.of(this, TrackingState.Ended(planDir, recap, gpx))?.let { Sport.sendIfAuto(this, it) }
         val text = recap?.text ?: getString(R.string.day_ended_stopped)
         val b =
             NotificationCompat

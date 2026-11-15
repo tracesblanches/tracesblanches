@@ -91,6 +91,8 @@ fun SkimapApp(
     welcome: Boolean = false,
     /** The welcome was read or skipped: not shown again. */
     onWelcomeDone: () -> Unit = {},
+    /** Opens « Envoyer mes sorties » (K11); `null`: not offered. */
+    onSendSettings: (() -> Unit)? = null,
 ) {
     var pickerOpen by rememberSaveable { mutableStateOf(false) }
     var card by remember { mutableStateOf<Card?>(null) }
@@ -156,6 +158,7 @@ fun SkimapApp(
                         selectPractice = viewModel::selectPractice,
                         setAutoUpdate = onAutoUpdate,
                         setAppearance = onAppearance,
+                        openSport = onSendSettings,
                     ),
                 appearance = appearance,
             ) {
@@ -195,6 +198,8 @@ data class MapActions(
     val setLayerVisible: (String, Boolean) -> Unit = { _, _ -> },
     val setAutoUpdate: (Boolean) -> Unit = {},
     val setAppearance: (Appearance) -> Unit = {},
+    /** « Envoyer mes sorties » (K11): Health Connect, Strava; `null`: not offered. */
+    val openSport: (() -> Unit)? = null,
 )
 
 /**

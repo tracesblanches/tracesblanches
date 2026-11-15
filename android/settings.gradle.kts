@@ -20,3 +20,5 @@ include(":app", ":benchmark")
 include(":sync")
 // The outing (K4, K5, K13): the location service, the voice, the buttons.
 include(":tracking")
+// Sending the outing (K11): Health Connect and Strava.
+include(":sport")

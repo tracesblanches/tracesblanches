@@ -454,6 +454,8 @@ roborazzi {
 
 dependencies {
     implementation(project(":tracking"))
+    // Sending the outing (K11): Health Connect and Strava.
+    implementation(project(":sport"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)

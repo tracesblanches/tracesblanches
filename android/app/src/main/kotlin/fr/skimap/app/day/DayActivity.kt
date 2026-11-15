@@ -30,13 +30,21 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import fr.skimap.app.MainActivity
 import fr.skimap.app.R
+import fr.skimap.app.guidance.AppSportActivity
+import fr.skimap.app.guidance.OutingExport
 import fr.skimap.app.guidance.SkiTrackingService
 import fr.skimap.app.ui.theme.SkimapTheme
 import fr.skimap.core.DayPlanView
+import fr.skimap.sport.Queued
+import fr.skimap.sport.Sport
+import fr.skimap.sport.SportActivity
+import fr.skimap.sport.SportStore
 import fr.skimap.tracking.ReturnReminder
 import fr.skimap.tracking.Tracking
 import fr.skimap.tracking.TrackingState
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.LocalDate
 
@@ -123,6 +131,21 @@ class DayActivity : ComponentActivity() {
             }
         }
 
+        /**
+         * « Envoyer » of the recap (K11): the outing queued for Health Connect and Strava.
+         * Nothing set up yet (Health Connect not allowed, Strava not connected): the screen
+         * to do it opens, and the outing goes once it is.
+         */
+        suspend fun sendOuting(
+            context: Context,
+            tracking: TrackingState,
+        ): Queued? {
+            val ended = tracking as? TrackingState.Ended ?: return null
+            val q = withContext(Dispatchers.IO) { OutingExport.of(context, ended)?.let { Sport.send(context, it) } }
+            if (q != null && !q.waiting) SportActivity.open(context, AppSportActivity::class.java)
+            return q
+        }
+
         private const val REMINDER_BEFORE_MS = 15 * 60_000L
     }
 }
@@ -169,11 +192,19 @@ private fun DayRoot(vm: DayViewModel) {
                 }?.let { DayStore(context).learnFrom(it) }
         }
     }
+    // The outing sent from the recap, followed as the queue moves (K11).
+    var sentId by remember { mutableStateOf<String?>(null) }
+    var sent by remember { mutableStateOf<Queued?>(null) }
+    val sportRevision by SportStore.revision.collectAsStateWithLifecycle()
+    LaunchedEffect(sentId, sportRevision) {
+        sent = sentId?.let { id -> withContext(Dispatchers.IO) { SportStore(context).get(id) } }
+    }
     val p = plan
     if (p != null && !morning) {
         PlanScreen(
             plan = p,
             tracking = tracking,
+            sent = sent,
             actions =
                 PlanActions(
                     send = { DayActivity.sendPlan(context, p, contact) },
@@ -190,6 +221,7 @@ private fun DayRoot(vm: DayViewModel) {
                         )
                     },
                     refuseSwitch = { Tracking.command(context, SkiTrackingService::class.java, Tracking.ACTION_REFUSE_SWITCH) },
+                    sendOuting = { scope.launch { sentId = DayActivity.sendOuting(context, tracking)?.outing?.id } },
                 ),
         )
         return
