@@ -1227,3 +1227,26 @@ tickets:
     - L'app propose, elle n'impose pas : « Vous allez 40 % moins vite que prévu, avec plus de pauses. Je propose la boucle courte, retour 15 h 20. » Accepter ou refuser d'un geste. Seul le demi-tour avant la nuit reste une alerte de sécurité (J2).
     - Le plan du matin affiche une fourchette (ex. 2 h 30 à 3 h 15) plutôt qu'un chiffre unique tant que le profil a peu d'historique.
     Critère : erreur de l'heure d'arrivée réduite sur des sorties réelles par profil (adulte seul, famille), par rapport au modèle C5 seul ; propositions jugées pertinentes sur des rejeux de traces lentes avec pauses (Q9).
+
+- key: G5
+  title: Domaines de jeu SRN hors stations (GTJ, GTV, Vercors, etc.)
+  milestone: M4 v2
+  labels: [pipeline, carte]
+  deps: [P3, G2]
+  body: |
+    Le ski de randonnée nordique se pratique surtout hors des domaines damés : grandes traversées (Grande Traversée du Jura, Grande Traversée du Vercors), hauts plateaux du Vercors, Chartreuse, crêtes des Vosges, Aubrac, plateaux du Queyras, etc.
+    Recenser ces domaines de jeu pour toute la France : itinéraires balisés et traversées (OSM route=ski et piste:type nordic ou skitour hors domaines damés, Geotrek des parcs et des massifs, Camptocamp), topos publiés, et zones propices calculées (pente faible, neige fiable, forêt praticable, accès) ; chaque domaine avec son emprise, ses itinéraires, ses sources et licences.
+    Ils deviennent des sites comme les stations (G2) : même pack, même plan de journée, sans état de damage, avec les règles des zones protégées (parcs, réserves comme les Hauts-Plateaux du Vercors) mises en avant.
+    Critère : liste chiffrée des domaines SRN trouvés, vérifiée à la main pour la GTJ, la GTV et les Hauts-Plateaux du Vercors ; packs construits pour ces trois.
+
+- key: H1
+  title: Fiches pratiques des refuges et des stations (contacts, secours, redevance)
+  milestone: M3 Client v1
+  labels: [pipeline, carte]
+  deps: [P11, G2]
+  body: |
+    Refuges cliquables : fiche avec nom, type (gardé, non gardé, abri), période de gardiennage, places, équipements (poêle, bois, eau), accès hivernal, téléphone, site web, liens vers la source (refuges.info, Camptocamp, OSM), date de la dernière information. Le téléphone s'appelle d'un geste.
+    Pour chaque station (toute la France, G2) : postes de secours et numéro des pisteurs-secouristes, points de vente de la redevance (foyers, caisses, offices de tourisme), prix indicatifs (journée, semaine, saison, enfants, Nordic Pass national et régional) avec leur date et leur source, téléphones et sites (station, office de tourisme, école de ski), parkings. Information seulement : pas d'achat dans l'app.
+    Sources : OSM (phone, contact:*, website, emergency, amenity, shop=ticket), Nordic France et sites des stations, refuges.info et Camptocamp ; licences et droit des bases de données vérifiés avant toute publication (sinon usage personnel). Chaque champ porte sa source et sa date ; un prix sans date n'est pas affiché.
+    Le 112 reste affiché en premier dans toute fiche de secours.
+    Critère : fiches complètes vérifiées à la main pour 10 stations et 20 refuges ; part des 219 domaines avec secours, point de vente et prix datés.
