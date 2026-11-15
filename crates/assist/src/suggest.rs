@@ -339,15 +339,17 @@ pub fn suggest(data: &SiteData, req: &Request) -> Suggestions {
         return empty(notes);
     };
     // Outbound routes to every node.
+    // Times for the choice of the turning points: the cost of a router on the C5 time
+    // with the style factors only (1 on most trails), precomputed per edge; the level
+    // factors would inflate it. The exact time is computed for the loops evaluated.
+    let time_router = Router::new(g, eta);
     let n = g.nodes().len();
     let mut out: Vec<Option<(Route, f64)>> = vec![None; n];
     for (v, slot) in out.iter_mut().enumerate() {
         if let Some(s) = node_snap(g, v)
             && let Ok(r) = out_router.route_snaps(start, s)
         {
-            // Router cost: the C5 time times the style and level factors (1 on most trails),
-            // precomputed; the exact time is computed for the kept loops only.
-            let t = r.cost;
+            let t = time_router.route_snaps(start, s).map_or(r.cost, |x| x.cost);
             *slot = Some((r, t));
         }
     }
@@ -372,7 +374,7 @@ pub fn suggest(data: &SiteData, req: &Request) -> Suggestions {
     // Turning points: out and fastest way back between 50 and 110 % of the budget (the
     // way back by another trail is longer), spread out.
     let back_s = |v: usize| -> Option<f64> {
-        let r = out_router.route_snaps(node_snap(g, v)?, start).ok()?;
+        let r = time_router.route_snaps(node_snap(g, v)?, start).ok()?;
         Some(r.cost)
     };
     let mut cands: Vec<usize> = (0..n)
