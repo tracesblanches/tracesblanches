@@ -27,18 +27,28 @@ const TENS: [&str; 7] = [
     "soixante",
 ];
 
-/// Words for `n` (0 to 999 999 999), with `un` / `une` agreeing with `gender`.
+/// Words for any `n`, with `un` / `une` agreeing with `gender`.
 ///
-/// Panics if `n` is one billion or more: nothing the voice says is that large.
+/// Every `u32` is spoken ("quatre milliards deux cent quatre-vingt-quatorze millions…"):
+/// the values come from downloaded data (a corrupt pack, a sensor glitch), and the voice
+/// must say something rather than abort; such values are outside the pack clips and go to
+/// the fallback voice.
 pub fn cardinal(n: u32, gender: Gender) -> String {
-    assert!(n < 1_000_000_000, "number too large for speech: {n}");
     if n == 0 {
         return UNITS[0].to_owned();
     }
-    let millions = n / 1_000_000;
+    let billions = n / 1_000_000_000;
+    let millions = (n / 1_000_000) % 1000;
     let thousands = (n / 1000) % 1000;
     let rest = n % 1000;
     let mut parts: Vec<String> = Vec::new();
+    if billions > 0 {
+        parts.push(if billions == 1 {
+            "un milliard".to_owned()
+        } else {
+            format!("{} milliards", UNITS[billions as usize])
+        });
+    }
     if millions > 0 {
         let w = below_thousand(millions, Gender::Masculine, false);
         parts.push(if millions == 1 {

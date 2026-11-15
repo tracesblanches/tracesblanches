@@ -240,11 +240,40 @@ pub struct PisteGraph {
 }
 
 impl PisteGraph {
-    /// Builds the derived indexes (cumulative lengths, adjacency, segment R-tree).
+    /// Builds the derived indexes (cumulative lengths, adjacency, segment R-tree), after
+    /// checking what a downloaded graph file could get wrong: positions (finite, in range),
+    /// edge ends, profiles (as many elevations as stations, at least two stations from 0
+    /// m, strictly increasing, finite).
     pub fn new(data: GraphData) -> Result<Self> {
         let n = data.nodes.len();
         if n == 0 {
             return Err(Error::format("graph", "no node"));
+        }
+        let valid = |p: &LonLat| {
+            p.lon.is_finite()
+                && p.lat.is_finite()
+                && (-180.0..=180.0).contains(&p.lon)
+                && (-90.0..=90.0).contains(&p.lat)
+        };
+        if let Some(i) = data.nodes.iter().position(|nd| !valid(&nd.pos)) {
+            return Err(Error::format("graph", format!("node {i}: bad position")));
+        }
+        for (i, e) in data.edges.iter().enumerate() {
+            if !e.points.iter().all(valid) {
+                return Err(Error::format("graph", format!("edge {i}: bad position")));
+            }
+            if let Some(p) = &e.profile {
+                let ok = p.dist_m.len() == p.elev_m.len()
+                    && p.dist_m.len() >= 2
+                    && p.dist_m[0] == 0.0
+                    && p.dist_m.windows(2).all(|w| w[1] > w[0])
+                    && p.dist_m.iter().chain(&p.elev_m).all(|v| v.is_finite());
+                if !ok {
+                    // Found by fuzzing (Q3, #103): a station more than elevations made
+                    // every elevation lookup on the edge index out of bounds.
+                    return Err(Error::format("graph", format!("edge {i}: bad profile")));
+                }
+            }
         }
         let (slon, slat) = data
             .nodes
@@ -400,6 +429,12 @@ impl PisteGraph {
     }
 
     fn snap_on(&self, edge: usize, seg: usize, q: [f64; 2]) -> Snap {
+        self.project_on(edge, seg, q).0
+    }
+
+    /// Nearest point of a segment of an edge, with its position `t` on the segment (0 at
+    /// the first vertex, 1 at the second) and whether the segment has zero length.
+    fn project_on(&self, edge: usize, seg: usize, q: [f64; 2]) -> (Snap, f64, bool) {
         let pts = &self.data.edges[edge].points;
         let (a, b) = (self.plane.xy(pts[seg]), self.plane.xy(pts[seg + 1]));
         let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
@@ -411,12 +446,13 @@ impl PisteGraph {
         };
         let p = [a[0] + t * dx, a[1] + t * dy];
         let c = &self.cum[edge];
-        Snap {
+        let snap = Snap {
             edge,
             along_m: c[seg] + t * (c[seg + 1] - c[seg]),
             pos: self.plane.lonlat(p),
             dist_m: ((q[0] - p[0]).powi(2) + (q[1] - p[1]).powi(2)).sqrt(),
-        }
+        };
+        (snap, t, l2 == 0.0)
     }
 
     /// Nearest point of the network within `max_m` metres.
@@ -428,18 +464,91 @@ impl PisteGraph {
         (snap.dist_m <= max_m).then_some(snap)
     }
 
-    /// Nearest point of each edge within `radius_m`, closest first, at most `max_k`.
+    /// Points of the network within `radius_m`, closest first, at most `max_k`: on every
+    /// edge, the nearest point of each pass of the edge near the position.
+    ///
+    /// A pass is a local minimum of the distance to the position along the edge (inside a
+    /// segment, or at a vertex where both segments are nearest). Two minima of one edge
+    /// whose distance along the edge is at most the sum of their distances to the position
+    /// plus 1 m are one pass (the edge between them is no longer than the way through the
+    /// position) and only the nearer is kept; otherwise the edge leaves and comes back
+    /// (hairpin, way drawn out and back over itself) and both passes are candidates, so
+    /// that a fix on the second pass is not forced onto the first.
     pub fn candidates(&self, p: LonLat, radius_m: f64, max_k: usize) -> Vec<Snap> {
         let q = self.plane.xy(p);
+        // (edge, segment, t, zero-length, snap) of every segment within the radius.
+        let mut segs: Vec<(usize, usize, f64, bool, Snap)> = self
+            .index
+            .locate_within_distance(q, radius_m * radius_m)
+            .map(|g| {
+                let (e, s) = (g.data.0 as usize, g.data.1 as usize);
+                let (snap, t, zero) = self.project_on(e, s, q);
+                (e, s, t, zero, snap)
+            })
+            .collect();
+        segs.sort_by_key(|x| (x.0, x.1));
         let mut best: Vec<Snap> = Vec::new();
-        for g in self.index.locate_within_distance(q, radius_m * radius_m) {
-            let (e, s) = g.data;
-            let snap = self.snap_on(e as usize, s as usize, q);
-            match best.iter_mut().find(|b| b.edge == snap.edge) {
-                Some(b) if b.dist_m > snap.dist_m => *b = snap,
-                Some(_) => {}
-                None => best.push(snap),
+        for group in segs.chunk_by(|a, b| a.0 == b.0) {
+            let edge = group[0].0;
+            let pts = &self.data.edges[edge].points;
+            let last_seg = pts.len() - 2;
+            let zero = |k: usize| pts[k] == pts[k + 1];
+            // `t` of the nearest non-degenerate segment before / after `k` if only
+            // zero-length segments lie in between; `None` at the end of the edge.
+            let neighbour_t = |k: usize, forward: bool| -> Option<Option<f64>> {
+                let mut j = k;
+                loop {
+                    if forward {
+                        if j == last_seg {
+                            return None;
+                        }
+                        j += 1;
+                    } else {
+                        if j == 0 {
+                            return None;
+                        }
+                        j -= 1;
+                    }
+                    if !zero(j) {
+                        return Some(group.iter().find(|x| x.1 == j).map(|x| x.2));
+                    }
+                }
+            };
+            let mut minima: Vec<Snap> = group
+                .iter()
+                .filter(|&&(_, k, t, z, _)| {
+                    if z {
+                        return false;
+                    }
+                    if t > 0.0 && t < 1.0 {
+                        return true;
+                    }
+                    // At a vertex: a minimum unless the neighbouring segment is nearer
+                    // inside (a missing neighbour within the radius cannot happen, it
+                    // shares the vertex; keep the point then).
+                    let (forward, want) = if t <= 0.0 { (false, 1.0) } else { (true, 0.0) };
+                    match neighbour_t(k, forward) {
+                        None | Some(None) => true,
+                        Some(Some(tn)) => tn == want,
+                    }
+                })
+                .map(|x| x.4)
+                .collect();
+            if minima.is_empty() {
+                // Every segment within the radius has zero length: the edge is a point.
+                minima.push(group[0].4);
             }
+            minima.sort_by(|a, b| a.dist_m.total_cmp(&b.dist_m));
+            let mut kept: Vec<Snap> = Vec::new();
+            for m in minima {
+                if kept
+                    .iter()
+                    .all(|k| (m.along_m - k.along_m).abs() > m.dist_m + k.dist_m + 1.0)
+                {
+                    kept.push(m);
+                }
+            }
+            best.extend(kept);
         }
         best.sort_by(|a, b| a.dist_m.total_cmp(&b.dist_m));
         best.truncate(max_k);
@@ -740,6 +849,51 @@ pub(crate) mod tests {
         .unwrap()
     }
 
+    /// Regression (Q3, #103): an edge that passes twice near a position (a way drawn out
+    /// and back, 8 m apart) offers both passes, not only the nearest point of the edge; a
+    /// straight edge with many vertices still offers one.
+    #[test]
+    fn candidates_offer_every_pass_of_an_edge() {
+        let plane = toy_plane();
+        let at = |x: f64, y: f64| plane.lonlat([x, y]);
+        let attrs = toy().edge(0).attrs.clone();
+        let g = PisteGraph::new(GraphData {
+            site: "hairpin".into(),
+            nodes: vec![
+                Node {
+                    pos: at(0.0, 0.0),
+                    osm_node_id: None,
+                },
+                Node {
+                    pos: at(0.0, 8.0),
+                    osm_node_id: None,
+                },
+            ],
+            edges: vec![Edge {
+                from: 0,
+                to: 1,
+                oneway: false,
+                points: vec![at(0.0, 0.0), at(300.0, 0.0), at(300.0, 8.0), at(0.0, 8.0)],
+                attrs,
+                profile: None,
+            }],
+            elevation_source: None,
+        })
+        .unwrap();
+        // On the way back, 100 m from its end.
+        let c = g.candidates(at(100.0, 8.0), 50.0, 8);
+        assert_eq!(c.len(), 2, "{c:?}");
+        assert!(
+            c[0].dist_m < 0.01 && (c[0].along_m - 508.0).abs() < 0.5,
+            "{c:?}"
+        );
+        assert!((c[1].dist_m - 8.0).abs() < 0.01 && (c[1].along_m - 100.0).abs() < 0.5);
+        // At the turn both passes are one: the nearest point only.
+        assert_eq!(g.candidates(at(300.0, 4.0), 50.0, 8).len(), 1);
+        let straight = toy().candidates(toy_plane().lonlat([450.0, 30.0]), 60.0, 8);
+        assert_eq!(straight.len(), 1, "{straight:?}");
+    }
+
     #[test]
     fn lengths_snap_and_candidates() {
         let g = toy();
@@ -795,6 +949,31 @@ pub(crate) mod tests {
         assert!((p.elevation_at(5.0) - 101.0).abs() < 1e-6);
         assert!((p.elevation_at(-1.0) - 100.0).abs() < 1e-6);
         assert!((p.elevation_at(99.0) - 105.0).abs() < 1e-6);
+    }
+
+    /// Regression (Q3, #103, found by fuzzing `piste-graph.json`): a profile with more
+    /// stations than elevations, or a non-finite position, is a format error, not a panic
+    /// on the first elevation lookup.
+    #[test]
+    fn invalid_files_are_rejected() {
+        let good = toy().to_json().unwrap();
+        assert!(PisteGraph::from_json(&good).is_ok());
+        let mut data = toy().data().clone();
+        data.edges[0].profile = Some(Profile {
+            dist_m: vec![0.0, 10.0, 20.0, 30.0],
+            elev_m: vec![1000.0, 1001.0, 1002.0],
+            filled: 0,
+        });
+        assert!(PisteGraph::new(data.clone()).is_err());
+        data.edges[0].profile = Some(Profile {
+            dist_m: vec![0.0, 20.0, 10.0],
+            elev_m: vec![1000.0, 1001.0, 1002.0],
+            filled: 0,
+        });
+        assert!(PisteGraph::new(data.clone()).is_err());
+        data.edges[0].profile = None;
+        data.nodes[1].pos.lat = f64::NAN;
+        assert!(PisteGraph::new(data).is_err());
     }
 
     #[test]

@@ -32,9 +32,11 @@ pub fn tiles_covering(bbox: BBox, minzoom: u8, maxzoom: u8) -> Vec<(u8, u32, u32
     out
 }
 
-/// Global pixel coordinates (fractional) of a position at zoom `z`.
+/// Global pixel coordinates (fractional) of a position at zoom `z` (every `u8` zoom: the
+/// zoom of a raster layer comes from the downloaded manifest; `2^z` as a float cannot
+/// overflow like `1u32 << z` did, found by fuzzing, Q3 #103).
 pub fn global_pixel(p: LonLat, z: u8) -> (f64, f64) {
-    let n = f64::from(TILE_SIZE) * f64::from(1u32 << z);
+    let n = f64::from(TILE_SIZE) * f64::from(z).exp2();
     let lat = p
         .lat
         .clamp(-85.051_128_779_806_59, 85.051_128_779_806_59)
@@ -47,7 +49,7 @@ pub fn global_pixel(p: LonLat, z: u8) -> (f64, f64) {
 /// Tile and pixel inside the tile containing a position at zoom `z`.
 pub fn tile_pixel(p: LonLat, z: u8) -> (u32, u32, u32, u32) {
     let (gx, gy) = global_pixel(p, z);
-    let max = f64::from(TILE_SIZE) * f64::from(1u32 << z) - 1.0;
+    let max = f64::from(TILE_SIZE) * f64::from(z).exp2() - 1.0;
     let (gx, gy) = (
         gx.floor().clamp(0.0, max) as u64,
         gy.floor().clamp(0.0, max) as u64,
@@ -63,13 +65,13 @@ pub fn tile_pixel(p: LonLat, z: u8) -> (u32, u32, u32, u32) {
 
 /// Longitude of a global pixel column (fractional) at zoom `z`.
 pub fn pixel_lon(gx: f64, z: u8) -> f64 {
-    let n = f64::from(TILE_SIZE) * f64::from(1u32 << z);
+    let n = f64::from(TILE_SIZE) * f64::from(z).exp2();
     gx / n * 360.0 - 180.0
 }
 
 /// Latitude of a global pixel row (fractional) at zoom `z`.
 pub fn pixel_lat(gy: f64, z: u8) -> f64 {
-    let n = f64::from(TILE_SIZE) * f64::from(1u32 << z);
+    let n = f64::from(TILE_SIZE) * f64::from(z).exp2();
     (std::f64::consts::PI * (1.0 - 2.0 * gy / n))
         .sinh()
         .atan()
