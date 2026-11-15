@@ -28,6 +28,7 @@ pub mod error;
 pub mod inputs;
 pub mod layer;
 pub mod layers;
+pub mod presets;
 pub mod questions;
 pub mod recap;
 pub mod snow_quality;

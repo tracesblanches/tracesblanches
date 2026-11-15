@@ -4,6 +4,7 @@
 //! orchestrator: each subcommand calls the public builder of the crate of its ticket; the
 //! remaining placeholders name the ticket that will provide it.
 
+mod assist;
 mod build;
 mod history;
 mod route;
@@ -200,6 +201,34 @@ enum Command {
     /// Voice clips of the pack of a site (VO3, #85) with the names of its built layers
     /// (`pistes`, `refuges`, `zones`); Pocket TTS on this workstation.
     Voice(SiteArg),
+    /// Assistant of a site (A1 to A9): briefing, wax, snow quality, synthesis, suggested
+    /// loops, equipment, alerts, best time; `data/out/<site>/assist/`.
+    Assist {
+        /// Site identifier.
+        site: String,
+        /// First day YYYY-MM-DD (default: today).
+        #[arg(long)]
+        date: Option<String>,
+        /// Days after the first one.
+        #[arg(long, default_value_t = 3)]
+        days: u32,
+        /// Home point `lon,lat`, for the distances of the briefing.
+        #[arg(long, allow_hyphen_values = true)]
+        home: Option<String>,
+        /// Planned route (GeoJSON with a LineString).
+        #[arg(long)]
+        route: Option<PathBuf>,
+        /// Three suggestion requests of the site (A5) and their equipment, alerts, best
+        /// time.
+        #[arg(long)]
+        suggest: bool,
+        /// Outings on the core proof routes (A6).
+        #[arg(long)]
+        outings: bool,
+        /// Past days archived by `skimap history`: `past` or `with-forecast`.
+        #[arg(long)]
+        history: Option<String>,
+    },
     /// Every available builder of a site, in dependency order, timed.
     BuildAll(SiteArg),
     /// Fetch every source of a site (P2, P5, P6, P8, P9, P11, P12, P13, P19).
@@ -534,6 +563,32 @@ fn run(cli: Cli) -> Result<()> {
             );
             print_json(&b)
         }
+        Command::Assist {
+            site: s,
+            date,
+            days,
+            home,
+            route,
+            suggest,
+            outings,
+            history,
+        } => {
+            let s = site(&s)?;
+            let args = assist::AssistArgs {
+                date: date.as_deref().map(build::parse_date).transpose()?,
+                days,
+                home: home.as_deref().map(assist::parse_lon_lat).transpose()?,
+                route,
+                suggest,
+                outings,
+                history,
+            };
+            let (_, lines) = assist::assist(&cfg.layout(), s, &args)?;
+            for l in lines {
+                println!("{l}");
+            }
+            Ok(())
+        }
         Command::BuildAll(a) => {
             let s = site(&a.site)?;
             ctx()?.build_all(s)
@@ -639,6 +694,7 @@ mod tests {
             "avalanche-exposure",
             "build-pack",
             "export",
+            "assist",
         ] {
             Cli::try_parse_from(["skimap", cmd, "chapelle-des-bois"]).unwrap();
         }

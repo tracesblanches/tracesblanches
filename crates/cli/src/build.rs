@@ -471,6 +471,30 @@ impl Ctx {
                 nets.join(" ; ")
             ))
         });
+        // The assistant reads every layer above (a missing one is said in its outputs).
+        run.step("assist", &[], || {
+            let (out, lines) = crate::assist::assist(
+                &self.layout,
+                site,
+                &crate::assist::AssistArgs {
+                    days: 3,
+                    suggest: true,
+                    outings: true,
+                    ..Default::default()
+                },
+            )?;
+            let loops: usize = out.suggestions.iter().map(|s| s.suggestions.len()).sum();
+            let skipped = lines.iter().filter(|l| l.starts_with("sortie ignorée")).count();
+            Ok(format!(
+                "{} jours, {} conseils de fartage, {} demandes et {loops} boucles, {} listes d'équipement, {} rejeux d'alertes, {} fichiers ; {skipped} sorties sans itinéraire de preuve",
+                out.briefing.days.len(),
+                out.wax.len(),
+                out.suggestions.len(),
+                out.equipment.len(),
+                out.replays.len(),
+                out.files.len()
+            ))
+        });
         // The pack takes whatever layers exist; it does not need every step above.
         run.step("build-pack", &[], || {
             let r = self.build_pack(site)?;
