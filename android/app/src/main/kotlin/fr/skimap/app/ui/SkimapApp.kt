@@ -48,6 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import fr.skimap.app.R
+import fr.skimap.app.data.Appearance
 import fr.skimap.app.data.PackProblem
 import fr.skimap.app.data.Practice
 import fr.skimap.app.guidance.GuidanceOverlay
@@ -81,13 +82,28 @@ fun SkimapApp(
     domains: DomainsViewModel,
     autoUpdate: Boolean = true,
     onAutoUpdate: (Boolean) -> Unit = {},
+    /** Light or dark choice of the user; `null`: not offered (Android 11 and older). */
+    appearance: Appearance? = null,
+    onAppearance: (Appearance) -> Unit = {},
+    /** Opens the morning (« Préparer ma journée »). */
+    onPrepareDay: () -> Unit = {},
+    /** The short welcome of the first launch is shown. */
+    welcome: Boolean = false,
+    /** The welcome was read or skipped: not shown again. */
+    onWelcomeDone: () -> Unit = {},
 ) {
     var pickerOpen by rememberSaveable { mutableStateOf(false) }
     var card by remember { mutableStateOf<Card?>(null) }
-    // The style follows the light or dark theme of the system, without a gesture.
+    val controller = remember { MapController() }
+    // The style follows the theme of the app: the phone's, or the user's choice (Apparence).
     val dark = isSystemInDarkTheme()
     LaunchedEffect(dark) { viewModel.setDark(dark) }
-    card?.let { CardSheet(it, onDismiss = { card = null }) }
+    card?.let {
+        CardSheet(it, onDismiss = {
+            card = null
+            controller.select(null)
+        })
+    }
     if (pickerOpen) {
         DomainPickerDialog(domains, onPick = viewModel::selectPack, onClose = { pickerOpen = false })
     }
@@ -119,7 +135,6 @@ fun SkimapApp(
         }
 
         is MapUiState.Ready -> {
-            val controller = remember { MapController() }
             val moved by controller.moved.collectAsStateWithLifecycle()
             // The map lambda captures only the opened packs: an error message or the sheet
             // does not recompose the map (counted in MapScreenTest).
@@ -140,7 +155,9 @@ fun SkimapApp(
                         selectFree = viewModel::selectFree,
                         selectPractice = viewModel::selectPractice,
                         setAutoUpdate = onAutoUpdate,
+                        setAppearance = onAppearance,
                     ),
+                appearance = appearance,
             ) {
                 if (engineReady) {
                     PackMap(
@@ -156,6 +173,17 @@ fun SkimapApp(
             }
         }
     }
+    if (welcome && state != MapUiState.Loading) {
+        val hasPack = state is MapUiState.Ready
+        WelcomeScreen(
+            hasPack = hasPack,
+            onSkip = onWelcomeDone,
+            onStart = {
+                onWelcomeDone()
+                if (hasPack) onPrepareDay() else pickerOpen = true
+            },
+        )
+    }
 }
 
 /** Callbacks of [MapScreen]. */
@@ -166,6 +194,7 @@ data class MapActions(
     val selectPractice: (Practice) -> Unit = {},
     val setLayerVisible: (String, Boolean) -> Unit = { _, _ -> },
     val setAutoUpdate: (Boolean) -> Unit = {},
+    val setAppearance: (Appearance) -> Unit = {},
 )
 
 /**
@@ -187,6 +216,7 @@ fun MapScreen(
     mapMoved: Boolean = false,
     initialSheetOpen: Boolean = false,
     autoUpdate: Boolean = true,
+    appearance: Appearance? = null,
     map: @Composable () -> Unit,
 ) {
     var sheetOpen by rememberSaveable { mutableStateOf(initialSheetOpen) }
@@ -202,13 +232,13 @@ fun MapScreen(
                 practiceLabel(state),
             )
         Box(Modifier.fillMaxSize().testTag(Tags.MAP).semantics { contentDescription = mapDescription }) { map() }
-        // Status bar over the light map: a band of the theme surface keeps its icons
-        // readable in both themes (edge to edge).
+        // Status bar over the map: an opaque band of the theme surface. Translucent, the
+        // place names of the map showed through, under the clock and the icons.
         Box(
             Modifier
                 .fillMaxWidth()
                 .windowInsetsTopHeight(WindowInsets.statusBars)
-                .background(MaterialTheme.colorScheme.surface.copy(alpha = CONTROL_ALPHA)),
+                .background(MaterialTheme.colorScheme.surface),
         )
         if (!mapShown) {
             // Static (no animation): MapLibre draws its first frame behind it.
@@ -268,6 +298,7 @@ fun MapScreen(
             today = today,
             zone = zone,
             autoUpdate = autoUpdate,
+            appearance = appearance,
             actions =
                 actions.copy(chooseDomain = {
                     sheetOpen = false
@@ -321,11 +352,14 @@ private fun practiceLabel(state: MapUiState.Ready): String =
         },
     )
 
-/** Translucent rounded surface of the map overlays. */
+/**
+ * Rounded surface of the texts over the map. Opaque: a translucent chip let the place
+ * names of the map show through its own text.
+ */
 @Composable
 private fun Chip(
     modifier: Modifier = Modifier,
-    color: Color = MaterialTheme.colorScheme.surface.copy(alpha = CONTROL_ALPHA),
+    color: Color = MaterialTheme.colorScheme.surface,
     contentColor: Color = MaterialTheme.colorScheme.onSurface,
     content: @Composable () -> Unit,
 ) {
@@ -354,7 +388,8 @@ private fun StatusChip(
             Text(
                 "$siteName · ${texts.statusShort(info.status)}",
                 style = MaterialTheme.typography.bodySmall,
-                maxLines = 1,
+                // Two lines at large fonts: the piste status is never cut off.
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.semantics { heading() },
             )

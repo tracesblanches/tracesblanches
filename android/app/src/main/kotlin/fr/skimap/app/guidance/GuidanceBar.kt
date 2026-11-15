@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -35,6 +36,7 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -121,31 +123,31 @@ fun GuidanceOverlayContent(
             }
 
             else -> {
-                // A large font keeps only the icon: the status of the pack stays readable.
-                val label = LocalDensity.current.fontScale <= LARGE_FONT
-                val day = stringResource(R.string.day_open)
-                Surface(
+                // The main action of the map, at the bottom between the corner controls:
+                // one clear button, the map stays visible around it.
+                val label = stringResource(if (state is TrackingState.Ended) R.string.day_open else R.string.day_prepare)
+                Button(
                     onClick = onOpen,
                     modifier =
                         Modifier
-                            .align(Alignment.TopEnd)
-                            .heightIn(min = 48.dp)
-                            .widthIn(min = 48.dp)
-                            .semantics { contentDescription = day }
+                            .align(Alignment.BottomCenter)
+                            // Clear of the 48 dp corner controls of the map.
+                            .padding(horizontal = 56.dp)
+                            .heightIn(min = 56.dp)
                             .testTag(GuidanceTags.DAY),
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = OVERLAY_ALPHA),
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                    shadowElevation = 2.dp,
+                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp),
                 ) {
-                    Row(
-                        Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
-                    ) {
-                        Icon(painterResource(R.drawable.ic_day), contentDescription = null, modifier = Modifier.size(22.dp))
-                        if (label) Text(day, style = MaterialTheme.typography.labelMedium)
-                    }
+                    Icon(painterResource(R.drawable.ic_day), contentDescription = null, modifier = Modifier.size(22.dp))
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelLarge,
+                        // Large fonts wrap on two lines rather than cut the words.
+                        maxLines = 2,
+                        textAlign = TextAlign.Center,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
                 }
             }
         }

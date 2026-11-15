@@ -1,6 +1,7 @@
 package fr.skimap.app
 
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.res.Configuration
 import android.os.Bundle
@@ -16,13 +17,18 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import fr.skimap.app.data.Appearance
+import fr.skimap.app.data.AppearanceSetting
 import fr.skimap.app.data.AssetStyleSource
 import fr.skimap.app.data.PlatformLocator
 import fr.skimap.app.data.PreferencesSettingsStore
 import fr.skimap.app.data.RustDomainCatalog
 import fr.skimap.app.data.RustPackRepository
+import fr.skimap.app.data.UiChoices
+import fr.skimap.app.day.DayActivity
 import fr.skimap.app.sync.PackSync
 import fr.skimap.app.sync.WorkManagerDownloads
+import fr.skimap.app.ui.MapUiState
 import fr.skimap.app.ui.MapViewModel
 import fr.skimap.app.ui.SkimapApp
 import fr.skimap.app.ui.domains.DomainsViewModel
@@ -63,7 +69,14 @@ class MainActivity : ComponentActivity() {
         MapEngine.start(this, lifecycleScope)
         val settings = PreferencesSettingsStore { getSharedPreferences("skimap", Context.MODE_PRIVATE) }
         var autoUpdate by mutableStateOf(true)
+        val choices = UiChoices { getSharedPreferences("skimap", Context.MODE_PRIVATE) }
+        // The theme itself is kept by the system; the menu shows the stored choice.
+        var appearance by mutableStateOf<Appearance?>(null)
+        var welcome by mutableStateOf(false)
+        val replayWelcome = intent.getBooleanExtra(EXTRA_WELCOME, false)
         lifecycleScope.launch {
+            welcome = replayWelcome || !withContext(Dispatchers.IO) { choices.welcomeDone() }
+            if (AppearanceSetting.supported) appearance = withContext(Dispatchers.IO) { choices.appearance() }
             autoUpdate = withContext(Dispatchers.IO) { settings.autoUpdate() }
             // The daily update, with its constraints (KEEP: scheduled once, not per launch).
             PackSync.schedulePeriodic(applicationContext, autoUpdate)
@@ -76,14 +89,33 @@ class MainActivity : ComponentActivity() {
                         withContext(Dispatchers.IO) { settings.setAutoUpdate(on) }
                         PackSync.schedulePeriodic(applicationContext, on)
                     }
+                }, appearance = appearance, onAppearance = { a ->
+                    appearance = a
+                    lifecycleScope.launch {
+                        withContext(Dispatchers.IO) { choices.setAppearance(a) }
+                        // The activity restarts in the new theme (configuration change).
+                        AppearanceSetting.apply(applicationContext, a)
+                    }
+                }, onPrepareDay = ::openDay, welcome = welcome, onWelcomeDone = {
+                    welcome = false
+                    lifecycleScope.launch(Dispatchers.IO) { choices.setWelcomeDone() }
                 })
             }
         }
     }
 
+    /** The morning of the area shown (« Préparer ma journée »). */
+    private fun openDay() {
+        val site = (viewModel.state.value as? MapUiState.Ready)?.opened?.info?.siteId
+        startActivity(Intent(this, DayActivity::class.java).putExtra(DayActivity.EXTRA_SITE, site))
+    }
+
     companion object {
         /** Name of the pack directory to open (`cervieres`), under [packsDir]; `libre`: free mode. */
         const val EXTRA_PACK = "pack"
+
+        /** `true`: shows the welcome of the first launch again (nothing else is reset). */
+        const val EXTRA_WELCOME = "welcome"
 
         /** Where packs are stored. */
         fun packsDir(context: Context): File = PackSync.packsDir(context)
