@@ -1,0 +1,61 @@
+{
+  "site": "chapelle-des-bois",
+  "release": "2026_T2",
+  "dir": "data/out/chapelle-des-bois/coverage",
+  "analysed_km2": 172.7,
+  "operators": [
+    {
+      "operator": "Orange",
+      "features": 6,
+      "polygons_near": 818,
+      "covered_km2": 126.38,
+      "covered_pct": 73.17,
+      "extract_s": null,
+      "read_s": 0.081,
+      "geometry_s": 0.293
+    },
+    {
+      "operator": "SFR",
+      "features": 6,
+      "polygons_near": 499,
+      "covered_km2": 146.51,
+      "covered_pct": 84.83,
+      "extract_s": null,
+      "read_s": 0.077,
+      "geometry_s": 0.468
+    },
+    {
+      "operator": "Free",
+      "features": 26,
+      "polygons_near": 874,
+      "covered_km2": 132.74,
+      "covered_pct": 76.86,
+      "extract_s": null,
+      "read_s": 0.285,
+      "geometry_s": 0.044
+    },
+    {
+      "operator": "Bouygues",
+      "features": 6,
+      "polygons_near": 411,
+      "covered_km2": 134.1,
+      "covered_pct": 77.65,
+      "extract_s": null,
+      "read_s": 0.059,
+      "geometry_s": 0.386
+    }
+  ],
+  "any_operator_km2": 155.07,
+  "any_operator_pct": 89.79,
+  "no_network_km2": 17.64,
+  "no_network_pct": 10.21,
+  "no_network_polygons": 100,
+  "no_network_bytes": 74928,
+  "timings": {
+    "analysed_area_s": 0.04,
+    "operators_s": 0.554,
+    "union_difference_s": 2.01,
+    "write_s": 0.01,
+    "total_s": 2.614
+  }
+}

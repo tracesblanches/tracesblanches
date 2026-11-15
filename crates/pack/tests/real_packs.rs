@@ -1,41 +1,140 @@
-//! Checks on the real packs of both sites (built by the `build_pack` example) against the
-//! pipeline outputs they come from. Ignored by default: needs `data/`.
+//! Checks on the real packs of both sites against the pipeline outputs they come from.
+//!
+//! By default the packs are built from the versioned reference layers (`fixtures/`,
+//! without basemaps, voice or off-piste rasters; the slope raster is the Horn slope of the
+//! 1 km terrain window) into a temporary directory, then read back. The `full_data_`
+//! variants read the packs of the complete local data, basemaps included (weekly job):
 //!
 //! ```sh
-//! cargo test --release -p skimap-pack --features pipeline --test real_packs -- --ignored --nocapture
+//! cargo test -p skimap-pack --features pipeline --test real_packs
+//! cargo test --release -p skimap-pack --features pipeline --test real_packs -- --ignored full_data_ --nocapture
 //! ```
 
+#[path = "../../../fixtures/support/mod.rs"]
+mod fixtures;
+
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::PathBuf;
 
 use serde_json::Value;
 use skimap_common::crs::{Crs, transform_point};
+use skimap_common::download::Downloader;
 use skimap_common::geom::LonLat;
 use skimap_common::layout::DataLayout;
-use skimap_common::site::SITES;
+use skimap_common::site::{SITES, Site};
 use skimap_pack::Pack;
 use skimap_pack::build::{BuildOptions, build, class_tiles, pack_dir, raster};
 use skimap_pack::export::class_pixels;
 use skimap_pack::manifest::LayerKind;
 use skimap_pack::tiles::{pixel_lat, pixel_lon, tile_range};
 
-fn layout() -> DataLayout {
-    let root = std::env::var_os("SKIMAP_DATA_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data"));
-    DataLayout::new(root)
+fn full_layout() -> DataLayout {
+    DataLayout::new(fixtures::full_data())
 }
 
 fn json(path: &std::path::Path) -> Value {
-    serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
+    serde_json::from_slice(&std::fs::read(path).unwrap_or_else(|e| panic!("{path:?}: {e}")))
+        .unwrap()
+}
+
+/// Packs of both sites built from the fixtures in a temporary data root.
+struct FixturePacks {
+    _tmp: tempfile::TempDir,
+    layout: DataLayout,
+}
+
+fn fixture_packs() -> FixturePacks {
+    let tmp = tempfile::tempdir().unwrap();
+    fixtures::copy_tree(&fixtures::data(), tmp.path());
+    let layout = DataLayout::new(tmp.path());
+    let dl = Downloader::builder(layout.cache_root())
+        .offline(true)
+        .build()
+        .unwrap();
+    for site in SITES {
+        // Slope raster of the pack: Horn slope of the 1 km window (the 5 m slope of the
+        // whole site, 36 MB, is not in the fixtures).
+        let dem = skimap_common::geotiff::read_f32(&fixtures::input(&format!(
+            "{}/dem_window_5m.tif",
+            site.id
+        )))
+        .unwrap();
+        let slope = skimap_terrain::slope::horn(&dem).slope;
+        let dir = layout.layer_dir(site, "terrain").unwrap();
+        skimap_common::geotiff::write_f32(&dir.join("slope_5m.tif"), &slope).unwrap();
+        let opts = BuildOptions {
+            plan_ign: false,
+            osm: false,
+            ign_slopes: false,
+            voice: false,
+            offpiste: false,
+            ..BuildOptions::default()
+        };
+        let r = build(site, &layout, &dl, &opts).unwrap();
+        println!(
+            "{}: {} layers, missing {:?}",
+            site.id,
+            r.layers.len(),
+            r.missing.iter().map(|m| m.id.as_str()).collect::<Vec<_>>()
+        );
+        for want in [
+            "pistes",
+            "zones",
+            "zones-rules",
+            "refuges-info",
+            "refuges-osm",
+            "refuges-camptocamp",
+            "no-network",
+            "coverage-area",
+            "slope",
+            "snow-depth",
+        ] {
+            assert!(
+                r.layers.iter().any(|l| l == want),
+                "{}: no {want} layer",
+                site.id
+            );
+        }
+    }
+    FixturePacks { _tmp: tmp, layout }
+}
+
+/// Both checks below on the packs built from the fixtures (one build: the raster tiles
+/// dominate the time of this test).
+#[test]
+fn fixture_packs_match_their_sources_and_geotiffs() {
+    let p = fixture_packs();
+    for site in SITES {
+        sources(&p.layout, site);
+        rasters(&p.layout, site);
+    }
+    // Slope and avalanche exposure are vector class polygons in the pack.
+    class_polygons(&p.layout);
+    zone_rule_fields(&p.layout);
 }
 
 #[test]
-#[ignore = "needs data/out/<site>/pack"]
-fn packs_match_their_sources() {
-    let layout = layout();
+#[ignore = "full-data: data/out/<site>/pack"]
+fn full_data_packs_match_their_sources() {
+    let layout = full_layout();
     for site in SITES {
-        let pack = Pack::open(pack_dir(site, &layout).unwrap()).unwrap();
+        sources(&layout, site);
+    }
+}
+
+/// Every pixel of every top-zoom tile of the slope, snow and avalanche exposure rasters
+/// equals the class of the source cell under its centre; prints the class shares.
+#[test]
+#[ignore = "full-data: data/out/<site>/pack"]
+fn full_data_rasters_match_their_geotiffs() {
+    let layout = full_layout();
+    for site in SITES {
+        rasters(&layout, site);
+    }
+}
+
+fn sources(layout: &DataLayout, site: &Site) {
+    {
+        let pack = Pack::open(pack_dir(site, layout).unwrap()).unwrap();
         let m = pack.manifest();
         println!(
             "== {} : pack {} , {} files, {:.2} MB",
@@ -84,14 +183,9 @@ fn packs_match_their_sources() {
     }
 }
 
-/// Every pixel of every top-zoom tile of the slope, snow and avalanche exposure rasters
-/// equals the class of the source cell under its centre; prints the class shares.
-#[test]
-#[ignore = "needs data/out/<site>/pack"]
-fn rasters_match_their_geotiffs() {
-    let layout = layout();
-    for site in SITES {
-        let pack = Pack::open(pack_dir(site, &layout).unwrap()).unwrap();
+fn rasters(layout: &DataLayout, site: &Site) {
+    {
+        let pack = Pack::open(pack_dir(site, layout).unwrap()).unwrap();
         for spec in raster::catalog() {
             let Ok(l) = pack.layer(spec.id) else {
                 continue;
@@ -159,11 +253,12 @@ fn rasters_match_their_geotiffs() {
     }
 }
 
-/// Basemaps: archives readable, styles point to files of the pack, glyphs present.
+/// Basemaps: archives readable, styles point to files of the pack, glyphs present (the
+/// basemaps, 40 MB a site, are not built from the fixtures).
 #[test]
-#[ignore = "needs data/out/<site>/pack"]
-fn basemaps_are_complete() {
-    let layout = layout();
+#[ignore = "full-data: data/out/<site>/pack"]
+fn full_data_basemaps_are_complete() {
+    let layout = full_layout();
     for site in SITES {
         let pack = Pack::open(pack_dir(site, &layout).unwrap()).unwrap();
         let m = pack.manifest();
@@ -213,17 +308,20 @@ fn basemaps_are_complete() {
         }
     }
 }
-
 /// The class polygons (slope, avalanche exposure) drawn back at z15 against the GeoTIFF
 /// classes under the pixel centres (one pixel in nine): agreement, and the share of every
 /// threshold level in the polygons and in the source; the manifest's own measurements
 /// (no significant zone lost).
 #[test]
-#[ignore = "needs data/out/<site>/pack"]
-fn class_polygons_match_their_geotiffs() {
-    let layout = layout();
+#[ignore = "full-data: data/out/<site>/pack"]
+fn full_data_class_polygons_match_their_geotiffs() {
+    class_polygons(&full_layout());
+}
+
+/// See [`full_data_class_polygons_match_their_geotiffs`].
+fn class_polygons(layout: &DataLayout) {
     for site in SITES {
-        let pack = Pack::open(pack_dir(site, &layout).unwrap()).unwrap();
+        let pack = Pack::open(pack_dir(site, layout).unwrap()).unwrap();
         for spec in class_tiles::catalog() {
             let Ok(l) = pack.layer(spec.id) else {
                 continue;
@@ -304,9 +402,13 @@ fn class_polygons_match_their_geotiffs() {
 
 /// Zones of the packs: the simple fields derived from the real rules.
 #[test]
-#[ignore = "needs data/out/<site>/pack"]
-fn zones_have_simple_rule_fields() {
-    let layout = layout();
+#[ignore = "full-data: data/out/<site>/pack"]
+fn full_data_zones_have_simple_rule_fields() {
+    zone_rule_fields(&full_layout());
+}
+
+/// Bivouac and access fields of every packed zone, and those of four zones of the reports.
+fn zone_rule_fields(layout: &DataLayout) {
     let bivouac: BTreeSet<&str> = skimap_zones::fields::BIVOUAC_VALUES
         .iter()
         .map(|v| v.as_str())
@@ -317,7 +419,7 @@ fn zones_have_simple_rule_fields() {
         .collect();
     let mut seen: BTreeMap<String, String> = BTreeMap::new();
     for site in SITES {
-        let pack = Pack::open(pack_dir(site, &layout).unwrap()).unwrap();
+        let pack = Pack::open(pack_dir(site, layout).unwrap()).unwrap();
         let Ok(zones) = pack.read_geojson("zones") else {
             continue;
         };
@@ -357,9 +459,9 @@ fn zones_have_simple_rule_fields() {
 
 /// Pistes of the packs: a state on every way, joined by OSM way from the status layer.
 #[test]
-#[ignore = "needs data/out/<site>/pack"]
-fn pistes_carry_the_state_of_their_ways() {
-    let layout = layout();
+#[ignore = "full-data: data/out/<site>/pack"]
+fn full_data_pistes_carry_the_state_of_their_ways() {
+    let layout = full_layout();
     for site in SITES {
         let pack = Pack::open(pack_dir(site, &layout).unwrap()).unwrap();
         let pistes = pack.read_geojson("pistes").unwrap();
@@ -407,9 +509,9 @@ fn pistes_carry_the_state_of_their_ways() {
 /// holds no personal-use or unauthorised source: manifest, attributions, copied
 /// metadata, data.
 #[test]
-#[ignore = "needs data/out/<site>"]
-fn public_pack_from_real_outputs_has_no_restricted_source() {
-    let real = layout();
+#[ignore = "full-data: data/out/<site>"]
+fn full_data_public_pack_from_real_outputs_has_no_restricted_source() {
+    let real = full_layout();
     for site in SITES {
         let tmp = tempfile::tempdir().unwrap();
         let out = tmp.path().join("out").join(site.id);

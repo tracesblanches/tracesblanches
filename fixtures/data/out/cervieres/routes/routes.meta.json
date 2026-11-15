@@ -1,0 +1,91 @@
+{
+  "crs": "EPSG:4326 (WGS84, longitude, latitude) ; altitudes IGN69",
+  "files": [
+    {
+      "bytes": 382324,
+      "count": 224,
+      "description": "graphe de pistes typé (skimap_core::graph::GraphData) : nœuds, arêtes (sens unique, damage classique / skating, hors damage, usages, difficulté), profil d'altitude par arête",
+      "format": "JSON (serde)",
+      "licence": "ODbL 1.0 (géométrie et attributs OSM) ; altitudes : IGN Licence Ouverte 2.0",
+      "name": "piste_graph.json",
+      "properties": {
+        "edges[].attrs": "kind (piste, connector), name, osm_way_id, classic, skating (null si inconnu), backcountry, nordic, hike, difficulty, difficulty_max",
+        "edges[].from / to": "index des nœuds ; oneway : circulation seulement de from vers to",
+        "edges[].points": "géométrie WGS84 de from vers to",
+        "edges[].profile": "dist_m (distance depuis from, m) et elev_m (altitude IGN69, m) tous les 10 m et aux deux extrémités ; filled = stations sans altitude interpolées ; null si aucune altitude (hors couverture LiDAR HD : pente nulle)",
+        "nodes[].pos": "position WGS84 {lon, lat}"
+      }
+    }
+  ],
+  "generated_at": "2026-11-15T09:05:37Z",
+  "layer": "routes",
+  "notes": [
+    "Jeu de référence des tests (fixtures/, skimap fixtures) : seuls les fichiers listés sont repris."
+  ],
+  "parameters": {
+    "elevation_sampling": "bilinéaire sur le MNT 5 m Lambert-93 (projection WGS84 → Lambert-93 de skimap-common)",
+    "profile_step_m": 10.0,
+    "style_policy_default": {
+      "classic_on_skating_only": 1.5,
+      "hike_only": 3.0,
+      "skating_on_classic_only": 3.0
+    }
+  },
+  "site": "cervieres",
+  "sources": [
+    {
+      "attribution": "© les contributeurs d'OpenStreetMap (ODbL), extrait quotidien OpenSnowMap.org",
+      "etag": "\"c29a951-6603427b2307e\"",
+      "fetched_at": "2026-11-14T21:40:58Z",
+      "last_modified": "Sat, 14 Nov 2026 03:29:40 GMT",
+      "licence": "ODbL 1.0",
+      "name": "OpenSnowMap planet_pistes.osm.gz",
+      "personal_use_only": false,
+      "sha256": "4a68841cff09076f1d361b5c8abcae3404a29e273b992a30ccf26927dc61a00b",
+      "url": "https://www.opensnowmap.org/download/planet_pistes.osm.gz"
+    },
+    {
+      "attribution": "IGN – MNT LiDAR HD",
+      "edition": "Cervières : vol août 2021, édition 15/03/2025 ; Chapelle-des-Bois : vol oct.-nov. 2022, édition 21/07/2025 (rapport 07)",
+      "licence": "Licence Ouverte 2.0 (Etalab)",
+      "name": "MNT LiDAR HD (5 m, rééchantillonné par le WMS)",
+      "personal_use_only": false,
+      "producer": "IGN",
+      "url": "https://data.geopf.fr/wms-r?LAYERS=IGNF_LIDAR-HD_MNT_ELEVATION.ELEVATIONGRIDCOVERAGE.LAMB93"
+    }
+  ],
+  "stats": {
+    "components": 4,
+    "edges": 224,
+    "gain_forward_m": 1787.9639892578125,
+    "graph_bytes": 382324,
+    "graph_path": "data/out/cervieres/routes/piste_graph.json",
+    "length_km": 68.26610222335611,
+    "nodes": 189,
+    "oneway_km": 0.0,
+    "profiles": {
+      "edges_with_profile": 224,
+      "edges_without": 0,
+      "length_with_m": 68266.10222335611,
+      "length_without_m": 0.0,
+      "stations": 7157,
+      "stations_filled": 199
+    },
+    "seconds": [
+      0.405389938,
+      0.001497012,
+      0.000907276
+    ],
+    "site": "cervieres"
+  },
+  "tickets": [
+    "C1 (#33)",
+    "C2 (#34)",
+    "C3 (#35)",
+    "C5 (#37)",
+    "C7 (#39)"
+  ],
+  "valid_from": "2026-11-13T23:00:00Z",
+  "valid_until": null,
+  "validity": "réseau OSM à la date de l'extrait (valid_from) ; relief permanent (levés LiDAR HD)"
+}

@@ -1,10 +1,17 @@
 //! Checks of the built zone layers of the two real sites against research reports 04,
-//! 05 and 06. They read `data/out/<site>/zones/` and are ignored by default:
+//! 05 and 06.
+//!
+//! By default on the versioned reference layers (`fixtures/`, without the Biodiv'sports
+//! areas: no licence found); the `full_data_` variants read the complete local data and
+//! also check the Biodiv'sports areas (weekly job):
 //!
 //! ```sh
-//! cargo run --release -p skimap-zones --features pipeline --example build_zones
-//! cargo test -p skimap-zones --features pipeline --test real_sites -- --ignored
+//! cargo test -p skimap-zones --test real_sites
+//! cargo test -p skimap-zones --test real_sites -- --ignored full_data_
 //! ```
+
+#[path = "../../../fixtures/support/mod.rs"]
+mod fixtures;
 
 use std::path::PathBuf;
 
@@ -13,20 +20,37 @@ use skimap_common::site::{CERVIERES, CHAPELLE_DES_BOIS, Site};
 use skimap_zones::geom::{bbox_polygon, geodesic_area_m2};
 use skimap_zones::{Topic, ZoneKind, ZoneLayer};
 
-fn data_dir() -> PathBuf {
-    std::env::var("SKIMAP_DATA_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data")))
+/// Where the layers are read.
+#[derive(Clone, Copy, PartialEq)]
+enum Data {
+    /// `fixtures/data` (no Biodiv'sports).
+    Fixtures,
+    /// Complete local data.
+    Full,
 }
 
-fn layer(site: &Site) -> ZoneLayer {
-    let p = data_dir()
-        .join("out")
-        .join(site.id)
-        .join("zones")
-        .join("zones.geojson");
-    let s = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()));
-    ZoneLayer::from_geojson_str(&s).unwrap()
+fn zones_dir(site: &Site, data: Data) -> PathBuf {
+    let root = match data {
+        Data::Fixtures => fixtures::data(),
+        Data::Full => fixtures::full_data(),
+    };
+    root.join("out").join(site.id).join("zones")
+}
+
+fn read(site: &Site, data: Data, name: &str) -> String {
+    let p = zones_dir(site, data).join(name);
+    std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))
+}
+
+fn layer(site: &Site, data: Data) -> ZoneLayer {
+    let l = ZoneLayer::from_geojson_str(&read(site, data, "zones.geojson")).unwrap();
+    if data == Data::Fixtures {
+        assert!(
+            l.zones.iter().all(|z| z.kind() != ZoneKind::BiodivSports),
+            "Biodiv'sports areas in the fixtures"
+        );
+    }
+    l
 }
 
 fn area(l: &ZoneLayer, id: &str) -> f64 {
@@ -46,9 +70,18 @@ fn bbox_ha(b: BBox) -> f64 {
 }
 
 #[test]
-#[ignore = "needs data/out/chapelle-des-bois/zones"]
 fn chapelle_des_bois_layer_matches_reports() {
-    let l = layer(&CHAPELLE_DES_BOIS);
+    chapelle_des_bois(Data::Fixtures);
+}
+
+#[test]
+#[ignore = "full-data: data/out/chapelle-des-bois/zones"]
+fn full_data_chapelle_des_bois_layer_matches_reports() {
+    chapelle_des_bois(Data::Full);
+}
+
+fn chapelle_des_bois(data: Data) {
+    let l = layer(&CHAPELLE_DES_BOIS, data);
     // Report 05: APPB areas inside the box.
     assert_close(
         "APPB Haut-Doubs FR3801178 (ha)",
@@ -93,20 +126,22 @@ fn chapelle_des_bois_layer_matches_reports() {
     // Report 05: PNR du Haut-Jura covers 80 % of the box.
     let share = area(&l, "inpn:FR8000015") / bbox_ha(CHAPELLE_DES_BOIS.bbox) * 100.0;
     assert_close("PNR Haut-Jura (% of the box)", share, 80.0, 0.01);
-    // Report 05: 6 Biodiv'sports areas; report 04: "Grand tétras - hiver", Dec-Jun.
-    let bs: Vec<_> = l
-        .zones
-        .iter()
-        .filter(|z| z.kind() == ZoneKind::BiodivSports)
-        .collect();
-    assert_eq!(bs.len(), 6);
-    let grouse = l.get("biodiv:1183").unwrap();
-    assert_eq!(grouse.props.name, "Grand tétras - hiver");
-    assert_eq!(
-        grouse.props.months.unwrap().numbers(),
-        vec![1, 2, 3, 4, 5, 6, 12]
-    );
-    assert!(grouse.props.practices.iter().any(|p| p == "terrestre"));
+    if data == Data::Full {
+        // Report 05: 6 Biodiv'sports areas; report 04: "Grand tétras - hiver", Dec-Jun.
+        let bs: Vec<_> = l
+            .zones
+            .iter()
+            .filter(|z| z.kind() == ZoneKind::BiodivSports)
+            .collect();
+        assert_eq!(bs.len(), 6);
+        let grouse = l.get("biodiv:1183").unwrap();
+        assert_eq!(grouse.props.name, "Grand tétras - hiver");
+        assert_eq!(
+            grouse.props.months.unwrap().numbers(),
+            vec![1, 2, 3, 4, 5, 6, 12]
+        );
+        assert!(grouse.props.practices.iter().any(|p| p == "terrestre"));
+    }
     // Report 06: French part of the box 172.7 km² (Lambert-93 planar, ~0.2 % below the
     // geodesic area at this latitude).
     assert_close(
@@ -141,9 +176,18 @@ fn chapelle_des_bois_layer_matches_reports() {
 }
 
 #[test]
-#[ignore = "needs data/out/cervieres/zones"]
 fn cervieres_layer_matches_reports() {
-    let l = layer(&CERVIERES);
+    cervieres(Data::Fixtures);
+}
+
+#[test]
+#[ignore = "full-data: data/out/cervieres/zones"]
+fn full_data_cervieres_layer_matches_reports() {
+    cervieres(Data::Full);
+}
+
+fn cervieres(data: Data) {
+    let l = layer(&CERVIERES, data);
     // Report 05: no APPB, no national park, no nature reserve.
     for k in [
         ZoneKind::Appb,
@@ -202,19 +246,21 @@ fn cervieres_layer_matches_reports() {
         0.9,
         0.05,
     );
-    // Report 05: 10 Biodiv'sports areas, one "Tétras lyre - hiver" (terrestrial).
-    assert_eq!(
-        l.zones
-            .iter()
-            .filter(|z| z.kind() == ZoneKind::BiodivSports)
-            .count(),
-        10
-    );
-    assert!(
-        l.zones
-            .iter()
-            .any(|z| z.props.name == "Tétras lyre - hiver")
-    );
+    if data == Data::Full {
+        // Report 05: 10 Biodiv'sports areas, one "Tétras lyre - hiver" (terrestrial).
+        assert_eq!(
+            l.zones
+                .iter()
+                .filter(|z| z.kind() == ZoneKind::BiodivSports)
+                .count(),
+            10
+        );
+        assert!(
+            l.zones
+                .iter()
+                .any(|z| z.props.name == "Tétras lyre - hiver")
+        );
+    }
     // Report 06: French part of the box 225.6 km² (Lambert-93 planar).
     assert_close(
         "French part (km²)",
@@ -228,15 +274,20 @@ fn cervieres_layer_matches_reports() {
 }
 
 #[test]
-#[ignore = "needs data/out/<site>/zones"]
 fn every_rule_of_the_sites_is_sourced() {
+    rules_sourced(Data::Fixtures);
+}
+
+#[test]
+#[ignore = "full-data: data/out/<site>/zones"]
+fn full_data_every_rule_of_the_sites_is_sourced() {
+    rules_sourced(Data::Full);
+}
+
+fn rules_sourced(data: Data) {
     for site in [&CERVIERES, &CHAPELLE_DES_BOIS] {
-        let dir = data_dir().join("out").join(site.id).join("zones");
-        let rules = skimap_zones::RuleSet::from_json_str(
-            &std::fs::read_to_string(dir.join("rules.json")).unwrap(),
-        )
-        .unwrap();
-        let l = layer(site);
+        let rules = skimap_zones::RuleSet::from_json_str(&read(site, data, "rules.json")).unwrap();
+        let l = layer(site, data);
         let mut applied = 0;
         for r in &rules.rules {
             assert!(r.primary_source().url.starts_with("https://"));

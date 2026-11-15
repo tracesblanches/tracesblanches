@@ -1,0 +1,155 @@
+{
+  "features": [
+    {
+      "geometry": {
+        "coordinates": [
+          6.815831,
+          44.844722
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/162324/fr",
+        "blanket_unstaffed": false,
+        "capacity_staffed": 62,
+        "capacity_unstaffed": 9,
+        "country": "France",
+        "custodianship": "always_accessible",
+        "elevation": 2040.0,
+        "gas_unstaffed": false,
+        "heating_unstaffed": false,
+        "id": 162324,
+        "in_france": true,
+        "licence": "CC-BY-SA-3.0",
+        "link": 1,
+        "mattress_unstaffed": false,
+        "quality": "medium",
+        "title": "Les Fonts de Cervières",
+        "url": "https://www.camptocamp.org/waypoints/162324",
+        "waypoint_type": "hut"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.7895655,
+          44.9027703
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/201146/it",
+        "blanket_unstaffed": true,
+        "capacity_staffed": 25,
+        "capacity_unstaffed": null,
+        "country": "Italie",
+        "custodianship": "always_accessible",
+        "elevation": 2110.0,
+        "gas_unstaffed": true,
+        "heating_unstaffed": true,
+        "id": 201146,
+        "in_france": false,
+        "licence": "CC-BY-SA-3.0",
+        "link": 7,
+        "mattress_unstaffed": true,
+        "quality": "medium",
+        "title": "Capanna Mautino",
+        "url": "https://www.camptocamp.org/waypoints/201146",
+        "waypoint_type": "hut"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.732841,
+          44.822869
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/224958/fr",
+        "blanket_unstaffed": null,
+        "capacity_staffed": null,
+        "capacity_unstaffed": null,
+        "country": "France",
+        "custodianship": "accessible_when_wardened",
+        "elevation": 2300.0,
+        "gas_unstaffed": null,
+        "heating_unstaffed": null,
+        "id": 224958,
+        "in_france": true,
+        "licence": "CC-BY-SA-3.0",
+        "link": 8,
+        "mattress_unstaffed": null,
+        "quality": "medium",
+        "title": "Refuge Napoléon du Col de l'Izoard",
+        "url": "https://www.camptocamp.org/waypoints/224958",
+        "waypoint_type": "gite"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.676662,
+          44.825558
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/795053/fr",
+        "blanket_unstaffed": false,
+        "capacity_staffed": null,
+        "capacity_unstaffed": 16,
+        "country": "France",
+        "custodianship": null,
+        "elevation": 2140.0,
+        "gas_unstaffed": false,
+        "heating_unstaffed": true,
+        "id": 795053,
+        "in_france": true,
+        "licence": "CC-BY-SA-3.0",
+        "link": 0,
+        "mattress_unstaffed": false,
+        "quality": "medium",
+        "title": "Gîte de Vers le Col",
+        "url": "https://www.camptocamp.org/waypoints/795053",
+        "waypoint_type": "shelter"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.672647,
+          44.833291
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "attribution_url": "https://www.camptocamp.org/waypoints/history/977295/fr",
+        "blanket_unstaffed": false,
+        "capacity_staffed": 12,
+        "capacity_unstaffed": 0,
+        "country": "France",
+        "custodianship": "no_warden",
+        "elevation": 2000.0,
+        "gas_unstaffed": false,
+        "heating_unstaffed": false,
+        "id": 977295,
+        "in_france": true,
+        "licence": "CC-BY-SA-3.0",
+        "link": 4,
+        "mattress_unstaffed": false,
+        "quality": "fine",
+        "title": "Refuge la Yourte des Ayes",
+        "url": "https://www.camptocamp.org/waypoints/977295",
+        "waypoint_type": "hut"
+      },
+      "type": "Feature"
+    }
+  ],
+  "type": "FeatureCollection"
+}

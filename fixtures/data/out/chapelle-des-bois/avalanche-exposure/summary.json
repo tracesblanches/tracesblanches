@@ -1,0 +1,84 @@
+{
+  "site": "chapelle-des-bois",
+  "grid": [
+    2877,
+    3217,
+    5.0
+  ],
+  "valid_cells": 7789943,
+  "class_shares": [
+    0.8616659967858558,
+    0.13725260890869162,
+    0.0010813943054525559
+  ],
+  "ates_shares": [
+    0.646432329479176,
+    0.2965649427730087,
+    0.0559213334423628,
+    0.0010666316813871424,
+    0.000014762624065413572
+  ],
+  "paths": [
+    15040,
+    124633
+  ],
+  "all_lines": {
+    "lines": 691,
+    "length_km": 311.6305159708866,
+    "low_km": 215.9587799043215,
+    "exposed_km": 51.50440852848166,
+    "high_km": 0.06403411359883572,
+    "no_data_km": 44.10329342448467,
+    "not_low_share": 0.3070037469485275
+  },
+  "nordic_in_commune": {
+    "lines": 165,
+    "length_km": 82.60730069902915,
+    "low_km": 71.23716474052624,
+    "exposed_km": 11.370135958502907,
+    "high_km": 0.0,
+    "no_data_km": 0.0,
+    "not_low_share": 0.13764081215931245
+  },
+  "report07": {
+    "bbox": [
+      46.57,
+      6.06,
+      46.64,
+      6.16
+    ],
+    "reachable_alpha18": 0.087,
+    "reachable_alpha30": 0.01,
+    "ours": {
+      "lines": 263,
+      "length_km": 117.667793018735,
+      "low_km": 96.84418960642783,
+      "exposed_km": 14.062743083097011,
+      "high_km": 0.0,
+      "no_data_km": 6.760860329210155,
+      "not_low_share": 0.17696943979387503
+    }
+  },
+  "clpa_model": null,
+  "clpa_fused": null,
+  "clpa_cells_raised": 0,
+  "timings": {
+    "terrain": 9.065836198,
+    "pra": 0.465123601,
+    "runout_frequent": 0.720287141,
+    "runout_extreme": 0.906864551,
+    "ates": 1.813362905,
+    "classes": 0.18482723,
+    "total": 13.170577421
+  },
+  "io_seconds": [
+    0.459605257,
+    2.342371267
+  ],
+  "disclaimers": [
+    "Calcul automatique, non vérifié sur le terrain, indépendant de la neige du jour : consultez le BERA du massif avant de partir (il n'y a pas de BERA dans le Jura).",
+    "« Terrain peu exposé (modèle) » : aucune avalanche modélisée, même dans le scénario rare (angle d'arrêt de 18°), n'atteint ce terrain à 10 m près, d'après le relief LiDAR et la forêt LiDAR de l'IGN. Ce n'est ni une garantie ni une absence de danger.",
+    "Les pièges de terrain (ravines, ruisseaux, bords de route), les corniches, les avalanches venues de pentes hors de l'emprise calculée et les coupes de forêt postérieures au vol LiDAR ne sont pas pris en compte.",
+    "Méthode : portage de la recherche AutoATES v3.0 (ISSW 2026), que ses auteurs présentent comme « a research/tutorial product, not an operational ATES map »."
+  ]
+}

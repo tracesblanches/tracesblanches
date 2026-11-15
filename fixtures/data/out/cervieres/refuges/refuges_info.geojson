@@ -1,0 +1,643 @@
+{
+  "features": [
+    {
+      "geometry": {
+        "coordinates": [
+          6.67672,
+          44.8255
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 2140.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 648,
+        "in_france": true,
+        "latrines": true,
+        "link": 0,
+        "missing_wall": false,
+        "name": "Gite de Vers le Col",
+        "places": 16,
+        "places_mattress": 0,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/648/cabane-non-gardee/gite-de-Vers-le-Col/",
+        "water_100m": true
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.8157,
+          44.84465
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 2040.0,
+        "blankets": null,
+        "forest_100m": null,
+        "id": 1428,
+        "in_france": true,
+        "latrines": true,
+        "link": 1,
+        "missing_wall": null,
+        "name": "Refuge des Fonts de Cervières",
+        "places": 60,
+        "places_mattress": null,
+        "state": null,
+        "stove": null,
+        "type_id": 10,
+        "type_label": "refuge gardé",
+        "url": "https://www.refuges.info/point/1428/refuge-garde/refuge-des-Fonts-de-Cervieres/",
+        "water_100m": true
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.71469,
+          44.77305
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1800.0,
+        "blankets": false,
+        "forest_100m": true,
+        "id": 4215,
+        "in_france": true,
+        "latrines": false,
+        "link": 2,
+        "missing_wall": false,
+        "name": "Cabane de la Gardère",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": false,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/4215/cabane-non-gardee/cabane-de-la-Gardere/",
+        "water_100m": true
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.69601,
+          44.79758
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 2200.0,
+        "blankets": null,
+        "forest_100m": null,
+        "id": 4575,
+        "in_france": true,
+        "latrines": null,
+        "link": null,
+        "missing_wall": null,
+        "name": "Fontaine Le Collet",
+        "places": 0,
+        "places_mattress": null,
+        "state": null,
+        "stove": null,
+        "type_id": 23,
+        "type_label": "point d'eau",
+        "url": "https://www.refuges.info/point/4575/point-d-eau/fontaine-Le-Collet/",
+        "water_100m": null
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.69544,
+          44.78151
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 2276.0,
+        "blankets": null,
+        "forest_100m": null,
+        "id": 4576,
+        "in_france": true,
+        "latrines": null,
+        "link": null,
+        "missing_wall": null,
+        "name": "Fontaine Lauzon",
+        "places": 0,
+        "places_mattress": null,
+        "state": null,
+        "stove": null,
+        "type_id": 23,
+        "type_label": "point d'eau",
+        "url": "https://www.refuges.info/point/4576/point-d-eau/fontaine-Lauzon/",
+        "water_100m": null
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.6633,
+          44.7748
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 2215.0,
+        "blankets": null,
+        "forest_100m": null,
+        "id": 4971,
+        "in_france": true,
+        "latrines": null,
+        "link": null,
+        "missing_wall": null,
+        "name": "Cabane pastorale de Néal",
+        "places": 0,
+        "places_mattress": null,
+        "state": "Inutilisable",
+        "stove": null,
+        "type_id": 28,
+        "type_label": "bâtiment à investiguer",
+        "url": "https://www.refuges.info/point/4971/batiment-a-investiguer/cabane-pastorale-de-Neal/",
+        "water_100m": true
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.79289,
+          44.78355
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 2024.0,
+        "blankets": null,
+        "forest_100m": null,
+        "id": 5098,
+        "in_france": true,
+        "latrines": null,
+        "link": null,
+        "missing_wall": null,
+        "name": "Bergerie de Péas",
+        "places": 0,
+        "places_mattress": null,
+        "state": "Inutilisable",
+        "stove": null,
+        "type_id": 28,
+        "type_label": "bâtiment à investiguer",
+        "url": "https://www.refuges.info/point/5098/batiment-a-investiguer/bergerie-de-Peas/",
+        "water_100m": null
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.71046,
+          44.90059
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 2365.0,
+        "blankets": false,
+        "forest_100m": false,
+        "id": 5521,
+        "in_france": true,
+        "latrines": false,
+        "link": 3,
+        "missing_wall": false,
+        "name": "Cabane du Querelay",
+        "places": 10,
+        "places_mattress": 6,
+        "state": null,
+        "stove": true,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/5521/cabane-non-gardee/cabane-du-Querelay/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.67265,
+          44.83329
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1980.0,
+        "blankets": null,
+        "forest_100m": null,
+        "id": 5894,
+        "in_france": true,
+        "latrines": null,
+        "link": 4,
+        "missing_wall": null,
+        "name": "Refuge La Yourte des Ayes",
+        "places": 12,
+        "places_mattress": null,
+        "state": "Fermé au public",
+        "stove": null,
+        "type_id": 9,
+        "type_label": "gîte d'étape",
+        "url": "https://www.refuges.info/point/5894/gite-d-etape/refuge-La-Yourte-des-Ayes/",
+        "water_100m": true
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.82853,
+          44.86923
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 2847.0,
+        "blankets": false,
+        "forest_100m": false,
+        "id": 7811,
+        "in_france": false,
+        "latrines": false,
+        "link": 5,
+        "missing_wall": false,
+        "name": "Bivouac Matteo Corradini",
+        "places": 6,
+        "places_mattress": 0,
+        "state": null,
+        "stove": false,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/7811/cabane-non-gardee/bivouac-Matteo-Corradini/",
+        "water_100m": true
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.81594,
+          44.84479
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 2040.0,
+        "blankets": null,
+        "forest_100m": null,
+        "id": 7845,
+        "in_france": true,
+        "latrines": null,
+        "link": 6,
+        "missing_wall": null,
+        "name": "Fontaine des Fonts de Cervières",
+        "places": 0,
+        "places_mattress": null,
+        "state": null,
+        "stove": null,
+        "type_id": 23,
+        "type_label": "point d'eau",
+        "url": "https://www.refuges.info/point/7845/point-d-eau/fontaine-des-Fonts-de-Cervieres/",
+        "water_100m": null
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.73034,
+          44.79129
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1760.0,
+        "blankets": null,
+        "forest_100m": null,
+        "id": 9345,
+        "in_france": true,
+        "latrines": null,
+        "link": null,
+        "missing_wall": null,
+        "name": "Fontaine de Brunissard (Rte des Ayes)",
+        "places": 0,
+        "places_mattress": null,
+        "state": null,
+        "stove": null,
+        "type_id": 23,
+        "type_label": "point d'eau",
+        "url": "https://www.refuges.info/point/9345/point-d-eau/fontaine-de-Brunissard-Rte-des-Ayes/",
+        "water_100m": null
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.74059,
+          44.78535
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1762.0,
+        "blankets": false,
+        "forest_100m": false,
+        "id": 9588,
+        "in_france": true,
+        "latrines": false,
+        "link": null,
+        "missing_wall": true,
+        "name": "Cabane du Serre",
+        "places": null,
+        "places_mattress": null,
+        "state": null,
+        "stove": false,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/9588/cabane-non-gardee/cabane-du-Serre/",
+        "water_100m": true
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.70905,
+          44.8947
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 2365.0,
+        "blankets": null,
+        "forest_100m": null,
+        "id": 10041,
+        "in_france": true,
+        "latrines": null,
+        "link": null,
+        "missing_wall": null,
+        "name": "Source du Gondran",
+        "places": 0,
+        "places_mattress": null,
+        "state": null,
+        "stove": null,
+        "type_id": 23,
+        "type_label": "point d'eau",
+        "url": "https://www.refuges.info/point/10041/point-d-eau/source-du-Gondran/",
+        "water_100m": null
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.68709,
+          44.88719
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1930.0,
+        "blankets": null,
+        "forest_100m": null,
+        "id": 10042,
+        "in_france": true,
+        "latrines": null,
+        "link": null,
+        "missing_wall": null,
+        "name": "Fontaine de Poët Morand",
+        "places": 0,
+        "places_mattress": null,
+        "state": null,
+        "stove": null,
+        "type_id": 23,
+        "type_label": "point d'eau",
+        "url": "https://www.refuges.info/point/10042/point-d-eau/fontaine-de-Poet-Morand/",
+        "water_100m": null
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.72725,
+          44.88707
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 2230.0,
+        "blankets": false,
+        "forest_100m": false,
+        "id": 10730,
+        "in_france": true,
+        "latrines": false,
+        "link": null,
+        "missing_wall": false,
+        "name": "Ruine de la bergerie de Peyre Moutte",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": false,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/10730/cabane-non-gardee/ruine-de-la-bergerie-de-Peyre-Moutte/",
+        "water_100m": false
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.73141,
+          44.79194
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1760.0,
+        "blankets": null,
+        "forest_100m": null,
+        "id": 11112,
+        "in_france": true,
+        "latrines": null,
+        "link": null,
+        "missing_wall": null,
+        "name": "Fontaine de Brunissard (place St Pierre)",
+        "places": 0,
+        "places_mattress": null,
+        "state": null,
+        "stove": null,
+        "type_id": 23,
+        "type_label": "point d'eau",
+        "url": "https://www.refuges.info/point/11112/point-d-eau/fontaine-de-Brunissard-place-St-Pierre/",
+        "water_100m": null
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.72994,
+          44.7924
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1770.0,
+        "blankets": null,
+        "forest_100m": null,
+        "id": 11113,
+        "in_france": true,
+        "latrines": null,
+        "link": null,
+        "missing_wall": null,
+        "name": "Fontaine de Brunissard (impasse Roche Noire)",
+        "places": 0,
+        "places_mattress": null,
+        "state": null,
+        "stove": null,
+        "type_id": 23,
+        "type_label": "point d'eau",
+        "url": "https://www.refuges.info/point/11113/point-d-eau/fontaine-de-Brunissard-impasse-Roche-Noire/",
+        "water_100m": null
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.7172,
+          44.7994
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1840.0,
+        "blankets": null,
+        "forest_100m": null,
+        "id": 11114,
+        "in_france": true,
+        "latrines": null,
+        "link": null,
+        "missing_wall": null,
+        "name": "Fontaine de Brunissard (entrée camping Izoard)",
+        "places": 0,
+        "places_mattress": null,
+        "state": null,
+        "stove": null,
+        "type_id": 23,
+        "type_label": "point d'eau",
+        "url": "https://www.refuges.info/point/11114/point-d-eau/fontaine-de-Brunissard-entree-camping-Izoard/",
+        "water_100m": null
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.66311,
+          44.77489
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 2215.0,
+        "blankets": null,
+        "forest_100m": null,
+        "id": 11948,
+        "in_france": true,
+        "latrines": null,
+        "link": null,
+        "missing_wall": null,
+        "name": "Captage de Néal",
+        "places": 0,
+        "places_mattress": null,
+        "state": null,
+        "stove": null,
+        "type_id": 23,
+        "type_label": "point d'eau",
+        "url": "https://www.refuges.info/point/11948/point-d-eau/captage-de-Neal/",
+        "water_100m": null
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.76525,
+          44.79357
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 2070.0,
+        "blankets": true,
+        "forest_100m": true,
+        "id": 11998,
+        "in_france": true,
+        "latrines": true,
+        "link": null,
+        "missing_wall": false,
+        "name": "Bergerie de soulier",
+        "places": null,
+        "places_mattress": null,
+        "state": null,
+        "stove": null,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/11998/cabane-non-gardee/Bergerie-de-soulier/",
+        "water_100m": true
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          6.74715,
+          44.87715
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "alt": 1861.0,
+        "blankets": false,
+        "forest_100m": false,
+        "id": 12190,
+        "in_france": true,
+        "latrines": false,
+        "link": null,
+        "missing_wall": false,
+        "name": "Cabane de berger",
+        "places": 0,
+        "places_mattress": 0,
+        "state": null,
+        "stove": false,
+        "type_id": 7,
+        "type_label": "cabane non gardée",
+        "url": "https://www.refuges.info/point/12190/cabane-non-gardee/Cabane-de-berger/",
+        "water_100m": null
+      },
+      "type": "Feature"
+    }
+  ],
+  "type": "FeatureCollection"
+}

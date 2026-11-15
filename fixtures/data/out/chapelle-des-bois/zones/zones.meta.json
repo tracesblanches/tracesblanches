@@ -1,0 +1,258 @@
+{
+  "crs": "EPSG:4326 (longitude, latitude), coordonnées arrondies à 1e-6°",
+  "files": [
+    {
+      "count": 34,
+      "description": "toutes les zones, découpées à l'emprise du site",
+      "name": "zones.geojson",
+      "properties": {
+        "area_ha": "surface géodésique dans l'emprise du site, hectares",
+        "clipped": "géométrie coupée par l'emprise du site",
+        "designated": "date de création connue (ISO)",
+        "id": "identifiant stable <espace>:<identifiant source>",
+        "kind": "type de zone (appb, site_inscrit, spr, biodiv_sports, district_franc, country, commune, ...)",
+        "months": "mois sensibles (1 à 12) des zones Biodiv'sports ; null = pas de saison dans la source",
+        "name": "nom officiel",
+        "note": "remarque du pipeline",
+        "practices": "pratiques Biodiv'sports concernées (terrestre, vertical, aerien, ...)",
+        "source": "inpn, gpu, biodiv-sports, geo-admin, geo-api",
+        "url": "fiche, acte ou page d'information"
+      }
+    },
+    {
+      "description": "règles saisies à la main depuis les textes (schéma skimap_zones::rules)",
+      "name": "rules.json"
+    }
+  ],
+  "generated_at": "2026-11-15T09:10:51Z",
+  "layer": "zones",
+  "notes": [
+    "Biodiv'sports : aucune licence trouvée, usage personnel (option personal_sources) ; couche marquée usage personnel.",
+    "Les zones sont découpées à l'emprise du site : hors emprise, aucune règle n'est évaluée.",
+    "Les sites inscrits viennent des servitudes AC2 du GPU qui ne recoupent aucun site classé INPN.",
+    "Contours des zones cœur de l'APPB Haut-Doubs : zone Biodiv'sports 686 (hors des deux emprises actuelles).",
+    "Italie : aucune donnée de zone ni règle.",
+    "40 zones ; aucune règle n'est inventée : chaque règle de rules.json cite ses sources et dit ce qui a été lu.",
+    "Jeu de référence des tests (fixtures/, skimap fixtures) : seuls les fichiers listés sont repris."
+  ],
+  "site": "chapelle-des-bois",
+  "sources": [
+    {
+      "attribution": "PatriNat (OFB, MNHN, CNRS, IRD), Inventaire national du patrimoine naturel",
+      "licence": "« other-open » selon data.gouv.fr, à confirmer (F5, #11)",
+      "name": "INPN espaces protégés (PatriNat)",
+      "note": "WFS Géoplateforme, sortie demandée en CRS:84 (la valeur par défaut est EPSG:3857)",
+      "personal_use_only": false,
+      "url": "https://data.geopf.fr/wfs/ows couches patrinat_apb:apb, patrinat_rnn:rnn, patrinat_rnr:rnr, patrinat_pnr:pnr, patrinat_pn:parc_national, patrinat_sc:sc, patrinat_sic:sic, patrinat_zps:zps, patrinat_rb:rb"
+    },
+    {
+      "attribution": "Géoportail de l'urbanisme",
+      "licence": "non vérifiée (F5, #11)",
+      "name": "Géoportail de l'urbanisme, servitudes d'utilité publique",
+      "note": "seule source des sites inscrits (R111-33) ; AC1, AC2, AC4, AS1, A7 conservées",
+      "personal_use_only": false,
+      "url": "https://data.geopf.fr/wfs/ows couche wfs_sup:assiette_sup_s"
+    },
+    {
+      "attribution": "© OFEV, © swisstopo",
+      "licence": "opendata.swiss « terms_by » (attribution obligatoire)",
+      "name": "geo.admin.ch (OFEV districts francs, swissBOUNDARIES3D)",
+      "note": "districts francs : parties à protection intégrale ou partielle seulement",
+      "personal_use_only": false,
+      "url": "https://api3.geo.admin.ch/rest/services/api/MapServer/identify?geometry=6.02,46.54,6.2,46.68&geometryType=esriGeometryEnvelope&layers=all:ch.bafu.bundesinventare-jagdbanngebiete&sr=4326&tolerance=0&returnGeometry=true&geometryFormat=geojson&lang=fr"
+    },
+    {
+      "attribution": "geo.api.gouv.fr (Etalab, IGN)",
+      "licence": "non vérifiée (F5, #11)",
+      "name": "geo.api.gouv.fr, contours des communes",
+      "note": "France, départements et communes citées par les règles",
+      "personal_use_only": false,
+      "url": "https://geo.api.gouv.fr/departements/<code>/communes?format=geojson&geometry=contour"
+    }
+  ],
+  "stats": {
+    "areas_ha": {
+      "canton:vd": 4156.9322,
+      "ch-jbg:980": 117.5702,
+      "commune:ch-5872": 4124.561,
+      "country:fr": 17302.1761,
+      "dept:25": 8761.5509,
+      "dept:39": 8541.3986,
+      "gpu:AC1-172014607-1906271894-1-1": 2.1315,
+      "gpu:AC1-172014607-1906272152-1-1": 0.0008,
+      "gpu:AC1-172014607-1906272152-1-2": 79.2237,
+      "gpu:AC1-172014607-1907196414-1-2": 36.1156,
+      "gpu:AC1-172014607-1907196570-1-1": 0.0389,
+      "gpu:AC1-172014607-1907196570-1-2": 82.7824,
+      "gpu:AC1-172014607-1907196589-1-1": 0.0003,
+      "gpu:AC1-172014607-1907196589-1-2": 78.9692,
+      "gpu:AC2-130009012-22545-1-1": 3978.7847,
+      "gpu:AC2-130009012-23914-1-1": 2.554,
+      "gpu:AC2-130009012-23934-1-1": 3.3724,
+      "inpn:FR3201483": 502.2495,
+      "inpn:FR3800137": 636.3922,
+      "inpn:FR3800742": 204.5074,
+      "inpn:FR3800749": 25.3053,
+      "inpn:FR3800859": 6.5688,
+      "inpn:FR3800988": 938.672,
+      "inpn:FR3801178": 1122.389,
+      "inpn:FR4301290": 3262.3935,
+      "inpn:FR4301308": 46.4691,
+      "inpn:FR4301309": 320.3633,
+      "inpn:FR4301319": 839.1891,
+      "inpn:FR4301328": 1096.7694,
+      "inpn:FR4312001": 3262.3935,
+      "inpn:FR4312002": 839.1891,
+      "inpn:FR4312023": 1096.7694,
+      "inpn:FR4312029": 46.4692,
+      "inpn:FR8000015": 17224.1392
+    },
+    "rules": [
+      {
+        "rule": "fr-r111-32-bivouac-consent",
+        "zones": [
+          "country:fr"
+        ]
+      },
+      {
+        "rule": "fr-r111-33-bivouac",
+        "zones": [
+          "inpn:FR3201483",
+          "gpu:AC2-130009012-22545-1-1",
+          "gpu:AC2-130009012-23914-1-1",
+          "gpu:AC2-130009012-23934-1-1",
+          "gpu:AC1-172014607-1906272152-1-1",
+          "gpu:AC1-172014607-1907196570-1-1",
+          "gpu:AC1-172014607-1907196589-1-1",
+          "gpu:AC1-172014607-1906271894-1-1",
+          "gpu:AC1-172014607-1906272152-1-2",
+          "gpu:AC1-172014607-1907196414-1-2",
+          "gpu:AC1-172014607-1907196570-1-2",
+          "gpu:AC1-172014607-1907196589-1-2"
+        ]
+      },
+      {
+        "rule": "fr-l131-1-fire",
+        "zones": [
+          "country:fr"
+        ]
+      },
+      {
+        "rule": "appb-haut-jura-leave-routes",
+        "zones": [
+          "inpn:FR3800988"
+        ]
+      },
+      {
+        "rule": "appb-haut-jura-bivouac",
+        "zones": [
+          "inpn:FR3800988"
+        ]
+      },
+      {
+        "rule": "appb-haut-jura-fire",
+        "zones": [
+          "inpn:FR3800988"
+        ]
+      },
+      {
+        "rule": "appb-haut-doubs-leave-routes",
+        "zones": [
+          "inpn:FR3801178"
+        ]
+      },
+      {
+        "rule": "appb-paradis-bivouac",
+        "zones": [
+          "inpn:FR3800137"
+        ]
+      },
+      {
+        "rule": "appb-paradis-fire",
+        "zones": [
+          "inpn:FR3800137"
+        ]
+      },
+      {
+        "rule": "enj-private-land-leave-routes",
+        "zones": [
+          "dept:25",
+          "dept:39"
+        ]
+      },
+      {
+        "rule": "enj-private-land-bivouac",
+        "zones": [
+          "dept:25",
+          "dept:39"
+        ]
+      },
+      {
+        "rule": "enj-private-land-fire",
+        "zones": [
+          "dept:25",
+          "dept:39"
+        ]
+      },
+      {
+        "rule": "ch-cc-699-access",
+        "zones": [
+          "canton:vd"
+        ]
+      },
+      {
+        "rule": "ch-vd-lccr-27-camping",
+        "zones": [
+          "canton:vd"
+        ]
+      },
+      {
+        "rule": "ch-vd-fire-forest",
+        "zones": [
+          "canton:vd"
+        ]
+      },
+      {
+        "rule": "ch-chenit-camping",
+        "zones": [
+          "commune:ch-5872"
+        ]
+      },
+      {
+        "rule": "ch-odf-camping",
+        "zones": [
+          "ch-jbg:980"
+        ]
+      },
+      {
+        "rule": "ch-odf-ski",
+        "zones": [
+          "ch-jbg:980"
+        ]
+      }
+    ],
+    "zones_by_kind": {
+      "appb": 6,
+      "biodiv_sports": 6,
+      "canton": 1,
+      "commune": 1,
+      "country": 1,
+      "department": 2,
+      "district_franc": 1,
+      "monument_abords": 5,
+      "monument_historique": 3,
+      "natura2000_sic": 5,
+      "natura2000_zps": 4,
+      "parc_naturel_regional": 1,
+      "site_classe": 1,
+      "site_inscrit": 3
+    }
+  },
+  "tickets": [
+    "P9 (#22)",
+    "P10 (#23)"
+  ],
+  "valid_from": null,
+  "valid_until": "2026-12-15",
+  "validity": "Régénérer au moins chaque mois : Biodiv'sports évolue sans calendrier, INPN est mis à jour chaque semestre, le GPU en continu. Les règles (rules.json) sont relues à la main (date `reviewed`)."
+}

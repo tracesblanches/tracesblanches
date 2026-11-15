@@ -1,0 +1,269 @@
+{
+  "crs": "EPSG:2154 (rasters), EPSG:4326 (GeoJSON)",
+  "files": [
+    {
+      "bytes": 257545,
+      "cell_size": 5.0,
+      "crs": "EPSG:2154",
+      "description": "Exposition aux avalanches (modèle) : 1 = terrain peu exposé (modèle), 2 = exposé, 3 = très exposé ; dans les Hautes-Alpes, les emprises CLPA sont au moins « exposé » ; même grille que terrain/dem_5m.tif (calque `Overlay` du routeur hors piste)",
+      "format": "GeoTIFF UInt8, Deflate",
+      "name": "exposure_5m.tif",
+      "nodata": "255",
+      "size_cells": [
+        2877,
+        3217
+      ],
+      "unit": "classe"
+    },
+    {
+      "description": "Chiffres clés : parts des classes, longueurs de pistes par classe, validation CLPA, temps de calcul",
+      "name": "summary.json"
+    }
+  ],
+  "generated_at": "2026-11-15T09:15:35Z",
+  "layer": "avalanche-exposure",
+  "notes": [
+    "Calcul automatique, non vérifié sur le terrain, indépendant de la neige du jour : consultez le BERA du massif avant de partir (il n'y a pas de BERA dans le Jura).",
+    "« Terrain peu exposé (modèle) » : aucune avalanche modélisée, même dans le scénario rare (angle d'arrêt de 18°), n'atteint ce terrain à 10 m près, d'après le relief LiDAR et la forêt LiDAR de l'IGN. Ce n'est ni une garantie ni une absence de danger.",
+    "Les pièges de terrain (ravines, ruisseaux, bords de route), les corniches, les avalanches venues de pentes hors de l'emprise calculée et les coupes de forêt postérieures au vol LiDAR ne sont pas pris en compte.",
+    "Méthode : portage de la recherche AutoATES v3.0 (ISSW 2026), que ses auteurs présentent comme « a research/tutorial product, not an operational ATES map ».",
+    "Jamais « sûr » ni « sans danger » : les trois classes sont « terrain peu exposé (modèle) », « exposé », « très exposé ».",
+    "Très exposé = classes ATES 3 et 4 du classifieur dev8 ; peu exposé = classes 0 et 1 à plus de 10 m de toute cellule atteinte par l'écoulement rare (α = 18°) et de toute zone de départ rare avant tamisage ; exposé = le reste.",
+    "Dans les Hautes-Alpes, les cellules dans une emprise CLPA (DDT 05) passent au moins en « exposé » : une avalanche connue n'est jamais affichée « peu exposé ». La validation P18 (clpa_model du résumé) mesure le modèle seul, avant cette fusion. CLPA à usage personnel : couche marquée usage personnel.",
+    "Zones de départ : pente (Horn, comme GDAL), abri au vent (médiane des angles sur 60 m), forêt ; logique floue et seuils des valeurs ISSW 2026 d'AutoATES v3.0, sans rugosité ; tamis de 1000 m² (algorithme de gdal_sieve).",
+    "Écoulement : Flow-Py (com4FlowPy, moteur Numba porté opération par opération), α = 30° (fréquent) et 18° (rare), exposant 8, seuil de flux 0,003, z_delta ≤ 270 m, frottement et détraînement en forêt (forestDetrainment).",
+    "Forêt : cellule « arbre » si la hauteur de canopée du MNH LiDAR HD à 5 m est ≥ 3 m ; couvert = part des cellules « arbre » sur 3 × 3 cellules (15 m). Choix non calibrés.",
+    "Accord avec la référence Python (AutoATES v3.0 + AvaFrame, mêmes entrées, Cervières 5 m, mesuré le 15/11/2026) : classes identiques sur les 10 087 708 cellules ; détail dans oracle_comparison_5m.json quand l'exemple oracle_compare a tourné.",
+    "Jeu de référence des tests (fixtures/, skimap fixtures) : seuls les fichiers listés sont repris."
+  ],
+  "parameters": {
+    "class_codes": {
+      "1": "terrain peu exposé (modèle)",
+      "2": "exposé",
+      "255": "pas de donnée",
+      "3": "très exposé"
+    },
+    "cover_window_cells": 3,
+    "flowpy": [
+      {
+        "alpha": 30.0,
+        "exp": 8.0,
+        "flux_threshold": 0.003,
+        "forest": {
+          "max_added_friction": 52.0,
+          "max_detrainment": 0.003,
+          "min_added_friction": 5.0,
+          "min_detrainment": 0.00001,
+          "skip_forest_dist": 0.0,
+          "vel_th_detrainment": 270.0,
+          "vel_th_friction": 270.0
+        },
+        "max_z": 270.0,
+        "name": "frequent"
+      },
+      {
+        "alpha": 18.0,
+        "exp": 8.0,
+        "flux_threshold": 0.003,
+        "forest": {
+          "max_added_friction": 52.0,
+          "max_detrainment": 0.003,
+          "min_added_friction": 5.0,
+          "min_detrainment": 0.00001,
+          "skip_forest_dist": 0.0,
+          "vel_th_detrainment": 270.0,
+          "vel_th_friction": 270.0
+        },
+        "max_z": 270.0,
+        "name": "extreme"
+      }
+    ],
+    "low_margin_m": 10.0,
+    "pra": [
+      {
+        "forest": [
+          50.0,
+          3.0,
+          0.0
+        ],
+        "name": "frequent",
+        "sieve_m2": 1000.0,
+        "slope": [
+          12.0,
+          4.0,
+          42.5
+        ],
+        "threshold": 0.25,
+        "wind": [
+          3.0,
+          10.0,
+          3.0
+        ],
+        "wind_probability": 0.5,
+        "wind_radius_m": 60.0
+      },
+      {
+        "forest": [
+          50.0,
+          3.0,
+          0.0
+        ],
+        "name": "extreme",
+        "sieve_m2": 1000.0,
+        "slope": [
+          14.0,
+          4.0,
+          40.0
+        ],
+        "threshold": 0.05000000074505806,
+        "wind": [
+          3.0,
+          10.0,
+          3.0
+        ],
+        "wind_probability": 0.5,
+        "wind_radius_m": 60.0
+      }
+    ],
+    "segment_buffer_m": 10.0,
+    "tree_height_m": 3.0
+  },
+  "site": "chapelle-des-bois",
+  "sources": [
+    {
+      "attribution": "IGN – MNT LiDAR HD",
+      "licence": "Licence Ouverte 2.0 (Etalab)",
+      "name": "MNT LiDAR HD (5 m, rééchantillonné par le WMS), via la couche terrain",
+      "personal_use_only": false,
+      "producer": "IGN",
+      "url": "https://data.geopf.fr/wms-r?LAYERS=IGNF_LIDAR-HD_MNT_ELEVATION.ELEVATIONGRIDCOVERAGE.LAMB93"
+    },
+    {
+      "attribution": "IGN – MNH LiDAR HD",
+      "licence": "Licence Ouverte 2.0 (Etalab)",
+      "name": "MNH LiDAR HD (hauteur de canopée, 5 m, rééchantillonné par le WMS)",
+      "note": "vols LiDAR HD : Cervières août 2021, Chapelle-des-Bois oct.-nov. 2022 (rapport 07) ; les coupes postérieures n'apparaissent pas",
+      "personal_use_only": false,
+      "producer": "IGN",
+      "url": "https://data.geopf.fr/wms-r?LAYERS=IGNF_LIDAR-HD_MNH_ELEVATION.ELEVATIONGRIDCOVERAGE.LAMB93"
+    },
+    {
+      "attribution": "© les contributeurs d'OpenStreetMap (ODbL), extrait quotidien OpenSnowMap.org",
+      "edition": "données OSM du 2026-11-13T23:00:00Z",
+      "etag": "\"c29a951-6603427b2307e\"",
+      "fetched_at": "2026-11-14T21:40:58Z",
+      "last_modified": "Sat, 14 Nov 2026 03:29:40 GMT",
+      "licence": "ODbL 1.0",
+      "name": "Pistes et itinéraires OSM, couche pistes (P2) : OpenSnowMap planet_pistes.osm.gz",
+      "personal_use_only": false,
+      "sha256": "4a68841cff09076f1d361b5c8abcae3404a29e273b992a30ccf26927dc61a00b",
+      "url": "https://www.opensnowmap.org/download/planet_pistes.osm.gz"
+    },
+    {
+      "attribution": "AutoATES v3.0 (MIT)",
+      "licence": "MIT",
+      "name": "Méthode : AutoATES v3.0, instantané ISSW 2026 (Sykes, Knies, Haegeli, Anthony-Malone, Statham), portage Rust",
+      "personal_use_only": false,
+      "url": "https://github.com/AutoATES/autoATES-v3.0-issw/tree/5558c16469173cd14725576c1a5a60b7a8e14628"
+    },
+    {
+      "attribution": "AvaFrame com4FlowPy ; Flow-Py",
+      "licence": "EUPL-1.2 (AvaFrame) ; Flow-Py GPL-3.0 : effet du portage sur la licence du projet à décider (F2)",
+      "name": "Méthode : com4FlowPy (AvaFrame) / Flow-Py v1.0 (D'Amboise et al. 2022, GMD 15, 2423–2439), portage Rust",
+      "personal_use_only": false,
+      "url": "https://github.com/OpenNHM/AvaFrame/tree/d0451ce8019bf1db6b7b55a9099314a482405d8e/avaframe/com4FlowPy"
+    }
+  ],
+  "stats": {
+    "all_lines": {
+      "exposed_km": 51.50440852848166,
+      "high_km": 0.06403411359883572,
+      "length_km": 311.6305159708866,
+      "lines": 691,
+      "low_km": 215.9587799043215,
+      "no_data_km": 44.10329342448467,
+      "not_low_share": 0.3070037469485275
+    },
+    "ates_shares": [
+      0.646432329479176,
+      0.2965649427730087,
+      0.0559213334423628,
+      0.0010666316813871424,
+      0.000014762624065413572
+    ],
+    "class_shares": [
+      0.8616659967858558,
+      0.13725260890869162,
+      0.001081394305452556
+    ],
+    "clpa_cells_raised": 0,
+    "clpa_fused": null,
+    "clpa_model": null,
+    "disclaimers": [
+      "Calcul automatique, non vérifié sur le terrain, indépendant de la neige du jour : consultez le BERA du massif avant de partir (il n'y a pas de BERA dans le Jura).",
+      "« Terrain peu exposé (modèle) » : aucune avalanche modélisée, même dans le scénario rare (angle d'arrêt de 18°), n'atteint ce terrain à 10 m près, d'après le relief LiDAR et la forêt LiDAR de l'IGN. Ce n'est ni une garantie ni une absence de danger.",
+      "Les pièges de terrain (ravines, ruisseaux, bords de route), les corniches, les avalanches venues de pentes hors de l'emprise calculée et les coupes de forêt postérieures au vol LiDAR ne sont pas pris en compte.",
+      "Méthode : portage de la recherche AutoATES v3.0 (ISSW 2026), que ses auteurs présentent comme « a research/tutorial product, not an operational ATES map »."
+    ],
+    "grid": [
+      2877,
+      3217,
+      5.0
+    ],
+    "io_seconds": [
+      0.459605257,
+      0.0
+    ],
+    "nordic_in_commune": {
+      "exposed_km": 11.370135958502908,
+      "high_km": 0.0,
+      "length_km": 82.60730069902915,
+      "lines": 165,
+      "low_km": 71.23716474052624,
+      "no_data_km": 0.0,
+      "not_low_share": 0.13764081215931245
+    },
+    "paths": [
+      15040,
+      124633
+    ],
+    "report07": {
+      "bbox": [
+        46.57,
+        6.06,
+        46.64,
+        6.16
+      ],
+      "ours": {
+        "exposed_km": 14.062743083097011,
+        "high_km": 0.0,
+        "length_km": 117.667793018735,
+        "lines": 263,
+        "low_km": 96.84418960642785,
+        "no_data_km": 6.760860329210155,
+        "not_low_share": 0.17696943979387503
+      },
+      "reachable_alpha18": 0.087,
+      "reachable_alpha30": 0.01
+    },
+    "site": "chapelle-des-bois",
+    "timings": {
+      "ates": 1.813362905,
+      "classes": 0.18482723,
+      "pra": 0.465123601,
+      "runout_extreme": 0.906864551,
+      "runout_frequent": 0.720287141,
+      "terrain": 9.065836198,
+      "total": 13.170577421
+    },
+    "valid_cells": 7789943
+  },
+  "tickets": [
+    "P16 (#29)",
+    "P17 (#30)",
+    "P18 (#31)"
+  ],
+  "valid_from": null,
+  "valid_until": null,
+  "validity": "relief et forêt à la date des vols LiDAR HD ; indépendant de la neige et du jour"
+}

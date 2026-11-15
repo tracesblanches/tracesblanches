@@ -1,0 +1,306 @@
+{
+  "crs": "EPSG:4326 (WGS84, longitude, latitude)",
+  "files": [
+    {
+      "count": 22,
+      "description": "points refuges.info de l'emprise (instantané hebdomadaire + mise à jour depuis=), dernier commentaire daté",
+      "licence": "CC BY-SA 2.0",
+      "name": "refuges_info.geojson",
+      "properties": {
+        "alt": "altitude, m",
+        "blankets": "couvertures",
+        "forest_100m": "forêt à moins de 100 m (« bois » : pas une réserve de bois)",
+        "id": "identifiant refuges.info",
+        "in_france": "commune française au point (geo.api.gouv.fr)",
+        "latrines": "latrines",
+        "link": "index dans links.json",
+        "missing_wall": "manque un mur",
+        "name": "nom",
+        "places": "places prévues pour dormir",
+        "places_mattress": "places sur matelas",
+        "state": "état (« Fermé au public », « Inutilisable », « Détruite »), null si ouvert ou inconnu",
+        "stove": "poêle",
+        "type_id": "type (7 cabane non gardée, 9 gîte d'étape, 10 refuge gardé, 23 point d'eau...)",
+        "type_label": "libellé du type",
+        "url": "fiche refuges.info",
+        "water_100m": "eau à moins de 100 m"
+      }
+    },
+    {
+      "count": 20,
+      "description": "refuges et abris OSM (tourism=alpine_hut, tourism=wilderness_hut, amenity=shelter, ref:refuges.info) ; centre des ways et relations",
+      "licence": "ODbL 1.0",
+      "name": "osm.geojson",
+      "properties": {
+        "in_france": "commune française au point",
+        "kind": "alpine_hut, wilderness_hut, shelter, bus_shelter (shelter_type=public_transport) ou other",
+        "link": "index dans links.json",
+        "osm_id": "identifiant OSM",
+        "osm_type": "node, way ou relation",
+        "refuges_info_id": "identifiant refuges.info (ref:refuges.info)",
+        "tags": "étiquettes retenues : name, tourism, amenity, shelter_type, building, capacity, beds, winter_room, fireplace, stove, drinking_water, toilets, opening_hours, access, fee, reservation, operator, website, contact:website, ele, ref:refuges.info, description, disused, abandoned (description filtrée ; phone et contact:phone jamais en étiquette)"
+      }
+    },
+    {
+      "count": 5,
+      "description": "cabanes (hut), abris (shelter) et gîtes Camptocamp de l'emprise, avec la capacité hors gardiennage",
+      "licence": "CC BY-SA 3.0",
+      "name": "camptocamp.geojson",
+      "properties": {
+        "attribution_url": "historique (auteurs) à citer",
+        "blanket_unstaffed": "couvertures",
+        "capacity_staffed": "places gardé",
+        "capacity_unstaffed": "places hors gardiennage (local d'hiver)",
+        "country": "pays (zone Camptocamp)",
+        "custodianship": "accessible_when_wardened, always_accessible, key_needed, no_warden",
+        "elevation": "altitude, m",
+        "gas_unstaffed": "gaz",
+        "heating_unstaffed": "chauffage",
+        "id": "document Camptocamp",
+        "in_france": "pays = France",
+        "licence": "licence du document",
+        "link": "index dans links.json",
+        "mattress_unstaffed": "matelas hors gardiennage",
+        "quality": "qualité de la fiche",
+        "title": "nom",
+        "url": "page Camptocamp",
+        "waypoint_type": "hut, shelter, gite"
+      }
+    }
+  ],
+  "generated_at": "2026-11-15T09:57:14Z",
+  "layer": "refuges",
+  "notes": [
+    "Jeu de référence des tests (fixtures/, skimap fixtures) : seuls les fichiers listés sont repris."
+  ],
+  "parameters": {
+    "bbox_south_west_north_east": [
+      44.77,
+      6.66,
+      44.92,
+      6.86
+    ],
+    "links_min_name_similarity": 0.3,
+    "links_near_m": 250.0,
+    "links_same_spot_m": 40.0,
+    "refuges_info_refresh": "instantané complet gardé 7 jours, puis requête depuis=<date de l'instantané> gardée 1 h ; commentaires gardés 1 jour"
+  },
+  "site": "cervieres",
+  "sources": [
+    {
+      "attribution": "© les contributeurs de refuges.info (CC BY-SA 2.0)",
+      "fetched_at": "2026-11-14T22:26:54Z",
+      "licence": "CC BY-SA 2.0",
+      "name": "refuges.info /api/bbox (instantané complet)",
+      "personal_use_only": false,
+      "sha256": "ce3be93517c472828597df5bc15109f156c8884175432c94adbe86ec7a1d3fd7",
+      "url": "https://www.refuges.info/api/bbox?bbox=6.66,44.77,6.86,44.92&format=geojson&detail=complet&nb_points=all&format_texte=texte"
+    },
+    {
+      "attribution": "© les contributeurs de refuges.info (CC BY-SA 2.0)",
+      "fetched_at": "2026-11-15T09:56:49Z",
+      "licence": "CC BY-SA 2.0",
+      "name": "refuges.info /api/bbox depuis= (mise à jour incrémentale)",
+      "personal_use_only": false,
+      "sha256": "d11689dd8664a4ddefcc22c3782284add6d8406ac5754a6236ece50d6c32d1f7",
+      "url": "https://www.refuges.info/api/bbox?bbox=6.66,44.77,6.86,44.92&format=geojson&detail=complet&nb_points=all&format_texte=texte&depuis=1794695214"
+    },
+    {
+      "attribution": "© les contributeurs de refuges.info (CC BY-SA 2.0)",
+      "fetched_at": "2026-11-14T22:26:56Z",
+      "licence": "CC BY-SA 2.0",
+      "name": "refuges.info /api/commentaires",
+      "personal_use_only": false,
+      "sha256": "58842245e5fde0a09cdd0ca3822467ea64e3572720b5bd2784b346add9cdc7ff",
+      "url": "https://www.refuges.info/api/commentaires?id_point=648,1428,4215,4575,4576,4971,5098,5521,5894,7811,7845,9345,9588,10041,10042,10730,11112,11113,11114,11948,11998,12190&format_texte=texte"
+    },
+    {
+      "attribution": "© les contributeurs d'OpenStreetMap (ODbL)",
+      "fetched_at": "2026-11-15T01:11:17Z",
+      "licence": "ODbL 1.0",
+      "name": "OpenStreetMap (Overpass)",
+      "personal_use_only": false,
+      "sha256": "9f4fe7fd99b8eadb97667ea143d47cb4316a083abeb276068ebca80e0dba2d78",
+      "url": "https://overpass-api.de/api/interpreter"
+    },
+    {
+      "attribution": "© les contributeurs de Camptocamp.org (CC BY-SA 3.0)",
+      "fetched_at": "2026-11-14T22:27:30Z",
+      "licence": "CC BY-SA 3.0",
+      "name": "Camptocamp /waypoints",
+      "personal_use_only": false,
+      "sha256": "66a307e2151af247efc7c6686248a6e80e10c9049c6ed0489526f13ca4cfa567",
+      "url": "https://api.camptocamp.org/waypoints?wtyp=hut,shelter,gite&bbox=741388,5585385,763652,5608936&limit=100&offset=0&pl=fr"
+    },
+    {
+      "attribution": "© les contributeurs de Camptocamp.org (CC BY-SA 3.0)",
+      "licence": "CC BY-SA 3.0",
+      "name": "Camptocamp /waypoints/<id> (5 documents)",
+      "personal_use_only": false,
+      "url": "https://api.camptocamp.org/waypoints/<id>?cook=fr"
+    },
+    {
+      "attribution": "geo.api.gouv.fr",
+      "licence": "Licence Ouverte 2.0",
+      "name": "geo.api.gouv.fr communes (en France ou non)",
+      "personal_use_only": false,
+      "url": "https://geo.api.gouv.fr/communes"
+    }
+  ],
+  "stats": {
+    "camptocamp": {
+      "by_type": {
+        "gite": {
+          "france": 1,
+          "hors_france": 0
+        },
+        "hut": {
+          "france": 2,
+          "hors_france": 1
+        },
+        "shelter": {
+          "france": 1,
+          "hors_france": 0
+        }
+      },
+      "documents": 5,
+      "in_box": 5,
+      "with_unstaffed_capacity": 3
+    },
+    "fiches": {
+      "by_kind": {
+        "abri": {
+          "france": 4,
+          "hors_france": 0
+        },
+        "batiment": {
+          "france": 2,
+          "hors_france": 0
+        },
+        "garde": {
+          "france": 1,
+          "hors_france": 0
+        },
+        "gite": {
+          "france": 1,
+          "hors_france": 0
+        },
+        "non_garde": {
+          "france": 3,
+          "hors_france": 1
+        }
+      },
+      "cards": 12,
+      "phones_by_source": {
+        "camptocamp": {
+          "france": 1,
+          "hors_france": 0
+        }
+      },
+      "staffed_or_gite_without_phone": [],
+      "winter_access": {
+        "ferme": {
+          "france": 3,
+          "hors_france": 0
+        },
+        "libre": {
+          "france": 7,
+          "hors_france": 1
+        },
+        "local_hiver": {
+          "france": 1,
+          "hors_france": 0
+        }
+      },
+      "with_camptocamp": 3,
+      "with_info_date": 12,
+      "with_phone": 1,
+      "with_places_winter": 3,
+      "with_website": 1
+    },
+    "links": {
+      "by_method": {
+        "camptocamp_osm_position": 2,
+        "camptocamp_refuges_info_position": 3,
+        "osm_ref_refuges_info": 7
+      },
+      "places": 9,
+      "refuges_info_with_camptocamp": 3,
+      "refuges_info_with_osm": 7
+    },
+    "osm": {
+      "by_kind": {
+        "alpine_hut": {
+          "france": 2,
+          "hors_france": 3
+        },
+        "bus_shelter": {
+          "france": 5,
+          "hors_france": 0
+        },
+        "other": {
+          "france": 2,
+          "hors_france": 0
+        },
+        "shelter": {
+          "france": 5,
+          "hors_france": 0
+        },
+        "wilderness_hut": {
+          "france": 2,
+          "hors_france": 1
+        }
+      },
+      "elements": 20,
+      "with_fireplace": 1,
+      "with_opening_hours": 0,
+      "with_ref_refuges_info": 7,
+      "with_winter_room": 0
+    },
+    "refuges_info": {
+      "by_type": {
+        "bâtiment à investiguer": {
+          "france": 2,
+          "hors_france": 0
+        },
+        "cabane non gardée": {
+          "france": 7,
+          "hors_france": 1
+        },
+        "gîte d'étape": {
+          "france": 1,
+          "hors_france": 0
+        },
+        "point d'eau": {
+          "france": 10,
+          "hors_france": 0
+        },
+        "refuge gardé": {
+          "france": 1,
+          "hors_france": 0
+        }
+      },
+      "incremental_points": 0,
+      "points": 22,
+      "states": {
+        "Fermé au public": {
+          "france": 1,
+          "hors_france": 0
+        },
+        "Inutilisable": {
+          "france": 2,
+          "hors_france": 0
+        }
+      },
+      "with_last_comment": 21,
+      "with_stove": 2
+    }
+  },
+  "tickets": [
+    "P11 (#24)",
+    "H1 (#132)"
+  ],
+  "valid_from": "2026-11-15T01:11:17Z",
+  "valid_until": null,
+  "validity": null
+}

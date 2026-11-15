@@ -1,8 +1,9 @@
 //! Recomputes the CLPA crossing figures of report 07 from the files the research kept
-//! (`research/raw/`, not versioned), without network:
+//! (`research/raw/`, not versioned; the CLPA is not redistributable, so it is not in the
+//! fixtures either), without network. Full-data category, weekly job:
 //!
 //! ```sh
-//! SKIMAP_RESEARCH_RAW=/path/to/skimap/research/raw cargo test -p skimap-avalanche -- --ignored
+//! SKIMAP_RESEARCH_RAW=/path/to/skimap/research/raw cargo test -p skimap-avalanche -- --ignored full_data_
 //! ```
 //!
 //! Same site rule as the report (vertex mean north of 44.82° N, the col d'Izoard).
@@ -11,15 +12,24 @@ use std::path::PathBuf;
 
 use skimap_avalanche::historic::{self, pistes};
 
+/// `$SKIMAP_RESEARCH_RAW`, default `research/raw` of the repository; fails if absent.
 fn raw() -> PathBuf {
-    PathBuf::from(
-        std::env::var("SKIMAP_RESEARCH_RAW").expect("set SKIMAP_RESEARCH_RAW to research/raw"),
-    )
+    let p = std::env::var_os("SKIMAP_RESEARCH_RAW")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../research/raw"))
+        });
+    assert!(
+        p.is_dir(),
+        "full-data test: no {} (set SKIMAP_RESEARCH_RAW to research/raw)",
+        p.display()
+    );
+    p
 }
 
 #[test]
-#[ignore = "needs research/raw (SKIMAP_RESEARCH_RAW)"]
-fn report07_cervieres() {
+#[ignore = "full-data: research/raw (SKIMAP_RESEARCH_RAW)"]
+fn full_data_report07_cervieres() {
     let base = raw().join("census_ava/clpa/ddt05/dataset/L_ALEA_AVALANCHE_005");
     let shp = std::fs::read(base.with_extension("shp")).unwrap();
     let dbf = std::fs::read(base.with_extension("dbf")).unwrap();

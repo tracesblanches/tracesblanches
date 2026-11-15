@@ -803,35 +803,70 @@ mod tests {
         );
     }
 
-    // ---- Real layers (`data/out/<site>/zones/`, built by `skimap-zones`). ----
+    // ---- Real layers of both sites. ----
     //
-    // Run with `cargo test -p skimap-core -- --ignored zone_eval` after building the
-    // layers (`cargo run -p skimap-zones --features pipeline --example build_zones`).
+    // By default on the versioned reference layers (`fixtures/data/out/<site>/zones/`,
+    // without the Biodiv'sports areas: no licence found); the `full_data_` variants read
+    // the complete local data (`$SKIMAP_DATA_DIR`, default `data/`) and also check the
+    // Biodiv'sports areas: `cargo test -p skimap-core -- --ignored full_data_`.
 
-    fn real(site: &str) -> (ZoneLayer, RuleSet) {
-        let root = std::env::var("SKIMAP_DATA_DIR")
-            .unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../../data").to_owned());
-        let dir = std::path::Path::new(&root)
-            .join("out")
-            .join(site)
-            .join("zones");
-        let layer = std::fs::read_to_string(dir.join("zones.geojson"))
-            .unwrap_or_else(|e| panic!("{}: {e} (build the zones layer first)", dir.display()));
-        let rules = std::fs::read_to_string(dir.join("rules.json")).unwrap();
-        (
-            ZoneLayer::from_geojson_str(&layer).unwrap(),
-            RuleSet::from_json_str(&rules).unwrap(),
-        )
+    /// Where the real layers are read.
+    #[derive(Clone, Copy, PartialEq)]
+    enum Data {
+        /// `fixtures/data` (no Biodiv'sports).
+        Fixtures,
+        /// Complete local data.
+        Full,
+    }
+
+    fn real(site: &str, data: Data) -> (ZoneLayer, RuleSet) {
+        let here = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let root = match data {
+            Data::Fixtures => here.join("../../fixtures/data"),
+            Data::Full => std::env::var_os("SKIMAP_DATA_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| here.join("../../data")),
+        };
+        let dir = root.join("out").join(site).join("zones");
+        let read = |name: &str| {
+            let p = dir.join(name);
+            std::fs::read_to_string(&p).unwrap_or_else(|e| {
+                panic!(
+                    "{}: {e} (fixtures: `skimap fixtures`; full data: `skimap zones {site}`)",
+                    p.display()
+                )
+            })
+        };
+        let layer = ZoneLayer::from_geojson_str(&read("zones.geojson")).unwrap();
+        if data == Data::Fixtures {
+            assert!(
+                layer
+                    .zones
+                    .iter()
+                    .all(|z| z.kind() != ZoneKind::BiodivSports),
+                "Biodiv'sports areas in the fixtures"
+            );
+        }
+        (layer, RuleSet::from_json_str(&read("rules.json")).unwrap())
     }
 
     #[test]
-    #[ignore = "needs data/out/chapelle-des-bois/zones (built by skimap-zones)"]
     fn real_risoux_february_vs_august() {
-        let (layer, rules) = real("chapelle-des-bois");
+        real_risoux_check(Data::Fixtures);
+    }
+
+    #[test]
+    #[ignore = "full-data: data/out/chapelle-des-bois/zones"]
+    fn full_data_real_risoux_february_vs_august() {
+        real_risoux_check(Data::Full);
+    }
+
+    fn real_risoux_check(data: Data) {
+        let (layer, rules) = real("chapelle-des-bois", data);
         let feb = evaluate(&layer, &rules, RISOUX, utc("2027-02-10T10:00:00Z"));
         println!("{}", feb.describe_fr());
         let ids: Vec<_> = feb.zones.iter().map(|z| z.id.as_str()).collect();
-        for id in ["inpn:FR3800988", "biodiv:1183", "country:fr", "dept:39"] {
+        for id in ["inpn:FR3800988", "country:fr", "dept:39"] {
             assert!(ids.contains(&id), "{id} not in {ids:?}");
         }
         assert_eq!(
@@ -839,10 +874,16 @@ mod tests {
             ["appb-haut-jura-leave-routes"]
         );
         assert_eq!(feb.verdict(Topic::Bivouac).verdict, Verdict::Forbidden);
-        assert_eq!(
-            feb.verdict(Topic::Access).verdict,
-            Verdict::AvoidRecommended
-        );
+        if data == Data::Full {
+            // Biodiv'sports « Grand tétras - hiver »: avoid the area in winter.
+            assert!(ids.contains(&"biodiv:1183"), "{ids:?}");
+            assert_eq!(
+                feb.verdict(Topic::Access).verdict,
+                Verdict::AvoidRecommended
+            );
+        } else {
+            assert_eq!(feb.verdict(Topic::Access).verdict, Verdict::NoRule);
+        }
         let aug = evaluate(&layer, &rules, RISOUX, utc("2027-08-10T10:00:00Z"));
         println!("{}", aug.describe_fr());
         assert!(!aug.is_active("appb-haut-jura-leave-routes"));
@@ -856,9 +897,18 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "needs data/out/chapelle-des-bois/zones (built by skimap-zones)"]
     fn real_chapelle_site_inscrit_and_swiss_side() {
-        let (layer, rules) = real("chapelle-des-bois");
+        chapelle_site_inscrit_and_swiss_side(Data::Fixtures);
+    }
+
+    #[test]
+    #[ignore = "full-data: data/out/chapelle-des-bois/zones"]
+    fn full_data_real_chapelle_site_inscrit_and_swiss_side() {
+        chapelle_site_inscrit_and_swiss_side(Data::Full);
+    }
+
+    fn chapelle_site_inscrit_and_swiss_side(data: Data) {
+        let (layer, rules) = real("chapelle-des-bois", data);
         // Lac des Mortes, in the site inscrit.
         let e = evaluate(
             &layer,
@@ -896,9 +946,18 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "needs data/out/cervieres/zones (built by skimap-zones)"]
     fn real_cervieres_village_and_casse_deserte() {
-        let (layer, rules) = real("cervieres");
+        cervieres_village_and_casse_deserte(Data::Fixtures);
+    }
+
+    #[test]
+    #[ignore = "full-data: data/out/cervieres/zones"]
+    fn full_data_real_cervieres_village_and_casse_deserte() {
+        cervieres_village_and_casse_deserte(Data::Full);
+    }
+
+    fn cervieres_village_and_casse_deserte(data: Data) {
+        let (layer, rules) = real("cervieres", data);
         let village = evaluate(
             &layer,
             &rules,

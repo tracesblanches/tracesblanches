@@ -1,0 +1,93 @@
+{
+  "crs": "EPSG:2154 (Lambert-93)",
+  "files": [
+    {
+      "bytes": 3058,
+      "cell_size": 25.0,
+      "crs": "EPSG:2154",
+      "description": "Hauteur de neige estimée (valeur centrale)",
+      "format": "GeoTIFF Float32, Deflate",
+      "name": "snow_depth.tif",
+      "nodata": "NaN",
+      "size_cells": [
+        576,
+        644
+      ],
+      "unit": "cm"
+    },
+    {
+      "bytes": 3058,
+      "cell_size": 25.0,
+      "crs": "EPSG:2154",
+      "description": "Classe piste damée : 0 insuffisant (< 20 cm), 1 limite, 2 suffisant (≥ 40 cm)",
+      "format": "GeoTIFF Float32, Deflate",
+      "name": "class_groomed.tif",
+      "nodata": "NaN",
+      "size_cells": [
+        576,
+        644
+      ],
+      "unit": "classe"
+    },
+    {
+      "bytes": 3058,
+      "cell_size": 25.0,
+      "crs": "EPSG:2154",
+      "description": "Classe ski de randonnée nordique (hors piste) : 0 insuffisant (< 30 cm), 1 limite, 2 suffisant (≥ 60 cm)",
+      "format": "GeoTIFF Float32, Deflate",
+      "name": "class_srn.tif",
+      "nodata": "NaN",
+      "size_cells": [
+        576,
+        644
+      ],
+      "unit": "classe"
+    }
+  ],
+  "generated_at": "2026-11-15T08:59:08Z",
+  "layer": "snow",
+  "notes": [
+    "Hauteur de neige naturelle estimée : simulation Météo-France du massif (état à 06 h UTC), interpolée par pixel de 25 m : linéaire en altitude entre bandes de 300 m, en orientation entre les deux octants voisins, en pente entre plat, 20° et 40° (au-delà de 40° : valeur à 40°).",
+    "Relief : moyenne 5 × 5 du MNT LiDAR HD 5 m ; pente et orientation de Horn à 25 m. Pixel sans pente (bord, voisin sans donnée) traité comme plat.",
+    "Massif : polygone snowtools contenant le centre du pixel ; un pixel hors de tout polygone reçoit le massif du pixel le plus proche.",
+    "Fourchette (snow_depth_low / snow_depth_high) : minimum et maximum de la même interpolation sur altitude ± 150 m, pente ± 10° et orientation ± 45°. C'est la sensibilité au relief local, pas l'erreur du modèle (voir validation.json).",
+    "NON MODÉLISÉ : transport de neige par le vent (corniches, crêtes soufflées, accumulations), interception et ombre de la forêt, tassement par le damage, neige de culture. La simulation est une valeur de massif par bande d'altitude, pas une mesure locale.",
+    "Classes groomed (piste damée) : 0 insuffisant < 20 cm ≤ 1 limite < 40 cm ≤ 2 suffisant ; seuils proposés, à valider sur le terrain (T5).",
+    "Classes srn (ski de randonnée nordique (hors piste)) : 0 insuffisant < 30 cm ≤ 1 limite < 60 cm ≤ 2 suffisant ; seuils proposés, à valider sur le terrain (T5).",
+    "Jeu de référence des tests (fixtures/, skimap fixtures) : seuls les fichiers listés sont repris."
+  ],
+  "site": "chapelle-des-bois",
+  "sources": [
+    {
+      "attribution": "Météo-France – simulation nivologique",
+      "licence": "Licence Ouverte 2.0 (Etalab)",
+      "name": "Données de Modèle de Simulation Nivologique",
+      "personal_use_only": false,
+      "producer": "Météo-France",
+      "url": "https://www.data.gouv.fr/datasets/donnees-de-modele-de-simulation-nivologique"
+    },
+    {
+      "attribution": "Météo-France CNRM – snowtools",
+      "edition": "commit c84a1609012cf88d47551e3e9c38ea758ee609b8",
+      "licence": "CeCILL-C (dépôt UMR-CNRM/snowtools)",
+      "name": "Contours des massifs (snowtools, massifs.shp)",
+      "personal_use_only": false,
+      "producer": "Météo-France / CNRS, CNRM (CEN)",
+      "url": "https://raw.githubusercontent.com/UMR-CNRM/snowtools/c84a1609012cf88d47551e3e9c38ea758ee609b8/snowtools/DATA/massifs.shp"
+    },
+    {
+      "attribution": "IGN – MNT LiDAR HD",
+      "licence": "Licence Ouverte 2.0 (Etalab)",
+      "name": "MNT LiDAR HD (5 m, agrégé à 25 m)",
+      "personal_use_only": false,
+      "producer": "IGN",
+      "url": "https://data.geopf.fr/wms-r?LAYERS=IGNF_LIDAR-HD_MNT_ELEVATION.ELEVATIONGRIDCOVERAGE.LAMB93"
+    }
+  ],
+  "tickets": [
+    "P6 (#19)"
+  ],
+  "valid_from": "2026-11-14T06:00:00Z",
+  "valid_until": null,
+  "validity": "2026-11-14 06:00 UTC (simulation du jour J, publiée J+1)"
+}
