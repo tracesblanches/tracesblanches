@@ -117,6 +117,9 @@ class DayActivity : ComponentActivity() {
             contact: Contact?,
         ) {
             Tracking.start(context, SkiTrackingService::class.java, plan.planDir)
+            // Optional non-return alert by the server (S2): deposited when the option is on.
+            fr.skimap.app.prep.ReturnAlert
+                .deposit(context, plan)
             val at = plan.expectedBackMs - REMINDER_BEFORE_MS
             if (at > System.currentTimeMillis()) {
                 val who = contact?.name?.ifBlank { contact.number } ?: "votre contact"

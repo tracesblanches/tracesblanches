@@ -96,6 +96,8 @@ fun SkimapApp(
 ) {
     var pickerOpen by rememberSaveable { mutableStateOf(false) }
     var card by remember { mutableStateOf<Card?>(null) }
+    // A long touch on the map: the rules of the place, the way there (V6, K7, V1).
+    var place by remember { mutableStateOf<fr.skimap.app.rules.Place?>(null) }
     val controller = remember { MapController() }
     // The style follows the theme of the app: the phone's, or the user's choice (Apparence).
     val dark = isSystemInDarkTheme()
@@ -171,10 +173,20 @@ fun SkimapApp(
                         onCard = { card = it },
                         lastCamera = viewModel.lastCamera,
                         onLeave = viewModel::saveCamera,
+                        onLongPress = { lat, lon ->
+                            place =
+                                fr.skimap.app.rules
+                                    .Place(lat, lon)
+                        },
                     )
                 }
             }
         }
+    }
+    place?.let { p ->
+        val site = (state as? MapUiState.Ready)?.opened?.info?.siteId
+        fr.skimap.app.rules
+            .PlaceSheet(p, site, onDismiss = { place = null })
     }
     if (welcome && state != MapUiState.Loading) {
         val hasPack = state is MapUiState.Ready
@@ -259,6 +271,9 @@ fun MapScreen(
         ) {
             StatusChip(info, siteName, texts, today, state.error, Modifier.align(Alignment.TopStart))
             GuidanceOverlay(info.siteId)
+            // One hint at a time, only when it matters: the bearing in the fog (K7), the less exposed terrain (V7).
+            fr.skimap.app.fog
+                .MapHint(Modifier.align(Alignment.BottomCenter).padding(horizontal = 56.dp))
             Column(
                 Modifier.align(Alignment.BottomEnd),
                 horizontalAlignment = Alignment.End,

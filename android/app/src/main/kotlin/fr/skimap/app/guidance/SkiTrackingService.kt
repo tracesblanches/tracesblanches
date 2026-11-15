@@ -39,6 +39,33 @@ class SkiTrackingService : TrackingService() {
             .onFailure { Log.w(TAG, "profile chosen", it) }
     }
 
+    /** Altitude by the barometer during the outing (K8). */
+    private var baro: fr.skimap.app.recap.BaroRecorder? = null
+
+    override fun onStartCommand(
+        intent: android.content.Intent?,
+        flags: Int,
+        startId: Int,
+    ): Int {
+        if (intent?.action == fr.skimap.tracking.Tracking.ACTION_START && baro == null) {
+            intent
+                .getStringExtra(
+                    fr.skimap.tracking.Tracking.EXTRA_PLAN_DIR,
+                )?.let {
+                    baro =
+                        fr.skimap.app.recap.BaroRecorder
+                            .start(this, it)
+                }
+        }
+        return super.onStartCommand(intent, flags, startId)
+    }
+
+    override fun onDestroy() {
+        baro?.stop()
+        baro = null
+        super.onDestroy()
+    }
+
     @SuppressLint("MissingPermission")
     override fun onEnded(
         planDir: String,
@@ -53,6 +80,13 @@ class SkiTrackingService : TrackingService() {
         ReturnReminder.cancel(this)
         // « Envoyer automatiquement » (K11): queued now, sent when the network allows.
         OutingExport.of(this, TrackingState.Ended(planDir, recap, gpx))?.let { Sport.sendIfAuto(this, it) }
+        baro?.stop()
+        baro = null
+        // The recap (A10) and the return confirmed to the server (S2) when it had the plan.
+        fr.skimap.app.recap.RecapNotifier
+            .ended(this, planDir)
+        fr.skimap.app.prep.ReturnAlert
+            .checkIn(this, planDir)
         val text = recap?.text ?: getString(R.string.day_ended_stopped)
         val b =
             NotificationCompat

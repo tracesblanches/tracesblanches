@@ -182,7 +182,7 @@ pub enum TrackEvent {
 }
 
 impl TrackEvent {
-    fn input(&self) -> Input {
+    pub(crate) fn input(&self) -> Input {
         match self {
             TrackEvent::Activity { t_ms, activity } => Input::Activity {
                 t: utc(*t_ms),

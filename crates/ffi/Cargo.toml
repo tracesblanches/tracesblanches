@@ -26,6 +26,12 @@ skimap-collab = { path = "../collab", features = ["phone"] }
 skimap-intent = { path = "../intent" }
 # Group mode (N2, #128): frames, table, alerts; no radio, no network.
 skimap-group = { path = "../group" }
+# Off-piste in the app (V1), rules of a place (V6), low-exposure zones (V7): the zone layer
+# and rules, the SRN difficulty (not in [workspace.dependencies]: no other crate depends
+# on it) and the gzip of the off-piste rasters of the packs.
+skimap-zones.workspace = true
+skimap-srndiff = { path = "../srndiff" }
+flate2.workspace = true
 chrono.workspace = true
 geojson.workspace = true
 serde.workspace = true
