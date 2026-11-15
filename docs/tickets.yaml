@@ -1061,7 +1061,7 @@ tickets:
   labels: [client, pendant]
   deps: [K1]
   body: |
-    Material 3 et règles Android suivies, mais cibles de 72 dp au moins, aucun geste fin indispensable, contraste élevé sur fond de neige, info jamais portée par la couleur seule, grande police.
+    Material 3 et règles Android suivies, mais cibles de 72 dp au moins, pas de boutons de zoom : pincement à mains nues, zoom à un doigt, zoom automatique selon le contexte et un seul grand bouton « recentrer » qui n'apparaît qu'après un déplacement de la carte ; aucun geste fin indispensable, contraste élevé sur fond de neige, info jamais portée par la couleur seule, grande police.
     Critère : toutes les actions de sortie faites avec des gants de ski sur le Pixel.
 
 - key: K13
