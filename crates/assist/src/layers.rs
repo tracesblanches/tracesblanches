@@ -91,7 +91,10 @@ struct RawHour {
 }
 
 /// One hour of weather at a forecast point (local legal time, Europe/Paris).
-#[derive(Debug, Clone, PartialEq)]
+///
+/// Serialisable so that a day plan (`skimap-plan`) can carry the hours of its outing to the
+/// phone; the layer files are still read through their own schema.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, Deserialize)]
 pub struct WeatherHour {
     /// Local time at the start of the hour.
     pub time: NaiveDateTime,
@@ -123,8 +126,9 @@ pub struct WeatherHour {
     pub weather_code: Option<i32>,
 }
 
-/// Hourly series of one forecast point, all files merged.
-#[derive(Debug, Clone, PartialEq)]
+/// Hourly series of one forecast point, all files merged (serialisable, see
+/// [`WeatherHour`]).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, Deserialize)]
 pub struct WeatherPoint {
     /// Identifier (`le-laus`).
     pub id: String,
