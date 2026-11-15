@@ -391,6 +391,121 @@ pub fn pairs(reg: &Registration, dmap: &InkDistance, decisions: &[Decision]) -> 
     out
 }
 
+/// A trained model and its decision threshold (`data/out/france/plan_training/model.json`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Model {
+    /// The boosted trees.
+    pub model: crate::gbdt::Gbdt,
+    /// Probability for a precision of 99 % in the cross-validation by domain.
+    pub threshold: f64,
+    /// Descriptor names (must equal [`FEATURES`]).
+    pub features: Vec<String>,
+}
+
+impl Model {
+    /// Reads a model file; `None` when absent or made for other descriptors.
+    pub fn read(path: &std::path::Path) -> Option<Model> {
+        let m: Model = serde_json::from_slice(&std::fs::read(path).ok()?).ok()?;
+        (m.features
+            .iter()
+            .map(String::as_str)
+            .eq(FEATURES.iter().copied()))
+        .then_some(m)
+    }
+}
+
+/// Learnt matches for the legend lines the exact matching left out: the line's best
+/// candidate when the model's probability reaches the threshold and leaves every other
+/// candidate of the line below it. The decision gets method `ml`, score = probability,
+/// the unit's relations and ways, and a status: as an exact match when the unit carries
+/// the line's name, `name_missing` otherwise (OSM has the piste under another name or
+/// none).
+pub fn apply_model(
+    reg: &Registration,
+    dmap: &InkDistance,
+    decisions: &mut [Decision],
+    model: &Model,
+) -> usize {
+    use crate::transcript::{MatchMethod, OsmStatus};
+    let ps = pairs(reg, dmap, decisions);
+    let mut by_entry: std::collections::BTreeMap<usize, Vec<(f64, &Pair)>> = Default::default();
+    for p in &ps {
+        by_entry
+            .entry(p.entry)
+            .or_default()
+            .push((model.model.predict(&p.x), p));
+    }
+    let entries = transcribe::entries(reg);
+    let osm = &reg.osm;
+    let mut n = 0;
+    for (ei, mut cands) in by_entry {
+        cands.sort_by(|a, b| b.0.total_cmp(&a.0));
+        let (p, best) = cands[0];
+        let second = cands.get(1).map_or(0.0, |c| c.0);
+        if p < model.threshold || second >= model.threshold {
+            continue;
+        }
+        let e = &entries[ei];
+        let ink = e.ink.map(|i| reg.spec.inks[i].name.clone());
+        let Some(d) = decisions.iter_mut().find(|d| {
+            d.status.is_none()
+                && crate::labels::fold(&d.entry.name_read) == crate::labels::fold(&e.name_read)
+                && d.ink == ink
+        }) else {
+            continue;
+        };
+        let relations: Vec<usize> = best
+            .relations
+            .iter()
+            .filter_map(|id| osm.relations.iter().position(|r| r.id == *id))
+            .collect();
+        let ways: Vec<usize> = best
+            .ways
+            .iter()
+            .filter_map(|id| osm.ways.iter().position(|w| w.id == *id))
+            .collect();
+        let named = relations.iter().any(|&r| {
+            osm.relations[r]
+                .name
+                .as_deref()
+                .is_some_and(|n| name_key(n) == name_key(&e.name_read))
+        });
+        let osm_colours: BTreeSet<&str> = relations
+            .iter()
+            .filter_map(|&r| osm.relations[r].colour.as_deref())
+            .collect();
+        d.status = Some(if !named {
+            OsmStatus::NameMissing
+        } else {
+            match (d.colour.as_deref(), osm_colours.len()) {
+                (None, _) => OsmStatus::Match,
+                (Some(_), 0) => OsmStatus::ColourMissing,
+                (Some(c), _) if osm_colours.contains(c) => OsmStatus::Match,
+                _ => OsmStatus::ColourDiffers,
+            }
+        });
+        d.method = Some(MatchMethod::Ml);
+        d.score = p;
+        d.relations = relations;
+        d.ways = ways;
+        d.named_ways_only = false;
+        d.reason = format!(
+            "modèle appris : p = {p:.3} (seuil {:.3}, candidat suivant {second:.3}){}",
+            model.threshold,
+            if named {
+                String::new()
+            } else {
+                format!(
+                    " ; piste OSM « {} »",
+                    best.unit_name.as_deref().unwrap_or("sans nom")
+                )
+            }
+        );
+        n += 1;
+    }
+    n
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -524,7 +524,15 @@ pub fn transcribe_and_write(
     DataLayout::ensure(&dir)?;
     let plan = transcribe::entries(reg);
     let dmap = transcribe::InkDistance::new(reg);
-    let (decisions, validation) = transcribe::decide(reg, &dmap, &plan);
+    let (mut decisions, validation) = transcribe::decide(reg, &dmap, &plan);
+    // Learnt matches for the lines the exact matching left out, when a model trained on
+    // the other domains is there (`data/out/france/plan_training/model.json`).
+    let model_path = layout.france_layer_dir("plan_training")?.join("model.json");
+    let model = crate::learn::Model::read(&model_path);
+    let ml = match &model {
+        Some(m) => crate::learn::apply_model(reg, &dmap, &mut decisions, m),
+        None => 0,
+    };
     let lms = transcribe::landmarks(reg);
     // Pistes.
     let mut features = Vec::new();
@@ -677,6 +685,8 @@ pub fn transcribe_and_write(
         "legend_lines": plan.len(),
         "plan_pistes": decisions.len(),
         "transcribed": transcribed,
+        "transcribed_ml": ml,
+        "model": model.as_ref().map(|m| json!({"file": model_path.display().to_string(), "threshold": m.threshold, "trees": m.model.trees.len()})),
         "transcribed_share": if decisions.is_empty() { 0.0 } else { transcribed as f64 / decisions.len() as f64 },
         "with_osm_name_candidate": decisions.iter().filter(|d| !d.ways.is_empty()).count(),
         "status": transcribe::status_counts(&decisions),

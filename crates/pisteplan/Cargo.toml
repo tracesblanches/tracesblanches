@@ -83,3 +83,6 @@ required-features = ["pipeline"]
 name = "diag_plan"
 required-features = ["pipeline"]
 
+[[example]]
+name = "train_model"
+required-features = ["pipeline"]

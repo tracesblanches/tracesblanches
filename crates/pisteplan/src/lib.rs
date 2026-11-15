@@ -1,14 +1,17 @@
 //! Official piste plans transcribed onto our maps (P22, #121).
 //!
 //! Without features the crate is the phone-side reader of the transcription
-//! ([`transcript`]) plus the plane-to-plane models ([`warp`]). The `pipeline` feature adds
+//! ([`transcript`]) plus the plane-to-plane models ([`warp`]), the boosted trees
+//! ([`gbdt`]) and their evaluation by domain ([`evaluate`]). The `pipeline` feature adds
 //! the registration of a plan: download, rendering and text layer (poppler tools as the
 //! input step), reading sheet detected from the plan (`autospec`), colour segmentation,
 //! skeleton graph, OCR (ocrs), matching to OSM (labels, RANSAC, non-rigid ICP,
 //! junctions), thin-plate spline, transcription; the collector of the plans (`collect`)
-//! and the pairs labelled for the learnt matching (`learn`).
+//! and the learnt matching (`learn`).
 
 pub mod error;
+pub mod evaluate;
+pub mod gbdt;
 pub mod linalg;
 pub mod transcript;
 pub mod warp;
