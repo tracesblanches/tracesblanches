@@ -22,6 +22,7 @@ Toutes les crates sont dans `crates/`, nommées `skimap-<dossier>` (bibliothèqu
 | `core` | routage, rattachement, hors piste, temps estimé, demi-tour, zones, batterie (un module par ticket) | téléphone | C1 #33 à C10 #42 |
 | `assist` | briefing, fartage, qualité de neige, affluence, suggestions, équipement, synthèse, alertes, meilleur moment, bilan, questions (un module par ticket) | téléphone | A1 #88 à A11 #98 |
 | `voice` | banque de phrases, clips pré-générés | les deux | VO2 #84, VO3 #85 |
+| `server` | catalogue et paquets immuables des packs, mises à jour différentielles, minuterie de non-retour facultative, échange OAuth Strava ; voir `crates/server/README.md` et `deploy/README.md` | serveur | S0 #50, S1 #62, S2 #60 |
 | `cli` | binaire `skimap` : une sous-commande par constructeur, `build-all` (voir [compiler.md](compiler.md#ligne-de-commande)) | outil | F1 #1, F4 #4 |
 | `deps` | dépend de toutes les dépendances externes : `Cargo.lock` les fixe déjà, la CI prouve qu'elles compilent | outil | F1 #1 (orchestrateur) |
 
