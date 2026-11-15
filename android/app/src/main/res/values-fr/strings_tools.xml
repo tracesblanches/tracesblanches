@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tools_title">Outils</string>
+    <string name="tools_offpiste">Itinéraire hors piste</string>
+    <string name="tools_outings">Mes sorties</string>
+    <string name="tools_low_exposure">Terrain peu exposé (avalanches)</string>
+    <string name="low_exposure_warning">Terrain peu exposé (modèle) : jamais une garantie. Le bulletin d\'avalanche et ton jugement sur place priment.</string>
+    <string name="tools_no_pack">Aucun pack de domaine sur ce téléphone.</string>
+    <string name="tools_working">Calcul…</string>
+
+    <string name="fog_title">Cap par brouillard</string>
+    <string name="fog_choose">Aller vers</string>
+    <string name="fog_kind_refuge">Refuge</string>
+    <string name="fog_kind_parking">Parking</string>
+    <string name="fog_kind_start">Départ</string>
+    <string name="fog_kind_point">Point de la carte</string>
+    <string name="fog_waiting_fix">En attente de la position…</string>
+    <string name="fog_compass_ok">Boussole calibrée</string>
+    <string name="fog_compass_low">Boussole non calibrée : décris un huit avec le téléphone, loin du métal</string>
+    <string name="fog_compass_none">Pas de boussole sur ce téléphone : la direction vient de ton déplacement</string>
+    <string name="fog_arrow">Direction de %1$s</string>
+    <string name="fog_voice">Guidage vocal, écran éteint</string>
+    <string name="fog_voice_stop">Arrêter le guidage</string>
+    <string name="fog_hint_fog">Brouillard prévu maintenant : touche pour le cap vers %1$s</string>
+    <string name="fog_hint_lost">Loin de l\'itinéraire : touche pour le cap vers %1$s</string>
+    <string name="settings_title">Réglages</string>
+    <string name="settings_prep">Préparation des jours suivants</string>
+    <string name="settings_alert">Alerte de non-retour par le serveur</string>
+    <string name="settings_layers">Carte</string>
+    <string name="fog_permission">Le guidage a besoin de la position précise.</string>
+
+    <string name="offpiste_title">Itinéraire hors piste</string>
+    <string name="offpiste_from">Départ</string>
+    <string name="offpiste_to">Arrivée</string>
+    <string name="offpiste_here">Ma position</string>
+    <string name="offpiste_day">Jour : %1$s</string>
+    <string name="offpiste_day_prev">Jour précédent</string>
+    <string name="offpiste_day_next">Jour suivant</string>
+    <string name="offpiste_compute">Calculer l\'itinéraire</string>
+    <string name="offpiste_level">Difficulté %1$s (au retour : %2$s)</string>
+    <string name="offpiste_figures">%1$s km · +%2$d m / −%3$d m · pente maximale %4$d°</string>
+    <string name="offpiste_reasons">Raisons</string>
+    <string name="offpiste_advice">Conseils</string>
+    <string name="offpiste_details">Les deux sens en détail</string>
+    <string name="offpiste_show_map">Voir sur la carte</string>
+    <string name="offpiste_guide">Me guider</string>
+    <string name="offpiste_in_places">Restreint par endroits : %1$s</string>
+    <string name="offpiste_missing">Non évalué (absent du pack) : %1$s</string>
+    <string name="offpiste_compute_ms">Calculé en %1$d ms sur ce téléphone</string>
+
+    <string name="place_title">Ce lieu</string>
+    <string name="place_rules">Règles %1$s</string>
+    <string name="place_not_covered">Hors des territoires couverts par les règles : aucune règle connue ici.</string>
+    <string name="place_zones">Zones : %1$s</string>
+    <string name="place_inactive">Pas en vigueur : %1$s</string>
+    <string name="place_source">Source : %1$s (%2$s)</string>
+    <string name="place_fog">Cap vers ce point</string>
+    <string name="place_offpiste">Hors piste jusqu\'ici</string>
+
+    <string name="recap_title">Mes sorties</string>
+    <string name="recap_none">Aucune sortie enregistrée pour l\'instant.</string>
+    <string name="recap_listen">Écouter</string>
+    <string name="recap_delete">Supprimer cette sortie</string>
+    <string name="recap_delete_all">Supprimer toutes mes sorties</string>
+    <string name="recap_delete_confirm">Supprimer cette sortie et sa trace ? C\'est définitif.</string>
+    <string name="recap_delete_all_confirm">Supprimer toutes les sorties et toutes les traces ? C\'est définitif.</string>
+    <string name="recap_delete_yes">Supprimer</string>
+    <string name="recap_cancel">Annuler</string>
+    <string name="recap_back">Toutes mes sorties</string>
+    <string name="recap_notification">Bilan de la sortie</string>
+
+    <string name="prep_auto">Préparer les jours suivants en charge et sur Wi-Fi</string>
+    <string name="prep_now">Préparer maintenant</string>
+    <string name="prep_ski_mode">Mode ski de plusieurs jours (aucun calcul lourd)</string>
+    <string name="prep_ski_mode_on">Mode ski : les plans préparés servent tels quels ; la date de chaque information est affichée.</string>
+    <string name="prep_days">Jours préparés</string>
+    <string name="prep_no_days">Aucun jour préparé pour l\'instant.</string>
+    <string name="prep_take">Partir avec ce plan</string>
+    <string name="prep_back">Retour vers %1$s</string>
+    <string name="prep_voice_missing">Dites par la voix du téléphone (clip absent du pack) : %1$d</string>
+    <string name="prep_infos">Âge des informations</string>
+    <string name="prep_last">Dernière préparation : %1$s</string>
+
+    <string name="alert_title">Alerte de non-retour par le serveur (facultative)</string>
+    <string name="alert_explain">Le SMS à ton contact reste la voie principale. Si tu l\'actives, le plan part au serveur de skimap au départ ; sans ta confirmation de retour, il prévient tes contacts par e-mail.</string>
+    <string name="alert_emails">E-mails des contacts (3 au plus, séparés par des virgules)</string>
+    <string name="alert_status_off">Désactivée</string>
+    <string name="alert_status_pending">Envoi dès que le réseau le permet</string>
+    <string name="alert_status_active">Plan déposé sur le serveur</string>
+    <string name="alert_status_unavailable">Service non disponible (alerte du serveur pas configurée) : compte sur le SMS à ton contact</string>
+    <string name="alert_status_failed">Non déposé : %1$s</string>
+    <string name="alert_status_returned">Retour confirmé au serveur</string>
+</resources>
