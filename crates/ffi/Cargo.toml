@@ -21,6 +21,12 @@ skimap-common.workspace = true
 skimap-voice.workspace = true
 # « Mes sorties », challenges, Strava export, OSM notes (V12, V13, V15): phone side.
 skimap-collab = { path = "../collab", features = ["phone"] }
+# Off-piste in the app (V1), rules of a place (V6), low-exposure zones (V7): the zone layer
+# and rules, the SRN difficulty (not in [workspace.dependencies]: no other crate depends
+# on it) and the gzip of the off-piste rasters of the packs.
+skimap-zones.workspace = true
+skimap-srndiff = { path = "../srndiff" }
+flate2.workspace = true
 chrono.workspace = true
 geojson.workspace = true
 serde.workspace = true
