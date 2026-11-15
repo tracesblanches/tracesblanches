@@ -39,6 +39,8 @@ pub mod ocr;
 #[cfg(feature = "pipeline")]
 pub mod osmref;
 #[cfg(feature = "pipeline")]
+pub mod perspective;
+#[cfg(feature = "pipeline")]
 pub mod segment;
 #[cfg(feature = "pipeline")]
 pub mod skeleton;

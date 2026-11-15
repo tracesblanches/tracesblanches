@@ -1,16 +1,16 @@
-//! Registration diagnostics: `register <diag_dir> [site...]` registers the plans and
+//! Registration diagnostics: `register <diag_dir> <site...>` registers the plans and
 //! prints the key figures; in `diag_dir` (a local directory, never the outputs: the
 //! picture is the resort's) it writes the plan with the OSM pistes carried onto it.
 //!
-//! `SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-pisteplan --features pipeline --example register -- /tmp/diag`
+//! `SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-pisteplan --features pipeline --example register -- /tmp/diag cervieres`
 
 use std::path::PathBuf;
 use std::time::Instant;
 
 use skimap_common::config::Config;
 use skimap_common::download::Downloader;
-use skimap_pisteplan::build::{ErrStats, register};
-use skimap_pisteplan::{ocr, spec};
+use skimap_pisteplan::build::{ErrStats, register_site};
+use skimap_pisteplan::ocr;
 
 fn colour(c: Option<&str>) -> [u8; 3] {
     match c {
@@ -30,11 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
     let diag = PathBuf::from(args.get(1).ok_or("usage: register <diag_dir> [site...]")?);
     std::fs::create_dir_all(&diag)?;
-    let sites: Vec<String> = if args.len() > 2 {
-        args[2..].to_vec()
-    } else {
-        spec::manual_plans().into_iter().map(|p| p.site).collect()
-    };
+    let sites: Vec<String> = args[2..].to_vec();
     let cfg = Config::from_env()?;
     let dl = Downloader::from_config(&cfg)?;
     let t = Instant::now();
@@ -42,9 +38,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("planet loaded in {:.1} s", t.elapsed().as_secs_f64());
     let engine = ocr::engine(&dl)?;
     for site in sites {
-        let spec = spec::plan_for(&site).ok_or("no plan")?;
+        let site = skimap_common::site::site(&site)?;
         let t = Instant::now();
-        let r = register(spec, &cfg.layout(), &dl, &planet, Some(&engine))?;
+        let (r, _) = register_site(site, &cfg.layout(), &dl, &planet, &engine)?;
         let spec = &r.spec;
         println!(
             "\n== {} ({:.1} s) {:?}",
@@ -131,7 +127,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for c in &r.coarse.inliers {
             img.disc(c.plan[0] / k, c.plan[1] / k, 6.0, [0, 200, 200]);
         }
-        img.write_png(&diag.join(format!("{site}_osm_on_plan.png")))?;
+        img.write_png(&diag.join(format!("{}_osm_on_plan.png", site.id)))?;
     }
     Ok(())
 }

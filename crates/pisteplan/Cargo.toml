@@ -14,9 +14,11 @@ default = []
 pipeline = [
     "skimap-common/download",
     "dep:skimap-osm",
+    "dep:skimap-terrain",
     "dep:ocrs",
     "dep:rten",
     "dep:png",
+    "dep:zune-jpeg",
     "dep:rayon",
     "dep:rstar",
     "dep:tracing",
@@ -29,6 +31,8 @@ serde_json.workspace = true
 thiserror.workspace = true
 # Pipeline only.
 skimap-osm = { workspace = true, optional = true }
+# LiDAR HD terrain model (panoramas: rays cast onto the relief).
+skimap-terrain = { workspace = true, optional = true }
 rayon = { workspace = true, optional = true }
 rstar = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
@@ -36,6 +40,8 @@ tracing = { workspace = true, optional = true }
 ocrs = { version = "0.14.0", default-features = false, features = ["onnx"], optional = true }
 rten = { version = "0.28.0", default-features = false, features = ["onnx_format"], optional = true }
 png = { version = "0.18.1", optional = true }
+# JPEG plans (pictures of the catalogue); already in the lock through another crate.
+zune-jpeg = { version = "0.5.15", optional = true }
 
 [dev-dependencies]
 tracing-subscriber.workspace = true
@@ -44,15 +50,7 @@ tracing-subscriber.workspace = true
 workspace = true
 
 [[example]]
-name = "inspect"
-required-features = ["pipeline"]
-
-[[example]]
 name = "register"
-required-features = ["pipeline"]
-
-[[example]]
-name = "ocr_dump"
 required-features = ["pipeline"]
 
 [[example]]
@@ -61,14 +59,6 @@ required-features = ["pipeline"]
 
 [[example]]
 name = "ocr_gold"
-required-features = ["pipeline"]
-
-[[example]]
-name = "autospec"
-required-features = ["pipeline"]
-
-[[example]]
-name = "auto_compare"
 required-features = ["pipeline"]
 
 [[example]]

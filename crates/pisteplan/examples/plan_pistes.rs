@@ -1,13 +1,13 @@
-//! Builds the `plan_pistes` layer of both sites (or those given) and prints the decisions.
+//! Builds the `plan_pistes` layer of sites given and prints the decisions.
 //!
-//! `SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-pisteplan --features pipeline --example plan_pistes [site...]`
+//! `SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-pisteplan --features pipeline --example plan_pistes <site...>`
 
 use std::time::Instant;
 
 use skimap_common::config::Config;
 use skimap_common::download::Downloader;
-use skimap_pisteplan::build::{register, transcribe_and_write};
-use skimap_pisteplan::{Error, ocr, spec};
+use skimap_pisteplan::build::{register_site, transcribe_and_write};
+use skimap_pisteplan::{Error, ocr};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
@@ -28,14 +28,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "planet and OCR models loaded in {:.1} s",
         t.elapsed().as_secs_f64()
     );
-    for p in spec::manual_plans() {
-        if !sites.is_empty() && !sites.contains(&p.site) {
-            continue;
-        }
+    for site in &sites {
+        let site = skimap_common::site::site(site)?;
         let t = Instant::now();
-        let reg = register(p, &layout, &dl, &planet, Some(&engine))?;
+        let (reg, tried) = register_site(site, &layout, &dl, &planet, &engine)?;
         let p = &reg.spec;
-        let rep = transcribe_and_write(&reg, &layout, &planet.source)?;
+        let rep = transcribe_and_write(&reg, site, &tried, &layout, &planet.source)?;
         println!(
             "\n== {} -> {} ({:.1} s)",
             p.id,
@@ -111,7 +109,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     img.polyline(&l, 1.5, [255, 0, 255]);
                 }
                 let name = d.name.replace([' ', '/', '\''], "_");
-                img.write_png(&dir.join(format!("{}_ml_{name}.png", p.site)))?;
+                img.write_png(&dir.join(format!("{}_ml_{name}.png", site.id)))?;
             }
         }
         // Local diagnostic (never published: the picture is the resort's): samples of the
@@ -160,7 +158,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     img.disc(c[0], c[1], 3.0, [0, 0, 255]);
                 }
             }
-            img.write_png(&std::path::Path::new(&dir).join(format!("{}_share.png", p.site)))?;
+            img.write_png(&std::path::Path::new(&dir).join(format!("{}_share.png", site.id)))?;
         }
     }
     Ok(())

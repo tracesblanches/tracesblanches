@@ -51,6 +51,7 @@ pub struct TextLayer {
 }
 
 /// The plan ready for analysis.
+#[derive(Clone)]
 pub struct PlanInput {
     /// Downloaded PDF.
     pub fetched: Fetched,
@@ -72,13 +73,58 @@ pub fn load(spec: &PlanSpec, layout: &DataLayout, dl: &Downloader) -> Result<Pla
     load_fetched(fetch(spec, dl)?, spec.dpi, layout)
 }
 
-/// Renders (at `dpi`) and reads the text layer of a downloaded plan (cached by the PDF's
-/// SHA-256).
+/// Whether a downloaded file is a PDF (`%PDF` in its first kilobyte); otherwise a
+/// picture.
+pub fn is_pdf(path: &Path) -> Result<bool> {
+    use std::io::Read;
+    let f = std::fs::File::open(path).map_err(|e| Error::io(path, e))?;
+    let mut head = Vec::new();
+    f.take(1024)
+        .read_to_end(&mut head)
+        .map_err(|e| Error::io(path, e))?;
+    Ok(head.windows(4).any(|w| w == b"%PDF"))
+}
+
+/// Resolution given to a picture (PNG, JPEG): one pixel per point, 72 ppi, so that a
+/// picture is a page of its own size and every rule in points applies to it.
+pub const PICTURE_PPI: f64 = 72.0;
+
+fn decode_file(path: &Path) -> Result<Rgb> {
+    let bytes = std::fs::read(path).map_err(|e| Error::io(path, e))?;
+    Rgb::decode_picture(&bytes).map_err(|m| Error::Data(format!("{}: {m}", path.display())))
+}
+
+/// Renders a picture at `dpi` (bilinear resampling of the 72 ppi picture).
+pub fn render_picture(path: &Path, dpi: u32, out: &Path) -> Result<()> {
+    let img = decode_file(path)?.scaled(dpi as f64 / PICTURE_PPI);
+    let tmp = out.with_extension("part");
+    img.write_ppm(&tmp)?;
+    std::fs::rename(&tmp, out).map_err(|e| Error::io(out, e))
+}
+
+/// Renders (at `dpi`) and reads the text layer of a downloaded plan (cached by the file's
+/// SHA-256). A picture (PNG, JPEG) is resampled from 72 ppi and has no text layer.
 pub fn load_fetched(fetched: Fetched, dpi: u32, layout: &DataLayout) -> Result<PlanInput> {
     let dir = layout.cache_dir(CACHE)?;
     DataLayout::ensure(&dir)?;
     let stem = format!("{}-{}", &fetched.meta.sha256[..16], dpi);
     let ppm = dir.join(format!("{stem}.ppm"));
+    if !is_pdf(&fetched.path)? {
+        if !ppm.exists() {
+            render_picture(&fetched.path, dpi, &ppm)?;
+        }
+        let image = Rgb::read_ppm(&ppm)?;
+        let k = pt_per_px(dpi);
+        return Ok(PlanInput {
+            fetched,
+            text: TextLayer {
+                page: [image.w as f64 * k, image.h as f64 * k],
+                lines: Vec::new(),
+            },
+            image,
+            pt_per_px: k,
+        });
+    }
     if !ppm.exists() {
         render(&fetched.path, dpi, &ppm)?;
     }
@@ -178,8 +224,24 @@ pub fn parse_pdfimages(s: &str) -> Vec<PdfImage> {
         .collect()
 }
 
-/// Probes a PDF (`pdfinfo`, `pdfimages -list` on page 1) with its text layer.
+/// Probes a PDF (`pdfinfo`, `pdfimages -list` on page 1) with its text layer; a picture
+/// is one image covering its page at [`PICTURE_PPI`], without text.
 pub fn probe(pdf: &Path, text: &TextLayer) -> Result<Probe> {
+    if !is_pdf(pdf)? {
+        let img = decode_file(pdf)?;
+        return Ok(Probe {
+            pages: 1,
+            page_pt: [img.w as f64, img.h as f64],
+            images: vec![PdfImage {
+                w: img.w as u32,
+                h: img.h as u32,
+                ppi: PICTURE_PPI,
+            }],
+            words: 0,
+            created: None,
+            creator: None,
+        });
+    }
     let info = run_capture("pdfinfo", &[pdf.as_os_str()])?;
     let (pages, page_pt, created, creator) = parse_pdfinfo(&info);
     let list = run_capture(
@@ -268,8 +330,11 @@ pub fn render(pdf: &Path, dpi: u32, out: &Path) -> Result<()> {
     std::fs::rename(&written, out).map_err(|e| Error::io(out, e))
 }
 
-/// Text layer of page 1 of a downloaded PDF (cached by its SHA-256).
+/// Text layer of page 1 of a downloaded PDF (cached by its SHA-256); empty for a picture.
 pub fn text_layer(fetched: &Fetched, layout: &DataLayout) -> Result<TextLayer> {
+    if !is_pdf(&fetched.path)? {
+        return Ok(TextLayer::default());
+    }
     let dir = layout.cache_dir(CACHE)?;
     DataLayout::ensure(&dir)?;
     let txt = dir.join(format!("{}.bbox.html", &fetched.meta.sha256[..16]));

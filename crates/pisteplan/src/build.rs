@@ -107,6 +107,8 @@ pub struct Registration {
     pub held_out_m: Vec<f64>,
     /// Timings, s.
     pub timings: Vec<(String, f64)>,
+    /// Camera of a plan drawn in perspective (panorama), placed on the relief.
+    pub camera: Option<crate::perspective::Camera>,
 }
 
 /// Summary statistics of a sample of errors.
@@ -312,19 +314,37 @@ pub fn register_input(
         spec.id,
         candidates.len()
     );
-    for &max_rot in rotations {
-        let Some(coarse) = align::coarse(&candidates, RANSAC_TOL_PT, max_rot) else {
-            continue;
+    // Flat placements (one per rotation bound), then, for an automatic sheet, the
+    // perspective placement of a panorama (camera on the relief).
+    let attempts = rotations.len() + usize::from(refine_extent_m.is_some());
+    let mut camera_used = None;
+    for attempt in 0..attempts {
+        let (coarse, camera) = if let Some(&max_rot) = rotations.get(attempt) {
+            let Some(coarse) = align::coarse(&candidates, RANSAC_TOL_PT, max_rot) else {
+                continue;
+            };
+            if max_rot > 45.0 && coarse.inliers.len() < 5 {
+                continue;
+            }
+            (coarse, None)
+        } else {
+            match perspective_placement(&hint, &candidates, dl)? {
+                Some(p) => p,
+                None => continue,
+            }
         };
-        if max_rot > 45.0 && coarse.inliers.len() < 5 {
-            continue;
-        }
+        let to_map = |p: crate::warp::P2| match &camera {
+            Some((cam, dem)) => crate::perspective::Camera::ground(cam, dem, p),
+            None => Some(coarse.affine.apply(align::up(p))),
+        };
         // Automatic sheets: the extent is a hint around the domains; once the plan is
         // placed, the OSM pistes are those of the extent actually drawn (map area carried
         // onto the map by the coarse fit, plus the margin).
         if let Some(margin) = refine_extent_m {
-            let fit = |p: crate::warp::P2| coarse.affine.apply(align::up(p));
-            let drawn_extent = extent_of(&spec.map_area, &fit, margin)?;
+            let Some(drawn_extent) = extent_seen(&spec.map_area, &to_map, margin)? else {
+                failure = format!("{}: no ray of the map area meets the terrain", spec.id);
+                continue;
+            };
             let overlaps = drawn_extent.south < hint.north
                 && drawn_extent.north > hint.south
                 && drawn_extent.west < hint.east
@@ -348,11 +368,12 @@ pub fn register_input(
             &drawn,
             &osm,
             &tree,
-            &coarse.affine,
+            &to_map,
             ICP_SCHEDULE,
             ICP_CELL_PT,
         ) {
             Some(r) => {
+                camera_used = camera.map(|c| c.0);
                 placed = Some((coarse, r));
                 break;
             }
@@ -406,7 +427,113 @@ pub fn register_input(
         loo_labels,
         held_out_m,
         timings,
+        camera: camera_used,
     })
+}
+
+/// Extent of the ground seen in a page rectangle (a 9 × 9 grid of its points carried by
+/// `to_map`; points without an image skipped), grown by `margin_m`; `None` when no point
+/// has an image.
+pub fn extent_seen(
+    area: &crate::spec::PageRect,
+    to_map: &dyn Fn(crate::warp::P2) -> Option<crate::warp::P2>,
+    margin_m: f64,
+) -> Result<Option<skimap_common::geom::BBox>> {
+    use skimap_common::crs::from_lambert93;
+    let (mut x0, mut y0, mut x1, mut y1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+    let mut any = false;
+    for i in 0..9 {
+        for j in 0..9 {
+            let Some(q) = to_map([
+                area[0] + (area[2] - area[0]) * i as f64 / 8.0,
+                area[1] + (area[3] - area[1]) * j as f64 / 8.0,
+            ]) else {
+                continue;
+            };
+            any = true;
+            x0 = x0.min(q[0]);
+            y0 = y0.min(q[1]);
+            x1 = x1.max(q[0]);
+            y1 = y1.max(q[1]);
+        }
+    }
+    if !any {
+        return Ok(None);
+    }
+    let m = margin_m;
+    let c = [
+        from_lambert93(x0 - m, y0 - m)?,
+        from_lambert93(x1 + m, y1 + m)?,
+        from_lambert93(x0 - m, y1 + m)?,
+        from_lambert93(x1 + m, y0 - m)?,
+    ];
+    Ok(Some(skimap_common::geom::BBox::new(
+        c.iter().map(|p| p.lat).fold(f64::MAX, f64::min),
+        c.iter().map(|p| p.lon).fold(f64::MAX, f64::min),
+        c.iter().map(|p| p.lat).fold(f64::MIN, f64::max),
+        c.iter().map(|p| p.lon).fold(f64::MIN, f64::max),
+    )))
+}
+
+/// Margin of the terrain model around the domains of a panorama, km (the hint is the
+/// domains grown by [`crate::collect::HINT_MARGIN_KM`]).
+pub const PANORAMA_DEM_MARGIN_KM: f64 = 3.0;
+
+/// Tolerance of the camera RANSAC, page points (twice the flat one: a painter bends the
+/// relief).
+pub const PERSPECTIVE_TOL_PT: f64 = 2.0 * RANSAC_TOL_PT;
+
+/// Perspective placement of a panorama: terrain model of the domains (LiDAR HD), camera
+/// RANSAC on the label candidates. `None` when no camera gathers enough labels. The coarse
+/// fit returned beside the camera is the similarity of its inliers (scale for the tie
+/// tolerance, report).
+#[allow(clippy::type_complexity)]
+pub fn perspective_placement(
+    hint: &skimap_common::geom::BBox,
+    candidates: &[LabelMatch],
+    dl: &Downloader,
+) -> Result<
+    Option<(
+        Coarse,
+        Option<(crate::perspective::Camera, crate::perspective::Dem)>,
+    )>,
+> {
+    let labels: BTreeSet<usize> = candidates.iter().map(|c| c.label_idx).collect();
+    if labels.len() < crate::perspective::MIN_INLIERS {
+        return Ok(None);
+    }
+    let area = crate::collect::grown(
+        *hint,
+        PANORAMA_DEM_MARGIN_KM - crate::collect::HINT_MARGIN_KM,
+    );
+    let e = skimap_terrain::dem::Extent::from_bbox(area)
+        .map_err(|e| Error::Data(format!("terrain extent: {e}")))?;
+    let grid = skimap_terrain::dem::fetch_dem(&e, dl)
+        .map_err(|e| Error::Data(format!("terrain model: {e}")))?;
+    let dem = crate::perspective::Dem::new(&grid);
+    let placed = crate::perspective::place(candidates, &dem, PERSPECTIVE_TOL_PT);
+    tracing::info!(
+        labels = labels.len(),
+        candidates = candidates.len(),
+        inliers = placed.as_ref().map_or(0, |p| p.inliers.len()),
+        median_pt = placed.as_ref().map(|p| p.median_px_pt),
+        centre = ?placed.as_ref().map(|p| p.camera.centre),
+        "perspective placement"
+    );
+    let Some(p) = placed else {
+        return Ok(None);
+    };
+    let src: Vec<crate::warp::P2> = p.inliers.iter().map(|c| align::up(c.plan)).collect();
+    let dst: Vec<crate::warp::P2> = p.inliers.iter().map(|c| c.map).collect();
+    let Some(affine) = crate::warp::Affine::fit_similarity(&src, &dst) else {
+        return Ok(None);
+    };
+    let coarse = Coarse {
+        scale: affine.scale(),
+        affine,
+        inliers: p.inliers,
+    };
+    Ok(Some((coarse, Some((p.camera, dem)))))
 }
 
 /// Layer name (`data/out/<site>/plan_pistes/`).
@@ -516,10 +643,11 @@ fn props_of(reg: &Registration, d: &transcribe::Decision) -> Option<PlanPiste> {
 /// Transcribes a registered plan and writes `data/out/<site>/plan_pistes/`.
 pub fn transcribe_and_write(
     reg: &Registration,
+    site: &skimap_common::site::Site,
+    considered: &[PlanTried],
     layout: &DataLayout,
     planet_source: &SourceRef,
 ) -> Result<BuildReport> {
-    let site = skimap_common::site::site(&reg.spec.site)?;
     let dir = layout.layer_dir(site, LAYER)?;
     DataLayout::ensure(&dir)?;
     let plan = transcribe::entries(reg);
@@ -682,6 +810,8 @@ pub fn transcribe_and_write(
     let ocr = ocr_rate(reg, 0.8);
     let ocr_exact = ocr_rate(reg, 1.0);
     let stats = json!({
+        "plan": reg.spec.id,
+        "plans_considered": considered,
         "legend_lines": plan.len(),
         "plan_pistes": decisions.len(),
         "transcribed": transcribed,
@@ -830,8 +960,85 @@ pub fn transcribe_and_write(
     })
 }
 
+/// A collected plan tried for a site, and its outcome.
+#[derive(Debug, Clone, Serialize)]
+pub struct PlanTried {
+    /// Catalogue identifier.
+    pub id: String,
+    /// Registered on the map.
+    pub registered: bool,
+    /// Drawn extent meets the site.
+    pub draws_site: bool,
+    /// Pistes transcribed by the exact matching.
+    pub exact: usize,
+    /// Failure, if any.
+    pub error: Option<String>,
+}
+
+/// Registers the plans of the catalogue that may draw the site (census domains meeting
+/// its extent, [`crate::collect::plans_for_area`]), each with an automatic sheet, and
+/// keeps the one whose drawn extent meets the site with the most pistes transcribed by
+/// the exact matching. The same rule for every site: no plan, sheet or threshold of its
+/// own.
+pub fn register_site(
+    site: &skimap_common::site::Site,
+    layout: &DataLayout,
+    dl: &Downloader,
+    planet: &Planet,
+    engine: &ocrs::OcrEngine,
+) -> Result<(Registration, Vec<PlanTried>)> {
+    let census = crate::collect::load_census(layout)?;
+    let cat = crate::collect::load_catalogue(layout)?;
+    let mut plans = crate::collect::plans_for_area(&site.bbox, &cat, &census);
+    plans.sort_by(|a, b| a.candidate.id.cmp(&b.candidate.id));
+    let mut tried = Vec::new();
+    let mut best: Option<(usize, Registration)> = None;
+    for c in plans {
+        let Some(hint) = crate::collect::hint(&c.candidate.domains, &census) else {
+            continue;
+        };
+        let src = crate::collect::plan_source(c);
+        match crate::autospec::register_auto(&src, hint, layout, dl, planet, engine) {
+            Ok(a) => {
+                let reg = a.reg;
+                let draws = crate::collect::intersects(&reg.spec.extent, &site.bbox);
+                let dmap = transcribe::InkDistance::new(&reg);
+                let entries = transcribe::entries(&reg);
+                let (ds, _) = transcribe::decide(&reg, &dmap, &entries);
+                let exact = ds.iter().filter(|d| d.status.is_some()).count();
+                tried.push(PlanTried {
+                    id: c.candidate.id.clone(),
+                    registered: true,
+                    draws_site: draws,
+                    exact,
+                    error: None,
+                });
+                if draws && best.as_ref().is_none_or(|(n, _)| exact > *n) {
+                    best = Some((exact, reg));
+                }
+            }
+            Err(e) => tried.push(PlanTried {
+                id: c.candidate.id.clone(),
+                registered: false,
+                draws_site: false,
+                exact: 0,
+                error: Some(e.to_string()),
+            }),
+        }
+    }
+    match best {
+        Some((_, reg)) => Ok((reg, tried)),
+        None => Err(Error::Data(format!(
+            "no collected plan registers on {}: {}",
+            site.id,
+            serde_json::to_string(&tried).unwrap_or_default()
+        ))),
+    }
+}
+
 /// Builds the transcription of the site's plan: personal sources required (the plan is
-/// the resort's), planet extract and OCR models from the cache.
+/// the resort's), catalogue of the collected plans, planet extract and OCR models from
+/// the cache.
 pub fn build(
     site: &skimap_common::site::Site,
     layout: &DataLayout,
@@ -841,11 +1048,9 @@ pub fn build(
     if !personal_sources {
         return Err(Error::PersonalSourcesDisabled);
     }
-    let spec = crate::spec::plan_for(site.id)
-        .ok_or_else(|| Error::Data(format!("no official plan known for {}", site.id)))?;
     let planet = skimap_osm::extract::load_planet(dl)
         .map_err(|e| Error::Data(format!("planet extract: {e}")))?;
     let engine = ocr::engine(dl)?;
-    let reg = register(spec, layout, dl, &planet, Some(&engine))?;
-    transcribe_and_write(&reg, layout, &planet.source)
+    let (reg, tried) = register_site(site, layout, dl, &planet, &engine)?;
+    transcribe_and_write(&reg, site, &tried, layout, &planet.source)
 }

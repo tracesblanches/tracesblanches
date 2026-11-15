@@ -89,6 +89,83 @@ impl Rgb {
         })
     }
 
+    /// Decodes a PNG or JPEG picture (by its magic bytes) to RGB: grey expanded, alpha
+    /// composed over white.
+    pub fn decode_picture(bytes: &[u8]) -> std::result::Result<Rgb, String> {
+        let (w, h, ch, data) = if bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
+            let mut dec = png::Decoder::new(std::io::Cursor::new(bytes));
+            dec.set_transformations(png::Transformations::normalize_to_color8());
+            let mut r = dec.read_info().map_err(|e| format!("PNG: {e}"))?;
+            let mut buf = vec![0; r.output_buffer_size().ok_or("PNG: size")?];
+            let info = r.next_frame(&mut buf).map_err(|e| format!("PNG: {e}"))?;
+            buf.truncate(info.buffer_size());
+            let ch = info.color_type.samples();
+            (info.width as usize, info.height as usize, ch, buf)
+        } else if bytes.starts_with(&[0xFF, 0xD8]) {
+            let mut dec = zune_jpeg::JpegDecoder::new(std::io::Cursor::new(bytes));
+            let data = dec.decode().map_err(|e| format!("JPEG: {e:?}"))?;
+            let info = dec.info().ok_or("JPEG: no header")?;
+            let (w, h) = (info.width as usize, info.height as usize);
+            let ch = data.len() / (w * h).max(1);
+            (w, h, ch, data)
+        } else {
+            return Err("neither PNG nor JPEG".into());
+        };
+        if !(1..=4).contains(&ch) || data.len() < w * h * ch {
+            return Err(format!("{ch} channels, {} bytes for {w} × {h}", data.len()));
+        }
+        let mut px = Vec::with_capacity(w * h * 3);
+        for p in data.chunks_exact(ch).take(w * h) {
+            let (rgb, a) = match ch {
+                1 => ([p[0]; 3], 255),
+                2 => ([p[0]; 3], p[1]),
+                3 => ([p[0], p[1], p[2]], 255),
+                _ => ([p[0], p[1], p[2]], p[3]),
+            };
+            let over = |v: u8| ((v as u32 * a as u32 + 255 * (255 - a as u32)) / 255) as u8;
+            px.extend_from_slice(&[over(rgb[0]), over(rgb[1]), over(rgb[2])]);
+        }
+        Ok(Rgb { w, h, px })
+    }
+
+    /// Resampled by `k` (bilinear; pixel centres aligned).
+    pub fn scaled(&self, k: f64) -> Rgb {
+        let (w, h) = (
+            ((self.w as f64 * k).round() as usize).max(1),
+            ((self.h as f64 * k).round() as usize).max(1),
+        );
+        let mut px = vec![0u8; w * h * 3];
+        px.chunks_mut(w * 3).enumerate().for_each(|(y, row)| {
+            let sy = ((y as f64 + 0.5) / k - 0.5).clamp(0.0, (self.h - 1) as f64);
+            let (y0, fy) = (sy.floor() as usize, sy.fract());
+            let y1 = (y0 + 1).min(self.h - 1);
+            for x in 0..w {
+                let sx = ((x as f64 + 0.5) / k - 0.5).clamp(0.0, (self.w - 1) as f64);
+                let (x0, fx) = (sx.floor() as usize, sx.fract());
+                let x1 = (x0 + 1).min(self.w - 1);
+                let (a, b, c, d) = (
+                    self.get(x0, y0),
+                    self.get(x1, y0),
+                    self.get(x0, y1),
+                    self.get(x1, y1),
+                );
+                for i in 0..3 {
+                    let top = a[i] as f64 * (1.0 - fx) + b[i] as f64 * fx;
+                    let bot = c[i] as f64 * (1.0 - fx) + d[i] as f64 * fx;
+                    row[x * 3 + i] = (top * (1.0 - fy) + bot * fy).round() as u8;
+                }
+            }
+        });
+        Rgb { w, h, px }
+    }
+
+    /// Writes a binary PPM (the cached rendering).
+    pub fn write_ppm(&self, path: &Path) -> Result<()> {
+        let mut b = format!("P6\n{} {}\n255\n", self.w, self.h).into_bytes();
+        b.extend_from_slice(&self.px);
+        std::fs::write(path, b).map_err(|e| Error::io(path, e))
+    }
+
     /// Writes a PNG (diagnostics and demo images).
     pub fn write_png(&self, path: &Path) -> Result<()> {
         let f = std::fs::File::create(path).map_err(|e| Error::io(path, e))?;
@@ -183,6 +260,34 @@ mod tests {
         assert_eq!((img.w, img.h), (2, 1));
         assert_eq!(img.get(1, 0), [4, 5, 6]);
         assert!(Rgb::parse_ppm(b"P3\n1 1\n255\n").is_err());
+    }
+
+    #[test]
+    fn decodes_png_and_scales() {
+        // 2 × 1 RGBA PNG: opaque red, transparent (over white).
+        let mut bytes = Vec::new();
+        {
+            let mut enc = png::Encoder::new(&mut bytes, 2, 1);
+            enc.set_color(png::ColorType::Rgba);
+            enc.set_depth(png::BitDepth::Eight);
+            let mut w = enc.write_header().unwrap();
+            w.write_image_data(&[255, 0, 0, 255, 0, 0, 0, 0]).unwrap();
+        }
+        let img = Rgb::decode_picture(&bytes).unwrap();
+        assert_eq!((img.w, img.h), (2, 1));
+        assert_eq!(img.get(0, 0), [255, 0, 0]);
+        assert_eq!(img.get(1, 0), [255, 255, 255]);
+        assert!(Rgb::decode_picture(b"%PDF-1.4").is_err());
+        let s = img.scaled(2.0);
+        assert_eq!((s.w, s.h), (4, 2));
+        assert_eq!(s.get(0, 0), [255, 0, 0]);
+        assert_eq!(s.get(3, 1), [255, 255, 255]);
+        // A quarter of the way from red to white.
+        assert_eq!(s.get(1, 0)[1], 64);
+        // Round trip through the cached PPM.
+        let mut ppm = format!("P6\n{} {}\n255\n", s.w, s.h).into_bytes();
+        ppm.extend_from_slice(&s.px);
+        assert_eq!(Rgb::parse_ppm(&ppm).unwrap(), s);
     }
 
     #[test]

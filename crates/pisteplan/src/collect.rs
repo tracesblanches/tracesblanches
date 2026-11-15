@@ -689,6 +689,197 @@ pub fn write_catalogue(
     Ok(stats)
 }
 
+/// Reads `data/out/france/plans/catalogue.json` (written by [`write_catalogue`]).
+pub fn load_catalogue(layout: &DataLayout) -> Result<Vec<Collected>> {
+    let p = layout.france_layer_dir(LAYER)?.join("catalogue.json");
+    let bytes = std::fs::read(&p).map_err(|e| Error::io(&p, e))?;
+    serde_json::from_slice(&bytes).map_err(|e| Error::Json {
+        context: "catalogue.json".to_owned(),
+        source: e,
+    })
+}
+
+/// Whether the pipeline reads this file: downloaded, not a duplicate, a PDF or an image.
+pub fn readable(c: &Collected) -> bool {
+    c.duplicate_of.is_none()
+        && c.error.is_none()
+        && c.format
+            .as_deref()
+            .is_some_and(|f| f.starts_with("pdf") || f == "image")
+}
+
+/// The source of a collected plan (its publisher, page and date; no licence is published).
+pub fn plan_source(c: &Collected) -> crate::spec::PlanSource {
+    crate::spec::PlanSource {
+        site: c.candidate.domains.first().cloned().unwrap_or_default(),
+        id: c.candidate.id.clone(),
+        title: c.candidate.title.clone(),
+        publisher: c.candidate.publisher.clone(),
+        url: c.candidate.url.clone(),
+        page_url: c.candidate.page_url.clone(),
+        source: c.candidate.source.clone(),
+        edition: c
+            .created
+            .clone()
+            .or_else(|| c.candidate.uploaded.clone())
+            .unwrap_or_default(),
+        rights: "aucune licence publiée : propriété de l'exploitant, usage personnel".into(),
+    }
+}
+
+/// `b` grown by `km` on every side.
+pub fn grown(b: BBox, km: f64) -> BBox {
+    let dlat = km / 111.0;
+    let dlon = km / (111.0 * b.center().lat.to_radians().cos());
+    BBox::new(b.south - dlat, b.west - dlon, b.north + dlat, b.east + dlon)
+}
+
+/// Union of boxes.
+pub fn union(bs: &[BBox]) -> Option<BBox> {
+    let first = *bs.first()?;
+    Some(bs.iter().fold(first, |a, b| {
+        BBox::new(
+            a.south.min(b.south),
+            a.west.min(b.west),
+            a.north.max(b.north),
+            a.east.max(b.east),
+        )
+    }))
+}
+
+/// Margin of the hint around the domains of a plan, km.
+pub const HINT_MARGIN_KM: f64 = 10.0;
+
+/// Extent where a plan is looked for: its census domains, grown by [`HINT_MARGIN_KM`].
+pub fn hint(domains: &[String], census: &[Domain]) -> Option<BBox> {
+    let boxes: Vec<BBox> = census
+        .iter()
+        .filter(|d| domains.contains(&d.id))
+        .map(|d| d.bbox)
+        .collect();
+    union(&boxes).map(|b| grown(b, HINT_MARGIN_KM))
+}
+
+/// Words that name no place (kept out of the place keys of [`locate`]).
+const NOT_PLACE: &[&str] = &[
+    "domaine",
+    "nordique",
+    "nordiques",
+    "site",
+    "ski",
+    "fond",
+    "espace",
+    "foyer",
+    "station",
+    "de",
+    "du",
+    "des",
+    "la",
+    "le",
+    "les",
+    "l",
+    "d",
+    "en",
+    "et",
+    "sur",
+    "sous",
+    "aux",
+    "au",
+    "plan",
+    "pistes",
+    "piste",
+    "grand",
+    "domaines",
+];
+
+/// Place keys of a domain: its name, commune and Nordic France station names, folded,
+/// without the words that name no place; five letters at least.
+pub fn place_keys(d: &Domain) -> BTreeSet<String> {
+    std::iter::once(&d.name)
+        .chain(std::iter::once(&d.commune))
+        .chain(d.nf_names.iter())
+        .map(|n| {
+            fold(n)
+                .split(' ')
+                .filter(|w| !NOT_PLACE.contains(w))
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .filter(|k| k.chars().filter(|c| c.is_alphabetic()).count() >= 5)
+        .collect()
+}
+
+/// Largest distance between the domains located for one plan and the best one, km.
+pub const LOCATE_RADIUS_KM: f64 = 25.0;
+
+/// Domains a plan names, for a plan the collector could not attach: every place key of a
+/// census domain ([`place_keys`]) found as whole words in the plan's text (text layer or
+/// OCR lines), its title or its file name. The domain with the most keys found (title and
+/// file name count twice) and the domains found within [`LOCATE_RADIUS_KM`] of it are
+/// returned, best first; nothing when no key is found. The registration that follows
+/// checks the hint (labels ↔ landmarks, ICP): a wrong domain fails to register, it is
+/// never transcribed.
+pub fn locate(lines: &[String], title_and_file: &[String], census: &[Domain]) -> Vec<String> {
+    let corpus = |texts: &[String]| {
+        format!(
+            " {} ",
+            texts
+                .iter()
+                .map(|t| fold(t))
+                .collect::<Vec<_>>()
+                .join(" | ")
+        )
+    };
+    let body = corpus(lines);
+    let head = corpus(title_and_file);
+    let mut scored: Vec<(usize, &Domain)> = census
+        .iter()
+        .map(|d| {
+            let s: usize = place_keys(d)
+                .iter()
+                .map(|k| {
+                    let w = format!(" {k} ");
+                    usize::from(body.contains(&w)) + 2 * usize::from(head.contains(&w))
+                })
+                .sum();
+            (s, d)
+        })
+        .filter(|(s, _)| *s > 0)
+        .collect();
+    scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.id.cmp(&b.1.id)));
+    let Some(&(_, best)) = scored.first() else {
+        return Vec::new();
+    };
+    let c = best.bbox.center();
+    scored
+        .iter()
+        .filter(|(_, d)| d.bbox.center().haversine_m(c) <= LOCATE_RADIUS_KM * 1000.0)
+        .map(|(_, d)| d.id.clone())
+        .collect()
+}
+
+/// Whether two boxes meet.
+pub fn intersects(a: &BBox, b: &BBox) -> bool {
+    a.south < b.north && a.north > b.south && a.west < b.east && a.east > b.west
+}
+
+/// Plans of the catalogue that may draw an area: readable, with a census domain whose
+/// extent meets `area`. The same rule for every site (no hand-picked plan).
+pub fn plans_for_area<'a>(
+    area: &BBox,
+    cat: &'a [Collected],
+    census: &[Domain],
+) -> Vec<&'a Collected> {
+    cat.iter()
+        .filter(|c| readable(c))
+        .filter(|c| {
+            census
+                .iter()
+                .any(|d| c.candidate.domains.contains(&d.id) && intersects(&d.bbox, area))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -759,5 +950,43 @@ mod tests {
             vec!["site-3"]
         );
         assert!(domains_named("Les Saisies", &census).is_empty());
+    }
+
+    #[test]
+    fn plans_are_located_by_the_places_they_name() {
+        let d = |id: &str, name: &str, commune: &str, lat: f64| Domain {
+            id: id.into(),
+            name: name.into(),
+            commune: commune.into(),
+            departement: "05".into(),
+            bbox: BBox::new(lat, 6.0, lat + 0.05, 6.05),
+            nf_names: Vec::new(),
+        };
+        let census = vec![
+            d("a", "Domaine nordique de Réallon", "Réallon", 44.6),
+            d("b", "Les Orres", "Les Orres", 44.5),
+            d("c", "Gérardmer", "Gérardmer", 48.0),
+            d("d", "Le Lac", "Le Lac", 45.0),
+        ];
+        // Generic words are not places; « Lac » is too short to be a key.
+        assert!(place_keys(&census[3]).is_empty());
+        assert_eq!(
+            place_keys(&census[0]).into_iter().collect::<Vec<_>>(),
+            vec!["reallon"]
+        );
+        let lines = |t: &[&str]| t.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+        // The title names Réallon, the map Les Orres (12 km away): both, Réallon first;
+        // Gérardmer, named once, is 380 km away from the best.
+        assert_eq!(
+            locate(
+                &lines(&["Vers Les Orres", "GERARDMER", "Le lac"]),
+                &lines(&["Plan des pistes nordiques Réallon"]),
+                &census
+            ),
+            vec!["a", "b"]
+        );
+        assert!(locate(&lines(&["Piste verte"]), &[], &census).is_empty());
+        // Whole words only.
+        assert!(locate(&lines(&["Reallonge"]), &[], &census).is_empty());
     }
 }

@@ -3066,9 +3066,11 @@ dependencies = [
  "serde_json",
  "skimap-common",
  "skimap-osm",
+ "skimap-terrain",
  "thiserror",
  "tracing",
  "tracing-subscriber",
+ "zune-jpeg",
 ]
 
 [[package]]

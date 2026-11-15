@@ -9,7 +9,7 @@ use skimap_common::config::Config;
 use skimap_common::download::Downloader;
 use skimap_pisteplan::build::{OCR_OVERLAP, OCR_TILE, OCR_TOPHAT_GAIN, OCR_TOPHAT_R};
 use skimap_pisteplan::labels::{fold, similarity, split_elevation};
-use skimap_pisteplan::{input, ocr, spec};
+use skimap_pisteplan::ocr;
 
 /// Map labels of the Cervières plan, read by hand (names only, elevations dropped).
 const GOLD: &[&str] = &[
@@ -80,9 +80,12 @@ const GOLD: &[&str] = &[
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cfg = Config::from_env()?;
     let dl = Downloader::from_config(&cfg)?;
-    let spec = &spec::cervieres();
-    let inp = input::load(spec, &cfg.layout(), &dl)?;
+    // The site's plan as the pipeline reads it (catalogue, automatic sheet).
+    let planet = skimap_osm::extract::load_planet(&dl)?;
     let e = ocr::engine(&dl)?;
+    let site = skimap_common::site::site("cervieres")?;
+    let (reg, _) = skimap_pisteplan::build::register_site(site, &cfg.layout(), &dl, &planet, &e)?;
+    let (spec, inp) = (&reg.spec, &reg.input);
     let enhanced = ocr::enhance_text(&inp.image, OCR_TOPHAT_R, OCR_TOPHAT_GAIN);
     let lines: Vec<String> =
         ocr::read_lines_tiled(&e, &enhanced, OCR_TILE, OCR_OVERLAP, inp.pt_per_px)?
