@@ -90,6 +90,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     img.disc(p[0] / k, p[1] / k, 2.5, c);
                 }
             }
+            // Arrows read on the plan: a blue tick from the centre along the direction.
+            if p.arrows {
+                let s = p.dpi as f64 / 100.0;
+                let arrows = skimap_pisteplan::arrows::detect(
+                    &reg,
+                    &dmap,
+                    (12.0 * s * s) as usize,
+                    (120.0 * s * s) as usize,
+                );
+                for a in &arrows {
+                    let c = [a.p[0] / k, a.p[1] / k];
+                    let e = [c[0] + a.dir[0] * 14.0, c[1] + a.dir[1] * 14.0];
+                    img.segment(c, e, 2.0, [0, 0, 255]);
+                    img.disc(c[0], c[1], 3.0, [0, 0, 255]);
+                }
+            }
             img.write_png(&std::path::Path::new(&dir).join(format!("{}_share.png", p.site)))?;
         }
     }

@@ -129,6 +129,44 @@ pub struct PlanPiste {
     pub plan: String,
 }
 
+/// Direction compared with the OSM `piste:oneway` tag of the way.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OnewayStatus {
+    /// Same one-way direction in OSM.
+    Match,
+    /// One-way on the plan, not tagged one-way in OSM (tag to add).
+    MissingInOsm,
+    /// One-way in OSM in the other direction (correction to check on the ground).
+    Opposite,
+    /// One-way in OSM, arrows both ways on the plan.
+    PlanBothWays,
+    /// Arrows both ways on the plan, not one-way in OSM.
+    BothWays,
+}
+
+/// Properties of a feature of `plan_ways.geojson`: an OSM way of a transcribed piste
+/// with arrows on the plan (geometry: the way, in its OSM order).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlanWay {
+    /// OSM way id.
+    pub osm_way_id: i64,
+    /// Transcribed pistes using the way.
+    pub pistes: Vec<String>,
+    /// Direction of travel shown by the arrows, relative to the way's order.
+    pub direction: Direction,
+    /// Arrows pointing along the way's order.
+    pub arrows_forward: usize,
+    /// Arrows pointing against it.
+    pub arrows_backward: usize,
+    /// OSM `piste:oneway` of the way (`forward`, `backward`, `no`, `unknown`).
+    pub osm_oneway: String,
+    /// Comparison with OSM.
+    pub oneway_status: OnewayStatus,
+    /// Plan identifier.
+    pub plan: String,
+}
+
 /// Kind of a landmark read on the plan.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

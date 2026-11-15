@@ -1,6 +1,6 @@
 //! Registration of a plan and transcription of its pistes onto our geometries.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
 use serde::Serialize;
@@ -10,6 +10,7 @@ use skimap_common::layout::DataLayout;
 use skimap_common::meta::{FileMeta, LayerMeta, SourceRef};
 use skimap_common::output;
 use skimap_osm::extract::Planet;
+use skimap_osm::pistes::Oneway;
 
 use crate::align::{
     self, Coarse, IcpStep, LabelMatch, LooStats, Pair, Tie, Warp, compare_models, held_out,
@@ -23,7 +24,10 @@ use crate::segment;
 use crate::skeleton::SkelGraph;
 use crate::spec::{LabelSource, PlanSpec};
 use crate::transcribe;
-use crate::transcript::{GeometrySource, MatchMethod, PisteKind, PlanLandmark, PlanPiste};
+use crate::transcript::{
+    Direction, GeometrySource, MatchMethod, OnewayStatus, PisteKind, PlanLandmark, PlanPiste,
+    PlanWay,
+};
 use crate::warp::{ModelKind, quantile};
 
 /// ICP schedule: (search radius m, spline smoothing).
@@ -54,6 +58,9 @@ pub const RANSAC_TOL_PT: f64 = 15.0;
 /// Largest distance between a drawn junction (after the warp) and its OSM junction, page
 /// points (~1.4 mm on paper).
 pub const TIE_MAX_PT: f64 = 4.0;
+
+/// Largest distance between an arrow and the way it is counted on, page points.
+pub const ARROW_RADIUS_PT: f64 = 4.0;
 
 /// Everything learnt about a plan.
 pub struct Registration {
@@ -448,6 +455,90 @@ pub fn transcribe_and_write(
         ));
     }
     output::write_geojson(&dir.join("plan_landmarks.geojson"), &lfeat)?;
+    // Direction arrows on the ways of the transcribed pistes.
+    let arrows = if reg.spec.arrows {
+        let s = reg.spec.dpi as f64 / 100.0;
+        crate::arrows::detect(
+            reg,
+            &dmap,
+            (12.0 * s * s) as usize,
+            (120.0 * s * s) as usize,
+        )
+    } else {
+        Vec::new()
+    };
+    let mut per_way: BTreeMap<usize, (Vec<String>, usize, usize)> = BTreeMap::new();
+    for d in decisions.iter().filter(|d| d.status.is_some()) {
+        let Some(ink) = d.entry.ink else { continue };
+        for &w in &d.ways {
+            let line: Vec<[f64; 2]> = reg.osm.ways[w]
+                .xy
+                .iter()
+                .map(|&q| reg.warp.to_plan(q))
+                .collect();
+            let (f, b) = crate::arrows::votes(&arrows, ink, &line, ARROW_RADIUS_PT);
+            let e = per_way.entry(w).or_default();
+            e.0.push(d.name.clone());
+            e.1 += f;
+            e.2 += b;
+        }
+    }
+    let mut wfeat = Vec::new();
+    let mut oneway_counts: BTreeMap<String, usize> = BTreeMap::new();
+    for (w, (pistes, f, b)) in &per_way {
+        if f + b == 0 {
+            continue;
+        }
+        let way = &reg.osm.ways[*w];
+        let direction = match (*f > 0, *b > 0) {
+            (true, false) => Direction::Forward,
+            (false, true) => Direction::Backward,
+            _ => Direction::Both,
+        };
+        let osm_oneway = match way.oneway {
+            Oneway::Forward => "forward",
+            Oneway::Backward => "backward",
+            Oneway::No => "no",
+            Oneway::Unknown => "unknown",
+        };
+        let oneway_status = match (direction, way.oneway) {
+            (Direction::Forward, Oneway::Forward) | (Direction::Backward, Oneway::Backward) => {
+                OnewayStatus::Match
+            }
+            (Direction::Forward, Oneway::Backward) | (Direction::Backward, Oneway::Forward) => {
+                OnewayStatus::Opposite
+            }
+            (Direction::Both, Oneway::Forward | Oneway::Backward) => OnewayStatus::PlanBothWays,
+            (Direction::Both, _) => OnewayStatus::BothWays,
+            _ => OnewayStatus::MissingInOsm,
+        };
+        let key = serde_json::to_value(oneway_status)
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_owned))
+            .unwrap_or_default();
+        *oneway_counts.entry(key).or_default() += 1;
+        let mut names = pistes.clone();
+        names.sort();
+        names.dedup();
+        let p = PlanWay {
+            osm_way_id: way.id,
+            pistes: names,
+            direction,
+            arrows_forward: *f,
+            arrows_backward: *b,
+            osm_oneway: osm_oneway.to_owned(),
+            oneway_status,
+            plan: reg.spec.id.to_owned(),
+        };
+        wfeat.push(output::feature(
+            output::line_string(way.ll.iter().copied()),
+            serde_json::to_value(&p).map_err(|e| Error::Json {
+                context: "plan way".into(),
+                source: e,
+            })?,
+        ));
+    }
+    output::write_geojson(&dir.join("plan_ways.geojson"), &wfeat)?;
     // Statistics.
     let transcribed = decisions.iter().filter(|d| d.status.is_some()).count();
     let tie_pairs: Vec<f64> = reg.ties.iter().map(|t| t.residual_m).collect();
@@ -465,6 +556,7 @@ pub fn transcribe_and_write(
             .map(|d| json!({"name": d.entry.name_read, "ink": d.ink, "score": d.score, "shift_max": d.shift_max, "reason": d.reason}))
             .collect::<Vec<_>>(),
         "landmarks": lms.len(),
+        "arrows": {"detected": arrows.len(), "ways_with_arrows": wfeat.len(), "oneway_status": oneway_counts},
         "registration": {
             "labels_on_map": reg.map_labels.len(),
             "label_candidates": reg.candidates.len(),
@@ -536,6 +628,22 @@ pub fn transcribe_and_write(
             ("osm_colour", "couleur des relations OSM"),
             ("osm_relation_ids", "relations OSM"),
             ("osm_way_ids", "voies OSM de la géométrie"),
+            ("plan", "identifiant du plan"),
+        ]),
+        FileMeta::new(
+            "plan_ways.geojson",
+            "voies OSM des pistes transcrites portant des flèches de sens sur le plan (géométrie OSM, dans l'ordre de la voie)",
+        )
+        .licence("géométrie ODbL 1.0 (OSM) ; sens du plan : usage personnel")
+        .count(wfeat.len())
+        .properties([
+            ("osm_way_id", "voie OSM"),
+            ("pistes", "pistes transcrites qui l'empruntent"),
+            ("direction", "forward / backward (par rapport à l'ordre de la voie), both : flèches dans les deux sens"),
+            ("arrows_forward", "flèches dans l'ordre de la voie"),
+            ("arrows_backward", "flèches à contresens de l'ordre de la voie"),
+            ("osm_oneway", "piste:oneway OSM (forward, backward, no, unknown)"),
+            ("oneway_status", "match, missing_in_osm, opposite, plan_both_ways, both_ways"),
             ("plan", "identifiant du plan"),
         ]),
         FileMeta::new(

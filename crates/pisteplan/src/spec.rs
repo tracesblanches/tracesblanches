@@ -73,6 +73,8 @@ pub struct PlanSpec {
     pub labels: LabelSource,
     /// Line extraction parameters (pixels of the rendering).
     pub line: LineParams,
+    /// Whether the plan draws direction arrows on the pistes.
+    pub arrows: bool,
     /// Sectors of the legend (columns listing the pistes of one area), page points.
     pub sectors: &'static [(PageRect, &'static str)],
 }
@@ -163,6 +165,7 @@ pub const CERVIERES: PlanSpec = PlanSpec {
         },
     ],
     labels: LabelSource::Ocr,
+    arrows: false,
     sectors: &[
         (
             px([620.0, 825.0, 828.0, 1010.0], 150.0),
@@ -257,6 +260,7 @@ pub const CHAPELLE_DES_BOIS: PlanSpec = PlanSpec {
         },
     ],
     labels: LabelSource::TextLayer,
+    arrows: true,
     sectors: &[],
     line: LineParams {
         close_r: 2,

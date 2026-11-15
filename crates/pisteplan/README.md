@@ -30,6 +30,7 @@ Téléchargés par le téléchargeur commun (sources `nordicfrance`, `enj`, cach
 | Fichier | Contenu |
 |---|---|
 | `plan_pistes.geojson` | une `MultiLineString` OSM par piste du plan appariée : `name`, `name_read`, `colour`, `ink`, `kind`, `lengths_km_plan` (pas pour un plan lu par OCR), `departures`, `length_m`, `loop`, `method` (`exact`), `score`, `geometry_source`, `osm_status` (`match`, `colour_differs`, `colour_missing`, `name_missing`), `osm_name`, `osm_colour`, `osm_relation_ids`, `osm_way_ids` |
+| `plan_ways.geojson` | voies OSM des pistes transcrites qui portent des flèches sur le plan : `direction` (`forward`/`backward` par rapport à l'ordre de la voie, `both`), nombre de flèches, `osm_oneway`, `oneway_status` (`match`, `missing_in_osm`, `opposite`…) |
 | `plan_landmarks.geojson` | repères du plan appariés à OSM (lieux, sommets, cols, refuges, départs) |
 | `plan_pistes.meta.json` | sources (plan : `personal_use_only`), paramètres, `stats` : décisions, raisons des refus, validation, RANSAC, ICP, points d'appui, validation croisée, OCR |
 
@@ -37,6 +38,7 @@ Téléchargés par le téléchargeur commun (sources `nordicfrance`, `enj`, cach
 SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-pisteplan --features pipeline --example plan_pistes
 SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-pisteplan --features pipeline --example ocr_gold   # OCR Cervières
 cargo test -p skimap-pisteplan --features pipeline
+cargo test -p skimap-pisteplan --test real_outputs -- --ignored   # lecteur sur les sorties réelles
 # diagnostics locaux (images du plan, jamais publiées) : examples inspect, register, ocr_dump
 ```
 
@@ -51,6 +53,7 @@ Démo : `demo/compare.html?site=…&view=osm|plan` (style et couleurs du visuali
 | Transcrites (exact) | 3 (Gibera, Pinatelle, Chemin du Sioux) | 30 (54 % du plan, 77 % des candidats) |
 | Couleur du plan = couleur OSM | 3 / 3 | 30 / 30 |
 | Repères appariés | 14 | 16 |
+| Voies avec flèches (sens) : même sens qu'OSM / sens absent d'OSM / opposé | sans flèches | 29 / 19 / 0 (+ 1 dans les deux sens) |
 | Lecture OCR | 45 % des 62 étiquettes relevées à la main (16 % exactes) | 52 % des 566 mots de la couche texte (48 % exacts) |
 | Appariement RANSAC | 14 étiquettes sur 27 candidates, 28,5 m/pt | 12 sur 53, 17,4 m/pt |
 | ICP : écart médian ligne ↔ OSM | 6 m (73 paires) | 7 m (1 152 paires) |
@@ -71,5 +74,5 @@ La relecture a aussi trouvé deux erreurs, corrigées depuis : « Combe Verte »
 
 - Cervières : image floue de 1 280 px. Les lignes y sont fines, la piste bleue a presque la couleur du fond turquoise, et l'OCR ne lit pas « Savare » (ambigu), « Izoard » ni les deux liaisons. Les longueurs lues par OCR sont fausses (« 75km » pour 7,5 km), elles ne sont pas transcrites.
 - 17 pistes de Chapelle-des-Bois n'ont aucune relation OSM du même nom (Le Pré d'Haut, Combe des Cives, les liaisons, Le Gy, La Lanterne…). Elles sont listées, pas devinées : c'est l'entrée de G1.
-- Sens : les flèches du plan ENJ ne sont pas encore lues (`direction` absent).
+- Sens : flèches lues à Chapelle-des-Bois seulement. Le plan de Cervières n'en dessine pas. Une flèche est un trou de l'encre (triangle blanc cerné) ; son sens est le signe de l'asymétrie de ses pixels le long de la ligne. Dans un extrait relu à la main, 10 flèches sur 12 sont trouvées. Le sens est donné par voie (`plan_ways.geojson`), pas par piste.
 - Les PDF n'ont ni `ETag` ni `Last-Modified` : un nouveau plan n'est vu qu'à l'expiration du cache (30 jours).

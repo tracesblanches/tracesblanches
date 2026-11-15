@@ -164,6 +164,14 @@ impl InkDistance {
             .map(|s| s.geom().distance_2(&p).sqrt())
             .fold(f64::INFINITY, f64::min)
     }
+
+    /// Unit direction of the drawn segment of `ink` nearest to `p` within `r_pt`.
+    pub fn nearest_dir(&self, ink: usize, p: P2, r_pt: f64) -> Option<P2> {
+        self.trees[ink]
+            .locate_within_distance(p, r_pt * r_pt)
+            .min_by(|a, b| a.geom().distance_2(&p).total_cmp(&b.geom().distance_2(&p)))
+            .map(|s| s.data)
+    }
 }
 
 /// Share of a Lambert-93 polyline set drawn with `ink` within `r_pt` on the plan, and the
