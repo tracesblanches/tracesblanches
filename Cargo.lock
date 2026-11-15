@@ -3007,6 +3007,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "skimap-srndiff"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "geo",
+ "rayon",
+ "serde",
+ "serde_json",
+ "skimap-avalanche",
+ "skimap-common",
+ "skimap-core",
+ "skimap-srn",
+ "skimap-terrain",
+ "skimap-zones",
+ "thiserror",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "skimap-stations"
 version = "0.1.0"
 dependencies = [
