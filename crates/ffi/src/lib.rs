@@ -19,6 +19,7 @@
 //! feature).
 
 pub mod card;
+pub mod card_map;
 pub mod catalog;
 pub mod fees;
 pub mod info;
