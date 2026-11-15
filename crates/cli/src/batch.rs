@@ -216,6 +216,7 @@ fn inputs(ctx: &Ctx, registry: &Registry, site: &Site) -> Result<BuildInputs> {
             .clone(),
         version: env!("CARGO_PKG_VERSION").to_owned(),
         personal_sources: ctx.cfg.personal_sources,
+        revision: france::BUILD_REVISION,
     })
 }
 
@@ -750,7 +751,8 @@ fn build_site(
     if removed > 0 {
         tracing::warn!(site = site.id, removed, "orphan temporary files removed");
     }
-    let previous = france::read_record(&ctx.layout, site.id).filter(|r| !force && r.inputs == inp);
+    let previous =
+        france::read_record(&ctx.layout, site.id).filter(|r| !force && r.inputs.resumable_by(&inp));
     let resume = previous.as_ref().map(|r| crate::build::Resume {
         previous: &r.outcome.steps,
         max_age,
@@ -915,6 +917,7 @@ mod tests {
                 record: skimap_common::site::evaluation_records()[0].clone(),
                 version: "0.1.0".into(),
                 personal_sources: false,
+                revision: france::BUILD_REVISION,
             },
             started_at: "2026-11-15T10:00:00Z".into(),
             finished_at: "2026-11-15T10:01:00Z".into(),
@@ -947,6 +950,20 @@ mod tests {
         let mut failed = rec.clone();
         failed.ok = false;
         assert!(!up_to_date(&failed, &rec.inputs, day, now));
+        // A new revision of the steps: not up to date, but its steps can be taken over.
+        let mut older = rec.inputs.clone();
+        older.revision = 1;
+        assert!(!up_to_date(
+            &BuildRecord {
+                inputs: older.clone(),
+                ..rec.clone()
+            },
+            &rec.inputs,
+            day,
+            now
+        ));
+        assert!(older.resumable_by(&rec.inputs));
+        assert!(!other.resumable_by(&rec.inputs), "another site record");
     }
 
     #[test]
