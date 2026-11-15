@@ -212,6 +212,11 @@ pub struct Scenario {
     /// detour but those scripted.
     #[serde(default)]
     pub behaviour: Option<Behaviour>,
+    /// The phone counts steps (X10, [`Input::Steps`] every 10 s with the fixes): striding on
+    /// skis, one a second uphill, one every two seconds on the flat (diagonal stride mixed
+    /// with double poling), none downhill (gliding), standing or in a vehicle.
+    #[serde(default)]
+    pub step_counter: bool,
 }
 
 /// A run: everything given to the tracker and everything it said.
@@ -234,6 +239,10 @@ pub struct Run {
     /// Every 10 s: seconds from the start, the skier's distance along its course and
     /// position, the tracker's cursor and distance to the route.
     pub truth: Vec<(f64, f64, LonLat, f64, f64)>,
+    /// The skier's stops on the way, scripted or drawn (not the wait at the start nor at
+    /// the finish): seconds from the start, length.
+    #[serde(default)]
+    pub stops: Vec<(f64, f64)>,
 }
 
 /// Legs from a half-edge on, `length` metres, going straight on at each node.
@@ -505,6 +514,7 @@ pub fn run_with_layers(
         fixes: 0,
         batches: 0,
         truth: Vec::new(),
+        stops: Vec::new(),
     };
     let mut out: Vec<Output> = Vec::new();
     let mut batch: Vec<Input> = Vec::new();
@@ -529,6 +539,7 @@ pub fn run_with_layers(
     let mut fired = false;
     let (mut still_for, mut moving_for, mut said_still) = (0.0, 0.0, false);
     let mut refuse_at: Option<f64> = None;
+    let mut steps_acc = 0.0f64;
     let mut ignore_next = false;
     let mut finished_at: Option<f64> = None;
     let t_start = sc.start.timestamp() as f64;
@@ -544,6 +555,7 @@ pub fn run_with_layers(
             let fire = match &st {
                 Step::Stop { at_s, secs } if sk.s >= *at_s && stop_until.is_none() => {
                     stop_until = Some(t + secs);
+                    run.stops.push((t, *secs));
                     true
                 }
                 Step::Close { at_s, ways } if sk.s >= *at_s => {
@@ -612,6 +624,7 @@ pub fn run_with_layers(
         // Motion.
         let mut pos = sk.pos();
         let mut moving = false;
+        let mut striding = 0.0;
         if let Some((from, dist)) = car {
             // 15 m/s towards the start, then out of the car.
             let left = dist - 15.0 * t;
@@ -654,6 +667,7 @@ pub fn run_with_layers(
                     if grng.unit() < b.stops_per_h / 3600.0 {
                         let d = (b.stop_median_s.ln() + b.stop_sigma * grng.normal()).exp();
                         stop_until = Some(t + d);
+                        run.stops.push((t, d));
                     } else if grng.unit() < b.detours_per_h / 3600.0 {
                         sk.back_left = -b.detour_m * (1.0 - grng.unit()).max(1e-9).ln();
                     }
@@ -661,6 +675,11 @@ pub fn run_with_layers(
             }
             pos = sk.pos();
             moving = true;
+            striding = match sk.here().0 {
+                Terrain::Up => 1.0,
+                Terrain::Flat => 0.5,
+                Terrain::Down => 0.0,
+            };
         }
         // Client: Android's activity recognition, with its latency: « still » after 30 s
         // without moving, « on foot » 10 s after moving again.
@@ -711,6 +730,17 @@ pub fn run_with_layers(
                 pos: noisy,
             });
             run.fixes += 1;
+        }
+        // Client: the step counter, read every 10 s and delivered with the fixes.
+        if sc.step_counter {
+            steps_acc += striding;
+            if k % 10 == 9 {
+                batch.push(Input::Steps {
+                    t: at(t),
+                    steps: steps_acc as u32,
+                });
+                steps_acc -= f64::from(steps_acc as u32);
+            }
         }
         let delay = req.map_or(0.0, |r| r.max_delay_s);
         let oldest = batch.first().map(|i| i.t());

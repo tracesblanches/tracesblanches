@@ -65,6 +65,7 @@ fn bench(
         seed: 11,
         tail_s: 300.0,
         behaviour,
+        step_counter: false,
     };
     let run = scenario::run(&sc, p, view, g, TrackerParams::default())?;
     let switches = run

@@ -104,6 +104,7 @@ fn scen(b: &Built, name: &str, steps: Vec<Step>) -> Scenario {
         seed: 7,
         tail_s: 300.0,
         behaviour: None,
+        step_counter: false,
     }
 }
 
@@ -272,7 +273,7 @@ fn no_manipulation(run: &Run) {
     assert!(
         run.inputs.iter().all(|i| matches!(
             i,
-            Input::Fix { .. } | Input::Activity { .. } | Input::Closed { .. }
+            Input::Fix { .. } | Input::Activity { .. } | Input::Steps { .. } | Input::Closed { .. }
         )),
         "{}: an input needs the skier",
         run.scenario
@@ -1126,6 +1127,143 @@ fn q9_15_cervieres_pause_at_the_refuge() {
     }
 }
 
+/// The steepest stretch of 300 m in the first `within_m` metres of the plan's loop (its
+/// start, metres along: a late skier is offered a shorter loop).
+fn steepest(b: &Built, within_m: f64) -> f64 {
+    let c = skimap_plan::course::Course::new(&b.graph, &b.plan.route.legs, &b.plan.eta).unwrap();
+    let p = c.profile();
+    let mut best = (0.0, 0.0);
+    for i in 0..p.dist_m.len() {
+        let j = p.dist_m.partition_point(|d| *d < p.dist_m[i] + 300.0);
+        if j >= p.dist_m.len() || p.dist_m[j] / c.profile_at(1.0) > within_m {
+            break;
+        }
+        // Slower out than back: climbing.
+        let r = (p.out_s[j] - p.out_s[i]) / (p.back_s[j] - p.back_s[i]).max(1.0);
+        if r > best.1 {
+            best = (p.dist_m[i] / c.profile_at(1.0), r);
+        }
+    }
+    best.0
+}
+
+/// Pauses of a run before its end (start, resumed), seconds from the start.
+fn pauses(run: &Run) -> Vec<(f64, f64)> {
+    let t0 = run.t0.timestamp() as f64;
+    let mut v: Vec<(f64, f64)> = Vec::new();
+    let mut fin = f64::INFINITY;
+    for o in &run.outputs {
+        if let Output::Session { event, .. } = o {
+            match event {
+                SessionEvent::Paused { t } => v.push((t - t0, f64::INFINITY)),
+                SessionEvent::Resumed { t, .. } => {
+                    if let Some(p) = v.last_mut() {
+                        p.1 = t - t0;
+                    }
+                }
+                SessionEvent::Finished { t, .. } => fin = fin.min(t - t0),
+                _ => {}
+            }
+        }
+    }
+    v.retain(|p| p.0 < fin - 1.0);
+    v
+}
+
+/// Speeds of the skier along its course over 60 s while moving (the truth), m/s.
+fn speeds(run: &Run) -> Vec<f64> {
+    let mut v: Vec<f64> = run
+        .truth
+        .windows(7)
+        .map(|w| (w[6].1 - w[0].1) / (w[6].0 - w[0].0))
+        .filter(|v| *v > 0.05 && *v < 10.0)
+        .collect();
+    v.sort_by(f64::total_cmp);
+    v
+}
+
+/// A slow skier (the C5 pace divided by `slowdown`: climbs at 0.3 to 0.5 m/s, hairpins of
+/// the Izoard road at Cervières) stopping 3 min on the steepest climb: with the steps
+/// counted by the phone (X10), the one pause is that stop; with the fixes alone, the
+/// thresholds of a climb (180 s under 0.08 m/s) against those of before (90 s under 0.15
+/// m/s).
+fn slow_climb(b: &Built, name: &str, slowdown: f64, within_m: f64) {
+    let at_s = steepest(b, within_m);
+    let mut counts = Vec::new();
+    for (seed, sigma) in [(7u64, 10.0), (99, 15.0), (11, 10.0)] {
+        let mut sc = scen(
+            b,
+            &format!("{name}, montée lente, arrêt de 3 min (σ {sigma} m)"),
+            vec![
+                Step::WaitAtStart { secs: 60.0 },
+                Step::Stop { at_s, secs: 180.0 },
+            ],
+        );
+        sc.slowdown = slowdown;
+        sc.seed = seed;
+        sc.sigma_m = sigma;
+        sc.step_counter = true;
+        let run = play(b, &sc, TrackerParams::default());
+        no_manipulation(&run);
+        let v = speeds(&run);
+        let q = |f: f64| v[((v.len() - 1) as f64 * f) as usize];
+        let slow = v.iter().filter(|x| (0.3..=0.5).contains(*x)).count() as f64 / v.len() as f64;
+        let (stop_t, stop_s) = run.stops[0];
+        let ps = pauses(&run);
+        println!(
+            "{} : vitesse 10 / 50 / 90 % {:.2} / {:.2} / {:.2} m/s, {:.0} % du temps en mouvement de 0,3 à 0,5 m/s ; arrêt de {stop_s:.0} s à {stop_t:.0} s ({at_s:.0} m) ; pauses {ps:?}",
+            run.scenario,
+            q(0.1),
+            q(0.5),
+            q(0.9),
+            slow * 100.0
+        );
+        assert!(slow >= 0.25, "{}: {slow}", run.scenario);
+        // With the steps: the stop, and nothing else.
+        assert_eq!(ps.len(), 1, "{}: {ps:?}", run.scenario);
+        let (p0, p1) = ps[0];
+        assert!(
+            (p0 - stop_t).abs() <= 40.0 && (p1 - (stop_t + stop_s)).abs() <= 90.0,
+            "{}: pause {ps:?}, stop at {stop_t} for {stop_s}",
+            run.scenario
+        );
+        // The fixes alone, now and before X10 (the thresholds of the flat on climbs).
+        sc.step_counter = false;
+        let view = TrackView::new(&b.track).unwrap();
+        let gps = scenario::run(&sc, &b.plan, view, &b.graph, TrackerParams::default()).unwrap();
+        let mut before = TrackerParams::default();
+        before.session.climb_pause_s = before.session.pause_s;
+        before.session.climb_pause_fix_ms = before.session.pause_fix_ms;
+        let old = scenario::run(&sc, &b.plan, view, &b.graph, before).unwrap();
+        let false_of = |r: &Run| {
+            let (st, sd) = r.stops[0];
+            pauses(r)
+                .iter()
+                .filter(|p| !(p.0 < st + sd + 30.0 && p.1 > st - 30.0))
+                .count()
+        };
+        counts.push((false_of(&gps), false_of(&old)));
+    }
+    let (now, old): (usize, usize) = counts.iter().fold((0, 0), |a, c| (a.0 + c.0, a.1 + c.1));
+    println!(
+        "{name} : fausses pauses avec les seules positions {now} (avant X10 : {old}) ; avec les pas 0"
+    );
+    assert!(now < old, "{now} vs {old}");
+}
+
+#[test]
+fn q9_34_cervieres_slow_climb_no_false_pause() {
+    let b = cervieres();
+    // Before the divergence of the shortened loop it is offered at the start (late).
+    slow_climb(&b, "Cervières", 2.0, 1500.0);
+}
+
+#[test]
+fn q9_35_chapelle_slow_climb_no_false_pause() {
+    let b = chapelle();
+    slow_climb(&b, "Chapelle-des-Bois", 3.0, 2500.0);
+}
+
 #[test]
 fn q9_16_chapelle_short_pause() {
     let b = chapelle();
@@ -1316,6 +1454,8 @@ fn q9_21_gps_modes_follow_the_decision_points() {
 fn group(b: &Built, name: &str, bh: Behaviour, steps: Vec<Step>) -> Run {
     let mut sc = scen(b, name, steps);
     sc.behaviour = Some(bh);
+    // The phone counts the steps (X10): a child's way back and forth is moving.
+    sc.step_counter = true;
     play(b, &sc, TrackerParams::default())
 }
 
@@ -1844,7 +1984,7 @@ fn q9_32_chapelle_children_are_offered_a_shorter_loop_sooner() {
     }
     let (kids_first, adults_first) = (first[0], first[1]);
     assert!(
-        kids_first.0 + 1800.0 < adults_first.0,
+        kids_first.0 <= 1200.0 && 2.0 * kids_first.0 < adults_first.0,
         "{kids_first:?} vs {adults_first:?}"
     );
     assert_eq!(

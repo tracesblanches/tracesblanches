@@ -75,5 +75,5 @@ Le gain est là où C5 se trompe (famille, adulte rapide) ; un adulte au rythme 
 ## Limites
 
 - **Validation réelle en attente** : traces synthétiques seulement ; le critère du ticket (erreur réduite sur de vraies sorties par profil, adulte seul et famille) attend de vraies sorties (T1, C6).
-- A priori des enfants : un seul témoignage (n = 1, 8 ans et plus) et des hypothèses (forme par terrain publiée) ; seuils de prudence avec des enfants (80 %, une heure de lumière, propositions plus tôt) : des choix ; un aller-retour d'enfant de moins de 40 m peut compter comme arrêt (règle de pause J3), de façon cohérente hors ligne et en ligne.
+- A priori des enfants : un seul témoignage (n = 1, 8 ans et plus) et des hypothèses (forme par terrain publiée) ; seuils de prudence avec des enfants (80 %, une heure de lumière, propositions plus tôt) : des choix ; sans compteur de pas, un aller-retour d'enfant de moins de 40 m compte comme arrêt (règle de pause J3), de façon cohérente hors ligne et en ligne ; avec les pas comptés par le téléphone (X10), c'est du mouvement (un détour), et les arrêts sont datés du début et de la fin des pas.
 - Paramètres du suivi en ligne (bruit 0,2, oubli 1 h, plafonds) : hypothèses à régler sur le terrain (T5).

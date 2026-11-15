@@ -143,6 +143,7 @@ pub fn evaluate(c: &Case<'_>) -> Result<Vec<Day>> {
             seed: c.seed + k,
             tail_s: 300.0,
             behaviour: Some(c.behaviour.day(k)),
+            step_counter: false,
         };
         let run = scenario::run(&sc, c.plan, view, c.graph, quiet())?;
         let (s0, s1) = started_finished(&run.outputs);

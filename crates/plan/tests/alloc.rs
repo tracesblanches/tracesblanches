@@ -2,7 +2,8 @@
 //! global allocator (the only `unsafe` of the crate, test only) counts the allocations of
 //! every `Tracker::push` while a normal outing of each site is replayed, and a slow family
 //! outing with stops and detours on a plan with the family's profile (C11 #130: the pace
-//! of the day updated on every fix, the arrival and the proposals checked every minute).
+//! of the day updated on every fix, the arrival and the proposals checked every minute; its
+//! phone counts the steps, X10: their reports are counted too).
 //!
 //! Reads `data/out/<site>/` (fails if absent; `fixtures/` once Q1 is merged).
 
@@ -79,6 +80,8 @@ fn site_counts(site: &'static Site, family: bool) -> (usize, usize, usize, usize
         seed: 3,
         tail_s: 300.0,
         behaviour: family.then(Behaviour::family),
+        // The family's phone counts the steps (X10): their reports allocate nothing either.
+        step_counter: family,
     };
     let run = scenario::run(&sc, &p, view, &g, TrackerParams::default()).expect("run");
     let mut tr = Tracker::new(&p, view, &g, None, TrackerParams::default()).unwrap();
@@ -90,7 +93,7 @@ fn site_counts(site: &'static Site, family: bool) -> (usize, usize, usize, usize
         let before = ALLOCS.load(Ordering::Relaxed);
         tr.push(i, &mut out);
         let n = ALLOCS.load(Ordering::Relaxed) - before;
-        if matches!(i, Input::Fix { .. }) {
+        if matches!(i, Input::Fix { .. } | Input::Steps { .. }) {
             fixes += 1;
             // Quiet: nothing out, nothing offered to the speech policy.
             let offered =
@@ -104,7 +107,7 @@ fn site_counts(site: &'static Site, family: bool) -> (usize, usize, usize, usize
         }
     }
     println!(
-        "{}{}: {fixes} fixes, {quiet} sans rien à dire ni décider ({quiet_alloc} allocations), {eventful} avec une sortie ou une annonce proposée",
+        "{}{}: {fixes} fixes et relevés de pas, {quiet} sans rien à dire ni décider ({quiet_alloc} allocations), {eventful} avec une sortie ou une annonce proposée",
         site.id,
         if family { ", famille" } else { "" }
     );

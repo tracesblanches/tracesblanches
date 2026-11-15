@@ -1,7 +1,8 @@
 //! Start, pause, refuge and end of the outing without any manipulation (J3, #112): the
 //! decision on the core side, from the fixes and, when the phone gives them, the activity
-//! recognised by Android (`ActivityRecognition`: still, on foot, in a vehicle) and the
-//! significant motion sensor (report 09 « batterie »).
+//! recognised by Android (`ActivityRecognition`: still, on foot, in a vehicle), the
+//! significant motion sensor (report 09 « batterie ») and the steps counted by the phone
+//! ([`Session::steps`], X10 #144) with the terrain of the route ([`Session::set_terrain`]).
 //!
 //! Positions are smoothed over blocks of [`SessionParams::block_s`] (the mean of the fixes
 //! of the block): a stationary skier's fixes wander by the GPS error (σ 15 m and forest
@@ -11,10 +12,10 @@
 //! | Decision | Rule |
 //! |---|---|
 //! | start | not in a vehicle; within [`SessionParams::start_radius_m`] of the plan's start and [`SessionParams::start_route_m`] of the route; the smoothed position moves [`SessionParams::move_m`] over [`SessionParams::move_s`]: the start is the beginning of that movement |
-//! | pause | over [`SessionParams::pause_s`] (90 s), the mean position of the second half is within [`SessionParams::pause_ms`] (0.3 m/s, after the phone said « still » for [`SessionParams::still_pause_s`]) or [`SessionParams::pause_fix_ms`] (0.15 m/s, the fixes alone) × half the window of the first half's, the progress along the route (when on it) is below 0.3 m/s too (hairpins), and no smoothed position is farther than [`SessionParams::pause_m`] from the centre: the pause starts at the beginning of that window |
+//! | pause | over [`SessionParams::pause_s`] (90 s), the mean position of the second half is within [`SessionParams::pause_ms`] (0.3 m/s, after the phone said « still » for [`SessionParams::still_pause_s`], or when it counts the steps and none came uphill or on the flat) or [`SessionParams::pause_fix_ms`] (0.15 m/s, the fixes alone; uphill without the steps, [`SessionParams::climb_pause_fix_ms`] over [`SessionParams::climb_pause_s`], 0.08 m/s over 180 s: a slow climb reads like a stop) × half the window of the first half's, the progress along the route (when on it) is below that too (hairpins), no smoothed position is farther than [`SessionParams::pause_m`] from the centre, and fewer than [`SessionParams::pause_steps`] steps over the window: the pause starts at the beginning of that window, or when the striding ended if the skier stayed there since |
 //! | refuge | a pause within [`SessionParams::refuge_m`] (50 m) of a refuge of the plan lasting [`SessionParams::refuge_s`] (5 min): said at the first input after those 5 min (the GNSS is off in a pause, report 09), dated at their end |
-//! | waking | significant motion or « on foot » during a pause: the GPS goes back to 1 s |
-//! | resume | the smoothed position leaves the pause by [`SessionParams::resume_m`] |
+//! | waking | significant motion, « on foot » or [`SessionParams::waking_steps`] steps during a pause: the GPS goes back to 1 s |
+//! | resume | the smoothed position leaves the pause by [`SessionParams::resume_m`], dated when the striding came back (with the steps) or when the block that left started |
 //! | near the finish | within [`SessionParams::finish_m`] of the finish after having been [`SessionParams::away_m`] away from it (the arrival is announced) |
 //! | distance | the smoothed position every [`SessionParams::distance_s`] while moving (fewer, longer steps: the GPS error adds little) |
 //! | end | a pause near the finish; or a vehicle (the phone says so, or the smoothed speed stays above [`SessionParams::vehicle_ms`] for [`SessionParams::vehicle_s`]): the outing is abandoned unless near the finish |
@@ -23,6 +24,7 @@ use std::collections::VecDeque;
 
 use serde::{Deserialize, Serialize};
 use skimap_common::geom::LonLat;
+use skimap_core::calibration::Terrain;
 
 /// Activity recognised by the phone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -42,6 +44,7 @@ pub enum Activity {
 
 /// Settings (report 09, section 5; to check on the field, T5).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SessionParams {
     /// Smoothing block, seconds.
     pub block_s: f64,
@@ -82,6 +85,16 @@ pub struct SessionParams {
     pub vehicle_ms: f64,
     /// …held this long, seconds.
     pub vehicle_s: f64,
+    /// Pause: fewer steps than this over its window, when the phone counts them (X10: a
+    /// skier climbing slowly strides, a stopped one does not).
+    pub pause_steps: u32,
+    /// Waking: this many steps during a pause (as the significant motion sensor).
+    pub waking_steps: u32,
+    /// On a climb, the fixes alone: speed below this, m/s (a slow climb in hairpins reads
+    /// little more than the GPS error over the window)…
+    pub climb_pause_fix_ms: f64,
+    /// …over this window, seconds.
+    pub climb_pause_s: f64,
 }
 
 impl Default for SessionParams {
@@ -105,6 +118,10 @@ impl Default for SessionParams {
             distance_s: 30.0,
             vehicle_ms: 10.0,
             vehicle_s: 60.0,
+            pause_steps: 10,
+            waking_steps: 5,
+            climb_pause_fix_ms: 0.08,
+            climb_pause_s: 180.0,
         }
     }
 }
@@ -204,6 +221,8 @@ struct Block {
     pos: LonLat,
     /// Distance along the route at the end of the block, when known.
     s: Option<f64>,
+    /// Steps counted during the block.
+    steps: u32,
 }
 
 /// The state machine.
@@ -218,6 +237,8 @@ pub struct Session {
     acc: Option<(f64, f64, f64, usize)>,
     blocks: VecDeque<Block>,
     keep_s: f64,
+    /// Blocks the start looks back on (the rest at the start).
+    start_keep_s: f64,
     pause_at: Option<LonLat>,
     still_since: Option<f64>,
     waking: bool,
@@ -236,7 +257,23 @@ pub struct Session {
     coarse: Option<(f64, f64, f64, usize)>,
     coarse_last: Option<LonLat>,
     totals: Totals,
+    /// Steps counted since the last block, and during the pause.
+    acc_steps: u32,
+    pause_steps: u32,
+    /// Terrain of the route here (the tracker says so from the plan's profile).
+    terrain: Terrain,
+    /// The phone counts steps (a report came).
+    counts_steps: bool,
+    /// Last report of the steps, and the start of the striding in progress (reports of
+    /// [`STRIDE_STEPS`] steps or more in a row).
+    steps_t: Option<f64>,
+    stride_from: Option<f64>,
+    /// Last report of striding.
+    stride_last: Option<f64>,
 }
+
+/// A report of the steps with this many is striding (a few steps are fidgeting).
+const STRIDE_STEPS: u32 = 3;
 
 impl Session {
     /// Session of a plan from `start` to `finish` with its refuges.
@@ -246,7 +283,8 @@ impl Session {
         finish: LonLat,
         refuges: Vec<(Option<String>, LonLat)>,
     ) -> Self {
-        let keep_s = p.pause_s.max(p.move_s).max(p.vehicle_s) + 3.0 * p.block_s;
+        let start_keep_s = p.pause_s.max(p.move_s).max(p.vehicle_s) + 3.0 * p.block_s;
+        let keep_s = start_keep_s.max(p.climb_pause_s + 3.0 * p.block_s);
         // Blocks of at least a second each: the ring never grows past this.
         let cap = (keep_s / p.block_s.max(1.0)).ceil() as usize * 2 + 8;
         Self {
@@ -258,6 +296,7 @@ impl Session {
             acc: None,
             blocks: VecDeque::with_capacity(cap),
             keep_s,
+            start_keep_s,
             pause_at: None,
             still_since: None,
             waking: false,
@@ -272,6 +311,42 @@ impl Session {
             coarse: None,
             coarse_last: None,
             totals: Totals::default(),
+            acc_steps: 0,
+            pause_steps: 0,
+            terrain: Terrain::Flat,
+            counts_steps: false,
+            steps_t: None,
+            stride_from: None,
+            stride_last: None,
+        }
+    }
+
+    /// Terrain of the route where the skier is (X10): on a climb, the fixes alone need a
+    /// slower speed over a longer window to decide a pause; with the steps, no stride
+    /// uphill or on the flat says the skier stopped (downhill, one glides without steps).
+    pub fn set_terrain(&mut self, terrain: Terrain) {
+        self.terrain = terrain;
+    }
+
+    /// Steps counted by the phone since its previous report.
+    pub fn steps(&mut self, t: f64, n: u32, out: &mut Vec<SessionEvent>) {
+        self.refuge_now(t, out);
+        self.counts_steps = true;
+        if n >= STRIDE_STEPS {
+            // The steps of the report since the previous one (15 s at most).
+            let from = self.steps_t.map_or(t, |p| p.max(t - 15.0));
+            self.stride_from.get_or_insert(from);
+            self.stride_last = Some(t);
+        } else {
+            self.stride_from = None;
+        }
+        self.steps_t = Some(t);
+        self.acc_steps = self.acc_steps.saturating_add(n);
+        if self.paused() {
+            self.pause_steps = self.pause_steps.saturating_add(n);
+            if self.pause_steps >= self.p.waking_steps {
+                self.waking = true;
+            }
         }
     }
 
@@ -463,6 +538,7 @@ impl Session {
             t1: t,
             pos: LonLat::new(slon / n as f64, slat / n as f64),
             s: (self.s_acc.1 > 0).then(|| self.s_acc.0 / self.s_acc.1 as f64),
+            steps: std::mem::take(&mut self.acc_steps),
         };
         self.s_acc = (0.0, 0);
         while self.blocks.front().is_some_and(|f| t - f.t0 > self.keep_s)
@@ -525,14 +601,16 @@ impl Session {
                     && d >= self.p.move_m
                 {
                     // Back to the end of the rest: the last block still within half of
-                    // `move_m` of the first block kept (the skier standing at the start).
-                    let (t0, at) = match self.blocks.front() {
+                    // `move_m` of the first block of the start window (the skier standing
+                    // at the start).
+                    let rest = self.blocks.iter().find(|b| t - b.t0 <= self.start_keep_s);
+                    let (t0, at) = match rest {
                         Some(rest) => self
                             .blocks
                             .iter()
                             .rev()
                             .find(|b| b.pos.haversine_m(rest.pos) <= 0.5 * self.p.move_m)
-                            .filter(|b| b.t1 > t0 - self.keep_s)
+                            .filter(|b| b.t1 > t0 - self.start_keep_s)
                             .map_or((t0, at), |b| (b.t1.min(t), b.pos)),
                         None => (t0, at),
                     };
@@ -565,6 +643,14 @@ impl Session {
                         self.p.pause_s.min(t - self.still_since.unwrap_or(t)),
                         self.p.pause_ms,
                     )
+                } else if self.counts_steps && self.terrain != Terrain::Down {
+                    // No stride (fewer than `pause_steps` over the window, below) where a
+                    // skier strides: the threshold of « still ».
+                    (self.p.pause_s, self.p.pause_ms)
+                } else if self.terrain == Terrain::Up && !self.counts_steps {
+                    // Without the steps, a slow climb reads like a stop: a longer window
+                    // and a lower speed.
+                    (self.p.climb_pause_s, self.p.climb_pause_fix_ms)
                 } else {
                     (self.p.pause_s, self.p.pause_fix_ms)
                 };
@@ -607,7 +693,15 @@ impl Session {
                 } else {
                     0.0
                 };
-                let still = speed < limit
+                // Steps counted over the window: striding, not stopped.
+                let steps: u32 = self
+                    .blocks
+                    .iter()
+                    .filter(|b| b.t0 >= since)
+                    .map(|b| b.steps)
+                    .sum();
+                let still = steps < self.p.pause_steps
+                    && speed < limit
                     && along < limit
                     && self
                         .blocks
@@ -617,12 +711,30 @@ impl Session {
                 if !still {
                     return;
                 }
+                // With the steps: the stop began when the striding ended, if the skier
+                // stayed in the pause since then (the GPS error may have delayed the
+                // decision past the window).
+                let since = match self.stride_last {
+                    Some(e) if e < since && self.terrain != Terrain::Down => self
+                        .blocks
+                        .iter()
+                        .find(|b| b.t0 >= e)
+                        .filter(|b0| {
+                            self.blocks
+                                .iter()
+                                .filter(|b| b.t0 >= b0.t0)
+                                .all(|b| b.pos.haversine_m(center) <= self.p.pause_m)
+                        })
+                        .map_or(since, |b0| b0.t0),
+                    _ => since,
+                };
                 // The coarse step in progress was GPS wander.
                 self.coarse = None;
                 self.coarse_last = Some(center);
                 self.pause_at = Some(center);
                 self.totals.pauses += 1;
                 self.waking = false;
+                self.pause_steps = 0;
                 self.refuge_due = self
                     .refuges
                     .iter()
@@ -644,8 +756,13 @@ impl Session {
                 }
                 let center = self.pause_at.unwrap_or(last.pos);
                 if last.pos.haversine_m(center) > self.p.resume_m {
-                    // Resumed when the block that left the pause started.
-                    let t_res = last.t0;
+                    // Resumed when the block that left the pause started, or when the
+                    // steps came back if the phone counts them (a slow climber takes two
+                    // minutes to leave the pause by `resume_m`).
+                    let t_res = match self.stride_from {
+                        Some(f) if f > since && f < last.t0 => f,
+                        _ => last.t0,
+                    };
                     self.totals.paused_s += t_res - since;
                     self.phase = Phase::Moving;
                     self.still_since = None;
@@ -827,5 +944,112 @@ mod tests {
         let mut s = session();
         let ev = run(&mut s, &[(0.0, 1000.0, 1000.0), (600.0, 2800.0, 1000.0)]);
         assert!(ev.is_empty(), "{ev:?}");
+    }
+
+    /// Positions every second along a path with a GPS error of ±12 m (a slow wobble), and
+    /// the steps counted every 10 s at `rate` per second while moving.
+    fn run_steps(
+        s: &mut Session,
+        script: &[(f64, f64, f64)],
+        rate: Option<f64>,
+    ) -> Vec<SessionEvent> {
+        let p = plane();
+        let mut out = Vec::new();
+        let mut acc = 0.0;
+        let mut report = script[0].0 + 10.0;
+        for w in script.windows(2) {
+            let ((t0, x0, y0), (t1, x1, y1)) = (w[0], w[1]);
+            let moving = (x1 - x0).hypot(y1 - y0) > 0.0;
+            let mut t = t0;
+            while t < t1 {
+                let f = (t - t0) / (t1 - t0);
+                let e = 12.0 * (t / 37.0).sin();
+                let pos = p.lonlat([x0 + (x1 - x0) * f + e, y0 + (y1 - y0) * f - e]);
+                s.fix(t, pos, Some(5.0), &mut out);
+                if let Some(r) = rate {
+                    if moving {
+                        acc += r;
+                    }
+                    if t >= report {
+                        s.steps(t, acc as u32, &mut out);
+                        acc -= f64::from(acc as u32);
+                        report += 10.0;
+                    }
+                }
+                t += 1.0;
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn steps_tell_a_slow_climb_from_a_stop() {
+        // X10: a start at 3 m/s, then hairpins of 30 m climbed at 0.35 m/s for 10 min, a
+        // stop of 3 min, the climb again.
+        let mut script = vec![(0.0, 0.0, 0.0), (60.0, 0.0, 0.0), (127.0, 200.0, 0.0)];
+        let (mut t, mut y) = (127.0, 0.0);
+        for k in 0..7 {
+            let x = if k % 2 == 0 { 230.0 } else { 200.0 };
+            t += (30.0f64).hypot(10.0) / 0.35;
+            y += 10.0;
+            script.push((t, x, y));
+        }
+        let climb = t;
+        script.push((t + 180.0, script.last().unwrap().1, y));
+        let stop_end = t + 180.0;
+        for k in 0..6 {
+            let x = if k % 2 == 0 { 200.0 } else { 230.0 };
+            let last = *script.last().unwrap();
+            y += 10.0;
+            script.push((last.0 + (30.0f64).hypot(10.0) / 0.35, x, y));
+        }
+        let kinds_of = |ev: &[SessionEvent]| kinds(ev);
+        // The fixes alone on the flat thresholds take the climb for a stop.
+        let mut s = session();
+        let ev = run_steps(&mut s, &script, None);
+        let gps = kinds_of(&ev);
+        assert!(gps.iter().filter(|k| *k == "Paused").count() >= 2, "{ev:?}");
+        // With the steps (one a second climbing): the stop and nothing else, dated when
+        // the steps stopped and came back.
+        let mut s = session();
+        s.set_terrain(Terrain::Up);
+        let ev = run_steps(&mut s, &script, Some(1.0));
+        assert_eq!(
+            kinds_of(&ev),
+            vec!["Started", "Paused", "Resumed"],
+            "{ev:?}"
+        );
+        let SessionEvent::Paused { t: tp } = ev[1] else {
+            panic!()
+        };
+        let SessionEvent::Resumed { t: tr, .. } = ev[2] else {
+            panic!()
+        };
+        assert!((tp - climb).abs() <= 15.0, "pause at {tp}, stop at {climb}");
+        assert!(
+            (tr - stop_end).abs() <= 15.0,
+            "resumed at {tr}, stop end {stop_end}"
+        );
+        assert!(!s.waking());
+    }
+
+    #[test]
+    fn steps_in_a_pause_wake_the_gps() {
+        let mut s = session();
+        let ev = run(
+            &mut s,
+            &[
+                (0.0, 0.0, 0.0),
+                (60.0, 0.0, 0.0),
+                (393.0, 1000.0, 0.0),
+                (600.0, 1000.0, 0.0),
+            ],
+        );
+        assert_eq!(kinds(&ev), vec!["Started", "Paused"], "{ev:?}");
+        let mut out = Vec::new();
+        s.steps(600.0, 2, &mut out);
+        assert!(!s.waking(), "fidgeting");
+        s.steps(610.0, 8, &mut out);
+        assert!(s.waking());
     }
 }

@@ -204,6 +204,15 @@ pub enum Input {
         /// Accepted.
         accept: bool,
     },
+    /// Steps counted by the phone since the previous report (Android's step counter or step
+    /// detector, delivered with the fixes in time order): a skier striding climbs, a skier
+    /// stopped does not (X10).
+    Steps {
+        /// Time.
+        t: DateTime<Utc>,
+        /// Steps since the previous report.
+        steps: u32,
+    },
 }
 
 impl Input {
@@ -215,7 +224,8 @@ impl Input {
             | Input::Screen { t, .. }
             | Input::Closed { t, .. }
             | Input::Refuse { t }
-            | Input::Answer { t, .. } => *t,
+            | Input::Answer { t, .. }
+            | Input::Steps { t, .. } => *t,
         }
     }
 }
@@ -587,6 +597,8 @@ pub struct Tracker<'a> {
     /// protected zones of the loop (said in the morning, A7), once needed.
     layers: Option<&'a SiteData>,
     loop_zones: Option<BTreeSet<String>>,
+    /// When the terrain at the cursor was last given to the session, seconds.
+    climb_t: f64,
 }
 
 impl<'a> Tracker<'a> {
@@ -690,6 +702,7 @@ impl<'a> Tracker<'a> {
             switched_other: false,
             layers: None,
             loop_zones: None,
+            climb_t: f64::NEG_INFINITY,
             p,
         })
     }
@@ -791,6 +804,13 @@ impl<'a> Tracker<'a> {
             }
             Input::Screen { on, .. } => {
                 self.screen_on = *on;
+                self.gps_mode(t, out);
+            }
+            Input::Steps { steps, .. } => {
+                let mut ev = std::mem::take(&mut self.session_events);
+                self.session.steps(t, *steps, &mut ev);
+                self.session_events(t, &mut ev, out);
+                self.session_events = ev;
                 self.gps_mode(t, out);
             }
             Input::Closed { ways, .. } => self.closure(t, ways, out),
@@ -1065,7 +1085,20 @@ impl<'a> Tracker<'a> {
                 pd.prev_cursor = pd.prev_cursor.max(s);
             }
         }
-        // 2. Session.
+        // 2. Session (on a climb, a pause from the fixes alone needs a longer window: X10;
+        // the terrain at the cursor every 10 s, from the plan's model times).
+        if running && t - self.climb_t >= 10.0 {
+            self.climb_t = t;
+            let m = self
+                .pace_route
+                .between(self.cursor - 50.0, self.cursor + 50.0);
+            let terrain = Terrain::ALL
+                .into_iter()
+                .filter(|t| m[*t as usize] > 0.0)
+                .max_by(|a, b| m[*a as usize].total_cmp(&m[*b as usize]))
+                .unwrap_or(Terrain::Flat);
+            self.session.set_terrain(terrain);
+        }
         let mut ev = std::mem::take(&mut self.session_events);
         self.session.fix_on(t, pos, Some(d), s, &mut ev);
         if !ev.is_empty() {
