@@ -18,9 +18,9 @@ Jamais « sans danger » : chaque sortie dit ce qu'elle ne sait pas (couche abse
 | `briefing` | A1 | classement des domaines et des itinéraires du jour et des jours suivants, chaque raison avec ses points |
 | `synthesis` | A7 | trois phrases : avalanche, météo, règles et réseau sur l'itinéraire |
 | `crowd` | A4 | affluence (fait, utilisé par A1 et A9) |
-| `suggest` | A5 | boucles pour un temps, une technique, un niveau et une heure de retour, sur le graphe C1 avec le temps C5, ou celui du groupe du jour (C11, `suggest_for`) |
+| `suggest` | A5 | boucles pour un temps, une technique, un niveau et une heure de retour, sur le graphe C1 avec le temps C5, ou celui du groupe du jour (C11, `suggest_for` : côté lent de la fourchette avec des enfants, option « si tout va bien ») |
 | `equipment` | A6 | liste d'équipement d'une sortie, chaque élément avec sa raison |
-| `alerts` | A8 | alertes de changement de conditions et de demi-tour avancé pendant la sortie (au rythme du groupe avec C11, `Monitor::for_group`), rejeux |
+| `alerts` | A8 | alertes de changement de conditions et de demi-tour avancé pendant la sortie (au rythme du groupe avec C11, `Monitor::for_group`, `Monitor::for_model` : côté lent et heure de lumière avec des enfants), rejeux |
 | `best_time` | A9 | meilleur moment pour partir |
 | `layer` | — | `skimap_assist::build(site, &layout, &Options)` écrit la couche `assist` |
 | `presets` | — | entrées prêtes pour les deux sites : jours archivés (`history_paths`), trois demandes de suggestions, sorties sur les itinéraires de preuve de core (`skimap assist`, `skimap build-all`) |

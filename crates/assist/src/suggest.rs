@@ -142,6 +142,11 @@ pub struct Suggestion {
     /// Time of the group of the request (C11), if any.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub group: Option<GroupTime>,
+    /// An option « si tout va bien » for a group with children: the loop fits the time
+    /// asked at the group's median, not on the slow side it is planned on (shown after the
+    /// loops proposed, never first).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub if_all_goes_well: bool,
 }
 
 /// Time of a loop for a group (C11): the median of its prediction and the 80 % range.
@@ -157,6 +162,9 @@ pub struct GroupTime {
     pub lo_min: f64,
     /// 90 % quantile, minutes.
     pub hi_min: f64,
+    /// Time the loop is planned on, minutes: the median, or the slow side of the range for
+    /// a group with children (`ProfileModel::plan_quantile`).
+    pub plan_min: f64,
     /// Moving time, minutes (expected).
     pub moving_min: f64,
     /// Stopped time, minutes (expected).
@@ -231,6 +239,13 @@ impl Profile {
     /// median of the group's prediction (its stops included). The turnaround of A8 runs
     /// on it unchanged.
     pub fn for_group(&self, params: &PaceParams, ratio: f64) -> Profile {
+        self.for_group_at(params, ratio, 0.5)
+    }
+
+    /// [`Profile::for_group`] scaled to the quantile `q` of the group's total time instead
+    /// of its median (a group with children is planned on the slow side of its range:
+    /// `ProfileModel::plan_quantile`).
+    pub fn for_group_at(&self, params: &PaceParams, ratio: f64, q: f64) -> Profile {
         let k = |t: Terrain| 1.0 / params.progress_pace(t);
         let mut p = Profile {
             dist_m: self.dist_m.clone(),
@@ -248,8 +263,8 @@ impl Profile {
             p.out_s.push(o_acc);
             p.back_s.push(b_acc);
         }
-        let median = params.predict(self.model_by_terrain(ratio)).median_s;
-        let f = if o_acc > 0.0 { median / o_acc } else { 1.0 };
+        let total = params.predict(self.model_by_terrain(ratio)).quantile_s(q);
+        let f = if o_acc > 0.0 { total / o_acc } else { 1.0 };
         for x in p.out_s.iter_mut().chain(p.back_s.iter_mut()) {
             *x *= f;
         }
@@ -528,7 +543,9 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
         }
         cands.retain(|v| !chosen.contains(v));
     }
-    let deadline = turnaround::deadline(date, req.start, &TurnaroundParams::default())
+    // With children: the group's light margin (C7 plus caution, C11).
+    let tp = group.map_or_else(TurnaroundParams::default, |g| g.profile.turnaround_params());
+    let deadline = turnaround::deadline(date, req.start, &tp)
         .map(|d| skimap_core::ephemeris::local_time(d.deadline));
     let limit = match (req.return_before.map(|t| date.and_time(t)), deadline) {
         (Some(a), Some(b)) => Some(a.min(b)),
@@ -541,6 +558,9 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
     let mut too_late = 0;
     let (mut too_short, mut too_long) = (0, 0);
     let mut loops: Vec<Suggestion> = Vec::new();
+    // Loops that fit at the median of a group with children but not on its slow side.
+    let mut hopeful: Vec<Suggestion> = Vec::new();
+    let plan_q = group.map_or(0.5, ProfileModel::plan_quantile);
     let mut evaluated = 0;
     for v in chosen {
         let (r_out, _) = out[v].clone().expect("reachable");
@@ -567,18 +587,28 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
         pieces.extend(route_pieces(g, &r_back));
         let b = eta.time_s(&pieces);
         let profile = Profile::of(&eta, &pieces);
-        // Time of the loop: the group's median (C11), else the model time.
+        // Time of the loop: the group's (C11: the median, the slow side of its range with
+        // children), else the model time.
         let gp = group.map(|g| g.params.predict(profile.model_by_terrain(ratio)));
-        let time_s = gp.map_or(b.total_s, |p| p.median_s);
+        let time_s = gp.map_or(b.total_s, |p| p.quantile_s(plan_q));
         if time_s < 0.75 * budget_s {
             too_short += 1;
             continue;
         }
-        if time_s > 1.1 * budget_s {
+        // Too long on the slow side, in the time at the median: « si tout va bien ».
+        let if_all_goes_well = time_s > 1.1 * budget_s
+            && gp.is_some_and(|p| (0.75 * budget_s..=1.1 * budget_s).contains(&p.median_s));
+        if time_s > 1.1 * budget_s && !if_all_goes_well {
             too_long += 1;
             continue;
         }
-        let planned = time_s * TurnaroundParams::default().eta_factor;
+        // Back: with children, the slow side of the range (its own margin); else the time
+        // with the margin of C7.
+        let planned = if plan_q > 0.5 {
+            time_s
+        } else {
+            time_s * TurnaroundParams::default().eta_factor
+        };
         let arrival = req.start_time + Duration::seconds(planned as i64);
         if limit.is_some_and(|l| arrival > l) {
             too_late += 1;
@@ -662,6 +692,22 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
             Style::Skating => "skating",
         };
         let time_text = match (group, gp) {
+            (Some(g), Some(p)) if plan_q > 0.5 => format!(
+                "environ {} pour {} ({} à {}, {} ; prévu sur {}, le côté lent : 8 chances sur 10 \
+                 d'avoir fini ; modèle C5, {} : {})",
+                hm(p.median_s),
+                g.profile.label_fr(),
+                hm(p.lo_s),
+                hm(p.hi_s),
+                match g.outings {
+                    0 => "a priori".to_owned(),
+                    1 => "une sortie apprise".to_owned(),
+                    n => format!("{n} sorties apprises"),
+                },
+                hm(time_s),
+                style,
+                hm(b.total_s)
+            ),
             (Some(g), Some(p)) => format!(
                 "environ {} pour {} ({} à {}, {} ; modèle C5, {} : {})",
                 hm(p.median_s),
@@ -782,6 +828,19 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
                 format!("pistes : {}", names.join(", ")),
             );
         }
+        if if_all_goes_well {
+            briefing::reason(
+                &mut reasons,
+                Factor::Data,
+                0.0,
+                format!(
+                    "si tout va bien : {} au rythme médian du groupe, mais {} sur le côté lent \
+                     (au-delà du temps demandé)",
+                    gp.map(|p| hm(p.median_s)).unwrap_or_default(),
+                    hm(time_s)
+                ),
+            );
+        }
         let score = reasons.iter().map(|r| r.points).sum();
         let voice = loop_voice(len_km, time_s, arrival);
         let group_time = match (group, gp) {
@@ -791,12 +850,18 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
                 median_min: (p.median_s / 60.0).round(),
                 lo_min: (p.lo_s / 60.0).round(),
                 hi_min: (p.hi_s / 60.0).round(),
+                plan_min: (time_s / 60.0).round(),
                 moving_min: (p.moving_s / 60.0).round(),
                 stops_min: (p.stop_s / 60.0).round(),
             }),
             _ => None,
         };
-        loops.push(Suggestion {
+        let target = if if_all_goes_well {
+            &mut hopeful
+        } else {
+            &mut loops
+        };
+        target.push(Suggestion {
             label,
             names,
             length_km: (len_km * 100.0).round() / 100.0,
@@ -818,6 +883,7 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
             legs,
             eta,
             group: group_time,
+            if_all_goes_well,
         });
     }
     if no_way_back > 0 {
@@ -858,6 +924,18 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
         if kept.len() >= req.max_results {
             break;
         }
+    }
+    // With children, after the loops proposed: the best loop that needs all to go well,
+    // if any.
+    hopeful.sort_by(|a, b| b.score.total_cmp(&a.score));
+    if let Some(h) = hopeful.into_iter().find(|l| {
+        !kept.iter().any(|k| {
+            let inter = k.edges.intersection(&l.edges).count() as f64;
+            let union = k.edges.union(&l.edges).count() as f64;
+            union > 0.0 && inter / union > 0.6
+        })
+    }) {
+        kept.push(h);
     }
     if kept.is_empty() {
         notes.push("aucune boucle ne tient dans le temps et l'heure de retour demandés".into());
@@ -907,8 +985,13 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
             })
             .collect();
         text.push(format!(
-            "{}. {} (score {}) : {}.",
+            "{}. {}{} (score {}) : {}.",
             i + 1,
+            if s.if_all_goes_well {
+                "si tout va bien : "
+            } else {
+                ""
+            },
             s.label,
             fmt(s.score, 2),
             why.join(" ; ")
@@ -1138,8 +1221,10 @@ mod tests {
         assert!(adult.group.is_none());
         assert!(adult.suggestions.iter().all(|s| s.group.is_none()));
         // A family (6 and 9 years) with the adult's budget: the whole loop is far too long
-        // for it; whatever is proposed fits its time, not the model's.
-        let family = ProfileModel::new(GroupProfile::family(2, &[6, 9], Style::Classic));
+        // for it; whatever is proposed fits its time, not the model's. Planned on its median
+        // here (`plan_q` 0.5); on the slow side by default (below).
+        let mut family = ProfileModel::new(GroupProfile::family(2, &[6, 9], Style::Classic));
+        family.plan_q = Some(0.5);
         let f = suggest_for(&d, &req(budget, None), Some(&family));
         assert_eq!(f.group.as_deref(), Some(family.profile.label_fr().as_str()));
         for s in &f.suggestions {
@@ -1188,5 +1273,47 @@ mod tests {
             .profile
             .for_group(&family.params, terrain_ratio(&best.eta));
         assert!((fp.total_s() - fam_s).abs() < 1.0);
+        // By default, with children: planned on the slow side (80 %). The loop that fits
+        // the time asked at the median only is an option « si tout va bien », last.
+        family.plan_q = None;
+        let model_s = best.profile.model_by_terrain(terrain_ratio(&best.eta));
+        let pr = family.params.predict(model_s);
+        let slow = family.plan_s(&pr);
+        assert!(slow > pr.median_s && slow < pr.hi_s);
+        let f3 = suggest_for(&d, &req(fam_s / 60.0, None), Some(&family));
+        let h = f3.suggestions.last().expect("the option");
+        assert!(h.if_all_goes_well, "{h:?}");
+        assert!((h.length_km - perimeter).abs() < 0.2);
+        assert!(f3.suggestions.iter().filter(|s| s.if_all_goes_well).count() == 1);
+        assert!(f3.text.iter().any(|t| t.contains("si tout va bien")));
+        // With the slow side as the time asked: the loop, planned and said on it, back by
+        // then (its own margin, not × 1.2), the A8 profile at that time.
+        let f4 = suggest_for(&d, &req(slow / 60.0, None), Some(&family));
+        let b4 = f4.suggestions.first().expect("the loop on the slow side");
+        assert!(!b4.if_all_goes_well);
+        assert!((b4.length_km - perimeter).abs() < 0.2);
+        let gt = b4.group.as_ref().unwrap();
+        assert!((gt.plan_min - slow / 60.0).abs() <= 1.0, "{gt:?}");
+        assert!((gt.median_min - fam_s / 60.0).abs() <= 1.0, "{gt:?}");
+        let planned = b4.arrival - req(0.0, None).start_time;
+        assert!(
+            (planned.num_seconds() as f64 - slow).abs() < 2.0,
+            "{planned}"
+        );
+        assert!(
+            b4.reasons[0].text.contains("le côté lent"),
+            "{}",
+            b4.reasons[0].text
+        );
+        let skimap_voice::Event::LoopSummary { seconds, .. } = b4.voice else {
+            panic!("{:?}", b4.voice)
+        };
+        assert!((seconds - slow).abs() < 1.0);
+        let fq = b4.profile.for_group_at(
+            &family.params,
+            terrain_ratio(&b4.eta),
+            family.plan_quantile(),
+        );
+        assert!((fq.total_s() - slow).abs() < 1.0);
     }
 }
