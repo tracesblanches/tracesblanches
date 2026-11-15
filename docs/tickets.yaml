@@ -1213,3 +1213,17 @@ tickets:
     Les clips vocaux pré-générés pèsent quelques Mo par site et par langue : ils sortent du pack de base et deviennent un paquet de langue séparé par site, téléchargé seulement pour la langue choisie (et remplacé si l'on change de langue). Banque de phrases anglaise (VO2) et clips anglais générés par Pocket TTS côté pipeline ; noms propres français lus correctement par la voix anglaise vérifiés par transcription.
     Le catalogue du serveur (S0) liste les paquets de langue ; une mise à jour ne télécharge que la langue installée.
     Critère : pack de base sans voix ; paquet FR et paquet EN par site mesurés ; changement de langue hors ligne refusé proprement, en ligne fait en un téléchargement.
+
+- key: C11
+  title: Temps estimé appris par groupe et ajusté pendant la sortie
+  milestone: M3 Client v1
+  labels: [algo, planifier]
+  deps: [C5, J1, J2]
+  body: |
+    Le temps estimé apprend de vos sorties et s'adapte au groupe du jour. Exemple de l'utilisateur : avec les enfants on va beaucoup plus lentement, on explore à côté, on s'arrête, on joue.
+    - Profils de groupe enregistrés sur le téléphone (« seul », « en famille », « avec X ») : composition (adultes, enfants et âges), technique, niveau. Le profil du jour se choisit le matin en un geste ; le mode groupe (N2) peut le proposer.
+    - Le modèle sépare vitesse en mouvement (par pente et technique) et temps d'arrêt (fréquence et durée des pauses, jeux, détours). Chaque profil a ses paramètres, appris par ajustement bayésien sur ses sorties passées (prolonge C6) ; un profil neuf part d'a priori raisonnables (enfants selon l'âge) avec une incertitude large, affichée.
+    - Pendant la sortie, les paramètres se mettent à jour avec la progression réelle ; l'heure d'arrivée et le demi-tour se recalculent.
+    - L'app propose, elle n'impose pas : « Vous allez 40 % moins vite que prévu, avec plus de pauses. Je propose la boucle courte, retour 15 h 20. » Accepter ou refuser d'un geste. Seul le demi-tour avant la nuit reste une alerte de sécurité (J2).
+    - Le plan du matin affiche une fourchette (ex. 2 h 30 à 3 h 15) plutôt qu'un chiffre unique tant que le profil a peu d'historique.
+    Critère : erreur de l'heure d'arrivée réduite sur des sorties réelles par profil (adulte seul, famille), par rapport au modèle C5 seul ; propositions jugées pertinentes sur des rejeux de traces lentes avec pauses (Q9).
