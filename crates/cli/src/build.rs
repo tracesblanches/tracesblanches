@@ -800,7 +800,7 @@ pub fn describe_stations(r: &skimap_stations::RefreshReport) -> String {
     }
     if !r.stale_titres.is_empty() {
         s.push_str(&format!(
-            " ; titres périmés ou anciens : {}",
+            " ; titres non relus (dernière lecture réussie gardée, avec sa date) : {}",
             r.stale_titres.join(", ")
         ));
     }
