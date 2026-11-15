@@ -1,229 +1,29 @@
-//! VO3 run on the two sites: names from the research dumps, voice layer, 10 samples.
+//! VO3 run on the two sites: names of the built layers with their provenance
+//! (`skimap_voice::sources`), voice layer, samples.
 //!
 //! ```sh
 //! SKIMAP_DATA_DIR=~/projects/skimap/data cargo run --release -p skimap-voice \
-//!     --example voice_pack -- ~/projects/skimap/research/raw [site...]
+//!     --example voice_pack -- [--names] [site...]
 //! ```
 //!
-//! Names (until the osm / refuges / zones crates exist): nordic pistes of the Overpass
-//! dumps (`osm/`), ski treks of the ENJ API (`enj/treks_cdb.json`, Chapelle-des-Bois),
-//! huts and shelters (`dl/osm_*.json`, `dl/ri_*.json`), protected zones (`dl/*_patrinat_*`,
-//! Biodiv'sports `srn/bsp_*`), whose seasonal end dates give the date clips.
+//! Names: nordic pistes (`pistes`), huts and shelters (`refuges`), protected zones and the
+//! end dates of their periods (`zones`), names read on the piste plan (`plan_pistes`);
+//! those read only from personal-use sources (Biodiv'sports, piste plans) are listed in
+//! `personal.json` and left out of a published pack. `--names`: print the names, no synthesis.
+//! The samples only use public names (they are what a published pack says).
 
-use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
-
-use serde_json::Value;
 use skimap_common::config::Config;
-use skimap_common::geom::BBox;
-use skimap_common::meta::SourceRef;
 use skimap_common::site::{self, Site};
 use skimap_voice::bank::{
-    Announcement, Briefing, Change, Event, Glide, Item, Kick, Name, Side, ZoneRule,
+    Announcement, Briefing, Change, Event, Glide, Item, Kick, Name, Pause, Segment, Side, ZoneRule,
 };
-use skimap_voice::clips::{DayMonth, Direction};
+use skimap_voice::clips::{self, Direction, Fixed};
 use skimap_voice::names::{Colour, PisteName};
-use skimap_voice::pack::VoiceManifest;
+use skimap_voice::pack::{PersonalClips, VoiceManifest};
 use skimap_voice::quantity::Clock;
-use skimap_voice::{PackNames, VoiceConfig, assemble, build};
+use skimap_voice::{PackNames, VoiceConfig, assemble, build_site, site_names};
 
 type Res<T> = Result<T, Box<dyn std::error::Error>>;
-
-fn read(raw: &Path, rel: &str) -> Res<Value> {
-    let p = raw.join(rel);
-    let b = std::fs::read(&p).map_err(|e| format!("{}: {e}", p.display()))?;
-    Ok(serde_json::from_slice(&b)?)
-}
-
-fn in_bbox(bb: &BBox, e: &Value) -> bool {
-    if let Some(b) = e.get("bounds") {
-        let g = |k: &str| b[k].as_f64().unwrap_or(f64::NAN);
-        return g("minlat") <= bb.north
-            && g("maxlat") >= bb.south
-            && g("minlon") <= bb.east
-            && g("maxlon") >= bb.west;
-    }
-    match (e["lat"].as_f64(), e["lon"].as_f64()) {
-        (Some(lat), Some(lon)) => {
-            lat >= bb.south && lat <= bb.north && lon >= bb.west && lon <= bb.east
-        }
-        // Ways of the hut dumps carry no geometry: the query was already the site box.
-        _ => true,
-    }
-}
-
-fn osm_pistes(raw: &Path, files: &[&str], bb: &BBox, out: &mut BTreeSet<PisteName>) -> Res<()> {
-    for f in files {
-        for e in read(raw, f)?["elements"].as_array().into_iter().flatten() {
-            let t = &e["tags"];
-            let nordic = t["piste:type"]
-                .as_str()
-                .is_some_and(|p| p.split(';').any(|x| x == "nordic"));
-            let name = t["name"].as_str().or(t["piste:name"].as_str());
-            if let (true, Some(n)) = (nordic && in_bbox(bb, e), name) {
-                let c = Colour::from_osm(t["colour"].as_str(), t["piste:difficulty"].as_str());
-                out.insert(PisteName::new(n.trim(), c));
-            }
-        }
-    }
-    Ok(())
-}
-
-fn places(raw: &Path, osm: &str, ri: &str, bb: &BBox, out: &mut BTreeSet<String>) -> Res<()> {
-    for e in read(raw, osm)?["elements"].as_array().into_iter().flatten() {
-        let t = &e["tags"];
-        let hut = matches!(t["tourism"].as_str(), Some("alpine_hut" | "wilderness_hut"))
-            || t["amenity"].as_str() == Some("shelter");
-        if let (true, Some(n)) = (hut && in_bbox(bb, e), t["name"].as_str()) {
-            out.insert(n.trim().to_owned());
-        }
-    }
-    for f in read(raw, ri)?["features"].as_array().into_iter().flatten() {
-        let p = &f["properties"];
-        let kind = p["type"]["valeur"].as_str().unwrap_or("");
-        if matches!(kind, "cabane non gardée" | "refuge gardé" | "gîte d'étape")
-            && let Some(n) = p["nom"].as_str()
-        {
-            out.insert(n.trim().to_owned());
-        }
-    }
-    Ok(())
-}
-
-/// Last day of the months that end a protection period ([bool; 12], wrapping).
-fn period_ends(period: &Value) -> Vec<DayMonth> {
-    let p: Vec<bool> = period
-        .as_array()
-        .map(|a| a.iter().map(|v| v.as_bool().unwrap_or(false)).collect())
-        .unwrap_or_default();
-    if p.len() != 12 || p.iter().all(|&x| x) {
-        return Vec::new();
-    }
-    const LAST: [u8; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    (0..12)
-        .filter(|&m| p[m] && !p[(m + 1) % 12])
-        .map(|m| DayMonth {
-            day: LAST[m],
-            month: m as u8 + 1,
-        })
-        .collect()
-}
-
-fn zones(
-    raw: &Path,
-    prefix: &str,
-    bsp: &[&str],
-    names: &mut BTreeSet<String>,
-    dates: &mut BTreeSet<DayMonth>,
-) -> Res<()> {
-    let dl = raw.join("dl");
-    for entry in std::fs::read_dir(&dl)? {
-        let f = entry?.file_name().to_string_lossy().into_owned();
-        if f.starts_with(&format!("{prefix}_patrinat_")) && f.ends_with(".json") {
-            for z in read(raw, &format!("dl/{f}"))?["features"]
-                .as_array()
-                .into_iter()
-                .flatten()
-            {
-                if let Some(n) = z["properties"]["nom_site"].as_str() {
-                    names.insert(n.trim().to_owned());
-                }
-            }
-        }
-    }
-    for f in bsp {
-        for z in read(raw, f)?["features"].as_array().into_iter().flatten() {
-            let p = &z["properties"];
-            if let Some(n) = p["name"].as_str() {
-                names.insert(n.trim().to_owned());
-            }
-            dates.extend(period_ends(&p["period"]));
-        }
-    }
-    Ok(())
-}
-
-fn pack_names(raw: &Path, s: &Site) -> Res<(PackNames, Vec<SourceRef>)> {
-    let mut pistes = BTreeSet::new();
-    let mut place = BTreeSet::new();
-    let mut dates = BTreeSet::new();
-    let (osm, huts, ri, prefix, bsp): (&[&str], _, _, _, &[&str]) = match s.id {
-        "cervieres" => (
-            &["osm/cervieres.json", "osm/cerv2.json"],
-            "dl/osm_cerv.json",
-            "dl/ri_cerv.json",
-            "cerv",
-            &["srn/bsp_cerv_1.json", "srn/bsp_cerv_2,3.json"],
-        ),
-        _ => (
-            &["osm/chapelle.json", "osm/cdb.json"],
-            "dl/osm_cdb.json",
-            "dl/ri_cdb.json",
-            "cdb",
-            &["srn/bsp_chap_1.json", "srn/bsp_chap_2,3.json"],
-        ),
-    };
-    osm_pistes(raw, osm, &s.bbox, &mut pistes)?;
-    let mut sources = vec![
-        SourceRef::new(
-            "Noms des pistes nordiques (Overpass, piste:type=nordic)",
-            "https://overpass-api.de/api/interpreter",
-            "ODbL",
-            "© les contributeurs d'OpenStreetMap",
-        ),
-        SourceRef::new(
-            "Noms des refuges et abris",
-            "https://www.refuges.info/api",
-            "CC-BY-SA-2.0 (refuges.info), ODbL (OSM)",
-            "refuges.info, © les contributeurs d'OpenStreetMap",
-        ),
-        SourceRef::new(
-            "Noms et périodes des zones protégées (INPN, Biodiv'sports)",
-            "https://biodiv-sports.fr/api/v2/sensitivearea/ ; https://www.data.gouv.fr/datasets/inpn-donnees-du-programme-espaces-proteges",
-            "à confirmer (L6, #11)",
-            "INPN (PatriNat), Biodiv'sports",
-        ),
-    ];
-    if s.id == "chapelle-des-bois" {
-        for t in read(raw, "enj/treks_cdb.json")?["results"]
-            .as_array()
-            .into_iter()
-            .flatten()
-        {
-            if t["practice"].as_u64() == Some(2)
-                && let Some(n) = t["name"].as_str()
-            {
-                let c = match t["difficulty"].as_u64() {
-                    Some(1) => Some(Colour::Green),
-                    Some(2) => Some(Colour::Blue),
-                    Some(3) => Some(Colour::Red),
-                    Some(4) => Some(Colour::Black),
-                    _ => None,
-                };
-                pistes.insert(PisteName::new(n.trim(), c));
-            }
-        }
-        sources.push(SourceRef::new(
-            "Itinéraires de ski de fond de l'Espace Nordique Jurassien (API Snowmap)",
-            "https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/",
-            "à confirmer (L1, #6)",
-            "Espace Nordique Jurassien",
-        ));
-    }
-    places(raw, huts, ri, &s.bbox, &mut place)?;
-    zones(raw, prefix, bsp, &mut place, &mut dates)?;
-    let status_pistes = pistes.len() as u32;
-    Ok((
-        PackNames {
-            site: s.name.to_owned(),
-            pistes: pistes.into_iter().collect(),
-            places: place.into_iter().collect(),
-            dates: dates.into_iter().collect(),
-            status_pistes,
-        },
-        sources,
-    ))
-}
 
 fn piste(n: &PackNames, name: &str, colour: Colour) -> Res<PisteName> {
     n.pistes
@@ -285,9 +85,9 @@ fn samples(s: &Site, n: &PackNames) -> Res<Vec<(&'static str, Announcement)>> {
                 "05-zone-protegee",
                 Event::ProtectedZone {
                     entered: false,
-                    zone: Some(place(n, "Tétras lyre - hiver")?),
-                    rules: vec![ZoneRule::Quiet, ZoneRule::StayOnRoutes],
-                    until: Some(DayMonth { day: 30, month: 4 }),
+                    zone: Some(place(n, "Rochebrune - Izoard - Vallée de la Cerveyrette")?),
+                    rules: vec![ZoneRule::StayOnRoutes],
+                    until: None,
                 }
                 .announce(),
             ),
@@ -383,9 +183,9 @@ fn samples(s: &Site, n: &PackNames) -> Res<Vec<(&'static str, Announcement)>> {
                 "04-zone-protegee",
                 Event::ProtectedZone {
                     entered: true,
-                    zone: Some(place(n, "Grand tétras - hiver")?),
-                    rules: vec![ZoneRule::Quiet, ZoneRule::StayOnRoutes],
-                    until: Some(DayMonth { day: 30, month: 6 }),
+                    zone: Some(place(n, "Massif du Risoux")?),
+                    rules: vec![ZoneRule::StayOnRoutes],
+                    until: None,
                 }
                 .announce(),
             ),
@@ -457,15 +257,79 @@ fn samples(s: &Site, n: &PackNames) -> Res<Vec<(&'static str, Announcement)>> {
     })
 }
 
+/// A proposal of C11 as the tracker says it (`skimap_plan::pace::proposal_announcement`):
+/// the reason, « Je propose …, », « retour vers … ».
+fn proposal(reason: Fixed, kind: Fixed, back: Clock) -> Announcement {
+    Announcement {
+        segments: vec![
+            Segment {
+                clip: reason.clip(),
+                pause: Pause::Long,
+            },
+            Segment {
+                clip: kind.clip(),
+                pause: Pause::Short,
+            },
+            Segment {
+                clip: clips::loop_back(back),
+                pause: Pause::Long,
+            },
+        ],
+    }
+}
+
+/// Proposals (C11) and the turnaround moved earlier, on both sites.
+fn common_samples() -> Vec<(&'static str, Announcement)> {
+    let c = |hour, minute| Clock { hour, minute };
+    vec![
+        (
+            "11-proposition-courte",
+            proposal(
+                Fixed::PlanPaceSlowerPauses,
+                Fixed::PlanProposeShort,
+                c(15, 15),
+            ),
+        ),
+        (
+            "12-proposition-sortie",
+            proposal(Fixed::PlanPaceSlower, Fixed::PlanProposeExit, c(14, 30)),
+        ),
+        (
+            "13-proposition-garder",
+            proposal(Fixed::PlanPacePauses, Fixed::PlanProposeKeep, c(16, 45)),
+        ),
+        (
+            "14-proposition-acceptee",
+            Announcement {
+                segments: vec![Segment {
+                    clip: Fixed::PlanProposalAccepted.clip(),
+                    pause: Pause::Long,
+                }],
+            }
+            .then(
+                Event::Turn {
+                    metres: 300.0,
+                    direction: Direction::Straight,
+                    piste: None,
+                }
+                .announce(),
+            ),
+        ),
+        (
+            "15-demi-tour-avance",
+            Event::TurnaroundAdvanced {
+                deadline: c(15, 15),
+            }
+            .announce(),
+        ),
+    ]
+}
+
 fn main() -> Res<()> {
-    let mut args = std::env::args().skip(1);
-    let raw = PathBuf::from(
-        args.next()
-            .ok_or("usage: voice_pack <research/raw> [site...]")?,
-    );
-    let ids: Vec<String> = args.collect();
+    let mut ids: Vec<String> = std::env::args().skip(1).collect();
+    let names_only = ids.iter().any(|a| a == "--names");
+    ids.retain(|a| a != "--names");
     let layout = Config::from_env()?.layout();
-    let cfg = VoiceConfig::from_env()?;
     let sites: Vec<&Site> = if ids.is_empty() {
         site::SITES.iter().collect()
     } else {
@@ -474,20 +338,48 @@ fn main() -> Res<()> {
             .collect::<Result<_, _>>()?
     };
     for s in sites {
-        let (names, sources) = pack_names(&raw, s)?;
+        let names = site_names(&layout, s)?;
+        let (p, q) = (&names.public, &names.personal);
         println!(
-            "== {}: {} pistes, {} places, {} dates",
+            "== {}: public {} pistes, {} places, {} dates; personal {} pistes, {} places, {} dates",
             s.id,
-            names.pistes.len(),
-            names.places.len(),
-            names.dates.len()
+            p.pistes.len(),
+            p.places.len(),
+            p.dates.len(),
+            q.pistes.len(),
+            q.places.len(),
+            q.dates.len()
         );
-        let b = build(s, &layout, &names, &sources, &cfg)?;
+        if names_only {
+            println!("{}", serde_json::to_string_pretty(&(p, q))?);
+            for src in names.public_sources.iter().chain(&names.personal_sources) {
+                println!(
+                    "   source {} (personal {})",
+                    src.name, src.personal_use_only
+                );
+            }
+            continue;
+        }
+        let cfg = VoiceConfig::from_env()?;
+        let b = build_site(s, &layout, &names, &cfg)?;
         println!("{}", serde_json::to_string_pretty(&b)?);
         let vm = VoiceManifest::read(&b.dir)?;
+        let personal = PersonalClips::read(&b.dir)?.unwrap_or_default();
         let out = b.dir.join("samples");
+        if out.exists() {
+            std::fs::remove_dir_all(&out)?;
+        }
         let mut index = Vec::new();
-        for (stem, a) in samples(s, &names)? {
+        let mut all = samples(s, &names.public)?;
+        all.extend(common_samples());
+        for (stem, a) in all {
+            for id in a.clip_ids() {
+                vm.get(id)
+                    .ok_or_else(|| format!("{stem}: {id} not in the pack"))?;
+                if personal.contains(id) {
+                    return Err(format!("{stem}: {id} is a personal clip").into());
+                }
+            }
             let r = assemble(&b.dir, &vm, &a, &cfg.ffmpeg, &out.join(stem))?;
             println!(
                 "{:>5.2} s  {}  {}",

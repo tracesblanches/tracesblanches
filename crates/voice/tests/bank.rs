@@ -4,7 +4,7 @@ use skimap_voice::bank::{
     Briefing, Change, Crowd, Event, Glide, Item, Kick, Name, Side, Snow, ZoneRule,
 };
 use skimap_voice::clips::{DayMonth, Direction, Fixed};
-use skimap_voice::manifest::{ClipKind, PackNames, manifest};
+use skimap_voice::manifest::{ClipKind, PackNames, manifest, manifest_split};
 use skimap_voice::names::{Colour, PisteName};
 use skimap_voice::quantity::Clock;
 
@@ -539,4 +539,36 @@ fn chunks_are_cut_at_clip_ends() {
     }
     .announce();
     assert!(long.chunks(5, count).is_err());
+}
+
+#[test]
+fn personal_names_are_marked_unless_public() {
+    let public = names();
+    let personal = PackNames {
+        pistes: vec![
+            greffier(),
+            PisteName::new("La Pinatelle", Some(Colour::Black)),
+        ],
+        places: vec!["Aigle royal".into(), "Refuge du Pré à la Dame".into()],
+        dates: vec![
+            DayMonth { day: 30, month: 4 },
+            DayMonth { day: 30, month: 6 },
+        ],
+        ..PackNames::default()
+    };
+    let m = manifest_split(&public, &personal);
+    let base = manifest(&public);
+    // The public clip set is unchanged; only the names read from personal sources alone
+    // are added, and marked.
+    for (id, c) in &base.clips {
+        assert_eq!(m.clips.get(id), Some(c), "{id}");
+        assert!(!m.is_personal(id), "{id}");
+    }
+    let marked: Vec<&str> = m.personal.iter().map(String::as_str).collect();
+    assert_eq!(
+        marked,
+        ["name.aigle-royal", "piste.la-pinatelle.noire", "until.0430"]
+    );
+    assert_eq!(m.clips.len(), base.clips.len() + 3);
+    assert!(base.personal.is_empty());
 }

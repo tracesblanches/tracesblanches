@@ -9,7 +9,8 @@
 //!
 //! Phone side (no networking, no subprocess): [`bank`] (events → announcements),
 //! [`clips`], [`mod@manifest`], [`names`], [`numbers`], [`quantity`]. Workstation side:
-//! [`pack`] (generation of the voice layer), [`tts`] (pockettts.cpp), [`audio`] (trim,
+//! [`pack`] (generation of the voice layer), [`sources`] (names of the built layers and their
+//! provenance), [`tts`] (pockettts.cpp), [`audio`] (trim,
 //! level, Ogg/Opus), [`tokenizer`] and [`gguf`] (exact Pocket TTS token counts).
 //!
 //! An announcement is a list of clips, each a complete spoken unit. The phone plays the
@@ -27,13 +28,15 @@ pub mod names;
 pub mod numbers;
 pub mod pack;
 pub mod quantity;
+pub mod sources;
 pub mod tokenizer;
 pub mod tts;
 
 pub use bank::{Announcement, Event};
 pub use error::{Error, Result};
-pub use manifest::{Manifest, PackNames, manifest};
-pub use pack::{VoiceConfig, assemble, build};
+pub use manifest::{Manifest, PackNames, manifest, manifest_split};
+pub use pack::{VoiceConfig, assemble, build, build_site};
+pub use sources::{SiteNames, site_names};
 
 /// Name of this crate, checked by the crate smoke test.
 pub const CRATE: &str = env!("CARGO_PKG_NAME");
