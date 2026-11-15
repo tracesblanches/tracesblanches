@@ -6,8 +6,9 @@
 //!
 //! Hidden Markov model after Newson & Krumm (2009), solved online by Viterbi:
 //!
-//! - states at each fix: the nearest point of every edge within
-//!   [`MatchParams::radius_m`] (at most [`MatchParams::max_candidates`]), plus one
+//! - states at each fix: the nearest point of every pass of an edge within
+//!   [`MatchParams::radius_m`] ([`PisteGraph::candidates`]: a hairpin or a way drawn out
+//!   and back gives both passes; at most [`MatchParams::max_candidates`]), plus one
 //!   « off the network » state;
 //! - emission: GPS distance `d` to the candidate under a mixture of two centred normals,
 //!   `(1 − ε) N(d; σ) + ε N(d; σ_out)` (the wide one absorbs forest multipath outliers);

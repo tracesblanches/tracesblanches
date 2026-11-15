@@ -1,0 +1,1 @@
+{"site":"seed","nodes":[{"pos":{"lon":6.75,"lat":44.85},"osm_node_i":null}],"edges":[{"from":0,"to":1,"oneway":false,"points":[{"lon":6.751,"lat":44.85}],"attrs":{"kind":"piste","name":"Le Bourget","osm_way_id":42,"classic":true,"skating":false,"backcountry":false,"nordic":true,"hike":false,"difficulty":null,"difficulty_m":6.75,"lat":44.85},"osm_nod_i":null}],"edges":[{"fountrd"}

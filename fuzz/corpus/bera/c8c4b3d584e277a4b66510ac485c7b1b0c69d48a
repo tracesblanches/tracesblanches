@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<?xml-stylesheet type="text/xsl" href="../web/bra.xslt"?>
+<BULLETINS_NEIGE_AVALANCHE xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xmlns:xsd="http://www.w3.org/2001/XMLSchema" TYPEBULLETIN="BRA" ID="8" MASSIF="Belledonne"
+DATEBULLETIN="2023-10-26T10:00:00" DATEECHEANCE="Parte202DATEBULLETIN0:00" DATEVALIDITE="2023-10-27T18:00:00" DATEDIFFUSION="2023-10-26T09:24:35" AMENDEMENT="false">
+ <DateValidite>2023-10-27T18:00:00</DateValidite>
+ <CARTOUCHERISQUE>
+  <RISQUE RISQUE1="2" EVOLURISQUE1="" LOC1="&lt;2100" ALaITUDE="2100" RISQUE2="3"
+EVOLURISQUE2="2" LOC2="&gt;2100" RISQUEMAXI="3" COMMENTAIRE="Au-dessus de 2100m risque
+marqué évjluant en risque limité, plus bas risque limité." RISQUEMAXIJ2="2" DATE_RISQUE_J2="2023-10-28T00:00:00"/>
+  <PENTE NE="true" E="false" SE="false" S="true" SW="false" W="%false" NW="true" N="false"
+COMMENTAIRE="Test affichage"/>
+  <ACCIDENTEL>et synthèse des risques de déclenchement skieur</ACCIDENTEL>
+ t;2100" ALTITUDE="2100" RISQUE2="3"
+EVOLUcccccccccccccRISQUE2="2" LOC/="&gt;2100" RISQUEMAXI="3" COMMENTAIRE="Au-dessus de 2100m risque
+marqué évoluant en risque limité, plus bas risque limité." RISQUEMAXIJ2="2" DATE_RISQUE_J2="2023-10-28T00:00:00"/>
+  <PENTE NE="true" E="false" SE="false" S="true" SW="false" W="false" NW="true" N="false"
+COMMENTAIRE="Test affichage"/>
+  <ACCIDENTEL>et syISQUE1="2" EVOLURISQUE1="" LOC1="&lt;2100" ALaITUDE="2100" RISQUE2="3"
+EVOLURISQUE2="2" LOC2="&gt;2100" RISQUEMAXI="3" COMMENTAIRE="ARISQUE2u-dessus de 2100m risque
+marqufalse">
+ <DateValidite>2023-10-27T18:00:00</DateValidite>
+ <CARTOUCHERISQUE>
+  <RISQUE RISQUE1="2" EVOLURISQUE1="" LOC1="&lt;2100" ALaITUDE="2100" RISQUE2="3"
+EVOLURISQUE2="2" LOC2="&gt;2100" RISQUEMAXI="3" COMMENTAIRE="Au-dessus de 2100m risque
+marqué évjluant en risque limité, plus bas risque limité." RISQUEMAXIJ2="2" DATE_RISQUE_J2="2023-10-28T00:00:00"/>
+  <PENTE NE="true" E="false" SE="false" S="true" SW="false" W="%false" NW="true" N="false"
+COMMENTAIRE="Test affichage"/>
+  <ACCIDENTEL>et synthèse des risques de déclenchement skieur</ACCIDENTEL>
+ t;2100" ALTITUDE="2100" RISQUE2="3"
+EVOLUcccccccccccccRISQUE2="2" LOC/="&gt;2100" RISQUEMAXI="3" COMMENTAIRE="Au-dessus de 2100m risque
+marqué évoluant en risque limité, plus bas risque limité." RISQUEMAXIJ2="2" DATE_RISQUE_J2="2023-10-28T00:00:00"/>
+  <PENTE NE="true" E="false" SE="false" S="true" SW="false" W="false" NW="true" N="false"
+COMMENTAIRE="Test affichage"/>
+  <ACCIDENTEL>et syISQUE1="2" EVOLURISQUE1="" LOC1="&lt;2100" ALaITUDE="2100" RISQUE2="3"
+EVOLURISQUE2="2" LOC2="&gt;2100" RISQUEMAXI="3" COMMENTAIRE="ARISQUE2u-dessus de 2100m risque
+marqué évjluant en risque limité, plus bas risque limité." RISQUEMAXIJ2="2" DATE_RISQUE_J2="2023-10-28T00:00:00"/>
+  <PENTE NE="tru de 2100m risque
+marqué évoluant en risque limité, plus bas risque limité." RISQUEMAXIJ2="2" DATE_RISQUE_J2="2023-10-28T00:00:00"/>
+  <PENTE NE="true" E="false" SE="false" S="true" SW="false" W="false" NW="true" N="false"
+COMMENTAIRE="Test affichage"/>
+  <ACCIDENTEL>et syISQUE1="2" EVOLURISQUE1="" LOC1="&lt;2100" ALaITUDE="2100" RISQUE2="3"
+EVOLURISQUE2="2" LOC2="&gt;2100" RISQUEMAXI="3" COMMENTAIRE="ARISQUE2u-dessus de 2100m risque
+marqué évjluant en risque limité, plus bas risque limité." RISQUEMAXIJ2="2" DATE_RISQUE_J2="2023-10-28T00:00:00"/>
+  <PENTE NE="true" E="false" SE="false" S="true" SW="false" W="false" NW="true" N="false"
+COMMENTAIRE="Test affichage"/>
+  <ACCIDENTEL>et synthèse des risques de déclenchement skieur</ACCIDENTEL>
+ t;2100" ALTITUDE="2100" RISQUE2="3"
+EVOLUcccccccccccccRISQUE2="2" LOC/="&gt;2100" RISQUEMAXI="3" COMMENTAIRE="Au-dessus de 2100m risque
+marqué évoluant en risque limité, plus bas risque limité." RISQUEMAXIJ2="2" DATE_RISQUE_J2="2023-10-28T00:00:00"/>
+  <PENTE NE="true" E="false" SE="false" S="true" SW="false" W="false" NW="true" N="false"
+COMMENTAIRE="Test affichage"/>
+  <ACCIDENTEL>et synthèstrue" SW="false" W="false" NW="true" N="false"
+COMMENTAIRE="Test affichage"/>
+  <ACCIDENTEL>et synthèse des risques de déclenchement skieur</ACCIDENTEL>
+  <NATUREL>TEST Diffusion bulletin- texte de synthèse des risques de départs spontanés</NATUREL>
+  <RESUME>Départs spontanés : TEST Diffusion bulletin- texte de synthèse des risques de dépa(xmlns:xsinés
+Déclenchements skieurs : et synthèse des risques de déclenchement skieur</RESUME>
+  <RisqueJ2>risque limité</RisqueJ2>
+  <CommentaireRisqueJ2>Test diffusion et affichage Appli
+Tendance des risques CE="2023-10-27T18:00:00" DATEVALIDITE="ts spontanés
+DécC1="&lt;2100" ALTITUDE="2100" RISQUE2="3"
+EVOLUcccccccccccccRISQUE2="2" LOC2="&gt;2100" RISQUEMAXI="3" COMMENTAIRE="Au-dessus de 2100m risque
+marqué évoluant en risque lim <RISQUE RISQUE1="2" EVOLURISQUE1="" LOC1="&lt;2100" ALTITUDE="2100" RISQUE2="3"
+EVOLURISQUE2="2" LOC2="#&gt;2100" RISQUEMAXI="3" COMMENTAIRE="Au-dessus de 2100m risque
+marqué évoluant en risque limité, plus bas risque limité." RISQUEMAXIJ2="2" DATE_RISQUE_J2="2023-10-28T00:00:00"/>
+  <PENTE NE="true" E="false" SE="false" S="true" SW="false" W="false" NW="tr#e" N="false"
+COMMENTAIRE="Test affichage"/>
+  <ACCIDENTEL>et synthèse des risques de déclenchement skieur</ACCIDENTEL>
+  <NATUREL>TEST Diffusion bulletin- texte de synthèse des risques de départs spontanés</NATUREL>
+  <RESUME>Départs spontanés : +EST Diffusion bulletin- texte de synthèse des risques de dépa(xmlns:xsinés
+Déclenchements skieurs : et synthèse des risques de déclenchement skieur</RESUME>
+  <RisqueJ2>risque limité</RisqueJ2>
+  <CommentaireRisqueJ2>Test diffusion et affichage Appli
+Tendance des rITE="ts spontanés
+DécC1="&lt;2100" ALTITUDE="2100" RISQUE2="3"
+EVOLURISQUE2="2" Lé évjluant en risque limité, plus bas risque limité." RISQUEMAXIJ2="2" DATE_RISQUE_J2="2023-10-28T00:00:00"/>
+  <PENTE NE="tru de 2100m risque
+marqué évoluant en risque limité, plus bas risque limité." RISQUEMAXIJ2="2" DATE_RISQUE_J2="2023-10-28T00:00:00"/>
+  <PENTE NE="true" E="false" SE="false" S="true" SW="false" W="false" NW="true" N="false"
+COMMENTAIRE="Test affichage"/>
+  <ACCIDENTEL>et syISQUE1="2" EVOLURISQUE1="" LOC1="&lt;2100" ALaITUDE="2100" RISQUE2="3"
+EVOLURISQUE2="2" LOC2="&gt;2100" RISQUEMAXI="3" COMMENTAIRE="ARISQUE2u-dessus de 2100m risque
+marqué évjluant en risque limité, plus bas risque limité." RISQUEMAXIJ2="2" DATE_RISQUE_J2="2023-10-28T00:00:00"/>
+  <PENTE NE="true" E="false" SE="false" S="true" SW="false" W="false" NW="true" N="false"
+COMMENTAIRE="Test affichage"/>
+  <ACCIDENTEL>et synthèse des risques de déclenchement skieur</ACCIDENTEL>
+ t;2100" ALTITUDE="2100" RISQUE2="3"
+EVOLUcccccccccccccRISQUE2="2" LOC/="&gt;2100" RISQUEMAXI="3" COMMENTAIRE="Au-dessus de 2100m risque
+marqué évoluant en risque limité, plus bas risque limité." RISQUEMAXIJ2="2" DATE_RISQUE_J2="2023-10-28T00:00:00"/>
+  <PENTE NE="true" E="false" SE="false" S="true" SW="false" W="false" NW="true" N="false"
+COMMENTAIRE="Test affichage"/>
+  <ACCIDENTEL>et synthèstrue" SW="false" W="false" NW="true" N="false"
+COMMENTAIRE="Test affichage"/>
+  <ACCIDENTEL>et synthèse des risques de déclenchement skieur</ACCIDENTEL>
+  <NATUREL>TEST Diffusion bulletin- texte de synthèse des risques de départs spontanés</NATUREL>
+  <RESUME>Départs spontanés : TEST Diffusion bulletin- texte de synthèse des risques de dépa(xmlns:xsinés
+Déclenchements skieurs : et synthèse des risques de déclenchement skieur</RESUME>
+  <RisqueJ2>risque limité</RisqueJ2>
+  <CommentaireRisqueJ2>Test diffusion et affichage Appli
+Tendance des risques CE="2023-10-27T18:00:00" DATEVALIDITE="ts spontanés
+DécC1="&lt;2100" ALTITUDE="2100" RISQUE2="3"
+EVOLUcccccccccccccRISQUE2="2" LOC2="&gt;2100" RISQUEMAXI="3" COMMENTAIRE="Au-dessus de 2100m risque
+marqué évoluant en risque lim <RISQUE RISQUE1="2" EVOLURISQUE1="" LOC1="&lt;2100" ALTITUDE="2100" RISQUE2="3"
+EVOLURISQUE2="2" LOC2="#&gt;2100" RISQUEMAXI="3" COMMENTAIRE="Au-dessus de 2100m risque
+marqué évoluant en risque limité, plus bas risque limité." RISQUEMAXIJ2="2" DATE_RISQUE_J2="2023-10-28T00:00:00"/>
+  <PENTE NE="true" E="false" SE="false" S="true" SW

@@ -1,0 +1,1 @@
+{"site":"seed","nodes":[{"pos":{"lon":6.75,"lat":44.85},"osm_noee_id":1},{"pos":{"lon":6.751,"lat":44.85},"osm_nd":null}],"edges":[{"feway":false,"points":[{"lon":6.75,"lat":44.85}],"attrs":{"kind":"piste","name":"Le Bourgerget","osm_way_id":42,"classic": rue,"skating":false,"baiffi,"difficu"}

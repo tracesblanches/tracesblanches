@@ -1,0 +1,5 @@
+
+{"site":"seed","nodes":[{"pos":{"lon":6.75,"lat":44.85},"osm_node_i":null}],"edges":[{"from":0,"to":1,"oneway":false
+,"points":[{"lon":6.75,"lat":44.85},{"lon":6.751,"lat":44.85}],"attrs":{"kosm_way_id":42,"classic"
+
+"lon"

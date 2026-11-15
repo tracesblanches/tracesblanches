@@ -86,6 +86,11 @@ clap = { version = "4.6.7", features = ["derive"] }
 approx = "0.5"
 tempfile = "3.27.0"
 tiny_http = "0.12.0"
+# Property tests (Q3, #103): dev-dependency only, never linked into a binary.
+proptest = { version = "1.12.0", default-features = false, features = ["std"] }
+# Instruction-count benchmarks under Valgrind (Q5, #105); needs `gungraun-runner` of the
+# same version (`cargo install gungraun-runner --version 0.20.0 --locked`).
+gungraun = "0.20.0"
 
 # pmtiles 0.28.1 with one fix (vendor/pmtiles/VENDOR.md): without leaf directories the
 # writer left leaf_offset = 0, which `pmtiles verify` (go-pmtiles) rejects.

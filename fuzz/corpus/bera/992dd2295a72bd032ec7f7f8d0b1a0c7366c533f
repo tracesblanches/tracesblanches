@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<?xml-stylesheet type="text/xsl" href="../web/bra.xslt"?>
+E<ILTBLUNS_NEIGE_AVALANCHE xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xmlns:xSQUE2="3"
+EVOLURISQUE2="2" LOC2="&gt;2100" RISQUEMAXI="3" COMMENTAIRE="Au-dessus de 2100m risque
+marqué évoluant en risque limité, plus bas risque limité." RISQUEMAXIJ2="2" DATE_RISQUE_J2="2023-10-28T00:00:00"/>
+  <PENTE NE="true" `E="false" SE="false" S="true" SW="false" W="false" NW="true" N="false"
+COMMENTPLUIENEIGE="1600" TEMPSSENSIBLE="61"/>
+   <ECHEANCE DATE=
+
+
+
+
+
+
+
+"2023-10-26T00:00:00" FF1="10" DD1="SO" FF2="10" DD2="SO" ISO0="1900"
+PLUIEEIGE_AVALAECHE>

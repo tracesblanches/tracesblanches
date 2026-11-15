@@ -1,0 +1,6 @@
+{"site":"seed","nodes":[{"pos":{"lon":6.75,"lat":44.81},"osm_node_id":1},{"pos":{"lon":6.751,"lat":44.85},"od":null}],"edges":[{"to":1,"oneway":false,"points":[{"lon":6.75,"lat":22.85},{"lon":6.751,"lat":44.85}],"attrs":{"kind":"piste","name":"L1 Bourget","osm_way_id":42,"classic":true,"classicskating":false,"backcountrlse,"n"dificulty":null,"ffdiiculty_max":null},"profile":{"dist_m":[0.0,39.416,
+
+
+
+
+183,:6.75,"lat":44.85}

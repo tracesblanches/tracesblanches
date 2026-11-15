@@ -762,7 +762,8 @@ fn briefing(a: &mut Announcement, b: &Briefing) {
             snowfall,
         } => {
             a.push(clips::temperature(temperature_c.round() as i32), Short);
-            let w = (wind_kmh / 10.0).round() as u32 * 10;
+            // Saturating: a corrupt value (1e12 km/h) must not overflow.
+            let w = ((wind_kmh / 10.0).round() as u32).saturating_mul(10);
             if w < 10 {
                 a.push(Fixed::WindCalm.clip(), Short);
             } else {

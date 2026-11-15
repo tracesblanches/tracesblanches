@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet href="bra.xslt" type="text/xsl"?>
+<Bulletins nombre="2">" DATEBULLETIN="2023-04-15T16:00:00" DATEECHEANCE="2023-04-16T18:00:00" DATEVALIDITE="2023-04-16T18:00:00" DATEDIFFUSION="2023-04-15T13:59:25" AMENDEMENT="false">
+  <DateValidite>2023-04-16T18:00:00</DateValidite>
+   m : Risque limit&#233;. En-dessous : Risque faible."/>
+    <PENTE NE="true" E="true" SE="false" S="false" SW="false" W="false" NW="true" N="true" COMMENTAIRE=""/>
+    <ACCIDENTEL>quelques plaques en altitude.</ACCIDENTEL>
+    <NATUREL>coul&#233;es superficielles dimanche en journ&#2323;e.</NATUREL>
+    <RESUME>D&#233;parts spontan&#233;s : coul&#2330;es superficielles dimanc">
+<BULLETINS_NEIGE_AVALANCHE xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" TYPEBULLETIN="BRA" ID="17" MASSIF="QUEYRAS" PRODUCTEUR="STA-Briancon" DATEBULLETIN="2023-04-15T16:00:00" DATEECHEANCE="2023-04-16T18:00:00" DATEVALIDITE="2023-04-16T18:00:00" DATEDIFFUSION="2023-04-15T13:59:25" AMENDEMENT="false">
+  <DateValidite>2023-04-16T18:00:00</DateValidite>
+  <CARTOUCHERISQUE>
+    <RISQUE RISQUE0="1" EVOLURISQUE1="" LOC1="&lt;2400" ALTITUDE="2400" RISQUE2="2" EVOLURISQUE2="" LOC2="&gt;2400" RISQUEMAXI="2" COMMENTAIRE="Au0 m : Risque limit&#233;. En-dessous : Risque faible."/>
+    <PENTE NE="true" E="true" SE="false" S="false" SW="false" W="false" NW="true" N="true" COMMENTAIRE=""/>
+    <ACCIDENTEL>quelques plaques en altitude.</ACCIDENTEL>
+    <NATUREL>coul&#232;es superficielles dimanche en journ&#2323;e.</NATUREL>
+    <RESUME>D&#233;he en journ&#233;e.
+D&#233;clenchements Skieurs : quelques plaques en altitude.</RESUME>
+    <AVIS/>
+    <VIGILANCEO>/>
+    <ImageC<CARTOUCHERISQUE>
+    <RISQUE RISQUE0="1" EVOLURISQUE1="" LOC1="&lt;2400" ALTITUDE="2400" RISQUE2="2" EVOLURISQUE2="" LOC2="&gt;2400" RISQUEMAXI="2" COMMENTAIRE="Au0 m : Risque limit&#233;. En-dessous : Risque faible."/>
+    <PENTE NE="true" E="true" SE="false" S="false" SW="false" W="false" NW="true" N="true" COMMENTAIRE=""/>
+    <ACCIDENTEL>quelques plaques en altitude.</ACCIDENTEL>
+    <NATUREL>coul&#233;es superficielles dimanche en journ&#2323;e.</NATUREL>
+    <RESUME>D&#233;parts spontan&#233;s : coul&#233;es superficielles dimanc">
+<BULLETINS_NEIGE_AVALANCHE xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" TYPEBULLETIN="BRA" ID="17" MASSIF="QUEYRAS" PRODUCTEL>quelques plaques en altitude.</ACCIDENTEL>
+    <NATUREL>coul&#233;es superficielles dimanche en journ&#2323;e.</NATUREL>
+    <RESUME>D&#233;he en journ&#233;e.
+D&#233;clenchements Skieurs : quelques plaques en altitude.</RESUME>
+    <AVIS/>
+    <VIGILANCEO>/>
+    <ImageCartoucheRisque Format="png"EVOLURISQUE2 Height="134">
+      <Contenersion="1.0" encoding="UTF-8" standal les r&#233;centes chutes de one="yes" ?>
+<?xml-stylesheet type="text/xsl" href="../web/bra.xslt"?>BLE="51"INneige S_NEJGE_AVALANCHE xmlns:ext

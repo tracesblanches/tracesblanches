@@ -51,11 +51,15 @@ impl SyncBackend for Bytes {
 
 /// Reads a local file with positioned reads, so that concurrent reads need no locking.
 ///
-/// A read from past the end of the file is empty rather than an error, because the file's length
-/// is not known without another system call.
+/// A read from past the end of the file is empty rather than an error. The buffer is never
+/// larger than what the file holds after `offset`: the lengths come from the archive's header
+/// and directories, and a corrupt archive of a few hundred bytes can ask for gigabytes
+/// (skimap fix, found by fuzzing; see `VENDOR.md`).
 #[cfg(any(unix, windows))]
 impl SyncBackend for File {
     fn read(&self, offset: u64, length: usize) -> PmtResult<BackendResponse> {
+        let available = self.metadata()?.len().saturating_sub(offset);
+        let length = length.min(usize::try_from(available).unwrap_or(usize::MAX));
         let mut buf = vec![0; length];
         let len = read_full_at(self, &mut buf, offset)?;
         buf.truncate(len);

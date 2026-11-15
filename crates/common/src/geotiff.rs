@@ -209,10 +209,20 @@ struct Header {
     nodata: Option<String>,
 }
 
+/// Largest decoded image, bytes: 512 MiB, eleven times the largest raster of the two
+/// sites (Cervières terrain model, 3317 × 3480 Float32, 46 MB). Without a limit, a corrupt
+/// or hostile header (a 16 GB image in a few hundred bytes, found by fuzzing, Q3 #103)
+/// makes the reader allocate until the process is killed.
+pub const MAX_DECODED_BYTES: usize = 512 << 20;
+
 fn decoder(bytes: &[u8]) -> Result<Decoder<Cursor<&[u8]>>> {
+    let mut limits = Limits::default();
+    limits.decoding_buffer_size = MAX_DECODED_BYTES;
+    limits.intermediate_buffer_size = MAX_DECODED_BYTES;
+    limits.ifd_value_size = 16 << 20;
     Ok(Decoder::new(Cursor::new(bytes))
         .map_err(|e| Error::tiff("read", e))?
-        .with_limits(Limits::unlimited()))
+        .with_limits(limits))
 }
 
 fn header(dec: &mut Decoder<Cursor<&[u8]>>) -> Result<Header> {
@@ -244,9 +254,14 @@ fn header(dec: &mut Decoder<Cursor<&[u8]>>) -> Result<Header> {
     if (scale[0] - scale[1]).abs() > 1e-9 {
         return Err(Error::tiff(ctx, format!("non-square cells {scale:?}")));
     }
+    if !(scale[0] > 0.0 && scale[0].is_finite()) {
+        return Err(Error::tiff(ctx, format!("bad cell size {scale:?}")));
+    }
     // Tie point (i, j) -> (x, y); origin of the raster is pixel (0, 0).
     let origin_x = tie[3] - tie[0] * scale[0];
     let origin_y = tie[4] + tie[1] * scale[1];
+    // Checks the values (finite), as for every other raster format.
+    let transform = GeoTransform::from_gdal([origin_x, scale[0], 0.0, origin_y, 0.0, -scale[0]])?;
     let doubles = match dec.find_tag(Tag::GeoDoubleParamsTag) {
         Ok(Some(v)) => v
             .into_f64_vec()
@@ -274,7 +289,7 @@ fn header(dec: &mut Decoder<Cursor<&[u8]>>) -> Result<Header> {
     Ok(Header {
         width: w as usize,
         height: h as usize,
-        transform: GeoTransform::north_up(origin_x, origin_y, scale[0]),
+        transform,
         crs: crs_from_keys(&keys, &doubles, &ascii),
         epsg,
         nodata,

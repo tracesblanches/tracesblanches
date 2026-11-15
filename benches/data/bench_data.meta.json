@@ -1,0 +1,96 @@
+{
+  "avalanche": {
+    "crop_cells": {
+      "col0": 800,
+      "height": 64,
+      "row0": 160,
+      "width": 64
+    },
+    "high_cells": 4096,
+    "selection": "window with the most « très exposé » cells of exposure_5m.tif (stride half a window)",
+    "source": "data/out/cervieres/avalanche-exposure/inputs/{dem,canopy}_5m.tif (P17)"
+  },
+  "bytes": [
+    {
+      "bytes": 342311,
+      "file": "elevation_5m.skr"
+    },
+    {
+      "bytes": 243617,
+      "file": "slope_5m.skr"
+    },
+    {
+      "bytes": 3387,
+      "file": "zones_5m.skr"
+    },
+    {
+      "bytes": 5841,
+      "file": "pistes_5m.skr"
+    },
+    {
+      "bytes": 24906,
+      "file": "exposure_5m.skr"
+    },
+    {
+      "bytes": 8269,
+      "file": "zone_classes.tsv"
+    },
+    {
+      "bytes": 232,
+      "file": "snow_2026-02-15.skr"
+    },
+    {
+      "bytes": 85394,
+      "file": "cervieres_piste_graph"
+    },
+    {
+      "bytes": 256217,
+      "file": "chapelle_piste_graph"
+    },
+    {
+      "bytes": 12886,
+      "file": "avalanche_dem"
+    },
+    {
+      "bytes": 1377,
+      "file": "avalanche_canopy"
+    }
+  ],
+  "generator": "cargo bench -p skimap-core --features pipeline --bench make_data (SKIMAP_MAKE_BENCH_DATA=1)",
+  "graphs": "data/out/<site>/routes/piste_graph.json, whole (C1)",
+  "licences": {
+    "canopy": "IGN LiDAR HD MNH, Licence Ouverte 2.0 (Etalab)",
+    "exposure": "model output from IGN LiDAR HD (AutoATES port, P17)",
+    "pistes, trail graphs": "© les contributeurs d'OpenStreetMap, ODbL 1.0",
+    "snow": "Météo-France, Licence Ouverte 2.0",
+    "terrain (elevation, slope, avalanche DEM)": "IGN LiDAR HD, Licence Ouverte 2.0 (Etalab)",
+    "zones": "identifiers only (INPN PatriNat, communes, départements, GPU, country)"
+  },
+  "offpiste": {
+    "crop_cells": {
+      "col0": 1002,
+      "height": 1024,
+      "margin_cells": 120,
+      "row0": 1418,
+      "width": 407
+    },
+    "exposure": "avalanche-exposure/exposure_model_5m.tif cropped: the model alone, without the fusion of prepare (not versioned)",
+    "route": {
+      "from": [
+        6.72687,
+        44.8552163
+      ],
+      "name": "Le Laus → Col d'Izoard",
+      "to": [
+        6.734975,
+        44.8196595
+      ]
+    },
+    "snow": "snow_2026-02-15.skr cropped (25 m)",
+    "source": "data/out/cervieres/offpiste (C3 prepare): 5 m Lambert-93 rasters",
+    "zone_classes": "zone_classes.tsv of prepare, identifiers of unverified licence removed"
+  },
+  "tickets": [
+    "Q5 #105"
+  ]
+}

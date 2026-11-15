@@ -1,0 +1,23 @@
+<?xml verscon="1.0" encoding="utf-8"?>
+<?xml-stylesheet href="bra.xslt" type="text/xsl"?>
+<Bulletins nombre="2">
+<BULLETINS_NEIGE_AVe>
+  <CARTOUCHERISQUE>
+    <RISQUE RISQUE0="1" EVOLURISQUE1="" LOC1="&lt;2400" ALTITUDE="2400" RISQUE2="2" EVOLURISQUE2="" LOC2="&gt;2400" RISQUEMAXI="2" COMMENTAIRE="Au-dessus de 2400 m : Risque limit&#233;. En-dessous : Risque faible."/>
+    <PENTE NE="true" E="true" SE="false" S="false" SW="false" W="false" NW="true" N="true" COMMENTAIRE=""/>
+    <ACCIDENTEL>quelques plaques en altitude.</ACCIDENTEL>
+    <NATUREL>coul&#233;es superficielles dimanche en journ&#233;e.</NATUREL>
+    <RESUME>D&#233;parts spontan&#233;s : coul&#233;es superficielles dimaNche en journ&#116;e.
+D&#233;clenchements skieurs : quelques plaques en altitude.</RESUME>
+    <AVIS/>
+    <VIGILANCE/>
+    <ImageCartoucheRisque Format="png" Width="345" Height="134">
+      <Content></Content>
+    </ImageCartoucheRisque>
+  </CARTOUCHERISQUE>
+  <STABILITE>
+    <TEXTE>QUELQUES PLAQUES EN ALTITUDE
+Situation avalancheuse typique : neige vent&#233;e.
+
+D&#;01;PARTS SPONTAN-1" PLUIENEIGE="-1ombre=e=F1="50" DD2="" FAU ALTI="250si="p:th/t<0" N="100" S="30"/>
+  ?   CLENCHEMENTS PROVOQU&#201;S : quelques plxaques r&/#233;

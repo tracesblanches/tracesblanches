@@ -1,0 +1,122 @@
+# Fuzz targets (Q3, #103) of everything the phone reads from a downloaded file: pack
+# (manifest, pack.meta.json, layers, voice manifest), pack updates (bundle, site index), SKR1 rasters, zone classes, trail
+# graph, PMTiles (the patched vendor reader and the pack's TileArchive), palette PNG tiles,
+# vector tiles of the class layers,
+# GeoTIFF (common::geotiff), BERA XML. Outside the main workspace (cargo-fuzz needs
+# nightly and sanitizers): `cd fuzz && cargo +nightly fuzz run <target>`; usage in
+# `src/lib.rs`.
+[package]
+name = "skimap-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+members = ["."]
+
+[dependencies]
+libfuzzer-sys = "0.4.13"
+skimap-common = { path = "../crates/common", features = ["geotiff"] }
+skimap-core = { path = "../crates/core" }
+skimap-meteo = { path = "../crates/meteo" }
+skimap-pack = { path = "../crates/pack" }
+skimap-voice = { path = "../crates/voice" }
+bytes = "1.10"
+flate2 = "1.1.11"
+pmtiles = { version = "0.28.1", default-features = false, features = ["iter", "write"] }
+serde_json = "1.0.154"
+tiff = "0.11.3"
+
+# Same patched pmtiles as the main workspace (vendor/pmtiles/VENDOR.md).
+[patch.crates-io]
+pmtiles = { path = "../vendor/pmtiles" }
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "skr1"
+path = "fuzz_targets/skr1.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "zone_classes"
+path = "fuzz_targets/zone_classes.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "piste_graph"
+path = "fuzz_targets/piste_graph.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "offpiste_grid"
+path = "fuzz_targets/offpiste_grid.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pack"
+path = "fuzz_targets/pack.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pack_update"
+path = "fuzz_targets/pack_update.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pmtiles_vendor"
+path = "fuzz_targets/pmtiles_vendor.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tile_archive"
+path = "fuzz_targets/tile_archive.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "png"
+path = "fuzz_targets/png.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "mvt"
+path = "fuzz_targets/mvt.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "geotiff"
+path = "fuzz_targets/geotiff.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "bera"
+path = "fuzz_targets/bera.rs"
+test = false
+doc = false
+bench = false

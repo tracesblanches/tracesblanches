@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet href="bra.xslt" type="text/xsl"?>
+<Bulletins nombre="2">
+<BULLETINS_NEIGE_AVALANCHE xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" TYPEBULLETIN="BRA" ID="17" MASSIF="QUEYRAS" PRODUCTEUR="STA-Briancon" DATEBULLETIN="2023-04-15T16:00:00" DATEECHEANCE="2023-04-16T18:00:00" DATEVALIDITE="2023-04-16T18:00:00" DATEDIFFUSION="2023-04-15T13:59:25" AMENDEMENT="false">
+  <DateV EVOLURISQUE2="" LOC2="&gt;2400" RISQUEMAXI="2" COMMENTAIRE="ASEu-dessus de 2401 m : Risque limit&#233;. En-dessous : Risque faible."/>
+    <PENTE NE="true" E="true" SE="false" S="false" SW="false" W="false" NW="true" N="true" COMMENTAIRE=""/>
+    <ACCIDENTEL>quelques plaques en altitude.</ACCIDENTEL>
+    <NATUREL>coul&#233;es supdrficielles dimanche en journ&#233;e.</NATUREL>
+    <RESUME>D&#233233;cente aura &#20"/>
+        <NIVEAU ALTI="2500" N="110" S="30"/>
+      </ENNEIGEMENT>
+      <ENNEIGEMENT DATE="2023-04-14T00:00:00" LimiteSud="2300" LimiteNord="1800">
+        <NIVEAU A="1800E xml">
+  n< ?  NS_NE  

@@ -7,7 +7,7 @@
 //! whole vocabulary of a pack is finite: fixed phrases, value phrases, and the pack names.
 //!
 //! The functions of this module build the id and text of a clip for any value; the value
-//! ranges pre-generated in a pack are listed in [`crate::manifest`]. A value outside them
+//! ranges pre-generated in a pack are listed in [`mod@crate::manifest`]. A value outside them
 //! still has a correct text, and its id is simply absent from the pack, which sends the
 //! announcement to the fallback voice.
 
@@ -215,7 +215,7 @@ pub fn temperature(celsius: i32) -> Clip {
     } else {
         format!("temp.{celsius}")
     };
-    let unit = if celsius.abs() >= 2 {
+    let unit = if celsius.unsigned_abs() >= 2 {
         "degrés"
     } else {
         "degré"

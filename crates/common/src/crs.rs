@@ -156,9 +156,16 @@ pub fn project_bbox(b: BBox, to: Crs, steps: usize) -> Result<(f64, f64, f64, f6
     }))
 }
 
+/// Number of tiles per side at zoom `z`, `2^z`, as a float: defined for every `u8` (a zoom
+/// read from a corrupt file must not overflow a shift; found by fuzzing, Q3 #103). Tile
+/// indices are `u32`, so zooms above 31 saturate (PMTiles stops at 31).
+fn tiles_per_side(z: u8) -> f64 {
+    f64::from(z).exp2()
+}
+
 /// XYZ (slippy map) tile containing a position at zoom `z`.
 pub fn tile_for(p: LonLat, z: u8) -> (u32, u32) {
-    let n = f64::from(1u32 << z);
+    let n = tiles_per_side(z);
     let lat = p
         .lat
         .clamp(-85.051_128_779_806_59, 85.051_128_779_806_59)
@@ -171,7 +178,7 @@ pub fn tile_for(p: LonLat, z: u8) -> (u32, u32) {
 
 /// WGS84 bounds of the XYZ tile `(z, x, y)`.
 pub fn tile_bounds(z: u8, x: u32, y: u32) -> BBox {
-    let n = f64::from(1u32 << z);
+    let n = tiles_per_side(z);
     let lon = |x: f64| x / n * 360.0 - 180.0;
     let lat = |y: f64| {
         (std::f64::consts::PI * (1.0 - 2.0 * y / n))
@@ -308,6 +315,19 @@ mod tests {
             (1.0, 2.0)
         );
         assert!(transform_point(Crs::Wgs84, Crs::Lambert93, f64::NAN, 45.0).is_err());
+    }
+
+    #[test]
+    fn tiles_at_any_zoom() {
+        // Regression (Q3, #103): zoom 32 and above overflowed `1u32 << z`.
+        let p = LonLat::new(6.75, 44.85);
+        assert_eq!(tile_for(p, 0), (0, 0));
+        let (x, y) = tile_for(p, 31);
+        assert!(tile_bounds(31, x, y).contains(p));
+        for z in [32, 40, 255] {
+            let _ = tile_for(p, z);
+            let _ = tile_bounds(z, 0, 0);
+        }
     }
 
     #[test]

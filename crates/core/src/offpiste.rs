@@ -384,7 +384,9 @@ pub fn encode_raster_with<T: RasterValue>(
         }
         Encoding::RowDelta => {
             let mut bytes = Vec::with_capacity(T::SIZE);
-            let mut planes = vec![Vec::with_capacity(w); T::SIZE];
+            // One row of planes, only when there are rows: a 4 × 10⁹ × 0 raster (valid,
+            // empty) reserved 4 GB (found by fuzzing, Q3 #103).
+            let mut planes = vec![Vec::with_capacity(if h > 0 { w } else { 0 }); T::SIZE];
             for row in grid.data().chunks_exact(w.max(1)) {
                 let mut prev: Option<T> = None;
                 for &v in row {
@@ -438,11 +440,16 @@ pub fn decode_raster<T: RasterValue>(bytes: &[u8]) -> Result<Grid<T>> {
         *v = f64_at(24 + 8 * k);
     }
     let transform = GeoTransform::from_gdal(gt).map_err(|e| Error::Format(e.to_string()))?;
+    // Both products checked: a header of 2^31 × 2^31 cells of 2 bytes overflowed the byte
+    // count (found by fuzzing, Q3 #103).
     let n = w
         .checked_mul(h)
         .ok_or_else(|| Error::Format("size overflow".into()))?;
+    let n_bytes = n
+        .checked_mul(T::SIZE)
+        .ok_or_else(|| Error::Format("size overflow".into()))?;
     let body = &bytes[HEADER_LEN..];
-    if body.len() != n * T::SIZE {
+    if body.len() != n_bytes {
         return Err(Error::Format(format!(
             "{} data bytes for {w} x {h} cells of {} bytes",
             body.len(),
@@ -1493,16 +1500,22 @@ impl Router<'_> {
         let knots = p.down_knots();
         let dmin = knots.iter().map(|k| k.1).fold(1.0f32, f32::min).max(0.0);
         let gidx = |i: usize| (win.row0 + i / w) * gw + win.col0 + i % w;
-        let z = |i: usize| f32::from(elev[gidx(i)]) * 0.1;
+        // Raw elevations (decimetres): differences are taken on the integers, then scaled,
+        // so that a 0.1 m step keeps its full precision (in f32, 2300 m has an ulp of
+        // 2.4e-4 m; the difference of two such values lost up to 0.24 % of a 0.1 m step,
+        // amplified by the downhill factor: found by the property test against an f64
+        // Dijkstra, Q3 #103).
+        let zr = |i: usize| i32::from(elev[gidx(i)]);
+        let dz_m = |from: i32, to: i32| (to - from) as f32 * 0.1;
 
         let (h_lin, h_climb, goal_cr, z_goal) = match (heuristic, goal) {
             (Heuristic::AStar, Some(gl)) => (
                 field.fmin * dmin * inv_v * cell,
                 field.fmin * inv_climb,
                 ((gl % w) as i64, (gl / w) as i64),
-                z(gl),
+                zr(gl),
             ),
-            _ => (0.0, 0.0, (0, 0), 0.0),
+            _ => (0.0, 0.0, (0, 0), 0),
         };
         let hfun = |i: usize| -> f32 {
             if h_lin == 0.0 && h_climb == 0.0 {
@@ -1512,7 +1525,7 @@ impl Router<'_> {
             let dy = ((i / w) as i64 - goal_cr.1).unsigned_abs() as f32;
             let (big, small) = if dx > dy { (dx, dy) } else { (dy, dx) };
             let oct = big + (std::f32::consts::SQRT_2 - 1.0) * small;
-            h_lin * oct + h_climb * (z_goal - z(i)).max(0.0)
+            h_lin * oct + h_climb * dz_m(zr(i), z_goal).max(0.0)
         };
 
         let n = w * h;
@@ -1553,7 +1566,7 @@ impl Router<'_> {
             }
             let (ci, ri) = ((i % w) as i64, (i / w) as i64);
             let fi = field.factor[i];
-            let zi = z(i);
+            let zi = zr(i);
             let gi = cost[i];
             for (d, &(dc, dr)) in DIRS.iter().enumerate() {
                 let (cj, rj) = (ci + i64::from(dc), ri + i64::from(dr));
@@ -1573,7 +1586,7 @@ impl Router<'_> {
                     }
                 }
                 let len = lens[d];
-                let dz = z(j) - zi;
+                let dz = dz_m(zi, zr(j));
                 let pace = if dz >= 0.0 {
                     len * inv_v + dz * inv_climb
                 } else {
@@ -1760,6 +1773,14 @@ mod tests {
         let mut bad = bytes.clone();
         bad[0] = b'X';
         assert!(decode_raster::<u16>(&bad).is_err());
+        // Regressions found by fuzzing (Q3, #103): a NaN origin, and a size whose byte
+        // count overflows (2^32 − 1 squared cells of 2 bytes) are format errors.
+        let mut nan = bytes.clone();
+        nan[24..32].copy_from_slice(&f64::NAN.to_le_bytes());
+        assert!(decode_raster::<u16>(&nan).is_err());
+        let mut huge = bytes[..HEADER_LEN].to_vec();
+        huge[8..16].copy_from_slice(&[0xFF; 8]);
+        assert!(decode_raster::<u16>(&huge).is_err());
     }
 
     #[test]

@@ -33,8 +33,12 @@ impl GeoTransform {
         }
     }
 
-    /// From a GDAL geotransform; rotated grids are rejected.
+    /// From a GDAL geotransform; rotated grids and non-finite values (a corrupt file: a
+    /// NaN origin or cell size would make every lookup fail silently) are rejected.
     pub fn from_gdal(gt: [f64; 6]) -> Result<Self> {
+        if gt.iter().any(|v| !v.is_finite()) {
+            return Err(Error::Grid(format!("non-finite geotransform: {gt:?}")));
+        }
         if gt[2] != 0.0 || gt[4] != 0.0 {
             return Err(Error::Grid(format!(
                 "rotated geotransform not supported: {gt:?}"
@@ -271,6 +275,14 @@ mod tests {
         let gt = GeoTransform::north_up(0.0, 0.0, 1.0);
         assert!(Grid::from_vec(2, 2, gt, Crs::Lambert93, vec![0u8; 3]).is_err());
         assert!(GeoTransform::from_gdal([0.0, 1.0, 0.1, 0.0, 0.0, -1.0]).is_err());
+        // Found by fuzzing the SKR1 reader (Q3, #103): a NaN origin was accepted.
+        for k in [0, 1, 3, 5] {
+            for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+                let mut gt = [0.0, 1.0, 0.0, 0.0, 0.0, -1.0];
+                gt[k] = bad;
+                assert!(GeoTransform::from_gdal(gt).is_err(), "{gt:?}");
+            }
+        }
         let g = GeoTransform::from_gdal(gt.to_gdal()).unwrap();
         assert_eq!(g, gt);
     }
