@@ -37,7 +37,7 @@ use skimap_core::calibration::{
 };
 use skimap_core::graph::PisteGraph;
 use skimap_voice::bank::{Announcement, Pause, Segment};
-use skimap_voice::clips::{self, Clip};
+use skimap_voice::clips::{self, Fixed};
 use skimap_voice::quantity::Clock;
 
 use crate::course::Course;
@@ -360,50 +360,18 @@ pub struct Proposal {
     pub announcement: Announcement,
 }
 
-/// Fixed phrases of the proposals, not yet in the phrase bank (`skimap_voice::clips::Fixed`):
-/// id and text. They go to the fallback voice of the phone until the bank has them (same
-/// id, same text: [`pending_clip`] checks it in the tests).
-pub const PROPOSAL_PHRASES: [(&str, &str); 7] = [
-    ("fix.plan-pace-slower", "Vous allez moins vite que prévu."),
-    (
-        "fix.plan-pace-slower-pauses",
-        "Vous allez moins vite que prévu, avec plus de pauses.",
-    ),
-    (
-        "fix.plan-pace-pauses",
-        "Vous faites plus de pauses que prévu.",
-    ),
-    ("fix.plan-propose-short", "Je propose la boucle courte,"),
-    (
-        "fix.plan-propose-exit",
-        "Je propose la sortie la plus proche,",
-    ),
-    ("fix.plan-propose-keep", "Je propose de garder la boucle,"),
-    ("fix.plan-proposal-accepted", "Proposition acceptée."),
+/// Fixed phrases of the proposals in the phrase bank (`Fixed::PlanPace*`,
+/// `Fixed::PlanPropose*`, `Fixed::PlanProposalAccepted`, ids `fix.plan-*`): the reason,
+/// the first part of the proposal (completed by a `loop.back.*` clip), the acceptance.
+pub const PROPOSAL_PHRASES: [Fixed; 7] = [
+    Fixed::PlanPaceSlower,
+    Fixed::PlanPaceSlowerPauses,
+    Fixed::PlanPacePauses,
+    Fixed::PlanProposeShort,
+    Fixed::PlanProposeExit,
+    Fixed::PlanProposeKeep,
+    Fixed::PlanProposalAccepted,
 ];
-
-/// The clip of a proposal phrase.
-pub fn pending_clip(id: &str) -> Clip {
-    let (id, text) = PROPOSAL_PHRASES
-        .iter()
-        .find(|(i, _)| *i == id)
-        .copied()
-        .unwrap_or(("fix.plan-pace-slower", "Vous allez moins vite que prévu."));
-    Clip {
-        id: id.into(),
-        text: text.into(),
-    }
-}
-
-/// The announcement of a proposal phrase alone.
-pub fn pending_announcement(id: &str) -> Announcement {
-    Announcement {
-        segments: vec![Segment {
-            clip: pending_clip(id),
-            pause: Pause::Long,
-        }],
-    }
-}
 
 /// « Vous allez moins vite que prévu, avec plus de pauses. Je propose la boucle courte,
 /// retour vers quinze heures et quart. »: the reason, the proposal, the return time (the
@@ -414,24 +382,24 @@ pub fn proposal_announcement(
     arrival: NaiveDateTime,
 ) -> Announcement {
     let r = match reason {
-        PaceReason::Slower => "fix.plan-pace-slower",
-        PaceReason::Pauses => "fix.plan-pace-pauses",
-        PaceReason::SlowerAndPauses => "fix.plan-pace-slower-pauses",
+        PaceReason::Slower => Fixed::PlanPaceSlower,
+        PaceReason::Pauses => Fixed::PlanPacePauses,
+        PaceReason::SlowerAndPauses => Fixed::PlanPaceSlowerPauses,
     };
     let k = match kind {
-        ProposalKind::ShortLoop => "fix.plan-propose-short",
-        ProposalKind::NearestExit => "fix.plan-propose-exit",
-        ProposalKind::Keep => "fix.plan-propose-keep",
+        ProposalKind::ShortLoop => Fixed::PlanProposeShort,
+        ProposalKind::NearestExit => Fixed::PlanProposeExit,
+        ProposalKind::Keep => Fixed::PlanProposeKeep,
     };
     let c = Clock::nearest_quarter(arrival.hour() as u8, arrival.minute() as u8);
     Announcement {
         segments: vec![
             Segment {
-                clip: pending_clip(r),
+                clip: r.clip(),
                 pause: Pause::Long,
             },
             Segment {
-                clip: pending_clip(k),
+                clip: k.clip(),
                 pause: Pause::Short,
             },
             Segment {
@@ -505,18 +473,15 @@ pub fn digest(
 mod tests {
     use super::*;
     use crate::phrases::never_safe;
-    use skimap_voice::clips::Fixed;
 
     #[test]
-    fn proposal_phrases_are_new_and_never_safe() {
-        for (id, text) in PROPOSAL_PHRASES {
-            assert!(id.starts_with("fix.plan-"), "{id}");
-            assert!(text.ends_with('.') || text.ends_with(','), "{text}");
-            assert!(never_safe(text), "{text}");
-            // Absent from the bank, or there with the same text (then use the bank's).
-            if let Some(f) = Fixed::ALL.iter().find(|f| f.clip().id == id) {
-                assert_eq!(f.clip().text, text, "{id}");
-            }
+    fn proposal_phrases_are_in_the_bank_and_never_safe() {
+        for f in PROPOSAL_PHRASES {
+            let c = f.clip();
+            assert!(c.id.starts_with("fix.plan-"), "{}", c.id);
+            let end = if f.continued() { ',' } else { '.' };
+            assert!(c.text.ends_with(end), "{}", c.text);
+            assert!(never_safe(&c.text), "{}", c.text);
         }
         let t = NaiveDateTime::parse_from_str("2026-01-09 15:20:00", "%Y-%m-%d %H:%M:%S").unwrap();
         let a = proposal_announcement(PaceReason::SlowerAndPauses, ProposalKind::ShortLoop, t);

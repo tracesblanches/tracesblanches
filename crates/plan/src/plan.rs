@@ -1099,9 +1099,9 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
     for p in PLAN_PHRASES {
         runtime.push(phrases::announce(p));
     }
-    // Proposals (C11): phrases not in the bank yet.
-    for (id, _) in crate::pace::PROPOSAL_PHRASES {
-        runtime.push(crate::pace::pending_announcement(id));
+    // Proposals (C11).
+    for p in crate::pace::PROPOSAL_PHRASES {
+        runtime.push(phrases::announce(p));
     }
     for a in &runtime {
         check(a);

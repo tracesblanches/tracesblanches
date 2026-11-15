@@ -36,12 +36,23 @@
 //!
 //! Graph limits are reported, not hidden: network not reachable from the start, turning
 //! points without a way back (one-way trails).
+//!
+//! # Time of a group (C11)
+//!
+//! [`suggest_for`] with the group of the day (`skimap_core::calibration::ProfileModel`,
+//! prior or learned): the time of a loop is the group's median (moving pace per terrain,
+//! stops), not the C5 model time. The budget, the fit to it, the planned arrival (× 1.2,
+//! C7 margin), the return limits and the spoken summary use that time; the turning points
+//! are chosen on the budget converted to model time with the group's flat pace. The model
+//! time stays in `eta_min`; the group's range is in [`Suggestion::group`]. Without a group
+//! ([`suggest`]) nothing changes.
 
 use std::collections::{BTreeSet, HashSet};
 
 use chrono::{Duration, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use serde::Serialize;
 use skimap_common::geom::LonLat;
+use skimap_core::calibration::{PaceParams, ProfileModel, TERRAINS, Terrain, terrain_ratio};
 use skimap_core::eta::{Conditions, EtaModel, SnowClass};
 use skimap_core::graph::{Difficulty, EdgeAttrs, HalfEdge, PisteGraph, Snap};
 use skimap_core::matching::PolylineIndex;
@@ -128,6 +139,28 @@ pub struct Suggestion {
     /// the start the same way reversed (for the turnaround of A8).
     #[serde(skip)]
     pub profile: Profile,
+    /// Time of the group of the request (C11), if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group: Option<GroupTime>,
+}
+
+/// Time of a loop for a group (C11): the median of its prediction and the 80 % range.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct GroupTime {
+    /// The group (« famille, enfants de 6 et 9 ans »).
+    pub label: String,
+    /// Outings learned.
+    pub outings: u32,
+    /// Median time, minutes.
+    pub median_min: f64,
+    /// 10 % quantile, minutes.
+    pub lo_min: f64,
+    /// 90 % quantile, minutes.
+    pub hi_min: f64,
+    /// Moving time, minutes (expected).
+    pub moving_min: f64,
+    /// Stopped time, minutes (expected).
+    pub stops_min: f64,
 }
 
 /// Cumulative distance and times along a route, at the end of each piece.
@@ -180,6 +213,48 @@ impl Profile {
     pub fn length_m(&self) -> f64 {
         *self.dist_m.last().unwrap_or(&0.0)
     }
+
+    /// Model time per terrain class (C11, [`Terrain::of_times`] on each piece with the
+    /// bound `ratio` = [`terrain_ratio`] of the model), seconds.
+    pub fn model_by_terrain(&self, ratio: f64) -> [f64; TERRAINS] {
+        let mut m = [0.0; TERRAINS];
+        for i in 1..self.out_s.len() {
+            let o = self.out_s[i] - self.out_s[i - 1];
+            let b = self.back_s[i] - self.back_s[i - 1];
+            m[Terrain::of_times(o, b, ratio) as usize] += o.max(0.0);
+        }
+        m
+    }
+
+    /// The profile at the pace of a group (C11): each piece at the group's median progress
+    /// pace on its terrain (out and back), then every time scaled so that the total is the
+    /// median of the group's prediction (its stops included). The turnaround of A8 runs
+    /// on it unchanged.
+    pub fn for_group(&self, params: &PaceParams, ratio: f64) -> Profile {
+        let k = |t: Terrain| 1.0 / params.progress_pace(t);
+        let mut p = Profile {
+            dist_m: self.dist_m.clone(),
+            out_s: Vec::with_capacity(self.out_s.len()),
+            back_s: Vec::with_capacity(self.back_s.len()),
+        };
+        let (mut o_acc, mut b_acc) = (0.0, 0.0);
+        p.out_s.push(0.0);
+        p.back_s.push(0.0);
+        for i in 1..self.out_s.len() {
+            let o = (self.out_s[i] - self.out_s[i - 1]).max(0.0);
+            let b = (self.back_s[i] - self.back_s[i - 1]).max(0.0);
+            o_acc += o * k(Terrain::of_times(o, b, ratio));
+            b_acc += b * k(Terrain::of_times(b, o, ratio));
+            p.out_s.push(o_acc);
+            p.back_s.push(b_acc);
+        }
+        let median = params.predict(self.model_by_terrain(ratio)).median_s;
+        let f = if o_acc > 0.0 { median / o_acc } else { 1.0 };
+        for x in p.out_s.iter_mut().chain(p.back_s.iter_mut()) {
+            *x *= f;
+        }
+        p
+    }
 }
 
 /// Result of a request.
@@ -187,6 +262,9 @@ impl Profile {
 pub struct Suggestions {
     /// Request.
     pub request: Request,
+    /// The group whose time the loops are chosen on (C11), if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
     /// Best first.
     pub suggestions: Vec<Suggestion>,
     /// Deadline of C7 (local).
@@ -297,11 +375,19 @@ fn route_pieces<'g>(g: &'g PisteGraph, r: &Route) -> Vec<Piece<'g>> {
     r.pieces(g)
 }
 
-/// Suggestions for a request on the data of its day.
+/// Suggestions for a request on the data of its day, on the C5 model time.
 pub fn suggest(data: &SiteData, req: &Request) -> Suggestions {
+    suggest_for(data, req, None)
+}
+
+/// Suggestions for a request on the data of its day, on the time of `group` when given
+/// (C11, see the module), else on the C5 model time ([`suggest`]).
+pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>) -> Suggestions {
     let mut notes = Vec::new();
+    let group_label = group.map(|g| g.profile.label_fr());
     let empty = |notes: Vec<String>| Suggestions {
         request: req.clone(),
+        group: group_label.clone(),
         suggestions: Vec::new(),
         deadline: None,
         evaluated: 0,
@@ -335,6 +421,7 @@ pub fn suggest(data: &SiteData, req: &Request) -> Suggestions {
         temperature_c: temp,
     };
     let budget_s = req.budget_min * 60.0;
+    let ratio = terrain_ratio(&eta);
     let no_avoid = HashSet::new();
     let out_router = Router::new(
         g,
@@ -385,16 +472,27 @@ pub fn suggest(data: &SiteData, req: &Request) -> Suggestions {
         ));
     }
     // Turning points: out and fastest way back between 50 and 110 % of the budget (the
-    // way back by another trail is longer), spread out.
+    // way back by another trail is longer), spread out. With a group: the model time of
+    // that round trip at the group's time on the flat (the costs of the routers carry
+    // style factors that its pace would multiply).
     let back_s = |v: usize| -> Option<f64> {
         let r = time_router.route_snaps(node_snap(g, v)?, start).ok()?;
         Some(r.cost)
     };
+    let group_round_s = |params: &PaceParams, v: usize| -> Option<f64> {
+        let (r_out, _) = out[v].as_ref()?;
+        let r_back = time_router.route_snaps(node_snap(g, v)?, start).ok()?;
+        let m = eta.time_s(&route_pieces(g, r_out)).total_s
+            + eta.time_s(&route_pieces(g, &r_back)).total_s;
+        Some(params.predict([0.0, m, 0.0]).median_s)
+    };
+    let window = 0.5 * budget_s..=1.1 * budget_s;
     let mut cands: Vec<usize> = (0..n)
-        .filter(|v| {
-            out[*v].as_ref().is_some_and(|(_, t)| {
-                back_s(*v).is_some_and(|b| (0.5 * budget_s..=1.1 * budget_s).contains(&(t + b)))
-            })
+        .filter(|v| match group {
+            None => out[*v]
+                .as_ref()
+                .is_some_and(|(_, t)| back_s(*v).is_some_and(|b| window.contains(&(t + b)))),
+            Some(gm) => group_round_s(&gm.params, *v).is_some_and(|x| window.contains(&x)),
         })
         .collect();
     let mut chosen: Vec<usize> = Vec::new();
@@ -468,15 +566,19 @@ pub fn suggest(data: &SiteData, req: &Request) -> Suggestions {
         let mut pieces = route_pieces(g, &r_out);
         pieces.extend(route_pieces(g, &r_back));
         let b = eta.time_s(&pieces);
-        if b.total_s < 0.75 * budget_s {
+        let profile = Profile::of(&eta, &pieces);
+        // Time of the loop: the group's median (C11), else the model time.
+        let gp = group.map(|g| g.params.predict(profile.model_by_terrain(ratio)));
+        let time_s = gp.map_or(b.total_s, |p| p.median_s);
+        if time_s < 0.75 * budget_s {
             too_short += 1;
             continue;
         }
-        if b.total_s > 1.1 * budget_s {
+        if time_s > 1.1 * budget_s {
             too_long += 1;
             continue;
         }
-        let planned = b.total_s * TurnaroundParams::default().eta_factor;
+        let planned = time_s * TurnaroundParams::default().eta_factor;
         let arrival = req.start_time + Duration::seconds(planned as i64);
         if limit.is_some_and(|l| arrival > l) {
             too_late += 1;
@@ -554,20 +656,36 @@ pub fn suggest(data: &SiteData, req: &Request) -> Suggestions {
         }
         let weather: Option<DayWeather> = wp.map(|p| p.summary_between(req.start_time, arrival));
         let mut reasons = Vec::new();
-        let gap = b.total_s / budget_s - 1.0;
+        let gap = time_s / budget_s - 1.0;
+        let style = match req.style {
+            Style::Classic => "classique",
+            Style::Skating => "skating",
+        };
+        let time_text = match (group, gp) {
+            (Some(g), Some(p)) => format!(
+                "environ {} pour {} ({} à {}, {} ; modèle C5, {} : {})",
+                hm(p.median_s),
+                g.profile.label_fr(),
+                hm(p.lo_s),
+                hm(p.hi_s),
+                match g.outings {
+                    0 => "a priori".to_owned(),
+                    1 => "une sortie apprise".to_owned(),
+                    n => format!("{n} sorties apprises"),
+                },
+                style,
+                hm(b.total_s)
+            ),
+            _ => format!("environ {} (modèle C5, {style})", hm(b.total_s)),
+        };
         briefing::reason(
             &mut reasons,
             Factor::Data,
             -2.0 * gap.abs(),
             format!(
-                "{} km, D+ {} m, environ {} (modèle C5, {}), retour prévu vers {} h {:02}",
+                "{} km, D+ {} m, {time_text}, retour prévu vers {} h {:02}",
                 fmt(total / 1000.0, 1),
                 b.gain_m.round(),
-                hm(b.total_s),
-                match req.style {
-                    Style::Classic => "classique",
-                    Style::Skating => "skating",
-                },
                 arrival.hour(),
                 arrival.minute()
             ),
@@ -665,7 +783,19 @@ pub fn suggest(data: &SiteData, req: &Request) -> Suggestions {
             );
         }
         let score = reasons.iter().map(|r| r.points).sum();
-        let voice = loop_voice(len_km, b.total_s, arrival);
+        let voice = loop_voice(len_km, time_s, arrival);
+        let group_time = match (group, gp) {
+            (Some(g), Some(p)) => Some(GroupTime {
+                label: g.profile.label_fr(),
+                outings: g.outings,
+                median_min: (p.median_s / 60.0).round(),
+                lo_min: (p.lo_s / 60.0).round(),
+                hi_min: (p.hi_s / 60.0).round(),
+                moving_min: (p.moving_s / 60.0).round(),
+                stops_min: (p.stop_s / 60.0).round(),
+            }),
+            _ => None,
+        };
         loops.push(Suggestion {
             label,
             names,
@@ -684,9 +814,10 @@ pub fn suggest(data: &SiteData, req: &Request) -> Suggestions {
             voice,
             line,
             edges: legs.iter().map(|l| l.edge).collect(),
-            profile: Profile::of(&eta, &pieces),
+            profile,
             legs,
             eta,
+            group: group_time,
         });
     }
     if no_way_back > 0 {
@@ -698,7 +829,11 @@ pub fn suggest(data: &SiteData, req: &Request) -> Suggestions {
     if too_short + too_long > 0 {
         notes.push(format!(
             "{evaluated} boucles évaluées, {too_short} trop courtes et {too_long} trop longues \
-             (hors de 75 à 110 % du temps demandé)"
+             (hors de 75 à 110 % du temps demandé{})",
+            group_label
+                .as_ref()
+                .map(|l| format!(", au rythme du groupe : {l}"))
+                .unwrap_or_default()
         ));
     }
     if too_late > 0 {
@@ -741,7 +876,7 @@ pub fn suggest(data: &SiteData, req: &Request) -> Suggestions {
         }
     }
     let mut text = vec![format!(
-        "{} depuis {} le {} à {} h {:02}{}",
+        "{} depuis {} le {} à {} h {:02}{}{}",
         req.label,
         req.start_name,
         briefing::date_fr(date),
@@ -753,6 +888,10 @@ pub fn suggest(data: &SiteData, req: &Request) -> Suggestions {
                 d.hour(),
                 d.minute()
             ))
+            .unwrap_or_default(),
+        group_label
+            .as_ref()
+            .map(|l| format!(", temps du groupe : {l}"))
             .unwrap_or_default()
     )];
     for (i, s) in kept.iter().enumerate() {
@@ -780,6 +919,7 @@ pub fn suggest(data: &SiteData, req: &Request) -> Suggestions {
     }
     Suggestions {
         request: req.clone(),
+        group: group_label,
         suggestions: kept,
         deadline,
         evaluated,
@@ -980,5 +1120,73 @@ mod tests {
         // The profile ends at the loop's model time.
         assert!((best.profile.total_s() / 60.0 - best.eta_min).abs() < 1.0);
         assert!((best.profile.length_m() / 1000.0 - best.length_km).abs() < 0.01);
+    }
+
+    #[test]
+    fn loops_on_the_time_of_a_group() {
+        use skimap_core::calibration::{GroupProfile, ProfileModel};
+        let d = data();
+        let g = d.graph.as_ref().unwrap();
+        let perimeter: f64 = (0..4).map(|e| g.length_m(e)).sum::<f64>() / 1000.0;
+        let budget = perimeter / 10.6 * 60.0;
+        // Without a group: the same as before C11.
+        assert_eq!(
+            suggest_for(&d, &req(budget, None), None),
+            suggest(&d, &req(budget, None))
+        );
+        let adult = suggest(&d, &req(budget, None));
+        assert!(adult.group.is_none());
+        assert!(adult.suggestions.iter().all(|s| s.group.is_none()));
+        // A family (6 and 9 years) with the adult's budget: the whole loop is far too long
+        // for it; whatever is proposed fits its time, not the model's.
+        let family = ProfileModel::new(GroupProfile::family(2, &[6, 9], Style::Classic));
+        let f = suggest_for(&d, &req(budget, None), Some(&family));
+        assert_eq!(f.group.as_deref(), Some(family.profile.label_fr().as_str()));
+        for s in &f.suggestions {
+            let gt = s.group.as_ref().expect("group time");
+            assert!(
+                (0.75 * budget..=1.1 * budget).contains(&gt.median_min),
+                "{gt:?}"
+            );
+            assert!(s.eta_min < 0.6 * budget, "{} min model", s.eta_min);
+            assert!(s.length_km < 0.6 * perimeter, "{}", s.length_km);
+            assert!(gt.lo_min < gt.median_min && gt.median_min < gt.hi_min);
+            assert!(
+                s.reasons[0].text.contains(&format!("pour {}", gt.label)),
+                "{}",
+                s.reasons[0].text
+            );
+        }
+        assert!(f.text[0].contains("temps du groupe"), "{}", f.text[0]);
+        // Given the family's time of the whole loop, it gets the loop, said with its time.
+        let fam_s = family
+            .params
+            .predict(
+                adult.suggestions[0]
+                    .profile
+                    .model_by_terrain(terrain_ratio(&adult.suggestions[0].eta)),
+            )
+            .median_s;
+        let f2 = suggest_for(&d, &req(fam_s / 60.0, None), Some(&family));
+        let best = f2.suggestions.first().expect("the loop for the family");
+        assert!((best.length_km - perimeter).abs() < 0.2, "{best:?}");
+        let gt = best.group.as_ref().unwrap();
+        assert!((gt.median_min - fam_s / 60.0).abs() <= 1.0, "{gt:?}");
+        assert!(gt.stops_min > 0.0 && gt.moving_min > best.eta_min);
+        // Planned arrival on the group's time with the C7 margin; spoken the same way.
+        let planned = best.arrival - req(0.0, None).start_time;
+        assert!(
+            (planned.num_seconds() as f64 - fam_s * 1.2).abs() < 2.0,
+            "{planned}"
+        );
+        let skimap_voice::Event::LoopSummary { seconds, .. } = best.voice else {
+            panic!("{:?}", best.voice)
+        };
+        assert!((seconds - fam_s).abs() < 1.0);
+        // The A8 profile at the family's pace ends at the same median.
+        let fp = best
+            .profile
+            .for_group(&family.params, terrain_ratio(&best.eta));
+        assert!((fp.total_s() - fam_s).abs() < 1.0);
     }
 }

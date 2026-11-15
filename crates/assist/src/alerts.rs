@@ -22,6 +22,11 @@
 //!   time and the turnaround is at least 10 minutes earlier than at the planned pace; when
 //!   it has passed: `Event::Turnaround` « Faites demi-tour maintenant » (not after the
 //!   deadline itself).
+//! - **turnaround of a group** (C11, [`Monitor::for_group`]): the same rules on the route
+//!   at the group's pace ([`Profile::for_group`]: its moving pace per terrain and its
+//!   stops), so the planned turnaround is the group's, and the delay is measured against
+//!   the group's planned times, not the model's. Without a group ([`Monitor::new`]),
+//!   nothing changes.
 //!
 //! [`day_replay`] runs the weather rules over a whole day (an outing from 10 h, planned
 //! return at 16 h) to replay the archived forecasts.
@@ -31,6 +36,7 @@ use std::collections::HashMap;
 
 use chrono::{Duration, NaiveDateTime, Timelike};
 use serde::Serialize;
+use skimap_core::calibration::PaceParams;
 use skimap_core::turnaround::{self, TurnaroundParams};
 use skimap_voice::Event;
 use skimap_voice::bank::Change;
@@ -155,6 +161,26 @@ impl<'a> Monitor<'a> {
         p: Params,
     ) -> Self {
         Self::with(start, Cow::Borrowed(profile), Cow::Borrowed(point), p)
+    }
+
+    /// Monitor of a route started at `start` by a group (C11): the turnaround at the
+    /// group's pace (`group`, prior or learned), on the route's model profile converted by
+    /// [`Profile::for_group`]; `ratio`: the `skimap_core::calibration::terrain_ratio` of
+    /// the route's time model.
+    pub fn for_group(
+        start: NaiveDateTime,
+        profile: &Profile,
+        point: &'a WeatherPoint,
+        p: Params,
+        group: &PaceParams,
+        ratio: f64,
+    ) -> Self {
+        Self::with(
+            start,
+            Cow::Owned(profile.for_group(group, ratio)),
+            Cow::Borrowed(point),
+            p,
+        )
     }
 
     /// Monitor of a route started at `start`, with a borrowed or owned profile and point.
@@ -559,6 +585,85 @@ mod tests {
     }
 
     #[test]
+    fn turnaround_at_the_pace_of_a_group() {
+        use skimap_core::calibration::{GroupProfile, Level, PaceParams, terrain_ratio};
+        use skimap_core::eta::EtaModel;
+        use skimap_core::routing::Style;
+        let pt = point(|_| (-5.0, 15.0, false, 0.0));
+        let start = NaiveDate::from_ymd_opt(2027, 1, 12)
+            .unwrap()
+            .and_hms_opt(9, 0, 0)
+            .unwrap();
+        let pr = profile();
+        let ratio = terrain_ratio(&EtaModel::new(Style::Classic));
+        // A family with children of 6 and 9: the 4 h model loop takes it about 2.5 times
+        // longer with its stops.
+        let family = PaceParams::prior(&GroupProfile::family(2, &[6, 9], Style::Classic));
+        let fp = pr.for_group(&family, ratio);
+        let median = family.predict(pr.model_by_terrain(ratio)).median_s;
+        assert!(
+            (fp.total_s() - median).abs() < 1e-6,
+            "{} {median}",
+            fp.total_s()
+        );
+        assert!(fp.total_s() > 2.0 * pr.total_s(), "{}", fp.total_s());
+        assert_eq!(fp.dist_m, pr.dist_m);
+        // The model loop ends before the deadline (no turnaround), the family's does not.
+        assert!(
+            Monitor::new(start, &pr, &pt, Params::default())
+                .planned_turnaround()
+                .is_none()
+        );
+        let m = Monitor::for_group(start, &pr, &pt, Params::default(), &family, ratio);
+        let t = m.planned_turnaround().expect("a turnaround for the family");
+        assert!(
+            t > start + Duration::hours(2) && t < start + Duration::hours(6),
+            "{t}"
+        );
+        // The family at its own pace: on time for itself, nothing said; judged against the
+        // model, it would be told to turn around.
+        let trace = synthetic_trace(&fp, 1.0, 300.0);
+        let mut mg = Monitor::for_group(start, &pr, &pt, Params::default(), &family, ratio);
+        let said: Vec<Alert> = trace
+            .iter()
+            .take_while(|(t_s, _)| start + Duration::seconds(*t_s as i64) < t)
+            .flat_map(|(t_s, along)| mg.update(start + Duration::seconds(*t_s as i64), *along))
+            .collect();
+        assert!(said.is_empty(), "{said:#?}");
+        let mut mm = Monitor::new(start, &pr, &pt, Params::default());
+        let model: Vec<Alert> = trace
+            .iter()
+            .take_while(|(t_s, _)| start + Duration::seconds(*t_s as i64) < t)
+            .flat_map(|(t_s, along)| mm.update(start + Duration::seconds(*t_s as i64), *along))
+            .collect();
+        assert!(
+            model.iter().any(|a| a.kind == Kind::TurnaroundAdvanced),
+            "{model:#?}"
+        );
+        // Slower than its own pace: the family's turnaround is advanced.
+        let slow = synthetic_trace(&fp, 1.5, 300.0);
+        let mut ms = Monitor::for_group(start, &pr, &pt, Params::default(), &family, ratio);
+        let late: Vec<Alert> = slow
+            .iter()
+            .flat_map(|(t_s, along)| ms.update(start + Duration::seconds(*t_s as i64), *along))
+            .collect();
+        assert!(
+            late.iter()
+                .any(|a| matches!(a.kind, Kind::TurnaroundAdvanced | Kind::TurnaroundNow)),
+            "{late:#?}"
+        );
+        // A lone adult of intermediate level: about the model, the same decisions as
+        // without a group on an on-time trace.
+        let adult = PaceParams::prior(&GroupProfile::solo(Style::Classic, Level::Intermediate));
+        let ap = pr.for_group(&adult, ratio);
+        assert!(
+            (ap.total_s() / pr.total_s() - 1.0).abs() < 0.15,
+            "{}",
+            ap.total_s()
+        );
+    }
+
+    #[test]
     fn delay_advances_the_turnaround() {
         let pt = point(|_| (-5.0, 15.0, false, 0.0));
         // Start 09:00, 4 h model loop: back at 13:48 at the planned pace, deadline ≈ 16:40.
@@ -581,7 +686,7 @@ mod tests {
         assert!(
             adv[0]
                 .spoken
-                .starts_with("Vous êtes en retard sur l'horaire prévu.")
+                .starts_with("Vous êtes en retard sur l'heure prévue. Le demi-tour est avancé.")
         );
         let on_time = replay(
             start,

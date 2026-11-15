@@ -5,9 +5,15 @@
 //! data/out/<site>/voice/
 //!   clips/<clip id>.opus     one clip per manifest entry
 //!   manifest.json            clip id -> text, kind, file, duration, size, tokens
+//!   personal.json            clips that speak a name read only from personal-use sources
 //!   voice.meta.json          common layer metadata (`skimap_common::meta::LayerMeta`):
 //!                            sources, licences, files, parameters, key figures
 //! ```
+//!
+//! `personal.json` ([`PersonalClips`], [`crate::sources`]): the pack leaves those clips out
+//! unless it is built with `personal_sources`. A layer without it (built before) has no
+//! such mark: a pack leaves out the whole layer when one of its sources is personal use.
+//! The manifest read by the phone is unchanged.
 
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -22,7 +28,8 @@ use skimap_common::site::Site;
 use crate::audio::{Ffmpeg, MIN_ONSET_MS, Shape, shape, speech_onset_ms, write_wav};
 use crate::bank::Announcement;
 use crate::error::{Error, Result};
-use crate::manifest::{ClipKind, PackNames, manifest};
+use crate::manifest::{ClipKind, PackNames, manifest_split};
+use crate::sources::{SiteNames, site_names};
 use crate::tokenizer::PocketText;
 use crate::tts::{PocketTts, SAMPLE_RATE, Utterance};
 
@@ -32,6 +39,8 @@ pub const LAYER: &str = "voice";
 pub const MAX_TOKENS: usize = 50;
 /// Seeds tried for a clip: the configured one, then the next ones.
 pub const SEED_ATTEMPTS: u32 = 8;
+/// File of the voice layer that lists the clips of personal names ([`PersonalClips`]).
+pub const PERSONAL_FILE: &str = "personal.json";
 
 /// Generation settings.
 #[derive(Debug, Clone)]
@@ -129,6 +138,37 @@ pub struct ClipEntry {
     pub onset_clipped: bool,
 }
 
+/// `personal.json` of the voice layer: the clips that speak a name read only from
+/// personal-use sources (Biodiv'sports, piste plans), left out of a published pack.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PersonalClips {
+    /// Why.
+    pub note: String,
+    /// Names of the personal-use sources of these names.
+    pub sources: Vec<String>,
+    /// Clip ids, sorted.
+    pub clips: Vec<String>,
+}
+
+impl PersonalClips {
+    /// Reads `personal.json` from a voice layer directory (`None` if absent).
+    pub fn read(dir: &Path) -> Result<Option<Self>> {
+        let p = dir.join(PERSONAL_FILE);
+        if !p.is_file() {
+            return Ok(None);
+        }
+        let b = std::fs::read(&p).map_err(|e| Error::io(&p, e))?;
+        serde_json::from_slice(&b)
+            .map(Some)
+            .map_err(|source| Error::Json { path: p, source })
+    }
+
+    /// Whether a clip is personal.
+    pub fn contains(&self, id: &str) -> bool {
+        self.clips.binary_search_by(|c| c.as_str().cmp(id)).is_ok()
+    }
+}
+
 /// `manifest.json` of the voice layer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VoiceManifest {
@@ -220,6 +260,8 @@ pub struct VoiceBuild {
     pub passes: Vec<usize>,
     /// Clips whose onset is still at the start after every seed.
     pub onset_clipped: usize,
+    /// Clips of personal names (left out of a published pack): count, bytes.
+    pub personal: (usize, u64),
     /// pockettts.cpp wall time, s (model load included).
     pub tts_wall_s: f64,
     /// Model load, ms.
@@ -244,14 +286,32 @@ fn sha256_file(p: &Path) -> Result<String> {
     Ok(hex::encode(h.finalize()))
 }
 
-/// Generates the voice layer of `site` for the pack names `names`. `name_sources` are the
-/// sources of the names (OSM, refuges.info...), written to `voice.meta.json` after those of
-/// the voice.
+/// Generates the voice layer of `site` for the pack names `names` of unknown provenance:
+/// each name is public when the site's layers have it from a publishable source
+/// ([`crate::sources::site_names`], [`SiteNames::classify`]), else personal; without the
+/// layers, every name is personal as soon as one of `name_sources` is personal use
+/// ([`SiteNames::unclassified`]). `name_sources` are written to `voice.meta.json` after
+/// those of the voice. [`build_site`] takes the names with their provenance.
 pub fn build(
     site: &Site,
     layout: &DataLayout,
     names: &PackNames,
     name_sources: &[SourceRef],
+    cfg: &VoiceConfig,
+) -> Result<VoiceBuild> {
+    let split = match site_names(layout, site) {
+        Ok(known) => SiteNames::classify(names, name_sources, &known),
+        Err(_) => SiteNames::unclassified(names, name_sources),
+    };
+    build_site(site, layout, &split, cfg)
+}
+
+/// Generates the voice layer of `site`: every clip of the public names, and those of the
+/// personal names, listed in `personal.json`.
+pub fn build_site(
+    site: &Site,
+    layout: &DataLayout,
+    names: &SiteNames,
     cfg: &VoiceConfig,
 ) -> Result<VoiceBuild> {
     let t0 = Instant::now();
@@ -262,7 +322,7 @@ pub fn build(
     }
     DataLayout::ensure(&clips_dir)?;
 
-    let m = manifest(names);
+    let m = manifest_split(&names.public, &names.personal);
     let text = PocketText::from_gguf(&cfg.tts.model)?;
     let clips: Vec<(String, ClipKind, String, usize)> = m
         .clips
@@ -392,6 +452,12 @@ pub fn build(
         clips: entries,
     };
     write_json(&dir.join("manifest.json"), &vm)?;
+    let personal = PersonalClips {
+        note: "clips des noms lus seulement dans des sources à usage personnel : écartés d'un pack publié (sans personal_sources)".into(),
+        sources: names.personal_sources.iter().map(|s| s.name.clone()).collect(),
+        clips: m.personal.iter().cloned().collect(),
+    };
+    write_json(&dir.join(PERSONAL_FILE), &personal)?;
 
     let mut per_kind = Vec::new();
     for k in [ClipKind::Fixed, ClipKind::Value, ClipKind::Name] {
@@ -424,12 +490,20 @@ pub fn build(
         end_bursts: vm.clips.iter().filter(|c| c.end_burst).count(),
         passes,
         onset_clipped: vm.clips.iter().filter(|c| c.onset_clipped).count(),
+        personal: (
+            vm.clips.iter().filter(|c| m.is_personal(&c.id)).count(),
+            vm.clips
+                .iter()
+                .filter(|c| m.is_personal(&c.id))
+                .map(|c| c.bytes)
+                .sum(),
+        ),
         tts_wall_s,
         tts_load_ms,
         encode_wall_s,
         total_wall_s: t0.elapsed().as_secs_f64(),
     };
-    write_meta(site, &summary, &vm, names, name_sources)?;
+    write_meta(site, &summary, &vm, names)?;
     Ok(summary)
 }
 
@@ -438,8 +512,7 @@ fn write_meta(
     site: &Site,
     b: &VoiceBuild,
     vm: &VoiceManifest,
-    names: &PackNames,
-    name_sources: &[SourceRef],
+    names: &SiteNames,
 ) -> Result<PathBuf> {
     let mut meta = LayerMeta::new(LAYER, site.id);
     meta.tickets = vec!["VO3 (#85)".into()];
@@ -447,7 +520,17 @@ fn write_meta(
         "jusqu'au prochain changement des noms du pack (pistes, refuges, lieux, zones)".into(),
     );
     meta.sources = voice_sources(&vm.voice);
-    meta.sources.extend_from_slice(name_sources);
+    meta.sources.extend_from_slice(&names.public_sources);
+    meta.sources
+        .extend(names.personal_sources.iter().cloned().map(|mut s| {
+            s.personal_use_only = true;
+            let n = "seulement les clips de personal.json, écartés d'un pack publié";
+            s.note = Some(match s.note.take() {
+                Some(x) => format!("{x} ; {n}"),
+                None => n.to_owned(),
+            });
+            s
+        }));
     let kinds = |k: ClipKind| b.per_kind.iter().find(|p| p.0 == k).map_or(0, |p| p.1);
     meta.files = vec![
         FileMeta::new(
@@ -481,10 +564,20 @@ fn write_meta(
             )
             .count(vm.clips.len())
         },
+        FileMeta::new(
+            PERSONAL_FILE,
+            "clips des noms lus seulement dans des sources à usage personnel (Biodiv'sports, plans des pistes) : écartés d'un pack publié (sans personal_sources)",
+        )
+        .count(b.personal.0)
+        .properties([
+            ("clips", "identifiants des clips, triés"),
+            ("sources", "sources à usage personnel de ces noms"),
+        ]),
     ];
     meta.notes = vec![
         "Clips générés sur le poste par pockettts.cpp (sous-processus), un appel par passe ; un clip dont l'attaque est coupée ou sans fin de parole est refait avec la graine suivante.".into(),
         "Tout texte absent du manifeste est lu par la voix Android (repli).".into(),
+        "Les clips des noms lus seulement dans des sources à usage personnel (Biodiv'sports, plans des pistes) sont listés dans personal.json ; le pack les écarte sans personal_sources.".into(),
     ];
     meta.parameters = serde_json::json!({
         "voice": vm.voice,
@@ -502,12 +595,19 @@ fn write_meta(
         "clips_fixed": kinds(ClipKind::Fixed),
         "clips_value": kinds(ClipKind::Value),
         "clips_name": kinds(ClipKind::Name),
+        "clips_personal": b.personal.0,
+        "bytes_personal": b.personal.1,
         "names": {
-            "site": names.site,
-            "pistes": names.pistes.len(),
-            "places": names.places.len(),
-            "dates": names.dates.len(),
-            "status_pistes": names.status_pistes,
+            "site": names.public.site,
+            "pistes": names.public.pistes.len(),
+            "places": names.public.places.len(),
+            "dates": names.public.dates.len(),
+            "status_pistes": names.public.status_pistes,
+        },
+        "names_personal": {
+            "pistes": names.personal.pistes.len(),
+            "places": names.personal.places.len(),
+            "dates": names.personal.dates.len(),
         },
         "bytes": b.total_bytes,
         "audio_s": (b.total_audio_s * 10.0).round() / 10.0,
@@ -641,27 +741,30 @@ mod tests {
             end_bursts: 0,
             passes: vec![2],
             onset_clipped: 0,
+            personal: (1, 2000),
             tts_wall_s: 1.0,
             tts_load_ms: 250.0,
             encode_wall_s: 0.1,
             total_wall_s: 1.2,
         };
-        let names = PackNames {
-            site: "Chapelle-des-Bois".into(),
-            pistes: vec![PisteName::new("Greffier", Some(Colour::Black))],
-            places: vec![],
-            dates: vec![],
-            status_pistes: 1,
-        };
         let osm = SourceRef::new("OSM", "https://example.org", "ODbL 1.0", "© OSM");
-        let path = write_meta(
-            &skimap_common::site::CHAPELLE_DES_BOIS,
-            &b,
-            &vm,
-            &names,
-            std::slice::from_ref(&osm),
-        )
-        .unwrap();
+        let plan = SourceRef::new("Plan des pistes", "https://example.org/p", "?", "P");
+        let names = SiteNames {
+            public: PackNames {
+                site: "Chapelle-des-Bois".into(),
+                pistes: vec![],
+                places: vec![],
+                dates: vec![],
+                status_pistes: 1,
+            },
+            personal: PackNames {
+                pistes: vec![PisteName::new("Greffier", Some(Colour::Black))],
+                ..PackNames::default()
+            },
+            public_sources: vec![osm.clone()],
+            personal_sources: vec![plan],
+        };
+        let path = write_meta(&skimap_common::site::CHAPELLE_DES_BOIS, &b, &vm, &names).unwrap();
         assert_eq!(path, dir.path().join("voice.meta.json"));
         let m = LayerMeta::read(&path).unwrap();
         assert_eq!(
@@ -670,15 +773,24 @@ mod tests {
         );
         assert_eq!(
             m.sources.len(),
-            4,
+            5,
             "model, engine, voice estelle, then the names"
         );
         assert_eq!(m.sources[3], osm);
+        assert!(!m.sources[3].personal_use_only);
+        assert!(
+            m.sources[4].personal_use_only,
+            "marked even if the caller did not"
+        );
+        assert_eq!(m.stats["clips_personal"], 1);
+        assert_eq!(m.stats["names_personal"]["pistes"], 1);
+        assert_eq!(m.files[2].name, PERSONAL_FILE);
+        assert_eq!(m.files[2].count, Some(1));
         assert_eq!(m.files[0].name, "manifest.json");
         assert_eq!(m.files[1].count, Some(2));
         assert_eq!(m.files[1].bytes, Some(3000));
         assert_eq!(m.parameters["voice"], "estelle");
         assert_eq!(m.stats["clips_name"], 1);
-        assert_eq!(m.stats["names"]["pistes"], 1);
+        assert_eq!(m.stats["names"]["pistes"], 0);
     }
 }

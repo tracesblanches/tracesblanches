@@ -1,7 +1,7 @@
 //! The finite clip set of a pack: fixed phrases, value phrases on their grids, and the
 //! names of the pack.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -56,12 +56,29 @@ pub enum ClipKind {
 pub struct Manifest {
     /// Clips by id.
     pub clips: BTreeMap<String, (ClipKind, String)>,
+    /// Clips of names read only from personal-use sources ([`manifest_split`]): left out
+    /// of a published pack.
+    #[serde(default)]
+    pub personal: BTreeSet<String>,
 }
 
 impl Manifest {
     fn add(&mut self, kind: ClipKind, c: Clip) {
         // Names that differ only by case or accents share an id: the first text is kept.
         self.clips.entry(c.id).or_insert((kind, c.text));
+    }
+
+    /// Adds a clip of a personal name, unless a public clip has its id.
+    fn add_personal(&mut self, kind: ClipKind, c: Clip) {
+        if !self.clips.contains_key(&c.id) {
+            self.personal.insert(c.id.clone());
+            self.clips.insert(c.id, (kind, c.text));
+        }
+    }
+
+    /// Whether a clip is only for personal packs.
+    pub fn is_personal(&self, id: &str) -> bool {
+        self.personal.contains(id)
     }
 
     /// Whether every clip of `a` is in the manifest with the same text (if not, the
@@ -167,6 +184,36 @@ pub fn manifest(names: &PackNames) -> Manifest {
     }
     for n in &names.places {
         m.add(
+            ClipKind::Name,
+            Clip {
+                id: name_clip_id(n),
+                text: name_clip_text(n),
+            },
+        );
+    }
+    m
+}
+
+/// The clip set of a pack with publishable names `public` and names read only from
+/// personal-use sources `personal` (pistes, places and dates; its `site` and
+/// `status_pistes` are not used): the clips of `personal` that `public` has not are
+/// marked ([`Manifest::personal`]).
+pub fn manifest_split(public: &PackNames, personal: &PackNames) -> Manifest {
+    let mut m = manifest(public);
+    for d in &personal.dates {
+        m.add_personal(ClipKind::Value, clips::until(*d));
+    }
+    for p in &personal.pistes {
+        m.add_personal(
+            ClipKind::Name,
+            Clip {
+                id: p.clip_id(),
+                text: p.clip_text(),
+            },
+        );
+    }
+    for n in &personal.places {
+        m.add_personal(
             ClipKind::Name,
             Clip {
                 id: name_clip_id(n),

@@ -173,21 +173,45 @@ mod tests {
 
     #[test]
     fn plan_phrases_are_the_bank_plan_phrases() {
-        // Every `fix.plan-*` phrase of the bank, once, and nothing else.
+        // Every `fix.plan-*` phrase of the bank, once, and nothing else: the plan's own
+        // (J1 to J3) and those of the proposals (C11).
         let bank: BTreeSet<String> = Fixed::ALL
             .iter()
             .map(|f| f.clip().id)
             .filter(|id| id.starts_with("fix.plan-"))
             .collect();
-        let ours: BTreeSet<String> = PLAN_PHRASES.iter().map(|f| f.clip().id).collect();
-        assert_eq!(ours.len(), PLAN_PHRASES.len());
+        let all: Vec<Fixed> = PLAN_PHRASES
+            .into_iter()
+            .chain(crate::pace::PROPOSAL_PHRASES)
+            .collect();
+        let ours: BTreeSet<String> = all.iter().map(|f| f.clip().id).collect();
+        assert_eq!(ours.len(), all.len());
+        assert_eq!(ours.len(), 15);
         assert_eq!(ours, bank);
-        for p in PLAN_PHRASES {
+        for p in all {
             let c = p.clip();
-            assert!(c.text.ends_with('.'), "{}", c.text);
+            // « Je propose la boucle courte, » is continued by « retour vers … ».
+            let end = if p.continued() { ',' } else { '.' };
+            assert!(c.text.ends_with(end), "{}", c.text);
             assert!(never_safe(&c.text), "{}", c.text);
             assert_eq!(announce(p).segments.len(), 1);
         }
+        let texts: Vec<String> = crate::pace::PROPOSAL_PHRASES
+            .iter()
+            .map(|f| f.clip().text)
+            .collect();
+        assert_eq!(
+            texts,
+            [
+                "Vous allez moins vite que prévu.",
+                "Vous allez moins vite que prévu, avec plus de pauses.",
+                "Vous faites plus de pauses que prévu.",
+                "Je propose la boucle courte,",
+                "Je propose la sortie la plus proche,",
+                "Je propose de garder la boucle,",
+                "Proposition acceptée.",
+            ]
+        );
     }
 
     #[test]
@@ -196,7 +220,10 @@ mod tests {
         // Exact Pocket TTS counts with the model's tokenizer (`VoiceConfig::from_env`).
         let cfg = skimap_voice::VoiceConfig::from_env().unwrap();
         let t = PocketText::from_gguf(&cfg.tts.model).unwrap();
-        for p in PLAN_PHRASES {
+        for p in PLAN_PHRASES
+            .into_iter()
+            .chain(crate::pace::PROPOSAL_PHRASES)
+        {
             let n = t.count(&p.clip().text);
             eprintln!("{:?}: {n} tokens", p.clip().id);
             assert!(n <= skimap_voice::pack::MAX_TOKENS, "{p:?}: {n} tokens");

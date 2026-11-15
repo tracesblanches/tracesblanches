@@ -270,6 +270,153 @@ fn full_data_suggestions_respect_time_and_report_graph_limits() {
     );
 }
 
+/// Without a group, the loops (A5) and the turnaround (A8) of the presets on both sites:
+/// suggestions (JSON) and, for each loop, the planned turnaround and the alerts of a trace
+/// 1.6 times slower than the model from 13:00. `SKIMAP_GOLDEN=<file>`: written on the
+/// first run (before a change), compared on the next ones (non-regression).
+#[test]
+#[ignore]
+fn suggestions_and_turnaround_without_group_golden() {
+    let Some(golden) = std::env::var_os("SKIMAP_GOLDEN").map(PathBuf::from) else {
+        eprintln!("SKIMAP_GOLDEN not set: nothing to compare");
+        return;
+    };
+    let mut all = Vec::new();
+    for (site, day, route) in [
+        (&CERVIERES, "2026-01-09", "routes.geojson"),
+        (
+            &CHAPELLE_DES_BOIS,
+            "2026-02-22",
+            "offpiste_risoux_fevrier.geojson",
+        ),
+    ] {
+        let d = history(site, false, route);
+        for r in skimap_assist::presets::suggestion_requests(site, date(day)) {
+            let s = suggest::suggest(&d, &r);
+            let mut turns = Vec::new();
+            if let Some((p, _)) = d.weather.as_ref().and_then(|w| w.nearest(r.start)) {
+                for x in &s.suggestions {
+                    let late = r.start_time.date().and_hms_opt(13, 0, 0).unwrap();
+                    let m = alerts::Monitor::new(late, &x.profile, p, alerts::Params::default());
+                    let trace = alerts::synthetic_trace(&x.profile, 1.6, 300.0);
+                    let a = alerts::replay(late, &x.profile, p, &trace, alerts::Params::default());
+                    turns.push(serde_json::json!({
+                        "planned_turnaround": m.planned_turnaround(),
+                        "alerts": a,
+                    }));
+                }
+            }
+            all.push(serde_json::json!({"site": site.id, "suggestions": s, "a8": turns}));
+        }
+    }
+    let now = serde_json::to_string_pretty(&all).unwrap();
+    if !golden.is_file() {
+        std::fs::write(&golden, &now).unwrap();
+        eprintln!("written {} ({} bytes)", golden.display(), now.len());
+        return;
+    }
+    let before = std::fs::read_to_string(&golden).unwrap();
+    assert!(before == now, "outputs differ from {}", golden.display());
+    eprintln!("identical to {} ({} bytes)", golden.display(), now.len());
+}
+
+/// The presets for a family (children of 6 and 9, prior) on both sites: loops on its time
+/// (C11), shorter than the adult's for the same time; A8 turnaround at its pace.
+#[test]
+#[ignore]
+fn suggestions_and_turnaround_for_a_family() {
+    use skimap_core::calibration::{GroupProfile, ProfileModel, terrain_ratio};
+    let family = ProfileModel::new(GroupProfile::family(2, &[6, 9], Style::Classic));
+    for (site, day, route) in [
+        (&CERVIERES, "2026-01-09", "routes.geojson"),
+        (
+            &CHAPELLE_DES_BOIS,
+            "2026-02-22",
+            "offpiste_risoux_fevrier.geojson",
+        ),
+    ] {
+        let d = history(site, false, route);
+        for r in skimap_assist::presets::suggestion_requests(site, date(day)) {
+            let adult = suggest::suggest(&d, &r);
+            let fam = suggest::suggest_for(&d, &r, Some(&family));
+            let km = |s: &suggest::Suggestions| {
+                s.suggestions
+                    .iter()
+                    .map(|x| x.length_km)
+                    .fold(0.0, f64::max)
+            };
+            println!(
+                "{} « {} » : adulte {} boucles (≤ {:.1} km, modèle {:?} min) ; famille {} boucles (≤ {:.1} km, modèle {:?} min, groupe {:?} min) {:?}",
+                site.id,
+                r.label,
+                adult.suggestions.len(),
+                km(&adult),
+                adult
+                    .suggestions
+                    .iter()
+                    .map(|x| x.eta_min)
+                    .collect::<Vec<_>>(),
+                fam.suggestions.len(),
+                km(&fam),
+                fam.suggestions
+                    .iter()
+                    .map(|x| x.eta_min)
+                    .collect::<Vec<_>>(),
+                fam.suggestions
+                    .iter()
+                    .map(|x| x.group.as_ref().map(|g| (g.lo_min, g.median_min, g.hi_min)))
+                    .collect::<Vec<_>>(),
+                fam.notes
+            );
+            for x in &fam.suggestions {
+                let g = x.group.as_ref().unwrap();
+                assert!(
+                    (0.75 * r.budget_min..=1.1 * r.budget_min).contains(&g.median_min),
+                    "{g:?}"
+                );
+                assert!(x.eta_min < g.median_min);
+                if let Some(l) = r.return_before {
+                    assert!(x.arrival.time() <= l);
+                }
+            }
+            if !fam.suggestions.is_empty() && !adult.suggestions.is_empty() {
+                assert!(km(&fam) < km(&adult), "{} {}", km(&fam), km(&adult));
+            }
+            // A8 on the adult's best loop: the family's turnaround comes before the
+            // model's, or exists where the model has none.
+            if let (Some(best), Some((p, _))) = (
+                adult.suggestions.first(),
+                d.weather.as_ref().and_then(|w| w.nearest(r.start)),
+            ) {
+                let ratio = terrain_ratio(&best.eta);
+                let model =
+                    alerts::Monitor::new(r.start_time, &best.profile, p, alerts::Params::default());
+                let group = alerts::Monitor::for_group(
+                    r.start_time,
+                    &best.profile,
+                    p,
+                    alerts::Params::default(),
+                    &family.params,
+                    ratio,
+                );
+                println!(
+                    "   A8 sur la boucle de l'adulte ({} km) : demi-tour au plus tard modèle {:?}, famille {:?} (temps famille {:.0} min, modèle {:.0} min)",
+                    best.length_km,
+                    model.planned_turnaround().map(|t| t.time()),
+                    group.planned_turnaround().map(|t| t.time()),
+                    group.profile().total_s() / 60.0,
+                    best.profile.total_s() / 60.0
+                );
+                match (model.planned_turnaround(), group.planned_turnaround()) {
+                    (Some(a), Some(b)) => assert!(b <= a),
+                    (None, _) => {}
+                    (Some(_), None) => panic!("a turnaround for the model, none for the family"),
+                }
+            }
+        }
+    }
+}
+
 #[test]
 #[ignore = "full-data: data/out/<site>/assist/history (Open-Meteo, personal use)"]
 fn full_data_best_time_equipment_and_weather_replay() {
