@@ -399,6 +399,30 @@ mod tests {
     }
 
     #[test]
+    fn enj_site_titles_point_at_their_group() {
+        let expect = [
+            (
+                "enj-site-lacs-montagnes-haut-doubs",
+                "Lacs et Montagnes du Haut-Doubs",
+            ),
+            ("enj-site-grand-pontarlier", "Grand Pontarlier"),
+            ("enj-site-station-des-rousses", "Station des Rousses"),
+            ("enj-site-hautes-combes", "Hautes Combes du Jura"),
+            ("enj-site-bellefontaine", "Bellefontaine"),
+            ("enj-site-monts-jura", "Station Monts Jura"),
+        ];
+        for (id, label) in expect {
+            let t = catalogue::TITRES.iter().find(|t| t.id == id).unwrap();
+            assert_eq!(t.members.len(), 1);
+            assert!(
+                t.members[0].label.contains(label),
+                "{id}: {}",
+                t.members[0].label
+            );
+        }
+    }
+
+    #[test]
     fn every_price_is_dated_and_sourced() {
         for t in catalogue::TITRES {
             assert!(doc(t.validity_doc).is_some(), "{}", t.id);

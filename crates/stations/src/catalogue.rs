@@ -1296,7 +1296,59 @@ pub const TITRES: &[Titre] = &[
         abroad: None,
         prices: NADS_WEEK_PRICES,
     },
+    enj_site(
+        "enj-site-lacs-montagnes-haut-doubs",
+        "Pass saison de site Lacs et Montagnes du Haut-Doubs",
+        &ENJ_MEMBERS[12],
+    ),
+    enj_site(
+        "enj-site-grand-pontarlier",
+        "Pass saison de site Grand Pontarlier",
+        &ENJ_MEMBERS[11],
+    ),
+    enj_site(
+        "enj-site-station-des-rousses",
+        "Pass saison de site Station des Rousses",
+        &ENJ_MEMBERS[27],
+    ),
+    enj_site(
+        "enj-site-hautes-combes",
+        "Pass saison de site Hautes Combes du Jura (Haut Jura Saint-Claude)",
+        &ENJ_MEMBERS[19],
+    ),
+    enj_site(
+        "enj-site-bellefontaine",
+        "Pass saison de site Bellefontaine",
+        &ENJ_MEMBERS[17],
+    ),
+    enj_site(
+        "enj-site-monts-jura",
+        "Pass saison de site Monts Jura",
+        &ENJ_MEMBERS[6],
+    ),
 ];
+
+/// Season site pass of an ENJ shop entry grouping several sites (`enj-pass-saison`): the
+/// FAQ says « Pass saison de site : accès uniquement sur le site d'achat ». No price: the
+/// shop computes it per site.
+const fn enj_site(id: &'static str, name: &'static str, member: &'static Member) -> Titre {
+    Titre {
+        id,
+        name,
+        scope: "site",
+        issuer: "site nordique (vente en ligne de l'Espace Nordique Jurassien)",
+        products: &["saison_site"],
+        validity: "Pass saison de site : accès uniquement sur le site d'achat",
+        validity_doc: "enj-faq",
+        notes: &[
+            "le site d'achat regroupe les domaines listés ensemble par la vente en ligne de l'ENJ ; prix non relevé (calculé par la boutique)",
+            "Pass séance : « valable uniquement sur le site d'achat » ; « Une réciprocité existe quand plusieurs domaines peuvent être reliés ski aux pieds »",
+        ],
+        members: std::slice::from_ref(member),
+        abroad: None,
+        prices: &[],
+    }
+}
 
 /// Members of the national pass: every association list of the Nordic France page.
 pub fn national_members() -> Vec<Member> {
