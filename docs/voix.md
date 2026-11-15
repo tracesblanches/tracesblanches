@@ -156,3 +156,8 @@ Erreur dominante avant : le quart disparaît (« Retour vers 15h. », 140 des 15
 (Comptées avec un mot par heure, les mesures du 15/11 au matin donnaient 6,8 %, 3,9 %, 4,3 % ; « Je vous propose » seul : 4,8 %, 0,8 %, 0 %.) Clips des packs refaits, enchaînés : les quatre annonces justes (homophones confondus) sur les deux sites.
 
 **Couches voice refaites** (`voice_pack`, GPU libre, CPU chargé à 80 sur 20 cœurs : temps non comparables) : 19 clips changés par site (les 3 `fix.plan-propose-*` et les 16 `loop.back.HH15`), tous à la graine 42, aucune attaque coupée, les autres identiques (texte, graine, durée, taille). Cervières 899 clips, 3 759 462 o, 1 222,9 s, 86,1 s (TTS 74,5 s) ; Chapelle-des-Bois 1 145 clips (4 noms de pistes de plus que le 15/11 au matin, venus de la couche `pistes` reconstruite entre-temps : « Combe des Cives multi-activités », « Élodie Bourgois-Pin », « Le Griffon », « Le Pré d'Haut »), 4 694 947 o, 1 530,9 s, 76,4 s (TTS 69,8 s). Échantillons `11-` à `15-` refaits.
+
+## Proposition de profil (X14, 15/11/2026)
+
+**Phrase nouvelle** `fix.plan-profile-mismatch` : « Votre rythme ressemble à celui d'un autre profil. Voulez-vous le choisir ? » (une question, finie par « ? » : seule exception à la règle du point, testée). Couches voice refaites sur les deux sites : 900 clips à Cervières, 1 146 à Chapelle-des-Bois, le clip nouveau à la graine 42 (3,37 s, 28 jetons, 9 744 o), aucune attaque coupée. Transcription (Parakeet v3) du clip de chaque site : exacte (WER 0/24).
+
