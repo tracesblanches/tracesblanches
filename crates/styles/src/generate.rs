@@ -98,9 +98,12 @@ fn all_sources() -> Map<String, Value> {
         "srn-areas",
         "srn-routes",
         "fee-zones",
+        "stations-pois",
     ] {
         m.insert(id.into(), geojson(&format!("layers/{id}.geojson")));
     }
+    // The app marks the zones of the pass of the user by feature state, keyed by pass.
+    m["fee-zones"]["promoteId"] = json!("fee_id");
     // Class polygons of the pack (vector tiles), drawn in the colours of the theme.
     for id in ["slope", "avalanche-exposure", "snow-groomed", "snow-srn"] {
         m.insert(
@@ -121,7 +124,7 @@ fn all_sources() -> Map<String, Value> {
 /// mountains), layers added after older packs were built (piste name lines) and the
 /// trail-pass zones (no producer yet). The basemaps, pistes, zones, network, huts and
 /// slope are in every pack: their absence is an error.
-pub const OPTIONAL_SOURCES: [&str; 9] = [
+pub const OPTIONAL_SOURCES: [&str; 10] = [
     "avalanche-areas",
     "avalanche-segments",
     "avalanche-exposure",
@@ -131,7 +134,18 @@ pub const OPTIONAL_SOURCES: [&str; 9] = [
     "srn-routes",
     "piste-labels",
     "fee-zones",
+    "stations-pois",
 ];
+
+/// Feature states the app sets (`metadata.skimap:feature_states`): source → state → what
+/// it means. Without them, the layers draw the neutral case.
+pub fn feature_states() -> Value {
+    json!({
+        "fee-zones": {
+            "valid": "true : le titre de l'utilisateur est valable dans la zone (« valable avec ton titre ») ; false : il faut un autre titre (« autre redevance ») ; absent : aucun titre choisi, trait neutre. Clé : fee_id (promoteId)."
+        }
+    })
+}
 
 /// Properties the app writes in the runtime sources (checked by the validator like the
 /// properties of the pack layers).
@@ -1312,27 +1326,89 @@ fn srn_labels(p: &Palette) -> Value {
 }
 
 /// Trail-pass validity zones (`fee-zones`, schema of `android/docs/telechargement.md`):
-/// a thin discreet outline of the zones of a site or a group of sites (the regional and
-/// national passes cover everything, no outline), the pass name along it from z13.
+/// the footprints of the domains where each pass is valid. Neutral thin dotted outline;
+/// once the app knows the pass of the user (feature state `valid`), its zones get a
+/// green tint and outline (« valable avec ton titre »), the zones of the other passes an
+/// amber outline (« autre redevance »). Pass name along the outline from z13.
 fn fee_zones(p: &Palette) -> Vec<Value> {
-    let local = one_of("kind", &["site", "groupement", "departement"]);
+    let valid = json!(["==", ["feature-state", "valid"], true]);
+    let other = json!(["==", ["feature-state", "valid"], false]);
     vec![
+        layer(
+            "fee-zones-fill",
+            "fill",
+            Some("fee-zones"),
+            json!({"minzoom": 10,
+                   "paint": {"fill-color": p.fee_valid,
+                             "fill-opacity": ["case", valid.clone(), 0.08, 0.0]}}),
+        ),
         layer(
             "fee-zones-line",
             "line",
             Some("fee-zones"),
-            json!({"minzoom": 10, "filter": local.clone(),
-                   "paint": {"line-color": p.fee, "line-width": zl(&[(10.0, 0.8), (16.0, 1.6)]),
+            json!({"minzoom": 10,
+                   "paint": {"line-color": ["case", valid.clone(), p.fee_valid, other, p.fee_other, p.fee],
+                             "line-width": ["case", valid, 2.0, 1.0],
                              "line-dasharray": [1, 2.5]}}),
         ),
         layer(
             "fee-zones-label",
             "symbol",
             Some("fee-zones"),
-            json!({"minzoom": 13, "filter": ["all", local, ["has", "name"]],
+            json!({"minzoom": 13, "filter": ["has", "name"],
                    "layout": {"symbol-placement": "line", "text-field": ["get", "name"], "text-font": [ITALIC],
                               "text-size": 11, "symbol-spacing": 600, "text-max-angle": 30, "text-offset": [0, 0.8]},
                    "paint": text_paint(p.text_soft, p.halo, 2.0)}),
+        ),
+    ]
+}
+
+/// Points of the stations (`stations-pois`, OSM via `skimap-stations`): rescue posts
+/// (pisteurs, first aid, mountain rescue, defibrillators: red disc with a white cross)
+/// from z12, sale points of the trail pass from z13.
+fn station_points(p: &Palette) -> Vec<Value> {
+    let rescue = eq("category", json!("secours"));
+    let sale = eq("category", json!("vente"));
+    vec![
+        contrast(
+            layer(
+                "sale-point",
+                "circle",
+                Some("stations-pois"),
+                json!({"minzoom": 13, "filter": sale.clone(),
+                       "paint": {"circle-color": p.sale, "circle-radius": 6,
+                                 "circle-stroke-color": p.halo, "circle-stroke-width": 1.5}}),
+            ),
+            "background",
+        ),
+        layer(
+            "sale-point-mark",
+            "symbol",
+            Some("stations-pois"),
+            json!({"minzoom": 14, "filter": sale,
+                   "layout": {"text-field": "€", "text-font": [BOLD], "text-size": 10,
+                              "text-allow-overlap": true, "text-ignore-placement": true},
+                   "paint": text_paint("#ffffff", "#004d40", 1.5)}),
+        ),
+        contrast(
+            layer(
+                "secours-post",
+                "circle",
+                Some("stations-pois"),
+                json!({"minzoom": 12, "filter": rescue.clone(),
+                       "paint": {"circle-color": p.rescue, "circle-radius": 8,
+                                 "circle-stroke-color": "#ffffff", "circle-stroke-width": 2}}),
+            ),
+            "background",
+        ),
+        layer(
+            "secours-post-mark",
+            "symbol",
+            Some("stations-pois"),
+            json!({"minzoom": 12, "filter": rescue,
+                   "layout": {"text-field": "+", "text-font": [BOLD], "text-size": 15,
+                              "text-allow-overlap": true, "text-ignore-placement": true},
+                   "paint": text_paint("#ffffff", "#7f0000", 1.5)}),
         ),
     ]
 }
@@ -1391,6 +1467,7 @@ fn fond(theme: Theme) -> Vec<Value> {
     v.extend(status_closed(p, true));
     v.push(oneway_arrows(p, theme));
     v.extend(access_points(p, true));
+    v.extend(station_points(p));
     v.extend(huts(p, theme, 11.0, 13.0, 14.0, true));
     v.push(piste_labels(p, 13.0, 14.0));
     v.extend(localities(p, 15.0, 13.0, Some(15.0)));
@@ -1463,6 +1540,7 @@ fn srn(theme: Theme) -> Vec<Value> {
     v.extend(status_closed(p, false));
     v.extend(srn_layers(p, true).into_iter().skip(2));
     v.extend(access_points(p, false));
+    v.extend(station_points(p));
     v.extend(hut_extras(p));
     v.extend(huts(p, theme, 10.0, 13.0, 13.0, false));
     v.push(contour_labels(p));
@@ -1578,7 +1656,7 @@ pub struct Group {
 }
 
 /// Every group, in menu order.
-pub const GROUPS: [Group; 15] = [
+pub const GROUPS: [Group; 16] = [
     Group {
         id: "fond",
         title: "Fond de carte (relief, forêt, eau, routes)",
@@ -1597,6 +1675,11 @@ pub const GROUPS: [Group; 15] = [
     Group {
         id: "reglementation",
         title: "Zones réglementées et bivouac",
+        toggleable: false,
+    },
+    Group {
+        id: "secours",
+        title: "Secours (postes de secours, défibrillateurs)",
         toggleable: false,
     },
     Group {
@@ -1675,7 +1758,9 @@ pub fn group_of(id: &str) -> Option<&'static str> {
             "fond"
         } else if starts(&["pistes"]) {
             "pistes"
-        } else if starts(&["osm-parking", "osm-centre"]) {
+        } else if starts(&["secours-post"]) {
+            "secours"
+        } else if starts(&["osm-parking", "osm-centre", "sale-point"]) {
             "acces"
         } else if starts(&["huts"]) {
             "refuges"
@@ -1744,6 +1829,13 @@ pub fn style(kind: Kind, theme: Theme) -> Value {
         .filter(|(id, _)| used.contains(id.as_str()))
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
+    let states: Map<String, Value> = feature_states()
+        .as_object()
+        .expect("feature states")
+        .iter()
+        .filter(|(id, _)| used.contains(id.as_str()))
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
     let optional: Vec<&str> = OPTIONAL_SOURCES
         .iter()
         .copied()
@@ -1765,6 +1857,7 @@ pub fn style(kind: Kind, theme: Theme) -> Value {
             "skimap:runtime_sources": runtime,
             "skimap:optional_layers": toggles,
             "skimap:optional_sources": optional,
+            "skimap:feature_states": states,
             "skimap:groups": groups
         },
         "glyphs": GLYPHS,

@@ -110,6 +110,14 @@ pub struct Palette {
     pub snow_opacity: f64,
     /// Trail-pass validity zones (outline, discreet).
     pub fee: &'static str,
+    /// Zone where the pass of the user is valid (feature state `valid` true).
+    pub fee_valid: &'static str,
+    /// Zone of another pass (feature state `valid` false).
+    pub fee_other: &'static str,
+    /// Rescue post marker.
+    pub rescue: &'static str,
+    /// Sale point of the trail pass.
+    pub sale: &'static str,
     /// Protected zones relevant in winter (quiet zones, APPB, reserves).
     pub zone: &'static str,
     /// Bivouac forbidden outline.
@@ -181,6 +189,10 @@ pub static CLAIR: Palette = Palette {
     snow: ["#a0522d", "#7fb6e6", "#1f5fbf"],
     snow_opacity: 0.45,
     fee: "#6d6875",
+    fee_valid: "#2e7d32",
+    fee_other: "#a15c00",
+    rescue: "#d50000",
+    sale: "#00796b",
     zone: "#c24e00",
     bivouac: "#7b2d9b",
     no_network: "#5b2a86",
@@ -237,6 +249,10 @@ pub static SOMBRE: Palette = Palette {
     snow: ["#c98a5a", "#3d7fc4", "#a9d4ff"],
     snow_opacity: 0.6,
     fee: "#b8b0c4",
+    fee_valid: "#66bb6a",
+    fee_other: "#ffb74d",
+    rescue: "#ff5252",
+    sale: "#2ec4b6",
     zone: "#ff8c3a",
     bivouac: "#c77dff",
     no_network: "#b388ff",

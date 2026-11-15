@@ -1338,6 +1338,27 @@
             "ways": null
           }
         },
+        "layers/fee-zones.geojson": {
+          "minzoom": 0,
+          "maxzoom": 24,
+          "features": 3,
+          "geometry": [
+            "Polygon"
+          ],
+          "keys": {
+            "domains": null,
+            "fee_id": null,
+            "issuer": null,
+            "kind": null,
+            "name": null,
+            "personal_use_only": null,
+            "prices": null,
+            "scope": null,
+            "season": null,
+            "status": null,
+            "ways": null
+          }
+        },
         "layers/no-network.geojson": {
           "minzoom": 0,
           "maxzoom": 24,
@@ -1582,6 +1603,49 @@
             "url": null
           }
         },
+        "layers/refuges.geojson": {
+          "minzoom": 0,
+          "maxzoom": 24,
+          "features": 12,
+          "geometry": [
+            "Point"
+          ],
+          "keys": {
+            "access": null,
+            "alt": null,
+            "attribution": null,
+            "camptocamp": null,
+            "changed_at": null,
+            "checked_at": null,
+            "equipment": null,
+            "id": null,
+            "in_france": null,
+            "info_date": null,
+            "kind": null,
+            "kind_label": null,
+            "last_comment_date": null,
+            "licence": null,
+            "name": null,
+            "open": null,
+            "owner": null,
+            "phones": null,
+            "places": null,
+            "places_mattress": null,
+            "places_staffed": null,
+            "places_winter": null,
+            "refuges_info_id": null,
+            "refuges_info_modified": null,
+            "refuges_info_url": null,
+            "remark": null,
+            "state": null,
+            "wardened_period": null,
+            "website": null,
+            "website_source": null,
+            "winter_access": null,
+            "winter_access_source": null,
+            "winter_access_text": null
+          }
+        },
         "layers/route-offpiste-bourget-italie.geojson": {
           "minzoom": 0,
           "maxzoom": 24,
@@ -1643,6 +1707,61 @@
             "to": null,
             "tobler_s": null,
             "turnaround_2027_01_15": null
+          }
+        },
+        "layers/stations-pois.geojson": {
+          "minzoom": 0,
+          "maxzoom": 24,
+          "features": 52,
+          "geometry": [
+            "Point"
+          ],
+          "keys": {
+            "access": null,
+            "capacity": null,
+            "category": {
+              "\"ecole_ski\"": 0,
+              "\"office_tourisme\"": 0,
+              "\"parking\"": 0,
+              "\"secours\"": 0,
+              "\"vente\"": 0
+            },
+            "domains": null,
+            "fee": null,
+            "kind": null,
+            "name": null,
+            "opening_hours": null,
+            "operator": null,
+            "osm_id": null,
+            "osm_type": null,
+            "phones": null,
+            "url": null,
+            "website": null
+          }
+        },
+        "layers/stations.geojson": {
+          "minzoom": 0,
+          "maxzoom": 24,
+          "features": 2,
+          "geometry": [
+            "Point"
+          ],
+          "keys": {
+            "changed_at": null,
+            "checked_at": null,
+            "commune": null,
+            "departement": null,
+            "ecoles_ski": null,
+            "has": null,
+            "id": null,
+            "km_nordic": null,
+            "links": null,
+            "name": null,
+            "offices_tourisme": null,
+            "parkings": null,
+            "phones": null,
+            "secours": null,
+            "vente": null
           }
         },
         "layers/status.geojson": {
@@ -3134,6 +3253,27 @@
             "ways": null
           }
         },
+        "layers/fee-zones.geojson": {
+          "minzoom": 0,
+          "maxzoom": 24,
+          "features": 5,
+          "geometry": [
+            "Polygon"
+          ],
+          "keys": {
+            "domains": null,
+            "fee_id": null,
+            "issuer": null,
+            "kind": null,
+            "name": null,
+            "personal_use_only": null,
+            "prices": null,
+            "scope": null,
+            "season": null,
+            "status": null,
+            "ways": null
+          }
+        },
         "layers/no-network.geojson": {
           "minzoom": 0,
           "maxzoom": 24,
@@ -3382,6 +3522,49 @@
             "url": null
           }
         },
+        "layers/refuges.geojson": {
+          "minzoom": 0,
+          "maxzoom": 24,
+          "features": 63,
+          "geometry": [
+            "Point"
+          ],
+          "keys": {
+            "access": null,
+            "alt": null,
+            "attribution": null,
+            "camptocamp": null,
+            "changed_at": null,
+            "checked_at": null,
+            "equipment": null,
+            "id": null,
+            "in_france": null,
+            "info_date": null,
+            "kind": null,
+            "kind_label": null,
+            "last_comment_date": null,
+            "licence": null,
+            "name": null,
+            "open": null,
+            "owner": null,
+            "phones": null,
+            "places": null,
+            "places_mattress": null,
+            "places_staffed": null,
+            "places_winter": null,
+            "refuges_info_id": null,
+            "refuges_info_modified": null,
+            "refuges_info_url": null,
+            "remark": null,
+            "state": null,
+            "wardened_period": null,
+            "website": null,
+            "website_source": null,
+            "winter_access": null,
+            "winter_access_source": null,
+            "winter_access_text": null
+          }
+        },
         "layers/route-offpiste-risoux-aout.geojson": {
           "minzoom": 0,
           "maxzoom": 24,
@@ -3443,6 +3626,61 @@
             "to": null,
             "tobler_s": null,
             "turnaround_2027_01_15": null
+          }
+        },
+        "layers/stations-pois.geojson": {
+          "minzoom": 0,
+          "maxzoom": 24,
+          "features": 81,
+          "geometry": [
+            "Point"
+          ],
+          "keys": {
+            "access": null,
+            "capacity": null,
+            "category": {
+              "\"ecole_ski\"": 0,
+              "\"office_tourisme\"": 0,
+              "\"parking\"": 0,
+              "\"secours\"": 0,
+              "\"vente\"": 0
+            },
+            "domains": null,
+            "fee": null,
+            "kind": null,
+            "name": null,
+            "opening_hours": null,
+            "operator": null,
+            "osm_id": null,
+            "osm_type": null,
+            "phones": null,
+            "url": null,
+            "website": null
+          }
+        },
+        "layers/stations.geojson": {
+          "minzoom": 0,
+          "maxzoom": 24,
+          "features": 7,
+          "geometry": [
+            "Point"
+          ],
+          "keys": {
+            "changed_at": null,
+            "checked_at": null,
+            "commune": null,
+            "departement": null,
+            "ecoles_ski": null,
+            "has": null,
+            "id": null,
+            "km_nordic": null,
+            "links": null,
+            "name": null,
+            "offices_tourisme": null,
+            "parkings": null,
+            "phones": null,
+            "secours": null,
+            "vente": null
           }
         },
         "layers/status.geojson": {
@@ -5096,6 +5334,59 @@
             "shape": null,
             "stations": null,
             "url": null
+          }
+        },
+        "layers/stations-pois.geojson": {
+          "minzoom": 0,
+          "maxzoom": 24,
+          "features": 35,
+          "geometry": [
+            "Point"
+          ],
+          "keys": {
+            "access": null,
+            "category": {
+              "\"ecole_ski\"": 0,
+              "\"office_tourisme\"": 0,
+              "\"parking\"": 0,
+              "\"secours\"": 0,
+              "\"vente\"": 0
+            },
+            "domains": null,
+            "fee": null,
+            "kind": null,
+            "name": null,
+            "operator": null,
+            "osm_id": null,
+            "osm_type": null,
+            "phones": null,
+            "url": null,
+            "website": null
+          }
+        },
+        "layers/stations.geojson": {
+          "minzoom": 0,
+          "maxzoom": 24,
+          "features": 2,
+          "geometry": [
+            "Point"
+          ],
+          "keys": {
+            "changed_at": null,
+            "checked_at": null,
+            "commune": null,
+            "departement": null,
+            "ecoles_ski": null,
+            "has": null,
+            "id": null,
+            "km_nordic": null,
+            "links": null,
+            "name": null,
+            "offices_tourisme": null,
+            "parkings": null,
+            "phones": null,
+            "secours": null,
+            "vente": null
           }
         },
         "layers/zones.geojson": {

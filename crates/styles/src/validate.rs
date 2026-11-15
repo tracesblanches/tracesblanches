@@ -424,6 +424,26 @@ impl Validator<'_> {
         {
             bad.push("filter must be an expression".into());
         }
+        // MapLibre reads feature states in paint properties only.
+        for part in ["filter", "layout"] {
+            let mut uses = false;
+            let v = if part == "filter" {
+                l.get("filter")
+            } else {
+                l.get("layout")
+            };
+            if let Some(v) = v {
+                walk(v, &mut |a| uses |= a[0] == "feature-state");
+                if let Some(m) = v.as_object() {
+                    for x in m.values() {
+                        walk(x, &mut |a| uses |= a[0] == "feature-state");
+                    }
+                }
+            }
+            if uses {
+                bad.push(format!("feature-state in {part} (paint only)"));
+            }
+        }
         for b in bad {
             self.err(format!("layer {id}: {b}"));
         }

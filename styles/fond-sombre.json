@@ -541,43 +541,75 @@
       "type": "line"
     },
     {
-      "filter": [
-        "match",
-        [
-          "get",
-          "kind"
-        ],
-        [
-          "site",
-          "groupement",
-          "departement"
-        ],
-        true,
-        false
-      ],
+      "id": "fee-zones-fill",
+      "metadata": {
+        "skimap:group": "redevance"
+      },
+      "minzoom": 10,
+      "paint": {
+        "fill-color": "#66bb6a",
+        "fill-opacity": [
+          "case",
+          [
+            "==",
+            [
+              "feature-state",
+              "valid"
+            ],
+            true
+          ],
+          0.08,
+          0.0
+        ]
+      },
+      "source": "fee-zones",
+      "type": "fill"
+    },
+    {
       "id": "fee-zones-line",
       "metadata": {
         "skimap:group": "redevance"
       },
       "minzoom": 10,
       "paint": {
-        "line-color": "#b8b0c4",
+        "line-color": [
+          "case",
+          [
+            "==",
+            [
+              "feature-state",
+              "valid"
+            ],
+            true
+          ],
+          "#66bb6a",
+          [
+            "==",
+            [
+              "feature-state",
+              "valid"
+            ],
+            false
+          ],
+          "#ffb74d",
+          "#b8b0c4"
+        ],
         "line-dasharray": [
           1,
           2.5
         ],
         "line-width": [
-          "interpolate",
+          "case",
           [
-            "linear"
+            "==",
+            [
+              "feature-state",
+              "valid"
+            ],
+            true
           ],
-          [
-            "zoom"
-          ],
-          10.0,
-          0.8,
-          16.0,
-          1.6
+          2.0,
+          1.0
         ]
       },
       "source": "fee-zones",
@@ -585,25 +617,8 @@
     },
     {
       "filter": [
-        "all",
-        [
-          "match",
-          [
-            "get",
-            "kind"
-          ],
-          [
-            "site",
-            "groupement",
-            "departement"
-          ],
-          true,
-          false
-        ],
-        [
-          "has",
-          "name"
-        ]
+        "has",
+        "name"
       ],
       "id": "fee-zones-label",
       "layout": {
@@ -1751,6 +1766,116 @@
     },
     {
       "filter": [
+        "==",
+        [
+          "get",
+          "category"
+        ],
+        "vente"
+      ],
+      "id": "sale-point",
+      "metadata": {
+        "skimap:contrast": "background",
+        "skimap:group": "acces"
+      },
+      "minzoom": 13,
+      "paint": {
+        "circle-color": "#2ec4b6",
+        "circle-radius": 6,
+        "circle-stroke-color": "#0b0e12",
+        "circle-stroke-width": 1.5
+      },
+      "source": "stations-pois",
+      "type": "circle"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "category"
+        ],
+        "vente"
+      ],
+      "id": "sale-point-mark",
+      "layout": {
+        "text-allow-overlap": true,
+        "text-field": "€",
+        "text-font": [
+          "Source Sans Pro Bold"
+        ],
+        "text-ignore-placement": true,
+        "text-size": 10
+      },
+      "metadata": {
+        "skimap:group": "acces"
+      },
+      "minzoom": 14,
+      "paint": {
+        "text-color": "#ffffff",
+        "text-halo-color": "#004d40",
+        "text-halo-width": 1.5
+      },
+      "source": "stations-pois",
+      "type": "symbol"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "category"
+        ],
+        "secours"
+      ],
+      "id": "secours-post",
+      "metadata": {
+        "skimap:contrast": "background",
+        "skimap:group": "secours"
+      },
+      "minzoom": 12,
+      "paint": {
+        "circle-color": "#ff5252",
+        "circle-radius": 8,
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 2
+      },
+      "source": "stations-pois",
+      "type": "circle"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "category"
+        ],
+        "secours"
+      ],
+      "id": "secours-post-mark",
+      "layout": {
+        "text-allow-overlap": true,
+        "text-field": "+",
+        "text-font": [
+          "Source Sans Pro Bold"
+        ],
+        "text-ignore-placement": true,
+        "text-size": 15
+      },
+      "metadata": {
+        "skimap:group": "secours"
+      },
+      "minzoom": 12,
+      "paint": {
+        "text-color": "#ffffff",
+        "text-halo-color": "#7f0000",
+        "text-halo-width": 1.5
+      },
+      "source": "stations-pois",
+      "type": "symbol"
+    },
+    {
+      "filter": [
         "all",
         [
           "match",
@@ -2403,6 +2528,11 @@
     }
   ],
   "metadata": {
+    "skimap:feature_states": {
+      "fee-zones": {
+        "valid": "true : le titre de l'utilisateur est valable dans la zone (« valable avec ton titre ») ; false : il faut un autre titre (« autre redevance ») ; absent : aucun titre choisi, trait neutre. Clé : fee_id (promoteId)."
+      }
+    },
     "skimap:generator": "crates/styles (cargo run -p skimap-styles --example write_styles)",
     "skimap:groups": [
       {
@@ -2418,6 +2548,11 @@
       {
         "id": "dangers",
         "title": "Avalanches et passages délicats",
+        "toggleable": false
+      },
+      {
+        "id": "secours",
+        "title": "Secours (postes de secours, défibrillateurs)",
         "toggleable": false
       },
       {
@@ -2466,7 +2601,8 @@
       "snow-groomed",
       "srn-routes",
       "piste-labels",
-      "fee-zones"
+      "fee-zones",
+      "stations-pois"
     ],
     "skimap:relative_urls": true,
     "skimap:runtime_sources": {
@@ -2488,6 +2624,7 @@
     },
     "fee-zones": {
       "data": "layers/fee-zones.geojson",
+      "promoteId": "fee_id",
       "type": "geojson"
     },
     "ign": {
@@ -2525,6 +2662,10 @@
     },
     "srn-routes": {
       "data": "layers/srn-routes.geojson",
+      "type": "geojson"
+    },
+    "stations-pois": {
+      "data": "layers/stations-pois.geojson",
       "type": "geojson"
     }
   },

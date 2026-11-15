@@ -2362,6 +2362,116 @@
         "==",
         [
           "get",
+          "category"
+        ],
+        "vente"
+      ],
+      "id": "sale-point",
+      "metadata": {
+        "skimap:contrast": "background",
+        "skimap:group": "acces"
+      },
+      "minzoom": 13,
+      "paint": {
+        "circle-color": "#2ec4b6",
+        "circle-radius": 6,
+        "circle-stroke-color": "#0b0e12",
+        "circle-stroke-width": 1.5
+      },
+      "source": "stations-pois",
+      "type": "circle"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "category"
+        ],
+        "vente"
+      ],
+      "id": "sale-point-mark",
+      "layout": {
+        "text-allow-overlap": true,
+        "text-field": "€",
+        "text-font": [
+          "Source Sans Pro Bold"
+        ],
+        "text-ignore-placement": true,
+        "text-size": 10
+      },
+      "metadata": {
+        "skimap:group": "acces"
+      },
+      "minzoom": 14,
+      "paint": {
+        "text-color": "#ffffff",
+        "text-halo-color": "#004d40",
+        "text-halo-width": 1.5
+      },
+      "source": "stations-pois",
+      "type": "symbol"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "category"
+        ],
+        "secours"
+      ],
+      "id": "secours-post",
+      "metadata": {
+        "skimap:contrast": "background",
+        "skimap:group": "secours"
+      },
+      "minzoom": 12,
+      "paint": {
+        "circle-color": "#ff5252",
+        "circle-radius": 8,
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 2
+      },
+      "source": "stations-pois",
+      "type": "circle"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "category"
+        ],
+        "secours"
+      ],
+      "id": "secours-post-mark",
+      "layout": {
+        "text-allow-overlap": true,
+        "text-field": "+",
+        "text-font": [
+          "Source Sans Pro Bold"
+        ],
+        "text-ignore-placement": true,
+        "text-size": 15
+      },
+      "metadata": {
+        "skimap:group": "secours"
+      },
+      "minzoom": 12,
+      "paint": {
+        "text-color": "#ffffff",
+        "text-halo-color": "#7f0000",
+        "text-halo-width": 1.5
+      },
+      "source": "stations-pois",
+      "type": "symbol"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
           "type_label"
         ],
         "point d'eau"
@@ -3780,6 +3890,7 @@
     }
   ],
   "metadata": {
+    "skimap:feature_states": {},
     "skimap:generator": "crates/styles (cargo run -p skimap-styles --example write_styles)",
     "skimap:groups": [
       {
@@ -3800,6 +3911,11 @@
       {
         "id": "reglementation",
         "title": "Zones réglementées et bivouac",
+        "toggleable": false
+      },
+      {
+        "id": "secours",
+        "title": "Secours (postes de secours, défibrillateurs)",
         "toggleable": false
       },
       {
@@ -3860,7 +3976,8 @@
       "snow-srn",
       "srn-areas",
       "srn-routes",
-      "piste-labels"
+      "piste-labels",
+      "stations-pois"
     ],
     "skimap:relative_urls": true,
     "skimap:runtime_sources": {
@@ -3943,6 +4060,10 @@
     },
     "srn-routes": {
       "data": "layers/srn-routes.geojson",
+      "type": "geojson"
+    },
+    "stations-pois": {
+      "data": "layers/stations-pois.geojson",
       "type": "geojson"
     },
     "zones": {

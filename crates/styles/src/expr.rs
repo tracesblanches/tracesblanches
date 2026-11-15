@@ -16,6 +16,8 @@ pub const OPERATORS: &[&str] = &[
     "zoom",
     "to-string",
     "to-number",
+    // Paint only: state set by the app (`metadata.skimap:feature_states`).
+    "feature-state",
     // Decisions.
     "match",
     "case",

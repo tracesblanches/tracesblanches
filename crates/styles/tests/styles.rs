@@ -383,6 +383,13 @@ fn the_validator_refuses_broken_styles() {
             }),
         ),
         (
+            "feature-state in filter",
+            Box::new(|s| {
+                let i = layer_index(s, "fee-zones-line");
+                s["layers"][i]["filter"] = json!(["==", ["feature-state", "valid"], true]);
+            }),
+        ),
+        (
             "is not a source of the style",
             Box::new(|s| {
                 s["metadata"]["skimap:optional_sources"]
@@ -491,16 +498,9 @@ fn styles_are_valid_against_the_real_packs() {
             "{name}: {} layers, features drawn per layer: {counts:?}",
             s["layers"].as_array().unwrap().len()
         );
-        // The trail-pass zones have no producer yet: their layers are checked against
-        // the declared schema, and on the test pack of the app by the `check_packs`
-        // example (styles/README.md).
-        let unexpected: Vec<&String> = orphans
-            .iter()
-            .filter(|o| !o.starts_with("fee-zones"))
-            .collect();
         assert!(
-            unexpected.is_empty(),
-            "{name}: layers drawing nothing: {unexpected:?}"
+            orphans.is_empty(),
+            "{name}: layers drawing nothing: {orphans:?}"
         );
     }
 }
