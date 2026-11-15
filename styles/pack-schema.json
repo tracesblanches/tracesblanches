@@ -1092,6 +1092,57 @@
               }
             }
           }
+        },
+        "layers/avalanche-exposure.pmtiles": {
+          "zooms": {
+            "minzoom": 10,
+            "maxzoom": 13
+          },
+          "tiles": 58,
+          "layers": {
+            "avalanche-exposure": {
+              "minzoom": 10,
+              "maxzoom": 13,
+              "features": 171,
+              "geometry": [
+                "Polygon"
+              ],
+              "keys": {
+                "class": {
+                  "1": 10,
+                  "2": 10,
+                  "3": 10
+                },
+                "label": null
+              }
+            }
+          }
+        },
+        "layers/slope.pmtiles": {
+          "zooms": {
+            "minzoom": 10,
+            "maxzoom": 13
+          },
+          "tiles": 58,
+          "layers": {
+            "slope": {
+              "minzoom": 10,
+              "maxzoom": 13,
+              "features": 232,
+              "geometry": [
+                "Polygon"
+              ],
+              "keys": {
+                "class": {
+                  "1": 10,
+                  "2": 10,
+                  "3": 10,
+                  "4": 10
+                },
+                "label": null
+              }
+            }
+          }
         }
       },
       "geojson": {
@@ -1293,6 +1344,7 @@
               "false": 0,
               "true": 0
             },
+            "colour_source": null,
             "colours": null,
             "difficulty": {
               "\"advanced\"": 0,
@@ -1312,17 +1364,26 @@
             "length_m": null,
             "lit": null,
             "name": null,
+            "name_source": null,
             "oneway": {
               "false": 0
             },
             "oneway_tag": null,
             "osm_way_id": null,
+            "plan_pistes": null,
             "relations": null,
             "scooter": null,
             "skating": {
               "false": 0,
               "true": 0
             },
+            "state": {
+              "\"closed\"": 0,
+              "\"unknown\"": 0
+            },
+            "state_at": null,
+            "state_itineraries": null,
+            "state_source": null,
             "tagged": null,
             "uses": {
               "[\"hike\"]": 0,
@@ -1510,17 +1571,14 @@
             "mairie": null,
             "name": null,
             "osm_length_m": null,
+            "osm_practice": null,
             "osm_way_ids": null,
             "polled_at": null,
-            "practice": {
-              "\"foot\"": 0,
-              "\"nordic\"": 0
-            },
+            "practice": null,
             "sector": null,
             "source": null,
-            "state": {
-              "\"closed\"": 0
-            },
+            "state": null,
+            "state_at": null,
             "state_label": null
           }
         },
@@ -1532,7 +1590,19 @@
             "Polygon"
           ],
           "keys": {
+            "access": {
+              "\"avoid_recommended\"": 0,
+              "\"unknown\"": 0
+            },
+            "access_period": null,
+            "access_rules": null,
             "area_ha": null,
+            "bivouac": {
+              "\"consent_required\"": 0,
+              "\"forbidden\"": 0,
+              "\"tolerated\"": 0
+            },
+            "bivouac_rules": null,
             "clipped": null,
             "designated": null,
             "id": null,
@@ -1554,36 +1624,15 @@
             "months": null,
             "name": null,
             "note": null,
-            "practices": {
-              "[\"aerien\",\"manifestation sportive\",\"vertical\"]": 0,
-              "[\"aerien\",\"manifestation sportive\"]": 0,
-              "[\"aerien\",\"vertical\"]": 0,
-              "[\"manifestation sportive\",\"terrestre\"]": 0,
-              "[\"manifestation sportive\",\"vertical\"]": 0,
-              "[]": 0
-            },
+            "practices": null,
             "rules": null,
-            "rules_text": {
-              "\"Accès : à éviter (recommandation) (pendant les mois sensibles de la zone). Zone sensible Biodiv'sports pour les pratiques terrestres : à éviter pendant ses mois sensibles.\"": 0,
-              "\"Bivouac : avec l'accord du propriétaire (toute l'année). Camping et bivouac libres seulement avec l'accord de celui qui a la jouissance du sol, sauf opposition du propriétaire, hors de l'emprise des routes et voies publiques. Conditions : Accord de l'occupant ou du propriétaire du terrain (souvent la commune ou l'ONF en forêt publique).\\nFeu : interdit (toute l'année). Interdit de porter ou d'allumer du feu sur le terrain d'autrui dans les bois et forêts et jusqu'à 200 m de ceux-ci. Conditions : Ne s'applique pas aux propriétaires et à leurs ayants droit. Seulement : dans les bois et forêts et à moins de 200 m de ceux-ci (pas de couche forêt dans ce calque).\"": 0,
-              "\"Bivouac : interdit (toute l'année). Camping pratiqué isolément interdit, sauf dérogation : sites inscrits, sites classés ou en instance de classement, sites patrimoniaux remarquables, abords des monuments historiques, 200 m autour des captages d'eau potable. Conditions : Dérogation possible (autorité compétente selon le cas : maire, préfet).\"": 0,
-              "\"Bivouac : toléré sous conditions (toute l'année). Arvieux : bivouac sous tente toléré pour une randonnée itinérante, à plus d'une heure de marche du village et des hameaux. Conditions : Une seule nuit sur un même secteur ; tente basse (pas de station debout) montée après 18 h et démontée avant 9 h, sauf force majeure (intempéries). Interdit aux abords des cabanes pastorales et chalets d'alpage sans l'accord des propriétaires ou occupants. Déchets interdits ; eaux usées à plus de 20 m des lacs, cours d'eau et zones humides.\"": 0,
-              "\"Feu : interdit (toute l'année). Cervières : usage du feu totalement interdit sur la commune, réchauds et barbecues compris.\"": 0
-            },
+            "rules_text": null,
             "source": null,
             "url": null
           }
         }
       },
       "raster": {
-        "rasters/avalanche-exposure.pmtiles": {
-          "minzoom": 10,
-          "maxzoom": 15
-        },
-        "rasters/slope.pmtiles": {
-          "minzoom": 10,
-          "maxzoom": 15
-        },
         "rasters/snow-depth.pmtiles": {
           "minzoom": 9,
           "maxzoom": 13
@@ -2791,6 +2840,57 @@
               }
             }
           }
+        },
+        "layers/avalanche-exposure.pmtiles": {
+          "zooms": {
+            "minzoom": 10,
+            "maxzoom": 13
+          },
+          "tiles": 53,
+          "layers": {
+            "avalanche-exposure": {
+              "minzoom": 10,
+              "maxzoom": 13,
+              "features": 120,
+              "geometry": [
+                "Polygon"
+              ],
+              "keys": {
+                "class": {
+                  "1": 10,
+                  "2": 10,
+                  "3": 10
+                },
+                "label": null
+              }
+            }
+          }
+        },
+        "layers/slope.pmtiles": {
+          "zooms": {
+            "minzoom": 10,
+            "maxzoom": 13
+          },
+          "tiles": 50,
+          "layers": {
+            "slope": {
+              "minzoom": 10,
+              "maxzoom": 13,
+              "features": 163,
+              "geometry": [
+                "Polygon"
+              ],
+              "keys": {
+                "class": {
+                  "1": 10,
+                  "2": 10,
+                  "3": 10,
+                  "4": 10
+                },
+                "label": null
+              }
+            }
+          }
         }
       },
       "geojson": {
@@ -2967,6 +3067,7 @@
               "false": 0,
               "true": 0
             },
+            "colour_source": null,
             "colours": null,
             "difficulty": {
               "\"advanced\"": 0,
@@ -2976,6 +3077,7 @@
             },
             "difficulty_max": null,
             "difficulty_source": null,
+            "geometry_reversed": null,
             "grooming": {
               "\"backcountry\"": 0,
               "\"classic+skating\"": 0,
@@ -2986,18 +3088,29 @@
             "length_m": null,
             "lit": null,
             "name": null,
+            "name_source": null,
             "oneway": {
               "false": 0,
               "true": 0
             },
+            "oneway_source": null,
             "oneway_tag": null,
             "osm_way_id": null,
+            "plan_pistes": null,
             "relations": null,
             "scooter": null,
             "skating": {
               "false": 0,
               "true": 0
             },
+            "state": {
+              "\"closed\"": 0,
+              "\"open\"": 0,
+              "\"unknown\"": 0
+            },
+            "state_at": null,
+            "state_itineraries": null,
+            "state_source": null,
             "tagged": null,
             "uses": {
               "[\"hike\"]": 0,
@@ -3184,18 +3297,15 @@
             "length_m": null,
             "name": null,
             "notes": null,
+            "osm_length_m": null,
+            "osm_practice": null,
+            "osm_way_ids": null,
             "polled_at": null,
-            "practice": {
-              "\"Pistes multi-activités\"": 0,
-              "\"Raquettes\"": 0,
-              "\"Ski de fond\"": 0
-            },
+            "practice": null,
             "route": null,
             "source": null,
-            "state": {
-              "\"closed\"": 0,
-              "\"open\"": 0
-            },
+            "state": null,
+            "state_at": null,
             "update_datetime": null
           }
         },
@@ -3207,7 +3317,22 @@
             "Polygon"
           ],
           "keys": {
+            "access": {
+              "\"allowed\"": 0,
+              "\"routes_only\"": 0,
+              "\"routes_only_in_places\"": 0,
+              "\"unknown\"": 0
+            },
+            "access_period": null,
+            "access_rules": null,
             "area_ha": null,
+            "bivouac": {
+              "\"consent_required\"": 0,
+              "\"forbidden\"": 0,
+              "\"forbidden_in_places\"": 0
+            },
+            "bivouac_period": null,
+            "bivouac_rules": null,
             "clipped": null,
             "designated": null,
             "id": null,
@@ -3230,40 +3355,15 @@
             "months": null,
             "name": null,
             "note": null,
-            "practices": {
-              "[\"aerien\",\"souterrain\",\"vertical\"]": 0,
-              "[\"aquatique\",\"manifestation sportive\"]": 0,
-              "[\"manifestation sportive\",\"terrestre\"]": 0,
-              "[\"vertical\"]": 0,
-              "[]": 0
-            },
+            "practices": null,
             "rules": null,
-            "rules_text": {
-              "\"Accès : autorisé (toute l'année). Suisse : chacun a libre accès aux forêts et pâturages d'autrui ; les cantons peuvent limiter l'accès pour protéger la faune. Conditions : Restrictions cantonales possibles (LFo art. 14) ; districts francs et zones de tranquillité à part.\\nBivouac : avec l'accord du propriétaire (toute l'année). Vaud : le camping occasionnel n'est permis qu'avec l'assentiment du propriétaire du fonds. Conditions : Au-delà de 4 jours, autorisation communale ; dispositions communales réservées.\\nFeu : interdit (toute l'année). Vaud : feu interdit en forêt et à moins de 10 m des lisières, sauf aux emplacements aménagés. Seulement : en forêt et à moins de 10 m des lisières (pas de couche forêt dans ce calque).\"": 0,
-              "\"Accès : à éviter (recommandation) (pendant les mois sensibles de la zone). Zone sensible Biodiv'sports pour les pratiques terrestres : à éviter pendant ses mois sensibles.\"": 0,
-              "\"Bivouac : avec l'accord du propriétaire (toute l'année). Camping et bivouac libres seulement avec l'accord de celui qui a la jouissance du sol, sauf opposition du propriétaire, hors de l'emprise des routes et voies publiques. Conditions : Accord de l'occupant ou du propriétaire du terrain (souvent la commune ou l'ONF en forêt publique).\\nFeu : interdit (toute l'année). Interdit de porter ou d'allumer du feu sur le terrain d'autrui dans les bois et forêts et jusqu'à 200 m de ceux-ci. Conditions : Ne s'applique pas aux propriétaires et à leurs ayants droit. Seulement : dans les bois et forêts et à moins de 200 m de ceux-ci (pas de couche forêt dans ce calque).\"": 0,
-              "\"Bivouac : interdit (toute l'année). APPB Forêt du Paradis : camping et bivouac interdits sur toute l'étendue de la réserve (caravaning aussi).\\nFeu : interdit (du 15 février au 31 mai). APPB Forêt du Paradis : interdit de fumer, de porter ou d'allumer du feu à l'intérieur des bois, forêts, plantations et reboisements du 15 février au 31 mai. Seulement : à l'intérieur des bois, forêts, plantations et reboisements.\"": 0,
-              "\"Bivouac : interdit (toute l'année). Camping pratiqué isolément interdit, sauf dérogation : sites inscrits, sites classés ou en instance de classement, sites patrimoniaux remarquables, abords des monuments historiques, 200 m autour des captages d'eau potable. Conditions : Dérogation possible (autorité compétente selon le cas : maire, préfet).\"": 0,
-              "\"Bivouac : interdit (toute l'année). District franc fédéral : il est interdit de camper librement. Conditions : Places de camping officielles réservées ; dérogations cantonales possibles.\\nSortie des itinéraires : interdit (toute l'année). District franc fédéral : le ski pratiqué en dehors des pistes et itinéraires balisés est interdit.\"": 0,
-              "\"Bivouac : interdit (toute l'année). Le Chenit : camping sauvage et bivouac non autorisés. Conditions : Tolérances annoncées : une nuit, seul, au-dessus de la limite des forêts ; terrain privé avec l'accord du propriétaire ; urgence.\"": 0,
-              "\"Sortie des itinéraires : interdit (du 15 décembre au 30 juin). APPB Forêts d'altitude du Haut-Doubs : sortie des itinéraires balisés interdite du 15 décembre au 30 juin sur tout le périmètre. Conditions : Itinéraires balisés de l'annexe 2 de l'arrêté (ajoutés après consultation : la Jaïque, la Citadelle → Chalet Griffon). Exceptions : propriétaires et ayants droit, agriculteurs, forestiers, chasseurs en action de chasse, missions de service public.\"": 0,
-              "\"Sortie des itinéraires : interdit (du 15 décembre au 30 juin). APPB Forêts d'altitude du Haut-Jura : pénétration interdite du 15 décembre au 30 juin, sauf sur les itinéraires de ski de fond, raquettes et randonnée cartographiés en annexe 5. Conditions : Itinéraires autorisés : annexe 5 de l'arrêté. Exceptions : propriétaires sur leur propriété, missions de défense, police, secours et service public ; personnes à pied, seules, sans chien, du 15 mai au 30 juin.\\nBivouac : interdit (du 15 décembre au 30 juin). APPB Forêts d'altitude du Haut-Jura : bivouac interdit, avec ou sans tente, du 15 décembre au 30 juin, en tout lieu de l'arrêté. Conditions : Hors période, le camping en terrain privé reste soumis à l'accord du propriétaire (forêts privées ou communales).\\nFeu : interdit (toute l'année). APPB Forêts d'altitude du Haut-Jura : utilisation du feu interdite en dehors des lieux prévus à cet effet. Conditions : Sauf lieux prévus à cet effet et opérations de protection sanitaire de la forêt.\"": 0,
-              "\"Sortie des itinéraires : interdit (toute l'année). Sites nordiques de l'Espace Nordique Jurassien : sur les propriétés privées traversées par les pistes, rester sur la piste. Seulement : sur les propriétés privées traversées par les pistes d'un site nordique (pas de contour).\\nBivouac : interdit (toute l'année). Sites nordiques de l'Espace Nordique Jurassien : bivouac interdit sur les propriétés privées traversées par les pistes. Seulement : sur les propriétés privées traversées par les pistes d'un site nordique (pas de contour).\\nFeu : interdit (toute l'année). Sites nordiques de l'Espace Nordique Jurassien : feu interdit sur les propriétés privées traversées par les pistes. Seulement : sur les propriétés privées traversées par les pistes d'un site nordique (pas de contour).\"": 0
-            },
+            "rules_text": null,
             "source": null,
             "url": null
           }
         }
       },
       "raster": {
-        "rasters/avalanche-exposure.pmtiles": {
-          "minzoom": 10,
-          "maxzoom": 15
-        },
-        "rasters/slope.pmtiles": {
-          "minzoom": 10,
-          "maxzoom": 15
-        },
         "rasters/snow-depth.pmtiles": {
           "minzoom": 9,
           "maxzoom": 13

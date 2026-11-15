@@ -87,6 +87,14 @@ pub struct Palette {
     pub closed: &'static str,
     /// Avalanche exposure on pistes: exposed, very exposed.
     pub exposure: [&'static str; 2],
+    /// Avalanche exposure polygons: exposed, very exposed.
+    pub exposure_fill: [&'static str; 2],
+    /// Opacity of the exposure polygons.
+    pub exposure_opacity: f64,
+    /// Slope polygons: 30-35, 35-40, 40-45, 45° and more (IGN slope map hues).
+    pub slope: [&'static str; 4],
+    /// Opacity of the slope polygons.
+    pub slope_opacity: f64,
     /// Historic avalanche areas (CLPA).
     pub avalanche_area: &'static str,
     /// Protected zones relevant in winter (quiet zones, APPB, reserves).
@@ -149,6 +157,10 @@ pub static CLAIR: Palette = Palette {
     hike: "#6a5f55",
     closed: "#ffffff",
     exposure: ["#d06a00", "#c4001a"],
+    exposure_fill: ["#f59628", "#c81e1e"],
+    exposure_opacity: 0.3,
+    slope: ["#f2e500", "#f39419", "#f00000", "#c889bb"],
+    slope_opacity: 0.55,
     avalanche_area: "#c4001a",
     zone: "#c24e00",
     bivouac: "#7b2d9b",
@@ -195,6 +207,10 @@ pub static SOMBRE: Palette = Palette {
     hike: "#b9ab9c",
     closed: "#11151a",
     exposure: ["#ff9f1c", "#ff3b4e"],
+    exposure_fill: ["#ff9f1c", "#ff2d44"],
+    exposure_opacity: 0.38,
+    slope: ["#e6d200", "#ff8c1a", "#ff3b3b", "#c98bff"],
+    slope_opacity: 0.78,
     avalanche_area: "#ff3b4e",
     zone: "#ff8c3a",
     bivouac: "#c77dff",

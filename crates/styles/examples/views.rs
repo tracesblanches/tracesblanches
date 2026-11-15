@@ -14,19 +14,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dir = std::env::args().nth(1).ok_or("usage: views <pack dir>")?;
     let pack = Pack::open(&dir)?;
     let [w, s, e, n] = pack.manifest().site.bbox;
-    // Steep zone: classes 2.. (35° and more) of the slope raster, at z13.
+    // Steep zone: the z13 tile with the largest area of slope polygons of 35° and more.
     let slope = pack.tiles("slope")?;
-    let mut best = (0usize, 0u32, 0u32);
+    let mut best = (0.0f64, 0u32, 0u32);
     for (z, x, y) in tiles_covering(BBox::new(s, w, n, e), 13, 13) {
         let Some(bytes) = slope.tile(z, x, y)? else {
             continue;
         };
-        let img = skimap_pack::png::decode_indexed(&bytes)?;
-        let steep = img
-            .indices
-            .iter()
-            .filter(|&&i| (2..=4).contains(&i))
-            .count();
+        let mut steep = 0.0;
+        for l in skimap_pack::mvt::decode(&bytes)? {
+            for f in &l.features {
+                if f.get("class").and_then(skimap_pack::mvt::Value::as_i64) >= Some(2) {
+                    steep += f
+                        .parts
+                        .iter()
+                        .map(|r| skimap_pack::mvt::ring_area(r))
+                        .sum::<f64>();
+                }
+            }
+        }
         if steep > best.0 {
             best = (steep, x, y);
         }
@@ -34,7 +40,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (_, x, y) = best;
     let lon = pixel_lon((f64::from(x) + 0.5) * 256.0, 13);
     let lat = pixel_lat((f64::from(y) + 0.5) * 256.0, 13);
-    println!("steep {lat:.5} {lon:.5} ({} px >= 35°)", best.0);
+    println!(
+        "steep {lat:.5} {lon:.5} ({:.1} % of the tile >= 35°)",
+        100.0 * best.0 / (4096.0 * 4096.0)
+    );
     let read = |id: &str| -> Result<serde_json::Value, Box<dyn std::error::Error>> {
         Ok(serde_json::from_slice(
             &pack.read_file(&pack.layer(id)?.file)?,

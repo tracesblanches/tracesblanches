@@ -288,6 +288,12 @@ impl Inventory {
                             .map_err(|e| Error::Json(l.file.clone(), e.to_string()))?;
                     inv.geojson.insert(l.file.clone(), geojson_layer(&fc));
                 }
+                (LayerKind::Vector, "pmtiles") => {
+                    inv.vector.insert(
+                        l.file.clone(),
+                        Archive::read(&pack.path(&l.file).map_err(Error::pack)?)?,
+                    );
+                }
                 (LayerKind::Raster, "pmtiles") => {
                     let a = TileArchive::open(pack.path(&l.file).map_err(Error::pack)?)
                         .map_err(Error::pack)?;

@@ -60,13 +60,30 @@ pub fn zone_kinds() -> Vec<&'static str> {
     all.iter().map(|k| k.as_str()).collect()
 }
 
-/// Declared values (JSON text, as in the inventory) of `key` in the pack file `path`.
+/// Declared values (JSON text, as in the inventory) of `key` in the pack file `path`:
+/// zone kinds and the fields derived from the rules (`skimap-zones`), piste states
+/// (`skimap-pack`).
 pub fn declared_values(path: &str, key: &str) -> BTreeSet<String> {
-    match (path, key) {
-        ("layers/zones.geojson", "kind") => zone_kinds()
-            .into_iter()
+    let text = |v: Vec<&str>| {
+        v.into_iter()
             .map(|k| serde_json::Value::from(k).to_string())
-            .collect(),
+            .collect()
+    };
+    match (path, key) {
+        ("layers/zones.geojson", "kind") => text(zone_kinds()),
+        ("layers/zones.geojson", "bivouac") => text(
+            skimap_zones::fields::BIVOUAC_VALUES
+                .iter()
+                .map(|v| v.as_str())
+                .collect(),
+        ),
+        ("layers/zones.geojson", "access") => text(
+            skimap_zones::fields::ACCESS_VALUES
+                .iter()
+                .map(|v| v.as_str())
+                .collect(),
+        ),
+        ("layers/pistes.geojson", "state") => text(vec!["open", "closed", "unknown"]),
         _ => BTreeSet::new(),
     }
 }

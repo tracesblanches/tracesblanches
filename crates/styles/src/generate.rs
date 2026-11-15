@@ -89,7 +89,6 @@ fn all_sources() -> Map<String, Value> {
     );
     for id in [
         "pistes",
-        "status",
         "zones",
         "no-network",
         "avalanche-areas",
@@ -100,8 +99,15 @@ fn all_sources() -> Map<String, Value> {
     ] {
         m.insert(id.into(), geojson(&format!("layers/{id}.geojson")));
     }
-    for id in ["slope", "avalanche-exposure", "snow-groomed", "snow-srn"] {
+    for id in ["snow-groomed", "snow-srn"] {
         m.insert(id.into(), raster(&format!("rasters/{id}.pmtiles")));
+    }
+    // Class polygons of the pack (vector tiles), drawn in the colours of the theme.
+    for id in ["slope", "avalanche-exposure"] {
+        m.insert(
+            id.into(),
+            json!({"type": "vector", "url": format!("pmtiles://layers/{id}.pmtiles")}),
+        );
     }
     for id in ["position", "route", "decision"] {
         m.insert(id.into(), runtime());
@@ -225,7 +231,7 @@ fn osm(id: &str, ty: &str, source_layer: &str, rest: Value) -> Value {
 /// Marks a layer for the contrast check: its colour against the colour of `against`
 /// (`background` or a layer id) must reach the WCAG non-text ratio (3:1).
 fn contrast(mut l: Value, against: &str) -> Value {
-    l["metadata"] = json!({"skimap:contrast": against});
+    l["metadata"]["skimap:contrast"] = json!(against);
     l
 }
 
@@ -740,12 +746,10 @@ fn groomed_json() -> Value {
     json!(["all", nordic(), ["!=", ["get", "grooming"], "backcountry"]])
 }
 
-/// Ski itineraries of the state layer (Cervières ENJ: `nordic`; Chapelle-des-Bois:
-/// `Ski de fond`, `Pistes multi-activités`), not the snowshoe ones.
-const STATUS_SKI: [&str; 3] = ["nordic", "Ski de fond", "Pistes multi-activités"];
-
-/// Closed pistes (state): the colour is softened by a veil of the ground colour and
-/// broken by dashes of the ground colour; open pistes stay vivid and solid.
+/// Closed pistes (field `state` of the pistes layer, joined way by way from the trail
+/// status): the colour is softened by a veil of the ground colour and broken by dashes of
+/// the ground colour, on the exact geometry of the piste; open pistes stay vivid and
+/// solid.
 fn status_closed(p: &Palette, primary: bool) -> Vec<Value> {
     let (veil, dash) = if primary {
         (
@@ -758,23 +762,19 @@ fn status_closed(p: &Palette, primary: bool) -> Vec<Value> {
             zl(&[(10.0, 0.6), (13.0, 0.9), (16.0, 1.6)]),
         )
     };
-    let closed = json!([
-        "all",
-        eq("state", json!("closed")),
-        one_of("practice", &STATUS_SKI)
-    ]);
+    let closed = json!(["all", nordic(), eq("state", json!("closed"))]);
     vec![
         layer(
-            "status-closed",
+            "pistes-closed",
             "line",
-            Some("status"),
+            Some("pistes"),
             json!({"filter": closed.clone(), "layout": {"line-cap": "round", "line-join": "round"},
                    "paint": {"line-color": p.closed, "line-width": veil, "line-opacity": 0.4}}),
         ),
         layer(
-            "status-closed-dash",
+            "pistes-closed-dash",
             "line",
-            Some("status"),
+            Some("pistes"),
             json!({"filter": closed, "layout": {"line-join": "round"},
                    "paint": {"line-color": p.closed, "line-width": dash, "line-dasharray": [2, 2]}}),
         ),
@@ -990,33 +990,44 @@ fn hut_extras(p: &Palette) -> Vec<Value> {
     ]
 }
 
-/// Protected zones that matter on skis in winter (quiet zones for terrestrial practices,
-/// biotope orders, reserves, national park, hunting reserves), and bivouac bans.
+/// Zones whose rules restrict skiing (field `access` derived from the rules by the pack:
+/// access forbidden, marked routes only, to avoid for wildlife), the whole zone, plus
+/// the other protected areas that matter in winter (reserves, national park, by kind);
+/// zones where bivouac is forbidden (field `bivouac`). Jurisdictions (country,
+/// département, canton, commune) carry rules but are not outlined.
 fn zones(p: &Palette) -> Vec<Value> {
+    let jurisdiction = one_of(
+        "kind",
+        &[
+            ZoneKind::Country,
+            ZoneKind::Department,
+            ZoneKind::Canton,
+            ZoneKind::Commune,
+        ]
+        .map(ZoneKind::as_str),
+    );
     let winter = json!([
-        "any",
+        "all",
+        ["!", jurisdiction.clone()],
         [
-            "all",
-            eq("kind", json!(ZoneKind::BiodivSports.as_str())),
-            has_item("practices", "terrestre")
-        ],
-        one_of(
-            "kind",
-            &[
-                ZoneKind::Appb,
-                ZoneKind::ReserveNaturelleNationale,
-                ZoneKind::ReserveNaturelleRegionale,
-                ZoneKind::ReserveBiologique,
-                ZoneKind::ParcNational,
-                ZoneKind::DistrictFranc
-            ]
-            .map(ZoneKind::as_str)
-        )
+            "any",
+            one_of("access", &["forbidden", "routes_only", "avoid_recommended"]),
+            one_of(
+                "kind",
+                &[
+                    ZoneKind::ReserveNaturelleNationale,
+                    ZoneKind::ReserveNaturelleRegionale,
+                    ZoneKind::ReserveBiologique,
+                    ZoneKind::ParcNational
+                ]
+                .map(ZoneKind::as_str)
+            )
+        ]
     ]);
     let bivouac = json!([
-        "in",
-        "Bivouac : interdit",
-        ["coalesce", ["get", "rules_text"], ""]
+        "all",
+        ["!", jurisdiction],
+        eq("bivouac", json!("forbidden"))
     ]);
     vec![
         layer(
@@ -1087,6 +1098,38 @@ fn avalanche_areas(p: &Palette) -> Vec<Value> {
         ),
         "background",
     )]
+}
+
+/// Class polygons of the pack (slope, avalanche exposure): one fill per class, in the
+/// colours of the theme; `opacity` over the zooms.
+fn class_fills(
+    source: &str,
+    prefix: &str,
+    colours: &[(u8, &str)],
+    opacity: Value,
+    minzoom: Option<f64>,
+    maxzoom: Option<f64>,
+) -> Vec<Value> {
+    colours
+        .iter()
+        .map(|(class, colour)| {
+            let mut l = layer(
+                &format!("{prefix}-{class}"),
+                "fill",
+                Some(source),
+                json!({"filter": eq("class", json!(class)),
+                       "paint": {"fill-color": colour, "fill-opacity": opacity.clone(), "fill-antialias": true}}),
+            );
+            l["source-layer"] = json!(source);
+            if let Some(z) = minzoom {
+                l["minzoom"] = json!(z);
+            }
+            if let Some(z) = maxzoom {
+                l["maxzoom"] = json!(z);
+            }
+            l
+        })
+        .collect()
 }
 
 /// Raster classes of the pack (palette PNG): pixels kept sharp, under every line.
@@ -1164,14 +1207,35 @@ fn srn(theme: Theme) -> Vec<Value> {
     let p = theme.palette();
     let mut v = vec![background(p)];
     v.extend(ground_cover(p, true));
-    // Exposure at the scale of the domain, slope classes when zoomed in.
-    v.push(raster(
-        "avalanche-exposure",
-        zl(&[(11.0, 0.0), (12.0, 0.35), (13.0, 0.35), (14.0, 0.0)]),
-        true,
-    ));
-    v.push(raster("slope", zl(&[(13.0, 0.0), (14.0, 0.55)]), true));
+    // Snow (optional raster) first: rasters go under every vector layer.
     v.push(raster("snow-srn", json!(0.6), false));
+    // Exposure at the scale of the domain, slope classes when zoomed in.
+    v.extend(class_fills(
+        "avalanche-exposure",
+        "exposure",
+        &[(2, p.exposure_fill[0]), (3, p.exposure_fill[1])],
+        zl(&[
+            (11.0, 0.0),
+            (12.0, p.exposure_opacity),
+            (13.0, p.exposure_opacity),
+            (14.0, 0.0),
+        ]),
+        Some(11.0),
+        Some(14.0),
+    ));
+    v.extend(class_fills(
+        "slope",
+        "slope",
+        &[
+            (1, p.slope[0]),
+            (2, p.slope[1]),
+            (3, p.slope[2]),
+            (4, p.slope[3]),
+        ],
+        zl(&[(13.0, 0.0), (14.0, p.slope_opacity)]),
+        Some(13.0),
+        None,
+    ));
     v.extend(water(p, 12.0));
     v.push(ign(
         "ign-rock-line",
@@ -1299,13 +1363,159 @@ fn guidage(theme: Theme) -> Vec<Value> {
     v
 }
 
+/// A group of layers the app and the viewer switch together (`metadata.skimap:group` of
+/// each layer, `metadata.skimap:groups` of the style).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Group {
+    /// Identifier.
+    pub id: &'static str,
+    /// Title, French (menu).
+    pub title: &'static str,
+    /// Whether the user may hide it. Safety layers (dangers, rules, route, position) and
+    /// the ground of the map cannot be hidden.
+    pub toggleable: bool,
+}
+
+/// Every group, in menu order.
+pub const GROUPS: [Group; 13] = [
+    Group {
+        id: "fond",
+        title: "Fond de carte (relief, forêt, eau, routes)",
+        toggleable: false,
+    },
+    Group {
+        id: "pistes",
+        title: "Pistes et leur état",
+        toggleable: false,
+    },
+    Group {
+        id: "dangers",
+        title: "Avalanches et passages délicats",
+        toggleable: false,
+    },
+    Group {
+        id: "reglementation",
+        title: "Zones réglementées et bivouac",
+        toggleable: false,
+    },
+    Group {
+        id: "itineraire",
+        title: "Itinéraire et prochaine décision",
+        toggleable: false,
+    },
+    Group {
+        id: "position",
+        title: "Position",
+        toggleable: false,
+    },
+    Group {
+        id: "pentes",
+        title: "Pentes",
+        toggleable: true,
+    },
+    Group {
+        id: "refuges",
+        title: "Refuges et abris",
+        toggleable: true,
+    },
+    Group {
+        id: "points-eau",
+        title: "Points d'eau",
+        toggleable: true,
+    },
+    Group {
+        id: "acces",
+        title: "Parkings et accueils",
+        toggleable: true,
+    },
+    Group {
+        id: "noms",
+        title: "Noms de lieux, sommets, cotes",
+        toggleable: true,
+    },
+    Group {
+        id: "reseau",
+        title: "Zones sans réseau",
+        toggleable: true,
+    },
+    Group {
+        id: "neige",
+        title: "Neige estimée",
+        toggleable: true,
+    },
+];
+
+/// Group of a layer, from its identifier.
+pub fn group_of(id: &str) -> Option<&'static str> {
+    let starts = |p: &[&str]| {
+        p.iter()
+            .any(|x| id == *x || id.starts_with(&format!("{x}-")))
+    };
+    Some(
+        if starts(&[
+            "ign-contour-label",
+            "ign-spot-height",
+            "ign-place",
+            "ign-oro",
+            "ign-lieu-dit",
+        ]) {
+            "noms"
+        } else if id == "background" || starts(&["ign"]) {
+            "fond"
+        } else if starts(&["pistes"]) {
+            "pistes"
+        } else if starts(&["osm-parking", "osm-centre"]) {
+            "acces"
+        } else if starts(&["huts"]) {
+            "refuges"
+        } else if starts(&["water-point"]) {
+            "points-eau"
+        } else if starts(&[
+            "hazard",
+            "avalanche-areas",
+            "avalanche-segments",
+            "exposure",
+        ]) {
+            "dangers"
+        } else if starts(&["slope"]) {
+            "pentes"
+        } else if starts(&["zones"]) {
+            "reglementation"
+        } else if starts(&["no-network"]) {
+            "reseau"
+        } else if starts(&["snow"]) {
+            "neige"
+        } else if starts(&["route", "decision"]) {
+            "itineraire"
+        } else if starts(&["position"]) {
+            "position"
+        } else {
+            return None;
+        },
+    )
+}
+
 /// The style `kind` in `theme`.
 pub fn style(kind: Kind, theme: Theme) -> Value {
-    let layers = match kind {
+    let mut layers = match kind {
         Kind::Fond => fond(theme),
         Kind::Srn => srn(theme),
         Kind::Guidage => guidage(theme),
     };
+    for l in &mut layers {
+        let id = l["id"].as_str().unwrap_or("").to_owned();
+        let g = group_of(&id).unwrap_or_else(|| panic!("layer {id} has no group"));
+        l["metadata"]["skimap:group"] = json!(g);
+    }
+    let present: std::collections::BTreeSet<&str> = layers
+        .iter()
+        .filter_map(|l| l["metadata"]["skimap:group"].as_str())
+        .collect();
+    let groups: Vec<Value> = GROUPS
+        .iter()
+        .filter(|g| present.contains(g.id))
+        .map(|g| json!({"id": g.id, "title": g.title, "toggleable": g.toggleable}))
+        .collect();
     let used: std::collections::BTreeSet<&str> =
         layers.iter().filter_map(|l| l["source"].as_str()).collect();
     let sources: Map<String, Value> = all_sources()
@@ -1333,7 +1543,8 @@ pub fn style(kind: Kind, theme: Theme) -> Value {
             "skimap:generator": "crates/styles (cargo run -p skimap-styles --example write_styles)",
             "skimap:relative_urls": true,
             "skimap:runtime_sources": runtime,
-            "skimap:optional_layers": toggles
+            "skimap:optional_layers": toggles,
+            "skimap:groups": groups
         },
         "glyphs": GLYPHS,
         "sprite": SPRITE,
