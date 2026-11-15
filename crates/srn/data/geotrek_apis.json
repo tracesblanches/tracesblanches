@@ -1,0 +1,346 @@
+[
+ {
+  "name": "Parcs Naturels Régionaux d’Ile-de-France",
+  "api": "https://geotrek-admin.pnr-idf.fr/api/v2"
+ },
+ {
+  "name": "Conseil Départemental du Pas-de-Calais",
+  "api": "https://admin.escapade62.fr/api/v2"
+ },
+ {
+  "name": "Parcs Naturels Régionaux de Provence-Alpes-Côtes-d'Azur",
+  "api": "https://admin.cheminsdesparcs.fr/api/v2"
+ },
+ {
+  "name": "Parc Naturel Régional des Grands Causses",
+  "api": "https://admin-pnrgca.openig.org/api/v2"
+ },
+ {
+  "name": "Conseil Départemental du Gard",
+  "api": "https://geotrek-aggr.gard.fr/api/v2"
+ },
+ {
+  "name": "Conseil Départemental de Loire-Atlantique",
+  "api": "https://admin-rando.loire-atlantique.fr/api/v2"
+ },
+ {
+  "name": "LPO - Biodiv Sport",
+  "api": null,
+  "note": "page sans apiUrl (pas un site Geotrek-rando v3)"
+ },
+ {
+  "name": "Conseil Départemental des Hautes-Alpes",
+  "api": "https://geotrek-cd05-aggregator.makina-corpus.net/api/v2"
+ },
+ {
+  "name": "Conseil Départemental des Pyrénées-Orientales",
+  "api": "https://admin-pyrenees-orientales.fr/api/v2"
+ },
+ {
+  "name": "Conseil Départemental de l'Ariège",
+  "api": null,
+  "note": "aucun site dans la liste"
+ },
+ {
+  "name": "Parc Naturel Régional du Perche",
+  "api": "https://geotrek-perche.makina-corpus.net/api/v2"
+ },
+ {
+  "name": "Parc National des Cévennes",
+  "api": "https://geotrek-admin.cevennes-parcnational.net/api/v2"
+ },
+ {
+  "name": "Parc National du Mercantour et Parco Naturale delle Alpi Marittime",
+  "api": "https://adminrando.marittimemercantour.eu/api/v2"
+ },
+ {
+  "name": "Parc Naturel Régional Livradois-Forez",
+  "api": "https://geotrek-admin.parc-livradois-forez.org/api/v2"
+ },
+ {
+  "name": "Parc National de la Réunion",
+  "api": null,
+  "note": "site injoignable (erreur de connexion ou certificat)"
+ },
+ {
+  "name": "Parc Naturel Régional des Monts d'Ardèche",
+  "api": null,
+  "note": "page sans apiUrl (pas un site Geotrek-rando v3)"
+ },
+ {
+  "name": "Parc Naturel Régional  des Vosges du Nord",
+  "api": "https://geotrek.parc-vosges-nord.fr/api/v2"
+ },
+ {
+  "name": "Conseil Départemental des Alpes de Haute-Provence",
+  "api": "https://admin.rando-alpes-haute-provence.fr/api/v2"
+ },
+ {
+  "name": "Communauté de communes de Serre-Ponçon",
+  "api": null,
+  "note": "page sans apiUrl (pas un site Geotrek-rando v3)"
+ },
+ {
+  "name": "Conservatoire D'Espaces Naturels De Haute-Savoie",
+  "api": "https://geotrek.nature-haute-savoie.fr/api/v2"
+ },
+ {
+  "name": "Commune de Torgnon",
+  "api": "https://gta.torgnon.org/api/v2"
+ },
+ {
+  "name": "Conseil Départemental  des Côtes D'Armor",
+  "api": null,
+  "note": "aucun site dans la liste"
+ },
+ {
+  "name": "Conseil Départemental de l'Eure",
+  "api": null,
+  "note": "aucun site dans la liste"
+ },
+ {
+  "name": "Communauté de Communes Albères Côte Vermeille",
+  "api": "https://geotrek.tourisme-pyrenees-mediterranee.fr/api/v2"
+ },
+ {
+  "name": "Conseil Départemental du Var",
+  "api": "https://gestion-sportnature.var.fr/api/v2"
+ },
+ {
+  "name": "Parc Naturel Régional du Massif des Bauges",
+  "api": "https://geotrek.parcdesbauges.com/api/v2"
+ },
+ {
+  "name": "Commune de La Thuile",
+  "api": "https://geoadmin-lathuile.hextra.dev/api/v2"
+ },
+ {
+  "name": "Communauté de Communes Inter Caux Vexin",
+  "api": "https://rando.admin.intercauxvexin.fr/api/v2"
+ },
+ {
+  "name": "Parc National de Port-Cros",
+  "api": "https://geotrek-admin.portcros-parcnational.fr/api/v2"
+ },
+ {
+  "name": "Conseil Départemental  du Vaucluse",
+  "api": null,
+  "note": "aucun site dans la liste"
+ },
+ {
+  "name": "Office du Tourisme de Valmorel",
+  "api": "https://adminrando.vanoise.com/api/v2"
+ },
+ {
+  "name": "Office du Tourisme Grand Carcassonne",
+  "api": "https://rando-admin.grand-carcassonne-tourisme.fr/api/v2"
+ },
+ {
+  "name": "Communauté de Communes Alès Agglomération",
+  "api": "https://admin.alesagglo-evasion.fr/api/v2"
+ },
+ {
+  "name": "Conseil Départemental de la Lozère",
+  "api": null,
+  "note": "aucun site dans la liste"
+ },
+ {
+  "name": "Conseil Départemental des Pyrénées Atlantiques",
+  "api": "https://geotrek-admin.le64.fr/api/v2"
+ },
+ {
+  "name": "Office du Tourisme Sud-Vienne-Poitou",
+  "api": "https://geotrek.sudviennepoitou.com/api/v2"
+ },
+ {
+  "name": "Communauté de Communes du Sisteronais-Buëch",
+  "api": "https://admin.sisteron-buech.fr/api/v2"
+ },
+ {
+  "name": "Conseil Départemental du Tarn",
+  "api": null,
+  "note": "site sans réponse (délai dépassé)"
+ },
+ {
+  "name": "Espace Nordique Jurassien",
+  "api": "https://admin.snowmap.espacenordiquejurassien.com/api/v2"
+ },
+ {
+  "name": "Via columbani - Irlande",
+  "api": "https://admin.viacolumbani.com/api/v2"
+ },
+ {
+  "name": "Via Columbani - Italie",
+  "api": "https://admin.viacolumbani.com/api/v2"
+ },
+ {
+  "name": "Via Columbani - Suisse",
+  "api": "https://admin.viacolumbani.com/api/v2"
+ },
+ {
+  "name": "Parc Naturel Régional des Volcans d'Auvergne",
+  "api": null,
+  "note": "site injoignable (erreur de connexion ou certificat)"
+ },
+ {
+  "name": "Via Columbani - Alsace",
+  "api": "https://admin.viacolumbani.com/api/v2"
+ },
+ {
+  "name": "Via Columbani - Luxembourg",
+  "api": "https://admin.viacolumbani.com/api/v2"
+ },
+ {
+  "name": "Via Columbani - Great Britain",
+  "api": "https://admin.viacolumbani.com/api/v2"
+ },
+ {
+  "name": "Via Columbani - France",
+  "api": "https://admin.viacolumbani.com/api/v2"
+ },
+ {
+  "name": "Parc Naturel Régional de l'Aubrac",
+  "api": "https://admin-pnrgca.openig.org/api/v2"
+ },
+ {
+  "name": "Parc National de Forêts",
+  "api": null,
+  "note": "site en erreur HTTP 500"
+ },
+ {
+  "name": "Conseil Départemental du Jura",
+  "api": "https://geotrek-cd39-aggregator.makina-corpus.net/api/v2"
+ },
+ {
+  "name": "Office du Tourisme Côte du Midi",
+  "api": null,
+  "note": "aucun site dans la liste"
+ },
+ {
+  "name": "Communauté De Communes Des Vallées D'aigueblanche",
+  "api": "https://adminrando.vanoise.com/api/v2"
+ },
+ {
+  "name": "Conseil Départemental de l'Orne",
+  "api": "https://admin-rando-orne.com/api/v2"
+ },
+ {
+  "name": "Parc Naturel Régional du Pilat",
+  "api": "https://admin.pilat-rando.fr/api/v2"
+ },
+ {
+  "name": "Conseil Départemental de la Haute Loire",
+  "api": "https://admin.sportsnature.hauteloire.fr/api/v2"
+ },
+ {
+  "name": "Parc Naturel Régional Loire-Anjou-Touraine",
+  "api": "https://admin.rando-loireanjoutouraine.fr/api/v2"
+ },
+ {
+  "name": "Conseil Départemental des Hautes Pyrénées",
+  "api": null,
+  "note": "aucun site dans la liste"
+ },
+ {
+  "name": "Communauté de Communes du Val de Drôme",
+  "api": "https://geo.pnr-vercors.fr/api/v2"
+ },
+ {
+  "name": "Conseil Départemental du Doubs",
+  "api": "https://explore-admin.doubs.fr/api/v2"
+ },
+ {
+  "name": "Parc National des Ecrins",
+  "api": "https://geotrek-admin.ecrins-parcnational.fr/api/v2"
+ },
+ {
+  "name": "Communauté de Communes Pyrénées Haut Garonnaises",
+  "api": "https://admin-ccphg.openig.org/api/v2"
+ },
+ {
+  "name": "AURA Tourisme",
+  "api": "https://geotrek.auvergnerhonealpes-tourisme.com/api/v2"
+ },
+ {
+  "name": "Communauté d’Agglomération Ardèche Hermitage",
+  "api": null,
+  "note": "site sans réponse (délai dépassé)"
+ },
+ {
+  "name": "Parc Naturel Régional de Millevaches en Limousin",
+  "api": "https://rando-millevaches-admin.fr/api/v2"
+ },
+ {
+  "name": "Communauté de Communes Conflent Canigó",
+  "api": "https://admin-pyrenees-orientales.fr/api/v2"
+ },
+ {
+  "name": "Communauté de communes Pyrénées Vallées des Gaves",
+  "api": "https://geotrek65admin.openig.org/api/v2"
+ },
+ {
+  "name": "Conseil Départemental des Alpes-Maritimes",
+  "api": null,
+  "note": "page sans apiUrl (pas un site Geotrek-rando v3)"
+ },
+ {
+  "name": "Rhône Crussol Tourisme",
+  "api": "https://admin.destination-parc-monts-ardeche.fr/api/v2"
+ },
+ {
+  "name": "Parc National de la Guadeloupe",
+  "api": "https://geotrek.guadeloupe-parcnational.fr/api/v2"
+ },
+ {
+  "name": "Office du Tourisme Cévennes d'Ardèche",
+  "api": "https://admin.destination-parc-monts-ardeche.fr/api/v2"
+ },
+ {
+  "name": "Office du Tourisme du Pays de Lamastre",
+  "api": "https://admin.destination-parc-monts-ardeche.fr/api/v2"
+ },
+ {
+  "name": "Parc Naturel Régional du Haut-Jura",
+  "api": "https://randoadmin.parc-haut-jura.fr/api/v2"
+ },
+ {
+  "name": "Conseil Départemental de la Haute Vienne",
+  "api": null,
+  "note": "aucun site dans la liste"
+ },
+ {
+  "name": "Parc Naturel Régional du Vercors",
+  "api": "https://geo.pnr-vercors.fr/api/v2"
+ },
+ {
+  "name": "Parc National de la Vanoise",
+  "api": "https://adminrando.vanoise.com/api/v2"
+ },
+ {
+  "name": "Fédération Française de Cyclisme",
+  "api": "https://prod-geotrek-ffc-admin.makina-corpus.net/api/v2"
+ },
+ {
+  "name": "Agence Régionale du Tourisme Grand Est : Champagne",
+  "api": null,
+  "note": "aucun site dans la liste"
+ },
+ {
+  "name": "Compiègne Pierrefonds",
+  "api": "https://geotrekadmin.compiegne-pierrefonds.fr/api/v2"
+ },
+ {
+  "name": "Lot Tourisme",
+  "api": null,
+  "note": "aucun site dans la liste"
+ },
+ {
+  "name": "Parc National des Calanques",
+  "api": null,
+  "note": "aucun site dans la liste"
+ },
+ {
+  "name": "Communauté de Communes Cœur et Coteaux du Comminges",
+  "api": "https://adminrando.coeurcoteaux-comminges.fr/api/v2"
+ }
+]

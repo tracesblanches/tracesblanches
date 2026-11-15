@@ -1,0 +1,23 @@
+[
+  {
+    "name": "Hauts-Plateaux du Vercors",
+    "lon": 5.50,
+    "lat": 44.896,
+    "radius_km": 15.0,
+    "source": "barycentre des traversées nordiques 29403 et 29411 du PNR du Vercors (geo.pnr-vercors.fr, « Traversée nordique des Hauts-Plateaux ») ; nom de la Réserve naturelle des Hauts-Plateaux du Vercors (OSM relation 1023762)"
+  },
+  {
+    "name": "Les Moises – Hermones",
+    "lon": 6.4902,
+    "lat": 46.2622,
+    "radius_km": 5.0,
+    "source": "itinéraires OSM piste:grooming=backcountry « Tour des Hermones », « Tour de la Tête du Char », « Tour de la Pointe de Miribel », membres du site OSM « Domaine nordique des Moises » (relation 12203182) ; point représentatif de la zone"
+  },
+  {
+    "name": "La Molière",
+    "lon": 5.5824,
+    "lat": 45.1649,
+    "radius_km": 5.0,
+    "source": "itinéraire nordique 29218 « La Molière » du PNR du Vercors (« itinéraire en crête ») et Camptocamp 51389 « Crête de la Molière » ; point représentatif de la zone"
+  }
+]

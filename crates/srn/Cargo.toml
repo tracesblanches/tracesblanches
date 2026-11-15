@@ -1,0 +1,26 @@
+[package]
+name = "skimap-srn"
+description = "Domaines de jeu du ski de randonnée nordique hors stations : traversées, plateaux, itinéraires (pipeline)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+skimap-common = { workspace = true, features = ["download"] }
+skimap-osm.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+geo.workspace = true
+geo-types.workspace = true
+rstar.workspace = true
+csv.workspace = true
+quick-xml.workspace = true
+
+[dev-dependencies]
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true
