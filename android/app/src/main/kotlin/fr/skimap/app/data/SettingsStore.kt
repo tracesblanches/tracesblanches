@@ -87,3 +87,25 @@ class PreferencesSettingsStore(
         const val KEY_HIDDEN_GROUPS = "hidden_groups_"
     }
 }
+
+/** Choices of the screens themselves, in the app preferences (off the main thread). */
+class UiChoices(
+    open: () -> SharedPreferences,
+) {
+    private val prefs by lazy(open)
+
+    /** Whether the short welcome (first launch) was read or skipped. */
+    fun welcomeDone(): Boolean = prefs.getBoolean(KEY_WELCOME_DONE, false)
+
+    fun setWelcomeDone() = prefs.edit { putBoolean(KEY_WELCOME_DONE, true) }
+
+    /** Light or dark choice of the menu; [Appearance.AUTO] until chosen. */
+    fun appearance(): Appearance = Appearance.of(prefs.getString(KEY_APPEARANCE, null))
+
+    fun setAppearance(a: Appearance) = prefs.edit { putString(KEY_APPEARANCE, a.name) }
+
+    private companion object {
+        const val KEY_WELCOME_DONE = "welcome_done"
+        const val KEY_APPEARANCE = "appearance"
+    }
+}

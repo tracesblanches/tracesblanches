@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="day_prepare">Préparer ma journée</string>
+    <string name="welcome_step">%1$d sur %2$d</string>
+    <string name="welcome_skip">Passer</string>
+    <string name="welcome_next">Suivant</string>
+    <string name="welcome_morning_title">Préparez votre journée le matin</string>
+    <string name="welcome_morning_body">Choisissez votre domaine, votre temps et votre niveau. L\'app trace une boucle adaptée à la neige et à l\'état des pistes.</string>
+    <string name="welcome_pocket_title">Puis le téléphone en poche</string>
+    <string name="welcome_pocket_body">Skiez. L\'app parle à chaque intersection et vous prévient si vous êtes en retard. Elle marche sans réseau.</string>
+    <string name="welcome_choose_area">Choisir un domaine</string>
+    <string name="sheet_appearance">Apparence</string>
+    <string name="appearance_auto">Automatique (comme le téléphone)</string>
+    <string name="appearance_light">Clair</string>
+    <string name="appearance_dark">Sombre</string>
+    <string name="appearance_sun_hint">En plein soleil, le clair se lit mieux.</string>
+</resources>

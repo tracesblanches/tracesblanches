@@ -111,7 +111,7 @@ fn all_sources() -> Map<String, Value> {
             json!({"type": "vector", "url": format!("pmtiles://layers/{id}.pmtiles")}),
         );
     }
-    for id in ["position", "route", "decision"] {
+    for id in ["position", "route", "decision", "selection"] {
         m.insert(id.into(), runtime());
     }
     m
@@ -153,7 +153,8 @@ pub fn runtime_schema() -> Value {
     json!({
         "position": {"geometry": "Point", "properties": {"accuracy_m": "number"}},
         "route": {"geometry": "LineString", "properties": {"part": ["ahead", "done"]}},
-        "decision": {"geometry": "Point", "properties": {"label": "string"}}
+        "decision": {"geometry": "Point", "properties": {"label": "string"}},
+        "selection": {"geometry": ["LineString", "Polygon"], "properties": {}}
     })
 }
 
@@ -1413,6 +1414,18 @@ fn station_points(p: &Palette) -> Vec<Value> {
     ]
 }
 
+/// The feature the user touched (runtime source `selection`: a piste or the outline of a
+/// zone), while its card is open: a wide translucent halo over it.
+fn selection(p: &Palette) -> Value {
+    layer(
+        "selection-halo",
+        "line",
+        Some("selection"),
+        json!({"layout": {"line-cap": "round", "line-join": "round"},
+               "paint": {"line-color": p.position, "line-opacity": 0.45, "line-width": zl(&[(10.0, 10.0), (16.0, 18.0)])}}),
+    )
+}
+
 /// Position of the skier (runtime source): accuracy disc and dot.
 fn position(p: &Palette) -> Vec<Value> {
     // Pixels per metre at 45.7° N (both sites within 3 %), 512-pixel tiles.
@@ -1472,6 +1485,7 @@ fn fond(theme: Theme) -> Vec<Value> {
     v.push(piste_labels(p, 13.0, 14.0));
     v.extend(localities(p, 15.0, 13.0, Some(15.0)));
     v.extend(oronyms(p, false));
+    v.push(selection(p));
     v.extend(position(p));
     v
 }
@@ -1565,6 +1579,7 @@ fn srn(theme: Theme) -> Vec<Value> {
     ));
     v.extend(localities(p, 14.0, 12.0, Some(14.0)));
     v.extend(oronyms(p, true));
+    v.push(selection(p));
     v.extend(position(p));
     v
 }
@@ -1638,6 +1653,7 @@ fn guidage(theme: Theme) -> Vec<Value> {
                           "text-allow-overlap": true},
                "paint": text_paint(p.text, p.halo, 3.0)}),
     ));
+    v.push(selection(p));
     v.extend(position(p));
     v
 }
@@ -1787,7 +1803,7 @@ pub fn group_of(id: &str) -> Option<&'static str> {
             "redevance"
         } else if starts(&["route", "decision"]) {
             "itineraire"
-        } else if starts(&["position"]) {
+        } else if starts(&["position", "selection"]) {
             "position"
         } else {
             return None;

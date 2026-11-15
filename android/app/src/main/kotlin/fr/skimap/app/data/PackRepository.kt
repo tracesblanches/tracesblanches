@@ -23,6 +23,8 @@ data class OpenedPack(
     val coreVersion: String,
     /** Bounds of each pack shown, in order (free mode: the automatic view is one of them). */
     val packBounds: List<Bounds> = emptyList(),
+    /** Name of each pack shown, in order (the style suffix `~p<k>` is pack `k`). */
+    val packNames: List<String> = emptyList(),
 )
 
 /** Packs stored on the phone. Every read goes through the Rust reader (crates/ffi). */

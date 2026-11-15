@@ -2404,6 +2404,35 @@
       "type": "symbol"
     },
     {
+      "id": "selection-halo",
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "metadata": {
+        "skimap:group": "position"
+      },
+      "paint": {
+        "line-color": "#0a6cff",
+        "line-opacity": 0.45,
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          10.0,
+          10.0,
+          16.0,
+          18.0
+        ]
+      },
+      "source": "selection",
+      "type": "line"
+    },
+    {
       "id": "position-accuracy",
       "metadata": {
         "skimap:group": "position"
@@ -2554,6 +2583,13 @@
         "properties": {
           "accuracy_m": "number"
         }
+      },
+      "selection": {
+        "geometry": [
+          "LineString",
+          "Polygon"
+        ],
+        "properties": {}
       }
     },
     "skimap:style": "fond",
@@ -2597,6 +2633,13 @@
     },
     "refuges-info": {
       "data": "layers/refuges-info.geojson",
+      "type": "geojson"
+    },
+    "selection": {
+      "data": {
+        "features": [],
+        "type": "FeatureCollection"
+      },
       "type": "geojson"
     },
     "snow-groomed": {

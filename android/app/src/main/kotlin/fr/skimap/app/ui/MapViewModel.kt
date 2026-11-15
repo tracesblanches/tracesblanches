@@ -235,7 +235,10 @@ class MapViewModel(
             val opened =
                 repository
                     .open(dirs, styles.read(wanted), free)
-                    .copy(packBounds = dirs.mapNotNull { d -> packs.firstOrNull { it.dir == d }?.bounds })
+                    .copy(
+                        packBounds = dirs.mapNotNull { d -> packs.firstOrNull { it.dir == d }?.bounds },
+                        packNames = dirs.map { d -> packs.firstOrNull { it.dir == d }?.siteName.orEmpty() },
+                    )
             val millis = (nanoTime() - start) / NANOS_PER_MILLI
             withContext(io) { settings.set(if (free) FREE else dirs.first()) }
             Log.i(TAG, "packs ${opened.info.siteId} opened in $millis ms (list, open, style ${opened.style.name})")

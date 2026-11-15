@@ -145,7 +145,7 @@ pub fn feature_card(pack_layer: String, properties_json: String, lang: Lang) -> 
         "refuges-osm" => Some(refuges_osm(&props, lang)),
         "refuges-camptocamp" => Some(camptocamp(&props, lang)),
         "stations" => Some(station(&props, lang)),
-        _ => None,
+        other => crate::card_map::area_card(other, &props, lang),
     }
 }
 

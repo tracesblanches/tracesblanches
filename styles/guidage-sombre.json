@@ -510,6 +510,35 @@
       "type": "symbol"
     },
     {
+      "id": "selection-halo",
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "metadata": {
+        "skimap:group": "position"
+      },
+      "paint": {
+        "line-color": "#4ea8ff",
+        "line-opacity": 0.45,
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          10.0,
+          10.0,
+          16.0,
+          18.0
+        ]
+      },
+      "source": "selection",
+      "type": "line"
+    },
+    {
       "id": "position-accuracy",
       "metadata": {
         "skimap:group": "position"
@@ -630,6 +659,13 @@
             "done"
           ]
         }
+      },
+      "selection": {
+        "geometry": [
+          "LineString",
+          "Polygon"
+        ],
+        "properties": {}
       }
     },
     "skimap:style": "guidage",
@@ -661,6 +697,13 @@
       "type": "geojson"
     },
     "route": {
+      "data": {
+        "features": [],
+        "type": "FeatureCollection"
+      },
+      "type": "geojson"
+    },
+    "selection": {
       "data": {
         "features": [],
         "type": "FeatureCollection"

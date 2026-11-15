@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- First launch, the main action and the appearance. French: values-fr. -->
+<resources>
+    <string name="day_prepare">Prepare my day</string>
+    <string name="welcome_step">%1$d of %2$d</string>
+    <string name="welcome_skip">Skip</string>
+    <string name="welcome_next">Next</string>
+    <string name="welcome_morning_title">Prepare your day in the morning</string>
+    <string name="welcome_morning_body">Pick your area, your time and your level. The app plans a loop that fits the snow and the trail status.</string>
+    <string name="welcome_pocket_title">Then put the phone in your pocket</string>
+    <string name="welcome_pocket_body">Ski. The app speaks at each turn and warns you if you run late. It works with no network.</string>
+    <string name="welcome_choose_area">Choose an area</string>
+    <string name="sheet_appearance">Appearance</string>
+    <string name="appearance_auto">Automatic (like the phone)</string>
+    <string name="appearance_light">Light</string>
+    <string name="appearance_dark">Dark</string>
+    <string name="appearance_sun_hint">In full sun, light reads best.</string>
+</resources>

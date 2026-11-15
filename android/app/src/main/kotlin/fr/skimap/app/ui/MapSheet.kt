@@ -43,6 +43,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.toColorInt
 import fr.skimap.app.R
+import fr.skimap.app.data.Appearance
 import fr.skimap.app.data.Practice
 import fr.skimap.app.ui.theme.GloveTarget
 import fr.skimap.core.LayerGroup
@@ -61,6 +62,7 @@ fun MapSheet(
     actions: MapActions,
     onDismiss: () -> Unit,
     autoUpdate: Boolean = true,
+    appearance: Appearance? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
@@ -70,7 +72,7 @@ fun MapSheet(
         // The handle is a touch target too: 64 dp wide instead of 32 (accessibility check).
         dragHandle = { BottomSheetDefaults.DragHandle(width = 64.dp) },
     ) {
-        MapSheetContent(state, actions, onDismiss, today, zone, autoUpdate = autoUpdate)
+        MapSheetContent(state, actions, onDismiss, today, zone, autoUpdate = autoUpdate, appearance = appearance)
     }
 }
 
@@ -84,6 +86,8 @@ fun MapSheetContent(
     zone: ZoneId,
     modifier: Modifier = Modifier,
     autoUpdate: Boolean = true,
+    /** The user's light or dark choice; `null`: not offered. */
+    appearance: Appearance? = null,
 ) {
     val texts = PackTexts(LocalResources.current)
     val info = state.opened.info
@@ -133,6 +137,20 @@ fun MapSheetContent(
         if (style.legend.isNotEmpty()) {
             SectionTitle(stringResource(R.string.sheet_legend))
             Legend(style.legend)
+        }
+        if (appearance != null) {
+            SectionTitle(stringResource(R.string.sheet_appearance))
+            Column(Modifier.selectableGroup()) {
+                listOf(
+                    Appearance.AUTO to R.string.appearance_auto,
+                    Appearance.LIGHT to R.string.appearance_light,
+                    Appearance.DARK to R.string.appearance_dark,
+                ).forEach { (a, label) ->
+                    ChoiceRow(stringResource(label), selected = appearance == a) { actions.setAppearance(a) }
+                }
+            }
+            // A suggestion, never forced: light reads best on snow in full sun.
+            Text(stringResource(R.string.appearance_sun_hint), style = MaterialTheme.typography.bodyMedium)
         }
         SectionTitle(stringResource(R.string.sheet_updates))
         SwitchRow(stringResource(R.string.auto_update), checked = autoUpdate) { actions.setAutoUpdate(it) }
