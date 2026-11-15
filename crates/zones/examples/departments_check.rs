@@ -18,7 +18,9 @@ use skimap_zones::sources::jurisdiction::{API, departments_in_bbox};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cfg = Config::from_env()?;
     let layout = cfg.layout();
-    let dl = Downloader::builder(layout.cache_root()).offline(true).build()?;
+    let dl = Downloader::builder(layout.cache_root())
+        .offline(true)
+        .build()?;
     let reg = Registry::load(&layout)?;
     let (mut same, mut differ, mut skipped, mut asked) = (0, 0, 0, 0usize);
     'site: for s in reg.all() {
@@ -49,7 +51,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             same += 1;
         } else {
             differ += 1;
-            println!("{} : grille complète {all:?}, nouvelle méthode {new:?}", s.id);
+            println!(
+                "{} : grille complète {all:?}, nouvelle méthode {new:?}",
+                s.id
+            );
         }
         asked += all.len();
     }
