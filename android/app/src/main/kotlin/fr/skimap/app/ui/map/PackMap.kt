@@ -21,6 +21,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import fr.skimap.app.data.CameraSpot
 import fr.skimap.app.data.OpenedPack
 import fr.skimap.core.Bounds
@@ -169,6 +170,8 @@ fun PackMap(
     lastCamera: CameraSpot? = null,
     /** The camera when the app goes to the background (saved once, not while moving). */
     onLeave: (CameraSpot) -> Unit = {},
+    /** A long touch: the place (latitude, longitude), for its rules and the way there (V6, K7, V1). */
+    onLongPress: (Double, Double) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -210,11 +213,29 @@ fun PackMap(
     }
     // Panel "Couches": layer visibility of the groups of the style, no reload.
     LaunchedEffect(loaded, hidden) { loaded?.let { showGroups(it, style, hidden) } }
+    // Runtime layers of the app: the off-piste route (V1), the less exposed terrain (V7).
+    val route by fr.skimap.app.offpiste.RouteOverlay.line
+        .collectAsStateWithLifecycle()
+    val lowExposure by fr.skimap.app.rules.LowExposure.shown
+        .collectAsStateWithLifecycle()
+    LaunchedEffect(loaded, route) {
+        loaded?.let {
+            fr.skimap.app.offpiste.RouteOverlay
+                .apply(it, route)
+        }
+    }
+    LaunchedEffect(loaded, lowExposure) {
+        loaded?.let {
+            fr.skimap.app.rules.LowExposure
+                .apply(it, lowExposure)
+        }
+    }
     // Touch on a refuge, a piste or a zone: its card, and the piste or zone highlighted.
     // One query per touch, around the finger.
     val currentOpened by rememberUpdatedState(opened)
     val currentOnCard by rememberUpdatedState(onCard)
     val currentLang by rememberUpdatedState(lang)
+    val currentOnLongPress by rememberUpdatedState(onLongPress)
     LaunchedEffect(mapView) {
         val map = mapView.awaitMap()
         val radius = TOUCH_RADIUS_DP * density
@@ -223,6 +244,10 @@ fun PackMap(
             controller.select(hit?.feature)
             if (hit != null) currentOnCard(hit.card)
             hit != null
+        }
+        map.addOnMapLongClickListener { latLng ->
+            currentOnLongPress(latLng.latitude, latLng.longitude)
+            true
         }
     }
     LaunchedEffect(opened.info.siteId, opened.info.bounds) {

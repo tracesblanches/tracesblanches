@@ -161,6 +161,10 @@ fun MapSheetContent(
         }
         // On the ground (V8 to V15, module :community): report, « Mes sorties », fix OSM.
         CommunityEntries(info.siteId)
+        // Tools of the outing (K7, V1, A10, E2) and the less exposed terrain (V7).
+        HorizontalDivider(thickness = 2.dp, color = MaterialTheme.colorScheme.outline)
+        fr.skimap.app.prep
+            .ToolsSection(info.siteId, onOpen = onClose)
         SectionTitle(stringResource(R.string.sheet_updates))
         SwitchRow(stringResource(R.string.auto_update), checked = autoUpdate) { actions.setAutoUpdate(it) }
         Button(onClick = onClose, modifier = Modifier.fillMaxWidth().heightIn(min = GloveTarget)) {

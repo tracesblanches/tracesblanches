@@ -3,7 +3,7 @@
     <!-- Menu: tools of the outing. -->
     <string name="tools_title">Tools</string>
     <string name="tools_offpiste">Off-piste route</string>
-    <string name="tools_outings">My outings</string>
+    <string name="tools_outings">Outing recaps</string>
     <string name="tools_low_exposure">Less exposed terrain (avalanches)</string>
     <string name="low_exposure_warning">Less exposed terrain (model): never a guarantee. The avalanche bulletin and your judgement on the spot come first.</string>
     <string name="tools_no_pack">No area pack on this phone.</string>

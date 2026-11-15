@@ -2,7 +2,7 @@
 <resources>
     <string name="tools_title">Outils</string>
     <string name="tools_offpiste">Itinéraire hors piste</string>
-    <string name="tools_outings">Mes sorties</string>
+    <string name="tools_outings">Bilans des sorties</string>
     <string name="tools_low_exposure">Terrain peu exposé (avalanches)</string>
     <string name="low_exposure_warning">Terrain peu exposé (modèle) : jamais une garantie. Le bulletin d\'avalanche et ton jugement sur place priment.</string>
     <string name="tools_no_pack">Aucun pack de domaine sur ce téléphone.</string>

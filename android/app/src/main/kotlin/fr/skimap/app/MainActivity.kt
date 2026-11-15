@@ -85,6 +85,11 @@ class MainActivity : ComponentActivity() {
             autoUpdate = withContext(Dispatchers.IO) { settings.autoUpdate() }
             // The daily update, with its constraints (KEEP: scheduled once, not per launch).
             PackSync.schedulePeriodic(applicationContext, autoUpdate)
+            // Preparation of the next days on charge and Wi-Fi (E2), the less exposed terrain layer (V7).
+            fr.skimap.app.prep.PrepWork
+                .schedule(applicationContext)
+            fr.skimap.app.rules.LowExposure
+                .load(applicationContext)
         }
         setContent {
             SkimapTheme {

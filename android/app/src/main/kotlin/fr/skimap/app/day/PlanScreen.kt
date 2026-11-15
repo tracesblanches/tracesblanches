@@ -36,6 +36,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import fr.skimap.app.R
 import fr.skimap.app.guidance.GuidanceBar
+import fr.skimap.app.prep.PlanExtras
 import fr.skimap.app.ui.theme.GloveTarget
 import fr.skimap.core.DayPlanView
 import fr.skimap.core.KeyPointView
@@ -119,7 +120,15 @@ fun PlanScreen(
             }
         }
         item { PlanSummary(plan) }
-        item { PlanButtons(tracking, actions, sent, onStop = { confirmStop = true }) }
+        item {
+            Column {
+                PlanButtons(tracking, actions, sent, onStop = { confirmStop = true })
+                // Only when it matters (nothing drawn otherwise): the battery when it is a problem (C9,
+                // K8), the server alert when the plan went to it (S2).
+                fr.skimap.app.prep
+                    .PlanExtras(plan.limitMs ?: plan.expectedBackMs, running?.planDir, plan.planDir)
+            }
+        }
         item { PlanList(stringResource(R.string.plan_key_points), plan.keyPoints.map(::keyPointText), MaterialTheme.typography.bodyMedium) }
         if (plan.plansB.isNotEmpty()) {
             item { PlanList(stringResource(R.string.plan_plans_b), plan.plansB.map { "· $it" }, MaterialTheme.typography.bodySmall) }
