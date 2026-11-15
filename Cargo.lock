@@ -3005,12 +3005,21 @@ dependencies = [
  "skimap-collab",
  "skimap-common",
  "skimap-core",
+ "skimap-intent",
  "skimap-pack",
  "skimap-plan",
  "skimap-voice",
  "tempfile",
  "thiserror",
  "uniffi",
+]
+
+[[package]]
+name = "skimap-intent"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "skimap-voice",
 ]
 
 [[package]]

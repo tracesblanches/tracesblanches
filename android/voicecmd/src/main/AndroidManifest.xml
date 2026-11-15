@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- One command at a time, after a gesture (headset button held, microphone button):
+         the microphone is open only until the end of the question. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- The optional download of the speech model (ModelInstaller). -->
+    <uses-permission android:name="android.permission.INTERNET" />
+</manifest>

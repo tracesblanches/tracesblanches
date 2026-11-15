@@ -21,6 +21,9 @@ skimap-common.workspace = true
 skimap-voice.workspace = true
 # « Mes sorties », challenges, Strava export, OSM notes (V12, V13, V15): phone side.
 skimap-collab = { path = "../collab", features = ["phone"] }
+# Voice commands (V3, VO5, A11): classification without a language model. Path
+# dependency: the crate is not in [workspace.dependencies] (root manifest not ours).
+skimap-intent = { path = "../intent" }
 chrono.workspace = true
 geojson.workspace = true
 serde.workspace = true

@@ -1,0 +1,164 @@
+# Held-out evaluation set (A11, #98): written on 2026-11-15 before the classifier, never
+# used to tune it (tuning uses dev.tsv). One question per line: label, language, text.
+# Labels: where, time_left, next_direction, bring_back, turnaround, report_tracks,
+# report_groomed, battery, repeat, unknown (out of the closed list: must be refused).
+where	fr	Où suis-je ?
+where	fr	Je suis où ?
+where	fr	On est où là ?
+where	fr	C'est où ici ?
+where	fr	Où est-ce que je me trouve ?
+where	fr	Ma position ?
+where	fr	Quelle est ma position
+where	fr	où sommes-nous
+where	fr	Dis-moi où je suis.
+where	fr	ou suis je
+where	fr	Je me situe où ?
+where	fr	Où on se trouve ?
+where	en	Where am I?
+where	en	Where are we?
+where	en	What's my position?
+where	en	Where are we right now
+where	en	Tell me where I am.
+where	en	where am i
+where	en	What is my location?
+where	en	Where exactly am I?
+time_left	fr	Temps restant ?
+time_left	fr	Combien de temps il reste ?
+time_left	fr	Il reste combien de temps ?
+time_left	fr	C'est encore loin ?
+time_left	fr	Il reste combien de kilomètres ?
+time_left	fr	Quand est-ce qu'on arrive ?
+time_left	fr	On arrive quand ?
+time_left	fr	Distance restante
+time_left	fr	temps restant
+time_left	fr	Combien de temps avant l'arrivée ?
+time_left	fr	À quelle heure on sera de retour ?
+time_left	fr	Encore combien de temps ?
+time_left	en	Time left?
+time_left	en	How much time is left?
+time_left	en	How long to go?
+time_left	en	How far is it?
+time_left	en	When do we get there?
+time_left	en	How many kilometres left?
+time_left	en	Remaining time
+time_left	en	how much longer
+time_left	en	When will I arrive?
+time_left	en	How far to the finish?
+next_direction	fr	Prochaine direction ?
+next_direction	fr	Je tourne où ?
+next_direction	fr	Par où je vais ?
+next_direction	fr	C'est quoi la prochaine direction ?
+next_direction	fr	Je vais à gauche ou à droite ?
+next_direction	fr	Prochain virage ?
+next_direction	fr	Où est-ce que je dois tourner ?
+next_direction	fr	prochaine direction
+next_direction	fr	Quelle direction ?
+next_direction	fr	Je prends quel chemin ?
+next_direction	fr	Prochaine bifurcation ?
+next_direction	en	Next direction?
+next_direction	en	Which way?
+next_direction	en	Where do I turn?
+next_direction	en	What's the next turn?
+next_direction	en	Left or right?
+next_direction	en	Which way do I go next?
+next_direction	en	next turn
+next_direction	en	What direction now?
+next_direction	en	Where do I go now?
+bring_back	fr	Ramène-moi.
+bring_back	fr	Ramène-moi au départ.
+bring_back	fr	Je veux rentrer.
+bring_back	fr	Ramène moi
+bring_back	fr	Guide-moi jusqu'au parking.
+bring_back	fr	Comment je rentre ?
+bring_back	fr	Retour au départ.
+bring_back	fr	On rentre.
+bring_back	fr	Ramenez-moi à la voiture.
+bring_back	fr	Je veux retourner au point de départ.
+bring_back	en	Take me back.
+bring_back	en	Bring me back.
+bring_back	en	Take me home.
+bring_back	en	Guide me back to the start.
+bring_back	en	I want to go back.
+bring_back	en	Back to the car.
+bring_back	en	take me back to the parking
+bring_back	en	Lead me home.
+turnaround	fr	Heure de demi-tour ?
+turnaround	fr	Quand est-ce que je dois faire demi-tour ?
+turnaround	fr	À quelle heure faire demi-tour ?
+turnaround	fr	Heure limite de demi-tour ?
+turnaround	fr	heure de demi tour
+turnaround	fr	Je fais demi-tour quand ?
+turnaround	fr	C'est quand le demi-tour ?
+turnaround	fr	Il me reste combien de temps avant le demi-tour ?
+turnaround	en	Turnaround time?
+turnaround	en	When should I turn around?
+turnaround	en	What time do I have to turn back?
+turnaround	en	When is the turnaround?
+turnaround	en	turnaround time
+turnaround	en	How long until I must turn around?
+report_tracks	fr	Signale : trace faite.
+report_tracks	fr	Signale trace faite
+report_tracks	fr	La trace est faite.
+report_tracks	fr	Signale que la trace est faite.
+report_tracks	fr	Signaler une trace faite.
+report_tracks	fr	Trace faite
+report_tracks	en	Report: tracks set.
+report_tracks	en	Report tracks set
+report_tracks	en	The tracks are set.
+report_tracks	en	Report that the classic tracks are done.
+report_tracks	en	Tracks set
+report_groomed	fr	Signale : piste damée.
+report_groomed	fr	Signale piste damée
+report_groomed	fr	La piste est damée.
+report_groomed	fr	Signale que la piste vient d'être damée.
+report_groomed	fr	Piste damée
+report_groomed	fr	La dameuse est passée.
+report_groomed	en	Report: trail groomed.
+report_groomed	en	Report trail groomed
+report_groomed	en	The trail is groomed.
+report_groomed	en	Report that the groomer went through.
+report_groomed	en	Freshly groomed
+battery	fr	Combien de batterie ?
+battery	fr	Niveau de batterie ?
+battery	fr	Il me reste combien de batterie ?
+battery	fr	Batterie ?
+battery	fr	Quelle est l'autonomie du téléphone ?
+battery	fr	combien de batterie
+battery	en	How much battery?
+battery	en	Battery level?
+battery	en	How much battery is left?
+battery	en	What's my battery at?
+battery	en	battery
+repeat	fr	Répète.
+repeat	fr	Tu peux répéter ?
+repeat	fr	Répète s'il te plaît.
+repeat	fr	Pardon ?
+repeat	fr	Redis-moi ça.
+repeat	fr	repete
+repeat	en	Repeat.
+repeat	en	Say that again.
+repeat	en	Can you repeat that?
+repeat	en	Repeat please
+repeat	en	Sorry, say again?
+unknown	fr	Quel temps fera-t-il demain ?
+unknown	fr	Où skier demain avec du vent d'ouest ?
+unknown	fr	Mets de la musique.
+unknown	fr	Appelle maman.
+unknown	fr	Quelle heure est-il ?
+unknown	fr	Bonjour.
+unknown	fr	Merci beaucoup.
+unknown	fr	Combien de kilomètres j'ai fait ?
+unknown	fr	Il va neiger ?
+unknown	fr	Envoie un message à Paul.
+unknown	fr	Où est le refuge le plus proche ?
+unknown	fr	Quel fart mettre ?
+unknown	en	What's the weather tomorrow?
+unknown	en	Play some music.
+unknown	en	Call mom.
+unknown	en	What time is it?
+unknown	en	Hello there.
+unknown	en	Thank you.
+unknown	en	Is it going to snow?
+unknown	en	Where should I ski tomorrow?
+unknown	en	Which wax should I use?
+unknown	en	Send a text to Paul.

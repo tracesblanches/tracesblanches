@@ -24,3 +24,5 @@ include(":tracking")
 include(":sport")
 // Collaborative and sport (V8 to V15): reports, offline queue, OSM notes, « Mes sorties ».
 include(":community")
+// Offline voice commands (V3, VO5, A11): speech model on demand, released after each command.
+include(":voicecmd")
