@@ -11,7 +11,7 @@ name = "skimap"
 path = "src/main.rs"
 
 [dependencies]
-skimap-common = { workspace = true, features = ["download"] }
+skimap-common = { workspace = true, features = ["download", "geotiff"] }
 skimap-osm.workspace = true
 skimap-terrain.workspace = true
 skimap-snow.workspace = true

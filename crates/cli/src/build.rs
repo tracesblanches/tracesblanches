@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use anyhow::{Context, Result, anyhow, bail};
+use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Duration as ChronoDuration, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use skimap_common::config::Config;
 use skimap_common::download::Downloader;
@@ -234,25 +235,53 @@ impl Ctx {
     }
 
     /// Runs every available builder of `site` in dependency order and prints the time and
-    /// the key figures of each step. A step whose dependency failed is skipped; the
-    /// personal-use steps are skipped when `personal_sources` is off. Fails if any step
-    /// failed.
+    /// the key figures of each step (planet extract and census read here). Fails if any
+    /// step failed.
     pub fn build_all(&self, site: &Site) -> Result<()> {
-        let mut run = Run::new(site);
-        let mut planet = None;
-        run.step("planet", &[], || {
-            let p = skimap_osm::extract::load_planet(&self.dl)?;
-            let line = format!(
-                "{} pistes dans la zone France, données OSM du {}",
+        let out = self.build_all_with(site, &Shared::default(), &mut std::io::stdout());
+        out.into_result()
+    }
+
+    /// Runs every available builder of `site` in dependency order, writing one line per
+    /// step to `log`: time and key figures, « IGNORÉ » when a dependency failed, « sans
+    /// objet » when the step does not apply to the site (with the reason), « ignoré » for
+    /// the personal-use steps when `personal_sources` is off. `shared` gives the planet
+    /// extract and the census when they were read once for several sites.
+    pub fn build_all_with(
+        &self,
+        site: &Site,
+        shared: &Shared<'_>,
+        log: &mut dyn std::io::Write,
+    ) -> BuildOutcome {
+        let mut run = Run::new(site, log);
+        let mut own_planet = None;
+        run.step("planet", &[], || match shared.planet {
+            Some(p) => Ok(format!(
+                "extrait partagé : {} pistes dans la zone France, données OSM du {}",
                 p.set.pistes.len(),
                 p.valid_at.as_deref().unwrap_or("?")
-            );
-            planet = Some(p);
-            Ok(line)
+            )),
+            None => {
+                let p = skimap_osm::extract::load_planet(&self.dl)?;
+                let line = format!(
+                    "{} pistes dans la zone France, données OSM du {}",
+                    p.set.pistes.len(),
+                    p.valid_at.as_deref().unwrap_or("?")
+                );
+                own_planet = Some(p);
+                Ok(line)
+            }
         });
-        let planet_ref = || planet.as_ref().ok_or_else(|| anyhow!("extrait non lu"));
+        let planet_ref = || {
+            shared
+                .planet
+                .or(own_planet.as_ref())
+                .ok_or_else(|| anyhow!("extrait non lu"))
+        };
+        let mut graph_edges = None;
         run.step("pistes", &["planet"], || {
             let s = self.pistes(site, Some(planet_ref()?))?.stats;
+            graph_edges = Some(s.graph_edges);
             Ok(format!(
                 "{} ways, {} km dont {} km nordiques ; graphe {} nœuds, {} arêtes ({} connecteurs), {} composantes",
                 s.ways,
@@ -266,8 +295,15 @@ impl Ctx {
         });
         run.step("domaines", &["planet"], || {
             let p = planet_ref()?;
-            let census = self.census(p)?;
-            let dir = self.domaines_site(site, p, &census)?;
+            let own;
+            let census = match shared.census {
+                Some(c) => c,
+                None => {
+                    own = self.census(p)?;
+                    &own
+                }
+            };
+            let dir = self.domaines_site(site, p, census)?;
             let st = &census.stats;
             let meta = LayerMeta::read(&dir.join(LayerMeta::file_name(skimap_osm::census::LAYER)))?;
             let names: Vec<String> = meta.stats["list"]
@@ -307,15 +343,22 @@ impl Ctx {
                 )
             });
             Ok(format!(
-                "{} dalles, {} x {} cellules, {:.1} % valides, pente ≥ 30° : {:.1} %{r07}",
+                "{} dalles, {} x {} cellules, {:.1} % valides, altitudes {:.0} à {:.0} m, pente ≥ 30° : {:.1} %{r07}",
                 t.tiles,
                 t.size_cells[0],
                 t.size_cells[1],
                 t.valid_fraction * 100.0,
+                t.elevation_range_m[0],
+                t.elevation_range_m[1],
                 t.steep30_fraction * 100.0
             ))
         });
         run.step("snow", &["terrain"], || {
+            if site.massifs.is_empty() {
+                return not_applicable(
+                    "hors des massifs de la simulation Météo-France (polygones snowtools)",
+                );
+            }
             let s = self.snow(site, None)?;
             let [mean, min, max] = s.depth_mean_min_max_cm;
             Ok(format!(
@@ -339,20 +382,31 @@ impl Ctx {
             Ok(format!("{} zones ({})", z.zones, kinds.join(", ")))
         });
         run.step("avalanche-exposure", &["terrain", "pistes"], || {
+            let relief = crate::relief::steep_relief(&self.layout, site)?;
+            if !relief.avalanche_terrain() {
+                return not_applicable(&format!(
+                    "relief sous le seuil : {}",
+                    relief.describe()
+                ));
+            }
             let e = self.avalanche_exposure(site)?;
             let [low, exp, high] = e.class_shares;
             Ok(format!(
-                "{} x {} cellules de {} m ; terrain peu exposé (modèle) {:.1} %, exposé {:.1} %, très exposé {:.1} % ; CLPA : {} cellules relevées",
+                "{} x {} cellules de {} m ; terrain peu exposé (modèle) {:.1} %, exposé {:.1} %, très exposé {:.1} % ; CLPA : {} cellules relevées ; {}",
                 e.grid.0,
                 e.grid.1,
                 e.grid.2,
                 low * 100.0,
                 exp * 100.0,
                 high * 100.0,
-                e.clpa_cells_raised
+                e.clpa_cells_raised,
+                relief.describe()
             ))
         });
         run.step("routing", &["pistes", "terrain"], || {
+            if graph_edges == Some(0) {
+                return not_applicable("aucune piste dans l'emprise");
+            }
             let g = self.routing(site)?;
             Ok(format!(
                 "{} nœuds, {} arêtes, {:.1} km ({:.1} km à sens unique), {} composantes ; profils sur {} / {} arêtes ; {} octets",
@@ -412,6 +466,18 @@ impl Ctx {
             ))
         });
         run.step("bera", &[], || {
+            // The BERA layer gives the bulletin of a BERA massif, or the notice and links of
+            // the Jura (no BERA there); elsewhere (Vosges, Massif central…) nothing applies.
+            if !site.has_bera && !is_jura(site) {
+                return not_applicable(&format!(
+                    "pas de BERA pour {} (BERA : Alpes, Pyrénées, Corse ; notice sans BERA : Jura)",
+                    site.main_massif()
+                        .map_or("ce site hors massif".to_owned(), |m| format!(
+                            "le massif {} {}",
+                            m.code, m.name
+                        ))
+                ));
+            }
             let b = self.bera(site, None)?;
             let risk = b
                 .bulletin
@@ -442,6 +508,17 @@ impl Ctx {
                 ))
             });
             run.step("status-poll", &["pistes"], || {
+                if !site.kind.has_groomed_trails() {
+                    return not_applicable(&format!(
+                        "{} : pas d'état des pistes ni de damage",
+                        site.kind.label_fr()
+                    ));
+                }
+                if site.status.is_empty() {
+                    return not_applicable(
+                        "aucune source d'état lisible pour ce domaine (rapport 08 : widget Nordic France ou ville ENJ)",
+                    );
+                }
                 let r = self.status_poll(site)?;
                 let s: Vec<String> = r
                     .sources
@@ -461,6 +538,12 @@ impl Ctx {
             );
         }
         run.step("avalanche-historic", &["pistes"], || {
+            if site.department != skimap_avalanche::historic::DDT05_DEPARTMENT {
+                return not_applicable(&format!(
+                    "emprises CLPA publiées seulement pour les Hautes-Alpes (DDT 05) ; département {}",
+                    site.department
+                ));
+            }
             let s = self.avalanche_historic(site, None)?;
             let nets: Vec<String> = s
                 .networks
@@ -507,6 +590,11 @@ impl Ctx {
         // trail graph, the refuges, the voice clips and `assist/history/`. Not in the pack
         // (computed in the morning, on the phone eventually: E2).
         run.step("plan", &["routing"], || {
+            if skimap_plan::presets::archived_day(site).is_none() {
+                return not_applicable(
+                    "aucun jour archivé pour ce site (table des sites ; `skimap history`, usage personnel)",
+                );
+            }
             let r = crate::plan::plan(&self.layout, site, &crate::plan::PlanArgs::default())?;
             let missing: usize = r.plans.iter().map(|p| p.clips.missing.len()).sum();
             Ok(format!(
@@ -520,24 +608,26 @@ impl Ctx {
             ))
         });
         // The pack takes whatever layers exist; it does not need every step above.
+        let mut pack_bytes = None;
         run.step("build-pack", &[], || {
             let r = self.build_pack(site)?;
             let problems = skimap_pack::Pack::open(&r.pack_dir)?.verify()?;
+            pack_bytes = Some(r.total_bytes);
+            if !problems.is_empty() {
+                bail!("relecture du pack : {}", problems.join(" ; "));
+            }
             Ok(format!(
-                "pack {} : {:.2} Mo, {} couches, {} absentes ; relecture : {}",
+                "pack {} : {:.2} Mo, {} couches, {} absentes ; relecture : OK",
                 r.pack_version,
                 r.total_bytes as f64 / 1e6,
                 r.layers.len(),
                 r.missing.len(),
-                if problems.is_empty() {
-                    "OK".to_owned()
-                } else {
-                    problems.join(" ; ")
-                }
             ))
         });
+        let mut export_bytes = None;
         run.step("export", &["build-pack"], || {
             let r = self.export(site)?;
+            export_bytes = Some(r.total_bytes);
             Ok(format!(
                 "{} fichiers, {:.2} Mo, {} couches non exportées",
                 r.files.len(),
@@ -545,7 +635,118 @@ impl Ctx {
                 r.skipped.len()
             ))
         });
-        run.finish()
+        let mut out = run.finish();
+        out.pack_bytes = pack_bytes;
+        out.export_bytes = export_bytes;
+        out
+    }
+}
+
+/// Inputs read once and shared by the `build-all` of several sites.
+#[derive(Default, Clone, Copy)]
+pub struct Shared<'a> {
+    /// OpenSnowMap planet extract.
+    pub planet: Option<&'a Planet>,
+    /// Census of France.
+    pub census: Option<&'a CensusOutput>,
+}
+
+/// A step that does not apply to the site (reason in French).
+#[derive(Debug)]
+pub struct NotApplicable(pub String);
+
+impl std::fmt::Display for NotApplicable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for NotApplicable {}
+
+fn not_applicable(why: &str) -> Result<String> {
+    Err(NotApplicable(why.to_owned()).into())
+}
+
+/// Whether the main massif of a site is in the Jura (snowtools 55 to 58), where the BERA
+/// layer gives the notice and links of a massif without bulletin.
+fn is_jura(site: &Site) -> bool {
+    site.main_massif()
+        .is_some_and(|m| (55..=58).contains(&m.code))
+}
+
+/// State of a step.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StepState {
+    /// Done.
+    Ok,
+    /// Failed.
+    Failed,
+    /// Not run: a dependency failed.
+    Blocked,
+    /// Does not apply to the site, or a dependency does not.
+    NotApplicable,
+    /// Personal-use step with `personal_sources` off.
+    Disabled,
+}
+
+/// One step of a `build-all` run.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StepRecord {
+    /// Step name.
+    pub name: String,
+    /// State.
+    pub state: StepState,
+    /// Seconds.
+    pub seconds: f64,
+    /// Key figures, error or reason.
+    pub line: String,
+}
+
+/// Result of the `build-all` of one site.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuildOutcome {
+    /// Site.
+    pub site: String,
+    /// Steps in order.
+    pub steps: Vec<StepRecord>,
+    /// Total seconds.
+    pub seconds: f64,
+    /// Pack size, bytes.
+    pub pack_bytes: Option<u64>,
+    /// Export size, bytes.
+    pub export_bytes: Option<u64>,
+}
+
+impl BuildOutcome {
+    /// Steps that failed or were blocked.
+    pub fn failed(&self) -> Vec<&StepRecord> {
+        self.steps
+            .iter()
+            .filter(|s| matches!(s.state, StepState::Failed | StepState::Blocked))
+            .collect()
+    }
+
+    /// Whether every step succeeded, did not apply or was disabled.
+    pub fn ok(&self) -> bool {
+        self.failed().is_empty()
+    }
+
+    /// `Ok` when [`BuildOutcome::ok`], else the failed steps.
+    pub fn into_result(self) -> Result<()> {
+        if self.ok() {
+            Ok(())
+        } else {
+            bail!(
+                "build-all {} : étapes en échec ou ignorées : {}",
+                self.site,
+                self.failed()
+                    .iter()
+                    .map(|s| s.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        }
     }
 }
 
@@ -554,23 +755,48 @@ struct Run<'a> {
     site: &'a Site,
     t0: Instant,
     failed: BTreeSet<&'static str>,
-    lines: Vec<String>,
+    not_applicable: BTreeSet<&'static str>,
+    steps: Vec<StepRecord>,
+    log: &'a mut dyn std::io::Write,
 }
 
 impl<'a> Run<'a> {
-    fn new(site: &'a Site) -> Self {
-        println!("build-all {} ({})", site.id, site.name);
+    fn new(site: &'a Site, log: &'a mut dyn std::io::Write) -> Self {
+        let _ = writeln!(
+            log,
+            "build-all {} ({}, {})",
+            site.id,
+            site.name,
+            site.kind.label_fr()
+        );
         Self {
             site,
             t0: Instant::now(),
             failed: BTreeSet::new(),
-            lines: Vec::new(),
+            not_applicable: BTreeSet::new(),
+            steps: Vec::new(),
+            log,
         }
     }
 
-    fn print(&mut self, line: String) {
-        println!("{line}");
-        self.lines.push(line);
+    fn record(&mut self, name: &str, state: StepState, seconds: f64, line: String) {
+        let shown = match state {
+            StepState::Ok => format!("{name:<19} {seconds:>7.2}s  {line}"),
+            StepState::Failed => format!("{name:<19} {seconds:>7.2}s  ÉCHEC : {line}"),
+            StepState::Blocked => format!("{name:<19} {:>8}  IGNORÉ : {line}", "-"),
+            StepState::NotApplicable => {
+                format!("{name:<19} {seconds:>7.2}s  sans objet : {line}")
+            }
+            StepState::Disabled => format!("{name:<19} {:>8}  ignoré : {line}", "-"),
+        };
+        let _ = writeln!(self.log, "{shown}");
+        let _ = self.log.flush();
+        self.steps.push(StepRecord {
+            name: name.to_owned(),
+            state,
+            seconds,
+            line,
+        });
     }
 
     fn step(
@@ -581,36 +807,51 @@ impl<'a> Run<'a> {
     ) {
         if let Some(d) = deps.iter().find(|d| self.failed.contains(*d)) {
             self.failed.insert(name);
-            self.print(format!("{name:<19} {:>8}  IGNORÉ : {d} a échoué", "-"));
+            self.record(name, StepState::Blocked, 0.0, format!("{d} a échoué"));
+            return;
+        }
+        if let Some(d) = deps.iter().find(|d| self.not_applicable.contains(*d)) {
+            self.not_applicable.insert(name);
+            self.record(
+                name,
+                StepState::NotApplicable,
+                0.0,
+                format!("dépend de {d}, sans objet"),
+            );
             return;
         }
         let t = Instant::now();
         let r = f();
         let s = t.elapsed().as_secs_f64();
         match r {
-            Ok(line) => self.print(format!("{name:<19} {s:>7.2}s  {line}")),
-            Err(e) => {
-                self.failed.insert(name);
-                self.print(format!("{name:<19} {s:>7.2}s  ÉCHEC : {e:#}"));
-            }
+            Ok(line) => self.record(name, StepState::Ok, s, line),
+            Err(e) => match e.downcast_ref::<NotApplicable>() {
+                Some(na) => {
+                    self.not_applicable.insert(name);
+                    let why = na.0.clone();
+                    self.record(name, StepState::NotApplicable, s, why);
+                }
+                None => {
+                    self.failed.insert(name);
+                    self.record(name, StepState::Failed, s, format!("{e:#}"));
+                }
+            },
         }
     }
 
     fn skip(&mut self, name: &'static str, why: &str) {
-        self.print(format!("{name:<19} {:>8}  ignoré : {why}", "-"));
+        self.record(name, StepState::Disabled, 0.0, why.to_owned());
     }
 
-    fn finish(self) -> Result<()> {
+    fn finish(self) -> BuildOutcome {
         let total = self.t0.elapsed().as_secs_f64();
-        println!("{:<19} {total:>7.2}s", "total");
-        if self.failed.is_empty() {
-            Ok(())
-        } else {
-            bail!(
-                "build-all {} : étapes en échec ou ignorées : {}",
-                self.site.id,
-                self.failed.iter().copied().collect::<Vec<_>>().join(", ")
-            )
+        let _ = writeln!(self.log, "{:<19} {total:>7.2}s", "total");
+        BuildOutcome {
+            site: self.site.id.to_owned(),
+            steps: self.steps,
+            seconds: total,
+            pack_bytes: None,
+            export_bytes: None,
         }
     }
 }
