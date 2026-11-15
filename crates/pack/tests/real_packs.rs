@@ -83,8 +83,8 @@ fn packs_match_their_sources() {
     }
 }
 
-/// Every pixel of every top-zoom tile of the slope and snow rasters equals the class of the
-/// source cell under its centre; prints the share of slopes ≥ 30°.
+/// Every pixel of every top-zoom tile of the slope, snow and avalanche exposure rasters
+/// equals the class of the source cell under its centre; prints the class shares.
 #[test]
 #[ignore = "needs data/out/<site>/pack"]
 fn rasters_match_their_geotiffs() {
@@ -96,8 +96,7 @@ fn rasters_match_their_geotiffs() {
                 continue;
             };
             assert_eq!(l.kind, LayerKind::Raster);
-            let grid =
-                skimap_common::geotiff::read_f32(&layout.out_dir(site).join(&l.origin)).unwrap();
+            let grid = raster::read_grid(&spec, &layout.out_dir(site).join(&l.origin)).unwrap();
             let archive = pack.tiles(spec.id).unwrap();
             let z = spec.maxzoom;
             let bbox = raster::grid_bbox_wgs84(&grid).unwrap();

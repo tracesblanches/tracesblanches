@@ -56,8 +56,10 @@ Lues dans `data/out/<site>/` avec leurs `<couche>.meta.json` (schéma `common::m
 | `status`, `status-summary` | `status/` | usage personnel : seulement avec `personal_sources` |
 | `meteo-hourly` | `meteo-hourly/` | usage personnel |
 | `routes`, `route-offpiste-*`, `piste-graph` | `routes/` | itinéraires de preuve (C1, C3, C5), graphe de pistes typé du noyau |
-| `offpiste-elevation`, `-slope`, `-zones`, `-pistes`, `-zone-classes`, `-snow` | `offpiste/` | rasters SKR1 de core, gzip ; neige : la date la plus récente |
+| `offpiste-elevation`, `-slope`, `-zones`, `-pistes`, `-exposure`, `-zone-classes`, `-snow` | `offpiste/` | rasters SKR1 de core, gzip ; neige : la date la plus récente ; `-exposure` : exposition aux avalanches, surcouche par défaut du routeur |
+| `avalanche-segments` | `avalanche-exposure/segments.geojson` | tronçons des pistes par classe d'exposition (« terrain peu exposé (modèle) », « exposé », « très exposé ») ; 1,6 Mo à Cervières, 7,1 Mo à Chapelle-des-Bois (géométrie échantillonnée au mètre par la crate avalanche) |
 | `slope` | `terrain/slope_5m.tif` | tuiles z10-15, classes de la carte des pentes IGN |
+| `avalanche-exposure` | `avalanche-exposure/exposure_5m.tif` (UInt8 1 / 2 / 3, 255 absente) | tuiles z10-15, palette comme la pente (vert pâle, orange, rouge) ; jamais « sûr » |
 | `snow-depth`, `snow-groomed`, `snow-srn` | `snow/*.tif` | tuiles z9-13 |
 | `ign-slopes` | WMTS `SLOPES.MOUNTAIN` (cache de terrain) | comparaison, tuiles RGBA z11-15 telles que servies |
 

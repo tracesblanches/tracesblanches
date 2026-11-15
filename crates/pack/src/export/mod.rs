@@ -659,6 +659,61 @@ fn zone_items(fc: &geojson::FeatureCollection) -> Vec<Item> {
     items
 }
 
+/// Label of an exposure class of the `avalanche-exposure` layer (never « sûr »).
+pub fn exposure_label(class: u64) -> &'static str {
+    match class {
+        1 => "terrain peu exposé (modèle)",
+        2 => "exposé",
+        3 => "très exposé",
+        _ => "exposition inconnue",
+    }
+}
+
+fn exposure_styles() -> Vec<Style> {
+    vec![
+        style("exposure-1", [0x4d, 0xaf, 0x4a], 200, 4.0, None),
+        style("exposure-2", [0xff, 0x7f, 0x00], 230, 5.0, None),
+        style("exposure-3", [0xe4, 0x1a, 0x1c], 255, 6.0, None),
+    ]
+}
+
+/// Items of `segments.geojson`: name of the piste and class, class in the description.
+fn exposure_items(fc: &geojson::FeatureCollection) -> Vec<Item> {
+    fc.features
+        .iter()
+        .filter_map(|f| {
+            let class = prop(f, "exposure").and_then(Value::as_u64).unwrap_or(0);
+            let label = exposure_label(class);
+            let piste = prop_str(f, "name")
+                .or_else(|| match prop(f, "relations") {
+                    Some(Value::Array(r)) if !r.is_empty() => Some(
+                        r.iter()
+                            .filter_map(Value::as_str)
+                            .collect::<Vec<_>>()
+                            .join(" / "),
+                    ),
+                    _ => None,
+                })
+                .unwrap_or_else(|| "Piste sans nom".to_owned());
+            let mut desc = vec![format!("Exposition aux avalanches : {label}")];
+            if let Some(len) = prop_f64(f, "length_m") {
+                desc.push(format!("Longueur du tronçon : {len:.0} m"));
+            }
+            if let Some(id) = prop(f, "osm_way_id").and_then(Value::as_i64) {
+                desc.push(format!("Way OSM {id}"));
+            }
+            desc.push("Classe d'un modèle de terrain (type ATES) et des avalanches historiques CLPA : jamais une garantie. Consultez le BERA.".to_owned());
+            Some(Item {
+                name: format!("{piste} — {label}"),
+                desc,
+                geom: geom_of(f)?,
+                style: format!("exposure-{}", class.clamp(1, 3)),
+                folder: label.to_owned(),
+            })
+        })
+        .collect()
+}
+
 fn simple_items(
     fc: &geojson::FeatureCollection,
     name: &dyn Fn(&Feature) -> String,
@@ -1025,6 +1080,23 @@ pub fn export(pack: &Pack, dir: &Path) -> Result<ExportReport> {
         ));
     }
 
+    // Pistes by avalanche exposure class (P17, P18): one item per run of a class.
+    if has("avalanche-segments") {
+        let l = pack.layer("avalanche-segments")?;
+        let fc = pack.read_geojson("avalanche-segments")?;
+        let items = exposure_items(&fc);
+        collections.push((
+            Collection {
+                stem: "avalanches-exposition".to_owned(),
+                title: format!("Pistes par exposition aux avalanches — {}", m.site.name),
+                about: about(l, &generated),
+                styles: exposure_styles(),
+                items,
+            },
+            false,
+        ));
+    }
+
     // Itineraries: proof routes on trails (C1, C5) and off-piste (C3).
     let route_layers: Vec<&Layer> = m
         .layers
@@ -1163,6 +1235,7 @@ pub fn export(pack: &Pack, dir: &Path) -> Result<ExportReport> {
             "snow-depth" => "neige-hauteur",
             "snow-groomed" => "neige-piste-damee",
             "snow-srn" => "neige-hors-piste",
+            "avalanche-exposure" => "exposition-avalanches",
             other => other,
         };
         let attribution: Vec<String> = l
@@ -1282,6 +1355,39 @@ mod tests {
         assert!(k.contains("<innerBoundaryIs>"));
         assert!(k.contains("Places : 9&lt;br/&gt;Commentaire : &amp;lt;ok&amp;gt;"));
         assert_eq!(k.matches("<Folder>").count(), 3);
+    }
+
+    #[test]
+    fn exposure_segments_are_named_by_class() {
+        let fc: geojson::FeatureCollection = serde_json::from_value(serde_json::json!({
+            "type": "FeatureCollection",
+            "features": [
+                {"type": "Feature", "geometry": {"type": "LineString", "coordinates": [[6.7, 44.8], [6.71, 44.81]]},
+                 "properties": {"exposure": 3, "length_m": 120.4, "name": null, "relations": ["Izoard"], "osm_way_id": 7}},
+                {"type": "Feature", "geometry": {"type": "LineString", "coordinates": [[6.7, 44.8], [6.72, 44.8]]},
+                 "properties": {"exposure": 1, "length_m": 80.0, "name": "Le Cancel"}}
+            ]
+        }))
+        .unwrap();
+        let items = exposure_items(&fc);
+        assert_eq!(items[0].name, "Izoard — très exposé");
+        assert_eq!(items[0].style, "exposure-3");
+        assert!(items[0].desc[0].ends_with("très exposé"));
+        assert_eq!(items[1].name, "Le Cancel — terrain peu exposé (modèle)");
+        for i in &items {
+            assert!(!i.name.contains("sûr"));
+        }
+        let c = Collection {
+            stem: "avalanches-exposition".into(),
+            title: "t".into(),
+            about: vec![],
+            styles: exposure_styles(),
+            items,
+        };
+        let k = kml(&c);
+        assert!(k.contains("<styleUrl>#exposure-3</styleUrl>"), "{k}");
+        let g = gpx(&c, "skimap", "2026-11-15T00:00:00Z");
+        assert!(g.contains("Exposition aux avalanches : très exposé"));
     }
 
     #[test]

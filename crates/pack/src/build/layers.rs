@@ -190,6 +190,19 @@ pub fn catalog() -> Vec<Spec> {
             "status.meta.json",
             false,
         ),
+        Spec {
+            notes: &[
+                "Tronçons des pistes par classe d'exposition aux avalanches (« terrain peu exposé (modèle) », « exposé », « très exposé »), jamais « sûr ».",
+            ],
+            ..vector(
+                "avalanche-segments",
+                "Pistes par exposition aux avalanches",
+                "avalanche-exposure",
+                "segments.geojson",
+                "avalanche-exposure.meta.json",
+                true,
+            )
+        },
         vector(
             "avalanche-crossings",
             "Tronçons de pistes en zone d'avalanche connue",
@@ -291,6 +304,11 @@ pub fn catalog() -> Vec<Spec> {
             "offpiste-pistes",
             "Hors piste : pistes et itinéraires 5 m (noyau)",
             "pistes_5m.skr",
+        ),
+        core_raster(
+            "offpiste-exposure",
+            "Hors piste : exposition aux avalanches 5 m (noyau, surcouche du routeur)",
+            "exposure_5m.skr",
         ),
         Spec {
             transform: Transform::Copy,

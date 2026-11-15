@@ -46,4 +46,4 @@ Temps : à froid, le téléchargement des tuiles IGN domine (≈ 2 000 tuiles pa
 
 - `tests/real_packs.rs` (`basemaps_are_complete`) : archives MVT lisibles par le lecteur, tuile z14 présente au centre de la commune, style pointant vers l'archive du pack, chaque glyphe requis présent.
 - Visualiseur (Chrome sans tête) : les deux fonds s'affichent ; requêtes vers `127.0.0.1` seulement, hors les deux scripts du CDN.
-- `pmtiles verify` (go-pmtiles) : `osm.pmtiles` passe ; `plan-ign.pmtiles` et les rasters écrits par la crate `pmtiles` 0.28.1 sont refusés (« Leaf directories offset=0 must not be 0 ») : la crate laisse `leaf_offset` à 0 quand il n'y a pas de répertoire de feuilles. Lecture correcte par go-pmtiles (`show`, `tile`), le client JavaScript et notre lecteur ; correction à faire dans la crate.
+- `pmtiles verify` (go-pmtiles 1.31.2) : les 14 archives des deux packs passent (15/11/2026 : fonds OSM et Plan IGN, pentes, neige, exposition aux avalanches). Avant la copie corrigée de la crate `pmtiles` (`vendor/pmtiles`), 10 sur 12 étaient refusées (« Leaf directories offset=0 must not be 0 »).

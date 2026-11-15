@@ -66,6 +66,18 @@ pub struct RasterSpec {
     pub visible: bool,
     /// Notes, French.
     pub notes: &'static [&'static str],
+    /// How the GeoTIFF is read.
+    pub read: Read,
+}
+
+/// Reader of a pipeline GeoTIFF.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Read {
+    /// Float32 (`skimap_common::geotiff`).
+    Float32,
+    /// Any sample type of the avalanche crate (`exposure::raster::read_any`: UInt8 class
+    /// rasters, 255 no data), as Float32 with NaN.
+    AvalancheClasses,
 }
 
 impl RasterSpec {
@@ -171,6 +183,27 @@ fn snow_depth_classes() -> Vec<Class> {
     ]
 }
 
+/// Avalanche exposure classes (values 1, 2, 3). Never « sûr » nor « sans danger ».
+fn exposure_classes() -> Vec<Class> {
+    vec![
+        Class {
+            upper: 1.5,
+            label: "terrain peu exposé (modèle)",
+            color: [110, 180, 110, 70],
+        },
+        Class {
+            upper: 2.5,
+            label: "exposé",
+            color: [245, 150, 40, 150],
+        },
+        Class {
+            upper: f32::INFINITY,
+            label: "très exposé",
+            color: [200, 30, 30, 170],
+        },
+    ]
+}
+
 fn snow_practice_classes() -> Vec<Class> {
     vec![
         Class {
@@ -208,6 +241,7 @@ pub fn catalog() -> Vec<RasterSpec> {
             notes: &[
                 "Valeur centrale de la simulation Météo-France projetée sur le relief (pixel de 25 m) ; pas une mesure.",
             ],
+            read: Read::Float32,
         },
         RasterSpec {
             id: "snow-groomed",
@@ -223,6 +257,7 @@ pub fn catalog() -> Vec<RasterSpec> {
             notes: &[
                 "Seuils proposés : moins de 20 cm insuffisant, 20 à 40 cm limite, 40 cm et plus suffisant.",
             ],
+            read: Read::Float32,
         },
         RasterSpec {
             id: "snow-srn",
@@ -238,6 +273,7 @@ pub fn catalog() -> Vec<RasterSpec> {
             notes: &[
                 "Seuils proposés : moins de 30 cm insuffisant, 30 à 60 cm limite, 60 cm et plus suffisant.",
             ],
+            read: Read::Float32,
         },
         RasterSpec {
             id: "slope",
@@ -251,8 +287,40 @@ pub fn catalog() -> Vec<RasterSpec> {
             tie_high: true,
             visible: true,
             notes: &["Classes et couleurs de la carte des pentes IGN ; moins de 30° transparent."],
+            read: Read::Float32,
+        },
+        RasterSpec {
+            id: "avalanche-exposure",
+            title: "Exposition aux avalanches (modèle et CLPA)",
+            origin: "avalanche-exposure",
+            file: "exposure_5m.tif",
+            meta: "avalanche-exposure.meta.json",
+            classes: exposure_classes(),
+            minzoom: 10,
+            maxzoom: 15,
+            tie_high: true,
+            visible: false,
+            notes: &[
+                "Classes de la couche avalanche-exposure (modèle de type ATES et emprises CLPA fusionnées) : « terrain peu exposé (modèle) », « exposé », « très exposé ». Une sortie de modèle, jamais « sûr » ni « sans danger » ; consulter le BERA.",
+            ],
+            read: Read::AvalancheClasses,
         },
     ]
+}
+
+/// Reads the GeoTIFF of a raster layer as Float32 (NaN = no data).
+pub fn read_grid(spec: &RasterSpec, src: &Path) -> Result<Grid<f32>> {
+    match spec.read {
+        Read::Float32 => Ok(skimap_common::geotiff::read_f32(src)?),
+        Read::AvalancheClasses => {
+            let r = skimap_avalanche::exposure::raster::read_any(src)
+                .map_err(|e| Error::Pack(format!("{}: {e}", src.display())))?;
+            if r.epsg != Some(2154) {
+                return Err(Error::Pack(format!("{}: not Lambert-93", src.display())));
+            }
+            Ok(r.raster.to_grid())
+        }
+    }
 }
 
 /// Classified tiles: `(z, x, y)` → palette indices (256 × 256, row-major).
@@ -480,7 +548,7 @@ pub fn include(spec: &RasterSpec, out: &Path, root: &Path) -> Result<Outcome> {
             ),
         }));
     }
-    let grid = skimap_common::geotiff::read_f32(&src)?;
+    let grid = read_grid(spec, &src)?;
     let tiles = render(&grid, spec)?;
     let png_tiles = encode_tiles(&tiles, &spec.palette())?;
     let bbox = grid_bbox_wgs84(&grid)?;
@@ -657,6 +725,28 @@ mod tests {
             tie_high: true,
             visible: true,
             notes: &[],
+            read: Read::Float32,
+        }
+    }
+
+    #[test]
+    fn exposure_classes_never_say_safe() {
+        let e = catalog()
+            .into_iter()
+            .find(|s| s.id == "avalanche-exposure")
+            .unwrap();
+        assert_eq!(e.read, Read::AvalancheClasses);
+        assert_eq!(e.classify(1.0), 0);
+        assert_eq!(e.classify(2.0), 1);
+        assert_eq!(e.classify(3.0), 2);
+        assert_eq!(e.classify(f32::NAN), e.nodata());
+        let labels: Vec<&str> = e.classes.iter().map(|c| c.label).collect();
+        assert_eq!(
+            labels,
+            ["terrain peu exposé (modèle)", "exposé", "très exposé"]
+        );
+        for l in &labels {
+            assert!(!l.contains("sûr") && !l.contains("sans danger"), "{l}");
         }
     }
 

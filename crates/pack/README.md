@@ -7,6 +7,8 @@ Pack hors ligne par site : fonds de carte, format de pack, lecteur côté télé
 - **Sans fonctionnalité** : le lecteur (`reader::Pack`, `reader::TileArchive`, `manifest`, `png`, `tiles`). Aucune pile HTTP ni SQLite (`cargo tree -p skimap-pack -e normal` : flate2, geojson, hex, pmtiles, serde, serde_json, sha2, skimap-common, thiserror) ; compile pour `aarch64-linux-android` (`cargo ndk -t arm64-v8a --platform 34 build --release -p skimap-pack`).
 - **Fonctionnalité `pipeline`** : constructeur du pack (`build`), fonds de carte (`build::plan_ign`, `build::osm`), rasters (`build::raster`), export Locus / OsmAnd (`export`), petit serveur HTTP pour le visualiseur (`serve`).
 
+Ligne de commande : `skimap build-pack <site>`, `skimap export <site>`, `skimap serve [racine]` (et en fin de `skimap build-all <site>`).
+
 ```sh
 # pack des deux sites (data/out/<site>/pack/)
 cargo run --release -p skimap-pack --features pipeline --example build_pack
@@ -39,6 +41,6 @@ Le serveur `serve` (bibliothèque standard, une connexion par fil, `GET`/`HEAD`,
 ## Limites
 
 - Plan IGN v2 : stockage hors ligne ni interdit ni autorisé expressément par les CGU (L2, #7) ; carte des pentes IGN : usage hors ligne à confirmer (features.md n° 5). Usage personnel.
-- Les fichiers PMTiles écrits par la crate `pmtiles` 0.28.1 sans répertoire de feuilles ont `leaf_offset = 0` : `pmtiles verify` (go-pmtiles 1.31.2) les refuse (« Leaf directories offset=0 must not be 0 ») alors que `pmtiles show`, `pmtiles tile`, le client JavaScript et notre lecteur les lisent. Correction à faire dans la crate (mettre l'offset à la fin des données comme go-pmtiles).
+- `pmtiles` 0.28.1 laissait `leaf_offset = 0` sans répertoire de feuilles, refusé par `pmtiles verify` : copie corrigée dans `vendor/pmtiles` (`[patch.crates-io]`) ; les 14 archives des deux packs passent `pmtiles verify` (15/11/2026).
 - Le visualiseur charge MapLibre et PMTiles depuis le CDN (cache du navigateur ensuite) ; les données ne viennent que du pack.
 - Import sur le Pixel (Locus Map, OsmAnd) et essai du visualiseur sur le vrai téléphone : à faire (téléphone non branché le 15/11).
