@@ -62,9 +62,9 @@ class RustPackRepositoryTest {
             assertEquals("pmtiles://file://${File(packs, "test/basemap/plan-ign.pmtiles").absolutePath}", url)
             val pistes = json.getJSONObject("sources").getJSONObject("pistes").getString("data")
             assertTrue(File(pistes.removePrefix("file://")).isFile)
-            // The test pack has no OSM basemap and no snow raster: no empty group.
+            // The test pack has no OSM basemap and no snow raster: no empty group; it has fee zones.
             assertEquals(
-                listOf("refuges", "noms"),
+                listOf("refuges", "noms", "redevance"),
                 opened.style.groups
                     .filter { it.toggleable }
                     .map { it.id },
