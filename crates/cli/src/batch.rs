@@ -1169,6 +1169,7 @@ mod tests {
                     lon: at.lon,
                     lat: at.lat,
                     provenance: "test".into(),
+                    access_m: None,
                 });
                 Registry::write(&path, &file).unwrap();
             }
