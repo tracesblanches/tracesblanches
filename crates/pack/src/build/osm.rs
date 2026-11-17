@@ -340,7 +340,8 @@ fn state_path(dir: &Path, site: &Site, maxzoom: u8) -> PathBuf {
 /// The extract the pack uses: the one of the build in use, recorded in
 /// `extracts/<site>-z<zoom>-<box>.current.json`, or the one of `latest` when [`decide`]
 /// adopts it (then recorded in its place). The latest build is read by range requests
-/// ([`HttpRanges`]).
+/// ([`HttpRanges`]); first, once per process and latest build, the cache of the builds
+/// that are neither in use nor the latest is removed ([`purge`]).
 pub fn current_extract(
     site: &Site,
     layout: &DataLayout,
@@ -348,6 +349,7 @@ pub fn current_extract(
     latest: &BuildInfo,
     maxzoom: u8,
 ) -> Result<Chosen> {
+    purge_once(layout, latest)?;
     let url = format!("{BUILD_BASE}{}", latest.key);
     let src = HttpRanges {
         dl,
@@ -400,7 +402,7 @@ pub fn current_extract_from(
     let decision = decide(current.as_ref().map(|c| &c.0), latest, change);
     let (build, path) = match current {
         Some(c) if !decision.adopts() => c,
-        _ => {
+        previous => {
             let path = extract_path(&dir, site, &latest.key, maxzoom);
             if !path.is_file() {
                 let a = match archive.as_mut() {
@@ -416,6 +418,12 @@ pub fn current_extract_from(
                     seconds = t.elapsed().as_secs_f64(),
                     "Protomaps extract"
                 );
+            }
+            // The extract replaced is no longer in use: removed (the pack has its copy).
+            if let Some((_, old)) = previous
+                && old != path
+            {
+                remove_file(&old)?;
             }
             (latest.clone(), path)
         }
@@ -442,6 +450,124 @@ pub fn current_extract_from(
         "Protomaps build"
     );
     Ok(chosen)
+}
+
+fn remove_file(p: &Path) -> Result<u64> {
+    let bytes = std::fs::metadata(p).map_or(0, |m| m.len());
+    match std::fs::remove_file(p) {
+        Ok(()) => Ok(bytes),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(0),
+        Err(e) => Err(Error::io(p, e)),
+    }
+}
+
+/// What [`purge`] removed from the Protomaps cache.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub struct Purged {
+    /// Site extracts removed.
+    pub extracts: usize,
+    /// Their bytes.
+    pub extract_bytes: u64,
+    /// Range entries of the downloader removed (body and metadata).
+    pub entries: usize,
+    /// Bytes of their bodies.
+    pub entry_bytes: u64,
+}
+
+/// `<site>-<stem>`, `z<zoom>-<box>` of an extract or state name without its extension:
+/// split at the last `-z<digits>-` (a box holds digits, `.`, `_` and `-`, never a `z`).
+fn split_zoom(name: &str) -> Option<(&str, &str)> {
+    let b = name.as_bytes();
+    (0..b.len().saturating_sub(2)).rev().find_map(|i| {
+        if b[i] != b'-' || b[i + 1] != b'z' {
+            return None;
+        }
+        let digits = b[i + 2..].iter().take_while(|c| c.is_ascii_digit()).count();
+        (digits > 0 && b.get(i + 2 + digits) == Some(&b'-')).then(|| (&name[..i], &name[i + 1..]))
+    })
+}
+
+/// Removes from the Protomaps cache what is neither the build in use nor the latest
+/// (#164). Site extracts: those of a build that is not in use for their site box (any
+/// `*.current.json` of `extracts/`) nor `latest` (a kept build was extracted whole every
+/// day before the comparison read only the highest zoom). Range entries of the
+/// downloader: those of every build but `latest`. The pieces of a build in use are never
+/// read again (its tiles are in its extracts, and a site whose extract left the cache
+/// adopts the latest build, [`Decision::First`]); they were kept beside the extracts,
+/// 545 MB for one build of 268 sites, and those of every older build stayed. The France
+/// extract (`france/`) and the build list are left alone.
+pub fn purge(layout: &DataLayout, latest: &BuildInfo) -> Result<Purged> {
+    let cache = layout.cache_dir(SOURCE)?;
+    let dir = extracts_dir(layout)?;
+    let mut in_use: std::collections::BTreeSet<String> = Default::default();
+    let mut names = Vec::new();
+    for e in std::fs::read_dir(&dir).map_err(|e| Error::io(&dir, e))? {
+        let e = e.map_err(|e| Error::io(&dir, e))?;
+        names.push(e.file_name().to_string_lossy().into_owned());
+    }
+    for n in &names {
+        let Some(stem) = n.strip_suffix(".current.json") else {
+            continue;
+        };
+        let p = dir.join(n);
+        let Ok(b) =
+            serde_json::from_slice::<BuildInfo>(&std::fs::read(&p).map_err(|e| Error::io(&p, e))?)
+        else {
+            continue;
+        };
+        if let Some((site, rest)) = split_zoom(stem) {
+            let key = b.key.trim_end_matches(".pmtiles");
+            in_use.insert(format!("{site}-{key}-{rest}.pmtiles"));
+        }
+    }
+    let latest_stem = format!("-{}", latest.key.trim_end_matches(".pmtiles"));
+    let mut out = Purged::default();
+    for n in &names {
+        let Some(stem) = n.strip_suffix(".pmtiles") else {
+            continue;
+        };
+        let latest_one = split_zoom(stem).is_some_and(|(s, _)| s.ends_with(&latest_stem));
+        if !latest_one && !in_use.contains(n) {
+            out.extract_bytes += remove_file(&dir.join(n))?;
+            out.extracts += 1;
+        }
+    }
+    let latest_url = format!("{BUILD_BASE}{}", latest.key);
+    for e in std::fs::read_dir(&cache).map_err(|e| Error::io(&cache, e))? {
+        let p = e.map_err(|e| Error::io(&cache, e))?.path();
+        if p.extension().is_none_or(|x| x != "json") || !p.is_file() {
+            continue;
+        }
+        let Some(url) = std::fs::read(&p)
+            .ok()
+            .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+            .and_then(|v| v.get("url").and_then(Value::as_str).map(str::to_owned))
+        else {
+            continue;
+        };
+        if url.starts_with(BUILD_BASE) && url != latest_url {
+            out.entry_bytes += remove_file(&p.with_extension("body"))?;
+            remove_file(&p)?;
+            out.entries += 1;
+        }
+    }
+    Ok(out)
+}
+
+/// [`purge`] once per process, cache and latest build, before the first read of a build.
+fn purge_once(layout: &DataLayout, latest: &BuildInfo) -> Result<()> {
+    static DONE: std::sync::Mutex<Vec<(PathBuf, String)>> = std::sync::Mutex::new(Vec::new());
+    let mut done = DONE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let k = (layout.cache_root(), latest.key.clone());
+    if done.contains(&k) {
+        return Ok(());
+    }
+    let p = purge(layout, latest)?;
+    tracing::info!(latest = latest.key, ?p, "Protomaps cache purged");
+    done.push(k);
+    Ok(())
 }
 
 /// Key of the OSM basemap of a site ([`crate::build::parts`]): the latest build, the
@@ -863,11 +989,114 @@ mod tests {
             assert_eq!(w[0].2 == w[1].2, !w[1].1.adopts(), "{w:?}");
         }
         // The kept archive is the extract of the build in use, byte for byte.
-        let kept = std::fs::read(extract_path(&dir, site, "20261114", 15)).unwrap();
+        let kept = std::fs::read(tmp.path().join(format!("pack-2/basemap/{ID}.pmtiles"))).unwrap();
         let pack = std::fs::read(tmp.path().join(format!("pack-8/basemap/{ID}.pmtiles"))).unwrap();
         assert_eq!(kept, pack);
         let a = TileArchive::open(tmp.path().join(format!("pack-8/basemap/{ID}.pmtiles"))).unwrap();
         assert!(a.metadata().unwrap().contains("20261114"));
+        // Only the extract in use is left: each one replaced was removed (#164).
+        let left: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|n| n.ends_with(".pmtiles"))
+            .collect();
+        assert_eq!(
+            left,
+            [extract_path(&dir, site, "20261121", 15)
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()]
+        );
+    }
+
+    /// #164: the site extracts of the builds neither in use nor the latest are removed,
+    /// and the range entries of every build but the latest; the build list and the France
+    /// extract stay.
+    #[test]
+    fn purge_keeps_the_builds_in_use_and_the_latest() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = DataLayout::new(tmp.path());
+        let dir = extracts_dir(&layout).unwrap();
+        let cache = layout.cache_dir(SOURCE).unwrap();
+        let put = |p: PathBuf, body: &[u8]| skimap_common::output::write_bytes(&p, body).unwrap();
+        // Two sites, one with a box west of Greenwich (negative coordinates).
+        let boxes = [
+            ("a-site", "6.6_44.7_6.8_44.9"),
+            ("b-z2-site", "-0.2_42.8_-0.1_42.9"),
+        ];
+        for (site, bx) in boxes {
+            for day in 12..=15 {
+                put(
+                    dir.join(format!("{site}-202611{day}-z15-{bx}.pmtiles")),
+                    b"x",
+                );
+            }
+        }
+        let state = |site: &str, bx: &str, key: &str| {
+            put(
+                dir.join(format!("{site}-z15-{bx}.current.json")),
+                &serde_json::to_vec(&info(key, "4")).unwrap(),
+            );
+        };
+        state(boxes[0].0, boxes[0].1, "20261112");
+        state(boxes[1].0, boxes[1].1, "20261114");
+        put(
+            cache.join("france").join("france-20261113-z6.pmtiles"),
+            b"x",
+        );
+        let entry = |name: &str, url: &str| {
+            put(
+                cache.join(format!("{name}.json")),
+                &serde_json::to_vec(&json!({"url": url})).unwrap(),
+            );
+            put(cache.join(format!("{name}.body")), b"0123456789");
+        };
+        for day in 12..=15 {
+            entry(
+                &format!("e{day}"),
+                &format!("{BUILD_BASE}202611{day}.pmtiles"),
+            );
+        }
+        entry("list", BUILDS_URL);
+        let p = purge(&layout, &info("20261115", "4")).unwrap();
+        assert_eq!(
+            p,
+            Purged {
+                extracts: 4,
+                extract_bytes: 4,
+                entries: 3,
+                entry_bytes: 30
+            }
+        );
+        let mut left: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|n| n.ends_with(".pmtiles"))
+            .collect();
+        left.sort();
+        assert_eq!(
+            left,
+            [
+                "a-site-20261112-z15-6.6_44.7_6.8_44.9.pmtiles",
+                "a-site-20261115-z15-6.6_44.7_6.8_44.9.pmtiles",
+                "b-z2-site-20261114-z15--0.2_42.8_-0.1_42.9.pmtiles",
+                "b-z2-site-20261115-z15--0.2_42.8_-0.1_42.9.pmtiles",
+            ]
+        );
+        for (name, kept) in [
+            ("e12", false),
+            ("e13", false),
+            ("e14", false),
+            ("e15", true),
+            ("list", true),
+        ] {
+            assert_eq!(cache.join(format!("{name}.json")).is_file(), kept, "{name}");
+            assert_eq!(cache.join(format!("{name}.body")).is_file(), kept, "{name}");
+        }
+        assert!(cache.join("france/france-20261113-z6.pmtiles").is_file());
+        assert_eq!(split_zoom("x-z15-1_2_3_4"), Some(("x", "z15-1_2_3_4")));
+        assert_eq!(split_zoom("x-z15"), None);
     }
 
     /// A build in use whose extract left the cache: the latest is adopted.
