@@ -254,9 +254,12 @@ pub fn domain_departs(d: &Domain, ways: &[Way], points: &[&Point]) -> Vec<Depart
     let net = Net::new(ways, &local);
     let mut cands: Vec<Candidate> = Vec::new();
     for p in points {
-        let Some((w, max)) = kind_rule(&p.kind) else {
+        let Some((mut w, max)) = kind_rule(&p.kind) else {
             continue;
         };
+        if p.kind == "ticket" && p.name.as_deref().is_some_and(alpine) {
+            w = ALPINE_DESK_WEIGHT;
+        }
         if p.kind == "parking" && private(p) {
             continue;
         }
@@ -319,7 +322,10 @@ pub fn domain_departs(d: &Domain, ways: &[Way], points: &[&Point]) -> Vec<Depart
         let way_name = ways[net.way[v]].name.clone();
         let (kname, kphrase, ken) = kind_fr(&h.point.kind);
         let (name, phrase, phrase_en) = match named.and_then(|c| c.point.name.clone()) {
-            Some(n) => (format!("{n} ({})", d.name), n.clone(), None),
+            Some(n) => {
+                let n = named_as(&named.map_or("", |c| c.point.kind.as_str()), &n);
+                (format!("{n} ({})", d.name), n.clone(), None)
+            }
             None => (
                 format!("{kname} ({})", d.name),
                 format!("{kphrase} du domaine {}", d.name),
@@ -352,23 +358,43 @@ pub fn domain_departs(d: &Domain, ways: &[Way], points: &[&Point]) -> Vec<Depart
             points: ms.iter().map(|c| c.point.url.clone()).collect(),
         });
     }
-    // Two starts named alike: the later ones take the name of their trail.
+    // Two starts named alike: the later ones take the name of their trail, else their
+    // distance and direction from the main start.
     for i in 1..out.len() {
-        if out[..i]
+        if !out[..i]
             .iter()
             .any(|o| o.start.phrase == out[i].start.phrase)
-            && let Some(w) = ways[net.way[nearest_vertex(&net, &local, &out[i])]]
-                .name
-                .clone()
         {
-            out[i].start.name = format!("{} — {w}", out[i].start.name);
-            out[i].start.phrase = format!("{} (piste « {w} »)", out[i].start.phrase);
-            out[i].start.phrase_en = out[i]
-                .start
-                .phrase_en
-                .as_ref()
-                .map(|e| format!("{e} (« {w} » trail)"));
+            continue;
         }
+        let trail = ways[net.way[nearest_vertex(&net, &local, &out[i])]]
+            .name
+            .clone()
+            .filter(|w| {
+                !out[..i]
+                    .iter()
+                    .any(|o| o.start.name.ends_with(&format!(" — {w}")))
+            });
+        let (fr, en) = match trail {
+            Some(w) => (format!("piste « {w} »"), format!("« {w} » trail")),
+            None => {
+                let (x, y) = local.xy(out[i].start.position());
+                let (x0, y0) = local.xy(out[0].start.position());
+                let (dir_fr, dir_en) = direction(x - x0, y - y0);
+                let km = d2((x, y), (x0, y0)) / 1000.0;
+                (
+                    format!("{} km {dir_fr}", format!("{km:.1}").replace('.', ",")),
+                    format!("{km:.1} km {dir_en}"),
+                )
+            }
+        };
+        let o = &mut out[i].start;
+        o.name = format!("{} — {fr}", o.name);
+        o.phrase = format!("{} ({fr})", o.phrase);
+        o.phrase_en = Some(format!(
+            "{} ({en})",
+            o.phrase_en.clone().unwrap_or_else(|| o.phrase.clone())
+        ));
     }
     if out.is_empty() {
         out.push(fallback(d, &net, &local, points));
@@ -377,6 +403,57 @@ pub fn domain_departs(d: &Domain, ways: &[Way], points: &[&Point]) -> Vec<Depart
         o.start.id = format!("depart-{}", i + 1);
     }
     out
+}
+
+/// Weight of a pass desk of the alpine lifts (its name says so).
+pub const ALPINE_DESK_WEIGHT: f64 = 1.0;
+
+/// Whether a desk name is that of the alpine lifts.
+pub fn alpine(name: &str) -> bool {
+    let n = name.to_lowercase();
+    [
+        "remont",
+        "téléski",
+        "teleski",
+        "télésiège",
+        "telesiege",
+        "téléphérique",
+        "telepherique",
+    ]
+    .iter()
+    .any(|k| n.contains(k))
+}
+
+/// Name of a start from the name of its point: a car park named after a place is said
+/// « Parking <name> ».
+fn named_as(kind: &str, name: &str) -> String {
+    let n = name.to_lowercase();
+    let says_park = n.contains("parking")
+        || n.contains("park")
+        || n.split_whitespace().next().is_some_and(|w| {
+            w.len() <= 3 && w.starts_with('p') && w[1..].chars().all(|c| c.is_ascii_digit())
+        });
+    if kind == "parking" && !says_park {
+        format!("Parking {name}")
+    } else {
+        name.to_owned()
+    }
+}
+
+/// Direction of a vector (east, north), French and English.
+fn direction(dx: f64, dy: f64) -> (&'static str, &'static str) {
+    const DIRS: [(&str, &str); 8] = [
+        ("au nord", "north"),
+        ("au nord-est", "north-east"),
+        ("à l'est", "east"),
+        ("au sud-est", "south-east"),
+        ("au sud", "south"),
+        ("au sud-ouest", "south-west"),
+        ("à l'ouest", "west"),
+        ("au nord-ouest", "north-west"),
+    ];
+    let bearing = dx.atan2(dy).to_degrees().rem_euclid(360.0);
+    DIRS[((bearing + 22.5) / 45.0) as usize % 8]
 }
 
 fn nearest_vertex(net: &Net, local: &Local, o: &Depart) -> usize {
@@ -672,6 +749,47 @@ mod tests {
             s[1].start.phrase.contains("piste « "),
             "{}",
             s[1].start.phrase
+        );
+    }
+
+    #[test]
+    fn alpine_desks_weigh_less_and_place_names_say_parking() {
+        assert!(alpine("Caisse Remontées Mécaniques"));
+        assert!(!alpine("Foyer nordique"));
+        assert_eq!(named_as("parking", "Les Tourres"), "Parking Les Tourres");
+        assert_eq!(named_as("parking", "P3"), "P3");
+        assert_eq!(named_as("parking", "Parking du Riou"), "Parking du Riou");
+        assert_eq!(named_as("foyer", "Les Tourres"), "Les Tourres");
+        assert_eq!(direction(1.0, 1.0), ("au nord-est", "north-east"));
+        assert_eq!(direction(0.0, -1.0), ("au sud", "south"));
+        // An alpine desk on the network is beaten by a nordic lodge 2 km away.
+        let d = domain();
+        let desk = pt(
+            "ticket",
+            Some("Caisse remontées mécaniques"),
+            6.0011,
+            46.0101,
+        );
+        let lodge = pt("foyer", None, 6.0279, 46.0101);
+        let s = domain_departs(&d, &ways(), &[&desk, &lodge]);
+        assert_eq!(s[0].start.phrase, "le foyer nordique du domaine Les Plans");
+    }
+
+    #[test]
+    fn same_names_without_trail_take_the_direction() {
+        let d = domain();
+        let mut w = ways();
+        for x in &mut w {
+            x.name = None;
+        }
+        let a = pt("parking", None, 6.0011, 46.0101);
+        let b = pt("parking", None, 6.0279, 46.0101);
+        let s = domain_departs(&d, &w, &[&a, &b]);
+        assert_eq!(s.len(), 2);
+        assert_eq!(s[1].start.name, "Parking (Les Plans) — 2,1 km à l'est");
+        assert_eq!(
+            s[1].start.phrase_en.as_deref(),
+            Some("the Les Plans area car park (2.1 km east)")
         );
     }
 
