@@ -1,0 +1,105 @@
+{
+  "alerts.le-laus": [
+    "12:05 Snow snowfall within the hour (0.8 cm/h) (It is starting to snow.)"
+  ],
+  "alerts.les-fonts": [
+    "12:05 Snow snowfall within the hour (0.8 cm/h) (It is starting to snow.)"
+  ],
+  "best_time.le-laus": [
+    "Best start around 9:00 (back around 11:24, 120 min outing): flat: fresh snow, sun."
+  ],
+  "best_time.les-fonts": [
+    "Best start around 8:30 (back around 10:54, 120 min outing): flat: fresh snow, sun."
+  ],
+  "briefing.0.text": [
+    "Cervières — Monday 25 January 2027",
+    "BERA: avalanche danger 4 out of 5 (read the full bulletin).",
+    "Areas:",
+    "1. Cervières (score 5.44): 2 routes open out of 3 (10 km out of 15) [+2.00]; 61 cm of estimated snow (median, map of 25/01, 1 cm fallen since, 100 % of the points ≥ 20 cm): enough [+2.00]; 19 cm of fresh snow in 24 h [+0.50]; light wind (gusts 15 km/h); -5 °C on average, feels like -10 °C; 2 cm of snow during the day; surface: fresh snow [+0.50]; crowd level calm; 8 km as the crow flies [-0.16]; 30 km of nordic trails (OSM) [+0.60].",
+    "2. Les Fonts (score 3.00): no trail status source for this area; 61 cm of estimated snow (median, map of 25/01, 1 cm fallen since, 100 % of the points ≥ 20 cm): enough [+2.00]; 19 cm of fresh snow in 24 h [+0.50]; light wind (gusts 20 km/h); cold, feels like -14 °C [-0.50]; 2 cm of snow during the day; surface: fresh snow [+0.50]; crowd level calm; 15 km as the crow flies [-0.30]; 40 km of nordic trails (OSM) [+0.80].",
+    "Routes (the first 5 not closed):",
+    "1. Chemin du Blétonnet (score 5.79): open [+3.00]; 61 cm of estimated snow (median, map of 25/01, 1 cm fallen since, 100 % of the points ≥ 20 cm): enough [+2.00]; 19 cm of fresh snow in 24 h [+0.50]; light wind (gusts 15 km/h); -5 °C on average, feels like -10 °C; 2 cm of snow during the day; surface: fresh snow [+0.50]; crowd level calm; 11 km as the crow flies [-0.21].",
+    "2. Souliers (score 5.16): open [+3.00]; 61 cm of estimated snow (median, map of 25/01, 1 cm fallen since, 100 % of the points ≥ 20 cm): enough [+2.00]; 19 cm of fresh snow in 24 h [+0.50]; light wind (gusts 20 km/h); cold, feels like -14 °C [-0.50]; 2 cm of snow during the day; weather of the point Les Fonts, 9 km away; surface: fresh snow [+0.50]; crowd level calm; 17 km as the crow flies [-0.34].",
+    "Snow quality (le-laus): On the flat (1750 m): fresh snow between 10:00 and 15:00. Best slot: flat from 9:00 to 17:00 (fresh snow). Simple model (temperature, sun, cloud, wind): no shade of the relief, no grooming; check on the ground.",
+    "Snow quality (les-fonts): On the flat (2040 m): fresh snow between 10:00 and 15:00. Best slot: flat from 8:00 to 17:00 (fresh snow). Simple model (temperature, sun, cloud, wind): no shade of the relief, no grooming; check on the ground.",
+    "Sunset 17:29.",
+    "Data: BERA; trail status; nordic areas; historic avalanche paths; avalanche exposure; Nordic France : 2/3 ouverts."
+  ],
+  "briefing.0.voice": [
+    "Point du jour. Cervières. Risque d'avalanche quatre sur cinq, fort. Deux pistes ouvertes. Conseillé aujourd'hui. Chemin du Blétonnet. Température, moins cinq degrés. Vent de dix kilomètres heure. Chutes de neige prévues. Neige fraîche. Affluence faible. Coucher du soleil. Dix-sept heures trente."
+  ],
+  "briefing.1.text": [
+    "Cervières — Tuesday 26 January 2027",
+    "Areas:",
+    "1. Cervières (score 5.19): 2 routes open out of 3 (10 km out of 15) (last known status) [+2.00]; 63 cm of estimated snow (median, map of 25/01, 3 cm fallen since, 100 % of the points ≥ 20 cm): enough [+2.00]; light wind (gusts 15 km/h); -5 °C on average, feels like -10 °C; sunny [+0.50]; surface: fresh snow [+0.50]; crowd level moderate (fresh snow (21 cm), sun) [-0.25]; 8 km as the crow flies [-0.16]; 30 km of nordic trails (OSM) [+0.60].",
+    "2. Les Fonts (score 2.75): no trail status source for this area; 63 cm of estimated snow (median, map of 25/01, 3 cm fallen since, 100 % of the points ≥ 20 cm): enough [+2.00]; light wind (gusts 20 km/h); cold, feels like -14 °C [-0.50]; sunny [+0.50]; surface: fresh snow [+0.50]; crowd level moderate (fresh snow (21 cm), sun) [-0.25]; 15 km as the crow flies [-0.30]; 40 km of nordic trails (OSM) [+0.80].",
+    "Routes (the first 5 not closed):",
+    "1. Chemin du Blétonnet (score 5.54): open (last known status) [+3.00]; 63 cm of estimated snow (median, map of 25/01, 3 cm fallen since, 100 % of the points ≥ 20 cm): enough [+2.00]; light wind (gusts 15 km/h); -5 °C on average, feels like -10 °C; sunny [+0.50]; surface: fresh snow [+0.50]; crowd level moderate (fresh snow (21 cm), sun) [-0.25]; 11 km as the crow flies [-0.21].",
+    "2. Souliers (score 4.91): open (last known status) [+3.00]; 63 cm of estimated snow (median, map of 25/01, 3 cm fallen since, 100 % of the points ≥ 20 cm): enough [+2.00]; light wind (gusts 20 km/h); cold, feels like -14 °C [-0.50]; sunny [+0.50]; weather of the point Les Fonts, 9 km away; surface: fresh snow [+0.50]; crowd level moderate (fresh snow (21 cm), sun) [-0.25]; 17 km as the crow flies [-0.34].",
+    "Snow quality (le-laus): On the flat (1750 m): fresh snow between 10:00 and 15:00. Best slot: flat from 8:00 to 17:00 (fresh snow). Simple model (temperature, sun, cloud, wind): no shade of the relief, no grooming; check on the ground.",
+    "Snow quality (les-fonts): On the flat (2040 m): fresh snow between 10:00 and 15:00. Best slot: flat from 8:00 to 17:00 (fresh snow). Simple model (temperature, sun, cloud, wind): no shade of the relief, no grooming; check on the ground.",
+    "Sunset 17:31.",
+    "Data: BERA; trail status; nordic areas; historic avalanche paths; avalanche exposure; trail status: last known (25/01 07:30); Nordic France : 2/3 ouverts."
+  ],
+  "briefing.1.voice": [
+    "Point du jour. Cervières. Deux pistes ouvertes. Conseillé aujourd'hui. Chemin du Blétonnet. Température, moins cinq degrés. Vent de dix kilomètres heure. Neige fraîche. Affluence moyenne. Coucher du soleil. Dix-sept heures trente."
+  ],
+  "quality.le-laus": [
+    "lundi 25 janvier 2027 — le-laus (1750 m). F fraîche, V soufflée, A ancienne sèche, T transformée (décaille), H humide, S soupe, D dure regelée, G glace",
+    "heure  flat  N20 NE20  E20 SE20  S20 SW20  W20 NW20  N40 NE40  E40 SE40  S40 SW40  W40 NW40",
+    "  06 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "  07 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "  08 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "  09 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "  10 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "  11 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "  12 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "  13 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "  14 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "  15 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "  16 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "  17 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "  18 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "  19 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "On the flat (1750 m): fresh snow between 10:00 and 15:00.",
+    "Best slot: flat from 9:00 to 17:00 (fresh snow).",
+    "Simple model (temperature, sun, cloud, wind): no shade of the relief, no grooming; check on the ground."
+  ],
+  "quality.les-fonts": [
+    "lundi 25 janvier 2027 — les-fonts (2040 m). F fraîche, V soufflée, A ancienne sèche, T transformée (décaille), H humide, S soupe, D dure regelée, G glace",
+    "heure  flat  N20 NE20  E20 SE20  S20 SW20  W20 NW20  N40 NE40  E40 SE40  S40 SW40  W40 NW40",
+    "  06 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "  07 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "  08 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "  09 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "  10 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "  11 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "  12 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "  13 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "  14 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "  15 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "  16 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "  17 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "  18 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "  19 h    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F    F",
+    "On the flat (2040 m): fresh snow between 10:00 and 15:00.",
+    "Best slot: flat from 8:00 to 17:00 (fresh snow).",
+    "Simple model (temperature, sun, cloud, wind): no shade of the relief, no grooming; check on the ground."
+  ],
+  "synthesis": [
+    "Avalanche danger four out of five, high above 2200 m (3 out of 5 lower down), north, north-east, north-west slopes the most exposed: read the whole bulletin before you go. Weather from 9:00 to 16:00 (Le Laus, 1750 m): from -6 to -4 °C, light wind, 2 cm of snow, freezing level around 900 m. On the trails of the site: fire forbidden, stoves included (Cervières) (outside France and Switzerland, no known rule); 14 % of the trails without any mobile network, not even for 112.",
+    "Avalanche danger four out of five, high. Temperature, minus five degrees. Wind, ten kilometres per hour. Snowfall is forecast. Fires are banned in this municipality, stoves included."
+  ],
+  "wax.le-laus": [
+    "Morning 9:00–12:00, air -5 °C, snow ≈ -7 °C, fresh snow: classic, grip V30 Blue (Swix) or Nordic GripWax red (Toko); glide for classic and skating PS7 Violet (Swix) or Base Performance Hot Wax red (Toko). Afternoon 12:00–16:00, air -4 °C, snow ≈ -5 °C, fresh snow: classic, grip V40 Blue Extra (Swix) or Nordic GripWax red (Toko); glide for classic and skating PS7 Violet (Swix) or Base Performance Hot Wax yellow (Toko).",
+    "fresh snow (A3 snow quality model, flat), air -5.3 °C on average (-5.9 to -4.7) ; glide: air -5.3 °C (Swix tables), estimated snow -7.1 °C (Toko tables) ; humidity 70 %",
+    "fresh snow (A3 snow quality model, flat), air -4.1 °C on average (-4.3 to -4.0) ; glide: air -4.1 °C (Swix tables), estimated snow -5.0 °C (Toko tables) ; humidity 83 %",
+    "Waxing. Blue grip wax. Glide wax for medium snow."
+  ],
+  "wax.les-fonts": [
+    "Morning 9:00–12:00, air -7 °C, snow ≈ -9 °C, fresh snow: classic, grip V30 Blue (Swix) or Nordic GripWax red (Toko); glide for classic and skating PS6 Blue (Swix) or Base Performance Hot Wax red (Toko). Afternoon 12:00–16:00, air -6 °C, snow ≈ -7 °C, fresh snow: classic, grip V30 Blue (Swix) or Nordic GripWax red (Toko); glide for classic and skating PS7 Violet (Swix) or Base Performance Hot Wax red (Toko).",
+    "fresh snow (A3 snow quality model, flat), air -7.3 °C on average (-7.9 to -6.7) ; glide: air -7.3 °C (Swix tables), estimated snow -9.1 °C (Toko tables) ; humidity 70 %",
+    "fresh snow (A3 snow quality model, flat), air -6.1 °C on average (-6.3 to -6.0) ; glide: air -6.1 °C (Swix tables), estimated snow -7.0 °C (Toko tables) ; humidity 83 %",
+    "Waxing. Blue grip wax. Glide wax for cold snow."
+  ]
+}

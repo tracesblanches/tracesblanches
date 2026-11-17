@@ -87,7 +87,7 @@ class TrackingEnergyTest {
         val req =
             DayRequest(
                 "3 h",
-                dayStarts("cervieres").first(),
+                dayStarts("cervieres", Lang.FR).first(),
                 LocalDate.now().toString(),
                 "%02d:%02d".format(now.hour, now.minute),
                 "08:00",

@@ -19,6 +19,7 @@ use crate::layers::{
     Areas, Bera, Clpa, Domain, Piste, Route, SnowMap, Status, Weather, layer_sources, load_domains,
     load_pistes, load_zones,
 };
+use crate::text::Lang;
 
 /// Oldest snow map used for a day, days (snowfall since the map is added on top).
 pub const MAX_SNOW_AGE_DAYS: i64 = 4;
@@ -76,7 +77,55 @@ pub struct SiteData {
     pub files: Vec<String>,
 }
 
-fn keep<T>(r: Result<T>, what: &str, missing: &mut Vec<String>) -> Option<T> {
+/// A layer of the assistant, as named in the missing layers (VO6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LayerName {
+    /// Hourly weather.
+    Weather,
+    /// Snow map.
+    Snow,
+    /// Avalanche bulletin.
+    Bera,
+    /// Trail status.
+    Status,
+    /// Nordic areas.
+    Domains,
+    /// Trails.
+    Pistes,
+    /// Historic avalanche paths.
+    Clpa,
+    /// Zones without network.
+    NoNetwork,
+    /// Zones and rules.
+    Zones,
+    /// Planned route.
+    Route,
+    /// Trail graph.
+    Graph,
+    /// Avalanche exposure.
+    Exposure,
+}
+
+impl LayerName {
+    /// Every layer.
+    pub const ALL: [LayerName; 12] = [
+        LayerName::Weather,
+        LayerName::Snow,
+        LayerName::Bera,
+        LayerName::Status,
+        LayerName::Domains,
+        LayerName::Pistes,
+        LayerName::Clpa,
+        LayerName::NoNetwork,
+        LayerName::Zones,
+        LayerName::Route,
+        LayerName::Graph,
+        LayerName::Exposure,
+    ];
+}
+
+fn keep<T>(r: Result<T>, what: LayerName, missing: &mut Vec<String>) -> Option<T> {
+    let what = crate::text::of(Lang::Fr).layer_name(what);
     match r {
         Ok(v) => Some(v),
         Err(e) => {
@@ -106,6 +155,28 @@ impl SiteData {
         let (x, y) = skimap_common::crs::to_lambert93(p).ok()?;
         let v = *g.value_at(x, y)?;
         (1..=3).contains(&v).then_some(v)
+    }
+
+    /// The layers that could not be read ([`SiteData::missing`], French) with their name
+    /// in `lang`; the reason (reader error, local path) stays as given.
+    pub fn missing_in(&self, lang: Lang) -> Vec<String> {
+        let fr = crate::text::of(Lang::Fr);
+        let to = crate::text::of(lang);
+        self.missing
+            .iter()
+            .map(|m| {
+                for l in LayerName::ALL {
+                    let name = fr.layer_name(l);
+                    if m == name {
+                        return to.layer_name(l).to_owned();
+                    }
+                    if let Some(rest) = m.strip_prefix(name).and_then(|r| r.strip_prefix(" : ")) {
+                        return to.layer_missing(l, rest);
+                    }
+                }
+                m.clone()
+            })
+            .collect()
     }
 
     /// Whether the site's massif has no BERA (Jura), from the layer or the site table.
@@ -146,7 +217,11 @@ impl SiteData {
             }
             files.push(f.display().to_string());
         }
-        let weather = keep(Weather::load(&meteo_files), "météo horaire", &mut missing);
+        let weather = keep(
+            Weather::load(&meteo_files),
+            LayerName::Weather,
+            &mut missing,
+        );
 
         let snow_dirs = if paths.snow_dirs.is_empty() {
             vec![dir("snow")?]
@@ -157,7 +232,7 @@ impl SiteData {
         for d in &snow_dirs {
             add_sources(d, "snow");
             files.push(d.display().to_string());
-            snows.extend(keep(SnowMap::load(d), "carte d'enneigement", &mut missing));
+            snows.extend(keep(SnowMap::load(d), LayerName::Snow, &mut missing));
         }
         snows.sort_by_key(|m| m.valid_at);
 
@@ -172,42 +247,43 @@ impl SiteData {
                 add_sources(parent, "bera");
             }
             files.push(p.display().to_string());
-            beras.extend(keep(Bera::load(p), "BERA", &mut missing));
+            beras.extend(keep(Bera::load(p), LayerName::Bera, &mut missing));
         }
 
         let status_dir = paths.status_dir.clone().unwrap_or(dir("status")?);
         add_sources(&status_dir, "status");
         files.push(status_dir.display().to_string());
-        let status = keep(Status::load(&status_dir), "état des pistes", &mut missing);
+        let status = keep(Status::load(&status_dir), LayerName::Status, &mut missing);
 
         let ddir = dir("domaines")?;
         add_sources(&ddir, "domaines");
-        let domains = keep(load_domains(&ddir), "domaines", &mut missing).unwrap_or_default();
+        let domains =
+            keep(load_domains(&ddir), LayerName::Domains, &mut missing).unwrap_or_default();
         let pdir = dir("pistes")?;
         add_sources(&pdir, "pistes");
         let pistes = keep(
             load_pistes(&pdir.join("pistes.geojson")),
-            "pistes",
+            LayerName::Pistes,
             &mut missing,
         )
         .unwrap_or_default();
         let adir = dir("avalanche-historic")?;
         add_sources(&adir, "avalanche-historic");
-        let clpa = keep(Clpa::load(&adir), "avalanches historiques", &mut missing);
+        let clpa = keep(Clpa::load(&adir), LayerName::Clpa, &mut missing);
         let cdir = dir("coverage")?;
         add_sources(&cdir, "coverage");
         let no_network = keep(
             Areas::load(&cdir.join("no_network.geojson")),
-            "zones sans réseau",
+            LayerName::NoNetwork,
             &mut missing,
         );
         let zdir = dir("zones")?;
         add_sources(&zdir, "zones");
-        let zones = keep(load_zones(&zdir), "zones et règles", &mut missing);
+        let zones = keep(load_zones(&zdir), LayerName::Zones, &mut missing);
         let route = match &paths.route {
             Some(p) => {
                 files.push(p.display().to_string());
-                keep(Route::load(p), "itinéraire prévu", &mut missing)
+                keep(Route::load(p), LayerName::Route, &mut missing)
             }
             None => None,
         };
@@ -224,7 +300,7 @@ impl SiteData {
                     skimap_core::graph::PisteGraph::from_json(&t)
                         .map_err(|e| crate::error::Error::format(rdir.join("piste_graph.json"), e))
                 }),
-            "graphe des pistes",
+            LayerName::Graph,
             &mut missing,
         );
         let edir = dir("avalanche-exposure")?;
@@ -233,7 +309,7 @@ impl SiteData {
             // UInt8 classes, Lambert-93, no data 255 (`avalanche-exposure`).
             skimap_common::geotiff::read_u8(&edir.join("exposure_5m.tif"))
                 .map_err(crate::error::Error::from),
-            "exposition aux avalanches",
+            LayerName::Exposure,
             &mut missing,
         );
 

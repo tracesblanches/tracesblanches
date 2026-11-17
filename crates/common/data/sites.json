@@ -101,6 +101,7 @@
             "id": "depart-des-pistes",
             "name": "Départ des pistes de Chapelle-des-Bois",
             "phrase": "le départ des pistes de Chapelle-des-Bois",
+            "phrase_en": "the Chapelle-des-Bois trailhead",
             "lon": 6.1125,
             "lat": 46.6032,
             "provenance": "premier point des itinéraires ENJ partant du village (API Geotrek, « Départ des pistes (25240 Chapelle des Bois) »)"

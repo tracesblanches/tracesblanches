@@ -14,10 +14,12 @@ use chrono::NaiveDate;
 use fixtures::golden::Golden;
 use skimap_assist::briefing;
 use skimap_assist::crowd::{self, Date};
+use skimap_assist::equipment::Kind as EqKind;
 use skimap_assist::inputs::{Paths, SiteData};
 use skimap_assist::snow_quality::Quality;
 use skimap_assist::suggest::{self, Request};
 use skimap_assist::text::{self, Lang};
+use skimap_assist::wax::SnowType;
 use skimap_common::geom::LonLat;
 use skimap_common::layout::DataLayout;
 use skimap_common::site::Site;
@@ -30,81 +32,6 @@ fn site(id: &str) -> &'static Site {
 
 fn data(site: &Site) -> SiteData {
     SiteData::load(&DataLayout::new(fixtures::data()), site, &Paths::default()).unwrap()
-}
-
-/// French words that never appear in an English sentence of the app.
-const FRENCH_WORDS: &[&str] = &[
-    "le",
-    "la",
-    "les",
-    "des",
-    "du",
-    "de",
-    "et",
-    "sur",
-    "pour",
-    "avec",
-    "sans",
-    "dans",
-    "au",
-    "aux",
-    "une",
-    "un",
-    "est",
-    "pas",
-    "ou",
-    "à",
-    "vers",
-    "entre",
-    "piste",
-    "pistes",
-    "neige",
-    "retour",
-    "boucle",
-    "boucles",
-    "heure",
-    "jour",
-    "environ",
-    "fermé",
-    "ouvert",
-    "ouverte",
-    "inconnu",
-    "carte",
-    "domaine",
-    "itinéraire",
-    "itinéraires",
-    "affluence",
-    "météo",
-];
-
-/// Letters of French words that English sentences do not have.
-const FRENCH_LETTERS: &[char] = &[
-    'é', 'è', 'ê', 'ë', 'à', 'â', 'î', 'ï', 'ô', 'ù', 'û', 'ç', 'œ', 'É', 'È', 'À', 'Ç', '«', '»',
-];
-
-/// The French left in an English text once the proper `names` are taken out: accented
-/// letters, French function words.
-pub fn french_in(text: &str, names: &[String]) -> Vec<String> {
-    let mut t = text.to_owned();
-    let mut names: Vec<&String> = names.iter().filter(|n| !n.is_empty()).collect();
-    names.sort_by_key(|n| std::cmp::Reverse(n.len()));
-    for n in names {
-        t = t.replace(n.as_str(), " ");
-    }
-    let mut found = Vec::new();
-    for c in FRENCH_LETTERS {
-        if t.contains(*c) {
-            found.push(c.to_string());
-        }
-    }
-    for w in t.split(|c: char| !c.is_alphanumeric() && c != '\'') {
-        let w = w.to_lowercase();
-        let w = w.trim_start_matches("d'").trim_start_matches("l'");
-        if FRENCH_WORDS.contains(&w) {
-            found.push(w.to_owned());
-        }
-    }
-    found
 }
 
 /// Proper names of a site's data: they stay as published.
@@ -123,8 +50,13 @@ fn names(d: &SiteData) -> Vec<String> {
     if let Some(w) = &d.weather {
         v.extend(w.points.iter().map(|p| p.name.clone()));
     }
-    // Missing layers name local paths and reader errors (not app texts).
-    v.extend(d.missing.iter().cloned());
+    // The reasons of the missing layers (local paths, reader errors) are not app texts;
+    // their layer names are.
+    v.extend(
+        d.missing
+            .iter()
+            .filter_map(|m| m.split_once(" : ").map(|(_, why)| why.to_owned())),
+    );
     v
 }
 
@@ -197,7 +129,7 @@ fn every_text_of_the_assistant_has_its_english() {
             );
             let mut differ = 0;
             for (f, e) in fr.iter().zip(&en) {
-                let left = french_in(e, &names);
+                let left = fixtures::french::french_in(e, &names);
                 assert!(
                     left.is_empty(),
                     "{id} {day}: French {left:?} in « {e} » (French « {f} »)"
@@ -242,6 +174,10 @@ fn every_text_of_the_assistant_has_its_english() {
     }
     let day = NaiveDate::from_ymd_opt(2027, 2, 20).unwrap();
     let at = day.and_hms_opt(14, 5, 0).unwrap();
+    let flat = skimap_assist::snow_quality::SlopeClass {
+        slope_deg: 0.0,
+        aspect_deg: None,
+    };
     all.extend([
         t.gusts_up_to(65.0),
         t.wind_light(10.0),
@@ -324,7 +260,163 @@ fn every_text_of_the_assistant_has_its_english() {
         t.s_no_snow_all().into(),
         t.s_closed_most().into(),
         t.s_limits(&["x".into()]),
+        // Best time (A9).
+        t.bt_surface(
+            &t.slope_class(&flat),
+            &[t.quality(Quality::Hard), t.quality(Quality::Wet)],
+        ),
+        t.bt_gusts(55.0),
+        t.bt_fog(2.0),
+        t.bt_snowfall().into(),
+        t.bt_rain().into(),
+        t.bt_cold("-16"),
+        t.bt_sun().into(),
+        t.bt_crowd(crowd::CrowdLevel::VeryBusy),
+        t.bt_near_deadline(at),
+        t.bt_other_start(at, &[t.bt_rain().into()]),
+        t.bt_best(
+            at,
+            at,
+            120.0,
+            &[],
+            &[t.bt_other_start(at, &[t.bt_sun().into()])],
+        ),
+        t.bt_best(at, at, 120.0, &[t.bt_sun().into()], &[]),
+        t.bt_none(120.0, Some(at)),
+        t.bt_none(120.0, None),
+        // Wax (A2).
+        t.wax_kick(("V30 Blue", "Swix"), Some(("Nordic GripWax blue", "Toko"))),
+        t.wax_kick_uncertain(None, ("V30 Blue", "Swix"), None),
+        t.wax_kick_uncertain(
+            Some(&t.wax_skins(t.wax_wet_falling())),
+            ("K22", "Swix"),
+            None,
+        ),
+        t.wax_window(
+            (9, 12),
+            "-3",
+            "-5",
+            SnowType::Old,
+            &t.wax_kick(("V30 Blue", "Swix"), None),
+            ("PS6 Blue", "Swix"),
+            Some(("Base Performance Hot Wax blue", "Toko")),
+        ),
+        t.wax_colder_than_all().into(),
+        t.wax_warmer_than_hard().into(),
+        t.wax_coarse_frozen().into(),
+        t.wax_skins(t.wax_fresh_near_zero()),
+        t.wax_skins(&t.wax_refrozen_then_wet(Quality::Hard, Quality::Wet)),
+        t.wax_skins(&t.wax_crosses_zero(-3.0, 2.0)),
+        t.wax_glide(-3.0, -5.0),
+        t.wax_humidity(80.0),
+        t.wax_humidity_unknown().into(),
+        t.wax_day("x.", Some("y.")),
+        t.wax_day("x.", None),
+        // Equipment (A6).
+        t.eq_exposed(1.2),
+        t.eq_clpa(0.4),
+        t.eq_offpiste_bera(3),
+        t.eq_back_after_sunset(at, at),
+        t.eq_start_before_sunrise(at, at),
+        t.eq_chill("-22"),
+        t.eq_no_network(2.0, 30.0),
+        t.eq_offpiste().into(),
+        t.eq_long(200.0),
+        t.eq_fog(2),
+        t.eq_clear_sky(10.0),
+        t.eq_kick_unreliable().into(),
+        t.eq_nothing("X"),
+        t.eq_take("X", &[(t.eq_label(EqKind::Headlamp), "y")]),
+        // Synthesis (A7).
+        t.sy_risk_other(">2400", 2),
+        t.sy_risk_other("<2400", 2),
+        t.sy_aspects(&[t.aspect(0), t.aspect(1)]),
+        t.sy_read_bulletin().into(),
+        t.sy_no_bera_jura("No avalanche bulletin for this massif"),
+        t.sy_no_bera("No avalanche bulletin for this massif"),
+        t.sy_bera_missing(Some("X"), true),
+        t.sy_bera_missing(None, false),
+        t.sy_clpa(1.0, 2),
+        t.sy_clpa_none().into(),
+        t.sy_clpa_no_map().into(),
+        t.sy_no_weather().into(),
+        t.sy_no_forecast("P1"),
+        t.sy_weather(
+            "P1",
+            1800.0,
+            &[
+                t.sy_temperature("-5", Some("2")),
+                t.sy_temperature("-5", None),
+                t.sy_chill("-12"),
+                t.sy_wind_light().into(),
+                t.sy_fog(2),
+                t.sy_snow(5.0),
+                t.sy_freezing(1500.0),
+                t.sy_clear().into(),
+                t.sy_overcast().into(),
+            ],
+        ),
+        t.sy_night("x"),
+        t.sy_zones_more("X", "X", 3),
+        t.sy_until(1, 3),
+        t.sy_until(15, 6),
+        t.sy_rules(
+            true,
+            t.sy_rules_not_loaded(),
+            t.sy_not_covered(),
+            &t.sy_no_network_km(2.0),
+        ),
+        t.sy_rules(false, t.sy_no_rule(), "", t.sy_network_everywhere()),
+        t.sy_rules(false, t.sy_no_rule(), "", &t.sy_no_network_share(20.0)),
+        // Alerts (A8).
+        t.al_wind_rising(60.0, 20.0),
+        t.al_fog().into(),
+        t.al_snow(1.5),
+        t.al_cold("-12", "-20"),
+        t.al_turn_now(25.0, 1.3, Some(at)),
+        t.al_turn_advanced(25.0, 1.3, Some(at), at),
     ]);
+    for k in [
+        EqKind::AvalancheKit,
+        EqKind::Headlamp,
+        EqKind::WarmLayer,
+        EqKind::FaceProtection,
+        EqKind::PowerBank,
+        EqKind::TellSomeone,
+        EqKind::Compass,
+        EqKind::SunProtection,
+        EqKind::WaxlessSkis,
+    ] {
+        all.push(t.eq_label(k).into());
+    }
+    for l in skimap_assist::inputs::LayerName::ALL {
+        all.push(t.layer_name(l).into());
+        all.push(t.layer_missing(l, "X"));
+    }
+    for st in [
+        SnowType::New,
+        SnowType::Old,
+        SnowType::CoarseFrozen,
+        SnowType::TransformedMoist,
+        SnowType::Wet,
+    ] {
+        all.push(t.wax_model(st, -3.0, -6.0, 1.0));
+    }
+    {
+        use skimap_core::zone_eval::Verdict;
+        use skimap_zones::rules::Topic;
+        for topic in Topic::ALL {
+            for v in [
+                Verdict::Forbidden,
+                Verdict::ForbiddenInPlaces,
+                Verdict::AvoidRecommended,
+            ] {
+                for stoves in [false, true] {
+                    all.extend(t.sy_verdict(topic, v, stoves).map(str::to_owned));
+                }
+            }
+        }
+    }
     for p in [
         skimap_core::calibration::GroupProfile::app_default(),
         skimap_core::calibration::GroupProfile {
@@ -340,7 +432,7 @@ fn every_text_of_the_assistant_has_its_english() {
         all.push(label);
     }
     for s in &all {
-        let left = french_in(s, &["G".into(), "X".into(), "P1".into()]);
+        let left = fixtures::french::french_in(s, &["G".into(), "X".into(), "P1".into()]);
         assert!(left.is_empty(), "French {left:?} in « {s} »");
     }
     // The holidays of the crowd calendars all have their English name.
@@ -354,7 +446,7 @@ fn every_text_of_the_assistant_has_its_english() {
                 for id in ["chapelle-des-bois", "cervieres"] {
                     let f = crowd::forecast_day_in(site(id), date, None, Lang::En);
                     for r in &f.reasons {
-                        let left = french_in(r, &[]);
+                        let left = fixtures::french::french_in(r, &[]);
                         assert!(
                             left.is_empty(),
                             "French {left:?} in the crowd reason « {r} »"

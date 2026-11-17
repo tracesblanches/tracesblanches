@@ -341,7 +341,7 @@ pub fn fog_targets(
             add("parking", name, p);
         }
     }
-    for s in crate::tracking_day::day_starts(pack.manifest().site.id.clone()) {
+    for s in crate::tracking_day::day_starts(pack.manifest().site.id.clone(), lang) {
         add("start", s.name, LonLat::new(s.lon, s.lat));
     }
     if let (Some(lon), Some(lat)) = (lon, lat) {

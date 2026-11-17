@@ -47,6 +47,7 @@ use skimap_voice::bank::{Glide, Kick};
 
 use crate::layers::WeatherPoint;
 use crate::snow_quality::{DayQuality, Quality};
+use crate::text::Lang;
 
 /// Snow type for the grip wax.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -67,13 +68,12 @@ pub enum SnowType {
 impl SnowType {
     /// French label.
     pub fn label_fr(self) -> &'static str {
-        match self {
-            SnowType::New => "neige fraîche",
-            SnowType::Old => "neige ancienne à grains fins",
-            SnowType::CoarseFrozen => "neige regelée à gros grains, croûte ou glace",
-            SnowType::TransformedMoist => "neige transformée humide",
-            SnowType::Wet => "neige mouillée",
-        }
+        self.label(Lang::Fr)
+    }
+
+    /// Label in `lang`.
+    pub fn label(self, lang: Lang) -> &'static str {
+        crate::text::of(lang).wax_snow_type(self)
     }
 
     /// Snow type of a surface quality (A3).
@@ -543,7 +543,7 @@ pub struct WaxAdvice {
     pub glide: GlideWax,
     /// Glide wax (Toko, snow temperature).
     pub glide_alternative: Option<GlideWax>,
-    /// Reasons, French.
+    /// Reasons, in the language of [`advise_in`].
     pub reasons: Vec<String>,
 }
 
@@ -571,35 +571,28 @@ impl WaxAdvice {
 
     /// French text: « Classique : V30 Blue (Swix) … Skating : … ».
     pub fn text_fr(&self) -> String {
+        self.text(Lang::Fr)
+    }
+
+    /// Text in `lang` (the skins advice stays in the language of [`advise_in`]).
+    pub fn text(&self, lang: Lang) -> String {
+        let tx = crate::text::of(lang);
         let c = &self.conditions;
-        let alt = self
-            .kick_alternative
-            .map(|k| format!(" ou {} ({})", k.product, k.brand))
-            .unwrap_or_default();
+        let alt = self.kick_alternative.map(|k| (k.product, k.brand));
+        let kick = (self.kick.product, self.kick.brand);
         let kick = if self.kick_reliable {
-            format!("retenue {} ({}){alt}", self.kick.product, self.kick.brand)
+            tx.wax_kick(kick, alt)
         } else {
-            format!(
-                "retenue incertaine, {} ; sinon {} ({}){alt}",
-                self.skins.as_deref().unwrap_or("skis à écailles ou peaux"),
-                self.kick.product,
-                self.kick.brand
-            )
+            tx.wax_kick_uncertain(self.skins.as_deref(), kick, alt)
         };
-        let galt = self
-            .glide_alternative
-            .map(|g| format!(" ou {} ({})", g.product, g.brand))
-            .unwrap_or_default();
-        format!(
-            "{} h–{} h, air {} °C, neige ≈ {} °C, {} : classique, {kick} ; glisse \
-             classique et skating {} ({}){galt}.",
-            c.hours.0,
-            c.hours.1,
-            signed(c.air_c),
-            signed(c.snow_c),
-            c.snow_type.label_fr(),
-            self.glide.product,
-            self.glide.brand
+        tx.wax_window(
+            c.hours,
+            &signed(c.air_c),
+            &signed(c.snow_c),
+            c.snow_type,
+            &kick,
+            (self.glide.product, self.glide.brand),
+            self.glide_alternative.map(|g| (g.product, g.brand)),
         )
     }
 }
@@ -651,16 +644,16 @@ fn pick_glide(brand: &str, t: f64) -> Option<GlideWax> {
         .copied()
 }
 
-/// Advice for one window.
+/// Advice for one window, reasons in French ([`advise_in`]).
 pub fn advise(c: &WaxConditions) -> WaxAdvice {
+    advise_in(c, Lang::Fr)
+}
+
+/// [`advise`] with the reasons in `lang` (the phone's language, VO6).
+pub fn advise_in(c: &WaxConditions, lang: Lang) -> WaxAdvice {
+    let tx = crate::text::of(lang);
     let t = c.air_c;
-    let mut reasons = vec![format!(
-        "{} (modèle de qualité de neige A3, plat), air {:+.1} °C en moyenne ({:+.1} à {:+.1})",
-        c.snow_type.label_fr(),
-        t,
-        c.air_min_c,
-        c.air_max_c
-    )];
+    let mut reasons = vec![tx.wax_model(c.snow_type, t, c.air_min_c, c.air_max_c)];
     let kick = match c.snow_type {
         SnowType::New | SnowType::Old => {
             let new = c.snow_type == SnowType::New;
@@ -670,20 +663,17 @@ pub fn advise(c: &WaxConditions) -> WaxAdvice {
             match pick_hard("Swix", t, new) {
                 Some(k) => k,
                 None if t < -15.0 => {
-                    reasons
-                        .push("plus froid que toutes les plages : V05 Polar, à la limite".into());
+                    reasons.push(tx.wax_colder_than_all().into());
                     *KICK.iter().find(|k| k.product == "V05 Polar").expect("V05")
                 }
                 None => {
-                    reasons.push(
-                        "plus chaud que les farts durs pour cette neige : klister universel".into(),
-                    );
+                    reasons.push(tx.wax_warmer_than_hard().into());
                     klister("K21S Universal Silver Klister")
                 }
             }
         }
         SnowType::CoarseFrozen => {
-            reasons.push("neige regelée à gros grains : klister (Toko, Swix)".into());
+            reasons.push(tx.wax_coarse_frozen().into());
             if t <= 0.0 {
                 klister("KX30 Blue Ice Klister")
             } else {
@@ -716,24 +706,17 @@ pub fn advise(c: &WaxConditions) -> WaxAdvice {
     let refrozen_then_wet = matches!(c.surface.0, Quality::Hard | Quality::Icy | Quality::OldDry)
         && c.surface.1.is_wet();
     let skins = if c.snow_type == SnowType::New && (-1.0..=1.0).contains(&t) {
-        Some("neige fraîche autour de 0 °C : le fart de retenue botte ou glisse".to_owned())
+        Some(tx.wax_fresh_near_zero().to_owned())
     } else if refrozen_then_wet {
-        Some(format!(
-            "{} au début du créneau, {} ensuite : aucun fart ne tient tout le créneau",
-            c.surface.0.label_fr(),
-            c.surface.1.label_fr()
-        ))
+        Some(tx.wax_refrozen_then_wet(c.surface.0, c.surface.1))
     } else if c.air_min_c <= -2.0 && c.air_max_c >= 1.0 {
-        Some(format!(
-            "la température passe de {:+.0} à {:+.0} °C dans le créneau",
-            c.air_min_c, c.air_max_c
-        ))
+        Some(tx.wax_crosses_zero(c.air_min_c, c.air_max_c))
     } else if c.rain_mm >= 0.5 || (c.snowfall_cm >= 0.5 && t > 0.0) {
-        Some("pluie ou neige mouillée qui tombe".to_owned())
+        Some(tx.wax_wet_falling().to_owned())
     } else {
         None
     }
-    .map(|why| format!("skis à écailles ou peaux conseillés ({why})"));
+    .map(|why| tx.wax_skins(&why));
     let glide = pick_glide("Swix", t).unwrap_or_else(|| {
         if t > 10.0 {
             GLIDE[5]
@@ -744,17 +727,11 @@ pub fn advise(c: &WaxConditions) -> WaxAdvice {
         }
     });
     let glide_alternative = pick_glide("Toko", c.snow_c);
-    reasons.push(format!(
-        "glisse : air {:+.1} °C (tables Swix), neige estimée {:+.1} °C (tables Toko)",
-        t, c.snow_c
-    ));
+    reasons.push(tx.wax_glide(t, c.snow_c));
     if let Some(h) = c.humidity_pct {
-        reasons.push(format!("humidité {h:.0} %"));
+        reasons.push(tx.wax_humidity(h));
     } else {
-        reasons.push("humidité inconnue (absente de la couche météo)".into());
-    }
-    for r in &mut reasons {
-        *r = r.replace('.', ",");
+        reasons.push(tx.wax_humidity_unknown().into());
     }
     WaxAdvice {
         conditions: c.clone(),
@@ -779,7 +756,7 @@ pub struct DayWax {
     pub morning: WaxAdvice,
     /// 12–16 h.
     pub afternoon: WaxAdvice,
-    /// Summary, French.
+    /// Summary, in the language of [`day_wax_in`].
     pub text: String,
     /// Product pages cited.
     pub sources: Vec<String>,
@@ -795,22 +772,26 @@ impl DayWax {
     }
 }
 
-/// Wax advice of the day of `quality` at `point` (`None` without weather or without snow).
+/// Wax advice of the day of `quality` at `point` (`None` without weather or without snow),
+/// texts in French ([`day_wax_in`]).
 pub fn day_wax(point: &WeatherPoint, quality: &DayQuality) -> Option<DayWax> {
+    day_wax_in(point, quality, Lang::Fr)
+}
+
+/// [`day_wax`] with the texts in `lang` (the phone's language, VO6).
+pub fn day_wax_in(point: &WeatherPoint, quality: &DayQuality, lang: Lang) -> Option<DayWax> {
     if !quality.enough_snow {
         return None;
     }
-    let morning = advise(&conditions(point, quality, 9, 12)?);
-    let afternoon = advise(&conditions(point, quality, 12, 16)?);
-    let mut text = format!("Matin {}", morning.text_fr());
-    if morning.kick.product != afternoon.kick.product
+    let morning = advise_in(&conditions(point, quality, 9, 12)?, lang);
+    let afternoon = advise_in(&conditions(point, quality, 12, 16)?, lang);
+    let differs = morning.kick.product != afternoon.kick.product
         || morning.kick_reliable != afternoon.kick_reliable
-        || morning.glide.product != afternoon.glide.product
-    {
-        text.push_str(&format!(" Après-midi {}", afternoon.text_fr()));
-    } else {
-        text.push_str(" Même fartage l'après-midi.");
-    }
+        || morning.glide.product != afternoon.glide.product;
+    let text = crate::text::of(lang).wax_day(
+        &morning.text(lang),
+        differs.then(|| afternoon.text(lang)).as_deref(),
+    );
     let mut sources: Vec<String> = [&morning, &afternoon]
         .iter()
         .flat_map(|a| {

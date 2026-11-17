@@ -4,7 +4,10 @@ use chrono::{Datelike, NaiveDate, NaiveDateTime, Timelike};
 
 use super::Texts;
 use crate::crowd::{CrowdLevel, Population};
+use crate::equipment::Kind as EquipmentKind;
+use crate::inputs::LayerName;
 use crate::snow_quality::{Quality, SlopeClass, Slot};
+use crate::wax::SnowType;
 
 /// English.
 pub struct En;
@@ -496,7 +499,7 @@ impl Texts for En {
         if m < 60 {
             format!("{m} min")
         } else {
-            format!("{} h {:02}", m / 60, m % 60)
+            format!("{} h {:02} min", m / 60, m % 60)
         }
     }
 
@@ -724,5 +727,548 @@ impl Texts for En {
              network or one-way trails in the trail graph (C1)",
             self.num(km, 1)
         )
+    }
+
+    fn bt_surface(&self, class: &str, qualities: &[&str]) -> String {
+        format!("{class}: {}", qualities.join(" then "))
+    }
+
+    fn bt_sep(&self) -> &'static str {
+        "; "
+    }
+
+    fn bt_gusts(&self, kmh: f64) -> String {
+        format!("gusts up to {kmh:.0} km/h")
+    }
+
+    fn bt_fog(&self, hours: f64) -> String {
+        format!("fog {hours} h")
+    }
+
+    fn bt_snowfall(&self) -> &'static str {
+        "snowfall"
+    }
+
+    fn bt_rain(&self) -> &'static str {
+        "rain"
+    }
+
+    fn bt_cold(&self, chill: &str) -> String {
+        format!("feels like down to {chill} °C")
+    }
+
+    fn bt_sun(&self) -> &'static str {
+        "sun"
+    }
+
+    fn bt_crowd(&self, level: CrowdLevel) -> String {
+        format!(
+            "{} day: assumed peak from 10:30 to 14:00",
+            self.crowd_level(level)
+        )
+    }
+
+    fn bt_near_deadline(&self, deadline: NaiveDateTime) -> String {
+        format!(
+            "back less than 30 min before the time limit ({})",
+            self.clock(deadline)
+        )
+    }
+
+    fn bt_other_start(&self, start: NaiveDateTime, lost: &[String]) -> String {
+        format!("starting at {}: {}", self.clock(start), lost.join(", "))
+    }
+
+    fn bt_best(
+        &self,
+        start: NaiveDateTime,
+        back: NaiveDateTime,
+        minutes: f64,
+        why: &[String],
+        others: &[String],
+    ) -> String {
+        let vs = if others.is_empty() {
+            String::new()
+        } else {
+            format!("; {}", others.join("; "))
+        };
+        format!(
+            "Best start around {} (back around {}, {} min outing): {}{vs}.",
+            self.clock(start),
+            self.clock(back),
+            minutes.round(),
+            if why.is_empty() {
+                "no time slot stands out".into()
+            } else {
+                why.join(", ")
+            }
+        )
+    }
+
+    fn bt_none(&self, minutes: f64, deadline: Option<NaiveDateTime>) -> String {
+        format!(
+            "No time slot: a {} min outing does not end before the time limit{}.",
+            minutes.round(),
+            deadline
+                .map(|d| format!(" ({})", self.clock(d)))
+                .unwrap_or_default()
+        )
+    }
+
+    fn wax_snow_type(&self, t: SnowType) -> &'static str {
+        match t {
+            SnowType::New => "fresh snow",
+            SnowType::Old => "old fine-grained snow",
+            SnowType::CoarseFrozen => "coarse refrozen snow, crust or ice",
+            SnowType::TransformedMoist => "moist transformed snow",
+            SnowType::Wet => "wet snow",
+        }
+    }
+
+    fn wax_window(
+        &self,
+        hours: (u32, u32),
+        air: &str,
+        snow: &str,
+        snow_type: SnowType,
+        kick: &str,
+        glide: (&str, &str),
+        glide_alt: Option<(&str, &str)>,
+    ) -> String {
+        let galt = glide_alt
+            .map(|(p, b)| format!(" or {p} ({b})"))
+            .unwrap_or_default();
+        format!(
+            "{}:00–{}:00, air {air} °C, snow ≈ {snow} °C, {}: classic, {kick}; glide \
+             for classic and skating {} ({}){galt}.",
+            hours.0,
+            hours.1,
+            self.wax_snow_type(snow_type),
+            glide.0,
+            glide.1
+        )
+    }
+
+    fn wax_kick(&self, kick: (&str, &str), alt: Option<(&str, &str)>) -> String {
+        let alt = alt
+            .map(|(p, b)| format!(" or {p} ({b})"))
+            .unwrap_or_default();
+        format!("grip {} ({}){alt}", kick.0, kick.1)
+    }
+
+    fn wax_kick_uncertain(
+        &self,
+        skins: Option<&str>,
+        kick: (&str, &str),
+        alt: Option<(&str, &str)>,
+    ) -> String {
+        let alt = alt
+            .map(|(p, b)| format!(" or {p} ({b})"))
+            .unwrap_or_default();
+        format!(
+            "grip uncertain, {}; otherwise {} ({}){alt}",
+            skins.unwrap_or("waxless or skin skis"),
+            kick.0,
+            kick.1
+        )
+    }
+
+    fn wax_model(&self, snow_type: SnowType, mean: f64, min: f64, max: f64) -> String {
+        format!(
+            "{} (A3 snow quality model, flat), air {mean:+.1} °C on average ({min:+.1} to {max:+.1})",
+            self.wax_snow_type(snow_type),
+        )
+    }
+
+    fn wax_colder_than_all(&self) -> &'static str {
+        "colder than every range: V05 Polar, at its limit"
+    }
+
+    fn wax_warmer_than_hard(&self) -> &'static str {
+        "warmer than the hard waxes for this snow: universal klister"
+    }
+
+    fn wax_coarse_frozen(&self) -> &'static str {
+        "coarse refrozen snow: klister (Toko, Swix)"
+    }
+
+    fn wax_fresh_near_zero(&self) -> &'static str {
+        "fresh snow around 0 °C: grip wax clogs or slips"
+    }
+
+    fn wax_refrozen_then_wet(&self, first: Quality, last: Quality) -> String {
+        format!(
+            "{} at the start of the window, {} after: no wax holds the whole window",
+            self.quality(first),
+            self.quality(last)
+        )
+    }
+
+    fn wax_crosses_zero(&self, min: f64, max: f64) -> String {
+        format!("the temperature goes from {min:+.0} to {max:+.0} °C in the window")
+    }
+
+    fn wax_wet_falling(&self) -> &'static str {
+        "rain or wet snow falling"
+    }
+
+    fn wax_skins(&self, why: &str) -> String {
+        format!("waxless or skin skis advised ({why})")
+    }
+
+    fn wax_glide(&self, air: f64, snow: f64) -> String {
+        format!("glide: air {air:+.1} °C (Swix tables), estimated snow {snow:+.1} °C (Toko tables)")
+    }
+
+    fn wax_humidity(&self, pct: f64) -> String {
+        format!("humidity {pct:.0} %")
+    }
+
+    fn wax_humidity_unknown(&self) -> &'static str {
+        "humidity unknown (not in the weather layer)"
+    }
+
+    fn wax_day(&self, morning: &str, afternoon: Option<&str>) -> String {
+        match afternoon {
+            Some(a) => format!("Morning {morning} Afternoon {a}"),
+            None => format!("Morning {morning} Same wax in the afternoon."),
+        }
+    }
+
+    fn eq_label(&self, k: EquipmentKind) -> &'static str {
+        match k {
+            EquipmentKind::AvalancheKit => "transceiver, shovel and probe",
+            EquipmentKind::Headlamp => "headlamp",
+            EquipmentKind::WarmLayer => "an extra warm layer",
+            EquipmentKind::FaceProtection => "mittens and face protection",
+            EquipmentKind::PowerBank => "power bank",
+            EquipmentKind::TellSomeone => "tell someone close the route and the return time",
+            EquipmentKind::Compass => "compass",
+            EquipmentKind::SunProtection => "sunglasses and sunscreen",
+            EquipmentKind::WaxlessSkis => "waxless or skin skis",
+        }
+    }
+
+    fn eq_exposed(&self, km: f64) -> String {
+        format!(
+            "{} km in terrain exposed to avalanches (model)",
+            self.num(km, 1)
+        )
+    }
+
+    fn eq_clpa(&self, km: f64) -> String {
+        format!("{} km in known avalanche paths (CLPA)", self.num(km, 1))
+    }
+
+    fn eq_offpiste_bera(&self, level: u8) -> String {
+        format!("off-piste with a BERA of {level} out of 5")
+    }
+
+    fn eq_back_after_sunset(&self, back: NaiveDateTime, sunset: NaiveDateTime) -> String {
+        format!(
+            "back planned around {}, sunset at {}",
+            self.clock(back),
+            self.clock(sunset)
+        )
+    }
+
+    fn eq_start_before_sunrise(&self, start: NaiveDateTime, sunrise: NaiveDateTime) -> String {
+        format!(
+            "start at {}, before sunrise ({})",
+            self.clock(start),
+            self.clock(sunrise)
+        )
+    }
+
+    fn eq_chill(&self, chill: &str) -> String {
+        format!("feels like down to {chill} °C")
+    }
+
+    fn eq_no_network(&self, km: f64, pct: f64) -> String {
+        format!(
+            "{} km without any mobile network, not even for 112 ({pct} % of the route)",
+            self.num(km, 1)
+        )
+    }
+
+    fn eq_offpiste(&self) -> &'static str {
+        "off-piste outing"
+    }
+
+    fn eq_long(&self, minutes: f64) -> String {
+        format!("outing of more than 3 h ({minutes} min estimated)")
+    }
+
+    fn eq_fog(&self, hours: usize) -> String {
+        format!("fog forecast ({hours} h during the outing)")
+    }
+
+    fn eq_clear_sky(&self, cloud_pct: f64) -> String {
+        format!("clear sky ({cloud_pct:.0} % cloud)")
+    }
+
+    fn eq_kick_unreliable(&self) -> &'static str {
+        "grip wax uncertain that day (A2 wax)"
+    }
+
+    fn eq_nothing(&self, outing: &str) -> String {
+        format!("{outing}: nothing special to add to the usual equipment.")
+    }
+
+    fn eq_take(&self, outing: &str, items: &[(&str, &str)]) -> String {
+        format!(
+            "{outing} — take: {}.",
+            items
+                .iter()
+                .map(|(l, r)| format!("{l} ({r})"))
+                .collect::<Vec<_>>()
+                .join("; ")
+        )
+    }
+
+    fn sy_altitude(&self, loc: &str) -> String {
+        if let Some(a) = loc.strip_prefix('>') {
+            format!("above {a} m")
+        } else if let Some(a) = loc.strip_prefix('<') {
+            format!("below {a} m")
+        } else {
+            loc.to_owned()
+        }
+    }
+
+    fn sy_risk_other(&self, loc: &str, level: u8) -> String {
+        format!(" {} ({level} out of 5 lower down)", self.sy_altitude(loc))
+    }
+
+    fn sy_aspects(&self, aspects: &[&str]) -> String {
+        format!(", {} slopes the most exposed", aspects.join(", "))
+    }
+
+    fn sy_read_bulletin(&self) -> &'static str {
+        ": read the whole bulletin before you go"
+    }
+
+    fn sy_no_bera_jura(&self, no_bulletin: &str) -> String {
+        format!(
+            "{no_bulletin} (Jura): avalanches remain possible on steep slopes, the SLF \
+             bulletin covers the nearby Swiss Jura"
+        )
+    }
+
+    fn sy_no_bera(&self, no_bulletin: &str) -> String {
+        format!("{no_bulletin}: avalanches remain possible on steep slopes")
+    }
+
+    fn sy_bera_missing(&self, massif: Option<&str>, loaded: bool) -> String {
+        let massif = massif.map_or_else(|| "massif".to_owned(), |m| format!("{m} massif"));
+        if loaded {
+            format!(
+                "Today's BERA of the {massif} is not available offline: read it before you \
+                 go, the avalanche risk is never zero in the mountains"
+            )
+        } else {
+            format!(
+                "Today's BERA of the {massif} is not loaded: read it before you go, the \
+                 avalanche risk is never zero in the mountains"
+            )
+        }
+    }
+
+    fn sy_clpa(&self, km: f64, paths: usize) -> String {
+        format!(
+            "; your route crosses {} km of {paths} known avalanche paths (CLPA)",
+            self.num(km, 1)
+        )
+    }
+
+    fn sy_clpa_none(&self) -> &'static str {
+        "; your route crosses no known avalanche path (CLPA), which does not rule out an \
+         avalanche elsewhere"
+    }
+
+    fn sy_clpa_no_map(&self) -> &'static str {
+        "; no map of the known avalanche paths (CLPA) in this massif"
+    }
+
+    fn sy_no_weather(&self) -> &'static str {
+        "No offline weather for this day."
+    }
+
+    fn sy_no_forecast(&self, point: &str) -> String {
+        format!("No offline weather forecast for this day at the point {point}.")
+    }
+
+    fn sy_temperature(&self, min: &str, max: Option<&str>) -> String {
+        match max {
+            None => format!("{min} °C"),
+            Some(max) => format!("from {min} to {max} °C"),
+        }
+    }
+
+    fn sy_chill(&self, chill: &str) -> String {
+        format!("feels like {chill} °C")
+    }
+
+    fn sy_wind_light(&self) -> &'static str {
+        "light wind"
+    }
+
+    fn sy_fog(&self, hours: usize) -> String {
+        format!("fog possible ({hours} h)")
+    }
+
+    fn sy_snow(&self, cm: f64) -> String {
+        format!("{} cm of snow", self.num(cm, 0))
+    }
+
+    fn sy_freezing(&self, m: f64) -> String {
+        format!("freezing level around {m} m")
+    }
+
+    fn sy_clear(&self) -> &'static str {
+        "clear sky"
+    }
+
+    fn sy_overcast(&self) -> &'static str {
+        "overcast"
+    }
+
+    fn sy_weather(&self, point: &str, elevation: f64, parts: &[String]) -> String {
+        format!(
+            "Weather from 9:00 to 16:00 ({point}, {elevation} m): {}.",
+            parts.join(", ")
+        )
+    }
+
+    fn sy_verdict(
+        &self,
+        topic: skimap_zones::rules::Topic,
+        verdict: skimap_core::zone_eval::Verdict,
+        stoves: bool,
+    ) -> Option<&'static str> {
+        use skimap_core::zone_eval::Verdict;
+        use skimap_zones::rules::Topic;
+        Some(match (topic, verdict) {
+            (Topic::Access, Verdict::Forbidden) => "no entry",
+            (Topic::Access, Verdict::ForbiddenInPlaces) => "no entry in places",
+            (Topic::Access, Verdict::AvoidRecommended) => "wildlife quiet zone to avoid",
+            (Topic::LeaveRoutes, Verdict::Forbidden) => "leaving the marked routes forbidden",
+            (Topic::LeaveRoutes, Verdict::ForbiddenInPlaces) => {
+                "leaving the trails forbidden in places (private land)"
+            }
+            (Topic::LeaveRoutes, Verdict::AvoidRecommended) => "stay on the routes",
+            (Topic::Bivouac, Verdict::Forbidden) => "bivouac forbidden",
+            (Topic::Fire, Verdict::Forbidden) if stoves => "fire forbidden, stoves included",
+            (Topic::Fire, Verdict::Forbidden) => "fire forbidden",
+            _ => return None,
+        })
+    }
+
+    fn sy_night(&self, words: &str) -> String {
+        format!("at night, {words}")
+    }
+
+    fn sy_zones_more(&self, first: &str, second: &str, others: usize) -> String {
+        format!(" ({first}, {second} and {others} others)")
+    }
+
+    fn sy_until(&self, day: u8, month: u8) -> String {
+        format!(" until {day} {}", skimap_voice::en::month_name(month))
+    }
+
+    fn sy_rules_not_loaded(&self) -> &'static str {
+        "rules of the protected zones not loaded"
+    }
+
+    fn sy_no_rule(&self) -> &'static str {
+        "no known access rule active this day"
+    }
+
+    fn sy_not_covered(&self) -> &'static str {
+        " (outside France and Switzerland, no known rule)"
+    }
+
+    fn sy_no_network_km(&self, km: f64) -> String {
+        format!(
+            "; {} km without any mobile network, not even for 112",
+            self.num(km, 1)
+        )
+    }
+
+    fn sy_network_everywhere(&self) -> &'static str {
+        "; mobile network announced on the whole route (operator maps)"
+    }
+
+    fn sy_no_network_share(&self, pct: f64) -> String {
+        format!("; {pct} % of the trails without any mobile network, not even for 112")
+    }
+
+    fn sy_rules(&self, route: bool, rules: &str, not_covered: &str, network: &str) -> String {
+        let place = if route {
+            "On your route"
+        } else {
+            "On the trails of the site"
+        };
+        format!("{place}: {rules}{not_covered}{network}.")
+    }
+
+    fn al_wind_rising(&self, gust_kmh: f64, before_kmh: f64) -> String {
+        format!(
+            "the wind is rising: gusts of {gust_kmh:.0} km/h within the hour (before: {before_kmh:.0})"
+        )
+    }
+
+    fn al_fog(&self) -> &'static str {
+        "fog forecast within the hour"
+    }
+
+    fn al_snow(&self, cm_h: f64) -> String {
+        format!("snowfall within the hour ({cm_h:.1} cm/h)")
+    }
+
+    fn al_cold(&self, temperature: &str, chill: &str) -> String {
+        format!("the temperature is dropping: {temperature} °C, feels like {chill} °C within 3 h")
+    }
+
+    fn al_turn_now(&self, late_min: f64, pace: f64, deadline: Option<NaiveDateTime>) -> String {
+        format!(
+            "{late_min} min late (pace × {pace:.2}): turn back now to be back before {}",
+            deadline.map(|d| self.clock(d)).unwrap_or_default()
+        )
+    }
+
+    fn al_turn_advanced(
+        &self,
+        late_min: f64,
+        pace: f64,
+        deadline: Option<NaiveDateTime>,
+        turn: NaiveDateTime,
+    ) -> String {
+        format!(
+            "{late_min} min late (pace × {pace:.2}): the loop no longer ends before {}; turn back at {} at the latest",
+            deadline.map(|d| self.clock(d)).unwrap_or_default(),
+            self.clock(turn)
+        )
+    }
+
+    fn layer_name(&self, l: LayerName) -> &'static str {
+        match l {
+            LayerName::Weather => "hourly weather",
+            LayerName::Snow => "snow map",
+            LayerName::Bera => "BERA",
+            LayerName::Status => "trail status",
+            LayerName::Domains => "nordic areas",
+            LayerName::Pistes => "trails",
+            LayerName::Clpa => "historic avalanche paths",
+            LayerName::NoNetwork => "zones without network",
+            LayerName::Zones => "zones and rules",
+            LayerName::Route => "planned route",
+            LayerName::Graph => "trail graph",
+            LayerName::Exposure => "avalanche exposure",
+        }
+    }
+
+    fn layer_missing(&self, l: LayerName, why: &str) -> String {
+        format!("{}: {why}", self.layer_name(l))
     }
 }

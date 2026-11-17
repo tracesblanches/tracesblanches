@@ -360,6 +360,9 @@ pub struct Start {
     pub name: String,
     /// Name as said in a sentence (« Le Laus », « le départ des pistes de … »).
     pub phrase: String,
+    /// The same in English (VO6), when it is not a proper name kept as is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phrase_en: Option<String>,
     /// Longitude.
     pub lon: f64,
     /// Latitude.
@@ -532,6 +535,7 @@ pub fn starts(site: &Site) -> Vec<Start> {
             id: "centre".into(),
             name: format!("Centre du domaine {}", site.name),
             phrase: format!("le centre du domaine {}", site.name),
+            phrase_en: Some(format!("the centre of the {} area", site.name)),
             lon: site.commune_center.lon,
             lat: site.commune_center.lat,
             provenance: "point représentatif du domaine (recensement P3 : point du réseau le plus proche du barycentre)".into(),

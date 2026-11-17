@@ -485,15 +485,16 @@ pub fn group_solo(lang: Lang) -> Result<GroupView, TrackingError> {
     )
 }
 
-/// Starts of a site: the start points of its ready-made requests (`skimap_plan::presets`).
+/// Starts of a site: the start points of its ready-made requests (`skimap_plan::presets`),
+/// names in `lang`.
 #[uniffi::export]
-pub fn day_starts(site_id: String) -> Vec<DayStart> {
+pub fn day_starts(site_id: String, lang: Lang) -> Vec<DayStart> {
     let Ok(site) = skimap_common::site::site(&site_id) else {
         return Vec::new();
     };
     let date = skimap_plan::presets::past_day(site);
     let mut out: Vec<DayStart> = Vec::new();
-    for r in skimap_plan::presets::requests(site, date) {
+    for r in skimap_plan::presets::requests_in(site, date, lang) {
         if !out.iter().any(|s| s.name == r.start_name) {
             out.push(DayStart {
                 name: r.start_name,
@@ -662,7 +663,7 @@ impl DayPlanner {
             .loaded
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut v = l.data.missing.clone();
+        let mut v = l.data.missing_in(self.lang);
         v.extend(l.ctx.missing.iter().cloned());
         v
     }
@@ -885,7 +886,7 @@ fn plan_view(p: &DayPlan, plan_dir: &str, g: &PisteGraph, lang: Lang) -> DayPlan
             .iter()
             .map(|i| format!("{} — {}", i.label, i.reason))
             .collect(),
-        text: p.text_fr(),
+        text: p.text_in(lang),
         sms: sms_text(p, back, lang),
         line,
     }

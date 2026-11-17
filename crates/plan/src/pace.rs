@@ -49,6 +49,7 @@ use crate::error::Result;
 use crate::plan::DayPlan;
 use crate::track::TrackView;
 use crate::tracker::{Input, RouteRef, Tracker, TrackerParams};
+use skimap_common::Lang;
 
 /// Model time per terrain along a route (cumulative), from the C5 time profile.
 #[derive(Debug, Clone, Default)]
@@ -166,19 +167,12 @@ fn secs(s: f64) -> Duration {
 
 /// « 2 h 30 », « 45 min », rounded to 5 min.
 pub fn duration_fr(s: f64) -> String {
-    let m = ((s / 60.0 / 5.0).round() * 5.0) as i64;
-    if m < 60 {
-        format!("{m} min")
-    } else {
-        format!("{} h {:02}", m / 60, m % 60)
-    }
+    crate::text::of(Lang::Fr).duration5(s)
 }
 
 /// « 15 h 20 », rounded to 5 min.
 pub fn clock_fr(t: NaiveDateTime) -> String {
-    let m = (t.hour() * 60 + t.minute()) as f64 + t.second() as f64 / 60.0;
-    let m = ((m / 5.0).round() * 5.0) as u32 % (24 * 60);
-    format!("{} h {:02}", m / 60, m % 60)
+    crate::text::of(Lang::Fr).clock5(t)
 }
 
 /// The estimated time of a plan for a group.
@@ -192,45 +186,30 @@ pub fn plan_pace(plan: &DayPlan, g: &PisteGraph, model: &ProfileModel) -> Result
     let dep = plan.departure;
     let range = model.outings < FIGURE_AFTER_OUTINGS || p.spread() > FIGURE_SPREAD;
     let c5 = c.model_s();
-    let learned = match model.outings {
-        0 => "a priori, aucune sortie apprise".to_owned(),
-        1 => "une sortie apprise".to_owned(),
-        n => format!("{n} sorties apprises"),
-    };
-    let duration = if range {
-        format!("{} à {}", duration_fr(p.lo_s), duration_fr(p.hi_s))
-    } else {
-        format!(
-            "environ {} ({} à {})",
-            duration_fr(p.median_s),
-            duration_fr(p.lo_s),
-            duration_fr(p.hi_s)
-        )
-    };
+    let tx = crate::text::of(plan.lang);
+    let learned = tx.pc_learned(model.outings);
+    let duration = tx.pc_duration((!range).then_some(p.median_s), p.lo_s, p.hi_s);
     let back = if plan_q > 0.5 {
         // With children: planned on the slow side of the range, the median said too.
-        format!(
-            "médiane {}, prévu sur {} (côté lent : {} chances sur 10 d'avoir fini), retour prévu vers {}",
-            duration_fr(p.median_s),
-            duration_fr(planned_s),
+        tx.pc_slow_side(
+            p.median_s,
+            planned_s,
             (plan_q * 10.0).round(),
-            clock_fr(dep + secs(planned_s))
+            dep + secs(planned_s),
         )
     } else if range {
-        format!(
-            "retour entre {} et {}",
-            clock_fr(dep + secs(p.lo_s)),
-            clock_fr(dep + secs(p.hi_s))
-        )
+        tx.pc_back_between(dep + secs(p.lo_s), dep + secs(p.hi_s))
     } else {
-        format!("retour vers {}", clock_fr(dep + secs(p.median_s)))
+        tx.pc_back_around(dep + secs(p.median_s))
     };
-    let text = format!(
-        "Temps estimé pour {} ({learned}) : {duration}, {back} ; en mouvement {} au rythme du groupe, arrêts {} ; modèle C5 seul : {}",
-        model.profile.label_fr(),
-        duration_fr(p.moving_s),
-        duration_fr(p.stop_s),
-        duration_fr(c5)
+    let text = tx.pc_text(
+        &tx.assist().group_label(&model.profile),
+        &learned,
+        &duration,
+        &back,
+        p.moving_s,
+        p.stop_s,
+        c5,
     );
     Ok(PlanPace {
         profile: model.profile.clone(),
@@ -506,29 +485,24 @@ pub fn proposal_text(
     p: (NaiveDateTime, NaiveDateTime, NaiveDateTime),
     saved_min: Option<f64>,
 ) -> String {
-    let why = match reason {
-        PaceReason::Slower => format!("Vous allez {slower_pct:.0} % moins vite que prévu."),
-        PaceReason::SlowerAndPauses => {
-            format!("Vous allez {slower_pct:.0} % moins vite que prévu, avec plus de pauses.")
-        }
-        PaceReason::Pauses => {
-            format!("Vous faites plus de pauses que prévu ({slower_pct:.0} % moins vite au total).")
-        }
-    };
-    let what = match kind {
-        ProposalKind::ShortLoop => "Je vous propose la boucle courte",
-        ProposalKind::NearestExit => "Je vous propose la sortie la plus proche",
-        ProposalKind::Keep => "Je vous propose de garder la boucle",
-    };
-    let saved = saved_min
-        .filter(|m| *m >= 5.0)
-        .map(|m| format!(", {} de moins", duration_fr(m * 60.0)))
-        .unwrap_or_default();
-    format!(
-        "{why} {what}, retour {} ({} à {}){saved}. Accepter ou refuser.",
-        clock_fr(p.0),
-        clock_fr(p.1),
-        clock_fr(p.2)
+    proposal_text_in(reason, slower_pct, kind, p, saved_min, Lang::Fr)
+}
+
+/// [`proposal_text`] in `lang` (the plan's language, VO6).
+pub fn proposal_text_in(
+    reason: PaceReason,
+    slower_pct: f64,
+    kind: ProposalKind,
+    p: (NaiveDateTime, NaiveDateTime, NaiveDateTime),
+    saved_min: Option<f64>,
+    lang: Lang,
+) -> String {
+    let tx = crate::text::of(lang);
+    tx.pr_text(
+        &tx.pr_why(reason, slower_pct),
+        tx.pr_what(&kind),
+        p,
+        saved_min,
     )
 }
 

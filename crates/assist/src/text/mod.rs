@@ -8,7 +8,10 @@ use chrono::{NaiveDate, NaiveDateTime};
 pub use skimap_common::Lang;
 
 use crate::crowd::{CrowdLevel, Population};
+use crate::equipment::Kind as EquipmentKind;
+use crate::inputs::LayerName;
 use crate::snow_quality::{Quality, SlopeClass, Slot};
+use crate::wax::SnowType;
 
 pub mod en;
 pub mod fr;
@@ -304,4 +307,226 @@ pub trait Texts: Sync {
     fn s_limits(&self, notes: &[String]) -> String;
     /// Nodes out of reach from the start.
     fn s_unreachable(&self, nodes: usize, of: usize, km: f64, start: &str) -> String;
+
+    // ---- Best time to leave (A9).
+
+    /// Snow surface of a slope class over the outing: « plat : neige dure puis neige humide ».
+    fn bt_surface(&self, class: &str, qualities: &[&str]) -> String;
+    /// Separator of the slope classes.
+    fn bt_sep(&self) -> &'static str;
+    /// Gusts of 40 km/h or more during the outing.
+    fn bt_gusts(&self, kmh: f64) -> String;
+    /// Hours of fog during the outing.
+    fn bt_fog(&self, hours: f64) -> String;
+    /// Snowfall during the outing.
+    fn bt_snowfall(&self) -> &'static str;
+    /// Rain during the outing.
+    fn bt_rain(&self) -> &'static str;
+    /// Wind chill down to.
+    fn bt_cold(&self, chill: &str) -> String;
+    /// Sun.
+    fn bt_sun(&self) -> &'static str;
+    /// Busy day: assumed peak from 10 h 30 to 14 h.
+    fn bt_crowd(&self, level: CrowdLevel) -> String;
+    /// Return less than 30 min before the deadline.
+    fn bt_near_deadline(&self, deadline: NaiveDateTime) -> String;
+    /// What a start two hours or more away would lose.
+    fn bt_other_start(&self, start: NaiveDateTime, lost: &[String]) -> String;
+    /// The best start, its return, the outing and why; `others` the other starts.
+    fn bt_best(
+        &self,
+        start: NaiveDateTime,
+        back: NaiveDateTime,
+        minutes: f64,
+        why: &[String],
+        others: &[String],
+    ) -> String;
+    /// No start ends before the deadline.
+    fn bt_none(&self, minutes: f64, deadline: Option<NaiveDateTime>) -> String;
+
+    // ---- Wax (A2).
+
+    /// Snow type of the grip wax.
+    fn wax_snow_type(&self, t: SnowType) -> &'static str;
+    /// A window: hours, air and snow temperatures (« +2 »), snow type, grip and glide.
+    #[allow(clippy::too_many_arguments)]
+    fn wax_window(
+        &self,
+        hours: (u32, u32),
+        air: &str,
+        snow: &str,
+        snow_type: SnowType,
+        kick: &str,
+        glide: (&str, &str),
+        glide_alt: Option<(&str, &str)>,
+    ) -> String;
+    /// Grip wax (product, brand) with its alternative.
+    fn wax_kick(&self, kick: (&str, &str), alt: Option<(&str, &str)>) -> String;
+    /// Grip wax unreliable: the skins advice, otherwise the wax.
+    fn wax_kick_uncertain(
+        &self,
+        skins: Option<&str>,
+        kick: (&str, &str),
+        alt: Option<(&str, &str)>,
+    ) -> String;
+    /// First reason: snow type and air temperatures.
+    fn wax_model(&self, snow_type: SnowType, mean: f64, min: f64, max: f64) -> String;
+    /// Colder than every range.
+    fn wax_colder_than_all(&self) -> &'static str;
+    /// Warmer than the hard waxes for this snow.
+    fn wax_warmer_than_hard(&self) -> &'static str;
+    /// Coarse refrozen snow: klister.
+    fn wax_coarse_frozen(&self) -> &'static str;
+    /// Fresh snow around 0 °C.
+    fn wax_fresh_near_zero(&self) -> &'static str;
+    /// Refrozen at the start of the window, wet after.
+    fn wax_refrozen_then_wet(&self, first: Quality, last: Quality) -> String;
+    /// The temperature crosses 0 °C in the window.
+    fn wax_crosses_zero(&self, min: f64, max: f64) -> String;
+    /// Rain or wet snow falling.
+    fn wax_wet_falling(&self) -> &'static str;
+    /// Waxless or skin skis advised, and why.
+    fn wax_skins(&self, why: &str) -> String;
+    /// Glide: air and snow temperatures of the tables.
+    fn wax_glide(&self, air: f64, snow: f64) -> String;
+    /// Mean humidity.
+    fn wax_humidity(&self, pct: f64) -> String;
+    /// Humidity unknown.
+    fn wax_humidity_unknown(&self) -> &'static str;
+    /// The day: morning, and the afternoon when it differs.
+    fn wax_day(&self, morning: &str, afternoon: Option<&str>) -> String;
+
+    // ---- Equipment (A6).
+
+    /// Label of an equipment item.
+    fn eq_label(&self, k: EquipmentKind) -> &'static str;
+    /// Km in terrain exposed to avalanches.
+    fn eq_exposed(&self, km: f64) -> String;
+    /// Km in known avalanche paths.
+    fn eq_clpa(&self, km: f64) -> String;
+    /// Off-piste with a BERA of 3 or more.
+    fn eq_offpiste_bera(&self, level: u8) -> String;
+    /// Back after sunset (or less than an hour before).
+    fn eq_back_after_sunset(&self, back: NaiveDateTime, sunset: NaiveDateTime) -> String;
+    /// Start before sunrise.
+    fn eq_start_before_sunrise(&self, start: NaiveDateTime, sunrise: NaiveDateTime) -> String;
+    /// Wind chill down to.
+    fn eq_chill(&self, chill: &str) -> String;
+    /// Km without any mobile network.
+    fn eq_no_network(&self, km: f64, pct: f64) -> String;
+    /// Off-piste outing.
+    fn eq_offpiste(&self) -> &'static str;
+    /// Outing of more than 3 h.
+    fn eq_long(&self, minutes: f64) -> String;
+    /// Fog forecast during the outing.
+    fn eq_fog(&self, hours: usize) -> String;
+    /// Clear sky.
+    fn eq_clear_sky(&self, cloud_pct: f64) -> String;
+    /// Grip wax unreliable.
+    fn eq_kick_unreliable(&self) -> &'static str;
+    /// Nothing to add to the usual equipment.
+    fn eq_nothing(&self, outing: &str) -> String;
+    /// What to take, item and reason.
+    fn eq_take(&self, outing: &str, items: &[(&str, &str)]) -> String;
+
+    // ---- Synthesis of the day (A7).
+
+    /// An altitude limit of the BERA (« >2400 »): « au-dessus de 2400 m »; anything else
+    /// as is.
+    fn sy_altitude(&self, loc: &str) -> String;
+    /// The other level, below or above the limit.
+    fn sy_risk_other(&self, loc: &str, level: u8) -> String;
+    /// The most exposed aspects.
+    fn sy_aspects(&self, aspects: &[&str]) -> String;
+    /// Read the whole bulletin.
+    fn sy_read_bulletin(&self) -> &'static str;
+    /// No BERA (Jura): the voice clip « no bulletin », then the SLF.
+    fn sy_no_bera_jura(&self, no_bulletin: &str) -> String;
+    /// No BERA for this massif.
+    fn sy_no_bera(&self, no_bulletin: &str) -> String;
+    /// BERA not available offline (`loaded`: read but not available; otherwise not loaded).
+    fn sy_bera_missing(&self, massif: Option<&str>, loaded: bool) -> String;
+    /// The route crosses km of known avalanche paths.
+    fn sy_clpa(&self, km: f64, paths: usize) -> String;
+    /// The route crosses no known avalanche path.
+    fn sy_clpa_none(&self) -> &'static str;
+    /// No map of the known avalanche paths in this massif.
+    fn sy_clpa_no_map(&self) -> &'static str;
+    /// No offline weather for the day.
+    fn sy_no_weather(&self) -> &'static str;
+    /// No offline forecast for the day at a point.
+    fn sy_no_forecast(&self, point: &str) -> String;
+    /// One temperature, or a range.
+    fn sy_temperature(&self, min: &str, max: Option<&str>) -> String;
+    /// Wind chill.
+    fn sy_chill(&self, chill: &str) -> String;
+    /// Light wind.
+    fn sy_wind_light(&self) -> &'static str;
+    /// Fog possible.
+    fn sy_fog(&self, hours: usize) -> String;
+    /// Snowfall.
+    fn sy_snow(&self, cm: f64) -> String;
+    /// Freezing level.
+    fn sy_freezing(&self, m: f64) -> String;
+    /// Clear sky.
+    fn sy_clear(&self) -> &'static str;
+    /// Overcast.
+    fn sy_overcast(&self) -> &'static str;
+    /// The weather sentence: point, elevation, parts.
+    fn sy_weather(&self, point: &str, elevation: f64, parts: &[String]) -> String;
+    /// Words of a rule (topic, verdict, stoves included); `None`: not said.
+    fn sy_verdict(
+        &self,
+        topic: skimap_zones::rules::Topic,
+        verdict: skimap_core::zone_eval::Verdict,
+        stoves: bool,
+    ) -> Option<&'static str>;
+    /// A rule at night.
+    fn sy_night(&self, words: &str) -> String;
+    /// Three zones or more: the first two and how many others.
+    fn sy_zones_more(&self, first: &str, second: &str, others: usize) -> String;
+    /// Until a date.
+    fn sy_until(&self, day: u8, month: u8) -> String;
+    /// Rules of the protected zones not loaded.
+    fn sy_rules_not_loaded(&self) -> &'static str;
+    /// No access rule known active this day.
+    fn sy_no_rule(&self) -> &'static str;
+    /// Points outside France and Switzerland.
+    fn sy_not_covered(&self) -> &'static str;
+    /// Km without any mobile network on the route.
+    fn sy_no_network_km(&self, km: f64) -> String;
+    /// Mobile network on the whole route.
+    fn sy_network_everywhere(&self) -> &'static str;
+    /// Share of the trails without any mobile network.
+    fn sy_no_network_share(&self, pct: f64) -> String;
+    /// The rules sentence: on the route or on the trails of the site.
+    fn sy_rules(&self, route: bool, rules: &str, not_covered: &str, network: &str) -> String;
+
+    // ---- Alerts during the outing (A8).
+
+    /// The wind rises.
+    fn al_wind_rising(&self, gust_kmh: f64, before_kmh: f64) -> String;
+    /// Fog within the hour.
+    fn al_fog(&self) -> &'static str;
+    /// Snowfall within the hour.
+    fn al_snow(&self, cm_h: f64) -> String;
+    /// The temperature drops.
+    fn al_cold(&self, temperature: &str, chill: &str) -> String;
+    /// Late: turn back now to be back before the deadline.
+    fn al_turn_now(&self, late_min: f64, pace: f64, deadline: Option<NaiveDateTime>) -> String;
+    /// Late: the loop no longer ends before the deadline; latest turnaround.
+    fn al_turn_advanced(
+        &self,
+        late_min: f64,
+        pace: f64,
+        deadline: Option<NaiveDateTime>,
+        turn: NaiveDateTime,
+    ) -> String;
+
+    // ---- Missing layers.
+
+    /// Name of a layer of the assistant.
+    fn layer_name(&self, l: LayerName) -> &'static str;
+    /// A layer that could not be read, and why (reader error, local path).
+    fn layer_missing(&self, l: LayerName, why: &str) -> String;
 }
