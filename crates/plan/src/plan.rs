@@ -52,6 +52,7 @@ use skimap_common::site::Site;
 use skimap_core::calibration::ProfileModel;
 use skimap_core::eta::EtaModel;
 use skimap_core::graph::{Difficulty, PisteGraph};
+use skimap_core::huts;
 use skimap_core::routing::Style;
 use skimap_core::turnaround::{self, TurnaroundParams};
 use skimap_voice::Event;
@@ -303,54 +304,46 @@ fn read_value(path: &Path) -> Result<Value> {
 impl Context {
     /// Reads `refuges/refuges_info.geojson` (refuges gardés, cabanes non gardées, gîtes),
     /// `refuges/osm.geojson` (alpine huts, wilderness huts, shelters) and
-    /// `voice/manifest.json` of a site; what is missing is noted, not fatal.
+    /// `voice/manifest.json` of a site; what is missing is noted, not fatal. The refuges
+    /// are the features flagged by the pack ([`huts::PLAN_FLAG`], X21 #155), read as they
+    /// are; layers without the flag (the pipeline's own files) are flagged here first
+    /// ([`huts::mark`]).
     pub fn load(layout: &DataLayout, site: &Site) -> Result<Self> {
         let mut ctx = Context::default();
         let rdir = layout.layer_dir(site, "refuges")?;
-        let feats = |v: &Value| v["features"].as_array().cloned().unwrap_or_default();
-        let pos = |f: &Value| {
-            let c = f["geometry"]["coordinates"].as_array()?;
-            Some(LonLat::new(c.first()?.as_f64()?, c.get(1)?.as_f64()?))
-        };
-        match read_value(&rdir.join("refuges_info.geojson")) {
-            Ok(v) => {
-                for f in feats(&v) {
-                    let p = &f["properties"];
-                    let kind = p["type_label"].as_str().unwrap_or_default();
-                    if matches!(kind, "cabane non gardée" | "refuge gardé" | "gîte d'étape")
-                        && let Some(pos) = pos(&f)
-                    {
-                        ctx.refuges.push(Waypoint {
-                            name: p["name"].as_str().map(|s| s.trim().to_owned()),
-                            kind: kind.to_owned(),
-                            pos,
-                        });
-                    }
-                }
-            }
-            Err(e) => ctx.missing.push(format!("refuges.info : {e}")),
+        let mut info = read_value(&rdir.join("refuges_info.geojson")).unwrap_or_else(|e| {
+            ctx.missing.push(format!("refuges.info : {e}"));
+            Value::Null
+        });
+        let mut osm = read_value(&rdir.join("osm.geojson")).unwrap_or_else(|e| {
+            ctx.missing.push(format!("refuges OSM : {e}"));
+            Value::Null
+        });
+        if !(huts::marked(&info) && huts::marked(&osm)) {
+            huts::mark(&mut info, &mut osm);
         }
-        match read_value(&rdir.join("osm.geojson")) {
-            Ok(v) => {
-                for f in feats(&v) {
-                    let p = &f["properties"];
-                    let kind = p["kind"].as_str().unwrap_or_default();
-                    if matches!(kind, "alpine_hut" | "wilderness_hut" | "shelter")
-                        && let Some(pos) = pos(&f)
-                    {
-                        // The same hut in both sources: keep the refuges.info one.
-                        if ctx.refuges.iter().any(|r| r.pos.haversine_m(pos) < 50.0) {
-                            continue;
-                        }
-                        ctx.refuges.push(Waypoint {
-                            name: p["tags"]["name"].as_str().map(|s| s.trim().to_owned()),
-                            kind: kind.to_owned(),
-                            pos,
-                        });
-                    }
-                }
-            }
-            Err(e) => ctx.missing.push(format!("refuges OSM : {e}")),
+        fn flagged(v: &Value) -> impl Iterator<Item = (LonLat, &Value)> {
+            v["features"]
+                .as_array()
+                .map_or(&[][..], Vec::as_slice)
+                .iter()
+                .filter(|f| huts::flagged(f))
+                .filter_map(|f| Some((huts::point(f)?, &f["properties"])))
+        }
+        let trimmed = |v: &Value| v.as_str().map(|s| s.trim().to_owned());
+        for (pos, p) in flagged(&info) {
+            ctx.refuges.push(Waypoint {
+                name: trimmed(&p["name"]),
+                kind: p["type_label"].as_str().unwrap_or_default().to_owned(),
+                pos,
+            });
+        }
+        for (pos, p) in flagged(&osm) {
+            ctx.refuges.push(Waypoint {
+                name: trimmed(&p["tags"]["name"]),
+                kind: p["kind"].as_str().unwrap_or_default().to_owned(),
+                pos,
+            });
         }
         let vdir = layout.layer_dir(site, "voice")?;
         match VoiceManifest::read(&vdir) {

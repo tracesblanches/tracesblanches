@@ -15,6 +15,7 @@
 //!
 //! Shared modules: [`graph`] (typed trail graph with elevation profiles, used by C1, C2,
 //! C5), [`ephemeris`] (sun times and French legal time, used by C7 and C8), [`error`];
+//! [`huts`] (refuges of the day plan, flagged in the packs, X21 #155);
 //! [`dem`] (feature `pipeline`, pipeline side only) samples the terrain model along the graph.
 //!
 //! Runs on the phone (through UniFFI or a native binary, decision K0 #49): no networking,
@@ -28,6 +29,7 @@ pub mod ephemeris;
 pub mod error;
 pub mod eta;
 pub mod graph;
+pub mod huts;
 pub mod matching;
 pub mod offpiste;
 pub mod routing;
