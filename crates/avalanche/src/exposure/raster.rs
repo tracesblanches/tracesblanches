@@ -5,8 +5,7 @@
 //! The algorithms work on [`Raster`] (row-major, north-up, square cells, `NaN` = no data)
 //! and never on a CRS: Lambert-93 is attached when writing.
 
-use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::io::Write;
 use std::path::Path;
 
 use skimap_common::crs::Crs;
@@ -159,16 +158,12 @@ pub fn encode_u8<W: Write + std::io::Seek>(w: W, r: &Raster<u8>) -> Result<()> {
     Ok(())
 }
 
-/// Writes a UInt8 class raster; returns the file size in bytes.
+/// Writes a UInt8 class raster; returns the file size in bytes. Atomic, on a new inode
+/// ([`skimap_common::output::AtomicFile`]).
 pub fn write_u8(path: &Path, r: &Raster<u8>) -> Result<u64> {
-    let f = File::create(path).map_err(|e| Error::io(path, e))?;
-    let mut w = BufWriter::new(f);
-    encode_u8(&mut w, r)?;
-    w.flush().map_err(|e| Error::io(path, e))?;
-    drop(w);
-    Ok(std::fs::metadata(path)
-        .map_err(|e| Error::io(path, e))?
-        .len())
+    let mut f = skimap_common::output::AtomicFile::create(path)?;
+    encode_u8(&mut f, r)?;
+    Ok(f.commit()?)
 }
 
 impl From<skimap_common::geotiff::AnyRaster> for Raster<f32> {
@@ -195,6 +190,28 @@ pub fn read(path: &Path) -> Result<Raster<f32>> {
 mod tests {
     use super::*;
     use std::io::Cursor;
+
+    /// A class raster rewritten over a hard link (working copy, pack) leaves the other
+    /// name with its content (#164).
+    #[test]
+    fn write_u8_keeps_hard_links() {
+        let d = tempfile::tempdir().unwrap();
+        let path = d.path().join("ates_5m.tif");
+        let other = d.path().join("copy_ates_5m.tif");
+        std::fs::write(&path, b"previous build").unwrap();
+        std::fs::hard_link(&path, &other).unwrap();
+        let r = Raster {
+            w: 2,
+            h: 1,
+            cell: 5.0,
+            origin_x: 997_999.75,
+            origin_y: 6_426_000.25,
+            data: vec![1u8, 2],
+        };
+        let n = write_u8(&path, &r).unwrap();
+        assert_eq!(std::fs::metadata(&path).unwrap().len(), n);
+        assert_eq!(std::fs::read(&other).unwrap(), b"previous build");
+    }
 
     #[test]
     fn u8_round_trip() {

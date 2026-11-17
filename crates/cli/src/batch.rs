@@ -916,10 +916,15 @@ fn build_one(
     let dir = ctx.layout.out_dir(site);
     DataLayout::ensure(&dir)?;
     let log_path: PathBuf = dir.join(france::BUILD_LOG);
-    let mut log = std::io::BufWriter::new(
-        std::fs::File::create(&log_path).with_context(|| format!("{}", log_path.display()))?,
-    );
+    let mut log = std::io::BufWriter::new(open_build_log(&log_path)?);
     build_site(ctx, site, inp, shared, opts.force, opts.max_age, &mut log)
+}
+
+/// Opens the log of a site build (`build-all.log`), written as the build goes.
+/// A new inode (the previous log unlinked): a working copy linked to the previous log
+/// keeps it (#164).
+fn open_build_log(path: &Path) -> Result<std::fs::File> {
+    Ok(skimap_common::output::create_log(path)?)
 }
 
 /// `build-all <site>`: the steps printed on stdout, the record written as in a batch
@@ -1046,6 +1051,23 @@ pub fn describe(s: &BatchSummary) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A new build log leaves a hard link to the previous one (working copy) intact
+    /// (#164).
+    #[test]
+    fn build_log_keeps_hard_links() {
+        use std::io::Write;
+        let d = tempfile::tempdir().unwrap();
+        let path = d.path().join(france::BUILD_LOG);
+        let other = d.path().join("copy.log");
+        std::fs::write(&path, b"previous build").unwrap();
+        std::fs::hard_link(&path, &other).unwrap();
+        let mut f = open_build_log(&path).unwrap();
+        f.write_all(b"new build").unwrap();
+        drop(f);
+        assert_eq!(std::fs::read(&path).unwrap(), b"new build");
+        assert_eq!(std::fs::read(&other).unwrap(), b"previous build");
+    }
 
     #[test]
     fn causes_ignore_numbers() {
