@@ -116,25 +116,9 @@ pub struct PrepReport {
 
 /// Dates the pack's hourly forecast covers (at least 8 hours of the day).
 pub fn forecast_days(pack: &Pack) -> Vec<NaiveDate> {
-    let Ok(v) = pack.read_json("meteo-hourly") else {
-        return Vec::new();
-    };
-    let mut count: std::collections::BTreeMap<NaiveDate, usize> = Default::default();
-    for p in v["points"].as_array().into_iter().flatten().take(1) {
-        for h in p["hours"].as_array().into_iter().flatten() {
-            if let Some(d) = h["time"]
-                .as_str()
-                .and_then(|s| s.get(..10))
-                .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
-            {
-                *count.entry(d).or_default() += 1;
-            }
-        }
-    }
-    count
-        .into_iter()
-        .filter(|(_, n)| *n >= 8)
-        .map(|(d, _)| d)
+    pack.forecast_days()
+        .iter()
+        .filter_map(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
         .collect()
 }
 

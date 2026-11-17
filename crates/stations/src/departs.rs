@@ -13,7 +13,9 @@
 //!   counts less in proportion, and the largest part always gets a start
 //!   ([`Served`], said in `departs.json`).
 //!
-//! The best [`MAX_STARTS`] starts are kept, main first. A domain without any such point
+//! The best [`MAX_STARTS`] starts are kept, main first; the pack of the site then orders
+//! them by the loops the planner finds from each (#166, `build::rank` of `skimap-pack`),
+//! the registry keeps this order. A domain without any such point
 //! gets the network point nearest to its nearest lodge, desk or car park, else to its
 //! nearest tourist office or ski school (the village), else the census representative point (on the network), with the method said.
 //!
@@ -56,10 +58,15 @@ pub const MIN_SHARE: f64 = 0.25;
 pub const NEAR_MAX_M: f64 = 1000.0;
 
 /// Nordic km of network a start must serve for a loop of the app's default outing (2 h,
-/// the presets of the planner): the planner turns at 50 to 110 % of the budget, so at an
-/// hour of round trip at least, about 5 km out at the flat classic speed (≈ 10 km/h), and
-/// comes back by other trails. A point serving fewer km weighs that share of its score.
-pub const LOOP_KM: f64 = 10.0;
+/// classic). Measured on the loops the planner accepts (#166, the morning run from every
+/// start of 12 packs of 10 massifs, 17/11/2026, `build::rank` of `skimap-pack`): the
+/// length of a loop on stretches travelled once is 5.6 to 17.3 km, 11.5 km median (47
+/// loops; first decile 7.7 km). A part of the network shorter than the first decile is too
+/// short for nine loops in ten: a point serving fewer km weighs that share of its score
+/// (the median, 11.5 km, would also lower parts that do hold loops, and drop their starts
+/// under [`MIN_SHARE`]). The pack then ranks the kept starts by the planner itself; this
+/// weight chooses which starts are kept and their order in the registry.
+pub const LOOP_KM: f64 = 7.7;
 
 /// Weight of a kind of point and its largest distance to the network, m.
 pub fn kind_rule(kind: &str) -> Option<(f64, f64)> {
@@ -693,7 +700,7 @@ pub fn clustered(
             let first_km = clusters.first().map(|c| r.km(cands[c.head].snap.way));
             let why_first = match first_km {
                 Some(km) if km < LOOP_KM => format!(
-                    " ; placé en tête : le meilleur départ ne dessert que {} km, moins que les {LOOP_KM:.0} km d'une boucle de 2 h",
+                    " ; placé en tête : le meilleur départ ne dessert que {} km, moins que les {LOOP_KM} km d'une boucle de 2 h",
                     km_fr(km)
                 ),
                 _ => String::new(),
@@ -747,7 +754,7 @@ pub fn clustered(
         {
             let mut c = clusters.remove(i);
             c.reason = Some(format!(
-                "réseau de {} km nordiques : placé en tête, le départ le mieux noté ne dessert que {} km, moins que les {LOOP_KM:.0} km d'une boucle de 2 h",
+                "réseau de {} km nordiques : placé en tête, le départ le mieux noté ne dessert que {} km, moins que les {LOOP_KM} km d'une boucle de 2 h",
                 km_fr(km(&c)),
                 km_fr(first)
             ));
@@ -804,7 +811,7 @@ pub fn clustered(
                 // Said when the factor shows (1,00 is no weighting).
                 (f < 0.995).then(|| {
                     format!(
-                        "réseau de {} km nordiques seulement (moins des {LOOP_KM:.0} km d'une boucle de 2 h) : score × {}",
+                        "réseau de {} km nordiques seulement (moins des {LOOP_KM} km d'une boucle de 2 h) : score × {}",
                         km_fr(r.km(h.snap.way)),
                         format!("{f:.2}").replace('.', ",")
                     )
@@ -1032,7 +1039,7 @@ pub fn notes() -> Vec<String> {
         ),
         format!("Sans tel point : point du réseau le plus proche du foyer, de l'accueil ou du parking le plus proche du réseau (à moins de {NEAR_MAX_M:.0} m, method = near), sinon de l'office de tourisme ou de l'école de ski (method = village), sinon point représentatif du recensement (method = centre). Caisses des remontées mécaniques (nom) : poids {ALPINE_DESK_WEIGHT}."),
         "Réseau : ways du domaine (domaines_ways.json) lus dans l'extrait OpenSnowMap planet_pistes (ODbL).".to_owned(),
-        format!("Parties du réseau (#166) : composantes connexes du graphe de routage des ways du domaine (celui des packs : raccords de moins de {CONNECTOR_MAX_M:.0} m, croisements), pesées en km nordiques (les pistes de randonnée ou raquettes relient sans compter). Chaque point pèse son score × km de sa partie / {LOOP_KM:.0} (au plus 1) : une boucle de la sortie par défaut (2 h) demande environ {LOOP_KM:.0} km. La plus grande partie a toujours un départ : le meilleur groupe de points qui la dessert, sinon le point de cette partie le plus proche d'un foyer, accueil ou parking (à moins de {NEAR_MAX_M:.0} m) ; il passe en tête quand le premier départ dessert moins de {LOOP_KM:.0} km, sinon en dernier. Un départ dont la partie atteint {LOOP_KM:.0} km passe en tête devant un premier départ qui n'y arrive pas. network : km de la partie desservie, km du domaine, plus grande partie ou non, raison."),
+        format!("Parties du réseau (#166) : composantes connexes du graphe de routage des ways du domaine (celui des packs : raccords de moins de {CONNECTOR_MAX_M:.0} m, croisements), pesées en km nordiques (les pistes de randonnée ou raquettes relient sans compter). Chaque point pèse son score × km de sa partie / {LOOP_KM} (au plus 1) : une boucle de la sortie par défaut (2 h) demande environ {LOOP_KM} km. La plus grande partie a toujours un départ : le meilleur groupe de points qui la dessert, sinon le point de cette partie le plus proche d'un foyer, accueil ou parking (à moins de {NEAR_MAX_M:.0} m) ; il passe en tête quand le premier départ dessert moins de {LOOP_KM} km, sinon en dernier. Un départ dont la partie atteint {LOOP_KM} km passe en tête devant un premier départ qui n'y arrive pas. network : km de la partie desservie, km du domaine, plus grande partie ou non, raison."),
     ]
 }
 
@@ -1342,13 +1349,18 @@ mod tests {
         let s = domain_departs(&d, &ways(), &[&lodge, &park], None);
         assert_eq!(s[0].start.phrase, "Foyer des Plans");
         assert_eq!(s[0].network, None);
-        // On a 1 km part, the lodge weighs a tenth: the car park on the 20 km part is the
-        // only start (the lodge under a quarter of its score).
-        let s = domain_departs(&d, &ways(), &[&lodge, &park], Some(&split_reach()));
+        // On a part of a twentieth of a loop, the lodge weighs a twentieth: the car park on
+        // the 20 km part is the only start (the lodge under a quarter of its score).
+        let r = Reach {
+            way_component: vec![Some(0), Some(1)],
+            component_km: vec![LOOP_KM / 20.0, 20.0],
+        };
+        let s = domain_departs(&d, &ways(), &[&lodge, &park], Some(&r));
         assert_eq!(s.len(), 1);
         assert_eq!((s[0].start.lon, s[0].start.lat), (6.028, 46.01));
         let n = s[0].network.as_ref().unwrap();
-        assert_eq!((n.km, n.domain_km, n.main), (20.0, 21.0, true));
+        assert_eq!((n.km, n.main), (20.0, true));
+        assert!((n.domain_km - (20.0 + LOOP_KM / 20.0)).abs() < 0.1, "{n:?}");
         assert_eq!(n.reason, None);
     }
 
@@ -1392,10 +1404,10 @@ mod tests {
         let d = domain();
         let lodge = pt("foyer", Some("Foyer des Plans"), 6.0012, 46.0102);
         let park = pt("parking", None, 6.028, 46.0102);
-        // 8 km and 12 km: the lodge still scores more, the car park comes first.
+        // 80 % and 120 % of a loop: the lodge still scores more, the car park comes first.
         let r = Reach {
             way_component: vec![Some(0), Some(1)],
-            component_km: vec![8.0, 12.0],
+            component_km: vec![LOOP_KM * 0.8, LOOP_KM * 1.2],
         };
         let s = domain_departs(&d, &ways(), &[&lodge, &park], Some(&r));
         assert_eq!(s.len(), 2);

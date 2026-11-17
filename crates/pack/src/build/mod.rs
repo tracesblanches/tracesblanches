@@ -14,6 +14,7 @@ pub mod parts;
 pub mod pistes;
 pub mod plan_ign;
 pub mod plan_links;
+pub mod rank;
 pub mod raster;
 pub mod starts;
 pub mod stations;
@@ -321,7 +322,7 @@ fn build_into(
     let files = list_files(root)?;
     let total_bytes = files.iter().map(|f| f.bytes).sum();
     let bytes_by_group = group_sizes(&files);
-    let manifest = Manifest {
+    let mut manifest = Manifest {
         format: FORMAT.to_owned(),
         format_version: FORMAT_VERSION,
         pack_version: pack_version.to_owned(),
@@ -339,6 +340,21 @@ fn build_into(
         total_bytes,
     };
     write_json(&root.join(MANIFEST_FILE), &manifest)?;
+
+    // The starts ranked by the planner on the pack just written (#166), then the
+    // manifest again with the record in that order (the file list does not change).
+    if let Some(record) = manifest.site.record.as_mut() {
+        let t = Instant::now();
+        let work = root
+            .parent()
+            .unwrap_or(root)
+            .join(format!(".pack-rank-{pack_version}"));
+        manifest.site.start_ranking = rank::rank(site, record, root, &work, now.date_naive());
+        if manifest.site.start_ranking.is_some() {
+            write_json(&root.join(MANIFEST_FILE), &manifest)?;
+        }
+        timings.push(("start ranking".to_owned(), t.elapsed().as_secs_f64()));
+    }
     Ok(BuildReport {
         pack_dir: root.to_path_buf(),
         pack_version: pack_version.to_owned(),
@@ -593,6 +609,7 @@ fn site_info(site: &Site, layout: &DataLayout) -> SiteInfo {
         ],
         center: [site.commune_center.lon, site.commune_center.lat],
         record: Some(starts::record(site, layout)),
+        start_ranking: None,
     }
 }
 

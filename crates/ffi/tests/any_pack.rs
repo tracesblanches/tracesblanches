@@ -3,7 +3,8 @@
 //! `site.record`) is installed as the phone installs it, listed by `day_packs`, opened
 //! offline by `open_day_planner`, and asked for the app's default outing (2 h) from its
 //! first start (`day_pack_starts`: the starts found by the pipeline, X9, or on the
-//! network for an SRN area); the first loop is validated into a plan, the evening
+//! network for an SRN area, in the order the planner gave them at the pack build, #166:
+//! the first is the one with the most loops); the first loop is validated into a plan, the evening
 //! preparation (`prep_run`) prepares the first forecast day and the tracker loads its
 //! layers. Every pack must open; loops must come on four massifs at least, one SRN area
 //! at least; a pack on which the planner finds no loop is listed with its reason.

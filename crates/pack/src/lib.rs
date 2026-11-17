@@ -30,6 +30,7 @@ pub mod reader;
 pub mod sync;
 pub mod tiles;
 pub mod update;
+pub mod view;
 
 #[cfg(feature = "pipeline")]
 pub mod build;
