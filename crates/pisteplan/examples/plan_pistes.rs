@@ -1,6 +1,10 @@
 //! Builds the `plan_pistes` layer of sites given and prints the decisions.
 //!
 //! `SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-pisteplan --features pipeline --example plan_pistes <site...>`
+//!
+//! Sites are those of the registry (`data/out/france/sites/sites.json`, every census
+//! domain), or the evaluation sites without it. `PLAN_DIAG_EST=<dir>`: local images of the
+//! estimated traces (G1) over the plan, never published (the picture is the resort's).
 
 use std::time::Instant;
 
@@ -21,6 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let layout = cfg.layout();
     let dl = Downloader::from_config(&cfg)?;
     let sites: Vec<String> = std::env::args().skip(1).collect();
+    let registry = skimap_common::site::Registry::load(&layout)?;
     let t = Instant::now();
     let planet = skimap_osm::extract::load_planet(&dl)?;
     let engine = ocr::engine(&dl)?;
@@ -29,11 +34,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         t.elapsed().as_secs_f64()
     );
     for site in &sites {
-        let site = skimap_common::site::site(site)?;
+        let site = registry.get(site)?;
         let t = Instant::now();
         let (reg, tried) = register_site(site, &layout, &dl, &planet, &engine)?;
         let p = &reg.spec;
-        let rep = transcribe_and_write(&reg, site, &tried, &layout, &planet.source)?;
+        let rep = transcribe_and_write(&reg, site, &tried, &layout, &planet.source, &dl)?;
         println!(
             "\n== {} -> {} ({:.1} s)",
             p.id,
@@ -59,6 +64,69 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
         }
         println!("{}", serde_json::to_string_pretty(&rep.stats)?);
+        // Local diagnostic (`PLAN_DIAG_EST=<dir>`, never published): the plan around each
+        // estimated trace, the plan's line found for the piste in cyan, the estimated
+        // geometry carried back onto the plan in magenta.
+        if let Ok(dir) = std::env::var("PLAN_DIAG_EST") {
+            let dir = std::path::PathBuf::from(dir);
+            std::fs::create_dir_all(&dir)?;
+            let k = reg.input.pt_per_px;
+            for e in &rep.estimated.estimated {
+                let d = &rep.decisions[e.decision];
+                let geom: Vec<Vec<[f64; 2]>> = e
+                    .lines
+                    .iter()
+                    .map(|l| {
+                        l.iter()
+                            .map(|&q| {
+                                let p = reg.warp.to_plan(q);
+                                [p[0] / k, p[1] / k]
+                            })
+                            .collect()
+                    })
+                    .collect();
+                let drawn: Vec<Vec<[f64; 2]>> = e
+                    .drawn
+                    .iter()
+                    .map(|l| l.iter().map(|p| [p[0] / k, p[1] / k]).collect())
+                    .collect();
+                let all: Vec<[f64; 2]> = geom.iter().chain(&drawn).flatten().copied().collect();
+                let (w, h) = (reg.input.image.w, reg.input.image.h);
+                let lo = |f: fn(&[f64; 2]) -> f64| all.iter().map(f).fold(f64::MAX, f64::min);
+                let hi = |f: fn(&[f64; 2]) -> f64| all.iter().map(f).fold(0.0, f64::max);
+                let x0 = (lo(|p| p[0]).max(0.0) as usize).saturating_sub(200);
+                let y0 = (lo(|p| p[1]).max(0.0) as usize).saturating_sub(200);
+                let x1 = ((hi(|p| p[0]) as usize) + 200).min(w);
+                let y1 = ((hi(|p| p[1]) as usize) + 200).min(h);
+                if x1 <= x0 || y1 <= y0 {
+                    continue;
+                }
+                let mut img = skimap_pisteplan::image::Rgb::new(x1 - x0, y1 - y0, [255; 3]);
+                for y in y0..y1 {
+                    for x in x0..x1 {
+                        img.put((x - x0) as i64, (y - y0) as i64, reg.input.image.get(x, y));
+                    }
+                }
+                let shift = |l: &Vec<[f64; 2]>| -> Vec<[f64; 2]> {
+                    l.iter()
+                        .map(|q| [q[0] - x0 as f64, q[1] - y0 as f64])
+                        .collect()
+                };
+                for l in &drawn {
+                    for q in shift(l) {
+                        img.disc(q[0], q[1], 1.0, [0, 200, 255]);
+                    }
+                }
+                for l in &geom {
+                    img.polyline(&shift(l), 1.5, [255, 0, 255]);
+                }
+                let name = d.entry.name_read.replace([' ', '/', '\'', '’'], "_");
+                img.write_png(&dir.join(format!(
+                    "{}_est_{:?}_{:.2}_{name}.png",
+                    site.id, e.method, e.score
+                )))?;
+            }
+        }
         // Local diagnostic (`PLAN_DIAG_ML=<dir>`, never published): the plan around each
         // piste transcribed by the model, its OSM geometry in magenta, to check by eye.
         if let Ok(dir) = std::env::var("PLAN_DIAG_ML") {

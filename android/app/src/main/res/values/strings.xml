@@ -117,6 +117,7 @@
 
     <string name="card_call">Call: %1$s, %2$s</string>
     <string name="card_source_dated">Source: %1$s · information of %2$s</string>
+    <string name="card_link_offline">No network: this link cannot open offline. Try again once connected.</string>
 
     <string name="loading">Opening the packs…</string>
     <string name="no_pack_title">No pack on this phone</string>

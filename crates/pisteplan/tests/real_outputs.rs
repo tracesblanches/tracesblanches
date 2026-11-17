@@ -29,6 +29,7 @@ fn transcriptions_are_read_back() {
         assert_eq!(
             pistes.len() as u64,
             meta["stats"]["transcribed"].as_u64().unwrap()
+                + meta["stats"]["estimated"].as_u64().unwrap_or(0)
         );
         assert_eq!(
             lms.len() as u64,
@@ -44,6 +45,16 @@ fn transcriptions_are_read_back() {
                     let t = threshold.expect("an ml piste needs the model in the metadata");
                     assert!(t >= skimap_pisteplan::evaluate::MIN_THRESHOLD);
                     assert!(p.properties.score >= t, "{}", p.properties.name);
+                }
+                // Estimated trace (G1): always uncertain, never on OSM ways.
+                MatchMethod::EstimatedPaths | MatchMethod::EstimatedDrawing => {
+                    assert_eq!(
+                        p.properties.certainty(),
+                        skimap_pisteplan::transcript::Certainty::Uncertain
+                    );
+                    // Written only at the smallest score of the estimation (0.3).
+                    assert!(p.properties.score >= 0.3, "{}", p.properties.name);
+                    continue;
                 }
             }
             assert!(!p.properties.osm_way_ids.is_empty());

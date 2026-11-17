@@ -27,6 +27,8 @@ pub mod build;
 #[cfg(feature = "pipeline")]
 pub mod collect;
 #[cfg(feature = "pipeline")]
+pub mod estimate;
+#[cfg(feature = "pipeline")]
 pub mod image;
 #[cfg(feature = "pipeline")]
 pub mod input;

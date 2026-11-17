@@ -260,6 +260,31 @@ fn optional_sources_are_declared_and_checked() {
 }
 
 /// Index of the layer `id` of a style.
+/// The estimated traces of the pistes absent from OSM (G1, #117) are in the six styles,
+/// dotted, uncertain only, optional (personal packs), checked against their declared
+/// schema.
+#[test]
+fn estimated_pistes_are_dotted_and_optional() {
+    for (name, s) in all() {
+        let i = layer_index(&s, "pistes-estimees");
+        let l = &s["layers"][i];
+        assert_eq!(l["source"], "pistes-estimees", "{name}");
+        assert_eq!(
+            l["filter"],
+            json!(["==", ["get", "certainty"], "incertain"]),
+            "{name}"
+        );
+        assert_eq!(l["paint"]["line-dasharray"], json!([0.1, 2]), "{name}");
+        assert_eq!(l["layout"]["line-cap"], "round", "{name}");
+        assert_eq!(l["metadata"]["skimap:group"], "pistes", "{name}");
+        let optional = s["metadata"]["skimap:optional_sources"].as_array().unwrap();
+        assert!(optional.contains(&json!("pistes-estimees")), "{name}");
+        assert!(
+            skimap_styles::declared::declared_layer("layers/pistes-estimees.geojson").is_some()
+        );
+    }
+}
+
 fn layer_index(s: &Value, id: &str) -> usize {
     s["layers"]
         .as_array()

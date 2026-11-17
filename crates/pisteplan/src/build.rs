@@ -26,8 +26,8 @@ use crate::skeleton::SkelGraph;
 use crate::spec::{LabelSource, PlanSpec};
 use crate::transcribe;
 use crate::transcript::{
-    Direction, GeometrySource, MatchMethod, OnewayStatus, PisteKind, PlanLandmark, PlanPiste,
-    PlanWay,
+    Direction, GeometrySource, MatchMethod, OnewayStatus, OsmStatus, PisteKind, PlanLandmark,
+    PlanPiste, PlanWay,
 };
 use crate::warp::{ModelKind, quantile};
 
@@ -548,6 +548,8 @@ pub struct BuildReport {
     pub stats: serde_json::Value,
     /// Decisions on every piste of the legend.
     pub decisions: Vec<transcribe::Decision>,
+    /// Estimated traces of the pistes absent from OSM (G1).
+    pub estimated: crate::estimate::Outcome,
 }
 
 /// OCR read rate against the text layer: share of the words of the map (three letters
@@ -637,16 +639,83 @@ fn props_of(reg: &Registration, d: &transcribe::Decision) -> Option<PlanPiste> {
         osm_relation_ids: d.relations.iter().map(|&r| osm.relations[r].id).collect(),
         osm_way_ids: d.ways.iter().map(|&w| osm.ways[w].id).collect(),
         plan: reg.spec.id.to_owned(),
+        certainty: Some(d.method.unwrap_or(MatchMethod::Exact).certainty()),
+        source_plan_url: Some(reg.spec.url.clone()),
+        estimate: None,
     })
 }
 
-/// Transcribes a registered plan and writes `data/out/<site>/plan_pistes/`.
+/// Properties of an estimated trace (G1): the piste of the plan, absent from OSM.
+fn props_of_estimated(
+    reg: &Registration,
+    d: &transcribe::Decision,
+    e: &crate::estimate::Estimated,
+) -> PlanPiste {
+    PlanPiste {
+        name: d.name.clone(),
+        name_read: d.entry.name_read.clone(),
+        number: None,
+        colour: d.colour.clone(),
+        ink: d.ink.clone().unwrap_or_default(),
+        kind: d.kind.unwrap_or(PisteKind::Ski),
+        lengths_km_plan: if reg.spec.labels == LabelSource::Ocr {
+            Vec::new()
+        } else {
+            d.entry.lengths_km.clone()
+        },
+        departures: d.entry.departures.clone(),
+        length_m: e.length_m.round(),
+        is_loop: false,
+        direction: None,
+        method: e.method,
+        score: (e.score * 1000.0).round() / 1000.0,
+        geometry_source: GeometrySource::EstimatedFromPlan,
+        osm_status: OsmStatus::Missing,
+        osm_name: None,
+        osm_colour: None,
+        osm_relation_ids: Vec::new(),
+        osm_way_ids: Vec::new(),
+        plan: reg.spec.id.to_owned(),
+        certainty: Some(e.method.certainty()),
+        source_plan_url: Some(reg.spec.url.clone()),
+        estimate: Some(e.estimate.clone()),
+    }
+}
+
+/// Estimated traces of the pistes the matching left (G1), candidate paths from the IGN
+/// BD TOPO through the downloader; the source of the paths read, if any.
+pub fn estimate_missing(
+    reg: &Registration,
+    decisions: &[transcribe::Decision],
+    dl: &Downloader,
+) -> Result<(crate::estimate::Outcome, Option<SourceRef>)> {
+    let mut fetched = None;
+    let outcome = crate::estimate::estimate(reg, decisions, &mut |b| {
+        let (p, f) = crate::estimate::paths_ign(dl, b)?;
+        fetched = Some(f);
+        Ok(p)
+    })?;
+    let source = fetched.map(|f| {
+        SourceRef::from_fetched(
+            "IGN BD TOPO, tronçons de route, chemins et sentiers (Géoplateforme, WFS)",
+            "Licence Ouverte Etalab 2.0",
+            "IGN – BD TOPO",
+            &f,
+        )
+    });
+    Ok((outcome, source))
+}
+
+/// Transcribes a registered plan and writes `data/out/<site>/plan_pistes/`: pistes
+/// matched to OSM (exact, learnt), then estimated traces of the others (G1,
+/// [`crate::estimate`], certainty `incertain`).
 pub fn transcribe_and_write(
     reg: &Registration,
     site: &skimap_common::site::Site,
     considered: &[PlanTried],
     layout: &DataLayout,
     planet_source: &SourceRef,
+    dl: &Downloader,
 ) -> Result<BuildReport> {
     let dir = layout.layer_dir(site, LAYER)?;
     DataLayout::ensure(&dir)?;
@@ -684,6 +753,32 @@ pub fn transcribe_and_write(
             geom,
             serde_json::to_value(&p).map_err(|e| Error::Json {
                 context: "plan piste".into(),
+                source: e,
+            })?,
+        ));
+    }
+    // Estimated traces of the pistes absent from OSM (G1).
+    let (estimated, paths_source) = estimate_missing(reg, &decisions, dl)?;
+    for e in &estimated.estimated {
+        let d = &decisions[e.decision];
+        let p = props_of_estimated(reg, d, e);
+        let lines: Vec<Value> = e
+            .lines
+            .iter()
+            .map(|l| {
+                Value::Array(
+                    l.iter()
+                        .filter_map(|q| skimap_common::crs::from_lambert93(q[0], q[1]).ok())
+                        .map(output::position)
+                        .collect(),
+                )
+            })
+            .collect();
+        let geom = json!({"type": "MultiLineString", "coordinates": lines});
+        features.push(output::feature(
+            geom,
+            serde_json::to_value(&p).map_err(|e| Error::Json {
+                context: "estimated piste".into(),
                 source: e,
             })?,
         ));
@@ -816,6 +911,16 @@ pub fn transcribe_and_write(
         "plan_pistes": decisions.len(),
         "transcribed": transcribed,
         "transcribed_ml": ml,
+        "estimated": estimated.estimated.len(),
+        "estimation": {
+            "corridor_m": estimated.corridor_m,
+            "drawn_lines_without_osm": estimated.drawn_lines,
+            "candidate_paths": estimated.paths,
+            "estimated": estimated.estimated.iter().map(|e| json!({
+                "name": decisions[e.decision].entry.name_read, "method": e.method, "score": (e.score * 1000.0).round() / 1000.0,
+                "length_m": e.length_m.round(), "estimate": e.estimate, "paths": e.paths.len()})).collect::<Vec<_>>(),
+            "not_estimated": estimated.not_estimated,
+        },
         "model": model.as_ref().map(|m| json!({"file": model_path.display().to_string(), "threshold": m.threshold, "trees": m.model.trees.len()})),
         "transcribed_share": if decisions.is_empty() { 0.0 } else { transcribed as f64 / decisions.len() as f64 },
         "with_osm_name_candidate": decisions.iter().filter(|d| !d.ways.is_empty()).count(),
@@ -870,12 +975,13 @@ pub fn transcribe_and_write(
             &reg.landmarks_source.fetched,
         ),
     ];
+    meta.sources.extend(paths_source);
     meta.files = vec![
         FileMeta::new(
             "plan_pistes.geojson",
-            "pistes du plan officiel transcrites sur les voies OSM (une MultiLineString par piste du plan), seulement celles appariées de façon exacte",
+            "pistes du plan officiel transcrites sur les voies OSM (une MultiLineString par piste du plan : appariement exact ou appris), puis tracés estimés des pistes absentes d'OSM (certainty = incertain, géométrie des chemins IGN ou du dessin du plan reporté)",
         )
-        .licence("géométrie ODbL 1.0 (OSM) ; attributs du plan : usage personnel")
+        .licence("géométrie ODbL 1.0 (OSM) ou Licence Ouverte 2.0 (BD TOPO, tracés estimés) ; attributs et tracés du plan : usage personnel")
         .count(features.len())
         .properties([
             ("name", "nom de la piste sur le plan (plan lu par OCR : nom de la relation OSM appariée)"),
@@ -889,8 +995,11 @@ pub fn transcribe_and_write(
             ("length_m", "longueur de la géométrie OSM"),
             ("loop", "géométrie fermée (boucle)"),
             ("direction", "sens des flèches du plan (non lu au 15/11/2026 : absent)"),
-            ("method", "exact (noms certains et encre dessinée sur la géométrie) ou ml"),
-            ("score", "part de la géométrie où le plan dessine l'encre de la piste"),
+            ("method", "exact (noms certains et encre dessinée sur la géométrie), ml, estimated_paths (ligne du plan suivie sur les chemins IGN) ou estimated_drawing (ligne du plan reportée telle quelle)"),
+            ("score", "exact : part de la géométrie où le plan dessine l'encre ; ml : probabilité ; estimé : confiance (ancre × calage × part suivie)"),
+            ("certainty", "exact, appris (modèle) ou incertain (tracé estimé, jamais présenté comme sûr)"),
+            ("source_plan_url", "adresse publique du plan officiel (lien seulement, le plan n'est jamais redistribué)"),
+            ("estimate", "tracé estimé : anchor (map_label, legend_box), corridor_m, drawn_covered, drawn_length_m, sources"),
             ("geometry_source", "osm ou estimated_from_plan"),
             ("osm_status", "match, colour_differs, colour_missing, name_missing, missing"),
             ("osm_name", "nom des relations OSM appariées"),
@@ -951,12 +1060,14 @@ pub fn transcribe_and_write(
     meta.notes = vec![
         "Le plan reste la propriété de la station : usage personnel (personal_sources), jamais redistribué ; seules des géométries OSM portent les attributs transcrits.".to_owned(),
         "Une piste n'est transcrite que si son nom est certain et si le plan dessine son encre sur la géométrie OSM appariée (part au-dessus du seuil validé sur des paires négatives) ; sinon elle est listée dans stats.not_transcribed avec la raison.".to_owned(),
+        "Pistes absentes d'OSM (G1) : tracé estimé, toujours certainty = incertain (pointillés sur la carte, fiche « Tracé incertain »), sur les chemins IGN du couloir de la ligne du plan, sinon la ligne reportée ; pistes sans tracé et raisons dans stats.estimation.not_estimated.".to_owned(),
     ];
     meta.write(&dir)?;
     Ok(BuildReport {
         dir,
         stats,
         decisions,
+        estimated,
     })
 }
 
@@ -1052,5 +1163,5 @@ pub fn build(
         .map_err(|e| Error::Data(format!("planet extract: {e}")))?;
     let engine = ocr::engine(dl)?;
     let (reg, tried) = register_site(site, layout, dl, &planet, &engine)?;
-    transcribe_and_write(&reg, site, &tried, layout, &planet.source)
+    transcribe_and_write(&reg, site, &tried, layout, &planet.source, dl)
 }

@@ -11,6 +11,7 @@ pub mod layers;
 pub mod osm;
 pub mod pistes;
 pub mod plan_ign;
+pub mod plan_links;
 pub mod raster;
 pub mod stations;
 
@@ -202,6 +203,8 @@ fn build_into(
             layers::Outcome::Missing(m) => missing.push(m),
         }
     }
+    // Link to the official plan of each domain, public packs included (G1, #117).
+    plan_links::apply(root, &mut layers, &plan_links::PlanLinks::load(layout)?)?;
     timings.push((
         "vector and data layers".to_owned(),
         t.elapsed().as_secs_f64(),

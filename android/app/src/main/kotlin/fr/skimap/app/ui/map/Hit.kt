@@ -17,8 +17,12 @@ internal class Hit(
     val feature: Feature?,
 )
 
-/** Pack layers with cards, in the order a touch looks for them: points first, areas last. */
-private val TOUCH_ORDER = listOf("refuges-", "stations", "pistes", "avalanche-areas", "zones", "no-network")
+/**
+ * Pack layers with cards, in the order a touch looks for them: points first, areas last;
+ * the estimated pistes (absent from OSM, G1) after the pistes.
+ */
+private val TOUCH_ORDER =
+    listOf("refuges-", "stations", "pistes", "pistes-estimees", "avalanche-areas", "zones", "no-network")
 
 private fun touchRank(packLayer: String): Int =
     TOUCH_ORDER.indexOfFirst { if (it.endsWith("-")) packLayer.startsWith(it) else packLayer == it }

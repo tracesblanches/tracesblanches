@@ -6,12 +6,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.takahirom.roborazzi.captureRoboImage
+import fr.skimap.app.ui.CARD_NOTICE_TAG
 import fr.skimap.app.ui.CardContent
 import fr.skimap.core.Card
 import fr.skimap.core.Lang
@@ -67,5 +69,43 @@ class CardTest {
         val c = card()
         rule.setContent { Themed { Surface(Modifier.fillMaxSize()) { CardContent(c, {}, {}) } } }
         rule.onRoot().captureRoboImage("src/test/screenshots/card_refuge.png")
+    }
+
+    /** A piste of the official plan absent from OSM (pack layer `pistes-estimees`). */
+    private fun estimated(): Card =
+        checkNotNull(
+            featureCard(
+                "pistes-estimees",
+                """{"name":"Le Gy","difficulty":"novice","certainty":"incertain","method":"estimated_paths",
+                   "lengths_km_plan":[3.5],"departures":["Chapelle-des-Bois"],
+                   "plan_url":"https://www.espacenordiquejurassien.com/plan.pdf"}""",
+                Lang.FR,
+            ),
+        )
+
+    @Test
+    fun estimatedPisteSaysUncertainAndOpensThePlan() {
+        val opened = mutableListOf<String>()
+        val c = estimated()
+        rule.setContent { Themed { Surface(Modifier.fillMaxSize()) { CardContent(c, {}, { opened += it }) } } }
+        rule.onNodeWithText("Tracé incertain, d'après le plan de la station").assertIsDisplayed()
+        rule.onNodeWithText("Voir le plan officiel").performScrollTo().performClick()
+        assertEquals(listOf("https://www.espacenordiquejurassien.com/plan.pdf"), opened)
+    }
+
+    @Test
+    fun offlineLinkSaysSo() {
+        val c = estimated()
+        val text = "Pas de réseau : ce lien ne s'ouvre pas hors ligne. Réessaie une fois connecté."
+        rule.setContent { Themed { Surface(Modifier.fillMaxSize()) { CardContent(c, {}, {}, notice = text) } } }
+        rule.onNodeWithTag(CARD_NOTICE_TAG).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText(text).assertIsDisplayed()
+    }
+
+    @Test
+    fun captureEstimated() {
+        val c = estimated()
+        rule.setContent { Themed { Surface(Modifier.fillMaxSize()) { CardContent(c, {}, {}) } } }
+        rule.onRoot().captureRoboImage("src/test/screenshots/card_piste_estimee.png")
     }
 }

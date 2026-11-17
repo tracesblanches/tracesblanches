@@ -30,6 +30,10 @@ pub enum Transform {
     /// GeoJSON pistes enriched with the trail state and the piste plan
     /// ([`crate::build::pistes`]).
     Pistes,
+    /// Estimated traces of the pistes of the plan absent from OSM (G1,
+    /// [`estimated_pistes`]): the features of `plan_pistes.geojson` whose certainty is
+    /// `incertain`.
+    EstimatedPistes,
 }
 
 /// A layer looked for in the pipeline outputs.
@@ -205,6 +209,24 @@ pub fn catalog() -> Vec<Spec> {
                 "pistes",
                 "pistes.geojson",
                 "pistes.meta.json",
+                true,
+            )
+        },
+        // Pistes of the official plan absent from OSM (G1, #117): estimated traces, always
+        // uncertain (dotted on the map). Their geometry derives from the plan (its line,
+        // or the IGN paths it selects): the plan's source is personal use only, so the
+        // layer is in personal packs only, never in a published one.
+        Spec {
+            notes: &[
+                "Pistes du plan officiel absentes d'OSM : tracé estimé (`certainty` = `incertain`, jamais présenté comme sûr), sur les chemins IGN du couloir de la ligne du plan (`method` = `estimated_paths`) ou ligne du plan reportée (`estimated_drawing`). Propriétés : `name`, `colour`, `difficulty` (de la couleur), `kind`, `certainty`, `method`, `score`, `length_m`, `lengths_km_plan`, `departures`, `plan_url` (adresse du plan officiel, lien seulement). Géométrie dérivée du plan : usage personnel.",
+            ],
+            transform: Transform::EstimatedPistes,
+            ..vector(
+                ESTIMATED_LAYER,
+                "Pistes estimées d'après le plan (tracé incertain)",
+                "plan_pistes",
+                "plan_pistes.geojson",
+                "plan_pistes.meta.json",
                 true,
             )
         },
@@ -655,7 +677,7 @@ pub fn include(spec: &Spec, out: &Path, root: &Path, personal_sources: bool) -> 
             format!("layers/{}.{ext}.gz", spec.id),
             format!("{ext}+gzip"),
         ),
-        Transform::GeoJson | Transform::Zones | Transform::Pistes => {
+        Transform::GeoJson | Transform::Zones | Transform::Pistes | Transform::EstimatedPistes => {
             (format!("layers/{}.geojson", spec.id), "geojson".to_owned())
         }
     };
@@ -666,7 +688,7 @@ pub fn include(spec: &Spec, out: &Path, root: &Path, personal_sources: bool) -> 
     let bytes = match spec.transform {
         Transform::Copy => copy_file(&src, &dst)?,
         Transform::Gzip => gzip_file(&src, &dst)?,
-        Transform::GeoJson | Transform::Zones | Transform::Pistes => {
+        Transform::GeoJson | Transform::Zones | Transform::Pistes | Transform::EstimatedPistes => {
             let text = std::fs::read_to_string(&src).map_err(|e| Error::io(&src, e))?;
             let mut v: Value = serde_json::from_str(&text)
                 .map_err(|e| Error::json(src.display().to_string(), e))?;
@@ -678,6 +700,15 @@ pub fn include(spec: &Spec, out: &Path, root: &Path, personal_sources: bool) -> 
             }
             if spec.transform == Transform::Pistes {
                 joined = Some(crate::build::pistes::enrich(&mut v, out, personal_sources)?);
+            }
+            if spec.transform == Transform::EstimatedPistes {
+                v = estimated_pistes(&v);
+                if v["features"].as_array().is_none_or(Vec::is_empty) {
+                    return Ok(Outcome::Missing(Missing {
+                        id: spec.id.to_string(),
+                        reason: "aucune piste du plan estimée hors d'OSM sur ce site".to_owned(),
+                    }));
+                }
             }
             let (n, types) = compact_geojson(&mut v, &src)?;
             features = Some(n);
@@ -737,6 +768,67 @@ pub fn include(spec: &Spec, out: &Path, root: &Path, personal_sources: bool) -> 
         ));
     }
     Ok(Outcome::Included(Box::new(l)))
+}
+
+/// Pack layer of the estimated traces (G1).
+pub const ESTIMATED_LAYER: &str = "pistes-estimees";
+
+/// Difficulty of the pistes layer for a plan colour (French scale).
+fn difficulty_of_colour(c: &str) -> Option<&'static str> {
+    match c {
+        "green" => Some("novice"),
+        "blue" => Some("easy"),
+        "red" => Some("intermediate"),
+        "black" => Some("advanced"),
+        _ => None,
+    }
+}
+
+/// The estimated traces of `plan_pistes.geojson` (certainty `incertain`, or an
+/// `estimated_*` method in a file written without certainty), with the properties the
+/// styles and the cards read; `source_plan_url` becomes `plan_url`.
+pub fn estimated_pistes(v: &Value) -> Value {
+    let keep = [
+        "name",
+        "colour",
+        "kind",
+        "certainty",
+        "method",
+        "score",
+        "length_m",
+        "lengths_km_plan",
+        "departures",
+    ];
+    let features: Vec<Value> = v["features"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|f| {
+            let p = &f["properties"];
+            p["certainty"] == "incertain"
+                || p["method"]
+                    .as_str()
+                    .is_some_and(|m| m.starts_with("estimated_"))
+        })
+        .map(|f| {
+            let p = &f["properties"];
+            let mut q = serde_json::Map::new();
+            for k in keep {
+                if let Some(x) = p.get(k).filter(|x| !x.is_null()) {
+                    q.insert(k.to_owned(), x.clone());
+                }
+            }
+            q.insert("certainty".into(), json!("incertain"));
+            if let Some(d) = p["colour"].as_str().and_then(difficulty_of_colour) {
+                q.insert("difficulty".into(), json!(d));
+            }
+            if let Some(u) = p["source_plan_url"].as_str() {
+                q.insert("plan_url".into(), json!(u));
+            }
+            json!({"type": "Feature", "geometry": f["geometry"].clone(), "properties": q})
+        })
+        .collect();
+    json!({"type": "FeatureCollection", "features": features})
 }
 
 /// Sources whose terms do not allow a published pack until their owner agrees in
@@ -983,6 +1075,70 @@ mod tests {
         assert_eq!(lm.valid_until.as_deref(), Some("2026-12-14"));
         assert_eq!(lm.valid_from, None);
         assert_eq!(lm.validity.as_deref(), Some("un jour"));
+    }
+
+    #[test]
+    fn keeps_only_the_estimated_traces() {
+        let v = json!({"type": "FeatureCollection", "features": [
+            {"type": "Feature", "geometry": {"type": "MultiLineString", "coordinates": [[[6.0, 46.0], [6.01, 46.01]]]},
+             "properties": {"name": "Sûre", "method": "exact", "certainty": "exact", "colour": "blue"}},
+            {"type": "Feature", "geometry": {"type": "MultiLineString", "coordinates": [[[6.0, 46.0], [6.01, 46.01]]]},
+             "properties": {"name": "Le Gy", "method": "estimated_paths", "certainty": "incertain", "colour": "green",
+                            "score": 0.5, "osm_way_ids": [], "source_plan_url": "https://example.org/plan.pdf"}},
+            {"type": "Feature", "geometry": {"type": "MultiLineString", "coordinates": [[[6.0, 46.0], [6.01, 46.01]]]},
+             "properties": {"name": "Ancien", "method": "estimated_drawing", "colour": "black"}}
+        ]});
+        let e = estimated_pistes(&v);
+        let fs = e["features"].as_array().unwrap();
+        assert_eq!(fs.len(), 2);
+        let p = &fs[0]["properties"];
+        assert_eq!(p["name"], "Le Gy");
+        assert_eq!(p["difficulty"], "novice");
+        assert_eq!(p["plan_url"], "https://example.org/plan.pdf");
+        assert!(p.get("osm_way_ids").is_none() && p.get("source_plan_url").is_none());
+        assert_eq!(fs[1]["properties"]["certainty"], "incertain");
+        assert_eq!(fs[1]["properties"]["difficulty"], "advanced");
+    }
+
+    /// The estimated traces derive from the plan (personal use only): never in a public
+    /// pack, in a personal one with only the uncertain features.
+    #[test]
+    fn estimated_pistes_stay_out_of_public_packs() {
+        let out = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let dir = out.path().join("plan_pistes");
+        std::fs::create_dir_all(&dir).unwrap();
+        let fc = json!({"type": "FeatureCollection", "features": [
+            {"type": "Feature", "geometry": {"type": "MultiLineString", "coordinates": [[[6.0, 46.0], [6.01, 46.01]]]},
+             "properties": {"name": "Sûre", "method": "exact", "certainty": "exact", "colour": "blue"}},
+            {"type": "Feature", "geometry": {"type": "MultiLineString", "coordinates": [[[6.0, 46.0], [6.01, 46.01]]]},
+             "properties": {"name": "Le Gy", "method": "estimated_drawing", "certainty": "incertain", "colour": "green"}}
+        ]});
+        std::fs::write(dir.join("plan_pistes.geojson"), fc.to_string()).unwrap();
+        let meta = json!({"layer": "plan_pistes", "site": "s", "generated_at": "2026-11-17T00:00:00Z",
+            "sources": [{"name": "plan.pdf", "url": "https://example.org/plan.pdf", "licence": "aucune",
+                         "attribution": "Station", "personal_use_only": true}]});
+        std::fs::write(dir.join("plan_pistes.meta.json"), meta.to_string()).unwrap();
+        let spec = catalog()
+            .into_iter()
+            .find(|s| s.id == ESTIMATED_LAYER)
+            .unwrap();
+        match include(&spec, out.path(), root.path(), false).unwrap() {
+            Outcome::Missing(m) => assert!(m.reason.contains("usage personnel"), "{}", m.reason),
+            Outcome::Included(_) => panic!("estimated traces in a public pack"),
+        }
+        match include(&spec, out.path(), root.path(), true).unwrap() {
+            Outcome::Included(l) => {
+                assert!(l.personal_use_only);
+                assert_eq!(l.features, Some(1));
+                let v: Value = serde_json::from_str(
+                    &std::fs::read_to_string(root.path().join(&l.file)).unwrap(),
+                )
+                .unwrap();
+                assert_eq!(v["features"][0]["properties"]["name"], "Le Gy");
+            }
+            Outcome::Missing(m) => panic!("{}", m.reason),
+        }
     }
 
     #[test]
