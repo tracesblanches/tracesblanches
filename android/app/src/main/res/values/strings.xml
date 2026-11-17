@@ -129,6 +129,14 @@
     <string name="choose_other">Open another pack</string>
     <string name="error_no_pack">No pack in %1$s</string>
     <string name="error_invalid_pack">Invalid pack: %1$s</string>
+    <!-- Typed errors of the core (TrackingException), VO6. -->
+    <string name="error_unsupported_site">No day plan for this area (%1$s)</string>
+    <string name="error_no_loop">No loop computed yet</string>
+    <string name="error_tracking_closed">Tracking has stopped</string>
+    <string name="error_not_an_outing">This folder is not an outing</string>
+    <string name="error_bad_fixes">Unreadable positions (size %1$d)</string>
+    <string name="error_bad_car_position">Invalid car position</string>
+    <string name="error_no_trail_graph">This pack has no trail network</string>
     <!-- A label and its value: « Bivouac: forbidden ». -->
     <string name="label_value">%1$s: %2$s</string>
 </resources>

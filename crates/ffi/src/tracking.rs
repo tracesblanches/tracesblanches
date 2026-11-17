@@ -71,7 +71,13 @@ pub const LAYERS_DIR: &str = "layers";
 /// endian.
 pub const FIX_BYTES: usize = 24;
 
-/// Errors returned to Kotlin (`TrackingException`).
+/// Errors returned to Kotlin (`TrackingException`). Every variant but [`Invalid`] is typed:
+/// Kotlin says it with its string resources in the language of the app
+/// (`CoreErrors.text`); the `detail` of [`Invalid`] is in the language asked when the
+/// function takes one, else a technical English text (VO6). The `Display` texts below are
+/// for logs only.
+///
+/// [`Invalid`]: TrackingError::Invalid
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum TrackingError {
     /// Unreadable plan, pack or input.
@@ -82,17 +88,35 @@ pub enum TrackingError {
     },
     /// No assistant layers for this site (the morning needs the two evaluation sites'
     /// layers).
-    #[error("pas de plan de journée pour le site {site}")]
+    #[error("no day plan for the site {site}")]
     Unsupported {
         /// Site of the pack.
         site: String,
     },
     /// `validate` before `morning`.
-    #[error("aucune boucle calculée")]
+    #[error("no loop computed")]
     NoMorning,
     /// The session's thread is gone.
-    #[error("suivi arrêté")]
+    #[error("tracking stopped")]
     Closed,
+    /// The directory given is not an outing of the outings' directory.
+    #[error("{dir} is not an outing")]
+    NotAnOuting {
+        /// The directory given.
+        dir: String,
+    },
+    /// Packed fixes whose length is not a whole number of fixes ([`FIX_BYTES`]).
+    #[error("{bytes} bytes: not fixes")]
+    BadFixes {
+        /// Length received.
+        bytes: u64,
+    },
+    /// A position of the car that is not a number.
+    #[error("invalid car position")]
+    BadCarPosition,
+    /// A pack without the graph of its trails.
+    #[error("no trail graph in the pack")]
+    NoTrailGraph,
 }
 
 fn invalid(detail: impl std::fmt::Display) -> TrackingError {
@@ -960,7 +984,7 @@ pub fn load_layers(pack_dir: &Path, work: &Path) -> Result<SiteData, String> {
 /// reason of each one missing.
 fn layers_note(l: &Result<SiteData, String>) -> Vec<String> {
     match l {
-        Err(e) => vec![format!("sans couches : {e}")],
+        Err(e) => vec![format!("no layers: {e}")],
         Ok(d) => {
             let mut v = Vec::new();
             v.push(
@@ -1001,7 +1025,7 @@ impl TrackingSession {
             trk,
             graph,
             voice_dir,
-            Err("non demandées".into()),
+            Err("not requested".into()),
             plan_dir,
         )
     }
@@ -1183,10 +1207,9 @@ impl TrackingSession {
         steps: Vec<StepReport>,
     ) -> Result<BatchOut, TrackingError> {
         if !packed.len().is_multiple_of(FIX_BYTES) {
-            return Err(invalid(format!(
-                "{} octets : pas des positions",
-                packed.len()
-            )));
+            return Err(TrackingError::BadFixes {
+                bytes: packed.len() as u64,
+            });
         }
         self.out(Cmd::Fixes(packed, steps))
     }
@@ -1210,7 +1233,7 @@ impl TrackingSession {
     /// was recorded; a way back to the car under way is computed again.
     pub fn set_car(&self, lon: f64, lat: f64) -> Result<BatchOut, TrackingError> {
         if !(lon.is_finite() && lat.is_finite()) {
-            return Err(invalid("position de la voiture invalide"));
+            return Err(TrackingError::BadCarPosition);
         }
         self.out(Cmd::SetCar(lon, lat))
     }

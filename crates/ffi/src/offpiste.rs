@@ -30,7 +30,7 @@ use skimap_core::offpiste::{
 use skimap_core::routing::Style;
 use skimap_pack::Pack;
 use skimap_srndiff::field::{Areas, Classes, ElevationDm, SiteZones, SlopeHalfDeg};
-use skimap_srndiff::{Layers, Params, assess, profile};
+use skimap_srndiff::{Layers, Params, assess_in, profile};
 use skimap_zones::layer::ZoneLayer;
 use skimap_zones::rules::RuleSet;
 
@@ -60,7 +60,7 @@ pub fn inflate_offpiste(pack: &Pack, work_dir: &Path) -> Result<PathBuf, Trackin
         let name = Path::new(&l.origin)
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
-            .ok_or_else(|| invalid(format!("{} : origine sans nom", l.id)))?;
+            .ok_or_else(|| invalid(format!("{}: origin without a file name", l.id)))?;
         // Snow: one file whatever its day (the router reads one snow grid).
         let name = if name.starts_with("snow_") {
             "snow.skr".to_owned()
@@ -378,7 +378,7 @@ impl OffpistePlanner {
             ..Layers::default()
         };
         let prof = profile::build(&r.points, &layers, None).map_err(invalid)?;
-        let rep = assess(&prof, &Params::default(), None);
+        let rep = assess_in(&prof, &Params::default(), None, self.lang);
         let label = format!("{} → {}", from.name, to.name);
         let model_s = model_times(&prof.samples);
         let model = group_json
@@ -399,8 +399,8 @@ impl OffpistePlanner {
             max_slope_deg: f64::from(r.max_slope_deg),
             time_text,
             time_s: med,
-            level: rep.forward.rating.level.label().to_owned(),
-            level_reverse: rep.reverse.rating.level.label().to_owned(),
+            level: rep.forward.rating.level.label_in(self.lang).to_owned(),
+            level_reverse: rep.reverse.rating.level.label_in(self.lang).to_owned(),
             reasons: rep
                 .forward
                 .rating
@@ -409,7 +409,7 @@ impl OffpistePlanner {
                 .map(|x| x.text.clone())
                 .collect(),
             advice: rep.forward.advice.iter().map(|x| x.text.clone()).collect(),
-            text: rep.text_fr(&label),
+            text: rep.text(self.lang, &label),
             in_places,
             snap_m: vec![r.from_snap_m, r.to_snap_m],
             never_guarantee: tx.never_guarantee().to_owned(),

@@ -10,6 +10,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.Locale
 
 /** The pure logic of the module: GPS requests, packing, gestures, texts, audio assembly, vibrations. */
 class LogicTest {
@@ -144,23 +145,28 @@ class LogicTest {
 
     @Test
     fun bannerAndNotificationTexts() {
-        assertEquals("80 m", GuidanceText.distance(83.0))
-        assertEquals("250 m", GuidanceText.distance(243.0))
-        assertEquals("1,2 km", GuidanceText.distance(1_240.0))
-        assertEquals("12 km", GuidanceText.distance(12_400.0))
+        val fr = FRENCH_LABELS
+        assertEquals("80 m", GuidanceText.distance(83.0, Locale.FRANCE))
+        assertEquals("250 m", GuidanceText.distance(243.0, Locale.FRANCE))
+        assertEquals("1,2 km", GuidanceText.distance(1_240.0, Locale.FRANCE))
+        assertEquals("1.2 km", GuidanceText.distance(1_240.0, Locale.ENGLISH))
+        assertEquals("12 km", GuidanceText.distance(12_400.0, Locale.FRANCE))
         val g = guidance()
-        assertEquals("← 250 m à gauche · Greffier", GuidanceText.headline(g))
-        assertEquals("1 h 05 restantes · arrivée 15 h 20 (15 h 05 à 15 h 40)", GuidanceText.detail(g))
-        assertEquals("250 m", GuidanceText.chip(g))
-        assertEquals("Arrivée dans 8,4 km", GuidanceText.headline(guidance(turn = null, dist = null)))
+        assertEquals("← 250 m à gauche · Greffier", GuidanceText.headline(g, l = fr))
+        assertEquals("1 h 05 restantes · arrivée 15 h 20 (15 h 05 à 15 h 40)", GuidanceText.detail(g, fr))
+        assertEquals("250 m", GuidanceText.chip(g, fr))
+        assertEquals("Arrivée dans 8,4 km", GuidanceText.headline(guidance(turn = null, dist = null), l = fr))
         assertEquals(
             "Retour : ↗ 250 m légèrement à droite · Greffier",
-            GuidanceText.headline(guidance(turn = Turn.SLIGHT_RIGHT, route = "back")),
+            GuidanceText.headline(guidance(turn = Turn.SLIGHT_RIGHT, route = "back"), l = fr),
         )
-        assertEquals("Pause · 1 h 05 restantes · arrivée 15 h 20 (15 h 05 à 15 h 40)", GuidanceText.detail(guidance(phase = Phase.PAUSED)))
-        assertEquals("1 h 05", GuidanceText.chip(guidance(phase = Phase.PAUSED)))
-        assertEquals("1 h 05 · arrivée 15 h 20", GuidanceText.short(g))
-        assertEquals("Au refuge · 1 h 05 · arrivée 15 h 20", GuidanceText.short(guidance(phase = Phase.REFUGE)))
+        assertEquals(
+            "Pause · 1 h 05 restantes · arrivée 15 h 20 (15 h 05 à 15 h 40)",
+            GuidanceText.detail(guidance(phase = Phase.PAUSED), fr),
+        )
+        assertEquals("1 h 05", GuidanceText.chip(guidance(phase = Phase.PAUSED), fr))
+        assertEquals("1 h 05 · arrivée 15 h 20", GuidanceText.short(g, fr))
+        assertEquals("Au refuge · 1 h 05 · arrivée 15 h 20", GuidanceText.short(guidance(phase = Phase.REFUGE), fr))
     }
 
     @Test

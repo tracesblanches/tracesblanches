@@ -338,7 +338,7 @@ fn difficulty(s: &str) -> Result<Difficulty, TrackingError> {
         "advanced" => Difficulty::Advanced,
         other => {
             return Err(TrackingError::Invalid {
-                detail: format!("difficulté {other:?}"),
+                detail: format!("difficulty {other:?}"),
             });
         }
     })
@@ -456,7 +456,7 @@ pub fn group_learn(
     let mut m = model_of(&model_json)?;
     let o: OutingObs =
         serde_json::from_str(&observation_json).map_err(|e| TrackingError::Invalid {
-            detail: format!("sortie : {e}"),
+            detail: format!("outing: {e}"),
         })?;
     m.learn(&o);
     group_view(&m, lang)
@@ -568,9 +568,7 @@ pub fn open_day_planner(
         }
     })?;
     if data.graph.is_none() {
-        return Err(TrackingError::Invalid {
-            detail: "pas de graphe des pistes dans le pack".into(),
-        });
+        return Err(TrackingError::NoTrailGraph);
     }
     let ctx = Context::load(&view.layout, site)?;
     Ok(Arc::new(DayPlanner {

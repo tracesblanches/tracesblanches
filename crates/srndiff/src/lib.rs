@@ -11,7 +11,7 @@
 //!    « facile », « moyen », « difficile », « très difficile », with ranked reasons;
 //!    never « facile » across terrain the model labels exposed to avalanches;
 //! 4. [`report`]: advice (skins or scales, technique, glide, passages to avoid, turning
-//!    back, equipment) and French text, for both directions.
+//!    back, equipment) and text in the language of the app ([`text`]), for both directions.
 //!
 //! The computation needs no pipeline feature and builds for Android. The `pipeline`
 //! feature adds the calibration side: LiDAR HD terrain and canopy along a narrow corridor,
@@ -24,10 +24,11 @@ pub mod pipeline;
 pub mod profile;
 pub mod report;
 pub mod rules;
+pub mod text;
 
 pub use analysis::{Direction, Metrics, Passage, PassageKind};
 pub use profile::{Layers, Profile, Sample};
-pub use report::{Advice, Report, assess};
+pub use report::{Advice, Report, assess, assess_in};
 pub use rules::{Conditions, Level, Params, Rating, Reason};
 
 /// Errors of the crate.

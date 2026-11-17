@@ -461,3 +461,123 @@ fn every_text_of_the_ffi_has_its_english() {
     assert_ne!(f.rules_note(), t.rules_note());
     assert_ne!(f.never_guarantee(), t.never_guarantee());
 }
+
+/// A guided outing along a line due north in `lang`, in `root/name`.
+fn line_outing(root: &Path, name: &str, lang: &str) -> String {
+    use skimap_ffi::fog::{GuidedKind, GuidedSpec};
+    let d = root.join(name);
+    let line: Vec<[f64; 2]> = (0..=60)
+        .map(|i| [6.0, 45.0 + f64::from(i) * 50.0 / 111_195.0])
+        .collect();
+    let end = line[line.len() - 1];
+    GuidedSpec {
+        kind: GuidedKind::Line,
+        label: "Off-piste A → B".into(),
+        target: FogTarget {
+            kind: "point".into(),
+            name: "B".into(),
+            lon: end[0],
+            lat: end[1],
+            distance_m: None,
+        },
+        line,
+        model_s: [600.0; skimap_core::calibration::TERRAINS],
+        group_json: None,
+        period_s: skimap_ffi::fog::DEFAULT_PERIOD_S,
+        lang: lang.into(),
+        site_id: None,
+        pack_dir: None,
+        created_at: "2026-02-15T09:00:00Z".into(),
+    }
+    .write(&d)
+    .unwrap();
+    d.display().to_string()
+}
+
+/// What a guided outing along a line says (start, remaining, way back) in `lang`.
+fn line_spoken(lang: &str) -> Vec<String> {
+    let root = tempfile::tempdir().unwrap();
+    let dir = line_outing(root.path(), "line", lang);
+    let s = skimap_ffi::fog::open_guided(dir).unwrap();
+    let mut said = Vec::new();
+    // Along the line, then 300 m off it to the east.
+    let mut fixes: Vec<(i64, f64, f64)> = (0..30)
+        .map(|i| {
+            (
+                T0 + i as i64 * 10_000,
+                6.0,
+                45.0 + i as f64 * 50.0 / 111_195.0,
+            )
+        })
+        .collect();
+    fixes.extend((30..40).map(|i| {
+        (
+            T0 + i as i64 * 10_000,
+            6.004,
+            45.0 + 29.0 * 50.0 / 111_195.0,
+        )
+    }));
+    for c in fixes.chunks(5) {
+        let o = s.push_fixes(skimap_ffi::tracking::pack_fixes(c)).unwrap();
+        said.extend(o.spoken.into_iter().map(|x| x.text));
+    }
+    let t = T0 + 400_000;
+    said.extend(s.say_next(t).map(|x| x.text));
+    said.extend(s.say_remaining(t).map(|x| x.text));
+    let o = s.back_start(t).unwrap();
+    said.extend(o.spoken.into_iter().map(|x| x.text));
+    said.extend(s.say_next(t + 1000).map(|x| x.text));
+    said
+}
+
+/// The announcements of a guided outing (off-piste route, way back) are written in the
+/// language of the outing: the voice bank speaks French, the text shown is localised.
+#[test]
+fn guided_announcements_in_english() {
+    let en = line_spoken("en");
+    eprintln!("{en:#?}");
+    assert!(en.len() >= 4, "{en:?}");
+    assert_english(&en, &["Off-piste A → B", "B"]);
+    let fr = line_spoken("fr");
+    eprintln!("{fr:#?}");
+    assert_eq!(fr.len(), en.len(), "{fr:?}");
+}
+
+/// The errors of the core Kotlin shows: typed (said by Kotlin with its resources) or
+/// technical English, never French.
+#[test]
+fn errors_are_typed_or_english() {
+    use skimap_ffi::recap::outing_delete;
+    use skimap_ffi::tracking::TrackingError;
+    let root = tempfile::tempdir().unwrap();
+    let other = tempfile::tempdir().unwrap();
+    let dir = outing(root.path(), "a", T0, 3);
+    let e = outing_delete(dir.clone(), other.path().display().to_string()).unwrap_err();
+    assert!(matches!(e, TrackingError::NotAnOuting { .. }), "{e:?}");
+    let s = skimap_ffi::fog::open_guided(dir).unwrap();
+    let e = s.push_fixes(vec![0; 25]).unwrap_err();
+    assert!(matches!(e, TrackingError::BadFixes { bytes: 25 }), "{e:?}");
+    let e = skimap_ffi::tracking_day::group_learn(
+        skimap_ffi::tracking_day::group_default(Lang::En)
+            .unwrap()
+            .model_json,
+        "{".into(),
+        Lang::En,
+    )
+    .unwrap_err();
+    let mut all: Vec<String> = vec![e.to_string()];
+    all.extend(
+        [
+            TrackingError::Unsupported { site: "x".into() },
+            TrackingError::NoMorning,
+            TrackingError::Closed,
+            TrackingError::NotAnOuting { dir: "x".into() },
+            TrackingError::BadFixes { bytes: 25 },
+            TrackingError::BadCarPosition,
+            TrackingError::NoTrailGraph,
+        ]
+        .iter()
+        .map(ToString::to_string),
+    );
+    assert_english(&all, &["x"]);
+}

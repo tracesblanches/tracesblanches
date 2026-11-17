@@ -210,6 +210,8 @@ class DayViewModel(
     private val today: LocalDate,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val now: () -> LocalTime = { LocalTime.now() },
+    /** An error of the core in the language of the app ([fr.skimap.app.ui.CoreErrors]). */
+    private val errorText: (Throwable) -> String = { it.message.orEmpty() },
 ) : ViewModel() {
     private val mutable = MutableStateFlow<DayUi>(DayUi.Loading)
     val state: StateFlow<DayUi> = mutable.asStateFlow()
@@ -319,7 +321,7 @@ class DayViewModel(
                     .onSuccess { m ->
                         android.util.Log.i("skimap", "day: morning ${req.label} in ${m.computeMs} ms, ${m.loops.size} loops")
                         update { it.copy(morning = m, computing = false, choice = 0) }
-                    }.onFailure { e -> update { it.copy(computing = false, error = e.message) } }
+                    }.onFailure { e -> update { it.copy(computing = false, error = errorText(e)) } }
             }
     }
 

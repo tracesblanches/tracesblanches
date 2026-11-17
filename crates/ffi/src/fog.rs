@@ -685,10 +685,9 @@ impl GuidedSession {
 fn unpack(packed: &[u8]) -> Result<Vec<(i64, LonLat)>, TrackingError> {
     const N: usize = crate::tracking::FIX_BYTES;
     if !packed.len().is_multiple_of(N) {
-        return Err(invalid(format!(
-            "{} octets : pas des positions",
-            packed.len()
-        )));
+        return Err(TrackingError::BadFixes {
+            bytes: packed.len() as u64,
+        });
     }
     Ok(packed
         .as_chunks::<N>()
@@ -985,7 +984,7 @@ impl Engine {
                 let st = l.fix(t, pos);
                 if first {
                     let a = l.start_announcement();
-                    let text = format!("{}. {}", self.spec.label, a.text());
+                    let text = format!("{}. {}", self.spec.label, a.in_lang(self.lang).text());
                     self.say(t, text, SpeechPriority::Direction, "guided_start", quiet);
                 }
                 self.line_step(t, st, quiet, false);
@@ -1017,7 +1016,7 @@ impl Engine {
             } else {
                 SpeechPriority::Direction
             };
-            self.say(t, a.text(), pr, kind, quiet);
+            self.say(t, a.in_lang(self.lang).text(), pr, kind, quiet);
         }
         if st.arrived {
             if back {
@@ -1171,7 +1170,7 @@ impl Engine {
             let a = b.start_announcement();
             self.say(
                 (t_ms as f64 / 1000.0).max(t),
-                a.text(),
+                a.in_lang(self.lang).text(),
                 SpeechPriority::Direction,
                 "back",
                 false,
@@ -1319,11 +1318,13 @@ impl Engine {
                     piste: None,
                 }
                 .announce()
+                .in_lang(l)
                 .text(),
                 None => skimap_voice::Event::Arrive {
                     metres: Some(b.remaining_m()),
                 }
                 .announce()
+                .in_lang(l)
                 .text(),
             };
             return Some(spoken(t_ms, text, SpeechPriority::Direction, "next"));
@@ -1365,7 +1366,7 @@ impl Engine {
         .announce();
         Some(spoken(
             t_ms,
-            a.text(),
+            a.in_lang(self.lang).text(),
             SpeechPriority::Schedule,
             "remaining",
         ))
