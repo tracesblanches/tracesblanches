@@ -140,6 +140,10 @@ enum Command {
     /// Catalogue of France, `data/out/france/catalog.json` and `catalog.geojson`: every
     /// site with its box, centre, km and the state of its pack (G2).
     Catalog,
+    /// Build state of every site of the registry, `data/out/france/status.json`, from the
+    /// build records (`out/<site>/build-all.json`) and the outputs on disk, nothing built:
+    /// failed steps and steps done without any output (B167), printed with their reason.
+    BuildStatus,
     /// IGN LiDAR HD terrain model, slope and aspect of a site (P5, #18).
     Terrain(SiteArg),
     /// Estimated snow cover of a site (P6, #19); needs the terrain tiles.
@@ -601,6 +605,9 @@ fn build_all(cfg: &Config, registry: &Registry, a: BuildAllArgs) -> Result<()> {
     for l in batch::describe(&summary) {
         println!("{l}");
     }
+    for l in batch::describe_status(&c.layout.france_dir().join("status.json"))? {
+        println!("{l}");
+    }
     let cat = france::write_catalog(&c.layout, registry)?;
     println!(
         "catalogue : {} ({} sites, {:?})",
@@ -769,6 +776,13 @@ fn run(cli: Cli) -> Result<()> {
         Command::Catalog => {
             let c = france::write_catalog(&cfg.layout(), &registry)?;
             print_json(&c)
+        }
+        Command::BuildStatus => {
+            let path = batch::write_status(&cfg.layout(), &registry.buildable())?;
+            for l in batch::describe_status(&path)? {
+                println!("{l}");
+            }
+            Ok(())
         }
         Command::Terrain(a) => {
             let s = site(&a.site)?;
