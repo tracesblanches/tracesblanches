@@ -80,3 +80,7 @@ workspace = true
 [[example]]
 name = "class_tiles"
 required-features = ["pipeline"]
+
+[[example]]
+name = "france_basemap"
+required-features = ["pipeline"]
