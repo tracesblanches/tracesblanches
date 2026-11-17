@@ -119,6 +119,7 @@
 
     <string name="card_call">Appeler : %1$s, %2$s</string>
     <string name="card_source_dated">Source : %1$s · information du %2$s</string>
+    <string name="card_link_offline">Pas de réseau : ce lien ne s\'ouvre pas hors ligne. Réessaie une fois connecté.</string>
 
     <string name="loading">Ouverture des packs…</string>
     <string name="no_pack_title">Aucun pack sur ce téléphone</string>

@@ -125,6 +125,7 @@ const EN: &[(&str, &str)] = &[
     ("Point de vente", "Sales point"),
     ("Tarif", "Price"),
     ("Station", "Ski area"),
+    ("Voir le plan officiel", "See the official trail map"),
 ];
 
 /// `fr` in `lang`.
@@ -227,7 +228,7 @@ fn phones_from(raw: &str, label: &str, out: &mut Vec<Phone>) {
     }
 }
 
-fn link(links: &mut Vec<Link>, label: &str, url: Option<String>) {
+pub(crate) fn link(links: &mut Vec<Link>, label: &str, url: Option<String>) {
     if let Some(url) = url.filter(|u| u.starts_with("https://") || u.starts_with("http://")) {
         links.push(Link {
             label: label.to_owned(),
@@ -507,6 +508,12 @@ fn station(p: &Map<String, Value>, l: Lang) -> Card {
             text(w.get("url")),
         );
     }
+    // The official piste plan of the resort (pack property `plan_url`): a link only.
+    link(
+        &mut links,
+        t(l, "Voir le plan officiel"),
+        text(p.get("plan_url")),
+    );
     Card {
         kind: t(l, "Station").to_owned(),
         title: text(p.get("name")).unwrap_or_else(|| t(l, "Station").to_owned()),
@@ -603,6 +610,7 @@ mod tests {
                 "fee_outlets": [{"name": "Foyer de ski de fond", "address": "Village", "phone": "03 00 00 11 11"}],
                 "prices": [{"label": "Redevance journée", "price_eur": 9.5, "date": "2026-11-01"}],
                 "websites": [{"label": "Office de tourisme", "url": "https://example.org/ot"}],
+                "plan_url": "https://example.org/plan.pdf",
                 "source": "Espace Nordique Jurassien", "updated": "2026-11-10"}"#
                 .into(), Lang::Fr,
         )
@@ -613,6 +621,18 @@ mod tests {
         assert_eq!(c.facts[0].value, "Foyer de ski de fond, Village");
         assert_eq!(c.facts[1].value, "9,50 € (prix indicatif du 2026-11-01)");
         assert_eq!(c.updated.as_deref(), Some("2026-11-10"));
+        let links: Vec<(&str, &str)> = c
+            .links
+            .iter()
+            .map(|l| (l.label.as_str(), l.url.as_str()))
+            .collect();
+        assert_eq!(
+            links,
+            [
+                ("Office de tourisme", "https://example.org/ot"),
+                ("Voir le plan officiel", "https://example.org/plan.pdf")
+            ]
+        );
     }
 
     #[test]

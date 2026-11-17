@@ -4,7 +4,7 @@
 
 use serde_json::{Map, Value};
 
-use crate::card::{Card, Fact, Lang, Link};
+use crate::card::{Card, Fact, Lang, Link, link};
 
 /// English of the French labels of these cards.
 const EN: &[(&str, &str)] = &[
@@ -91,6 +91,18 @@ const EN: &[(&str, &str)] = &[
     ("Superficie", "Size"),
     ("Couloir d'avalanche connu", "Known avalanche path"),
     ("Risque", "Risk"),
+    ("Voir le plan officiel", "See the official trail map"),
+    ("Tracé", "Line"),
+    (
+        "Tracé incertain, d'après le plan de la station",
+        "Uncertain line, from the resort's trail map",
+    ),
+    ("Longueur sur le plan", "Length on the map"),
+    ("Départ", "Start"),
+    (
+        "Plan officiel de la station",
+        "Official trail map of the resort",
+    ),
 ];
 
 /// `fr` in `lang`.
@@ -176,6 +188,7 @@ pub(crate) fn area_card(pack_layer: &str, props: &Map<String, Value>, lang: Lang
         "zones" => Some(zone(props, lang)),
         "no-network" => Some(no_network(props, lang)),
         "avalanche-areas" => Some(avalanche_area(props, lang)),
+        "pistes-estimees" => Some(estimated_piste(props, lang)),
         _ => None,
     }
 }
@@ -315,14 +328,77 @@ fn piste(
         source.push_str(" ; ");
         source.push_str(&s);
     }
+    let mut links = Vec::new();
+    link(
+        &mut links,
+        t(lang, "Voir le plan officiel"),
+        text(props.get("plan_url")),
+    );
     Card {
         kind: t(lang, kind).to_owned(),
         title,
         facts,
         phones: Vec::new(),
-        links: Vec::new(),
+        links,
         source,
         updated: state_at,
+    }
+}
+
+/// Card of a piste of the official plan absent from OSM (pack layer `pistes-estimees`,
+/// G1): its line is estimated, never shown as sure.
+fn estimated_piste(props: &Map<String, Value>, lang: Lang) -> Card {
+    let kind = match props.get("difficulty").and_then(Value::as_str) {
+        Some("novice") => "Piste verte",
+        Some("easy") => "Piste bleue",
+        Some("intermediate") => "Piste rouge",
+        Some("advanced" | "expert") => "Piste noire",
+        _ => "Piste",
+    };
+    let mut facts = Vec::new();
+    word(
+        &mut facts,
+        lang,
+        "Tracé",
+        Some("Tracé incertain, d'après le plan de la station"),
+    );
+    let km: Vec<String> = list(props, "lengths_km_plan")
+        .iter()
+        .filter_map(|v| num(Some(v)))
+        .map(|k| length_text(k * 1000.0, lang))
+        .collect();
+    fact(
+        &mut facts,
+        t(lang, "Longueur sur le plan"),
+        (!km.is_empty()).then(|| km.join(", ")),
+    );
+    let departures: Vec<String> = list(props, "departures")
+        .iter()
+        .filter_map(|v| text(Some(v)))
+        .collect();
+    fact(
+        &mut facts,
+        t(lang, "Départ"),
+        (!departures.is_empty()).then(|| departures.join(", ")),
+    );
+    let mut links = Vec::new();
+    link(
+        &mut links,
+        t(lang, "Voir le plan officiel"),
+        text(props.get("plan_url")),
+    );
+    let mut source = t(lang, "Plan officiel de la station").to_owned();
+    if props.get("method").and_then(Value::as_str) == Some("estimated_paths") {
+        source.push_str(" ; IGN BD TOPO");
+    }
+    Card {
+        kind: t(lang, kind).to_owned(),
+        title: text(props.get("name")).unwrap_or_else(|| t(lang, "Piste sans nom").to_owned()),
+        facts,
+        phones: Vec::new(),
+        links,
+        source,
+        updated: None,
     }
 }
 
@@ -512,6 +588,46 @@ mod tests {
         assert_eq!(value(&c, "Direction"), Some("one way"));
         assert_eq!(value(&c, "Area"), None);
         assert!(piste_card("[]".into(), None, vec![], Lang::En).is_none());
+    }
+
+    #[test]
+    fn estimated_piste_card_says_uncertain_and_links_the_plan() {
+        let p: Map<String, Value> = serde_json::from_str(
+            r#"{"name": "Le Gy", "difficulty": "novice", "certainty": "incertain",
+                "method": "estimated_paths", "lengths_km_plan": [3.5], "departures": ["Chapelle-des-Bois"],
+                "plan_url": "https://example.org/plan.pdf"}"#,
+        )
+        .unwrap();
+        let c = area_card("pistes-estimees", &p, Lang::Fr).unwrap();
+        assert_eq!(c.kind, "Piste verte");
+        assert_eq!(c.title, "Le Gy");
+        assert_eq!(
+            value(&c, "Tracé"),
+            Some("Tracé incertain, d'après le plan de la station")
+        );
+        assert_eq!(value(&c, "Longueur sur le plan"), Some("3,5 km"));
+        assert_eq!(value(&c, "Départ"), Some("Chapelle-des-Bois"));
+        assert_eq!(c.links.len(), 1);
+        assert_eq!(c.links[0].label, "Voir le plan officiel");
+        assert_eq!(c.links[0].url, "https://example.org/plan.pdf");
+        assert_eq!(c.source, "Plan officiel de la station ; IGN BD TOPO");
+        let e = area_card("pistes-estimees", &p, Lang::En).unwrap();
+        assert_eq!(
+            value(&e, "Line"),
+            Some("Uncertain line, from the resort's trail map")
+        );
+        assert_eq!(e.links[0].label, "See the official trail map");
+        // A piste of OSM in a domain with a plan links it too.
+        let mut q = p.clone();
+        q.remove("certainty");
+        let c = piste_card(
+            serde_json::to_string(&q).unwrap(),
+            None,
+            Vec::new(),
+            Lang::Fr,
+        )
+        .unwrap();
+        assert_eq!(c.links[0].url, "https://example.org/plan.pdf");
     }
 
     #[test]
