@@ -762,7 +762,7 @@ fn write_json(path: &Path, v: &impl Serialize) -> Result<()> {
         path: path.to_owned(),
         source,
     })?;
-    std::fs::write(path, b).map_err(|e| Error::io(path, e))
+    Ok(skimap_common::output::write_bytes(path, &b)?)
 }
 
 /// An assembled announcement.

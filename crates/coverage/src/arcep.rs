@@ -14,6 +14,7 @@ use std::time::{Duration, Instant, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use sevenz_rust2::{ArchiveReader, Password};
 use skimap_common::download::{Downloader, Request};
+use skimap_common::output::AtomicFile;
 
 use crate::error::{Error, Result};
 
@@ -176,43 +177,45 @@ pub fn extract(archive: &Path, name: &str, dest_dir: &Path) -> Result<(PathBuf, 
         return Ok((dest, None));
     }
     let t0 = Instant::now();
-    let part = dest_dir.join(format!("{name}.part"));
     let mut reader =
         ArchiveReader::open(archive, Password::empty()).map_err(|e| Error::archive(archive, e))?;
-    let mut found = false;
-    let mut io_error: Option<std::io::Error> = None;
+    let mut extracted: Option<AtomicFile> = None;
+    let mut io_error: Option<skimap_common::Error> = None;
     reader
         .for_each_entries(|entry, r| {
             // Only the expected file name is written, never a path from the archive.
             if entry.is_directory() || entry.name() != name {
                 return Ok(true);
             }
-            found = true;
-            let res = std::fs::File::create(&part).and_then(|f| {
-                let mut w = std::io::BufWriter::with_capacity(1 << 20, f);
+            let res = (|| -> std::result::Result<AtomicFile, skimap_common::Error> {
+                let mut f = AtomicFile::create(&dest)?;
                 let mut buf = vec![0u8; 1 << 20];
                 loop {
-                    let n = r.read(&mut buf)?;
+                    let n = r
+                        .read(&mut buf)
+                        .map_err(|e| skimap_common::Error::io(archive, e))?;
                     if n == 0 {
                         break;
                     }
-                    w.write_all(&buf[..n])?;
+                    f.write_all(&buf[..n])
+                        .map_err(|e| skimap_common::Error::io(f.tmp(), e))?;
                 }
-                w.flush()
-            });
-            if let Err(e) = res {
-                io_error = Some(e);
+                Ok(f)
+            })();
+            match res {
+                Ok(f) => extracted = Some(f),
+                Err(e) => io_error = Some(e),
             }
             Ok(true)
         })
         .map_err(|e| Error::archive(archive, e))?;
     if let Some(e) = io_error {
-        return Err(skimap_common::Error::io(&part, e).into());
+        return Err(e.into());
     }
-    if !found {
+    let Some(extracted) = extracted else {
         return Err(Error::archive(archive, format!("no entry named {name}")));
-    }
-    std::fs::rename(&part, &dest).map_err(|e| skimap_common::Error::io(&dest, e))?;
+    };
+    extracted.commit()?;
     let stamp = Stamp {
         archive: archive.to_owned(),
         archive_len,
@@ -220,7 +223,7 @@ pub fn extract(archive: &Path, name: &str, dest_dir: &Path) -> Result<(PathBuf, 
         gpkg_len: file_len_mtime(&dest)?.0,
     };
     let s = serde_json::to_string_pretty(&stamp).expect("stamp serialises");
-    std::fs::write(&stamp_path, s).map_err(|e| skimap_common::Error::io(&stamp_path, e))?;
+    skimap_common::output::write_text(&stamp_path, &s)?;
     Ok((dest, Some(t0.elapsed())))
 }
 

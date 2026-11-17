@@ -19,6 +19,10 @@
 //! between 0.25 and 1 over 0.5 to 2 s) and buffeting (bursts of low-passed noise, 50 to
 //! 300 ms, three times a second on average), seeded: the same files every run.
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "developer tool, not a pipeline output"
+)]
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 

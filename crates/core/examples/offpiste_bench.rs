@@ -88,6 +88,10 @@
 //! output says so and `dumpsys batterystats` (reset before, `--charged` after, uid 2000)
 //! is the fallback.
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "developer tool, not a pipeline output"
+)]
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::sync::Arc;

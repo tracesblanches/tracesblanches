@@ -25,11 +25,11 @@ pub fn history_dir(layout: &DataLayout, site: &Site) -> Result<std::path::PathBu
     Ok(layout.layer_dir(site, "assist")?.join("history"))
 }
 
-fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
+fn copy_dir(from: &Path, to: &Path) -> Result<()> {
     std::fs::create_dir_all(to)?;
     for e in std::fs::read_dir(from)? {
         let e = e?;
-        std::fs::copy(e.path(), to.join(e.file_name()))?;
+        skimap_common::output::copy_file(&e.path(), &to.join(e.file_name()))?;
     }
     Ok(())
 }
@@ -96,8 +96,14 @@ pub fn history(
                 d,
             )?;
             let bd = tl.layer_dir(site, "bera")?;
-            std::fs::copy(bd.join("bera.json"), dir.join(format!("bera_{d}.json")))?;
-            std::fs::copy(bd.join("bera.meta.json"), dir.join("bera.meta.json"))?;
+            skimap_common::output::copy_file(
+                &bd.join("bera.json"),
+                &dir.join(format!("bera_{d}.json")),
+            )?;
+            skimap_common::output::copy_file(
+                &bd.join("bera.meta.json"),
+                &dir.join("bera.meta.json"),
+            )?;
             lines.push(format!(
                 "BERA {d} : {:?}, risque {:?}",
                 b.status,

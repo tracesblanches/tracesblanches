@@ -194,7 +194,8 @@ pub fn refresh(ctx: &Ctx, sites: &[&Site], now: DateTime<Utc>) -> Result<Summary
         text.push('\n');
     }
     let list = dir.join(CHANGED_FILE);
-    std::fs::write(&list, text).map_err(|e| anyhow::anyhow!("writing {}: {e}", list.display()))?;
+    skimap_common::output::write_text(&list, &text)
+        .map_err(|e| anyhow::anyhow!("writing {}: {e}", list.display()))?;
     Ok(summary)
 }
 

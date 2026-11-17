@@ -49,6 +49,14 @@ impl From<skimap_plan::Error> for TrackingError {
     }
 }
 
+impl From<skimap_common::Error> for TrackingError {
+    fn from(e: skimap_common::Error) -> Self {
+        TrackingError::Invalid {
+            detail: e.to_string(),
+        }
+    }
+}
+
 impl From<skimap_pack::Error> for TrackingError {
     fn from(e: skimap_pack::Error) -> Self {
         TrackingError::Invalid {
@@ -132,7 +140,9 @@ fn symlink(target: &Path, at: &Path) -> std::io::Result<()> {
     if target.is_dir() {
         Err(std::io::Error::other("directory links need unix"))
     } else {
-        std::fs::copy(target, at).map(|_| ())
+        skimap_common::output::copy_file(target, at)
+            .map(|_| ())
+            .map_err(std::io::Error::other)
     }
 }
 
@@ -824,10 +834,7 @@ impl DayPlanner {
         let dir = PathBuf::from(&plan_dir);
         std::fs::create_dir_all(&dir).map_err(|e| io(&dir, e))?;
         let write = |name: &str, bytes: &[u8]| -> Result<(), TrackingError> {
-            let path = dir.join(name);
-            let tmp = dir.join(format!("{name}.tmp"));
-            std::fs::write(&tmp, bytes).map_err(|e| io(&tmp, e))?;
-            std::fs::rename(&tmp, &path).map_err(|e| io(&path, e))
+            Ok(skimap_common::output::write_bytes(&dir.join(name), bytes)?)
         };
         write(PLAN_FILE, p.to_json()?.as_bytes())?;
         write(TRACK_FILE, &track.to_bytes())?;

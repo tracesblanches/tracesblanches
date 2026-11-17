@@ -148,7 +148,8 @@ fn time_text(s: &skimap_assist::suggest::Suggestion, t: &dyn text::Texts) -> Str
 fn copy_plan(from: &Path, to: &Path) -> Result<(), TrackingError> {
     std::fs::create_dir_all(to).map_err(invalid)?;
     for f in [PLAN_FILE, TRACK_FILE, PACK_FILE] {
-        std::fs::copy(from.join(f), to.join(f)).map_err(|e| invalid(format!("{f}: {e}")))?;
+        skimap_common::output::copy_file(&from.join(f), &to.join(f))
+            .map_err(|e| invalid(format!("{f}: {e}")))?;
     }
     Ok(())
 }
@@ -239,9 +240,11 @@ pub fn prep_run(
             let track = plan::track(&p, g)?;
             let pdir = dir.join("plan");
             std::fs::create_dir_all(&pdir).map_err(invalid)?;
-            std::fs::write(pdir.join(PLAN_FILE), p.to_json()?).map_err(invalid)?;
-            std::fs::write(pdir.join(TRACK_FILE), track.to_bytes()).map_err(invalid)?;
-            std::fs::write(pdir.join(PACK_FILE), &pack_dir).map_err(invalid)?;
+            skimap_common::output::write_text(&pdir.join(PLAN_FILE), &p.to_json()?)
+                .map_err(invalid)?;
+            skimap_common::output::write_bytes(&pdir.join(TRACK_FILE), &track.to_bytes())
+                .map_err(invalid)?;
+            skimap_common::output::write_text(&pdir.join(PACK_FILE), &pack_dir).map_err(invalid)?;
             let back = p
                 .pace
                 .as_ref()
@@ -257,9 +260,9 @@ pub fn prep_run(
             day.missing_clips = p.clips.missing.iter().cloned().collect();
             let _ = epoch_ms(back);
         }
-        std::fs::write(
-            dir.join(PREPARED_FILE),
-            serde_json::to_string_pretty(&day).map_err(invalid)?,
+        skimap_common::output::write_text(
+            &dir.join(PREPARED_FILE),
+            &serde_json::to_string_pretty(&day).map_err(invalid)?,
         )
         .map_err(invalid)?;
         out.push(day);

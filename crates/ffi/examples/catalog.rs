@@ -6,6 +6,10 @@
 //! `cargo run -p skimap-ffi --example catalog -- [OUT]` (needs `SKIMAP_DATA_DIR` or `./data`;
 //! downloads the borders once through the common downloader, source `etalab-contours`).
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "developer tool, not a pipeline output"
+)]
 use std::path::PathBuf;
 
 use geo::{Coord, LineString, Simplify};

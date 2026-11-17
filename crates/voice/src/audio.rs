@@ -291,7 +291,7 @@ pub fn write_wav(path: &Path, samples: &[i16], sample_rate: u32) -> Result<()> {
     for s in samples {
         b.extend(s.to_le_bytes());
     }
-    std::fs::write(path, b).map_err(|e| Error::io(path, e))
+    Ok(skimap_common::output::write_bytes(path, &b)?)
 }
 
 #[cfg(test)]

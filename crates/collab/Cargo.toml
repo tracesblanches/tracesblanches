@@ -11,7 +11,7 @@ default = []
 # Server side: the SQLite store of the reports (skimap-server).
 server = ["dep:rusqlite", "dep:sha2", "dep:hex"]
 # Phone side (skimap-ffi): Strava export archive, tracks, challenges, calibration input.
-phone = ["dep:zip", "dep:flate2", "dep:quick-xml", "dep:csv", "dep:skimap-core"]
+phone = ["dep:zip", "dep:flate2", "dep:quick-xml", "dep:csv", "dep:skimap-core", "dep:skimap-common"]
 
 [dependencies]
 serde.workspace = true
@@ -27,6 +27,8 @@ quick-xml = { workspace = true, optional = true }
 csv = { workspace = true, optional = true }
 # Time model C5 and the calibration input (OutingObs): phone side, no HTTP stack.
 skimap-core = { workspace = true, optional = true }
+# Atomic writes of the imported outings (phone side).
+skimap-common = { workspace = true, optional = true }
 
 [dev-dependencies]
 tempfile.workspace = true

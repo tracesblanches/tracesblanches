@@ -14,6 +14,10 @@
 //! - V15 (#78): import of the Strava export archive, read on the phone ([`strava_export`],
 //!   [`track`], feature `phone`); the outings feed the calibration (C11 `OutingObs`).
 
+// Unit tests write their inputs directly; the code itself goes through
+// `skimap_common::output` (clippy.toml, #164).
+#![cfg_attr(test, allow(clippy::disallowed_methods))]
+
 pub mod jpeg;
 pub mod osm_note;
 pub mod rules;

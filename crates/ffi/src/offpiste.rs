@@ -84,10 +84,8 @@ pub fn inflate_offpiste(pack: &Pack, work_dir: &Path) -> Result<PathBuf, Trackin
         } else {
             bytes
         };
-        let tmp = out.join(format!("{name}.tmp"));
-        std::fs::write(&tmp, data).map_err(invalid)?;
-        std::fs::rename(&tmp, &dest).map_err(invalid)?;
-        std::fs::write(&stamp_path, stamp).map_err(invalid)?;
+        skimap_common::output::write_bytes(&dest, &data).map_err(invalid)?;
+        skimap_common::output::write_text(&stamp_path, &stamp).map_err(invalid)?;
     }
     Ok(out)
 }

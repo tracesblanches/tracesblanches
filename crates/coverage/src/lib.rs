@@ -16,6 +16,10 @@
 //!   (outside it, i.e. in Italy or Switzerland, nothing is known);
 //! - `coverage.meta.json`: sources, licence, dates, per-operator shares, timings.
 
+// Unit tests write their inputs directly; the code itself goes through
+// `skimap_common::output` (clippy.toml, #164).
+#![cfg_attr(test, allow(clippy::disallowed_methods))]
+
 mod arcep;
 mod error;
 mod gpkg;

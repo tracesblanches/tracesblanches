@@ -11,6 +11,10 @@
 //! and leaves the values within tolerance untouched, so that `git diff fixtures/golden/`
 //! shows only what really changed.
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests write their inputs directly"
+)]
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::PathBuf;

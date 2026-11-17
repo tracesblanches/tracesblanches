@@ -10,6 +10,10 @@
 //! by the `exposure_inputs` example). Writes
 //! `data/out/<site>/avalanche-exposure/oracle_comparison_<cell>m.json`.
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "developer tool, not a pipeline output"
+)]
 use std::path::PathBuf;
 use std::time::Instant;
 

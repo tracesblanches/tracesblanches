@@ -3,6 +3,10 @@
 //! sports skipped; a manual activity without file; a second import adds nothing.
 
 #![cfg(feature = "phone")]
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests write their inputs directly"
+)]
 
 use std::io::Write;
 

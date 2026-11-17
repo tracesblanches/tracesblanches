@@ -9,6 +9,10 @@
 //! junctions), thin-plate spline, transcription; the collector of the plans (`collect`)
 //! and the learnt matching (`learn`).
 
+// Unit tests write their inputs directly; the code itself goes through
+// `skimap_common::output` (clippy.toml, #164).
+#![cfg_attr(test, allow(clippy::disallowed_methods))]
+
 pub mod error;
 pub mod evaluate;
 pub mod gbdt;

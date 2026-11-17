@@ -6,6 +6,10 @@
 //! classes, statistics and files of `offpiste.meta.json`.
 
 #![cfg(feature = "pipeline")]
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests write their inputs directly"
+)]
 
 use std::collections::BTreeSet;
 use std::path::Path;

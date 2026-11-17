@@ -102,7 +102,7 @@ pub fn write_gpx(log: &Path, name: &str) -> Result<String, TrackingError> {
     }
     s.push_str("</trkseg></trk>\n</gpx>\n");
     let path = dir.join("trace.gpx");
-    std::fs::write(&path, s).map_err(invalid)?;
+    skimap_common::output::write_text(&path, &s).map_err(invalid)?;
     Ok(path.display().to_string())
 }
 

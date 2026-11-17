@@ -2,6 +2,10 @@
 //! sync without change is one 304), bundles with byte ranges, the phone-side plan and
 //! `apply_bundle` of the pack crate, base rebuild, retention, garbage collection.
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests write their inputs directly"
+)]
 mod common;
 
 use std::net::SocketAddr;
