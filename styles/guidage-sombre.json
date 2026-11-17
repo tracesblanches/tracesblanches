@@ -40,7 +40,7 @@
         "forest"
       ],
       "id": "france-forest",
-      "maxzoom": 11.0,
+      "maxzoom": 10.0,
       "metadata": {
         "skimap:group": "fond"
       },
@@ -61,7 +61,7 @@
         "glacier"
       ],
       "id": "france-glacier",
-      "maxzoom": 11.0,
+      "maxzoom": 10.0,
       "metadata": {
         "skimap:group": "fond"
       },
@@ -82,7 +82,7 @@
         "urban_area"
       ],
       "id": "france-urban",
-      "maxzoom": 11.0,
+      "maxzoom": 10.0,
       "metadata": {
         "skimap:group": "fond"
       },
@@ -106,7 +106,7 @@
       "layout": {
         "line-join": "round"
       },
-      "maxzoom": 11.0,
+      "maxzoom": 10.0,
       "metadata": {
         "skimap:group": "fond"
       },
@@ -153,7 +153,7 @@
         "line-cap": "round",
         "line-join": "round"
       },
-      "maxzoom": 11.0,
+      "maxzoom": 10.0,
       "metadata": {
         "skimap:group": "fond"
       },

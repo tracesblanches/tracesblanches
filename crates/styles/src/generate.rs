@@ -70,8 +70,9 @@ const ITALIC: &str = "Source Sans Pro Italic";
 /// (`metadata.skimap:shared_sources`), and leaves it out with its layers when absent.
 pub const FRANCE_SOURCE: &str = "france";
 /// Zoom from which the France basemap gives way to the packs: past it, its roads, forests
-/// and borders (zoom 6 tiles enlarged) would no longer match the Plan IGN drawn over them.
-pub const FRANCE_DETAIL_UNTIL: f64 = 11.0;
+/// and borders (zoom 6 tiles enlarged 16 times) no longer match the Plan IGN drawn over
+/// them (seen on the emulator at zoom 11 over three packs: blocky forests, doubled roads).
+pub const FRANCE_DETAIL_UNTIL: f64 = 10.0;
 /// Zoom from which the Plan IGN names the communes ([`localities`]): the France names stop.
 pub const FRANCE_NAMES_UNTIL: f64 = 10.0;
 
