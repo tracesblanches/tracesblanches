@@ -315,3 +315,112 @@ fn bundles_install_in_one_file_and_fall_back_when_contents_are_missing() {
     assert!(e.starts_with(&format!("pack: {MISSING_CONTENTS}")), "{e}");
     assert_eq!(read_tree(&phone), read_tree(&p("server/v3")));
 }
+
+/// An hourly forecast as the pipeline writes it (indented JSON, many similar hours).
+fn weather_json(run: u32) -> Vec<u8> {
+    let hours: Vec<serde_json::Value> = (0..81)
+        .map(|h| {
+            json!({"time": format!("2026-11-17T{:02}:00", h % 24),
+                   "temperature_c": -3.5 + f64::from((h + run) % 9),
+                   "wind_kmh": 12.0, "gust_kmh": 20.0 + f64::from(h % 5), "snowfall_cm": 0.0,
+                   "cloud_cover_pct": f64::from((h * 7 + run) % 100)})
+        })
+        .collect();
+    serde_json::to_vec_pretty(&json!({"points": [{"id": "centre", "hours": hours}]})).unwrap()
+}
+
+#[test]
+fn text_blobs_are_compressed_in_bundles_and_checked_once_inflated() {
+    let t = tempfile::tempdir().unwrap();
+    let p = |n: &str| t.path().join(n);
+    let (w1, w2) = (weather_json(1), weather_json(2));
+    let m1 = make_pack(
+        &p("server/v1"),
+        "v1",
+        &[
+            ("basemap/osm.pmtiles", BASEMAP),
+            ("layers/bera.json", b"1"),
+            ("layers/meteo-hourly.json", &w1),
+        ],
+    );
+    let m2 = make_pack(
+        &p("server/v2"),
+        "v2",
+        &[
+            ("basemap/osm.pmtiles", BASEMAP),
+            ("layers/bera.json", b"1"),
+            ("layers/meteo-hourly.json", &w2),
+        ],
+    );
+    let (b1, b2) = (manifest(&m1), manifest(&m2));
+    let phone = p("phone/cervieres");
+    let full = Update::between(None, &b1, &m1);
+    bundle(&full, &p("server/v1"), &m1, &p("base.skb"));
+    let raw = fs::read(p("base.skb")).unwrap();
+    assert_eq!(&raw[..8], b"SKMPBND2");
+    let (hdr, _) = read_bundle(&p("base.skb")).unwrap();
+    assert_eq!(hdr.format_version, 2);
+    // The weather is stored compressed, the basemap (PMTiles) and the one-byte BERA as is.
+    let stored = |u: &Update, path: &str| {
+        u.fetch
+            .iter()
+            .find(|b| b.paths.iter().any(|x| x == path))
+            .unwrap()
+            .gzip_bytes
+    };
+    let gz = stored(&hdr, "layers/meteo-hourly.json").unwrap();
+    assert!(gz * 5 < w1.len() as u64, "{gz} vs {}", w1.len());
+    assert_eq!(stored(&hdr, "basemap/osm.pmtiles"), None);
+    assert_eq!(stored(&hdr, "layers/bera.json"), None);
+    apply_bundle(&phone, &p("base.skb")).unwrap();
+    assert_eq!(read_tree(&phone), read_tree(&p("server/v1")));
+
+    // The weather of the next run: the delta is the header, the manifest and the
+    // compressed weather.
+    let d = Update::between(Some(&b1), &b2, &m2);
+    let n = bundle(&d, &p("server/v2"), &m2, &p("d12.skb"));
+    assert!(n < w2.len() as u64 / 2, "{n} vs {}", w2.len());
+    // A damaged compressed blob is refused, the installed pack untouched.
+    let mut bad = fs::read(p("d12.skb")).unwrap();
+    let k = bad.len() - 40;
+    bad[k] ^= 0x55;
+    fs::write(p("bad.skb"), &bad).unwrap();
+    apply_bundle(&phone, &p("bad.skb")).unwrap_err();
+    assert_eq!(read_tree(&phone), read_tree(&p("server/v1")));
+    apply_bundle(&phone, &p("d12.skb")).unwrap();
+    assert_eq!(read_tree(&phone), read_tree(&p("server/v2")));
+}
+
+#[test]
+fn bundles_of_format_version_1_still_install() {
+    let t = tempfile::tempdir().unwrap();
+    let p = |n: &str| t.path().join(n);
+    let w = weather_json(1);
+    let m = make_pack(
+        &p("server/v1"),
+        "v1",
+        &[
+            ("basemap/osm.pmtiles", BASEMAP),
+            ("layers/meteo-hourly.json", &w),
+        ],
+    );
+    // As written before #160: plain JSON header, manifest gzip, every blob as is.
+    let mut u = Update::between(None, &manifest(&m), &m);
+    u.format_version = 1;
+    let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
+    std::io::Write::write_all(&mut gz, &m).unwrap();
+    let manifest_gz = gz.finish().unwrap();
+    u.manifest_gzip_bytes = Some(manifest_gz.len() as u64);
+    let header = serde_json::to_vec(&u).unwrap();
+    let mut out = b"SKMPBND1".to_vec();
+    out.extend((header.len() as u64).to_le_bytes());
+    out.extend(&header);
+    out.extend(&manifest_gz);
+    for b in &u.fetch {
+        out.extend(fs::read(p("server/v1").join(&b.paths[0])).unwrap());
+    }
+    fs::write(p("v1.skb"), &out).unwrap();
+    let phone = p("phone/cervieres");
+    apply_bundle(&phone, &p("v1.skb")).unwrap();
+    assert_eq!(read_tree(&phone), read_tree(&p("server/v1")));
+}
