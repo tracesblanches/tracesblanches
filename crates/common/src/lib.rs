@@ -10,6 +10,7 @@
 //! - [`layout`]: data directory layout (`data/cache`, `data/out`).
 //! - [`config`]: configuration from the environment, secrets, rate-limit specs.
 //! - [`error`]: shared error type.
+//! - [`licence`]: licence families and the pack files a piece of data may go into (#169).
 //! - [`meta`]: `<layer>.meta.json` schema shared by every layer.
 //! - [`names`]: comparison of piste names across sources.
 //! - [`output`]: atomic JSON / GeoJSON / bytes writers.
@@ -31,6 +32,7 @@ pub mod geotiff;
 pub mod grid;
 pub mod lang;
 pub mod layout;
+pub mod licence;
 pub mod meta;
 pub mod names;
 pub mod output;

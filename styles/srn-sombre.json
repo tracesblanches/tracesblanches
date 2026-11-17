@@ -647,6 +647,114 @@
       "type": "line"
     },
     {
+      "id": "srn-areas-fill-cc-by-sa",
+      "metadata": {
+        "skimap:group": "srn"
+      },
+      "paint": {
+        "fill-color": "#3fd0e0",
+        "fill-opacity": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          9.0,
+          0.1,
+          13.0,
+          0.05
+        ]
+      },
+      "source": "srn-areas-cc-by-sa",
+      "type": "fill"
+    },
+    {
+      "id": "srn-areas-line-cc-by-sa",
+      "metadata": {
+        "skimap:contrast": "background",
+        "skimap:group": "srn"
+      },
+      "paint": {
+        "line-color": "#3fd0e0",
+        "line-dasharray": [
+          4,
+          3
+        ],
+        "line-opacity": 0.7,
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          9.0,
+          0.8,
+          15.0,
+          1.6
+        ]
+      },
+      "source": "srn-areas-cc-by-sa",
+      "type": "line"
+    },
+    {
+      "id": "srn-areas-fill-personnel",
+      "metadata": {
+        "skimap:group": "srn"
+      },
+      "paint": {
+        "fill-color": "#3fd0e0",
+        "fill-opacity": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          9.0,
+          0.1,
+          13.0,
+          0.05
+        ]
+      },
+      "source": "srn-areas-personnel",
+      "type": "fill"
+    },
+    {
+      "id": "srn-areas-line-personnel",
+      "metadata": {
+        "skimap:contrast": "background",
+        "skimap:group": "srn"
+      },
+      "paint": {
+        "line-color": "#3fd0e0",
+        "line-dasharray": [
+          4,
+          3
+        ],
+        "line-opacity": 0.7,
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          9.0,
+          0.8,
+          15.0,
+          1.6
+        ]
+      },
+      "source": "srn-areas-personnel",
+      "type": "line"
+    },
+    {
       "filter": [
         "match",
         [
@@ -2485,6 +2593,276 @@
     },
     {
       "filter": [
+        "!",
+        [
+          "match",
+          [
+            "get",
+            "activity"
+          ],
+          [
+            "srn",
+            "easy_ski_touring"
+          ],
+          true,
+          false
+        ]
+      ],
+      "id": "srn-routes-other-cc-by-sa",
+      "layout": {
+        "line-cap": "round"
+      },
+      "metadata": {
+        "skimap:group": "srn"
+      },
+      "minzoom": 12,
+      "paint": {
+        "line-color": "#3fd0e0",
+        "line-dasharray": [
+          0.5,
+          2
+        ],
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          12.0,
+          1.0,
+          16.0,
+          2.0
+        ]
+      },
+      "source": "srn-routes-cc-by-sa",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "activity"
+        ],
+        [
+          "srn",
+          "easy_ski_touring"
+        ],
+        true,
+        false
+      ],
+      "id": "srn-routes-casing-cc-by-sa",
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "metadata": {
+        "skimap:group": "srn"
+      },
+      "paint": {
+        "line-color": "#0b0e12",
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          9.0,
+          3.0,
+          13.0,
+          5.0,
+          16.0,
+          8.0
+        ]
+      },
+      "source": "srn-routes-cc-by-sa",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "activity"
+        ],
+        [
+          "srn",
+          "easy_ski_touring"
+        ],
+        true,
+        false
+      ],
+      "id": "srn-routes-line-cc-by-sa",
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "metadata": {
+        "skimap:contrast": "background",
+        "skimap:group": "srn"
+      },
+      "paint": {
+        "line-color": "#3fd0e0",
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          9.0,
+          1.6,
+          13.0,
+          2.8,
+          16.0,
+          4.5
+        ]
+      },
+      "source": "srn-routes-cc-by-sa",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "!",
+        [
+          "match",
+          [
+            "get",
+            "activity"
+          ],
+          [
+            "srn",
+            "easy_ski_touring"
+          ],
+          true,
+          false
+        ]
+      ],
+      "id": "srn-routes-other-personnel",
+      "layout": {
+        "line-cap": "round"
+      },
+      "metadata": {
+        "skimap:group": "srn"
+      },
+      "minzoom": 12,
+      "paint": {
+        "line-color": "#3fd0e0",
+        "line-dasharray": [
+          0.5,
+          2
+        ],
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          12.0,
+          1.0,
+          16.0,
+          2.0
+        ]
+      },
+      "source": "srn-routes-personnel",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "activity"
+        ],
+        [
+          "srn",
+          "easy_ski_touring"
+        ],
+        true,
+        false
+      ],
+      "id": "srn-routes-casing-personnel",
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "metadata": {
+        "skimap:group": "srn"
+      },
+      "paint": {
+        "line-color": "#0b0e12",
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          9.0,
+          3.0,
+          13.0,
+          5.0,
+          16.0,
+          8.0
+        ]
+      },
+      "source": "srn-routes-personnel",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "activity"
+        ],
+        [
+          "srn",
+          "easy_ski_touring"
+        ],
+        true,
+        false
+      ],
+      "id": "srn-routes-line-personnel",
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "metadata": {
+        "skimap:contrast": "background",
+        "skimap:group": "srn"
+      },
+      "paint": {
+        "line-color": "#3fd0e0",
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          9.0,
+          1.6,
+          13.0,
+          2.8,
+          16.0,
+          4.5
+        ]
+      },
+      "source": "srn-routes-personnel",
+      "type": "line"
+    },
+    {
+      "filter": [
         "all",
         [
           "==",
@@ -3439,6 +3817,110 @@
     },
     {
       "filter": [
+        "all",
+        [
+          "match",
+          [
+            "get",
+            "activity"
+          ],
+          [
+            "srn",
+            "easy_ski_touring"
+          ],
+          true,
+          false
+        ],
+        [
+          "has",
+          "name"
+        ]
+      ],
+      "id": "srn-routes-label-cc-by-sa",
+      "layout": {
+        "symbol-placement": "line",
+        "symbol-spacing": 400,
+        "text-field": [
+          "get",
+          "name"
+        ],
+        "text-font": [
+          "Source Sans Pro Semibold"
+        ],
+        "text-max-angle": 35,
+        "text-offset": [
+          0,
+          0.9
+        ],
+        "text-padding": 6,
+        "text-size": 12
+      },
+      "metadata": {
+        "skimap:group": "srn"
+      },
+      "minzoom": 12,
+      "paint": {
+        "text-color": "#eef2f6",
+        "text-halo-color": "#0b0e12",
+        "text-halo-width": 2.5
+      },
+      "source": "srn-routes-cc-by-sa",
+      "type": "symbol"
+    },
+    {
+      "filter": [
+        "all",
+        [
+          "match",
+          [
+            "get",
+            "activity"
+          ],
+          [
+            "srn",
+            "easy_ski_touring"
+          ],
+          true,
+          false
+        ],
+        [
+          "has",
+          "name"
+        ]
+      ],
+      "id": "srn-routes-label-personnel",
+      "layout": {
+        "symbol-placement": "line",
+        "symbol-spacing": 400,
+        "text-field": [
+          "get",
+          "name"
+        ],
+        "text-font": [
+          "Source Sans Pro Semibold"
+        ],
+        "text-max-angle": 35,
+        "text-offset": [
+          0,
+          0.9
+        ],
+        "text-padding": 6,
+        "text-size": 12
+      },
+      "metadata": {
+        "skimap:group": "srn"
+      },
+      "minzoom": 12,
+      "paint": {
+        "text-color": "#eef2f6",
+        "text-halo-color": "#0b0e12",
+        "text-halo-width": 2.5
+      },
+      "source": "srn-routes-personnel",
+      "type": "symbol"
+    },
+    {
+      "filter": [
         "has",
         "name"
       ],
@@ -4297,7 +4779,12 @@
       "avalanche-exposure",
       "snow-srn",
       "srn-areas",
+      "srn-areas-cc-by-sa",
+      "srn-areas-personnel",
       "srn-routes",
+      "srn-routes-cc-by-sa",
+      "srn-routes-personnel",
+      "refuges-osm",
       "piste-labels",
       "stations-pois",
       "pistes-estimees"
@@ -4407,8 +4894,24 @@
       "data": "layers/srn-areas.geojson",
       "type": "geojson"
     },
+    "srn-areas-cc-by-sa": {
+      "data": "layers/srn-areas-cc-by-sa.geojson",
+      "type": "geojson"
+    },
+    "srn-areas-personnel": {
+      "data": "layers/srn-areas-personnel.geojson",
+      "type": "geojson"
+    },
     "srn-routes": {
       "data": "layers/srn-routes.geojson",
+      "type": "geojson"
+    },
+    "srn-routes-cc-by-sa": {
+      "data": "layers/srn-routes-cc-by-sa.geojson",
+      "type": "geojson"
+    },
+    "srn-routes-personnel": {
+      "data": "layers/srn-routes-personnel.geojson",
       "type": "geojson"
     },
     "stations-pois": {

@@ -765,6 +765,13 @@ fn layer_meta(
         )
         .edition(dom_meta.map(|d| d.generated_at.clone()).unwrap_or_default()),
     );
+    // A source without a known reuse licence (the Geotrek instances that show none) is
+    // personal use only (#169): its itineraries go into personal packs only.
+    for s in &mut m.sources {
+        if !skimap_common::licence::of_source(s).public() {
+            s.personal_use_only = true;
+        }
+    }
     let count = |p: Provider| {
         records
             .iter()
@@ -774,7 +781,7 @@ fn layer_meta(
     m.files = vec![
         FileMeta::new(AREAS_FILE, "domaines de jeu SRN (fermeture des itinéraires : tampon 750 m puis −250 m, réunie au couloir de 500 m) et traversées (couloir de 500 m)")
             .count(records.len())
-            .licence("ODbL 1.0 (base dérivée d'OSM) ; voir licences de chaque zone")
+            .licence("selon les itinéraires de chaque zone (propriété licences) ; le pack range chaque zone dans le fichier de sa famille de licences (skimap_common::licence, #169)")
             .properties([
                 ("id", "srn-<kind>-<identifiant du premier itinéraire>"),
                 ("name", "nom (name_source : known = data/names.json, route = nom de l'itinéraire, commune)"),

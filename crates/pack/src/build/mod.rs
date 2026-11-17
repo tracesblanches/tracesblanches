@@ -328,7 +328,7 @@ fn build_into(
         pack_version: pack_version.to_owned(),
         generator: format!("{} {}", crate::CRATE, env!("CARGO_PKG_VERSION")),
         generated_at: now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-        site: site_info(site, layout),
+        site: site_info(site, layout, opts.personal_sources),
         valid_for,
         personal_sources: opts.personal_sources,
         basemaps,
@@ -554,7 +554,7 @@ pub fn build_voice_pack(
             pack_version: pack_version.clone(),
             generator: format!("{} {}", crate::CRATE, env!("CARGO_PKG_VERSION")),
             generated_at: now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-            site: site_info(site, layout),
+            site: site_info(site, layout, personal_sources),
             valid_for: PackValidity {
                 until: None,
                 until_layer: None,
@@ -596,7 +596,7 @@ pub fn build_voice_pack(
     }
 }
 
-fn site_info(site: &Site, layout: &DataLayout) -> SiteInfo {
+fn site_info(site: &Site, layout: &DataLayout, personal_sources: bool) -> SiteInfo {
     SiteInfo {
         id: site.id.to_owned(),
         name: site.name.to_owned(),
@@ -608,7 +608,7 @@ fn site_info(site: &Site, layout: &DataLayout) -> SiteInfo {
             site.bbox.north,
         ],
         center: [site.commune_center.lon, site.commune_center.lat],
-        record: Some(starts::record(site, layout)),
+        record: Some(starts::record(site, layout, personal_sources)),
         start_ranking: None,
     }
 }

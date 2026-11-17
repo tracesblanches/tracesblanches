@@ -9,6 +9,7 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 use serde_json::{Value, json};
+use skimap_common::licence::{self, Family, Group};
 use skimap_common::meta::LayerMeta;
 use skimap_zones::{Effect, RuleSet, Topic, ZoneLayer};
 
@@ -35,6 +36,10 @@ pub enum Transform {
     /// [`estimated_pistes`]): the features of `plan_pistes.geojson` whose certainty is
     /// `incertain`.
     EstimatedPistes,
+    /// GeoJSON, only the features of a licence group ([`skimap_common::licence::Group`],
+    /// #169): each feature goes to the file of the group of its `licence` (an itinerary)
+    /// or of its `licences` (an area made of several itineraries), [`feature_group`].
+    Licence(Group),
 }
 
 /// A layer looked for in the pipeline outputs.
@@ -62,6 +67,9 @@ pub struct Spec {
     /// personal-use source, so does this layer (off-piste rasters of the core from the
     /// avalanche exposure and the zones).
     pub depends: &'static [&'static str],
+    /// Personal use only whatever its sources say, and why (L3 rule 1: the OSM huts
+    /// completing refuges.info, docs/licences/l3-combinaison.md).
+    pub personal: Option<&'static str>,
 }
 
 /// Result of looking for a layer.
@@ -92,6 +100,7 @@ const fn vector(
         transform: Transform::GeoJson,
         notes: &[],
         depends: &[],
+        personal: None,
     }
 }
 
@@ -113,11 +122,86 @@ const fn data(
         transform: Transform::Copy,
         notes: &[],
         depends: &[],
+        personal: None,
     }
 }
 
 /// Vector and data layers, in display order (drawn bottom to top by the viewer).
 pub fn catalog() -> Vec<Spec> {
+    let mut v = catalog_without_srn();
+    let at = v
+        .iter()
+        .position(|s| s.id == "coverage-area")
+        .map_or(v.len(), |i| i + 1);
+    v.splice(at..at, srn_specs());
+    v
+}
+
+/// Pack layer of the SRN areas (`srn-areas`) or itineraries (`srn-routes`) of a licence
+/// group: `srn-routes`, `srn-routes-cc-by-sa`, `srn-routes-personnel` (#169).
+pub fn srn_layer(base: &str, group: Group) -> String {
+    format!("{base}{}", group.suffix())
+}
+
+/// SRN areas and itineraries outside groomed domains touching the site box (G5, written
+/// by `skimap build-all` in `srn/`): the content of an SRN site, one layer per licence
+/// group of their features (#169): ODbL (OSM, Licence Ouverte), CC BY-SA (Camptocamp)
+/// apart with its attribution, personal (no reuse licence shown: Geotrek instances;
+/// areas mixing ODbL and CC BY-SA itineraries) only with `personal_sources`.
+fn srn_specs() -> Vec<Spec> {
+    let mut v = Vec::new();
+    for (base, title, file) in [
+        (
+            "srn-areas",
+            "Domaines de jeu et traversées SRN (hors stations)",
+            "srn_areas.geojson",
+        ),
+        (
+            "srn-routes",
+            "Itinéraires SRN (hors stations)",
+            "srn_routes.geojson",
+        ),
+    ] {
+        for group in Group::ALL {
+            let title = match group {
+                Group::Odbl => title.to_owned(),
+                Group::ShareAlike => format!("{title}, CC BY-SA"),
+                Group::Personal => format!("{title}, usage personnel"),
+            };
+            v.push(Spec {
+                id: Cow::Owned(srn_layer(base, group)),
+                title: Cow::Owned(title),
+                file: Cow::Borrowed(file),
+                transform: Transform::Licence(group),
+                notes: &[
+                    "Une couche par famille de licences de ses entités (#169, docs/licences/l3-combinaison.md) : ODbL et Licence Ouverte (`srn-*`), CC BY-SA à part avec son attribution (`srn-*-cc-by-sa`), sans licence de réutilisation connue ou licences incompatibles mêlées (`srn-*-personnel`, seulement avec personal_sources).",
+                ],
+                ..vector("", "", "srn", "", "srn.meta.json", true)
+            });
+        }
+    }
+    v
+}
+
+/// Licence group of a feature ([`Transform::Licence`]): of its `licences` (an SRN area:
+/// the licences of its itineraries) or of its `licence`; without either, personal.
+pub fn feature_group(props: &Value) -> Group {
+    if let Some(ls) = props.get("licences").and_then(Value::as_array) {
+        return licence::group(
+            ls.iter()
+                .map(|l| licence::classify(l.as_str().unwrap_or(""))),
+        );
+    }
+    match props.get("licence").and_then(Value::as_str) {
+        Some(l) => licence::group([licence::classify(l)]),
+        None => Group::Personal,
+    }
+}
+
+/// Why the OSM huts and the links between the hut sources are personal (L3 rule 1).
+pub const L3_HUTS: &str = "abris OSM et liens entre sources de refuges : OSM (ODbL) et refuges.info, Camptocamp (CC BY-SA) se complètent pour un même type d'objet, ce qu'aucune licence ne permet dans un pack publié (règle 1 de docs/licences/l3-combinaison.md)";
+
+fn catalog_without_srn() -> Vec<Spec> {
     vec![
         vector(
             "domaines",
@@ -164,24 +248,6 @@ pub fn catalog() -> Vec<Spec> {
             "analysed_area.geojson",
             "coverage.meta.json",
             false,
-        ),
-        // SRN areas and itineraries outside groomed domains touching the site box
-        // (G5, written by `skimap build-all` in `srn/`): the content of an SRN site.
-        vector(
-            "srn-areas",
-            "Domaines de jeu et traversées SRN (hors stations)",
-            "srn",
-            "srn_areas.geojson",
-            "srn.meta.json",
-            true,
-        ),
-        vector(
-            "srn-routes",
-            "Itinéraires SRN (hors stations)",
-            "srn",
-            "srn_routes.geojson",
-            "srn.meta.json",
-            true,
         ),
         vector(
             "avalanche-areas",
@@ -284,14 +350,20 @@ pub fn catalog() -> Vec<Spec> {
             "refuges.meta.json",
             true,
         ),
-        vector(
-            "refuges-osm",
-            "Refuges et abris (OpenStreetMap)",
-            "refuges",
-            "osm.geojson",
-            "refuges.meta.json",
-            true,
-        ),
+        // L3 rule 1 (docs/licences/l3-combinaison.md): the OSM huts complete refuges.info
+        // (the style draws those it lacks, the day plan keeps one of each pair): OSM and
+        // CC BY-SA data for one feature type, which no licence allows in a published pack.
+        Spec {
+            personal: Some(L3_HUTS),
+            ..vector(
+                "refuges-osm",
+                "Refuges et abris (OpenStreetMap)",
+                "refuges",
+                "osm.geojson",
+                "refuges.meta.json",
+                true,
+            )
+        },
         vector(
             "refuges-info",
             "Refuges et abris (refuges.info)",
@@ -308,13 +380,16 @@ pub fn catalog() -> Vec<Spec> {
             "refuges.meta.json",
             false,
         ),
-        data(
-            "refuges-links",
-            "Liens entre les trois sources de refuges",
-            "refuges",
-            "links.json",
-            "refuges.meta.json",
-        ),
+        Spec {
+            personal: Some(L3_HUTS),
+            ..data(
+                "refuges-links",
+                "Liens entre les trois sources de refuges",
+                "refuges",
+                "links.json",
+                "refuges.meta.json",
+            )
+        },
         data(
             "avalanche-summary",
             "Avalanches historiques : synthèse",
@@ -407,6 +482,7 @@ const fn core_raster(id: &'static str, title: &'static str, file: &'static str) 
             "Raster SKR1 de skimap-core (en-tête de 72 octets, voir offpiste.meta.json), compressé gzip dans le pack.",
         ],
         depends: OFFPISTE_INPUTS,
+        personal: None,
     }
 }
 
@@ -657,18 +733,29 @@ pub fn include(spec: &Spec, out: &Path, root: &Path, personal_sources: bool) -> 
             ),
         }));
     }
-    let meta = match spec.meta {
+    let mut meta = match spec.meta {
         Some(m) => read_meta(&dir.join(m))?,
         None => None,
     };
-    let own = meta.as_ref().is_some_and(|m| restricted(&m.meta.sources));
+    // The sources of this file only: those of its licence group (#169).
+    let group = file_group(spec, meta.as_ref());
+    if let (Some(m), Some(g)) = (meta.as_mut(), group) {
+        m.meta.sources = sources_of_group(&m.meta.sources, g);
+    }
+    let own = meta.as_ref().is_some_and(|m| restricted(&m.meta.sources))
+        || group == Some(Group::Personal);
     let derived = personal_inputs(out, spec.depends)?;
-    let personal = own || !derived.is_empty();
+    let personal = own || !derived.is_empty() || spec.personal.is_some();
     if personal && !personal_sources {
         return Ok(Outcome::Missing(Missing {
             id: spec.id.to_string(),
-            reason: "source à usage personnel seulement : option personal_sources désactivée"
-                .to_owned(),
+            reason: match spec.personal {
+                Some(why) => format!(
+                    "usage personnel seulement ({why}) : option personal_sources désactivée"
+                ),
+                None => "source à usage personnel seulement : option personal_sources désactivée"
+                    .to_owned(),
+            },
         }));
     }
     let ext = ext_of(&spec.file);
@@ -678,9 +765,11 @@ pub fn include(spec: &Spec, out: &Path, root: &Path, personal_sources: bool) -> 
             format!("layers/{}.{ext}.gz", spec.id),
             format!("{ext}+gzip"),
         ),
-        Transform::GeoJson | Transform::Zones | Transform::Pistes | Transform::EstimatedPistes => {
-            (format!("layers/{}.geojson", spec.id), "geojson".to_owned())
-        }
+        Transform::GeoJson
+        | Transform::Zones
+        | Transform::Pistes
+        | Transform::EstimatedPistes
+        | Transform::Licence(_) => (format!("layers/{}.geojson", spec.id), "geojson".to_owned()),
     };
     let dst = root.join(&file);
     let mut features = None;
@@ -689,7 +778,11 @@ pub fn include(spec: &Spec, out: &Path, root: &Path, personal_sources: bool) -> 
     let bytes = match spec.transform {
         Transform::Copy => copy_data(&src, &dst)?,
         Transform::Gzip => gzip_file(&src, &dst)?,
-        Transform::GeoJson | Transform::Zones | Transform::Pistes | Transform::EstimatedPistes => {
+        Transform::GeoJson
+        | Transform::Zones
+        | Transform::Pistes
+        | Transform::EstimatedPistes
+        | Transform::Licence(_) => {
             let text = std::fs::read_to_string(&src).map_err(|e| Error::io(&src, e))?;
             let mut v: Value = serde_json::from_str(&text)
                 .map_err(|e| Error::json(src.display().to_string(), e))?;
@@ -711,6 +804,20 @@ pub fn include(spec: &Spec, out: &Path, root: &Path, personal_sources: bool) -> 
                     }));
                 }
             }
+            if let Transform::Licence(g) = spec.transform {
+                if let Some(fs) = v.get_mut("features").and_then(Value::as_array_mut) {
+                    fs.retain(|f| feature_group(&f["properties"]) == g);
+                }
+                if v["features"].as_array().is_none_or(Vec::is_empty) {
+                    return Ok(Outcome::Missing(Missing {
+                        id: spec.id.to_string(),
+                        reason: format!(
+                            "aucune entité de {} sous une licence du groupe {g:?}",
+                            spec.file
+                        ),
+                    }));
+                }
+            }
             let (n, types) = compact_geojson(&mut v, &src)?;
             features = Some(n);
             geometry_types = types;
@@ -718,9 +825,14 @@ pub fn include(spec: &Spec, out: &Path, root: &Path, personal_sources: bool) -> 
             write_bytes(&dst, &out)?
         }
     };
-    let meta_rel = match spec.meta {
-        Some(m) => copy_meta(&dir, m, root)?,
-        None => None,
+    let meta_rel = match (spec.meta, spec.transform, meta.as_ref()) {
+        // The metadata of a licence group: its own sources, no figures (they name the
+        // itineraries of every source).
+        (Some(m), Transform::Licence(g), Some(read)) => {
+            Some(write_group_meta(&dir, m, g, &read.meta, root)?)
+        }
+        (Some(m), _, _) => copy_meta(&dir, m, root)?,
+        (None, _, _) => None,
     };
     let mut l = layer_entry(
         EntryParts {
@@ -761,6 +873,13 @@ pub fn include(spec: &Spec, out: &Path, root: &Path, personal_sources: bool) -> 
             r.name_from_plan
         ));
     }
+    if let Some(why) = spec.personal {
+        l.personal_use_only = true;
+        l.notes.push(format!("Usage personnel : {why}."));
+    }
+    if group == Some(Group::Personal) {
+        l.personal_use_only = true;
+    }
     if !derived.is_empty() {
         l.personal_use_only = true;
         l.notes.push(format!(
@@ -769,6 +888,70 @@ pub fn include(spec: &Spec, out: &Path, root: &Path, personal_sources: bool) -> 
         ));
     }
     Ok(Outcome::Included(Box::new(l)))
+}
+
+/// Licence group of the file of `spec` (#169): the group of a [`Transform::Licence`]
+/// layer; else the group of the licence its metadata gives the file (`files[].licence`)
+/// when that licence is known (the refuges: one file per source); else none (the sources
+/// of the layer are kept as they are).
+pub fn file_group(spec: &Spec, meta: Option<&MetaRead>) -> Option<Group> {
+    if let Transform::Licence(g) = spec.transform {
+        return Some(g);
+    }
+    let f = meta?
+        .meta
+        .files
+        .iter()
+        .find(|f| f.name == spec.file.as_ref())?;
+    match licence::classify(f.licence.as_deref()?) {
+        Family::Personal => None,
+        Family::ShareAlike => Some(Group::ShareAlike),
+        Family::Odbl | Family::Attribution => Some(Group::Odbl),
+    }
+}
+
+/// The sources of a file of licence group `g`: those whose family fits it (ODbL file:
+/// ODbL and attribution-only sources; CC BY-SA file: CC BY-SA and attribution-only
+/// sources); a personal file keeps them all (it is made of all of them).
+pub fn sources_of_group(sources: &[Source], g: Group) -> Vec<Source> {
+    sources
+        .iter()
+        .filter(|s| g == Group::Personal || licence::of_source(s).fits(g))
+        .cloned()
+        .collect()
+}
+
+/// Writes the metadata of a licence group of a pipeline layer
+/// (`layers/meta/<origin>/<stem><suffix>.meta.json`): the metadata with the sources of the
+/// group only and without the figures and parameters (which name the itineraries of
+/// every source). Returns its pack path.
+fn write_group_meta(
+    dir: &Path,
+    name: &str,
+    g: Group,
+    meta: &LayerMeta,
+    root: &Path,
+) -> Result<String> {
+    let origin = dir
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let stem = name.trim_end_matches(".meta.json");
+    let rel = format!("layers/meta/{origin}/{stem}{}.meta.json", g.suffix());
+    let mut m = meta.clone();
+    m.stats = Value::Null;
+    m.parameters = Value::Null;
+    m.notes.push(format!(
+        "Groupe de licences du fichier (#169) : {} ; sources du groupe seulement.",
+        g.licence_fr()
+    ));
+    for f in &mut m.files {
+        f.licence = Some(g.licence_fr().to_owned());
+        f.count = None;
+    }
+    let bytes = serde_json::to_vec(&m).map_err(|e| Error::json(&rel, e))?;
+    write_bytes(&root.join(&rel), &bytes)?;
+    Ok(rel)
 }
 
 /// Pack layer of the estimated traces (G1).
@@ -1072,6 +1255,7 @@ pub fn annotate_zones(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
 
     #[test]
     fn sources_both_spellings_and_personal() {
@@ -1087,6 +1271,105 @@ mod tests {
         assert_eq!(lm.valid_until.as_deref(), Some("2026-12-14"));
         assert_eq!(lm.valid_from, None);
         assert_eq!(lm.validity.as_deref(), Some("un jour"));
+    }
+
+    /// SRN itineraries and areas of an SRN site (#169): a published pack takes the ODbL
+    /// and Licence Ouverte ones in `srn-*`, the CC BY-SA ones apart in `srn-*-cc-by-sa`
+    /// with their own sources, nothing without a reuse licence nor any area mixing ODbL
+    /// and CC BY-SA; a personal pack adds those in `srn-*-personnel`.
+    #[test]
+    fn srn_layers_split_by_licence() {
+        type Got = BTreeMap<String, (Vec<String>, Vec<String>, bool)>;
+        let out = tempfile::tempdir().unwrap();
+        let dir = out.path().join("srn");
+        std::fs::create_dir_all(&dir).unwrap();
+        let line = json!({"type": "LineString", "coordinates": [[6.0, 46.0], [6.01, 46.01]]});
+        let poly = json!({"type": "Polygon", "coordinates": [[[6.0, 46.0], [6.01, 46.0], [6.01, 46.01], [6.0, 46.0]]]});
+        let gt = "aucune licence affichée par l'instance ; publié sous Licence Ouverte 2.0 : à confirmer";
+        let route = |id: &str, l: &str| {
+            json!({"type": "Feature", "geometry": line.clone(),
+                   "properties": {"id": id, "name": id, "licence": l, "activity": "srn"}})
+        };
+        let area = |id: &str, ls: &[&str]| {
+            json!({"type": "Feature", "geometry": poly.clone(),
+                   "properties": {"id": id, "kind": "domaine", "licences": ls}})
+        };
+        let routes = json!({"type": "FeatureCollection", "features": [
+            route("osm", "ODbL 1.0"),
+            route("dt", "Licence Ouverte 2.0 (Etalab), via DATAtourisme"),
+            route("c2c", "CC BY-SA 3.0"),
+            route("gt", gt),
+        ]});
+        let areas = json!({"type": "FeatureCollection", "features": [
+            area("a-osm-dt", &["ODbL 1.0", "Licence Ouverte 2.0"]),
+            area("a-c2c", &["CC BY-SA 3.0"]),
+            area("a-osm-c2c", &["CC BY-SA 3.0", "ODbL 1.0"]),
+            area("a-gt", &[gt, "CC BY-SA 3.0"]),
+        ]});
+        std::fs::write(dir.join("srn_routes.geojson"), routes.to_string()).unwrap();
+        std::fs::write(dir.join("srn_areas.geojson"), areas.to_string()).unwrap();
+        let src = |name: &str, l: &str| json!({"name": name, "url": "https://x", "licence": l, "attribution": name});
+        let meta = json!({"layer": "srn", "site": "s", "generated_at": "2026-11-17T00:00:00Z",
+            "sources": [src("OpenSnowMap", "ODbL 1.0"), src("DATAtourisme", "Licence Ouverte 2.0"),
+                        src("Camptocamp", "CC BY-SA 3.0"), src("Geotrek PNR", gt)],
+            "stats": {"routes_dropped_groomed_not_osm": [{"name": "gt"}]}});
+        std::fs::write(dir.join("srn.meta.json"), meta.to_string()).unwrap();
+        let run = |personal: bool| -> Got {
+            let root = tempfile::tempdir().unwrap();
+            let mut got = BTreeMap::new();
+            for spec in catalog().into_iter().filter(|s| s.origin == "srn") {
+                let Outcome::Included(l) =
+                    include(&spec, out.path(), root.path(), personal).unwrap()
+                else {
+                    continue;
+                };
+                let read = |rel: &str| -> Value {
+                    serde_json::from_str(&std::fs::read_to_string(root.path().join(rel)).unwrap())
+                        .unwrap()
+                };
+                let ids = read(&l.file)["features"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|f| f["properties"]["id"].as_str().unwrap().to_owned())
+                    .collect();
+                let meta = read(l.meta.as_deref().unwrap());
+                assert!(meta["stats"].is_null(), "{}: figures of every source", l.id);
+                let names = l.sources.iter().map(|s| s.name.clone()).collect();
+                got.insert(l.id.clone(), (ids, names, l.personal_use_only));
+            }
+            got
+        };
+        let s = |v: &[&str]| v.iter().map(|x| (*x).to_owned()).collect::<Vec<_>>();
+        let public = run(false);
+        assert_eq!(
+            public.keys().collect::<Vec<_>>(),
+            [
+                "srn-areas",
+                "srn-areas-cc-by-sa",
+                "srn-routes",
+                "srn-routes-cc-by-sa"
+            ]
+        );
+        assert_eq!(
+            public["srn-routes"],
+            (
+                s(&["osm", "dt"]),
+                s(&["OpenSnowMap", "DATAtourisme"]),
+                false
+            )
+        );
+        assert_eq!(
+            public["srn-routes-cc-by-sa"],
+            (s(&["c2c"]), s(&["DATAtourisme", "Camptocamp"]), false)
+        );
+        assert_eq!(public["srn-areas"].0, s(&["a-osm-dt"]));
+        assert_eq!(public["srn-areas-cc-by-sa"].0, s(&["a-c2c"]));
+        let personal = run(true);
+        assert_eq!(personal["srn-routes-personnel"].0, s(&["gt"]));
+        assert_eq!(personal["srn-areas-personnel"].0, s(&["a-osm-c2c", "a-gt"]));
+        assert!(personal["srn-routes-personnel"].2 && !personal["srn-routes"].2);
+        assert_eq!(personal["srn-routes"], public["srn-routes"]);
     }
 
     #[test]
