@@ -9,9 +9,12 @@ mod fixtures;
 
 use chrono::NaiveDate;
 use skimap_assist::inputs::{Paths, SiteData};
+use skimap_common::geom::LonLat;
 use skimap_common::layout::DataLayout;
 use skimap_common::site::CERVIERES;
-use skimap_ffi::tracking::{GpsModeView, PhaseView, TrackEvent, TrackingSession, pack_fixes};
+use skimap_ffi::tracking::{
+    BackView, CAR_FILE, GpsModeView, PhaseView, TrackEvent, TrackingSession, pack_fixes,
+};
 use skimap_ffi::tracking_day::{GroupSpec, group_learn, group_new, sms_text};
 use skimap_plan::plan::{self, Context, PlanRequest};
 use skimap_plan::presets;
@@ -279,31 +282,142 @@ fn bring_me_back_on_the_fixtures() {
     let b = s.back_start(t).unwrap();
     assert_eq!(b.guidance.route, "back");
     assert!(b.spoken[0].text.starts_with("Il reste"));
-    assert!(b.guidance.remaining_m > 0.5 * gone && b.guidance.remaining_m < 1.3 * gone);
+    // On the pistes: home to the car (the first fix confirmed, not the cached one) along
+    // them, not longer than the way skied.
+    let bv = b.guidance.back.clone().expect("way back");
+    assert_eq!((bv.target.as_str(), bv.way.as_str()), ("car", "pistes"));
+    let car = LonLat::new(bv.target_lon, bv.target_lat);
+    let first = LonLat::new(out[0].1, out[0].2);
+    assert!(car.haversine_m(first) < 30.0, "{bv:?}");
+    assert!(
+        b.guidance.remaining_m > 0.3 * gone && b.guidance.remaining_m < 1.3 * gone,
+        "{} {gone}",
+        b.guidance.remaining_m
+    );
+    // Skiing where the arrow points (the next useful point of the way), 4 m/s, a fix every
+    // 2 s, leads to the car.
     let mut kinds = Vec::new();
     let mut arrived = false;
-    let back: Vec<_> = out.iter().rev().step_by(2).copied().collect();
-    for c in back.chunks(5) {
-        let fixes: Vec<_> = c
-            .iter()
-            .map(|(_, lon, lat)| {
-                t += 2000;
-                (t, *lon, *lat)
-            })
-            .collect();
+    let mut here = LonLat::new(bv.here_lon, bv.here_lat);
+    let mut guide = (bv.guide_lon, bv.guide_lat);
+    let mut offs = 0;
+    'ski: for _ in 0..400 {
+        let mut fixes = Vec::new();
+        for _ in 0..5 {
+            let g = LonLat::new(guide.0, guide.1);
+            let d = here.haversine_m(g);
+            let f = if d > 8.0 { 8.0 / d } else { 1.0 };
+            here = LonLat::new(
+                here.lon + f * (g.lon - here.lon),
+                here.lat + f * (g.lat - here.lat),
+            );
+            t += 2000;
+            fixes.push((t, here.lon, here.lat));
+        }
         let r = s.push_fixes(pack_fixes(&fixes)).unwrap();
         kinds.extend(r.spoken.iter().flat_map(|x| x.kinds.clone()));
-        if r.guidance.route != "back" {
-            arrived = true;
-            break;
+        match r.guidance.back {
+            Some(v) => {
+                offs += usize::from(v.off_way);
+                guide = (v.guide_lon, v.guide_lat);
+            }
+            None => {
+                arrived = true;
+                break 'ski;
+            }
         }
     }
     assert!(arrived, "{kinds:?}");
+    assert!(here.haversine_m(car) < 60.0, "{}", here.haversine_m(car));
+    assert_eq!(offs, 0, "{kinds:?}");
     assert_eq!(kinds.iter().filter(|k| *k == "arrive").count(), 1);
-    assert!(kinds.iter().any(|k| k == "turn"), "{kinds:?}");
+    assert!(kinds.iter().all(|k| k != "off_route"), "{kinds:?}");
     // Back on the tracker's route and GPS mode.
     let after = s.guidance().unwrap();
     assert_ne!(after.route, "back");
     let stop = s.back_stop().unwrap();
     assert_ne!(stop.guidance.route, "back");
+}
+
+#[test]
+fn the_car_set_on_the_map_is_where_bring_me_back_goes() {
+    let layout = DataLayout::new(fixtures::data());
+    let mut data = SiteData::load(&layout, &CERVIERES, &Paths::default()).unwrap();
+    let ctx = Context::load(&layout, &CERVIERES).unwrap();
+    let date = NaiveDate::from_ymd_opt(2027, 1, 15).unwrap();
+    let req = presets::requests(&CERVIERES, date).remove(0);
+    let m = plan::morning(&data, &req);
+    let p = plan::build(&mut data, &m, 0, &ctx).unwrap();
+    let g = data.graph.take().unwrap();
+    let trk = plan::track(&p, &g).unwrap().to_bytes();
+    let sc = Scenario {
+        name: "aller".into(),
+        start: scenario::departure_utc(&p),
+        slowdown: 1.0,
+        steps: Vec::new(),
+        sigma_m: 5.0,
+        forest: false,
+        seed: 1,
+        tail_s: 0.0,
+        behaviour: None,
+        step_counter: false,
+    };
+    let run = scenario::run(
+        &sc,
+        &p,
+        TrackView::new(&trk).unwrap(),
+        &g,
+        TrackerParams::default(),
+    )
+    .unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let open = || {
+        TrackingSession::start(
+            p.clone(),
+            trk.clone(),
+            g.clone(),
+            None,
+            dir.path().to_path_buf(),
+        )
+        .unwrap()
+    };
+    let s = open();
+    let t0 = run.inputs[0].t();
+    let out: Vec<(i64, f64, f64)> = run
+        .inputs
+        .iter()
+        .filter_map(|i| match i {
+            Input::Fix { t, pos } if (*t - t0).num_seconds() < 900 => {
+                Some((t.timestamp_millis(), pos.lon, pos.lat))
+            }
+            _ => None,
+        })
+        .collect();
+    for c in out.chunks(12) {
+        s.push_fixes(pack_fixes(c)).unwrap();
+    }
+    let t = out.last().unwrap().0 + 1000;
+    // Recorded on its own: the first fix.
+    let auto = s.back_start(t).unwrap().guidance.back.unwrap();
+    assert_eq!(auto.target, "car");
+    let first = LonLat::new(out[0].1, out[0].2);
+    let at = |v: &BackView| LonLat::new(v.target_lon, v.target_lat);
+    assert!(at(&auto).haversine_m(first) < 30.0, "{auto:?}");
+    // « La voiture est ici », 120 m east of the start, while going back: the way back goes
+    // there now.
+    let (lon, lat) = (out[0].1 + 120.0 / 78_700.0, out[0].2);
+    let r = s.set_car(lon, lat).unwrap();
+    let v = r.guidance.back.unwrap();
+    assert_eq!(v.target, "car");
+    let car = LonLat::new(lon, lat);
+    assert!(at(&v).haversine_m(car) < 1.0, "{v:?}");
+    assert!(dir.path().join(CAR_FILE).is_file());
+    assert!(s.set_car(f64::NAN, 0.0).is_err());
+    // Kept after a restart.
+    drop(s);
+    let s = open();
+    let v = s.back_start(t + 1000).unwrap().guidance.back.unwrap();
+    assert!(at(&v).haversine_m(car) < 1.0, "{v:?}");
+    let stop = s.back_stop().unwrap();
+    assert!(stop.guidance.back.is_none());
 }

@@ -47,6 +47,7 @@ import fr.skimap.tracking.Guidance
 import fr.skimap.tracking.GuidanceLabels
 import fr.skimap.tracking.GuidanceText
 import fr.skimap.tracking.Phase
+import fr.skimap.tracking.Proposal
 import fr.skimap.tracking.Tracking
 import fr.skimap.tracking.TrackingState
 import fr.skimap.tracking.Turn
@@ -220,7 +221,10 @@ fun GuidanceBar(
             val s = g.switch
             if (p != null) {
                 Column(Modifier.padding(start = 10.dp, end = 10.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(p.text, style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        if (p.kind == Proposal.BACK) stringResource(fr.skimap.tracking.R.string.back_proposal) else p.text,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         val pad = PaddingValues(horizontal = 6.dp)
                         Button(

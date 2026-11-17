@@ -45,10 +45,11 @@ private data class DayFacts(
 )
 
 /**
- * One hint at a time over the map, only when it matters (no permanent button): during a
- * day plan, the bearing back to the start (K7) is offered on its own when the plan's
- * forecast gives fog now or the skier is far from the route; otherwise the warning of the
- * less exposed terrain layer when it is shown (V7).
+ * One hint at a time over the map, only when it matters (no permanent button): going back
+ * (« ramène-moi », K4), the arrow to the next point of the way back when the skier is off
+ * the way or in the fog ([BackArrowHint]); during a day plan, the bearing back to the start
+ * (K7) is offered on its own when the plan's forecast gives fog now or the skier is far from
+ * the route; otherwise the warning of the less exposed terrain layer when it is shown (V7).
  */
 @Composable
 fun MapHint(modifier: Modifier = Modifier) {
@@ -71,6 +72,12 @@ fun MapHint(modifier: Modifier = Modifier) {
             }
     }
     val f = facts
+    // Going back: the arrow when off the way or in the fog.
+    val back = running?.guidance?.back?.takeIf { running.guidance.route == "back" && (it.offWay || f?.fog == true) }
+    if (running != null && back != null) {
+        BackArrowHint(back, running.guidance, modifier)
+        return
+    }
     val reason =
         when {
             f == null || running == null -> null

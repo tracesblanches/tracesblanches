@@ -42,9 +42,9 @@ use crate::card::Lang;
 use crate::tracking::{
     AlertKind, AlertView, BatchOut, GpsModeView, GpsRequestView, GuidanceView, INPUTS_FILE,
     NextTurn, PhaseView, RecapView, SpeechPriority, SpokenView, StepReport, TrackEvent,
-    TrackingError, TurnDirection, direction_view,
+    TrackingError, TurnDirection, back_view, direction_view,
 };
-use crate::tracking_back::Backtrack;
+use crate::tracking_back::{Backtrack, Target, TargetKind, WayKind};
 
 /// Description of a guided outing, written in its directory.
 pub const GUIDED_FILE: &str = "guided.json";
@@ -279,7 +279,7 @@ pub struct FogTarget {
     pub distance_m: Option<f64>,
 }
 
-fn point_of(f: &geojson::Feature) -> Option<LonLat> {
+pub(crate) fn point_of(f: &geojson::Feature) -> Option<LonLat> {
     match f.geometry.as_ref()?.value {
         geojson::GeometryValue::Point { ref coordinates } if coordinates.len() >= 2 => {
             Some(LonLat::new(coordinates[0], coordinates[1]))
@@ -288,7 +288,7 @@ fn point_of(f: &geojson::Feature) -> Option<LonLat> {
     }
 }
 
-fn prop<'a>(f: &'a geojson::Feature, k: &str) -> Option<&'a str> {
+pub(crate) fn prop<'a>(f: &'a geojson::Feature, k: &str) -> Option<&'a str> {
     f.properties.as_ref()?.get(k)?.as_str()
 }
 
@@ -1297,6 +1297,14 @@ impl Engine {
             proposal: None,
             switch: None,
             profile_proposal: None,
+            back: self.back.as_ref().map(|b| {
+                let start = Target {
+                    kind: TargetKind::Start,
+                    pos: b.end(),
+                    name: None,
+                };
+                back_view(b, &start, WayKind::Trace, self.last.map(|(_, p)| p))
+            }),
         }
     }
 
@@ -1383,6 +1391,7 @@ fn placeholder() -> GuidanceView {
         proposal: None,
         switch: None,
         profile_proposal: None,
+        back: None,
     }
 }
 

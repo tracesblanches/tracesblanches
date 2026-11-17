@@ -10,6 +10,7 @@
     <string name="switched">Route changed: %1$s</string>
     <string name="bring_me_back">Take me back</string>
     <string name="back_stop">Back to the plan</string>
+    <string name="back_proposal">Time to head back. Be guided back?</string>
     <string name="reminder_sms">Tell them: back home</string>
     <string name="profile_choose">Choose this profile</string>
     <string name="profile_keep">Keep the profile</string>

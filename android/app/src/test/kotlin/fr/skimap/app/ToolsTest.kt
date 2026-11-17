@@ -1,7 +1,9 @@
 package fr.skimap.app
 
 import android.hardware.SensorManager
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -16,14 +18,17 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.takahirom.roborazzi.captureRoboImage
+import fr.skimap.app.fog.BackArrow
 import fr.skimap.app.fog.Calibration
 import fr.skimap.app.fog.Compass
 import fr.skimap.app.fog.CompassReading
 import fr.skimap.app.fog.FogScreen
 import fr.skimap.app.fog.FogTags
 import fr.skimap.app.fog.FogUi
+import fr.skimap.app.fog.distanceText
 import fr.skimap.app.offpiste.OffpisteActions
 import fr.skimap.app.offpiste.OffpisteScreen
 import fr.skimap.app.offpiste.OffpisteTags
@@ -42,6 +47,7 @@ import fr.skimap.app.recap.RecapScreen
 import fr.skimap.app.recap.RecapTags
 import fr.skimap.app.recap.RecapUi
 import fr.skimap.app.rules.PlaceContent
+import fr.skimap.app.rules.PlaceTags
 import fr.skimap.core.FogTarget
 import fr.skimap.core.InfoAge
 import fr.skimap.core.Lang
@@ -61,6 +67,11 @@ import fr.skimap.core.openGuided
 import fr.skimap.core.outingDeleteAll
 import fr.skimap.core.outingHistory
 import fr.skimap.core.outingRecap
+import fr.skimap.tracking.BackGuide
+import fr.skimap.tracking.GpsMode
+import fr.skimap.tracking.Guidance
+import fr.skimap.tracking.Phase
+import fr.skimap.tracking.Turn
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -259,9 +270,82 @@ class ToolsTest {
                 ),
                 "Règles relevées dans les textes cités ; le texte officiel et la signalisation font foi.",
             )
-        rule.setContent { Themed { Surface { PlaceContent(r, onFog = {}, onOffpiste = {}) } } }
+        var car = 0
+        rule.setContent { Themed { Surface { PlaceContent(r, onFog = {}, onOffpiste = {}, onCar = { car++ }) } } }
         rule.onNodeWithText("Bivouac : interdit").assertIsDisplayed()
         capture("tools_place_rules")
+        // « La voiture est ici » (K4): one touch, optional.
+        rule.onNodeWithTag(PlaceTags.CAR).assertIsDisplayed().performClick()
+        assertEquals(1, car)
+    }
+
+    /** « Ramène-moi » going back to the car: 1 km south of the skier, the next point of the way 60 m west. */
+    private fun backGuidance(offWay: Boolean): Pair<BackGuide, Guidance> {
+        val back =
+            BackGuide(
+                target = "car",
+                targetName = "Parking du Bourget",
+                way = "trace_pistes",
+                hereLon = 6.7269,
+                hereLat = 44.8552,
+                guideLon = 6.7269 - 60.0 / 78_870.0,
+                guideLat = 44.8552,
+                guideBearingDeg = 270.0,
+                guideDistanceM = 60.0,
+                offWay = offWay,
+            )
+        val g =
+            Guidance(
+                Phase.MOVING,
+                "back",
+                "Boucle du Laus",
+                2_340.0,
+                2_340.0,
+                0.0,
+                Turn.LEFT,
+                300.0,
+                null,
+                2_700.0,
+                "45 min",
+                "15 h 20",
+                0,
+                null,
+                null,
+                55.0,
+                GpsMode.INTERACTION,
+                null,
+                null,
+                back = back,
+            )
+        return back to g
+    }
+
+    @Test
+    fun backArrowPointsToTheNextPointOfTheWayWithTheCompass() {
+        val (back, g) = backGuidance(offWay = true)
+        // The phone points north: the next point (west) is to the left.
+        val b = fogBearing(back.hereLon, back.hereLat, back.guideLon, back.guideLat, 0.0, Lang.FR)
+        assertEquals(-90.0, b.relativeDeg!!, 1.0)
+        rule.setContent { Themed { Surface(Modifier.fillMaxSize()) { Box(Modifier.padding(16.dp)) { BackArrow(back, g, b) } } } }
+        rule.onNodeWithTag(FogTags.BACK_ARROW).assertIsDisplayed()
+        rule.onNodeWithText("Vers la voiture").assertIsDisplayed()
+        rule.onNodeWithText("Reste 2,3 km · 45 min").assertIsDisplayed()
+        rule.onNodeWithText("Prochain point du retour : 60 mètres").assertIsDisplayed()
+        rule.onNodeWithText("à gauche").assertIsDisplayed()
+        capture("tools_back_arrow")
+    }
+
+    @Test
+    fun backArrowWithoutCompassSaysTheBearing() {
+        val (back, g) = backGuidance(offWay = true)
+        val b = fogBearing(back.hereLon, back.hereLat, back.guideLon, back.guideLat, null, Lang.FR)
+        val dest = back.copy(target = "destination", targetName = "Gîte du Laus")
+        rule.setContent { Themed { Surface(Modifier.fillMaxSize()) { Box(Modifier.padding(16.dp)) { BackArrow(dest, g, b) } } } }
+        rule.onNodeWithText("Vers Gîte du Laus").assertIsDisplayed()
+        rule.onNodeWithText("cap 270°, ouest").assertIsDisplayed()
+        rule.onNodeWithText("Sans boussole", substring = true).assertIsDisplayed()
+        assertEquals("850 m", distanceText(853.0, java.util.Locale.FRANCE))
+        assertEquals("2,3 km", distanceText(2_340.0, java.util.Locale.FRANCE))
     }
 
     @Test

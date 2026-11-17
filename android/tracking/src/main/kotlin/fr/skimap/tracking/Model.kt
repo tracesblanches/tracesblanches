@@ -60,6 +60,33 @@ data class Proposal(
     val id: Int,
     val kind: String,
     val text: String,
+) {
+    companion object {
+        /** « Ramène-moi » proposed when the return time of the plan calls for going home (K4). */
+        const val BACK = "back"
+    }
+}
+
+/**
+ * « Ramène-moi » under way (K4): where it goes, how, and the next useful point of the way,
+ * where the arrow of the screen points (never straight across the terrain to the end).
+ */
+data class BackGuide(
+    /** `destination` (of the day plan), `car`, `start` (no car known). */
+    val target: String,
+    /** Name of the destination or of the car park, when known. */
+    val targetName: String?,
+    /** `pistes`, `trace_pistes` (back along the way skied to the pistes), `trace`. */
+    val way: String,
+    val hereLon: Double,
+    val hereLat: Double,
+    val guideLon: Double,
+    val guideLat: Double,
+    /** From the last fix to the next useful point, degrees from true north. */
+    val guideBearingDeg: Double,
+    val guideDistanceM: Double,
+    /** Off the way: the arrow shows on its own. */
+    val offWay: Boolean,
 )
 
 /** The core asks whether to choose another group profile (X14), answered with one gesture. */
@@ -111,6 +138,8 @@ data class Guidance(
     val switch: RouteSwitch?,
     /** Profile proposal waiting for an answer (X14). */
     val profileProposal: ProfileProposal? = null,
+    /** « Ramène-moi » under way (K4). */
+    val back: BackGuide? = null,
 )
 
 /** End of the outing. */
@@ -185,6 +214,13 @@ interface TrackingCore : AutoCloseable {
     fun backStart(tMs: Long): Batch
 
     fun backStop(): Batch
+
+    /** « La voiture est ici » (K4): the car is there; `null` when the outing has no car (a guided outing). */
+    fun setCar(
+        tMs: Long,
+        lon: Double,
+        lat: Double,
+    ): Batch? = null
 
     fun sayNext(tMs: Long): Utterance?
 

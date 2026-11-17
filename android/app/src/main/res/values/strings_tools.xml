@@ -65,6 +65,8 @@
     <string name="place_source">Source: %1$s (%2$s)</string>
     <string name="place_fog">Bearing to this point</string>
     <string name="place_offpiste">Off-piste route to here</string>
+    <string name="place_car">My car is here</string>
+    <string name="place_car_done">Car noted here: « Take me back » leads here</string>
 
     <!-- A10 recap -->
     <string name="recap_title">My outings</string>
@@ -102,4 +104,13 @@
     <string name="alert_status_unavailable">Service not available (server alert not configured): rely on the SMS to your contact</string>
     <string name="alert_status_failed">Not deposited: %1$s</string>
     <string name="alert_status_returned">Return confirmed to the server</string>
+    <!-- « Ramène-moi » (K4): the arrow to the next point of the way back. -->
+    <string name="back_to_car">To the car</string>
+    <string name="back_to_destination">To %1$s</string>
+    <string name="back_to_finish">To the finish</string>
+    <string name="back_to_start">To the start</string>
+    <string name="back_next_point">Next point of the way back: %1$s</string>
+    <string name="back_left">%1$s · %2$s left</string>
+    <string name="back_arrow">Arrow to the next point of the way back</string>
+    <string name="back_no_compass">No compass: walk a few steps, the arrow follows your direction</string>
 </resources>

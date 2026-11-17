@@ -61,6 +61,8 @@
     <string name="place_source">Source : %1$s (%2$s)</string>
     <string name="place_fog">Cap vers ce point</string>
     <string name="place_offpiste">Hors piste jusqu\'ici</string>
+    <string name="place_car">La voiture est ici</string>
+    <string name="place_car_done">Voiture notée ici : « Ramène-moi » y mène</string>
 
     <string name="recap_title">Mes sorties</string>
     <string name="recap_none">Aucune sortie enregistrée pour l\'instant.</string>
@@ -95,4 +97,13 @@
     <string name="alert_status_unavailable">Service non disponible (alerte du serveur pas configurée) : compte sur le SMS à ton contact</string>
     <string name="alert_status_failed">Non déposé : %1$s</string>
     <string name="alert_status_returned">Retour confirmé au serveur</string>
+    <!-- « Ramène-moi » (K4) : la flèche vers le prochain point du retour. -->
+    <string name="back_to_car">Vers la voiture</string>
+    <string name="back_to_destination">Vers %1$s</string>
+    <string name="back_to_finish">Vers l\'arrivée</string>
+    <string name="back_to_start">Vers le départ</string>
+    <string name="back_next_point">Prochain point du retour : %1$s</string>
+    <string name="back_left">Reste %1$s · %2$s</string>
+    <string name="back_arrow">Flèche vers le prochain point du retour</string>
+    <string name="back_no_compass">Sans boussole : faites quelques pas, la flèche suit votre direction</string>
 </resources>

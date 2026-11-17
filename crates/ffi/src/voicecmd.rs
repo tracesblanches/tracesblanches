@@ -503,6 +503,7 @@ mod tests {
             proposal: None,
             switch: None,
             profile_proposal: None,
+            back: None,
         }
     }
 

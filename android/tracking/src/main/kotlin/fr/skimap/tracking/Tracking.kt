@@ -43,6 +43,17 @@ object Tracking {
     const val ACTION_BACK = "fr.skimap.tracking.BACK"
     const val ACTION_SAY = "fr.skimap.tracking.SAY"
 
+    /** « La voiture est ici » (K4), with [EXTRA_LON] and [EXTRA_LAT]. */
+    const val ACTION_CAR = "fr.skimap.tracking.CAR"
+    const val EXTRA_LON = "lon"
+    const val EXTRA_LAT = "lat"
+
+    /** A car set before the outing (no outing running), kept for the next one within [CAR_KEEP_MS]. */
+    const val KEY_CAR_LON = "car_lon"
+    const val KEY_CAR_LAT = "car_lat"
+    const val KEY_CAR_AT = "car_at"
+    const val CAR_KEEP_MS = 12 * 3_600_000L
+
     /** Answers to the proposal to choose another group profile (X14). */
     const val ACTION_PROFILE_ACCEPT = "fr.skimap.tracking.PROFILE_ACCEPT"
     const val ACTION_PROFILE_DECLINE = "fr.skimap.tracking.PROFILE_DECLINE"
@@ -110,5 +121,45 @@ object Tracking {
         action: String,
     ) {
         context.startService(Intent(context, service).setAction(action))
+    }
+
+    /**
+     * « La voiture est ici » (a long touch on the map, K4): to the outing running (the way
+     * back to the car follows), else kept for the next outing started within [CAR_KEEP_MS]
+     * (the car is otherwise recorded on its own at the start). Nothing to set beforehand.
+     */
+    fun setCar(
+        context: Context,
+        service: Class<out TrackingService>,
+        lat: Double,
+        lon: Double,
+        nowMs: Long = System.currentTimeMillis(),
+    ) {
+        if (state.value is TrackingState.Running) {
+            context.startService(Intent(context, service).setAction(ACTION_CAR).putExtra(EXTRA_LON, lon).putExtra(EXTRA_LAT, lat))
+        } else {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit {
+                putLong(KEY_CAR_LON, lon.toRawBits())
+                putLong(KEY_CAR_LAT, lat.toRawBits())
+                putLong(KEY_CAR_AT, nowMs)
+            }
+        }
+    }
+
+    /** The car set before the outing (longitude, latitude), if recent; taken once. */
+    fun takePendingCar(
+        context: Context,
+        nowMs: Long,
+    ): Pair<Double, Double>? {
+        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val at = p.getLong(KEY_CAR_AT, -1L)
+        if (at < 0) return null
+        val car = Double.fromBits(p.getLong(KEY_CAR_LON, 0L)) to Double.fromBits(p.getLong(KEY_CAR_LAT, 0L))
+        p.edit {
+            remove(KEY_CAR_LON)
+            remove(KEY_CAR_LAT)
+            remove(KEY_CAR_AT)
+        }
+        return car.takeIf { nowMs - at in 0..CAR_KEEP_MS }
     }
 }

@@ -10,6 +10,7 @@
     <string name="switched">Itinéraire changé : %1$s</string>
     <string name="bring_me_back">Ramène-moi</string>
     <string name="back_stop">Reprendre le plan</string>
+    <string name="back_proposal">Il est temps de rentrer. Être guidé pour le retour ?</string>
     <string name="reminder_sms">Prévenir : bien rentré</string>
     <string name="profile_choose">Choisir ce profil</string>
     <string name="profile_keep">Garder le profil</string>
