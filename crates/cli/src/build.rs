@@ -1535,8 +1535,8 @@ mod tests {
                 "{step}"
             );
         }
-        // Steps without an output directory are never judged.
-        assert_eq!(empty_output("domaines", dir, station), None);
+        // Steps without an output directory of the site are never judged.
+        assert_eq!(empty_output("planet", dir, station), None);
         std::fs::create_dir_all(dir.join("pistes")).unwrap();
         std::fs::write(dir.join("pistes/pistes.geojson"), fc(0)).unwrap();
         assert!(
