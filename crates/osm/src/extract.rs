@@ -344,7 +344,14 @@ pub fn build_from(site: &Site, layout: &DataLayout, planet: &Planet) -> Result<P
     for r in &reentries {
         tracing::info!(site = site.id, ?r, "outside path kept");
     }
-    let graph = Graph::build(&set, CONNECTOR_MAX_M);
+    // An SRN site is skied on its itineraries (#168): they are ways of its graph, after
+    // the OSM ways (`pistes.geojson` keeps the OSM ways only).
+    let srn = crate::srn_ways::site_srn(site, layout)?;
+    let mut graph_set = set.clone();
+    graph_set
+        .pistes
+        .extend(srn.ways.iter().map(|w| w.piste.clone()));
+    let graph = Graph::build(&graph_set, CONNECTOR_MAX_M);
 
     let mut features = Vec::with_capacity(set.pistes.len());
     for p in &set.pistes {
@@ -364,9 +371,16 @@ pub fn build_from(site: &Site, layout: &DataLayout, planet: &Planet) -> Result<P
     for (i, e) in graph.edges.iter().enumerate() {
         let mut props = match e.kind {
             EdgeKind::Piste { piste } => {
-                let mut m = piste_properties(&set, &set.pistes[piste], &site.bbox);
+                let mut m = piste_properties(&graph_set, &graph_set.pistes[piste], &site.bbox);
                 m.remove("length_m");
                 m.insert("kind".into(), json!("piste"));
+                if let Some(w) = piste
+                    .checked_sub(set.pistes.len())
+                    .and_then(|i| srn.ways.get(i))
+                {
+                    m.insert("osm_way_id".into(), Value::Null);
+                    m.insert("srn_route".into(), json!(w.route_id));
+                }
                 m
             }
             EdgeKind::Connector => {
@@ -500,18 +514,25 @@ pub fn build_from(site: &Site, layout: &DataLayout, planet: &Planet) -> Result<P
             json!("circulation seulement de from vers to"),
         );
         m.insert("length_m".into(), json!("longueur de l'arête, m"));
+        m.insert(
+            "srn_route".into(),
+            json!("zones SRN et traversées seulement : identifiant de l'itinéraire SRN (srn/srn_routes.geojson) dont l'arête est un morceau, osm_way_id null"),
+        );
     }
-    let meta = LayerMeta {
+    let srn_km = srn.ways.iter().map(|w| w.piste.length_m).sum::<f64>() / 1000.0;
+    let mut sources = vec![planet.source.clone()];
+    sources.extend(srn.sources.iter().cloned());
+    let mut meta = LayerMeta {
         tickets: vec!["P2 (#15)".to_owned()],
         valid_from: planet.valid_at.clone(),
         crs: Some("EPSG:4326 (WGS84, longitude, latitude)".to_owned()),
-        sources: vec![planet.source.clone()],
+        sources,
         files: vec![
             FileMeta::new("pistes.geojson", format!("ways OSM de ski nordique, raquettes et randonnée hivernale ayant au moins un sommet dans l'emprise du site, plus les ways hors de l'emprise qui ramènent le réseau dans l'emprise (chemin hors emprise le plus court, {} km au plus, propriété in_box = false)", REENTRY_MAX_M / 1000.0))
                 .licence(LICENCE)
                 .count(features.len())
                 .properties_json(&piste_properties_doc()),
-            FileMeta::new("graph_edges.geojson", format!("graphe de routage : ways coupés aux jonctions, un nœud au croisement de deux pistes sans nœud commun (hors pont, tunnel ou niveau), plus des connecteurs fermant les trous de moins de {CONNECTOR_MAX_M} m entre un cul-de-sac et une autre piste et de moins de {DEAD_END_PAIR_MAX_M} m entre deux culs-de-sac de parties disjointes du réseau (largeur d'une route)"))
+            FileMeta::new("graph_edges.geojson", format!("graphe de routage : ways coupés aux jonctions, un nœud au croisement de deux pistes sans nœud commun (hors pont, tunnel ou niveau), plus des connecteurs fermant les trous de moins de {CONNECTOR_MAX_M} m entre un cul-de-sac et une autre piste et de moins de {DEAD_END_PAIR_MAX_M} m entre deux culs-de-sac de parties disjointes du réseau (largeur d'une route) ; zone SRN ou traversée : plus les itinéraires SRN de la couche srn du site, joints aux pistes de la même façon (propriété srn_route, osm_way_id null)"))
                 .licence(LICENCE)
                 .count(edge_features.len())
                 .properties_json(&edge_doc),
@@ -535,6 +556,10 @@ pub fn build_from(site: &Site, layout: &DataLayout, planet: &Planet) -> Result<P
         stats: json!({ "summary": stats, "relations": relations, "reentries": reentries }),
         ..LayerMeta::new(LAYER, site.id)
     };
+    if crate::srn_ways::takes_itineraries(site) {
+        meta.parameters["srn_itineraries"] =
+            json!({"ways": srn.ways.len(), "km": (srn_km * 100.0).round() / 100.0});
+    }
     write_json(&dir.join(format!("{LAYER}.meta.json")), &meta)?;
     Ok(PistesOutput {
         dir,

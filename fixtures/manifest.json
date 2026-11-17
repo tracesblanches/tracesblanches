@@ -242,11 +242,11 @@
       "sha256": "0bfa95716463cd4a08a0126c61bac026986aae2a2ab8799422b8fbe875c4b03a"
     },
     {
-      "bytes": 1158170,
+      "bytes": 1158159,
       "licence": "odbl-osm",
       "origin": "data/out/chapelle-des-bois/routes/piste_graph.json",
       "path": "data/out/chapelle-des-bois/routes/piste_graph.json",
-      "sha256": "87b25f828e6ae1c782561870e7a74c749f063442758047df8f87284cd9d5c737"
+      "sha256": "e8fb162ac63836f91e8b7d50419c2fed6895e4c4dbbeeddc472a664aff1c03df"
     },
     {
       "bytes": 3659,
@@ -354,5 +354,5 @@
       "sha256": "cb16209f4949aaac6eab0cdaad14c5a660ed2897d17e93d96b4481dc1cbd2d8b"
     }
   ],
-  "total_bytes": 6608585
+  "total_bytes": 6608574
 }

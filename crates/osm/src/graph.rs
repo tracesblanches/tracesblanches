@@ -14,6 +14,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use rstar::primitives::{GeomWithData, Rectangle};
 use rstar::{AABB, RTree};
 use skimap_common::geom::LonLat;
+use skimap_common::output::round7;
 
 use crate::pistes::{Oneway, PisteSet};
 
@@ -130,6 +131,10 @@ fn insert_cuts(points: &mut [Vec<(i64, LonLat)>], mut cuts: Vec<Cut>) {
     });
     cuts.dedup_by(|a, b| a.0 == b.0 && a.3 == b.3);
     for (pi, si, _, id, pos) in cuts {
+        // At the precision the graph is written with (OSM's, 1e-7°): a node added a few
+        // millimetres from another one is that one once written, so it is merged with it
+        // here ([`merge_coincident`]) rather than joined by an edge of length 0 (#168).
+        let pos = LonLat::new(round7(pos.lon), round7(pos.lat));
         points[pi].insert(si + 1, (id, pos));
     }
 }
