@@ -234,7 +234,7 @@ pub fn france_only(
     PackInfo {
         dir: String::new(),
         site_id: id.to_owned(),
-        site_name: tx.all_domains().to_owned(),
+        site_name: tx.france_only_name().to_owned(),
         department: String::new(),
         pack_version: f.build.trim_end_matches(".pmtiles").to_owned(),
         generated_at: f.data_date.clone(),

@@ -785,6 +785,8 @@ fn france_basemap_alone_without_pack() {
         .unwrap();
         assert_eq!(view.set.len(), 0);
         assert_eq!(view.info.site_id, "libre");
+        // Not « all the installed areas »: there is none (#162).
+        assert_eq!(view.info.site_name, "France, aucun domaine installé");
         assert_eq!(
             view.info.validity_note,
             "Aucun pack installé : fond de France seul, données du 2026-11-17."

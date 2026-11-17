@@ -348,6 +348,7 @@ fn every_text_of_the_ffi_has_its_english() {
         t.no_offpiste_route().into(),
         t.arrival_range(at, at + chrono::Duration::minutes(20)),
         t.all_domains().into(),
+        t.france_only_name().into(),
         t.packs_note(&["X", "Y"]),
     ];
     for id in [

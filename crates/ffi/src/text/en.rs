@@ -544,6 +544,10 @@ impl Texts for En {
         format!("{} pack{s}: {}.", names.len(), names.join(", "))
     }
 
+    fn france_only_name(&self) -> &'static str {
+        "France, no area installed"
+    }
+
     fn france_only_note(&self, date: &str) -> String {
         format!("No pack installed: France basemap only, data of {date}.")
     }
