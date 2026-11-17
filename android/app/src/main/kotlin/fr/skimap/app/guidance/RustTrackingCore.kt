@@ -104,11 +104,21 @@ class RustTrackingCore(
 
     override fun writeGpx(): String = session.writeGpx()
 
+    override fun speechLang(): String = session.speechLang()
+
     override fun close() = session.close()
 
     companion object {
-        /** Opens the tracking of the plan in [planDir] (replays the inputs already recorded there). */
-        fun open(planDir: String): RustTrackingCore = RustTrackingCore(openTracking(planDir))
+        /**
+         * Opens the tracking of the plan in [planDir] (replays the inputs already recorded
+         * there), with the voice pack of the site under [voiceRoot] in the phone's language
+         * [lang] (VO6; the installed one of another language until it is downloaded).
+         */
+        fun open(
+            planDir: String,
+            voiceRoot: String?,
+            lang: String,
+        ): RustTrackingCore = RustTrackingCore(openTracking(planDir, voiceRoot, lang))
 
         fun map(b: BatchOut): Batch =
             Batch(

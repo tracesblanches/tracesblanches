@@ -42,6 +42,6 @@ adb logcat -s skimap   # « Q9 … », « day flow … », « energy: … »
 
 - Pas de reconnaissance d'activité (Play services) : la pause se décide sur les positions, les pas comptés (X10) et le mouvement significatif. Le compteur de pas en ski de fond n'est pas mesuré (rapport 09) ; vérifié sous Robolectric et sur émulateur (pas de capteur de pas sur l'émulateur).
 - Sons courts : réglage exposé par `Tracking.setEarcons`, pas encore d'écran de réglage dans l'app.
-- Textes venus du noyau (annonces, propositions, causes) : en français quelle que soit la langue ; voix anglaise non générée (VO6, reste).
+- Annonces dans la langue de la voix installée (VO6 : paquet de voix du site dans la langue du téléphone, sinon celui déjà installé ; voix Android dans la même langue, `TrackingCore.speechLang`). Textes écrits venus du noyau (propositions, causes, bilan) : encore en français.
 - Les touches de volume et le bouton du casque n'arrivent à la session que si elle est la session média active (la dernière à avoir joué du son) : une app de musique lancée après prend la main.
 - L'énergie réelle se mesure sur le Pixel (rails ODPM, Perfetto) ; sur l'émulateur, seulement le CPU.

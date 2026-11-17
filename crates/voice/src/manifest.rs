@@ -6,7 +6,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use crate::clips::{self, Clip, DayMonth, Direction, Fixed, TURNAROUND_MINUTES};
+use crate::lang::Lang;
 use crate::names::{Colour, PisteName, name_clip_id, name_clip_text};
+use crate::phrase::localise;
 use crate::quantity::{CLOCK_HOURS, Clock, distance_grid, duration_grid};
 
 /// Turn instructions carry their distance up to 2 km; beyond, "Dans X." then the turn.
@@ -190,6 +192,31 @@ pub fn manifest(names: &PackNames) -> Manifest {
                 text: name_clip_text(n),
             },
         );
+    }
+    m
+}
+
+/// The clip set of a pack in `lang` (VO6): the clips of [`manifest`], same ids, with the
+/// texts of `lang`.
+pub fn manifest_in(names: &PackNames, lang: Lang) -> Manifest {
+    in_lang(manifest(names), lang)
+}
+
+/// [`manifest_split`] in `lang`.
+pub fn manifest_split_in(public: &PackNames, personal: &PackNames, lang: Lang) -> Manifest {
+    in_lang(manifest_split(public, personal), lang)
+}
+
+fn in_lang(mut m: Manifest, lang: Lang) -> Manifest {
+    if lang == Lang::Fr {
+        return m;
+    }
+    for (id, (_, text)) in &mut m.clips {
+        let c = Clip {
+            id: id.clone(),
+            text: std::mem::take(text),
+        };
+        *text = localise(&c, Lang::Fr, lang).text;
     }
     m
 }

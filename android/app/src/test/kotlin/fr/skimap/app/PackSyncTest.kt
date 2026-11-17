@@ -7,7 +7,6 @@ import fr.skimap.core.listPacks
 import fr.skimap.core.openPacks
 import fr.skimap.core.syncState
 import fr.skimap.sync.HttpSource
-import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -199,28 +198,18 @@ class PackSyncTest {
 
     @Test
     fun serverCatalogAndAVoicePackApart() {
-        // The catalog as the server will publish it with voice packs apart (VO6, asked of
-        // the server): the English voice of the test site, published as its own pack.
-        val catalogFile = File(store, "public/catalog.json")
-        val catalog = JSONObject(catalogFile.readText())
-        val sites = catalog.getJSONArray("sites")
-        val voice =
-            (0 until sites.length()).map { sites.getJSONObject(it) }.first {
-                it.getJSONObject("site").getString("id") ==
-                    "test-voice-en"
-            }
-        val test = (0 until sites.length()).map { sites.getJSONObject(it) }.first { it.getJSONObject("site").getString("id") == "test" }
-        test.put(
-            "voice",
-            JSONArray().put(
-                JSONObject()
-                    .put("lang", "en")
-                    .put("index_url", voice.getString("index_url"))
-                    .put("latest", voice.getJSONObject("latest"))
-                    .put("first_download_bytes", voice.getLong("first_download_bytes")),
-            ),
+        // The catalog as the server publishes it (VO6): the English voice of the test site,
+        // a pack of its own, listed in the `voice` field of the site, not as a site.
+        val sites = JSONObject(File(store, "public/catalog.json").readText()).getJSONArray("sites")
+        assertEquals(listOf("test"), (0 until sites.length()).map { sites.getJSONObject(it).getJSONObject("site").getString("id") })
+        assertEquals(
+            "/v1/sites/test/voice/en/index.json",
+            sites
+                .getJSONObject(0)
+                .getJSONArray("voice")
+                .getJSONObject(0)
+                .getString("index_url"),
         )
-        catalogFile.writeText(catalog.toString())
 
         val cache = File(tmp.root, "phone/server")
         val sc = ServerCatalog({ http() }, cache)

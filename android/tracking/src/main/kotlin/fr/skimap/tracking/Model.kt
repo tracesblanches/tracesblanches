@@ -233,4 +233,10 @@ interface TrackingCore : AutoCloseable {
 
     /** Writes the trace as GPX; its path. */
     fun writeGpx(): String
+
+    /**
+     * Language of the announcements (`fr`, `en`, VO6): that of the voice pack in use, else
+     * the phone's. The Android voice reads the texts the pack has no clip for in it.
+     */
+    fun speechLang(): String = Announcer.phoneLang()
 }

@@ -34,8 +34,9 @@ enum Command {
         #[arg(long)]
         addr: Option<String>,
     },
-    /// Publishes pipeline packs (data/out/<site>/pack/) into the store; prints a JSON
-    /// report per pack. With `--all-in data/out`, every site pack found there (every domain
+    /// Publishes pipeline packs (data/out/<site>/pack/, and the voice packs
+    /// data/out/<site>/voice-pack/<lang>/) into the store; prints a JSON report per pack.
+    /// With `--all-in data/out`, every site pack and voice pack found there (every domain
     /// of France); the catalog is written once at the end.
     Publish {
         /// Pack directories.
@@ -137,16 +138,29 @@ fn serve(cfg: Config, addr: Option<String>) -> Result<()> {
     Ok(())
 }
 
-/// Every `<root>/<site>/pack/` with a `manifest.json`, by site.
+/// Every `<root>/<site>/pack/` with a `manifest.json`, by site, each followed by its voice
+/// packs `<root>/<site>/voice-pack/<lang>/` (VO6).
 fn site_packs(root: &std::path::Path) -> Result<Vec<PathBuf>> {
     let mut out = Vec::new();
-    for e in std::fs::read_dir(root).with_context(|| format!("{}", root.display()))? {
-        let p = e?.path().join("pack");
+    let mut sites: Vec<PathBuf> = std::fs::read_dir(root)
+        .with_context(|| format!("{}", root.display()))?
+        .map(|e| e.map(|e| e.path()))
+        .collect::<std::io::Result<_>>()?;
+    sites.sort();
+    for site in sites {
+        let p = site.join("pack");
         if p.join("manifest.json").is_file() {
             out.push(p);
         }
+        if let Ok(rd) = std::fs::read_dir(site.join("voice-pack")) {
+            let mut voices: Vec<PathBuf> = rd
+                .filter_map(|e| e.ok().map(|e| e.path()))
+                .filter(|v| v.join("manifest.json").is_file())
+                .collect();
+            voices.sort();
+            out.extend(voices);
+        }
     }
-    out.sort();
     Ok(out)
 }
 

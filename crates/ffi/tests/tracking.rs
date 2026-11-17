@@ -318,13 +318,13 @@ fn morning_to_recap(site: &'static Site, date: &str, budget_min: f64, return_bef
 
     // First half, then the process « dies »: a new session replays the recorded inputs.
     let half = run.inputs.len() / 2;
-    let s1 = open_tracking(v.plan_dir.clone()).unwrap();
+    let s1 = open_tracking(v.plan_dir.clone(), None, "fr".into()).unwrap();
     assert_eq!(s1.replayed(), 0);
     let ta = Instant::now();
     let (calls1, _) = follow(&s1, &mut direct, &run.inputs[..half]);
     let g1 = s1.guidance().unwrap();
     drop(s1);
-    let s2 = open_tracking(v.plan_dir.clone()).unwrap();
+    let s2 = open_tracking(v.plan_dir.clone(), None, "fr".into()).unwrap();
     assert_eq!(s2.replayed() as usize, half);
     assert_eq!(s2.guidance().unwrap(), g1, "state restored by the replay");
     let (calls2, results) = follow(&s2, &mut direct, &run.inputs[half..]);
@@ -450,7 +450,7 @@ fn full_data_q9_through_the_session() {
             TrackerParams::default(),
         )
         .unwrap();
-        let s = open_tracking(work.path().display().to_string()).unwrap();
+        let s = open_tracking(work.path().display().to_string(), None, "fr".into()).unwrap();
         let (calls, results) = follow(&s, &mut direct, &run.inputs);
         let modes: std::collections::BTreeSet<String> = results
             .iter()
@@ -583,7 +583,7 @@ fn full_data_rerouted_route_says_the_hazards_through_the_session() {
         .count();
     assert!(n_steps > 100, "{n_steps} step reports");
     let t0 = Instant::now();
-    let s = open_tracking(work.path().display().to_string()).unwrap();
+    let s = open_tracking(work.path().display().to_string(), None, "fr".into()).unwrap();
     println!(
         "session opened with the pack's layers in {} ms: {:?}",
         t0.elapsed().as_millis(),
@@ -693,7 +693,7 @@ fn full_data_bring_me_back() {
         TrackerParams::default(),
     )
     .unwrap();
-    let s = open_tracking(v.plan_dir.clone()).unwrap();
+    let s = open_tracking(v.plan_dir.clone(), None, "fr".into()).unwrap();
     // The first 40 minutes of the outing.
     let t_start = run.inputs[0].t();
     let out: Vec<(i64, f64, f64)> = run

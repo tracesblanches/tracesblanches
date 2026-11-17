@@ -295,6 +295,7 @@ abstract class TrackingService : Service() {
                 return
             }
         core = c
+        announcer.language(c.speechLang())
         planDir = dir
         ended = false
         recap = null

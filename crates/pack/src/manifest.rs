@@ -318,6 +318,10 @@ pub struct LegendEntry {
 pub struct VoiceSlot {
     /// `present` or `absent`.
     pub status: String,
+    /// Language of the clips (`fr`, `en`) in a voice pack apart from the base pack (VO6);
+    /// `None` in a site pack (whose clips, if any, are French).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lang: Option<String>,
     /// Clip manifest of the voice crate (`voice/manifest.json`).
     #[serde(default)]
     pub manifest: Option<String>,

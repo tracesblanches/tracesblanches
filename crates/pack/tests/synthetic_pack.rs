@@ -308,6 +308,8 @@ fn public_pack_has_no_restricted_source() {
             plan_ign: false,
             osm: false,
             personal_sources: personal,
+            // The voice inside the site pack, as before VO6 (still possible).
+            voice: true,
             ..BuildOptions::default()
         };
         let report = build(&CERVIERES, &layout, &dl, &opts).unwrap();
@@ -415,17 +417,33 @@ fn public_pack_voice_leaves_out_personal_names() {
         .offline(true)
         .build()
         .unwrap();
+    // VO6: the base pack has no voice; the clips go to the voice pack of their language.
+    let base = BuildOptions {
+        plan_ign: false,
+        osm: false,
+        ..BuildOptions::default()
+    };
+    let report = build(&CERVIERES, &layout, &dl, &base).unwrap();
+    let pack = Pack::open(&report.pack_dir).unwrap();
+    assert_eq!(pack.manifest().voice.status, "absent");
+    assert!(
+        !pack
+            .manifest()
+            .files
+            .iter()
+            .any(|f| f.path.starts_with("voice/"))
+    );
     for personal in [false, true] {
-        let opts = BuildOptions {
-            plan_ign: false,
-            osm: false,
-            personal_sources: personal,
-            ..BuildOptions::default()
-        };
-        let report = build(&CERVIERES, &layout, &dl, &opts).unwrap();
+        let report =
+            skimap_pack::build::build_voice_pack(&CERVIERES, &layout, "voice", "fr", personal)
+                .unwrap();
+        assert!(report.pack_dir.ends_with("voice-pack/fr"));
         let pack = Pack::open(&report.pack_dir).unwrap();
+        assert!(pack.verify().unwrap().is_empty());
         let m = pack.manifest();
         assert_eq!(m.voice.status, "present", "{:?}", m.voice);
+        assert_eq!(m.voice.lang.as_deref(), Some("fr"));
+        assert!(m.layers.is_empty() && m.basemaps.is_empty());
         let vm: Value = serde_json::from_slice(
             &std::fs::read(pack.path("voice/manifest.json").unwrap()).unwrap(),
         )
