@@ -8,6 +8,7 @@ publish.workspace = true
 
 [dependencies]
 skimap-common = { workspace = true, features = ["download"] }
+skimap-core.workspace = true
 chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
