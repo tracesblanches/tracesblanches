@@ -129,13 +129,19 @@ fn poll_enj(
     pistes: Option<&EnjPistes>,
     stats: &mut serde_json::Map<String, Value>,
 ) -> Result<SourcePoll> {
-    let (snap, origin) = enj::fetch_status(dl, area)?;
+    let (mut snap, origin) = enj::fetch_status(dl, area)?;
+    let geoms = enj::fetch_geometry(dl, area)?;
+    // `in_bbox=` selects the itineraries whose own box overlaps the area: keep those whose
+    // line crosses it (an itinerary 500 m away is not one of the domain).
+    if let enj::EnjArea::BBox(b) = area {
+        snap.treks
+            .retain(|t| geoms.get(&t.id).is_some_and(|(g, _)| enj::crosses(g, &b)));
+    }
     let content =
         serde_json::to_value(&snap).map_err(|e| skimap_common::Error::json("ENJ snapshot", e))?;
     let store = Store::new(dir.join(enj::SOURCE));
     let (changed, snapshot) = record(&store, now, origin, &content)?;
 
-    let geoms = enj::fetch_geometry(dl, area)?;
     let mut along = Vec::new();
     let (mut points, mut attached, mut reachable) = (0_usize, 0_usize, 0_usize);
     let features: Vec<Value> = snap

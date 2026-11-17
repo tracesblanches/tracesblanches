@@ -70,12 +70,18 @@ pub fn area(site: &Site) -> Option<EnjArea> {
 
 /// URL of the status list of an area.
 pub fn status_url(area: EnjArea) -> String {
-    format!("{API}/trek/?{}&language=fr&fields={STATUS_FIELDS}", area.query())
+    format!(
+        "{API}/trek/?{}&language=fr&fields={STATUS_FIELDS}",
+        area.query()
+    )
 }
 
 /// URL of the geometries of an area.
 pub fn geometry_url(area: EnjArea) -> String {
-    format!("{API}/trek/?{}&language=fr&fields=id,geometry,gpx", area.query())
+    format!(
+        "{API}/trek/?{}&language=fr&fields=id,geometry,gpx",
+        area.query()
+    )
 }
 
 /// URL of the labels.
@@ -669,7 +675,10 @@ mod tests {
         assert!(u.contains("cities=14") && u.contains("fields="));
         let b = BBox::new(46.5, 6.0, 46.7, 6.2);
         let u = status_url(EnjArea::BBox(b));
-        assert!(u.contains("in_bbox=6,46.5,6.2,46.7") && u.contains("fields="), "{u}");
+        assert!(
+            u.contains("in_bbox=6,46.5,6.2,46.7") && u.contains("fields="),
+            "{u}"
+        );
         let s = snapshot_from_json(EnjArea::BBox(b), TREKS.as_bytes(), LABELS.as_bytes()).unwrap();
         assert_eq!((s.city, s.bbox), (None, Some(b)));
         // Old snapshots (city as a number) still read.
@@ -682,16 +691,32 @@ mod tests {
     #[test]
     fn crossing() {
         let b = BBox::new(46.5, 6.0, 46.7, 6.2);
-        let line = |c: serde_json::Value| serde_json::json!({"type": "LineString", "coordinates": c});
+        let line =
+            |c: serde_json::Value| serde_json::json!({"type": "LineString", "coordinates": c});
         // A vertex inside (with altitude).
-        assert!(crosses(&line(serde_json::json!([[5.9, 46.6, 1000.0], [6.1, 46.6, 1010.0]])), &b));
+        assert!(crosses(
+            &line(serde_json::json!([
+                [5.9, 46.6, 1000.0],
+                [6.1, 46.6, 1010.0]
+            ])),
+            &b
+        ));
         // A segment crossing the box with both ends outside.
-        assert!(crosses(&line(serde_json::json!([[5.9, 46.6], [6.3, 46.6]])), &b));
+        assert!(crosses(
+            &line(serde_json::json!([[5.9, 46.6], [6.3, 46.6]])),
+            &b
+        ));
         // Outside.
-        assert!(!crosses(&line(serde_json::json!([[5.9, 46.4], [6.3, 46.45]])), &b));
+        assert!(!crosses(
+            &line(serde_json::json!([[5.9, 46.4], [6.3, 46.45]])),
+            &b
+        ));
         let multi = serde_json::json!({"type": "MultiLineString",
             "coordinates": [[[5.0, 46.0], [5.1, 46.0]], [[6.05, 46.55], [6.06, 46.56]]]});
         assert!(crosses(&multi, &b));
-        assert!(!crosses(&serde_json::json!({"type": "Point", "coordinates": [6.1, 46.6]}), &b));
+        assert!(!crosses(
+            &serde_json::json!({"type": "Point", "coordinates": [6.1, 46.6]}),
+            &b
+        ));
     }
 }

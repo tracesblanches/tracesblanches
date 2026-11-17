@@ -43,9 +43,11 @@ Par site, ski de fond (HMM / règle 80 %) : jeu de test jurassien 94,8 / 72,3 %,
 
 ## Sources
 
+Domaines ENJ : aucune liste à la main. `skimap enj-domaines` (lancé aussi par `skimap domaines` et par `skimap-job status` avant la liste des sites) lit tous les itinéraires de ski de l'ENJ (pratiques ski de fond et multi-activités, `trek/?practices=2,3`, géométrie en cache un jour) et donne `status.enj_bbox` (enveloppe du domaine) à chaque station damée dont l'enveloppe est traversée par au moins un tracé (`enj::crosses`). Le registre n'est réécrit que s'il change ; sa sortie compare la détection au rapport 08. Mesure du 17/11/2026 sur le vrai registre : 402 itinéraires de ski, 37 domaines détectés (36 avec une enveloppe, plus le jeu de test par sa ville) ; rapport 08 : 36 domaines ENJ, dont un seul non détecté (une enveloppe de 1 km que deux itinéraires frôlent à 500 m, retenus par `in_bbox=` de l'API sur leur seule emprise), et deux domaines détectés en plus (traversés par la GTJ et par deux pistes de Giron).
+
 | Site | Source | Accès | Fréquence |
 |---|---|---|---|
-| Jeu de test jurassien | API Geotrek de l'ENJ, `trek/?cities=14&language=fr&fields=…` (champ `route` : 1 Fermé, 2 Ouvert ; `labels` « Marquée … le JJ/MM/AAAA à HHhMM » ; `update_datetime`), géométries une fois par jour | sans clé ; ni `ETag` ni `Last-Modified`, donc la liste (9 ko avec `fields=`) est téléchargée à chaque fois | toutes les 15 min (durée de cache de la source `enj`) |
+| Tout domaine ENJ (X12b) | API Geotrek de l'ENJ, `trek/?in_bbox=<enveloppe du domaine>&language=fr&fields=…` (ou `cities=<ville>` quand la table des sites en donne une) ; seuls les itinéraires dont le tracé traverse l'enveloppe sont gardés (`in_bbox=` retient aussi ceux dont seule l'emprise la recoupe) (champ `route` : 1 Fermé, 2 Ouvert ; `labels` « Marquée … le JJ/MM/AAAA à HHhMM » ; `update_datetime`), géométries une fois par jour | sans clé ; ni `ETag` ni `Last-Modified`, donc la liste (9 ko avec `fields=`) est téléchargée à chaque fois | toutes les 15 min (durée de cache de la source `enj`) |
 | Jeu de test alpin | widget Nordic France `/widget/marqueblanche/station/3167` : secteurs, date de damage par secteur, état et commentaire par piste, « Mise à jour » | HTML seulement | au plus toutes les 3 h |
 | Jeu de test alpin | page « Info damage » de la mairie : un tableau par secteur (piste, ouvert/fermé, damage, classique, skating, commentaire), `article:modified_time` | HTML seulement | au plus toutes les 3 h |
 

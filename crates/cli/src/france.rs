@@ -1065,6 +1065,72 @@ mod tests {
     }
 
     #[test]
+    fn enj_domains_detected_from_the_itineraries() {
+        let trek = |id: i64, b: &BBox, inside: bool| {
+            let c = b.center();
+            let lat = if inside { c.lat } else { b.north + 0.005 };
+            skimap_status::enj::TrekGeometry {
+                id,
+                name: format!("t{id}"),
+                practice: Some("Ski de fond".into()),
+                geometry: json!({"type": "LineString",
+                    "coordinates": [[b.west - 0.01, lat, 1000.0], [b.east + 0.01, lat, 1000.0]]}),
+            }
+        };
+        let mut recs: Vec<SiteRecord> = site::evaluation_records().to_vec();
+        assert!(recs.len() >= 2);
+        // Test data: no ENJ city, one record crossed, one crossed only within 500 m of its
+        // box (what `in_bbox=` of the API would still select), one an SRN area.
+        for r in &mut recs {
+            r.status.enj_city = None;
+            r.status.enj_bbox = Some(BBox::new(0.0, 0.0, 1.0, 1.0));
+            r.kind = SiteKind::NordicStation;
+            r.sections.clear();
+            r.status_source = None;
+        }
+        recs[1].status_source = Some(site::StatusSourceInfo {
+            kind: "enj".into(),
+            name: String::new(),
+            url: None,
+            nordicfrance_station: None,
+            authorisation_required: String::new(),
+            evidence: String::new(),
+        });
+        let b0 = enj_box(&recs[0]);
+        let b1 = enj_box(&recs[1]);
+        let treks = vec![trek(1, &b0, true), trek(2, &b0, true), trek(3, &b1, false)];
+        let d = apply_enj(&mut recs, &treks);
+        assert_eq!(d.itineraries, 3);
+        assert_eq!(recs[0].status.enj_bbox, Some(b0));
+        assert_eq!(d.sites.get(&recs[0].id), Some(&2));
+        assert_eq!(recs[1].status.enj_bbox, None, "not crossed: not polled");
+        assert_eq!(d.report08_not_detected, [recs[1].id.clone()]);
+        assert_eq!(d.detected_not_in_report08, [recs[0].id.clone()]);
+        // A site with an ENJ city keeps it (no box), an SRN area is never polled.
+        recs[0].status.enj_city = Some(14);
+        recs[1].kind = SiteKind::SrnArea;
+        let treks = vec![trek(1, &b0, true), trek(3, &b1, true)];
+        let d = apply_enj(&mut recs, &treks);
+        assert_eq!(recs[0].status.enj_bbox, None);
+        assert!(d.sites.contains_key(&recs[0].id));
+        assert_eq!(recs[1].status.enj_bbox, None);
+        assert!(!d.sites.contains_key(&recs[1].id));
+        let site = recs[0].to_site();
+        assert_eq!(
+            skimap_status::enj::area(&site),
+            Some(skimap_status::enj::EnjArea::City(14))
+        );
+        recs[0].status.enj_city = None;
+        recs[0].status.enj_bbox = Some(b0);
+        let site = recs[0].to_site();
+        assert_eq!(
+            skimap_status::enj::area(&site),
+            Some(skimap_status::enj::EnjArea::BBox(b0))
+        );
+        assert!(!site.status.is_empty());
+    }
+
+    #[test]
     fn point_in_envelope() {
         let p = square(0.0, 0.0, 10.0);
         assert!(inside(&p, (5.0, 5.0)));
