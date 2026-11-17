@@ -34,11 +34,11 @@ impl Texts for En {
     }
 
     fn duration(&self, s: f64) -> String {
-        skimap_plan::pace::duration_fr(s)
+        skimap_plan::text::of(skimap_plan::text::Lang::En).duration5(s)
     }
 
     fn clock5(&self, t: NaiveDateTime) -> String {
-        skimap_plan::pace::clock_fr(t).replace(" h ", ":")
+        skimap_plan::text::of(skimap_plan::text::Lang::En).clock5(t)
     }
 
     fn clock_day(&self, t: NaiveDateTime, day: NaiveDate) -> String {
