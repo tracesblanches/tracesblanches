@@ -1390,10 +1390,7 @@ impl<'a> Engine<'a> {
     }
 
     fn open_log(&mut self) -> std::io::Result<()> {
-        let f = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.o.log)?;
+        let f = skimap_common::output::open_append(&self.o.log).map_err(std::io::Error::other)?;
         self.log = Some(std::io::BufWriter::new(f));
         Ok(())
     }
@@ -1532,7 +1529,7 @@ impl<'a> Engine<'a> {
                 let car = self.car.set(LonLat::new(lon, lat)).clone();
                 if let Ok(json) = serde_json::to_string(&car) {
                     // Kept for a restart; the car is set all the same without it.
-                    let _ = std::fs::write(&self.o.car_file, json);
+                    let _ = skimap_common::output::write_text(&self.o.car_file, &json);
                 }
                 let to_car = self
                     .back_to
@@ -2037,7 +2034,7 @@ impl<'a> Engine<'a> {
         }
         s.push_str("</trkseg></trk>\n</gpx>\n");
         let path = self.o.log.with_file_name("trace.gpx");
-        std::fs::write(&path, s).map_err(invalid)?;
+        skimap_common::output::write_text(&path, &s).map_err(invalid)?;
         Ok(path.display().to_string())
     }
 }

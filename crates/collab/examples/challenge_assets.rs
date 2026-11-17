@@ -8,6 +8,10 @@
 //!   data/out/france/srn/srn_routes.geojson android/community/src/main/assets/challenges.json
 //! ```
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "developer tool, not a pipeline output"
+)]
 use serde_json::{Value, json};
 
 fn simplify(pts: &[[f64; 2]], tol_m: f64) -> Vec<[f64; 2]> {

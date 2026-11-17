@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::error::{Error, Result};
+use crate::output::AtomicFile;
 
 /// Metadata stored next to a cached body.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -127,53 +128,31 @@ impl Entry {
     }
 }
 
-/// Writes `bytes` to `path` through a temporary file and a rename.
+/// Writes `bytes` to `path` atomically ([`crate::output::write_bytes`]).
 pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
-    let tmp = tmp_path(path);
-    let mut f = fs::File::create(&tmp).map_err(|e| Error::io(&tmp, e))?;
-    f.write_all(bytes).map_err(|e| Error::io(&tmp, e))?;
-    f.sync_all().map_err(|e| Error::io(&tmp, e))?;
-    drop(f);
-    fs::rename(&tmp, path).map_err(|e| Error::io(path, e))
+    crate::output::write_bytes(path, bytes)
 }
 
-/// Temporary sibling path used while writing `path`.
-pub(crate) fn tmp_path(path: &Path) -> PathBuf {
-    let mut name = path
-        .file_name()
-        .map(|n| n.to_os_string())
-        .unwrap_or_default();
-    name.push(format!(".tmp{}", std::process::id()));
-    path.with_file_name(name)
-}
-
-/// Streams `reader` into the (temporary) file `tmp` and returns (size, sha256 hex). The
-/// caller renames it into place; on error the file is removed.
+/// Streams `reader` into a new temporary file of `body` and returns it uncommitted with
+/// (size, sha256 hex): the caller commits it (rename into place) or drops it (removed).
 pub(crate) fn store_body(
-    tmp: &Path,
+    body: &Path,
     reader: &mut dyn std::io::Read,
-) -> std::io::Result<(u64, String)> {
-    let result = (|| {
-        let mut f = fs::File::create(tmp)?;
-        let mut hasher = Sha256::new();
-        let mut buf = vec![0u8; 64 * 1024];
-        let mut size = 0u64;
-        loop {
-            let n = reader.read(&mut buf)?;
-            if n == 0 {
-                break;
-            }
-            hasher.update(&buf[..n]);
-            f.write_all(&buf[..n])?;
-            size += n as u64;
+) -> Result<(AtomicFile, u64, String)> {
+    let mut f = AtomicFile::create(body)?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 64 * 1024];
+    let mut size = 0u64;
+    loop {
+        let n = reader.read(&mut buf).map_err(|e| Error::io(body, e))?;
+        if n == 0 {
+            break;
         }
-        f.sync_all()?;
-        Ok((size, hex::encode(hasher.finalize())))
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(tmp);
+        hasher.update(&buf[..n]);
+        f.write_all(&buf[..n]).map_err(|e| Error::io(f.tmp(), e))?;
+        size += n as u64;
     }
-    result
+    Ok((f, size, hex::encode(hasher.finalize())))
 }
 
 #[cfg(test)]
@@ -238,9 +217,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let e = Entry::new(dir.path(), "k");
         assert!(e.load().unwrap().is_none());
-        let tmp = tmp_path(&e.body);
-        let (size, sha) = store_body(&tmp, &mut &b"hello"[..]).unwrap();
-        fs::rename(&tmp, &e.body).unwrap();
+        let (f, size, sha) = store_body(&e.body, &mut &b"hello"[..]).unwrap();
+        f.commit().unwrap();
         assert_eq!(size, 5);
         assert_eq!(
             sha,

@@ -1,6 +1,10 @@
 //! Downloader tests against a local HTTP server (P1, #14): no redundant request, rate
 //! limiting, conditional requests, retries, secrets kept out of the cache.
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests write their inputs directly"
+)]
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::thread;

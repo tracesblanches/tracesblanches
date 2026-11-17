@@ -2,6 +2,10 @@
 //! interrupted swap. The phone side is `update::apply`; the server side computes
 //! `Update::between` the same way.
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests write their inputs directly"
+)]
 use std::fs;
 use std::path::Path;
 

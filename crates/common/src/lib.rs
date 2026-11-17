@@ -16,6 +16,10 @@
 //! - `download` (feature `download`): cached, rate-limited HTTP downloader.
 //! - `geotiff` (feature `geotiff`): single-band GeoTIFF: Float32 read and write, UInt8 read, lenient read of any sample type and CRS.
 
+// Unit tests write their inputs directly; the code itself goes through
+// `skimap_common::output` (clippy.toml, #164).
+#![cfg_attr(test, allow(clippy::disallowed_methods))]
+
 pub mod config;
 pub mod crs;
 #[cfg(feature = "download")]

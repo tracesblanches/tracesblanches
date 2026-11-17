@@ -790,8 +790,7 @@ impl Downloader {
         }
         if status.is_success() {
             let headers = resp.headers().clone();
-            let tmp = cache::tmp_path(&entry.body);
-            let (size, sha256) = match cache::store_body(&tmp, &mut resp) {
+            let (body, size, sha256) = match cache::store_body(&entry.body, &mut resp) {
                 Ok(v) => v,
                 Err(e) => {
                     return Attempt::Retry(
@@ -824,11 +823,10 @@ impl Downloader {
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                     Err(e) => return Err(Error::io(&entry.meta, e)),
                 }
-                std::fs::rename(&tmp, &entry.body).map_err(|e| Error::io(&entry.body, e))?;
+                body.commit()?;
                 entry.store_meta(&meta)
             })();
             if let Err(e) = commit {
-                let _ = std::fs::remove_file(&tmp);
                 return Attempt::Fatal(e);
             }
             return Attempt::Done(self.done(req, entry, meta, Origin::Downloaded));

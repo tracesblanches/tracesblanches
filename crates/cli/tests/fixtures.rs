@@ -2,6 +2,10 @@
 //! absence of the personal-use and unlicensed sources, and the pipeline chain P2 → C1
 //! rebuilt from its reduced inputs without network.
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests write their inputs directly"
+)]
 #[path = "../../../fixtures/support/mod.rs"]
 mod fixtures;
 

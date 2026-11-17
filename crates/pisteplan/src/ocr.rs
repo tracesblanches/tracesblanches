@@ -199,12 +199,10 @@ pub fn read_lines_cached(
         return Ok(v);
     }
     let v = read_lines_tiled(engine, img, tile, overlap, pt_per_px)?;
-    let tmp = path.with_extension("part");
     let json = serde_json::to_vec(&v).map_err(|e| Error::Json {
         context: "OCR cache".into(),
         source: e,
     })?;
-    std::fs::write(&tmp, json).map_err(|e| Error::io(&tmp, e))?;
-    std::fs::rename(&tmp, path).map_err(|e| Error::io(path, e))?;
+    skimap_common::output::write_bytes(path, &json)?;
     Ok(v)
 }

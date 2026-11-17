@@ -21,6 +21,10 @@
 //! (a text the pack did not foresee), it speaks [`bank::Announcement::text`] with the
 //! Android voice instead.
 
+// Unit tests write their inputs directly; the code itself goes through
+// `skimap_common::output` (clippy.toml, #164).
+#![cfg_attr(test, allow(clippy::disallowed_methods))]
+
 pub mod audio;
 pub mod bank;
 pub mod clips;

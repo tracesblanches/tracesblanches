@@ -6,7 +6,6 @@
 //! - `snapshots/<YYYYMMDDTHHMMSSZ>.json`: the normalised content, written only when it
 //!   differs from the previous snapshot.
 
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
@@ -116,7 +115,7 @@ impl Store {
                 }
                 let body = serde_json::to_vec_pretty(content)
                     .map_err(|e| CommonError::json(path.display().to_string(), e))?;
-                std::fs::write(&path, body).map_err(|e| io(&path, e))?;
+                skimap_common::output::write_bytes(&path, &body)?;
                 name
             }
         };
@@ -128,14 +127,10 @@ impl Store {
         };
         std::fs::create_dir_all(&self.dir).map_err(|e| io(&self.dir, e))?;
         let path = self.dir.join("polls.jsonl");
-        let mut f = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
-            .map_err(|e| io(&path, e))?;
-        let line = serde_json::to_string(&rec)
+        let mut line = serde_json::to_string(&rec)
             .map_err(|e| CommonError::json(path.display().to_string(), e))?;
-        writeln!(f, "{line}").map_err(|e| io(&path, e))?;
+        line.push('\n');
+        skimap_common::output::append_bytes(&path, line.as_bytes())?;
         Ok(rec)
     }
 }

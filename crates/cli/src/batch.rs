@@ -95,12 +95,7 @@ pub const LOCK_FILE: &str = ".build-all.lock";
 /// process); released when the returned file is dropped (or the process dies).
 pub fn lock_site(dir: &Path) -> Result<std::fs::File> {
     let p = dir.join(LOCK_FILE);
-    let f = std::fs::OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(&p)
-        .with_context(|| format!("{}", p.display()))?;
+    let f = skimap_common::output::open_lock(&p)?;
     match f.try_lock() {
         Ok(()) => Ok(f),
         Err(std::fs::TryLockError::WouldBlock) => {

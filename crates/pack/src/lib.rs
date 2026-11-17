@@ -17,6 +17,10 @@
 //!
 //! Without the `pipeline` feature the crate is the reader only: no HTTP stack, no SQLite.
 
+// Unit tests write their inputs directly; the code itself goes through
+// `skimap_common::output` (clippy.toml, #164).
+#![cfg_attr(test, allow(clippy::disallowed_methods))]
+
 pub mod error;
 pub mod france;
 pub mod manifest;

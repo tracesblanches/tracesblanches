@@ -11,8 +11,10 @@
 //! - [`AtomicFile`]: a streamed file (`Write + Seek`: GeoTIFF, PMTiles encoders), renamed
 //!   into place by [`AtomicFile::commit`], removed if dropped uncommitted.
 //! - [`copy_file`]: copy onto a new inode (`std::fs::copy` truncates the target in place).
-//! - [`append_bytes`]: append to a journal, after breaking a hard link ([`break_link`]).
+//! - [`append_bytes`], [`open_append`]: append to a journal, after breaking a hard link
+//!   ([`break_link`]).
 //! - [`create_log`]: a log written as it goes, on a new inode.
+//! - [`open_lock`]: a lock file, never written.
 //!
 //! The direct writers of `std` (`std::fs::write`, `File::create`, `std::fs::copy`,
 //! `OpenOptions::write` / `append`) are denied by `clippy.toml` everywhere else.
@@ -94,7 +96,15 @@ impl AtomicFile {
     }
 
     /// Flushes, syncs and renames the file into place; returns its size in bytes.
-    pub fn commit(mut self) -> Result<u64> {
+    pub fn commit(self) -> Result<u64> {
+        let path = self.path.clone();
+        self.commit_as(&path)
+    }
+
+    /// Like [`commit`](Self::commit), under another name (known once written: a file
+    /// named by its hash), in the same file system as the path given to
+    /// [`create`](Self::create).
+    pub fn commit_as(mut self, path: &Path) -> Result<u64> {
         let tmp = self.tmp.clone();
         let io = |e| Error::io(&tmp, e);
         let w = self.w.take().expect("AtomicFile committed twice");
@@ -110,7 +120,7 @@ impl AtomicFile {
             // content.
             f.sync_all().map_err(io)?;
             let len = f.metadata().map_err(io)?.len();
-            std::fs::rename(&tmp, &self.path).map_err(|e| Error::io(&self.path, e))?;
+            std::fs::rename(&tmp, path).map_err(|e| Error::io(path, e))?;
             Ok(len)
         })();
         if done.is_err() {
@@ -217,16 +227,22 @@ pub fn break_link(path: &Path) -> Result<bool> {
 /// that is a hard link is first copied onto its own inode ([`break_link`]): its other
 /// names never see the new lines.
 pub fn append_bytes(path: &Path, body: &[u8]) -> Result<()> {
+    let io = |e| Error::io(path, e);
+    let mut f = open_append(path)?;
+    f.write_all(body).map_err(io)?;
+    f.sync_all().map_err(io)
+}
+
+/// Opens the journal `path` for appending (created with its parents), after giving it
+/// its own inode if it is a hard link ([`break_link`]); for a journal kept open.
+pub fn open_append(path: &Path) -> Result<File> {
     ensure_parent(path)?;
     break_link(path)?;
-    let io = |e| Error::io(path, e);
-    let mut f = OpenOptions::new()
+    OpenOptions::new()
         .create(true)
         .append(true)
         .open(path)
-        .map_err(io)?;
-    f.write_all(body).map_err(io)?;
-    f.sync_all().map_err(io)
+        .map_err(|e| Error::io(path, e))
 }
 
 /// Opens a log written as it goes (readable while being written) on a new inode: an
@@ -241,6 +257,18 @@ pub fn create_log(path: &Path) -> Result<File> {
     OpenOptions::new()
         .write(true)
         .create_new(true)
+        .open(path)
+        .map_err(|e| Error::io(path, e))
+}
+
+/// Opens (creates if needed) a lock file, for `File::lock`; its content is never written
+/// nor truncated.
+pub fn open_lock(path: &Path) -> Result<File> {
+    ensure_parent(path)?;
+    OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
         .open(path)
         .map_err(|e| Error::io(path, e))
 }

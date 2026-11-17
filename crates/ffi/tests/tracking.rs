@@ -6,6 +6,10 @@
 //! cargo test --release -p skimap-ffi --test tracking -- --ignored --nocapture
 //! ```
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests write their inputs directly"
+)]
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 

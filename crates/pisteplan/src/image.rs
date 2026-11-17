@@ -163,13 +163,13 @@ impl Rgb {
     pub fn write_ppm(&self, path: &Path) -> Result<()> {
         let mut b = format!("P6\n{} {}\n255\n", self.w, self.h).into_bytes();
         b.extend_from_slice(&self.px);
-        std::fs::write(path, b).map_err(|e| Error::io(path, e))
+        Ok(skimap_common::output::write_bytes(path, &b)?)
     }
 
     /// Writes a PNG (diagnostics and demo images).
     pub fn write_png(&self, path: &Path) -> Result<()> {
-        let f = std::fs::File::create(path).map_err(|e| Error::io(path, e))?;
-        let mut enc = png::Encoder::new(std::io::BufWriter::new(f), self.w as u32, self.h as u32);
+        let mut f = skimap_common::output::AtomicFile::create(path)?;
+        let mut enc = png::Encoder::new(&mut f, self.w as u32, self.h as u32);
         enc.set_color(png::ColorType::Rgb);
         enc.set_depth(png::BitDepth::Eight);
         let mut w = enc
@@ -178,7 +178,9 @@ impl Rgb {
         w.write_image_data(&self.px)
             .map_err(|e| Error::Data(format!("PNG {}: {e}", path.display())))?;
         w.finish()
-            .map_err(|e| Error::Data(format!("PNG {}: {e}", path.display())))
+            .map_err(|e| Error::Data(format!("PNG {}: {e}", path.display())))?;
+        f.commit()?;
+        Ok(())
     }
 
     /// Filled disc.

@@ -27,6 +27,10 @@
 //! the downloader cache lifetime of the source, Nordic France and the town hall are served
 //! from the cache for 3 hours.
 
+// Unit tests write their inputs directly; the code itself goes through
+// `skimap_common::output` (clippy.toml, #164).
+#![cfg_attr(test, allow(clippy::disallowed_methods))]
+
 pub mod enj;
 pub mod error;
 pub mod html;

@@ -241,7 +241,7 @@ fn link_or_copy(from: &Path, to: &Path) -> Result<()> {
         std::fs::remove_file(to).map_err(|e| Error::io(to, e))?;
     }
     if std::fs::hard_link(from, to).is_err() {
-        std::fs::copy(from, to).map_err(|e| Error::io(from, e))?;
+        skimap_common::output::copy_file(from, to)?;
     }
     Ok(())
 }

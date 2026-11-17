@@ -18,6 +18,10 @@
 //! decides what to download and installs it with `skimap-pack` (without its `pipeline`
 //! feature).
 
+// Unit tests write their inputs directly; the code itself goes through
+// `skimap_common::output` (clippy.toml, #164).
+#![cfg_attr(test, allow(clippy::disallowed_methods))]
+
 pub mod card;
 pub mod card_map;
 pub mod catalog;

@@ -204,14 +204,14 @@ pub fn import(zip_path: &Path, out_root: &Path, style: Style) -> Result<ImportRe
         std::fs::create_dir_all(&dir)?;
         if let Some(o) = &obs {
             let json = serde_json::to_string(o).map_err(std::io::Error::other)?;
-            std::fs::write(dir.join(OBSERVATION_FILE), json)?;
+            skimap_common::output::write_text(&dir.join(OBSERVATION_FILE), &json)
+                .map_err(std::io::Error::other)?;
             rep.observations += 1;
         }
         // outing.json last: its presence marks a complete import.
         let json = serde_json::to_string(&outing).map_err(std::io::Error::other)?;
-        let tmp = dir.join(".outing.json.tmp");
-        std::fs::write(&tmp, json)?;
-        std::fs::rename(&tmp, dir.join(OUTING_FILE))?;
+        skimap_common::output::write_text(&dir.join(OUTING_FILE), &json)
+            .map_err(std::io::Error::other)?;
         rep.imported.push(id);
     }
     Ok(rep)

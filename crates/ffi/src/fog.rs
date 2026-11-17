@@ -21,7 +21,6 @@
 //! trace (GPX at the end), the recap of the outing (A10, [`crate::recap`]) and the state
 //! after a restart of the process (inputs replayed, nothing said again).
 
-use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -493,9 +492,7 @@ impl GuidedSpec {
     pub fn write(&self, dir: &Path) -> Result<(), TrackingError> {
         std::fs::create_dir_all(dir).map_err(|e| invalid(format!("{}: {e}", dir.display())))?;
         let json = serde_json::to_string_pretty(self).map_err(invalid)?;
-        let tmp = dir.join(format!("{GUIDED_FILE}.tmp"));
-        std::fs::write(&tmp, json).map_err(invalid)?;
-        std::fs::rename(&tmp, dir.join(GUIDED_FILE)).map_err(invalid)
+        skimap_common::output::write_text(&dir.join(GUIDED_FILE), &json).map_err(invalid)
     }
 
     /// Reads the description of `dir`.
@@ -892,12 +889,7 @@ impl Engine {
             buf.push_str(&serde_json::to_string(i).map_err(invalid)?);
             buf.push('\n');
         }
-        let mut f = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.log_path)
-            .map_err(invalid)?;
-        f.write_all(buf.as_bytes()).map_err(invalid)
+        skimap_common::output::append_bytes(&self.log_path, buf.as_bytes()).map_err(invalid)
     }
 
     fn batch(&mut self) -> BatchOut {

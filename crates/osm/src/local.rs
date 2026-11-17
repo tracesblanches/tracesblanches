@@ -613,11 +613,10 @@ fn read_index(path: &Path, key: &str) -> Result<(Header, Vec<Element>)> {
 
 /// Writes the index atomically (temporary file, fsync, rename).
 fn write_index(path: &Path, header: &Header, elements: &[Element]) -> Result<()> {
-    let tmp = path.with_extension(format!("tmp{}", std::process::id()));
+    let f = skimap_common::output::AtomicFile::create(path)?;
+    let tmp = f.tmp().to_owned();
     let io = |e| OsmError::io(&tmp, e);
-    let f = std::fs::File::create(&tmp).map_err(io)?;
-    let mut w =
-        flate2::write::GzEncoder::new(std::io::BufWriter::new(f), flate2::Compression::fast());
+    let mut w = flate2::write::GzEncoder::new(f, flate2::Compression::fast());
     let line = |w: &mut dyn Write, v: String| -> std::io::Result<()> {
         w.write_all(v.as_bytes())?;
         w.write_all(b"\n")
@@ -627,13 +626,7 @@ fn write_index(path: &Path, header: &Header, elements: &[Element]) -> Result<()>
     for e in elements {
         line(&mut w, serde_json::to_string(e).map_err(ser)?).map_err(io)?;
     }
-    let f = w
-        .finish()
-        .map_err(io)?
-        .into_inner()
-        .map_err(|e| io(e.into_error()))?;
-    f.sync_all().map_err(io)?;
-    std::fs::rename(&tmp, path).map_err(|e| OsmError::io(path, e))?;
+    w.finish().map_err(io)?.commit()?;
     Ok(())
 }
 
@@ -644,7 +637,8 @@ pub const INDEX_UNUSED_DAYS: u64 = 14;
 /// Removes the indexes unused for [`INDEX_UNUSED_DAYS`] and the temporary files of
 /// interrupted writes older than an hour; marks `keep` as used.
 fn remove_other_indexes(dir: &Path, keep: &Path) {
-    if let Ok(f) = std::fs::File::options().write(true).open(keep) {
+    // Read-only: the owner may set the times; the content is never opened for writing.
+    if let Ok(f) = std::fs::File::open(keep) {
         let _ = f.set_modified(std::time::SystemTime::now());
     }
     let Ok(rd) = std::fs::read_dir(dir) else {

@@ -5,6 +5,10 @@
 //! cargo run --release -p skimap-server --example phone_sync -- http://127.0.0.1:8080 <site> /tmp/phone/<site>
 //! ```
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "developer tool, not a pipeline output"
+)]
 use std::path::PathBuf;
 use std::time::Instant;
 

@@ -20,6 +20,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use skimap_common::output::{AtomicFile, copy_file, write_bytes};
 
 use crate::error::{Error, Result};
 use crate::manifest::{FORMAT, FORMAT_VERSION, MANIFEST_FILE, Manifest, PackValidity};
@@ -399,7 +400,7 @@ fn link_or_copy(src: &Path, dst: &Path) -> Result<()> {
     if fs::hard_link(src, dst).is_ok() {
         return Ok(());
     }
-    fs::copy(src, dst).map_err(|e| Error::io(src, e))?;
+    copy_file(src, dst)?;
     Ok(())
 }
 
@@ -479,7 +480,8 @@ impl Source<'_> {
             Source::Bundle(path, offsets, gzipped) => {
                 // One byte more than announced: a longer blob is refused, not cut.
                 let mut input = Self::open(path, offsets, gzipped, sha, bytes + 1)?;
-                let mut out = fs::File::create(dst).map_err(|e| Error::io(dst, e))?;
+                // Removed if dropped (a read error, a mismatch below).
+                let mut out = AtomicFile::create(dst)?;
                 let mut h = Sha256::new();
                 let mut buf = vec![0u8; 1 << 16];
                 let mut n = 0u64;
@@ -496,6 +498,7 @@ impl Source<'_> {
                 if n != bytes || got != sha {
                     return Err(bad(n, got));
                 }
+                out.commit()?;
                 Ok(())
             }
         }
@@ -621,13 +624,7 @@ fn apply_from(pack_dir: &Path, update: &Update, source: &Source<'_>) -> Result<A
             }
         }
         let m = staging.join(MANIFEST_FILE);
-        {
-            use std::io::Write;
-            let mut file = fs::File::create(&m).map_err(|e| Error::io(&m, e))?;
-            file.write_all(&manifest_bytes)
-                .and_then(|()| file.sync_all())
-                .map_err(|e| Error::io(&m, e))?;
-        }
+        write_bytes(&m, &manifest_bytes)?;
         let new_paths: HashSet<&str> = new.files.iter().map(|f| f.path.as_str()).collect();
         let removed = old
             .as_ref()

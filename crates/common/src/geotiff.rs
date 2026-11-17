@@ -11,8 +11,7 @@
 //!
 //! Feature `geotiff` (pipeline crates writing or reading rasters).
 
-use std::fs::File;
-use std::io::{BufWriter, Cursor, Seek, Write};
+use std::io::{Cursor, Seek, Write};
 use std::path::Path;
 
 use tiff::decoder::{Decoder, DecodingResult, Limits};
@@ -178,22 +177,12 @@ pub fn encode_f32<W: Write + Seek>(w: W, grid: &Grid<f32>) -> Result<()> {
     Ok(())
 }
 
-/// Writes a Float32 grid as a GeoTIFF file atomically (`<file>.tmp` then rename);
-/// returns the file size in bytes.
+/// Writes a Float32 grid as a GeoTIFF file atomically
+/// ([`crate::output::AtomicFile`]); returns the file size in bytes.
 pub fn write_f32(path: &Path, grid: &Grid<f32>) -> Result<u64> {
-    let mut name = path.file_name().unwrap_or_default().to_os_string();
-    name.push(".tmp");
-    let tmp = path.with_file_name(name);
-    let f = File::create(&tmp).map_err(|e| Error::io(&tmp, e))?;
-    let mut w = BufWriter::new(f);
-    encode_f32(&mut w, grid)?;
-    w.flush().map_err(|e| Error::io(&tmp, e))?;
-    drop(w);
-    let len = std::fs::metadata(&tmp)
-        .map_err(|e| Error::io(&tmp, e))?
-        .len();
-    std::fs::rename(&tmp, path).map_err(|e| Error::io(path, e))?;
-    Ok(len)
+    let mut f = crate::output::AtomicFile::create(path)?;
+    encode_f32(&mut f, grid)?;
+    f.commit()
 }
 
 /// Georeferencing and no-data of a decoded file.

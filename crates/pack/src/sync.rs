@@ -169,10 +169,8 @@ pub fn read_state(pack_dir: &Path) -> Result<Option<SyncState>> {
 /// Records a sync (temporary file then rename).
 pub fn write_state(pack_dir: &Path, state: &SyncState) -> Result<()> {
     let p = state_path(pack_dir);
-    let tmp = p.with_extension("tmp");
     let body = serde_json::to_vec_pretty(state).map_err(|e| Error::json("sync state", e))?;
-    std::fs::write(&tmp, body).map_err(|e| Error::io(&tmp, e))?;
-    std::fs::rename(&tmp, &p).map_err(|e| Error::io(&p, e))
+    Ok(skimap_common::output::write_bytes(&p, &body)?)
 }
 
 #[cfg(test)]

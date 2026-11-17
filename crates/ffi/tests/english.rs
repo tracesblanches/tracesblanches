@@ -4,6 +4,10 @@
 //! words (proper names aside). The texts the data do not reach are called on every value
 //! of their closed lists.
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests write their inputs directly"
+)]
 use std::path::Path;
 
 use chrono::{NaiveDate, NaiveDateTime};

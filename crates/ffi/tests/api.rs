@@ -3,6 +3,10 @@
 //! instantiated on one and several packs, the catalogue, and the sync of a pack from
 //! bundles made exactly as the server makes them.
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests write their inputs directly"
+)]
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Instant;

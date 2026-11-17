@@ -18,6 +18,10 @@
 //!
 //! Pipeline side: uses `skimap_common::download`.
 
+// Unit tests write their inputs directly; the code itself goes through
+// `skimap_common::output` (clippy.toml, #164).
+#![cfg_attr(test, allow(clippy::disallowed_methods))]
+
 pub mod camptocamp;
 pub mod error;
 pub mod fiche;

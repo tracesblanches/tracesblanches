@@ -21,6 +21,10 @@
 //! Runs on the phone (through UniFFI or a native binary, decision K0 #49): no networking,
 //! no dependency on the `download` feature of `skimap-common`.
 
+// Unit tests write their inputs directly; the code itself goes through
+// `skimap_common::output` (clippy.toml, #164).
+#![cfg_attr(test, allow(clippy::disallowed_methods))]
+
 pub mod battery;
 pub mod calibration;
 #[cfg(feature = "pipeline")]

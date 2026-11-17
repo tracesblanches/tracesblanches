@@ -60,12 +60,7 @@ fn prev_path(store: &Store) -> PathBuf {
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
-    if let Some(p) = path.parent() {
-        fs::create_dir_all(p)?;
-    }
-    let tmp = path.with_extension("tmp");
-    fs::write(&tmp, bytes).with_context(|| format!("{}", tmp.display()))?;
-    fs::rename(&tmp, path).with_context(|| format!("{}", path.display()))
+    Ok(skimap_common::output::write_bytes(path, bytes)?)
 }
 
 fn read(path: &Path) -> Result<Option<FranceBasemap>> {
@@ -83,7 +78,7 @@ pub fn publish(store: &Store, dir: &Path) -> Result<FrancePublished> {
     let desc = FranceBasemap::read(dir).with_context(|| format!("{}", dir.display()))?;
     desc.verify(dir)
         .with_context(|| format!("{}", dir.display()))?;
-    let lock_file = fs::File::create(store.root().join(".lock"))?;
+    let lock_file = skimap_common::output::open_lock(&store.root().join(".lock"))?;
     lock_file.lock()?;
     let served = description_path(store);
     let current = read(&served)?;
@@ -107,10 +102,7 @@ pub fn publish(store: &Store, dir: &Path) -> Result<FrancePublished> {
         }
         let to = files.join(&f.sha256);
         if !to.is_file() {
-            let tmp = to.with_extension("tmp");
-            fs::copy(dir.join(&f.path), &tmp)
-                .with_context(|| format!("{}", dir.join(&f.path).display()))?;
-            fs::rename(&tmp, &to)?;
+            skimap_common::output::copy_file(&dir.join(&f.path), &to)?;
             out.written += 1;
         }
     }
