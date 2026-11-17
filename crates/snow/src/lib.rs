@@ -22,6 +22,10 @@
 //! shading, grooming compaction, artificial snow; the simulation is per massif and
 //! altitude band, not a local measurement.
 
+// Unit tests write their inputs directly; the code itself goes through
+// `skimap_common::output` (clippy.toml, #164).
+#![cfg_attr(test, allow(clippy::disallowed_methods))]
+
 pub mod classes;
 pub mod error;
 pub mod map;

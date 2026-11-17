@@ -15,6 +15,10 @@
 //! cargo test -p skimap-assist --test real_sites -- --ignored full_data_
 //! ```
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests write their inputs directly"
+)]
 #[path = "../../../fixtures/support/mod.rs"]
 mod fixtures;
 

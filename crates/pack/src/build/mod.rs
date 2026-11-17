@@ -876,7 +876,7 @@ pub(crate) fn copy_file(from: &Path, to: &Path) -> Result<u64> {
     if let Some(p) = to.parent() {
         create_dir(p)?;
     }
-    std::fs::copy(from, to).map_err(|e| Error::io(from, e))
+    Ok(skimap_common::output::copy_file(from, to)?)
 }
 
 /// Copies a pipeline file into the pack: a `.json` file is rewritten as compact JSON (the

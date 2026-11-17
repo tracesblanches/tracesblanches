@@ -10,6 +10,10 @@
 //! (`file<TAB>clip id<TAB>text`): every public name clip of the site in English
 //! (pistes with their colour, places), with the English model, seed 42.
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "developer tool, not a pipeline output"
+)]
 use std::io::Write;
 
 use skimap_common::config::Config;

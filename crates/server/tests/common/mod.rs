@@ -1,6 +1,10 @@
 //! Helpers of the integration tests: a raw HTTP/1.1 client and synthetic packs.
 
 #![allow(dead_code)]
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests write their inputs directly"
+)]
 
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};

@@ -6,6 +6,10 @@
 //! cargo run --release -p skimap-avalanche --example runout_sample -- <site> <step> [<cache>]
 //! ```
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "developer tool, not a pipeline output"
+)]
 use std::time::Instant;
 
 use skimap_avalanche::exposure::{self, flowpy, pra};

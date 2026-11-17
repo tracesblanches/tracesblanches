@@ -4,6 +4,10 @@
 //! orchestrator: each subcommand calls the public builder of the crate of its ticket; the
 //! remaining placeholders name the ticket that will provide it.
 
+// Unit tests write their inputs directly; the code itself goes through
+// `skimap_common::output` (clippy.toml, #164).
+#![cfg_attr(test, allow(clippy::disallowed_methods))]
+
 mod assist;
 mod batch;
 mod build;

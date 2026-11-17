@@ -109,20 +109,18 @@ pub fn carry_changed_at(
     }
 }
 
-/// Appends changes to `journal.jsonl`.
+/// Appends changes to `journal.jsonl`, never through a hard link
+/// ([`skimap_common::output::append_bytes`]).
 pub fn append_journal(path: &Path, changes: &[Change]) -> std::io::Result<()> {
-    use std::io::Write;
     if changes.is_empty() {
         return Ok(());
     }
-    let mut f = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)?;
+    let mut body = String::new();
     for c in changes {
-        writeln!(f, "{}", serde_json::to_string(c).unwrap_or_default())?;
+        body.push_str(&serde_json::to_string(c).unwrap_or_default());
+        body.push('\n');
     }
-    f.sync_all()
+    skimap_common::output::append_bytes(path, body.as_bytes()).map_err(std::io::Error::other)
 }
 
 #[cfg(test)]

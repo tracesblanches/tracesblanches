@@ -20,6 +20,10 @@
 //! Golden fingerprints (Q2): [`golden`].
 
 #![allow(dead_code)]
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests write their inputs directly"
+)]
 
 pub mod french;
 pub mod golden;

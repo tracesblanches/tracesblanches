@@ -368,7 +368,7 @@ pub fn load_or_summarise(dir: &Path) -> Option<Outing> {
     let id = dir.file_name()?.to_string_lossy().into_owned();
     let o = summarise(&id, "skimap", &id, "nordic_skiing", &points);
     if let Ok(json) = serde_json::to_string(&o) {
-        let _ = std::fs::write(&f, json);
+        let _ = skimap_common::output::write_text(&f, &json);
     }
     Some(o)
 }

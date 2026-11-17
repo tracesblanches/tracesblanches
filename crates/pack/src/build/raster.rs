@@ -12,7 +12,6 @@
 //! polygons ([`crate::build::class_tiles`]).
 
 use std::collections::HashMap;
-use std::fs::File;
 use std::path::Path;
 
 use pmtiles::{PmTilesWriter, TileCoord, TileId, TileType};
@@ -436,7 +435,7 @@ pub fn write_archive(
         })
         .collect::<Result<_>>()?;
     sorted.sort_by_key(|(id, _, _)| *id);
-    let f = File::create(path).map_err(|e| Error::io(path, e))?;
+    let mut f = skimap_common::output::AtomicFile::create(path)?;
     let c = bbox.center();
     let mut builder = PmTilesWriter::new(tile_type);
     if let Some(c) = precompressed {
@@ -449,16 +448,14 @@ pub fn write_archive(
         .center(c.lon, c.lat)
         .center_zoom(maxzoom.clamp(minzoom, 12.max(minzoom)))
         .metadata(metadata.to_string())
-        .create(f)
+        .create(&mut f)
         .map_err(|e| Error::pmtiles(path, e))?;
     for (_, k, t) in sorted {
         let coord = TileCoord::new(k.0, k.1, k.2).map_err(|e| Error::pmtiles(path, e))?;
         w.add_tile(coord, t).map_err(|e| Error::pmtiles(path, e))?;
     }
     w.finalize().map_err(|e| Error::pmtiles(path, e))?;
-    Ok(std::fs::metadata(path)
-        .map_err(|e| Error::io(path, e))?
-        .len())
+    Ok(f.commit()?)
 }
 
 fn legend(spec: &RasterSpec) -> Vec<LegendEntry> {

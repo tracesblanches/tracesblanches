@@ -14,6 +14,10 @@
 //! corridor modes), detection delay on traces that take a wrong turn or leave the
 //! corridor, time per GPS fix.
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "developer tool, not a pipeline output"
+)]
 #[path = "common/mod.rs"]
 mod common;
 

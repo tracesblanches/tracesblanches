@@ -15,6 +15,10 @@
 //! (VO6): site `test`, voice slot `en`, a clip manifest and two clips, nothing else. Deterministic apart from the build times written
 //! in the manifest. About 40 kB.
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "developer tool, not a pipeline output"
+)]
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 

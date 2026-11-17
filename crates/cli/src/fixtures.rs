@@ -146,7 +146,8 @@ impl Gen<'_> {
         if let Some(d) = p.parent() {
             std::fs::create_dir_all(d)?;
         }
-        std::fs::write(&p, bytes).with_context(|| format!("writing {}", p.display()))?;
+        skimap_common::output::write_bytes(&p, bytes)
+            .with_context(|| format!("writing {}", p.display()))?;
         self.add(rel, licence, origin);
         Ok(())
     }
@@ -333,12 +334,13 @@ impl Gen<'_> {
         copy_dir(&pistes, &tl.layer_dir(site, "pistes")?)?;
         let terrain = tl.layer_dir(site, "terrain")?;
         std::fs::create_dir_all(&terrain)?;
-        std::fs::copy(&p, terrain.join("dem_5m.tif"))?;
-        std::fs::copy(
-            self.layout
+        skimap_common::output::copy_file(&p, &terrain.join("dem_5m.tif"))?;
+        skimap_common::output::copy_file(
+            &self
+                .layout
                 .layer_dir(site, "terrain")?
                 .join("terrain.meta.json"),
-            terrain.join("terrain.meta.json"),
+            &terrain.join("terrain.meta.json"),
         )?;
         skimap_core::routing::build(site, &tl)?;
         let a = std::fs::read(tl.layer_dir(site, "routes")?.join("piste_graph.json"))?;
@@ -710,7 +712,7 @@ impl Gen<'_> {
         });
         let mut body = serde_json::to_vec_pretty(&m)?;
         body.push(b'\n');
-        std::fs::write(self.root.join("manifest.json"), body)?;
+        skimap_common::output::write_bytes(&self.root.join("manifest.json"), &body)?;
         self.lines.push(format!(
             "manifest: {} files, {total} bytes ({:.2} MB)",
             self.entries.len(),
@@ -957,7 +959,7 @@ fn copy_dir(from: &Path, to: &Path) -> Result<()> {
     for e in std::fs::read_dir(from)? {
         let e = e?;
         if e.file_type()?.is_file() {
-            std::fs::copy(e.path(), to.join(e.file_name()))?;
+            skimap_common::output::copy_file(&e.path(), &to.join(e.file_name()))?;
         }
     }
     Ok(())

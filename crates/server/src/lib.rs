@@ -12,6 +12,10 @@
 //! rustls for the e-mails. The server only distributes and relays: the phone does all
 //! the work offline.
 
+// Unit tests write their inputs directly; the code itself goes through
+// `skimap_common::output` (clippy.toml, #164).
+#![cfg_attr(test, allow(clippy::disallowed_methods))]
+
 pub mod alerts;
 pub mod app;
 pub mod clock;

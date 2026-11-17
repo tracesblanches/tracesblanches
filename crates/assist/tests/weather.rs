@@ -9,6 +9,10 @@
 //! texts and figures of every output are pinned by golden fingerprints
 //! (`fixtures/golden/assist/weather-<set>.json`, `SKIMAP_BLESS=1` after review).
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests write their inputs directly"
+)]
 #[path = "../../../fixtures/support/mod.rs"]
 mod fixtures;
 #[path = "support/weather_sets.rs"]

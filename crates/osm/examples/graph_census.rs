@@ -12,6 +12,10 @@
 //!     <planet_pistes.osm.gz> [<connectors.tsv>]
 //! ```
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "developer tool, not a pipeline output"
+)]
 use std::io::Write;
 use std::time::Instant;
 

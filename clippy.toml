@@ -1,0 +1,13 @@
+# Pipeline outputs are written atomically and never through a shared inode (#164): a
+# write in place leaves a half-written file when the process dies and reaches every hard
+# link of the file (working copies made with `cp -al`, layer files linked into a pack).
+# Every write goes through `skimap_common::output` (write_bytes / write_json / AtomicFile /
+# copy_file / append_bytes / create_log); tests, examples and benches allow these methods
+# explicitly.
+disallowed-methods = [
+    { path = "std::fs::write", reason = "writes in place: use skimap_common::output::write_bytes (#164)" },
+    { path = "std::fs::File::create", reason = "truncates in place: use skimap_common::output::AtomicFile (#164)" },
+    { path = "std::fs::copy", reason = "truncates the target in place: use skimap_common::output::copy_file (#164)" },
+    { path = "std::fs::OpenOptions::write", reason = "writes in place: use skimap_common::output (#164)" },
+    { path = "std::fs::OpenOptions::append", reason = "appends to a possibly shared inode: use skimap_common::output::append_bytes (#164)" },
+]

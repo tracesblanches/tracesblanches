@@ -21,6 +21,10 @@
 //!
 //! Never phrase any output as "safe" ("sans danger"). Runs on the phone: no networking.
 
+// Unit tests write their inputs directly; the code itself goes through
+// `skimap_common::output` (clippy.toml, #164).
+#![cfg_attr(test, allow(clippy::disallowed_methods))]
+
 pub mod alerts;
 pub mod best_time;
 pub mod briefing;

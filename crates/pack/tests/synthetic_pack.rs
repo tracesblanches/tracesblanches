@@ -1,6 +1,10 @@
 //! End-to-end on synthetic pipeline outputs, without network: build a pack (no basemaps),
 //! read it back with the phone-side reader, export it for Locus Map / OsmAnd.
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests write their inputs directly"
+)]
 use std::path::Path;
 
 use serde_json::{Value, json};

@@ -16,6 +16,10 @@
 //! SITE: an evaluation site (archived day and plan requests in `data/sites.json`), default
 //! the first one. Reads `data/out/<site>/` (pipeline outputs, archived day, pack).
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "developer tool, not a pipeline output"
+)]
 use std::path::PathBuf;
 
 use chrono::NaiveTime;

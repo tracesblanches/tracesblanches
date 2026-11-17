@@ -2,6 +2,10 @@
 //! (`plan_refuge`) as it is, without comparing the two layers; the pipeline's own files,
 //! without the flag, are flagged when loaded (same hut in both sources kept once).
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests write their inputs directly"
+)]
 use std::path::PathBuf;
 
 use serde_json::{Value, json};

@@ -12,6 +12,10 @@
 //!     data/out/<site>/avalanche-exposure/exposure_5m.tif 2,3 /tmp/exposure.geojson
 //! ```
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "developer tool, not a pipeline output"
+)]
 use std::collections::VecDeque;
 use std::io::Write;
 use std::time::Instant;

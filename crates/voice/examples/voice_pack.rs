@@ -12,6 +12,10 @@
 //! `personal.json` and left out of a published pack. `--names`: print the names, no synthesis.
 //! The samples only use public names (they are what a published pack says).
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "developer tool, not a pipeline output"
+)]
 use skimap_common::config::Config;
 use skimap_common::site::{self, Site};
 use skimap_voice::bank::{

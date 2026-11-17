@@ -8,6 +8,10 @@
 //! cargo run --release -p skimap-styles --example write_styles -- --france data/out/france-basemap
 //! ```
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "developer tool, not a pipeline output"
+)]
 use std::path::Path;
 
 use skimap_styles::generate::{Kind, file_name, style_text};

@@ -116,15 +116,12 @@ pub fn install_france(description: String, dir: String, work: String) -> Result<
         let src = work.join(&f.sha256);
         // Same file system (the work directory sits next to the basemap); a copy else.
         if std::fs::rename(&src, &to).is_err() {
-            std::fs::copy(&src, &to).map_err(|e| invalid(format!("{}: {e}", to.display())))?;
+            skimap_common::output::copy_file(&src, &to).map_err(invalid)?;
             let _ = std::fs::remove_file(&src);
         }
     }
-    let tmp = dir.join(format!("{DESCRIPTION_FILE}.tmp"));
-    std::fs::write(&tmp, description.as_bytes())
-        .map_err(|e| invalid(format!("{}: {e}", tmp.display())))?;
-    std::fs::rename(&tmp, dir.join(DESCRIPTION_FILE))
-        .map_err(|e| invalid(format!("{}: {e}", dir.display())))?;
+    skimap_common::output::write_text(&dir.join(DESCRIPTION_FILE), &description)
+        .map_err(invalid)?;
     // Files no longer named.
     let keep: HashSet<std::path::PathBuf> = new
         .files

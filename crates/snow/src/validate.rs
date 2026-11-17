@@ -383,7 +383,7 @@ pub fn validate(
     let dir = layout.layer_dir(site, crate::LAYER)?;
     DataLayout::ensure(&dir)?;
     let path = dir.join("validation.json");
-    std::fs::write(&path, serde_json::to_vec_pretty(&v)?).map_err(|e| Error::io(&path, e))?;
+    skimap_common::output::write_bytes(&path, &serde_json::to_vec_pretty(&v)?)?;
     Ok(v)
 }
 

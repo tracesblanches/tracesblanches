@@ -6,6 +6,10 @@
 //!
 //! `SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-pisteplan --features pipeline --example train_pairs [jobs]`
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "developer tool, not a pipeline output"
+)]
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 

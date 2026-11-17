@@ -35,6 +35,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use skimap_common::output::{AtomicFile, copy_file, open_lock};
 use skimap_pack::Pack;
 use skimap_pack::manifest::{MANIFEST_FILE, Manifest, SiteInfo};
 use skimap_pack::sync::{BundleRef, INDEX_FORMAT, INDEX_FORMAT_VERSION, LatestVersion, SiteIndex};
@@ -217,16 +218,7 @@ pub fn valid_sha(s: &str) -> bool {
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
-    if let Some(p) = path.parent() {
-        fs::create_dir_all(p)?;
-    }
-    let tmp = path.with_extension("tmp");
-    {
-        let mut f = fs::File::create(&tmp).with_context(|| format!("{}", tmp.display()))?;
-        f.write_all(bytes)?;
-        f.sync_all()?;
-    }
-    fs::rename(&tmp, path).with_context(|| format!("{}", path.display()))
+    Ok(skimap_common::output::write_bytes(path, bytes)?)
 }
 
 fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Option<T>> {
@@ -411,11 +403,9 @@ impl Store {
         if fs::metadata(&dst).is_ok_and(|m| m.len() == bytes) {
             return Ok(false);
         }
-        let parent = dst.parent().expect("blob has a parent");
-        fs::create_dir_all(parent)?;
-        let tmp = parent.join(format!(".{sha}.tmp"));
         let mut input = fs::File::open(src).with_context(|| format!("{}", src.display()))?;
-        let mut out = fs::File::create(&tmp)?;
+        // Removed if dropped (a read error, a mismatch below).
+        let mut out = AtomicFile::create(&dst)?;
         let mut h = Sha256::new();
         let mut buf = vec![0u8; 1 << 16];
         let mut n = 0u64;
@@ -428,49 +418,34 @@ impl Store {
             out.write_all(&buf[..k])?;
             n += k as u64;
         }
-        out.sync_all()?;
-        drop(out);
         let got = hex::encode(h.finalize());
         if got != sha || n != bytes {
-            let _ = fs::remove_file(&tmp);
             bail!(
                 "{}: {n} bytes, SHA-256 {got}; manifest says {bytes} bytes, {sha} (changed while publishing?)",
                 src.display()
             );
         }
-        fs::rename(&tmp, &dst)?;
+        out.commit()?;
         Ok(true)
     }
 
     /// Writes the bundle of `update` (blobs from the store), named by its SHA-256.
     fn write_bundle(&self, update: &Update) -> Result<BundleRef> {
         let dir = self.public().join("bundles");
-        let tmp = dir.join(format!(".{}.tmp", skimap_server_tmp_name()));
-        let result = (|| -> Result<(String, u64)> {
-            let f = fs::File::create(&tmp)?;
-            let mut w = HashingWriter {
-                inner: std::io::BufWriter::new(f),
-                hash: Sha256::new(),
-            };
-            let n = write_bundle(&mut w, update, |sha| {
-                let p = self
-                    .blob_path(sha)
-                    .ok_or_else(|| skimap_pack::Error::Pack(format!("bad blob {sha}")))?;
-                fs::File::open(&p).map_err(|e| skimap_pack::Error::io(&p, e))
-            })?;
-            let f = w.inner.into_inner().map_err(|e| e.into_error())?;
-            f.sync_all()?;
-            Ok((hex::encode(w.hash.finalize()), n))
-        })();
-        let (sha, bytes) = match result {
-            Ok(r) => r,
-            Err(e) => {
-                let _ = fs::remove_file(&tmp);
-                return Err(e);
-            }
+        // Named by its hash once written; removed if dropped on an error.
+        let mut w = HashingWriter {
+            inner: AtomicFile::create(&dir.join(".bundle"))?,
+            hash: Sha256::new(),
         };
+        let bytes = write_bundle(&mut w, update, |sha| {
+            let p = self
+                .blob_path(sha)
+                .ok_or_else(|| skimap_pack::Error::Pack(format!("bad blob {sha}")))?;
+            fs::File::open(&p).map_err(|e| skimap_pack::Error::io(&p, e))
+        })?;
+        let sha = hex::encode(w.hash.finalize());
         let dst = self.bundle_path(&sha).expect("hex SHA-256");
-        fs::rename(&tmp, &dst)?;
+        w.inner.commit_as(&dst)?;
         Ok(BundleRef {
             from: update.from_version.clone(),
             to: update.to_version.clone(),
@@ -512,7 +487,7 @@ impl Store {
             .iter()
             .any(|r| r.as_ref().is_ok_and(|r| r.status == "published"))
         {
-            let lock_file = fs::File::create(self.root.join(".lock"))?;
+            let lock_file = open_lock(&self.root.join(".lock"))?;
             lock_file.lock()?;
             self.write_catalog()?;
             self.collect_garbage()?;
@@ -552,7 +527,7 @@ impl Store {
             bail!("bad site {site:?} or version {:?}", new.pack_version);
         }
 
-        let lock_file = fs::File::create(self.root.join(".lock"))?;
+        let lock_file = open_lock(&self.root.join(".lock"))?;
         lock_file.lock()?;
 
         let versions = self.versions(&site)?;
@@ -739,7 +714,7 @@ impl Store {
         };
         let index_path = self.index_path(&site).expect("checked site");
         if index_path.is_file() {
-            fs::copy(&index_path, self.site_dir(&site).join("index.prev.json"))?;
+            copy_file(&index_path, &self.site_dir(&site).join("index.prev.json"))?;
         }
         write_atomic(&index_path, &serde_json::to_vec_pretty(&index)?)?;
         if finish {
@@ -842,17 +817,6 @@ impl Store {
         lock(&self.manifests).retain(|k, _| blobs.contains(k));
         Ok((n, bytes))
     }
-}
-
-/// A temporary file name unique in the process.
-fn skimap_server_tmp_name() -> String {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static N: AtomicU64 = AtomicU64::new(0);
-    format!(
-        "{}-{}",
-        std::process::id(),
-        N.fetch_add(1, Ordering::Relaxed)
-    )
 }
 
 struct HashingWriter<W: Write> {

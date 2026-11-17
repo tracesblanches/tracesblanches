@@ -328,7 +328,7 @@ pub fn extract(src: &dyn RangeSource, bbox: BBox, maxzoom: u8, out: &Path) -> Re
     if let Some(p) = out.parent() {
         crate::build::create_dir(p)?;
     }
-    let f = File::create(out).map_err(|e| Error::io(out, e))?;
+    let mut f = skimap_common::output::AtomicFile::create(out)?;
     let c = bbox.center();
     let mut w = PmTilesWriter::new(tile_type)
         .precompressed(compression)
@@ -338,7 +338,7 @@ pub fn extract(src: &dyn RangeSource, bbox: BBox, maxzoom: u8, out: &Path) -> Re
         .center(c.lon, c.lat)
         .center_zoom(maxzoom.min(12).max(h.zooms.0))
         .metadata(metadata)
-        .create(f)
+        .create(&mut f)
         .map_err(|e| Error::pmtiles(out, e))?;
     for (id, o, l) in &found {
         let coord: TileCoord = TileId::new(*id).map_err(|e| Error::pmtiles(out, e))?.into();
@@ -346,7 +346,7 @@ pub fn extract(src: &dyn RangeSource, bbox: BBox, maxzoom: u8, out: &Path) -> Re
             .map_err(|e| Error::pmtiles(out, e))?;
     }
     w.finalize().map_err(|e| Error::pmtiles(out, e))?;
-    stats.bytes = std::fs::metadata(out).map_err(|e| Error::io(out, e))?.len();
+    stats.bytes = f.commit()?;
     Ok(stats)
 }
 

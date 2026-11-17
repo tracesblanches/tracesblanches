@@ -22,6 +22,10 @@
 //! Without `SKIMAP_MAKE_BENCH_DATA` it does nothing (so that `cargo bench` never rewrites
 //! the versioned inputs).
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "developer tool, not a pipeline output"
+)]
 use std::io::Write;
 use std::path::{Path, PathBuf};
 

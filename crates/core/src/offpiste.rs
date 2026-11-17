@@ -187,6 +187,16 @@ impl std::error::Error for Error {
 /// Result of the module.
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Errors of the atomic writers ([`skimap_common::output`]).
+impl From<skimap_common::Error> for Error {
+    fn from(e: skimap_common::Error) -> Self {
+        match e {
+            skimap_common::Error::Io { path, source } => Error::Io { path, source },
+            e => Error::Format(e.to_string()),
+        }
+    }
+}
+
 fn io_err(path: &Path, source: io::Error) -> Error {
     Error::Io {
         path: path.to_owned(),
@@ -497,7 +507,7 @@ pub fn write_raster_with<T: RasterValue>(
     encoding: Encoding,
 ) -> Result<u64> {
     let bytes = encode_raster_with(grid, nodata, encoding)?;
-    std::fs::write(path, &bytes).map_err(|e| io_err(path, e))?;
+    skimap_common::output::write_bytes(path, &bytes)?;
     Ok(bytes.len() as u64)
 }
 
@@ -698,8 +708,7 @@ impl OffpisteGrid {
             ),
         ];
         let text = encode_zone_classes(&self.classes)?;
-        let p = dir.join(FILE_ZONE_CLASSES);
-        std::fs::write(&p, &text).map_err(|e| io_err(&p, e))?;
+        skimap_common::output::write_text(&dir.join(FILE_ZONE_CLASSES), &text)?;
         out.push((FILE_ZONE_CLASSES.to_owned(), text.len() as u64));
         Ok(out)
     }
@@ -1742,6 +1751,42 @@ mod tests {
 
     fn flat(w: usize, h: usize) -> OffpisteGrid {
         site(w, h, |_, _| 1000.0, |_, _| 0.0, |_, _| 0, |_, _| 0, 1)
+    }
+
+    /// Prepared files rewritten over hard links (working copy, pack) leave the other names
+    /// with their content (#164).
+    #[test]
+    fn write_keeps_hard_links() {
+        let d = tempfile::tempdir().unwrap();
+        let (out, copy) = (d.path().join("out"), d.path().join("copy"));
+        std::fs::create_dir_all(&out).unwrap();
+        std::fs::create_dir_all(&copy).unwrap();
+        let files = [
+            FILE_ELEVATION,
+            FILE_SLOPE,
+            FILE_ZONES,
+            FILE_PISTES,
+            FILE_ZONE_CLASSES,
+        ];
+        for f in files {
+            std::fs::write(out.join(f), b"previous build").unwrap();
+            std::fs::hard_link(out.join(f), copy.join(f)).unwrap();
+        }
+        let written = flat(3, 2).write(&out).unwrap();
+        assert_eq!(written.len(), files.len());
+        let changed: Vec<_> = files
+            .iter()
+            .filter(|f| std::fs::read(copy.join(f)).unwrap() != b"previous build")
+            .collect();
+        assert!(changed.is_empty(), "copies rewritten: {changed:?}");
+        for f in files {
+            assert_ne!(
+                std::fs::read(out.join(f)).unwrap(),
+                b"previous build",
+                "{f}"
+            );
+        }
+        OffpisteGrid::load(&out).unwrap();
     }
 
     fn router<'a>(

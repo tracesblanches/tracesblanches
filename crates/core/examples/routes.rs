@@ -10,6 +10,10 @@
 //! edges, gives the physical time (classic, skating, and without relief), Munter and
 //! Tobler, writes `routes/routes.geojson`, then times 2 000 random routes on the network.
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "developer tool, not a pipeline output"
+)]
 #[path = "common/mod.rs"]
 mod common;
 

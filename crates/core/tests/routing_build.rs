@@ -4,6 +4,10 @@
 //! the metadata.
 
 #![cfg(feature = "pipeline")]
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests write their inputs directly"
+)]
 
 use serde_json::json;
 use skimap_common::crs::{Crs, to_lambert93};
