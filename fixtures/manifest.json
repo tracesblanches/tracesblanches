@@ -2,12 +2,12 @@
   "about": "Reference data set of the two sites (Q1, #101), written by `skimap fixtures`; licences in LICENCES.md",
   "bytes_by_licence": {
     "cc-by-sa-refuges": 110373,
-    "lo-arcep": 293519,
-    "lo-ign": 890946,
+    "lo-arcep": 293891,
+    "lo-ign": 891086,
     "lo-meteofrance": 765556,
     "lo-skimap": 326355,
-    "odbl-osm": 3731561,
-    "zones-mixed": 490275
+    "odbl-osm": 3731550,
+    "zones-mixed": 491307
   },
   "files": [
     {
@@ -25,11 +25,11 @@
       "sha256": "d552c5e5285bd9d8c1dd04c2cc9a820327cff1f5255b48e6768724cc18e655bc"
     },
     {
-      "bytes": 4488,
+      "bytes": 4674,
       "licence": "lo-arcep",
       "origin": "data/out/cervieres/coverage/coverage.meta.json",
       "path": "data/out/cervieres/coverage/coverage.meta.json",
-      "sha256": "385b096a7593f16f2a361ab526c994cc1ed4e427963dcfbfe6e6db878802645d"
+      "sha256": "2efbf0029690c23c9d0cc3ba6f57205c14079445b7158bfc78b75a54f78b1e84"
     },
     {
       "bytes": 79001,
@@ -123,11 +123,11 @@
       "sha256": "0df87c6e54fd82b9d6d3dbd402ec0b9eb1a6c56fcfd64cec266b252f5ebafee8"
     },
     {
-      "bytes": 3104,
+      "bytes": 3174,
       "licence": "lo-ign",
       "origin": "data/out/cervieres/terrain/terrain.meta.json",
       "path": "data/out/cervieres/terrain/terrain.meta.json",
-      "sha256": "79396ffe54b17379eeb2510d73bd43e5ec9580a541fd141b6bb6445c973f8b72"
+      "sha256": "ab1c5021f1d225c54b964c105ed44023e4cc2bc7262bf1fd69e797384bf43d97"
     },
     {
       "bytes": 27813,
@@ -144,11 +144,11 @@
       "sha256": "1fcacccd1b4c101c81c697aa54de1569e28417888dd28b83646e89d43937caf3"
     },
     {
-      "bytes": 7243,
+      "bytes": 7759,
       "licence": "zones-mixed",
       "origin": "data/out/cervieres/zones/zones.meta.json (Biodiv'sports removed)",
       "path": "data/out/cervieres/zones/zones.meta.json",
-      "sha256": "36f71988c5894e85c46c7a8cb9bc14261c848efea2ccb347fc62e025cab761b2"
+      "sha256": "344f64358913b25d20adee423533c085b96e244bfd7fafe023460242789a9190"
     },
     {
       "bytes": 10678,
@@ -186,11 +186,11 @@
       "sha256": "ba8a5cc74e61fc2d9361fcf507196b682670d96b67372f9bd8f8e62b7d41b963"
     },
     {
-      "bytes": 4508,
+      "bytes": 4694,
       "licence": "lo-arcep",
       "origin": "data/out/chapelle-des-bois/coverage/coverage.meta.json",
       "path": "data/out/chapelle-des-bois/coverage/coverage.meta.json",
-      "sha256": "a5c2c61279f2f1a17b9fbbf3680bc02406e334bf781c03fd4d9eed02efc9790f"
+      "sha256": "4bee30b254ccd93b7948356ff7bd98782c5c78bf0e2008a9a230e52ab5da1462"
     },
     {
       "bytes": 74928,
@@ -284,11 +284,11 @@
       "sha256": "36639830124e8f5514dfdcbc9299df067242890f9c1a87085c4a36f8a7c61f8d"
     },
     {
-      "bytes": 3112,
+      "bytes": 3182,
       "licence": "lo-ign",
       "origin": "data/out/chapelle-des-bois/terrain/terrain.meta.json",
       "path": "data/out/chapelle-des-bois/terrain/terrain.meta.json",
-      "sha256": "f810fa950a798f759fb14b150ae1c84f5fb57aa69fd743687482db72752d1d7d"
+      "sha256": "c5a7dfdfbd29deca27ce5ed23cabd7293a25ea7e9fd06df7b85644a83a3ffacb"
     },
     {
       "bytes": 27813,
@@ -305,11 +305,11 @@
       "sha256": "cbe33ff81c57466e6e56b23f4d03bfa92c5a15f3592f055fce3ecfe7370d799f"
     },
     {
-      "bytes": 8586,
+      "bytes": 9102,
       "licence": "zones-mixed",
       "origin": "data/out/chapelle-des-bois/zones/zones.meta.json (Biodiv'sports removed)",
       "path": "data/out/chapelle-des-bois/zones/zones.meta.json",
-      "sha256": "762bcc7173f8277fee85db3fcbe0aa419faf36f33e6b1e28e61994f7aa843c08"
+      "sha256": "5adc0514e1a2d1e59534879594de148e5f790fa4913d82e5df5f055327605577"
     },
     {
       "bytes": 156643,
@@ -354,5 +354,5 @@
       "sha256": "cb16209f4949aaac6eab0cdaad14c5a660ed2897d17e93d96b4481dc1cbd2d8b"
     }
   ],
-  "total_bytes": 6608574
+  "total_bytes": 6610118
 }

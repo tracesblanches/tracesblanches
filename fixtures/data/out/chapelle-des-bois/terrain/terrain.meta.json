@@ -23,7 +23,7 @@
       "name": "Carte des pentes (SLOPES.MOUNTAIN), comparaison seulement",
       "producer": "IGN",
       "url": "https://data.geopf.fr/wmts?LAYER=GEOGRAPHICALGRIDSYSTEMS.SLOPES.MOUNTAIN",
-      "licence": "Géoplateforme IGN, sans clé ; licence d'un usage hors ligne non confirmée (features.md n° 5) : la couche n'est utilisée que pour la comparaison, rien n'en est redistribué",
+      "licence": "Licence Ouverte 2.0 (Etalab) : couche sans licence renseignée, les CGU de cartes.gouv.fr appliquent alors la Licence Ouverte (« A défaut, la Licence Ouverte / Open Licence – Etalab s'applique ») ; utilisée ici pour la comparaison seulement",
       "attribution": "IGN – Carte des pentes",
       "personal_use_only": false
     }

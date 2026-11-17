@@ -22,8 +22,8 @@
     {
       "name": "geo.api.gouv.fr, contours des communes (partie française de l'emprise)",
       "url": "https://geo.api.gouv.fr/departements/<code>/communes?format=geojson&geometry=contour",
-      "licence": "non vérifiée (F5, #11)",
-      "attribution": "geo.api.gouv.fr (Etalab, IGN)",
+      "licence": "ODbL 1.0 (jeu data.gouv.fr « Contours administratifs » servi par l'API, d'après Admin Express de l'IGN et OpenStreetMap)",
+      "attribution": "Contours administratifs (data.gouv.fr, ODbL) via geo.api.gouv.fr : IGN Admin Express, © contributeurs OpenStreetMap",
       "personal_use_only": false
     }
   ],
