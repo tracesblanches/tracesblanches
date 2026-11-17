@@ -25,7 +25,7 @@ use skimap_common::licence::{self, Group};
 use skimap_common::site::Registry;
 use skimap_pack::Pack;
 use skimap_pack::build::layers::feature_group;
-use skimap_pack::build::{BuildOptions, build};
+use skimap_pack::build::{BuildOptions, build, build_voice_pack};
 
 /// Source of an entity of a layer: its `provider` (SRN) or `source` (zones), else the
 /// layer.
@@ -150,6 +150,50 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             for miss in &r.missing {
                 println!("  absente {} : {}", miss.id, miss.reason);
+            }
+            // The French voice pack published apart (VO6): its clips by kind and sources.
+            if layout
+                .out_dir(site)
+                .join("voice")
+                .join("manifest.json")
+                .is_file()
+            {
+                let vr = build_voice_pack(site, &layout, "voice", "fr", personal)?;
+                let vp = Pack::open(&vr.pack_dir)?;
+                let vm = vp.manifest();
+                let mut names: BTreeMap<String, usize> = BTreeMap::new();
+                if let Some(f) = &vm.voice.manifest {
+                    let v: Value = serde_json::from_slice(&std::fs::read(vr.pack_dir.join(f))?)?;
+                    for c in v["clips"].as_array().into_iter().flatten() {
+                        let k = if c["kind"] == "name" {
+                            c["id"]
+                                .as_str()
+                                .unwrap_or_default()
+                                .split('.')
+                                .next()
+                                .unwrap_or_default()
+                                .to_owned()
+                        } else {
+                            "fixes et valeurs".to_owned()
+                        };
+                        *names.entry(k).or_default() += 1;
+                    }
+                }
+                println!(
+                    "  pack de voix fr : {} clips {:?} ; sources {:?}",
+                    vm.voice.clips,
+                    names,
+                    vm.voice
+                        .sources
+                        .iter()
+                        .map(|s| s.name.as_str())
+                        .collect::<Vec<_>>()
+                );
+                for s in &vm.voice.sources {
+                    if !personal && !licence::of_source(s).public() {
+                        failures.push(format!("{id} {mode}: voice pack source {}", s.name));
+                    }
+                }
             }
             if !personal {
                 // Names a published voice may say, by kind, from the layers as built.
