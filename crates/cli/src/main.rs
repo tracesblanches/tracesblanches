@@ -110,7 +110,8 @@ enum Command {
     Stations,
     /// Trail starts of every census domain (X9, #143), `data/out/france/stations/departs.json`,
     /// from the points of the stations layer and the trail network; then the starts of the
-    /// site registry. Run by `skimap stations` too.
+    /// site registry. Run by `skimap stations` and `skimap refresh` too when the station
+    /// cards ran.
     Departs,
     /// Scheduled refresh (H1, H2): the due parts of the stations layer, then the hut layer
     /// of each site; idempotent (a second run the same day does nothing); summary in
@@ -689,15 +690,14 @@ fn run(cli: Cli) -> Result<()> {
         Command::Stations => {
             let c = ctx()?;
             let t = std::time::Instant::now();
-            let out = skimap_stations::build(&c.layout, &c.dl, cfg.personal_sources)?;
+            let out = c.stations(true)?;
             println!(
                 "stations -> {} ({:.1} s, personal_sources = {})",
                 out.dir.display(),
                 t.elapsed().as_secs_f64(),
                 cfg.personal_sources
             );
-            print_json(&out.stats)?;
-            departs(&c)
+            print_json(&out.stats)
         }
         Command::Departs => departs(&ctx()?),
         Command::Refresh { sites } => {

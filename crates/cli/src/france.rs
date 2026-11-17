@@ -481,6 +481,24 @@ pub fn apply_departs(layout: &DataLayout, records: &mut [SiteRecord]) -> Result<
     Ok(n)
 }
 
+/// Trail starts (X9) after a run of the stations layer: rebuilt when the station cards
+/// ran (new OSM points) or when `departs.json` is missing, then written into the registry.
+pub fn departs_after_stations(
+    ctx: &Ctx,
+    ran: &[String],
+) -> Result<Option<skimap_stations::departs::DepartsOutput>> {
+    let path = ctx
+        .layout
+        .france_layer_dir(skimap_stations::LAYER)?
+        .join(skimap_stations::departs::FILE);
+    if !ran.iter().any(|r| r == "fiches") && path.is_file() {
+        return Ok(None);
+    }
+    let out = skimap_stations::departs::build(&ctx.layout, &ctx.dl)?;
+    refresh_registry_starts(&ctx.layout)?;
+    Ok(Some(out))
+}
+
 /// Rewrites the registry file with the starts of `stations/departs.json` (X9), after the
 /// stations layer ran; no registry: nothing to do.
 pub fn refresh_registry_starts(layout: &DataLayout) -> Result<usize> {
