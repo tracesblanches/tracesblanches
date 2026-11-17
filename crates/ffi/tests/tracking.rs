@@ -781,3 +781,280 @@ fn full_data_bring_me_back() {
         "{modes:?}"
     );
 }
+
+/// `pack_dir` as the pipeline writes it now: a pack written before P163 (#163) does not
+/// carry the record of its site, so the phone plans nothing on it but the evaluation
+/// sites; its view under `view` (links to its files, read only) gets the manifest with the
+/// record the pack build writes (`skimap_pack::build::starts::record`).
+fn with_site_record(pack_dir: &Path, view: &Path) -> PathBuf {
+    let text = std::fs::read_to_string(pack_dir.join("manifest.json")).unwrap();
+    let mut m: skimap_pack::Manifest = serde_json::from_str(&text).unwrap();
+    if m.site.record.is_some() {
+        return pack_dir.to_path_buf();
+    }
+    let layout = DataLayout::new(data());
+    let reg = skimap_common::site::Registry::load(&layout).unwrap();
+    let Ok(site) = reg.get(&m.site.id) else {
+        return pack_dir.to_path_buf();
+    };
+    m.site.record = Some(skimap_pack::build::starts::record(site, &layout));
+    std::fs::create_dir_all(view).unwrap();
+    for e in std::fs::read_dir(pack_dir).unwrap() {
+        let e = e.unwrap();
+        if e.file_name() != "manifest.json" {
+            std::os::unix::fs::symlink(e.path(), view.join(e.file_name())).unwrap();
+        }
+    }
+    std::fs::write(
+        view.join("manifest.json"),
+        serde_json::to_string(&m).unwrap(),
+    )
+    .unwrap();
+    view.to_path_buf()
+}
+
+/// One « ramène-moi » on the pack in `pack_dir`: 40 minutes of a 3 h plan from its first
+/// start, then back along the way out to where the outing started; then the same outing
+/// and the arrow of the screen followed to the target. `Err` when no plan
+/// could be made there, or when the arrival was not said (`not arrived…`).
+fn bring_me_back_on(pack_dir: &Path) -> Result<String, String> {
+    use skimap_common::geom::LonLat;
+    let work = tempfile::tempdir().unwrap();
+    let pack_dir = &with_site_record(pack_dir, &work.path().join("pack"));
+    let starts = skimap_ffi::tracking_day::day_pack_starts(
+        pack_dir.display().to_string(),
+        skimap_ffi::card::Lang::Fr,
+    );
+    let start = starts.into_iter().next().ok_or("no start")?;
+    let planner = open_day_planner(
+        pack_dir.display().to_string(),
+        work.path().join("view").display().to_string(),
+        skimap_ffi::card::Lang::Fr,
+    )
+    .map_err(|e| format!("planner: {e}"))?;
+    let req = DayRequest {
+        label: "3 h".into(),
+        start,
+        date: "2026-11-16".into(),
+        start_time: Some("10:00".into()),
+        earliest: "08:00".into(),
+        budget_min: 180.0,
+        skating: false,
+        return_before: None,
+        max_difficulty: None,
+    };
+    planner
+        .morning(req, None)
+        .map_err(|e| format!("morning: {e}"))?;
+    let dir = work.path().join("plan");
+    let v = planner
+        .validate(0, None, dir.display().to_string())
+        .map_err(|e| format!("validate: {e}"))?;
+    let plan =
+        DayPlan::from_json(&std::fs::read_to_string(dir.join("plan.json")).unwrap()).unwrap();
+    let trk = std::fs::read(dir.join("plan.trk")).unwrap();
+    let g = load_graph(pack_dir).unwrap();
+    let sc = Scenario {
+        name: "aller".into(),
+        start: scenario::departure_utc(&plan),
+        slowdown: 1.0,
+        steps: vec![Step::WaitAtStart { secs: 60.0 }],
+        sigma_m: 10.0,
+        forest: false,
+        seed: 5,
+        tail_s: 0.0,
+        behaviour: None,
+        step_counter: false,
+    };
+    let run = scenario::run(
+        &sc,
+        &plan,
+        TrackView::new(&trk).unwrap(),
+        &g,
+        TrackerParams::default(),
+    )
+    .unwrap();
+    let s = open_tracking(v.plan_dir.clone(), None, "fr".into()).unwrap();
+    let t_start = run.inputs[0].t();
+    let out: Vec<(i64, f64, f64)> = run
+        .inputs
+        .iter()
+        .filter_map(|i| match i {
+            Input::Fix { t, pos } if (*t - t_start).num_seconds() < 2400 => {
+                Some((t.timestamp_millis(), pos.lon, pos.lat))
+            }
+            _ => None,
+        })
+        .collect();
+    for c in out.chunks(12) {
+        s.push_fixes(pack_fixes(c)).unwrap();
+    }
+    let before = s.guidance().unwrap();
+    let t_back = out.last().unwrap().0 + 1000;
+    let b = s.back_start(t_back).unwrap();
+    assert_eq!(b.guidance.route, "back", "{}", pack_dir.display());
+    let view = b.guidance.back.clone().expect("way back");
+    let target = LonLat::new(view.target_lon, view.target_lat);
+    let pos = |x: &(i64, f64, f64)| LonLat::new(x.1, x.2);
+    let first = pos(&out[0]);
+    let asked = pos(out.last().unwrap()).haversine_m(target);
+    // Ski back along the way out, one fix every 2 s.
+    let mut t = t_back;
+    let mut arrived_at = None;
+    let mut left = (b.guidance.remaining_m, false, 0);
+    let mut turns = 0;
+    let back: Vec<_> = out.iter().rev().step_by(2).copied().collect();
+    for c in back.chunks(5) {
+        let fixes: Vec<_> = c
+            .iter()
+            .map(|(_, lon, lat)| {
+                t += 2000;
+                (t, *lon, *lat)
+            })
+            .collect();
+        let r = s.push_fixes(pack_fixes(&fixes)).unwrap();
+        turns += r.spoken.iter().filter(|x| x.kinds == ["turn"]).count();
+        left = (
+            r.guidance.remaining_m,
+            r.guidance.back.as_ref().is_some_and(|x| x.off_way),
+            left.2 + r.spoken.iter().filter(|x| x.kinds == ["off_route"]).count(),
+        );
+        if r.guidance.route != "back" {
+            assert!(
+                r.spoken.iter().any(|x| x.kinds == ["arrive"]),
+                "{}: back over without the arrival said",
+                pack_dir.display()
+            );
+            arrived_at = fixes.last().map(pos);
+            break;
+        }
+    }
+    let at = arrived_at.ok_or_else(|| {
+        format!(
+            "not arrived: target {} {:?} {:.0} m from the first fix, way {}, {:.0} m left at \
+             the first fix (off the way: {}, said {} times)",
+            view.target,
+            view.target_name,
+            target.haversine_m(first),
+            view.way,
+            left.0,
+            left.1,
+            left.2
+        )
+    })?;
+    // The same outing again, then the arrow of the screen followed (the next useful point
+    // of the way, 6 m a fix every 2 s): it leads to the target.
+    let s = open_tracking(v.plan_dir.clone(), None, "fr".into()).unwrap();
+    for c in out.chunks(12) {
+        s.push_fixes(pack_fixes(c)).unwrap();
+    }
+    let b2 = s.back_start(t_back).unwrap();
+    let mut g = b2.guidance.back.clone().expect("way back");
+    let (mut p, mut t, mut skied) = (pos(out.last().unwrap()), t_back, 0.0);
+    let mut followed = None;
+    let mut off = 0;
+    let limit = 3.0 * b2.guidance.remaining_m + 1000.0;
+    while followed.is_none() && skied < limit {
+        let mut fixes = Vec::new();
+        for _ in 0..5 {
+            let to = LonLat::new(g.guide_lon, g.guide_lat);
+            let d = p.haversine_m(to);
+            let f = if d > 6.0 { 6.0 / d } else { 1.0 };
+            p = LonLat::new(p.lon + f * (to.lon - p.lon), p.lat + f * (to.lat - p.lat));
+            skied += d.min(6.0);
+            t += 2000;
+            fixes.push((t, p.lon, p.lat));
+        }
+        let r = s.push_fixes(pack_fixes(&fixes)).unwrap();
+        off += r.spoken.iter().filter(|x| x.kinds == ["off_route"]).count();
+        match r.guidance.back {
+            Some(x) if r.guidance.route == "back" => g = x,
+            _ => {
+                assert!(r.spoken.iter().any(|x| x.kinds == ["arrive"]));
+                followed = Some(p);
+            }
+        }
+    }
+    let end = followed.ok_or_else(|| {
+        format!(
+            "not arrived: the arrow followed for {skied:.0} m, {:.0} m from the target",
+            p.haversine_m(target)
+        )
+    })?;
+    let row = format!(
+        "{:>4.1} km out, back {:>4.1} km by {:<12} to the {:<5} ({:>3.0} m from the first fix, \
+         {asked:>5.0} m away when asked); the way out skied back: arrived {:>3.0} m from the \
+         first fix, {:>3.0} m from the target, {turns} turns said; the arrow followed: arrived \
+         after {:>4.1} km, {:>3.0} m from the target, {off} times off the way",
+        before.progress_m / 1000.0,
+        b.guidance.remaining_m / 1000.0,
+        view.way,
+        view.target,
+        target.haversine_m(first),
+        at.haversine_m(first),
+        at.haversine_m(target),
+        skied / 1000.0,
+        end.haversine_m(target),
+    );
+    assert!(
+        end.haversine_m(target) <= 60.0 || end.haversine_m(first) <= 60.0,
+        "{}: {row}",
+        pack_dir.display()
+    );
+    assert_eq!(off, 0, "{}: {row}", pack_dir.display());
+    // Arrived where the outing started (where the car was recorded) or at the target.
+    assert!(
+        at.haversine_m(first) <= 60.0 || at.haversine_m(target) <= 60.0,
+        "{}: {row}",
+        pack_dir.display()
+    );
+    Ok(row)
+}
+
+/// « Ramène-moi » on every pack of the data: the way back from 40 minutes out leads to
+/// the car (or to where the outing started) and the arrival is said there.
+#[test]
+#[ignore = "full-data: needs data/out/<site>/pack"]
+fn full_data_bring_me_back_on_every_pack() {
+    let mut packs: Vec<PathBuf> = std::fs::read_dir(data().join("out"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|e| e.path().join("pack"))
+        .filter(|p| p.join("manifest.json").is_file())
+        .collect();
+    packs.sort();
+    let (mut ok, mut failed, mut no_plan) = (0, Vec::new(), Vec::new());
+    for p in &packs {
+        let name = p
+            .parent()
+            .and_then(Path::file_name)
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        match std::panic::catch_unwind(|| bring_me_back_on(p)) {
+            Ok(Ok(row)) => {
+                ok += 1;
+                println!("{name:<44} {row}");
+            }
+            Ok(Err(e)) if e.starts_with("not arrived") => {
+                println!("{name:<44} FAILED {e}");
+                failed.push(name);
+            }
+            Ok(Err(e)) => {
+                println!("{name:<44} no plan: {e}");
+                no_plan.push(name);
+            }
+            Err(_) => {
+                println!("{name:<44} FAILED (panic)");
+                failed.push(name);
+            }
+        }
+    }
+    println!(
+        "{} packs: {ok} brought back, {} failed, {} without a plan",
+        packs.len(),
+        failed.len(),
+        no_plan.len()
+    );
+    assert!(failed.is_empty(), "{failed:?}");
+    assert!(ok >= 10, "{ok} packs brought back only");
+}

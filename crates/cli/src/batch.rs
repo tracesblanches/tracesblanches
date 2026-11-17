@@ -327,24 +327,14 @@ pub fn build_many(
     let mut stations = None;
     let mut meteo = None;
     if n > 0 {
-        let t = Instant::now();
-        let planet = skimap_osm::extract::load_planet(&ctx.dl)?;
-        let census = ctx.census(&planet)?;
-        println!(
-            "extrait OSM du {} et recensement ({} domaines) lus en {:.1} s",
-            planet.valid_at.as_deref().unwrap_or("?"),
-            census.domains.len(),
-            t.elapsed().as_secs_f64()
-        );
-        let srn = ctx.srn(&planet)?;
-        println!("{} zones SRN hors stations", srn.areas.len());
+        // Planet extract, census and SRN areas: read by the first step that needs them
+        // (a site whose `pistes`, `domaines` and `srn` are taken over needs none).
+        let france = crate::build::France::new(ctx);
         stations = Some(stations_step(ctx, opts.force));
         let todo_sites: Vec<&Site> = todo.iter().map(|(s, _)| *s).collect();
         meteo = (!ctx.cfg.personal_sources).then(|| meteo_step(ctx, &todo_sites));
         let shared = Shared {
-            planet: Some(&planet),
-            census: Some(&census),
-            srn: Some(&srn),
+            france: Some(&france),
             stations_once: true,
             force_stations: opts.force,
             resume: None,
@@ -550,6 +540,10 @@ pub struct StepStatus {
     /// to the next), RFC 3339.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failing_since: Option<String>,
+    /// A step done (`ok`) whose outputs hold nothing: why ([`crate::build::empty_output`],
+    /// read from the outputs on disk when the status is written).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub empty: Option<String>,
 }
 
 /// Days of failure after which a step is listed in `status.json` `alerts`.
@@ -567,6 +561,8 @@ pub struct SiteStatus {
     pub built_at: Option<String>,
     /// Steps that are not done, with their cause.
     pub failed_steps: Vec<StepStatus>,
+    /// Steps done that produced nothing, with the reason (B167).
+    pub empty_steps: Vec<StepStatus>,
     /// Every step.
     pub steps: Vec<StepStatus>,
 }
@@ -605,10 +601,12 @@ pub fn write_status(layout: &DataLayout, sites: &[&'static Site]) -> Result<Path
                 state: "never_built".into(),
                 built_at: None,
                 failed_steps: Vec::new(),
+                empty_steps: Vec::new(),
                 steps: Vec::new(),
             });
             continue;
         };
+        let site_dir = layout.out_dir(s);
         let steps: Vec<StepStatus> = rec
             .outcome
             .steps
@@ -635,6 +633,15 @@ pub fn write_status(layout: &DataLayout, sites: &[&'static Site]) -> Result<Path
                         t.format("%d/%m/%Y")
                     ));
                 }
+                let empty = (st.state == StepState::Ok)
+                    .then(|| crate::build::empty_output(&st.name, &site_dir, s))
+                    .flatten();
+                if let Some(why) = &empty
+                    && st.name == "pistes"
+                    && s.kind.has_groomed_trails()
+                {
+                    alerts.push(format!("{} : pistes : vide, {why}", s.id));
+                }
                 StepStatus {
                     step: st.name.clone(),
                     state: st.state,
@@ -642,6 +649,7 @@ pub fn write_status(layout: &DataLayout, sites: &[&'static Site]) -> Result<Path
                     tried_at,
                     error: failed.then(|| first_line(&st.line, 300)),
                     failing_since,
+                    empty,
                 }
             })
             .collect();
@@ -650,15 +658,34 @@ pub fn write_status(layout: &DataLayout, sites: &[&'static Site]) -> Result<Path
             .filter(|x| matches!(x.state, StepState::Failed | StepState::Blocked))
             .cloned()
             .collect();
+        let empty_steps: Vec<StepStatus> = steps
+            .iter()
+            .filter(|x| x.empty.is_some())
+            .cloned()
+            .collect();
         out.push(SiteStatus {
             site: s.id.to_owned(),
             state: if rec.ok { "ok" } else { "failed" }.into(),
             built_at: Some(rec.finished_at.clone()),
             failed_steps,
+            empty_steps,
             steps,
         });
     }
     let count = |k: &str| out.iter().filter(|x| x.state == k).count();
+    let empty: Vec<String> = out
+        .iter()
+        .flat_map(|x| {
+            x.empty_steps.iter().map(move |st| {
+                format!(
+                    "{} : {} : {}",
+                    x.site,
+                    st.step,
+                    st.empty.as_deref().unwrap_or_default()
+                )
+            })
+        })
+        .collect();
     skimap_common::output::write_json(
         &path,
         &serde_json::json!({
@@ -667,6 +694,8 @@ pub fn write_status(layout: &DataLayout, sites: &[&'static Site]) -> Result<Path
             "ok": count("ok"),
             "failed": count("failed"),
             "never_built": count("never_built"),
+            "empty": out.iter().filter(|x| !x.empty_steps.is_empty()).count(),
+            "empty_steps": empty,
             "alert_after_days": ALERT_AFTER_DAYS,
             "alerts": alerts,
             "by_site": out,
@@ -679,8 +708,32 @@ pub fn write_status(layout: &DataLayout, sites: &[&'static Site]) -> Result<Path
 /// decoded once for every point of every site (the `meteo` step of each site then finds
 /// its layer at the latest run). A failure is recorded; the step of each site retries.
 pub fn meteo_step(ctx: &Ctx, sites: &[&Site]) -> StepRecord {
+    meteo_step_at(ctx, sites, None)
+}
+
+/// [`meteo_step`] at a given AROME run (`None`: the run of `SKIMAP_AROME_RUN`, else the
+/// latest complete one).
+pub fn meteo_step_at(ctx: &Ctx, sites: &[&Site], run: Option<DateTime<Utc>>) -> StepRecord {
     let t = Instant::now();
-    let (state, line) = match skimap_meteo::arome::refresh(sites, &ctx.layout, &ctx.dl) {
+    let run = match run.map_or_else(|| ctx.arome_run(), |r| Ok(Some(r))) {
+        Ok(r) => r,
+        Err(e) => {
+            return StepRecord {
+                name: "meteo-arome".into(),
+                state: StepState::Failed,
+                seconds: 0.0,
+                line: format!("{e:#}"),
+                at: Some(now_rfc3339()),
+                outputs: None,
+                resumed: false,
+            };
+        }
+    };
+    let refreshed = match run {
+        Some(run) => skimap_meteo::arome::refresh_run(sites, &ctx.layout, &ctx.dl, run),
+        None => skimap_meteo::arome::refresh(sites, &ctx.layout, &ctx.dl),
+    };
+    let (state, line) = match refreshed {
         Ok(r) => {
             let written = r.sites.iter().filter(|s| s.status == "written").count();
             (
@@ -731,6 +784,62 @@ fn stations_step(ctx: &Ctx, force: bool) -> StepRecord {
         outputs: None,
         resumed: false,
     }
+}
+
+/// Steps whose outputs read those of a step run on its own (CronJobs `skimap-job snow`,
+/// `bera`, `status`, `refresh`), as declared in [`Ctx::build_all_with`]: the pack and
+/// the export take every layer.
+fn dependents(step: &str) -> &'static [&'static str] {
+    match step {
+        "snow" => &["offpiste-prepare", "build-pack", "export"],
+        "offpiste-prepare" | "bera" | "status-poll" | "meteo" | "refuges" => {
+            &["build-pack", "export"]
+        }
+        "build-pack" => &["export"],
+        _ => &[],
+    }
+}
+
+/// Records in `build-all.json` a step of a site run on its own, outside `build-all`
+/// (#164): its outputs, line and date, so that the next catch-up takes it over instead
+/// of doing it again (the snow of the morning CronJob was redone by the catch-up that
+/// followed, with the off-piste rasters and the pack). The steps that read its outputs
+/// and were not run after it are marked to be redone (state `blocked`); the next
+/// catch-up runs those only. Nothing when the site has no record (never built by
+/// `build-all`: the catch-up builds it whole).
+pub fn record_standalone(layout: &DataLayout, site: &Site, step: &str, line: &str) -> Result<()> {
+    let dir = layout.out_dir(site);
+    let Some(mut rec) = france::read_record(layout, site.id) else {
+        return Ok(());
+    };
+    let _lock = lock_site(&dir)?;
+    let at = now_rfc3339();
+    let outputs =
+        crate::build::step_dir(step).and_then(|d| crate::build::fingerprint(&dir.join(d)));
+    let Some(i) = rec.outcome.steps.iter().position(|s| s.name == step) else {
+        return Ok(());
+    };
+    rec.outcome.steps[i] = StepRecord {
+        name: step.to_owned(),
+        state: StepState::Ok,
+        seconds: 0.0,
+        line: format!("{line} (fait seul, hors build-all)"),
+        at: Some(at.clone()),
+        outputs,
+        resumed: false,
+    };
+    for d in dependents(step) {
+        if let Some(s) = rec.outcome.steps.iter_mut().find(|s| s.name == *d)
+            && s.state == StepState::Ok
+        {
+            s.state = StepState::Blocked;
+            s.line = format!("à refaire : {step} refait seul le {at}");
+            s.resumed = false;
+        }
+    }
+    rec.ok = rec.outcome.ok();
+    skimap_common::output::write_json(&france::record_path(layout, site.id), &rec)?;
+    Ok(())
 }
 
 /// Builds one site under its lock: orphan temporary files removed, steps of the previous
@@ -839,6 +948,42 @@ pub fn build_single(
     o.into_result()
 }
 
+/// French text of `status.json` ([`write_status`]): counts, then every failed step and
+/// every step done without any output, with its reason, then the alerts.
+pub fn describe_status(path: &Path) -> Result<Vec<String>> {
+    let v: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(path).with_context(|| format!("{}", path.display()))?,
+    )
+    .with_context(|| format!("{}", path.display()))?;
+    let n = |k: &str| v[k].as_u64().unwrap_or(0);
+    let mut l = vec![format!(
+        "état : {} sites, {} sans échec, {} en échec, {} jamais construits, {} avec une étape vide ({})",
+        n("sites"),
+        n("ok"),
+        n("failed"),
+        n("never_built"),
+        n("empty"),
+        path.display()
+    )];
+    for site in v["by_site"].as_array().into_iter().flatten() {
+        for st in site["failed_steps"].as_array().into_iter().flatten() {
+            l.push(format!(
+                "  échec  {} : {} : {}",
+                site["site"].as_str().unwrap_or("?"),
+                st["step"].as_str().unwrap_or("?"),
+                st["error"].as_str().unwrap_or("")
+            ));
+        }
+    }
+    for e in v["empty_steps"].as_array().into_iter().flatten() {
+        l.push(format!("  vide   {}", e.as_str().unwrap_or("?")));
+    }
+    for a in v["alerts"].as_array().into_iter().flatten() {
+        l.push(format!("  alerte {}", a.as_str().unwrap_or("?")));
+    }
+    Ok(l)
+}
+
 /// French text of a summary.
 pub fn describe(s: &BatchSummary) -> Vec<String> {
     let mut l = vec![format!(
@@ -912,6 +1057,85 @@ mod tests {
     }
 
     #[test]
+    fn a_step_run_alone_is_recorded_and_what_reads_it_is_to_be_redone() {
+        let t = tempfile::tempdir().unwrap();
+        let layout = DataLayout::new(t.path());
+        let site = skimap_common::site::site("cervieres").unwrap();
+        let dir = layout.out_dir(site);
+        std::fs::create_dir_all(dir.join("snow")).unwrap();
+        std::fs::write(dir.join("snow/depth.tif"), b"day 1").unwrap();
+        let step = |name: &str| StepRecord {
+            name: name.into(),
+            state: StepState::Ok,
+            seconds: 1.0,
+            line: String::new(),
+            at: Some("2026-11-17T06:00:00Z".into()),
+            outputs: crate::build::step_dir(name)
+                .and_then(|d| crate::build::fingerprint(&dir.join(d))),
+            resumed: false,
+        };
+        let names = [
+            "terrain",
+            "snow",
+            "offpiste-prepare",
+            "build-pack",
+            "export",
+        ];
+        let rec = BuildRecord {
+            inputs: BuildInputs {
+                record: skimap_common::site::evaluation_records()[0].clone(),
+                version: "0.1.0".into(),
+                personal_sources: false,
+                revision: france::BUILD_REVISION,
+            },
+            started_at: "2026-11-17T06:00:00Z".into(),
+            finished_at: "2026-11-17T06:01:00Z".into(),
+            ok: true,
+            outcome: BuildOutcome {
+                site: site.id.into(),
+                steps: names.iter().map(|n| step(n)).collect(),
+                seconds: 60.0,
+                pack_bytes: None,
+                export_bytes: None,
+            },
+        };
+        skimap_common::output::write_json(&france::record_path(&layout, site.id), &rec).unwrap();
+        assert!(outputs_intact(&layout, site, &rec));
+
+        // The snow CronJob: snow, off-piste rasters, pack, each recorded after it ran.
+        std::fs::write(dir.join("snow/depth.tif"), b"day 2").unwrap();
+        record_standalone(&layout, site, "snow", "simulation du 2026-11-17").unwrap();
+        let r = france::read_record(&layout, site.id).unwrap();
+        let state =
+            |r: &BuildRecord, n: &str| r.outcome.steps.iter().find(|s| s.name == n).unwrap().state;
+        assert_eq!(state(&r, "snow"), StepState::Ok);
+        assert_eq!(
+            state(&r, "terrain"),
+            StepState::Ok,
+            "not a reader of the snow"
+        );
+        for n in ["offpiste-prepare", "build-pack", "export"] {
+            assert_eq!(state(&r, n), StepState::Blocked, "{n}");
+        }
+        assert!(outputs_intact(&layout, site, &r), "new snow recorded");
+        assert!(!r.ok);
+        record_standalone(&layout, site, "offpiste-prepare", "x").unwrap();
+        record_standalone(&layout, site, "build-pack", "x").unwrap();
+        let r = france::read_record(&layout, site.id).unwrap();
+        for n in ["snow", "offpiste-prepare", "build-pack"] {
+            assert_eq!(state(&r, n), StepState::Ok, "{n}");
+        }
+        // The export, not run by the CronJob, is the only step the catch-up redoes.
+        assert_eq!(state(&r, "export"), StepState::Blocked);
+        assert!(!r.ok);
+
+        // A site never built by build-all: nothing recorded.
+        let other = skimap_common::site::site("chapelle-des-bois").unwrap();
+        record_standalone(&layout, other, "snow", "x").unwrap();
+        assert!(france::read_record(&layout, other.id).is_none());
+    }
+
+    #[test]
     fn freshness() {
         let rec = BuildRecord {
             inputs: BuildInputs {
@@ -965,6 +1189,91 @@ mod tests {
         ));
         assert!(older.resumable_by(&rec.inputs));
         assert!(!other.resumable_by(&rec.inputs), "another site record");
+    }
+
+    /// B167: a step that ends `ok` without producing anything is listed in `status.json`
+    /// with its reason (a groomed station without pistes is an alert), never silently.
+    #[test]
+    fn status_lists_empty_steps() {
+        let d = tempfile::tempdir().unwrap();
+        let layout = DataLayout::new(d.path());
+        let record = skimap_common::site::evaluation_records()
+            .iter()
+            .find(|r| r.kind.has_groomed_trails())
+            .unwrap()
+            .clone();
+        let site = skimap_common::site::interned(&record).unwrap();
+        let dir = layout.out_dir(site);
+        let fc = |n: usize| {
+            serde_json::json!({
+                "type": "FeatureCollection",
+                "features": (0..n).map(|_| serde_json::json!({
+                    "type": "Feature", "properties": {},
+                    "geometry": {"type": "Point", "coordinates": [6.0, 45.0]}
+                })).collect::<Vec<_>>()
+            })
+            .to_string()
+        };
+        std::fs::create_dir_all(dir.join("pistes")).unwrap();
+        std::fs::write(dir.join("pistes/pistes.geojson"), fc(0)).unwrap();
+        std::fs::create_dir_all(dir.join("refuges")).unwrap();
+        std::fs::write(dir.join("refuges/refuges_info.geojson"), fc(0)).unwrap();
+        std::fs::write(dir.join("refuges/osm.geojson"), fc(2)).unwrap();
+        std::fs::write(dir.join("refuges/camptocamp.geojson"), fc(0)).unwrap();
+        let step = |name: &str| StepRecord {
+            name: name.into(),
+            state: StepState::Ok,
+            seconds: 1.0,
+            line: "0 ways".into(),
+            at: Some("2026-11-17T10:00:00Z".into()),
+            outputs: None,
+            resumed: false,
+        };
+        let rec = BuildRecord {
+            inputs: BuildInputs {
+                record,
+                version: "0.1.0".into(),
+                personal_sources: false,
+                revision: france::BUILD_REVISION,
+            },
+            started_at: "2026-11-17T10:00:00Z".into(),
+            finished_at: "2026-11-17T10:01:00Z".into(),
+            ok: true,
+            outcome: BuildOutcome {
+                site: site.id.into(),
+                steps: vec![step("pistes"), step("refuges"), step("zones")],
+                seconds: 60.0,
+                pack_bytes: None,
+                export_bytes: None,
+            },
+        };
+        skimap_common::output::write_json(&france::record_path(&layout, site.id), &rec).unwrap();
+        let path = write_status(&layout, &[site]).unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let s = &v["by_site"][0];
+        let empty: Vec<&str> = s["empty_steps"]
+            .as_array()
+            .expect("empty_steps")
+            .iter()
+            .map(|x| x["step"].as_str().unwrap())
+            .collect();
+        // Pistes: no feature; zones: no file at all; refuges: 2 OSM points, not empty.
+        assert_eq!(empty, ["pistes", "zones"], "{s}");
+        assert!(
+            s["empty_steps"][0]["empty"]
+                .as_str()
+                .unwrap()
+                .contains("station damée"),
+            "{s}"
+        );
+        assert_eq!(v["empty"], 1, "{v}");
+        let alerts = v["alerts"].as_array().unwrap();
+        assert!(
+            alerts
+                .iter()
+                .any(|a| a.as_str().unwrap().contains("pistes : vide")),
+            "{v}"
+        );
     }
 
     #[test]

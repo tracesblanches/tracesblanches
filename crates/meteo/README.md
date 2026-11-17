@@ -66,6 +66,7 @@ Source actuelle : **Open-Meteo**, gratuit pour un usage non commercial seulement
 - **Unités** : neige en cm = (NEIGE + GRAUPEL) en mm d'eau × 0,7 (la conversion d'Open-Meteo, pour garder l'unité que lit l'assistant) ; précipitations et neige horaires = différences des cumuls.
 - **Méta** : `meteo-hourly.meta.json` marque la source publiable (`personal_use_only` faux), licence, attribution « Météo-France, modèle AROME 0,025° (Licence Ouverte 2.0) », run lu (`parameters.arome_run`, `past_runs`), point de grille de chaque point (`parameters.points`).
 - **Idempotence** : `refresh` ne réécrit un site que si sa couche ne contient pas déjà le run le plus récent (`parameters.arome_run`) ; un second appel dans le même run n'écrit rien et ne télécharge rien.
+- **Rejouer un run** (mesures, #164) : `refresh_run` et `build_run` prennent un run donné encore publié (deux jours) ; en ligne de commande, `skimap meteo-refresh --run 2026-11-17T06:00:00Z`, et `SKIMAP_AROME_RUN=<run>` fait de même pour tout rafraîchissement AROME du processus (`build-all` compris). Jamais en production : sans la variable, le run le plus récent.
 
 Validation du décodage (oracle Python `eccodes` hors dépôt, run du 15/11/2026 09 UTC) : tous les champs utiles du fichier `SP1` 00-06 h (58 champs) à cinq points (Le Laus, jeu de test jurassien, Plateau de Beille, Vercors, un point hors domaine en mer Baltique) et l'altitude de `SP2` à trois points : même indice de grille, écart maximal 1,2·10⁻⁵ (précision f32), valeurs manquantes identiques.
 

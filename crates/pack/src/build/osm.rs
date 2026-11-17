@@ -390,6 +390,44 @@ pub fn current_extract(
     Ok(chosen)
 }
 
+/// Key of the OSM basemap of a site ([`crate::build::parts`]): the latest build, the
+/// build in use (`<site>-z<zoom>-<box>.current.json` and whether its extract is still
+/// in the cache), the box, the zoom and the style. Unchanged while no new Protomaps build
+/// appears and the build in use stays: the pack then takes the basemap of the previous
+/// pack without reading the extracts again. Made after a build, the key already holds
+/// the build it adopted.
+pub fn part_key(
+    site: &Site,
+    layout: &DataLayout,
+    latest: &BuildInfo,
+    maxzoom: u8,
+) -> Result<String> {
+    let dir = extracts_dir(layout)?;
+    let state = dir.join(format!(
+        "{}-z{maxzoom}-{}.current.json",
+        site.id,
+        box_name(site.bbox)
+    ));
+    let current = match std::fs::read(&state) {
+        Ok(b) => {
+            let present = serde_json::from_slice::<BuildInfo>(&b)
+                .is_ok_and(|c| extract_path(&dir, site, &c.key, maxzoom).is_file());
+            format!("{} {present}", crate::update::sha256_hex(&b))
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => "none".to_owned(),
+        Err(e) => return Err(Error::io(&state, e)),
+    };
+    let latest = serde_json::to_string(latest).map_err(|e| Error::json("Protomaps build", e))?;
+    let mut k = crate::build::parts::Key::new(&format!("basemap:{ID}"));
+    k.add("latest", &latest)
+        .add("current", &current)
+        .add("box", &box_name(site.bbox))
+        .add("maxzoom", &maxzoom.to_string())
+        .add("style", &crate::update::sha256_hex(STYLE.as_bytes()))
+        .add("assets", ASSETS_BASE);
+    Ok(k.finish())
+}
+
 /// Builds the OSM basemap into `root/basemap/`.
 pub fn build(
     site: &Site,
@@ -399,7 +437,26 @@ pub fn build(
     wanted_build: Option<&str>,
     maxzoom: u8,
 ) -> Result<Basemap> {
-    let chosen = current_extract(site, layout, dl, &select_build(dl, wanted_build)?, maxzoom)?;
+    build_from(
+        site,
+        layout,
+        dl,
+        root,
+        &select_build(dl, wanted_build)?,
+        maxzoom,
+    )
+}
+
+/// [`build`] with the latest build already listed.
+pub fn build_from(
+    site: &Site,
+    layout: &DataLayout,
+    dl: &Downloader,
+    root: &Path,
+    latest: &BuildInfo,
+    maxzoom: u8,
+) -> Result<Basemap> {
+    let chosen = current_extract(site, layout, dl, latest, maxzoom)?;
     let build = &chosen.build;
     let archive_rel = format!("basemap/{ID}.pmtiles");
     let archive_bytes = copy_file(&chosen.path, &root.join(&archive_rel))?;

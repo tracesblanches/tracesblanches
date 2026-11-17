@@ -5,7 +5,9 @@
 //! car known, the start of the trace. The car is recorded on its own ([`CarSpotter`]): the
 //! first fix of the outing that the next one confirms (a cached position from elsewhere is
 //! not), moved onto the nearest OSM car park when one is within [`PARKING_SNAP_M`]; a long
-//! touch on the map (« La voiture est ici ») corrects it.
+//! touch on the map (« La voiture est ici ») corrects it. A car park drawn as an area in OSM
+//! is a single point of it, often tens of metres from where the car stands: the fix that
+//! recorded the car is kept, and getting back there is arriving at the car as well.
 //!
 //! **The way.** [`way_back`], on the phone, offline: along the pistes of the pack
 //! ([`Network`], the plan's time model with its level, closed trails avoided) from where the
@@ -18,7 +20,9 @@
 //! closed), the way back jumps there; a piste route is kept as it is. Turns are the bends
 //! of that line of 50° or more over 50 m arms; each is said once, about [`TURN_LEAD_M`]
 //! before it, with the phrase bank of the pack (`Event::Turn`); off the way for 15 s at
-//! more than 40 m (C2) and back under 15 m are said as on the plan; the arrival as well.
+//! more than 40 m (C2) and back under 15 m are said as on the plan; the arrival as well,
+//! within [`ARRIVED_M`] of the end along the way or as the crow flies (a skier who took
+//! another way than the one guided is at the car all the same).
 //! The GPS mode comes from the core's rule on the distance to the next turn
 //! (`skimap_plan::gps::decide`). [`Backtrack::guide_point`] is the next useful point of the
 //! way (the arrow of the screen points there, never across the terrain to the end).
@@ -94,6 +98,9 @@ pub struct Backtrack {
     mark: Option<(f64, f64)>,
     /// Last fix, in the plane.
     here: Option<[f64; 2]>,
+    /// Another point where the skier has arrived (where the car was recorded before it
+    /// was moved onto the car park), in the plane.
+    also_end: Option<[f64; 2]>,
 }
 
 fn dist(a: [f64; 2], b: [f64; 2]) -> f64 {
@@ -252,9 +259,18 @@ impl Backtrack {
             speed: DEFAULT_SPEED_MS,
             mark: None,
             here: None,
+            also_end: None,
         };
         b.turns = b.find_turns();
         Some(b)
+    }
+
+    /// Getting within [`ARRIVED_M`] of `p` is arriving as well (where the car was recorded
+    /// before it was moved onto the car park, [`Target::recorded`]).
+    #[must_use]
+    pub fn arriving_at(mut self, p: Option<LonLat>) -> Self {
+        self.also_end = p.map(|p| self.plane.xy(p));
+        self
     }
 
     /// End of the way.
@@ -425,7 +441,9 @@ impl Backtrack {
     }
 
     /// A fix: moves the cursor (forward only, within what a skier can do), the turns, the
-    /// off-the-way hysteresis, the arrival.
+    /// off-the-way hysteresis, the arrival (within [`ARRIVED_M`] of the end along the way,
+    /// or of the end or of [`Backtrack::arriving_at`]'s point as the crow flies, whichever
+    /// way the skier took).
     pub fn fix(&mut self, t: f64, pos: LonLat) -> BackStep {
         let mut step = BackStep::default();
         if t <= self.last_t || self.arrived {
@@ -527,7 +545,10 @@ impl Backtrack {
                 "turn",
             ));
         }
-        if self.remaining_m() <= ARRIVED_M && d <= OFF_M {
+        let near = |p: [f64; 2]| dist(q, p) <= ARRIVED_M;
+        let along = self.remaining_m() <= ARRIVED_M && d <= OFF_M;
+        let end = self.pts[self.pts.len() - 1];
+        if along || near(end) || self.also_end.is_some_and(near) {
             self.arrived = true;
             step.arrived = true;
             step.say
@@ -568,6 +589,9 @@ pub struct Car {
     pub parking: Option<String>,
     /// Set by the skier (a long touch on the map), not recorded on its own.
     pub manual: bool,
+    /// The fix that recorded it, when it was moved onto a car park.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recorded: Option<LonLat>,
 }
 
 impl Car {
@@ -623,6 +647,7 @@ impl CarSpotter {
                 self.car = Some(Car {
                     lon: p.lon,
                     lat: p.lat,
+                    recorded: parking.is_some().then_some(p0),
                     parking,
                     manual: false,
                 });
@@ -642,6 +667,7 @@ impl CarSpotter {
             lat: pos.lat,
             parking: None,
             manual: true,
+            recorded: None,
         })
     }
 
@@ -690,6 +716,9 @@ pub struct Target {
     pub pos: LonLat,
     /// Name (the destination, the car park), when known.
     pub name: Option<String>,
+    /// The car: where it was recorded, when it was moved onto a car park (arriving there
+    /// is arriving at the car).
+    pub recorded: Option<LonLat>,
 }
 
 /// Where to go back to: the end of the day plan when it is a destination of its own
@@ -708,6 +737,7 @@ pub fn choose_target(
                 kind: TargetKind::Destination,
                 pos: end,
                 name,
+                recorded: None,
             });
         }
     }
@@ -716,12 +746,14 @@ pub fn choose_target(
             kind: TargetKind::Car,
             pos: c.pos(),
             name: c.parking.clone(),
+            recorded: c.recorded,
         });
     }
     trace_start.or(plan_start).map(|p| Target {
         kind: TargetKind::Start,
         pos: p,
         name: None,
+        recorded: None,
     })
 }
 
@@ -854,7 +886,7 @@ pub fn way_back(
             };
             if let Some(back) = back {
                 return Some(Way {
-                    back,
+                    back: back.arriving_at(target.recorded),
                     kind: k,
                     target,
                 });
@@ -866,7 +898,7 @@ pub fn way_back(
         TargetKind::Destination => home?,
         _ => target,
     };
-    let back = Backtrack::new_to(trace, here, Some(to.pos))?;
+    let back = Backtrack::new_to(trace, here, Some(to.pos))?.arriving_at(to.recorded);
     Some(Way {
         back,
         kind: WayKind::Trace,
@@ -1100,6 +1132,7 @@ mod tests {
             lat: p.lat,
             parking: Some("Parking du Bourget".into()),
             manual: false,
+            recorded: None,
         }
     }
 
@@ -1302,11 +1335,97 @@ mod tests {
         assert!(way_back(None, &[], here, target_of(&car), None).is_none());
     }
 
+    /// Skis from `from` to `to` (plane, metres) at 3 m/s, one fix a second from `t0`;
+    /// the second at which `b` says the arrival, if it does.
+    fn ski(b: &mut Backtrack, t0: f64, from: [f64; 2], to: [f64; 2]) -> (f64, Option<f64>) {
+        let n = (dist(from, to) / 3.0).ceil().max(1.0) as u32;
+        let mut t = t0;
+        for k in 1..=n {
+            let f = f64::from(k) / f64::from(n);
+            t += 1.0;
+            let p = [
+                from[0] + f * (to[0] - from[0]),
+                from[1] + f * (to[1] - from[1]),
+            ];
+            if b.fix(t, at(p[0], p[1])).arrived {
+                return (t, Some(t));
+            }
+        }
+        (t, None)
+    }
+
+    #[test]
+    fn back_where_the_car_was_recorded_is_arrived_though_it_was_moved_onto_the_car_park() {
+        // The car recorded at the first fix (0, 0), moved onto the car park 70 m south
+        // (the representative point of a car park drawn as an area in OSM).
+        let parkings = vec![(None, at(0.0, -70.0))];
+        let mut spot = CarSpotter::default();
+        spot.fix(0.0, at(0.0, 0.0), &parkings);
+        spot.fix(5.0, at(2.0, 0.0), &parkings);
+        let car = spot.car().unwrap().clone();
+        assert!(car.pos().haversine_m(at(0.0, -70.0)) < 0.5);
+        // Out along the pistes 2 km east, then « ramène-moi » back to where it started.
+        let tr = skied(&[[0.0, 0.0], [2000.0, 0.0]]);
+        let here = *tr.last().unwrap();
+        let g = network();
+        let n = net(&g);
+        for net in [Some(&n), None] {
+            let target = choose_target(None, None, Some(&car), tr.first().copied()).unwrap();
+            assert_eq!(target.kind, TargetKind::Car);
+            let mut w = way_back(net, &tr, here, target, None).unwrap();
+            let (_, arrived) = ski(&mut w.back, 0.0, [2000.0, 0.0], [0.0, 0.0]);
+            assert!(
+                arrived.is_some(),
+                "{:?}: {:.0} m left back where the car was recorded",
+                w.kind,
+                w.back.remaining_m()
+            );
+            // 60 m short of it: not yet; straight on to the car park (never within 40 m
+            // of where the car was recorded): arrived there.
+            let mut w = way_back(net, &tr, here, w.target, None).unwrap();
+            let (t, arrived) = ski(&mut w.back, 0.0, [2000.0, 0.0], [60.0, 0.0]);
+            assert!(arrived.is_none(), "{:?}: arrived 60 m short", w.kind);
+            let (_, arrived) = ski(&mut w.back, t, [60.0, 0.0], [0.0, -70.0]);
+            assert!(
+                arrived.is_some(),
+                "{:?}: not arrived at the car park",
+                w.kind
+            );
+        }
+    }
+
+    #[test]
+    fn back_at_the_car_by_another_way_than_the_one_guided_is_arrived() {
+        // Out from the car at A (0, 0) along the pistes to B, then up to D (1000, 1000).
+        // The way back goes down to B and west to A; the skier cuts straight across
+        // instead, off the way, and gets to the car all the same.
+        let car = car_at(0.0, 0.0);
+        let tr = skied(&[[0.0, 0.0], [1000.0, 0.0], [1000.0, 1000.0]]);
+        let here = *tr.last().unwrap();
+        let g = network();
+        let n = net(&g);
+        for net in [Some(&n), None] {
+            let target = choose_target(None, None, Some(&car), tr.first().copied()).unwrap();
+            let mut w = way_back(net, &tr, here, target, None).unwrap();
+            let (t, arrived) = ski(&mut w.back, 0.0, [1000.0, 1000.0], [60.0, 60.0]);
+            assert!(arrived.is_none(), "{:?}: arrived 85 m short", w.kind);
+            assert!(w.back.is_off(), "{:?}", w.kind);
+            let (_, arrived) = ski(&mut w.back, t, [60.0, 60.0], [0.0, 0.0]);
+            assert!(
+                arrived.is_some(),
+                "{:?}: at the car, {:.0} m left along the way",
+                w.kind,
+                w.back.remaining_m()
+            );
+        }
+    }
+
     fn target_of(car: &Car) -> Target {
         Target {
             kind: TargetKind::Car,
             pos: car.pos(),
             name: None,
+            recorded: None,
         }
     }
 
@@ -1363,6 +1482,7 @@ mod tests {
             kind: TargetKind::Destination,
             pos: at(0.0, 0.0),
             name: Some("Gîte du Laus".into()),
+            recorded: None,
         };
         assert_eq!(
             proposal_text(Some(&gite), skimap_common::Lang::Fr),

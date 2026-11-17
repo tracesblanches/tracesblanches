@@ -132,10 +132,18 @@ enum Command {
     MeteoRefresh {
         /// Sites (default: every buildable site of the registry).
         sites: Vec<String>,
+        /// AROME run to use (RFC 3339, e.g. `2026-11-17T06:00:00Z`; default: the latest
+        /// complete run): replay of a run still published, measurements.
+        #[arg(long)]
+        run: Option<String>,
     },
     /// Catalogue of France, `data/out/france/catalog.json` and `catalog.geojson`: every
     /// site with its box, centre, km and the state of its pack (G2).
     Catalog,
+    /// Build state of every site of the registry, `data/out/france/status.json`, from the
+    /// build records (`out/<site>/build-all.json`) and the outputs on disk, nothing built:
+    /// failed steps and steps done without any output (B167), printed with their reason.
+    BuildStatus,
     /// IGN LiDAR HD terrain model, slope and aspect of a site (P5, #18).
     Terrain(SiteArg),
     /// Estimated snow cover of a site (P6, #19); needs the terrain tiles.
@@ -557,6 +565,14 @@ fn not_implemented(name: &str, tickets: &str) -> Result<()> {
     anyhow::bail!("`{name}` n'est pas encore implémenté (ticket(s) {tickets})")
 }
 
+/// Records a step run on its own in the site's `build-all.json` ([`batch::record_standalone`]);
+/// a failure to record is only logged (the outputs are written).
+fn record(c: &build::Ctx, s: &Site, step: &str, line: &str) {
+    if let Err(e) = batch::record_standalone(&c.layout, s, step, line) {
+        tracing::warn!(site = s.id, step, error = %e, "step not recorded in build-all.json");
+    }
+}
+
 fn build_all(cfg: &Config, registry: &Registry, a: BuildAllArgs) -> Result<()> {
     let c = build::Ctx::new(cfg)?;
     if let Some(id) = &a.site {
@@ -587,6 +603,9 @@ fn build_all(cfg: &Config, registry: &Registry, a: BuildAllArgs) -> Result<()> {
     };
     let summary = batch::build_many(&c, registry, &sites, &opts)?;
     for l in batch::describe(&summary) {
+        println!("{l}");
+    }
+    for l in batch::describe_status(&c.layout.france_dir().join("status.json"))? {
         println!("{l}");
     }
     let cat = france::write_catalog(&c.layout, registry)?;
@@ -740,14 +759,15 @@ fn run(cli: Cli) -> Result<()> {
             }
             Ok(())
         }
-        Command::MeteoRefresh { sites } => {
+        Command::MeteoRefresh { sites, run } => {
             let c = ctx()?;
             let sites: Vec<&Site> = if sites.is_empty() {
                 registry.buildable()
             } else {
                 sites.iter().map(|s| site(s)).collect::<Result<_>>()?
             };
-            let r = batch::meteo_step(&c, &sites);
+            let run = run.as_deref().map(build::parse_instant).transpose()?;
+            let r = batch::meteo_step_at(&c, &sites, run);
             if r.state == build::StepState::Failed {
                 anyhow::bail!("meteo-refresh : {}", r.line);
             }
@@ -756,6 +776,13 @@ fn run(cli: Cli) -> Result<()> {
         Command::Catalog => {
             let c = france::write_catalog(&cfg.layout(), &registry)?;
             print_json(&c)
+        }
+        Command::BuildStatus => {
+            let path = batch::write_status(&cfg.layout(), &registry.buildable())?;
+            for l in batch::describe_status(&path)? {
+                println!("{l}");
+            }
+            Ok(())
         }
         Command::Terrain(a) => {
             let s = site(&a.site)?;
@@ -766,7 +793,12 @@ fn run(cli: Cli) -> Result<()> {
                 site(&s)?,
                 date.as_deref().map(build::parse_date).transpose()?,
             );
-            print_json(&ctx()?.snow(s, date)?)
+            let c = ctx()?;
+            let r = c.snow(s, date)?;
+            if date.is_none() {
+                record(&c, s, "snow", &format!("simulation du {}", r.date));
+            }
+            print_json(&r)
         }
         Command::SnowValidate { site: s, seasons } => {
             let s = site(&s)?;
@@ -807,11 +839,19 @@ fn run(cli: Cli) -> Result<()> {
                 site(&s)?,
                 date.as_deref().map(build::parse_date).transpose()?,
             );
-            print_json(&ctx()?.bera(s, date)?)
+            let c = ctx()?;
+            let r = c.bera(s, date)?;
+            if date.is_none() {
+                record(&c, s, "bera", &format!("{:?}", r.status));
+            }
+            print_json(&r)
         }
         Command::Meteo(a) => {
             let s = site(&a.site)?;
-            print_json(&ctx()?.meteo(s)?)
+            let c = ctx()?;
+            let r = c.meteo(s)?;
+            record(&c, s, "meteo", &format!("{} points", r.points.len()));
+            print_json(&r)
         }
         Command::History {
             site: s,
@@ -829,7 +869,15 @@ fn run(cli: Cli) -> Result<()> {
         }
         Command::StatusPoll(a) => {
             let s = site(&a.site)?;
-            print_json(&ctx()?.status_poll(s)?)
+            let c = ctx()?;
+            let r = c.status_poll(s)?;
+            record(
+                &c,
+                s,
+                "status-poll",
+                &format!("{} sources", r.sources.len()),
+            );
+            print_json(&r)
         }
         Command::AvalancheHistoric { site: s, dump } => {
             let s = site(&s)?;
@@ -856,7 +904,17 @@ fn run(cli: Cli) -> Result<()> {
         }
         Command::OffpistePrepare { site: s, snow_dirs } => {
             let s = site(&s)?;
-            print_json(&ctx()?.offpiste_prepare(s, &snow_dirs)?.stats)
+            let c = ctx()?;
+            let m = c.offpiste_prepare(s, &snow_dirs)?;
+            if snow_dirs.is_empty() {
+                record(
+                    &c,
+                    s,
+                    "offpiste-prepare",
+                    &format!("{} fichiers", m.files.len()),
+                );
+            }
+            print_json(&m.stats)
         }
         Command::Route {
             site: s,
@@ -960,6 +1018,16 @@ fn run(cli: Cli) -> Result<()> {
             if !problems.is_empty() {
                 anyhow::bail!("relecture du pack : {}", problems.join(" ; "));
             }
+            record(
+                &c,
+                s,
+                "build-pack",
+                &format!(
+                    "pack {} : {:.2} Mo",
+                    r.pack_version,
+                    r.total_bytes as f64 / 1e6
+                ),
+            );
             // VO6: the voice packs apart, one per built language.
             for v in c.build_voice_packs(s)? {
                 print_json(&v)?;
