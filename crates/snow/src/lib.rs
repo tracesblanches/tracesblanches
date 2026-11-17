@@ -3,8 +3,8 @@
 //! Owned tickets:
 //! - P6 (#19): per pixel (massif, elevation, aspect, slope), snow depth interpolated from the
 //!   Météo-France snowpack simulation (J-1); three classes per activity plus a range.
-//! - P7 (#20): validation against Météo-France stations (Cervières 1614 m, Arvieux, Mouthe,
-//!   La Boissaude) over past seasons.
+//! - P7 (#20): validation against the Météo-France stations of the site table
+//!   (`data/validation_stations.json`) over past seasons.
 //!
 //! - [`massifs`] — SAFRAN massif contours (CNRM `snowtools`), rasterisation.
 //! - [`sim`] — yearly simulation files, per-pixel interpolation and range.

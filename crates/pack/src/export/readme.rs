@@ -163,7 +163,7 @@ pub fn lisezmoi(
          - [ ] `kml/refuges-refuges-info.kml` : points visibles, description avec le dernier commentaire daté.\n\
          - [ ] `kml/zones-protegees.kml` : polygones remplis, règles lisibles dans la description.\n\
          - [ ] `kml/sans-reseau.kml` : polygones violets ; temps d'import et fluidité de la carte (beaucoup de polygones).\n\
-         - [ ] `kml/avalanches-troncons.kml` (Cervières) : tronçons rouges épais, longueur et texte d'alerte.\n\
+         - [ ] `kml/avalanches-troncons.kml` (sites couverts par la CLPA) : tronçons rouges épais, longueur et texte d'alerte.\n\
          - [ ] `kml/itineraires.kml` : itinéraires de preuve en bleu (sur pistes) et orange (hors piste), description avec longueur et temps.\n\
          - [ ] `locus/pentes.mbtiles` : visible en carte hors ligne, puis en surcouche transparente sur le fond habituel ; \
          alignement correct avec le relief (comparer à un ravin connu) ; zoom 17-18 encore affiché.\n\

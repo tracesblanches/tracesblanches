@@ -1,9 +1,9 @@
-//! ENJ (Espace Nordique Jurassien) Snowmap, a Geotrek-admin API: trail status of
-//! Chapelle-des-Bois (P13, #26).
+//! ENJ (Espace Nordique Jurassien) Snowmap, a Geotrek-admin API: trail status of the
+//! Jura domains whose site table gives an ENJ city (`status.enj_city`, P13, #26).
 //!
-//! `GET https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?cities=14&language=fr`
-//! answers without authentication: 42 itineraries for Chapelle-des-Bois (14/11/2026: 27
-//! cross-country, 14 snowshoe, 1 multi-activity). Fields used: `route` (1 = Fermé,
+//! `GET https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?cities=<city>&language=fr`
+//! answers without authentication: the cross-country, snowshoe and multi-activity
+//! itineraries of the city. Fields used: `route` (1 = Fermé,
 //! 2 = Ouvert, from `/api/v2/trek_route/`), `labels` (status notes such as « Marquée
 //! partiellement ouverte le 13/01/2025 à 15h15 », names from `/api/v2/label/`),
 //! `update_datetime`, `practice`, `difficulty`, `length_2d`, `networks` (1 = GTJ).
@@ -471,8 +471,14 @@ mod tests {
         );
         assert_eq!(note_times(&s)["10:09"], 1);
         assert_eq!(s.enj_notes.len(), 1);
-        assert_eq!(city_id(&skimap_common::site::CHAPELLE_DES_BOIS), Some(14));
-        assert_eq!(city_id(&skimap_common::site::CERVIERES), None);
+        assert_eq!(
+            city_id(skimap_common::site::site("chapelle-des-bois").expect("evaluation site")),
+            Some(14)
+        );
+        assert_eq!(
+            city_id(skimap_common::site::site("cervieres").expect("evaluation site")),
+            None
+        );
         assert!(status_url(14).contains("cities=14") && status_url(14).contains("fields="));
     }
 }

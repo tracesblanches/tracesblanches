@@ -23,10 +23,10 @@ pub fn archived_day(site: &Site) -> Option<NaiveDate> {
     skimap_common::site::local(site.id).and_then(|l| l.archived_day)
 }
 
-/// Requests of a site on a day, from the site table (Cervières: 3 h classic from Le Laus,
-/// 1 h 30 green and blue from Les Fonts at 14:30; Chapelle-des-Bois: 2 h skating back
-/// before 16 h, 3 h classic at 10:00, from the start of the pistes); a site without
-/// requests in the table gets those two shapes from its main start
+/// Requests of a site on a day, from the site table (`local.plan_requests`: start, time
+/// budget, technique, fixed start time, return time, green and blue only); a site without
+/// requests in the table gets two shapes (2 h skating back before 16 h, 3 h classic) from
+/// its main start
 /// (`skimap_common::site::starts`). Without a fixed time, the start time is the best time
 /// of A9 from 8 h.
 pub fn requests(site: &Site, date: NaiveDate) -> Vec<PlanRequest> {

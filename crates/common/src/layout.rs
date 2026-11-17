@@ -53,7 +53,7 @@ impl DataLayout {
         self.out_root().join(site.id)
     }
 
-    /// Product directory of one layer of a site, e.g. `out/cervieres/pistes`.
+    /// Product directory of one layer of a site, e.g. `out/<site>/pistes`.
     pub fn layer_dir(&self, site: &Site, layer: &str) -> Result<PathBuf> {
         Ok(self.out_dir(site).join(checked_component(layer)?))
     }
@@ -92,7 +92,9 @@ pub fn checked_component(name: &str) -> Result<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::site::CERVIERES;
+    /// Evaluation site of `data/sites.json`, test data.
+    static CERVIERES: std::sync::LazyLock<crate::site::Site> =
+        std::sync::LazyLock::new(|| *crate::site::site("cervieres").expect("evaluation site"));
 
     #[test]
     fn paths() {

@@ -227,7 +227,7 @@ class DayViewModel(
                 }
             }
         if (loaded == null) {
-            mutable.value = DayUi.Unavailable("Aucun pack de Cervières ou de Chapelle-des-Bois sur ce téléphone.")
+            mutable.value = DayUi.Unavailable("Aucun pack de domaine sur ce téléphone.")
             return
         }
         val (pick, p, starts) = loaded

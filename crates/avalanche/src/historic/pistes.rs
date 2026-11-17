@@ -39,8 +39,8 @@ pub struct PisteLine {
 }
 
 impl PisteLine {
-    /// Mean of the vertices (the centroid used by report 07 to keep the Cervières side of
-    /// the col d'Izoard).
+    /// Mean of the vertices (the centroid used by report 07 to keep the pistes of one side
+    /// of a col).
     pub fn vertex_mean(&self) -> LonLat {
         let n = self.coords.len().max(1) as f64;
         let (sx, sy) = self

@@ -5,8 +5,8 @@
 //! 2026-11-12), with the forest friction and detrainment module used by AutoATES v3.0.
 //!
 //! Why Flow-Py rather than a bare alpha-angle cone: the cone (report 07 pre-filter) is a
-//! majorant that ignores the terrain between the release and the point, so it marks the
-//! whole of Cervières as reachable at α = 18°. Flow-Py routes mass down the DEM
+//! majorant that ignores the terrain between the release and the point, so it marks a
+//! whole high-mountain site as reachable at α = 18°. Flow-Py routes mass down the DEM
 //! (spreading controlled by an exponent, persistence of the flow direction), stops it on
 //! the energy line of angle α (the alpha-beta concept of Lied & Bakkehøi 1980, as a
 //! Coulomb friction), caps the energy-line height (velocity limit) and slows it in forest.
@@ -129,12 +129,12 @@ const TILE: usize = 64;
 /// Read-only cell data of one run, shared by all paths.
 ///
 /// What a visit needs that does not depend on the path is computed once per cell here
-/// instead of once per visit (Cervières: 5.8 billion visits of 11.5 million cells, about
-/// 500 visits per cell): the routing weights `tan β^exp` towards the eight neighbours
+/// instead of once per visit (a high-mountain site: 5.8 billion visits of 11.5 million
+/// cells, about 500 visits per cell): the routing weights `tan β^exp` towards the eight neighbours
 /// (two `powf`, one `atan` and one `tan` per open neighbour and visit in the reference
 /// kernel) and whether a cell can be entered at all. The weights are computed by tiles of
 /// [`TILE`] × [`TILE`] cells the first time a path reaches the tile, so that a site where
-/// few cells are reached (Chapelle-des-Bois) does not pay for the whole grid. The values
+/// few cells are reached (low relief) does not pay for the whole grid. The values
 /// are those the kernel computed, by the same operations: the routing is unchanged bit
 /// for bit.
 struct Cells<'a> {

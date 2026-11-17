@@ -33,7 +33,7 @@ pub const PERSONAL_SOURCES: [&str; 7] = [
     "enquête permanente sur les avalanches",
     "enj snowmap",
     "nordic france",
-    "mairie de cervières",
+    "page info damage",
     "open-meteo",
 ];
 
@@ -683,7 +683,11 @@ mod tests {
     fn site_names_split_publishable_and_personal() {
         let tmp = tempfile::tempdir().unwrap();
         let layout = layers(tmp.path(), true);
-        let s = site_names(&layout, &skimap_common::site::CERVIERES).unwrap();
+        let s = site_names(
+            &layout,
+            skimap_common::site::site("cervieres").expect("evaluation site"),
+        )
+        .unwrap();
         let pistes = |n: &PackNames| n.pistes.iter().map(|p| p.clip_id()).collect::<Vec<_>>();
         assert_eq!(pistes(&s.public), ["piste.le-gibera.verte"]);
         // « Le Gibera » is on the plan too, but OSM publishes it: public only.
@@ -729,7 +733,11 @@ mod tests {
 
         // Without the plan layer: no plan name.
         let tmp2 = tempfile::tempdir().unwrap();
-        let s2 = site_names(&layers(tmp2.path(), false), &skimap_common::site::CERVIERES).unwrap();
+        let s2 = site_names(
+            &layers(tmp2.path(), false),
+            skimap_common::site::site("cervieres").expect("evaluation site"),
+        )
+        .unwrap();
         assert!(s2.personal.pistes.is_empty());
         assert_eq!(s2.personal_sources.len(), 1);
     }

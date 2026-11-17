@@ -1,10 +1,10 @@
 # Scheduled refresh of the layers that follow their sources (H1 #132, H2 #133), to append
 # to the pipeline manifest of the infrastructure repository (same image, volume and security context as
 # the other pipeline CronJobs). `skimap-job refresh` runs `skimap refresh` once (station
-# cards and titles of France, `data/out/france/stations/`; hut cards of each site), then
-# rebuilds and publishes the pack of each site (skimap-server publish: an unchanged pack
-# is not republished, a changed one goes out as a delta bundle). The sites are every site
-# whose outputs are on the volume (`data/out/<site>/build-all.json`), none named here.
+# cards and titles of France, `data/out/france/stations/`; hut cards of every built site),
+# then rebuilds and publishes the pack of each site the refresh changed
+# (`data/out/france/refresh/changed_sites.txt`; skimap-server publish: an unchanged pack
+# is not republished, a changed one goes out as a delta bundle).
 #
 # Daily from 1 November to 30 April, weekly (Wednesday) otherwise. `skimap refresh` is
 # idempotent and keeps its own schedule (huts daily in season and weekly otherwise,
@@ -55,21 +55,7 @@ spec:
             - name: pipeline
               image: skimap-pipeline
               imagePullPolicy: IfNotPresent
-              # Every site whose pipeline outputs are on the volume (build-all.json: built
-              # by build-all here or copied by script de déploiement data); a site that
-              # only has its published pack cannot be rebuilt here. No site is named.
-              command: ["sh", "-c"]
-              args:
-                - |
-                  set --
-                  for r in "$SKIMAP_DATA_DIR"/out/*/build-all.json; do
-                    [ -f "$r" ] || continue
-                    d=${r%/build-all.json}
-                    set -- "$@" "${d##*/}"
-                  done
-                  [ $# -gt 0 ] || { echo "no built site in $SKIMAP_DATA_DIR/out" >&2; exit 1; }
-                  echo "refresh: $# sites"
-                  exec skimap-job refresh "$@"
+              args: ["refresh"]
               env:
                 - { name: SKIMAP_DATA_DIR, value: /data/pipeline }
                 - { name: SKIMAP_STORE, value: /data/store }
@@ -87,8 +73,8 @@ spec:
                 - { name: data, subPath: pipeline, mountPath: /data/pipeline }
                 - { name: data, subPath: store, mountPath: /data/store }
                 - { name: tmp, mountPath: /tmp }
-              # Measured on the workstation (15/11/2026): refresh 53 MB, pack of
-              # Cervières 534 MB peak.
+              # Measured on the workstation (15/11/2026): refresh 53 MB, pack of an
+              # alpine site 534 MB peak (packs are built one after the other).
               resources:
                 requests: { cpu: 250m, memory: 256Mi }
                 limits: { cpu: "2", memory: 1Gi }
@@ -140,21 +126,7 @@ spec:
             - name: pipeline
               image: skimap-pipeline
               imagePullPolicy: IfNotPresent
-              # Every site whose pipeline outputs are on the volume (build-all.json: built
-              # by build-all here or copied by script de déploiement data); a site that
-              # only has its published pack cannot be rebuilt here. No site is named.
-              command: ["sh", "-c"]
-              args:
-                - |
-                  set --
-                  for r in "$SKIMAP_DATA_DIR"/out/*/build-all.json; do
-                    [ -f "$r" ] || continue
-                    d=${r%/build-all.json}
-                    set -- "$@" "${d##*/}"
-                  done
-                  [ $# -gt 0 ] || { echo "no built site in $SKIMAP_DATA_DIR/out" >&2; exit 1; }
-                  echo "refresh: $# sites"
-                  exec skimap-job refresh "$@"
+              args: ["refresh"]
               env:
                 - { name: SKIMAP_DATA_DIR, value: /data/pipeline }
                 - { name: SKIMAP_STORE, value: /data/store }
@@ -172,8 +144,8 @@ spec:
                 - { name: data, subPath: pipeline, mountPath: /data/pipeline }
                 - { name: data, subPath: store, mountPath: /data/store }
                 - { name: tmp, mountPath: /tmp }
-              # Measured on the workstation (15/11/2026): refresh 53 MB, pack of
-              # Cervières 534 MB peak.
+              # Measured on the workstation (15/11/2026): refresh 53 MB, pack of an
+              # alpine site 534 MB peak (packs are built one after the other).
               resources:
                 requests: { cpu: 250m, memory: 256Mi }
                 limits: { cpu: "2", memory: 1Gi }

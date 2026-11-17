@@ -27,7 +27,7 @@ pub const WINDS: (u32, u32) = (10, 150);
 /// Names of a pack, from its layers (pistes, refuges, places, zones).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PackNames {
-    /// Site name ("Cervières").
+    /// Site name ("Les Saisies").
     pub site: String,
     /// Pistes with their colours.
     pub pistes: Vec<PisteName>,

@@ -5,7 +5,7 @@
 //! shift, resampled to 5 m with `WIDTH=200` (layer
 //! `IGNF_LIDAR-HD_MNH_ELEVATION.ELEVATIONGRIDCOVERAGE.LAMB93`, Licence Ouverte). The 5 m
 //! value is close to the mean height of the 50 cm source pixels (measured on tile
-//! 1003-6415 at Cervières: correlation 0.94 with the 1 m block mean, 0.82 with the block
+//! 1003-6415, Queyras: correlation 0.94 with the 1 m block mean, 0.82 with the block
 //! maximum).
 //!
 //! AutoATES v3.0 expects a canopy *cover* in percent (its reference input is a Sentinel-2

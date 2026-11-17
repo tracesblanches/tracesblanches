@@ -269,7 +269,11 @@ mod tests {
     fn route_needs_the_graph() {
         let dir = tempfile::tempdir().unwrap();
         let layout = DataLayout::new(dir.path());
-        let e = load_graph(&layout, &skimap_common::site::CERVIERES).unwrap_err();
+        let e = load_graph(
+            &layout,
+            skimap_common::site::site("cervieres").expect("evaluation site"),
+        )
+        .unwrap_err();
         assert!(
             format!("{e:#}").contains("skimap routing cervieres"),
             "{e:#}"

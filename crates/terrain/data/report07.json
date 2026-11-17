@@ -1,0 +1,19 @@
+{
+  "about": "Références du rapport de recherche 07 par site, lues par skimap-terrain (report07_reference, sources) : part des pentes ≥ 30° publiée par le rapport et mosaïque de dalles LiDAR HD (kilomètres Lambert-93, première et dernière dalle en x et en y) sur laquelle il l'a calculée (LiDAR HD 5 m, gradient central numpy.gradient, dalles manquantes exclues), date de vol et d'édition des dalles. Un site absent n'a pas de vérification croisée.",
+  "sites": {
+    "cervieres": {
+      "tiles_x": [992, 1001],
+      "tiles_y": [6421, 6428],
+      "tiles_note": "78 dalles sur 80",
+      "steep30": 0.381,
+      "lidar": "vol août 2021, édition 15/03/2025"
+    },
+    "chapelle-des-bois": {
+      "tiles_x": [933, 941],
+      "tiles_y": [6613, 6621],
+      "tiles_note": "65 dalles sur 81",
+      "steep30": 0.023,
+      "lidar": "vol oct.-nov. 2022, édition 21/07/2025"
+    }
+  }
+}

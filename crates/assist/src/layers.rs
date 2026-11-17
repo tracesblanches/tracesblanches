@@ -733,7 +733,7 @@ impl Status {
                 }
             }
         }
-        if let Some(v) = raw.sources.get("cervieres-mairie") {
+        if let Some(v) = raw.sources.get("mairie") {
             let m: RawMairie =
                 serde_json::from_value(v.clone()).map_err(|e| Error::format(&path, e))?;
             if let Some(msg) = m.message {
@@ -1343,7 +1343,7 @@ mod tests {
                             {"name": "Le Savare", "activity": "skating", "state": "closed"},
                             {"name": "La Pinatelle", "activity": "Multi-activités", "state": "open"}
                         ]}]},
-                    "cervieres-mairie": {"message": long, "modified_time": "11/01/2027",
+                    "mairie": {"message": long, "modified_time": "11/01/2027",
                         "sectors": [{"rows": [
                             {"piste": "Gibera (Le)", "state": "Fermée"},
                             {"piste": "Le Savare", "state": "fermé"},

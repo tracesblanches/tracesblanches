@@ -92,7 +92,7 @@ pub struct ClpaValidation {
     /// Footprint area by exposure class.
     pub area: AreaShares,
     /// Footprint share of each ATES-like class 0–4 (dev8 port, identical to the
-    /// reference on Cervières): shows how much known avalanche terrain the reference
+    /// reference on the oracle site): shows how much known avalanche terrain the reference
     /// class 0 would cover.
     pub ates_shares: [f64; 5],
     /// Share of the footprint cells reached by the infrequent runout (α = 18°).

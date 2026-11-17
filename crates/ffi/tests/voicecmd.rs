@@ -11,7 +11,15 @@
 
 use std::path::{Path, PathBuf};
 
-use skimap_common::site::{CERVIERES, CHAPELLE_DES_BOIS, Site};
+use skimap_common::site::Site;
+/// Evaluation site of `data/sites.json`, test data.
+static CERVIERES: std::sync::LazyLock<skimap_common::site::Site> =
+    std::sync::LazyLock::new(|| *skimap_common::site::site("cervieres").expect("evaluation site"));
+/// Evaluation site of `data/sites.json`, test data.
+static CHAPELLE_DES_BOIS: std::sync::LazyLock<skimap_common::site::Site> =
+    std::sync::LazyLock::new(|| {
+        *skimap_common::site::site("chapelle-des-bois").expect("evaluation site")
+    });
 use skimap_ffi::tracking::{PhaseView, SpokenView, load_graph, open_tracking, pack_fixes};
 use skimap_ffi::tracking_day::{DayRequest, day_starts, open_day_planner};
 use skimap_ffi::voicecmd::{

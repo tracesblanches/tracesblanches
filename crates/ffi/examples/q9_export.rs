@@ -20,7 +20,9 @@ use std::path::PathBuf;
 use chrono::NaiveTime;
 use serde_json::{Value, json};
 use skimap_common::layout::DataLayout;
-use skimap_common::site::CERVIERES;
+/// Evaluation site of `data/sites.json`, test data.
+static CERVIERES: std::sync::LazyLock<skimap_common::site::Site> =
+    std::sync::LazyLock::new(|| *skimap_common::site::site("cervieres").expect("evaluation site"));
 use skimap_plan::plan::{self, KeyKind};
 use skimap_plan::presets;
 use skimap_plan::scenario::{self, Behaviour, Scenario, Step};

@@ -10,7 +10,9 @@ mod fixtures;
 use chrono::NaiveDate;
 use skimap_assist::inputs::{Paths, SiteData};
 use skimap_common::layout::DataLayout;
-use skimap_common::site::CERVIERES;
+/// Evaluation site of `data/sites.json`, test data.
+static CERVIERES: std::sync::LazyLock<skimap_common::site::Site> =
+    std::sync::LazyLock::new(|| *skimap_common::site::site("cervieres").expect("evaluation site"));
 use skimap_ffi::tracking::{GpsModeView, PhaseView, TrackEvent, TrackingSession, pack_fixes};
 use skimap_ffi::tracking_day::{GroupSpec, group_learn, group_new, sms_text};
 use skimap_plan::plan::{self, Context, PlanRequest};

@@ -1,9 +1,10 @@
 //! Trail status snapshots (P13, #26), polled once for all users.
 //!
-//! - Chapelle-des-Bois: ENJ Snowmap Geotrek API ([`enj`]), field `route` (1 closed,
-//!   2 open), status notes in `labels`, `update_datetime`.
-//! - Cervières: Nordic France white-label widget, station 3167 ([`nordicfrance`]), and the
-//!   « Info damage » page of the town hall ([`mairie`]).
+//! The sources of a site come from the site table (`status`):
+//! - ENJ city: ENJ Snowmap Geotrek API ([`enj`]), field `route` (1 closed, 2 open),
+//!   status notes in `labels`, `update_datetime`.
+//! - Nordic France station: white-label widget ([`nordicfrance`]).
+//! - Town hall page: « Info damage » page of the town hall ([`mairie`]).
 //!
 //! None of these sources displays a licence (ENJ: ticket L1 open; Nordic France and the town
 //! hall: HTML only). They are therefore **personal use only** and [`poll`] refuses to run
@@ -15,7 +16,7 @@
 //! Output (`data/out/<site>/status/`):
 //! - `status.json`: latest normalised content of every source of the site;
 //! - `status.geojson`: itineraries with geometry (WGS84) and state; ENJ: the geometry of
-//!   the API; Cervières: the OSM ways of the `pistes` layer joined by name to the widget
+//!   the API; Nordic France: the OSM ways of the `pistes` layer joined by name to the widget
 //!   pistes and the town hall rows ([`join`]), unmatched names in `status.meta.json`;
 //! - `<source>/polls.jsonl`, `<source>/snapshots/*.json`: history;
 //! - `<source>/history.json`: observed frequency ([`store::Frequency`]), and for ENJ the
@@ -385,7 +386,7 @@ pub fn poll(
             "aucune licence, HTML seulement : usage personnel, faible fréquence",
             "Nordic France",
         ));
-        // Town hall page of the site table (`status.town_hall_page`: Cervières only).
+        // Town hall page of the site table (`status.town_hall_page`), when the site has one.
         let mut mairie_value = None;
         if let Some(town_hall) = site.status.town_hall_page {
             let page = PageSource {
@@ -492,7 +493,7 @@ pub fn poll(
         notes: vec![
             "Sources sans licence affichée : activées seulement avec personal_sources.".into(),
             "L'état publié n'est pas un état en temps réel ; afficher l'heure de la source.".into(),
-            "Cervières : les pistes du widget et de la mairie n'ont pas de géométrie ; status.geojson prend les voies OSM de la couche pistes dont la relation (sinon le nom de la voie) désigne la piste, selon la pratique ; noms sans voie dans stats.join, jamais devinés.".into(),
+            "Les pistes du widget Nordic France et de la page de la mairie n'ont pas de géométrie ; status.geojson prend les voies OSM de la couche pistes dont la relation (sinon le nom de la voie) désigne la piste, selon la pratique ; noms sans voie dans stats.join, jamais devinés.".into(),
         ],
         ..LayerMeta::new(LAYER, site.id)
     }
@@ -521,7 +522,13 @@ mod tests {
             .offline(true)
             .build()
             .unwrap();
-        let e = poll(&skimap_common::site::CHAPELLE_DES_BOIS, &layout, &dl, false).unwrap_err();
+        let e = poll(
+            skimap_common::site::site("chapelle-des-bois").expect("evaluation site"),
+            &layout,
+            &dl,
+            false,
+        )
+        .unwrap_err();
         assert!(matches!(e, Error::PersonalSourcesDisabled(_)));
         assert!(!layout.out_root().exists(), "nothing written");
     }

@@ -681,7 +681,7 @@ fn personal_sources_are_refused_unless_enabled() {
     for source in [
         "nordicfrance",
         "enj",
-        "cervieres-mairie",
+        "mairie",
         "open-meteo",
         "biodiv-sports",
         "geoide",

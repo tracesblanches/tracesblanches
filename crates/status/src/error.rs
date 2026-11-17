@@ -25,7 +25,7 @@ pub enum Error {
     )]
     PersonalSourcesDisabled(String),
 
-    /// The `pistes` layer, whose OSM ways give the geometry of the Cervières pistes, is
+    /// The `pistes` layer, whose OSM ways give the geometry of the widget pistes, is
     /// missing.
     #[error("pistes layer missing ({0}): run `skimap pistes` first")]
     MissingPistes(std::path::PathBuf),

@@ -25,7 +25,9 @@ use skimap_common::download::Downloader;
 use skimap_common::geom::BBox;
 use skimap_common::layout::DataLayout;
 use skimap_common::meta::SourceRef;
-use skimap_common::site::CERVIERES;
+/// Evaluation site of `data/sites.json`, test data.
+static CERVIERES: std::sync::LazyLock<skimap_common::site::Site> =
+    std::sync::LazyLock::new(|| *skimap_common::site::site("cervieres").expect("evaluation site"));
 use skimap_pack::build::{BuildOptions, build, list_files};
 use skimap_pack::manifest::{Basemap, MANIFEST_FILE, Manifest};
 use skimap_pack::tiles::tiles_covering;

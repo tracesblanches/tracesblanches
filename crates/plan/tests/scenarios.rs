@@ -15,7 +15,15 @@ use std::sync::{Arc, Mutex, OnceLock};
 use chrono::NaiveTime;
 use skimap_assist::inputs::SiteData;
 use skimap_common::layout::DataLayout;
-use skimap_common::site::{CERVIERES, CHAPELLE_DES_BOIS, Site};
+use skimap_common::site::Site;
+/// Evaluation site of `data/sites.json`, test data.
+static CERVIERES: std::sync::LazyLock<skimap_common::site::Site> =
+    std::sync::LazyLock::new(|| *skimap_common::site::site("cervieres").expect("evaluation site"));
+/// Evaluation site of `data/sites.json`, test data.
+static CHAPELLE_DES_BOIS: std::sync::LazyLock<skimap_common::site::Site> =
+    std::sync::LazyLock::new(|| {
+        *skimap_common::site::site("chapelle-des-bois").expect("evaluation site")
+    });
 use skimap_core::calibration::{self, GroupProfile};
 use skimap_core::graph::PisteGraph;
 use skimap_core::routing::Style;

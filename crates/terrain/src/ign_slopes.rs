@@ -133,8 +133,7 @@ impl Acc {
     }
 }
 
-/// Attempts on a 404: the WMTS answered 404 once for tile 15/16932/11583 (Chapelle-des-Bois)
-/// and 200 to the five following identical requests, so a 404 is retried before failing.
+/// Attempts on a 404: the WMTS answered 404 once for tile 15/16932/11583 and 200 to the five following identical requests, so a 404 is retried before failing.
 const NOT_FOUND_ATTEMPTS: u32 = 4;
 
 /// PNG bytes of one WMTS tile (cache, then network).

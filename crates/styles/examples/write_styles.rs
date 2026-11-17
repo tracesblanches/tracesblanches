@@ -24,7 +24,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if std::env::args().any(|a| a == "--schema") {
         let data = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/out");
-        let snapshot = schema::Snapshot::from_packs(&data)?;
+        // Same proof packs as the committed snapshot.
+        let sites = schema::Snapshot::load()?.sites();
+        let snapshot = schema::Snapshot::from_packs(&data, &sites)?;
         let path = dir.join(schema::FILE);
         std::fs::write(&path, snapshot.to_text())?;
         println!("{} ({} sites)", path.display(), snapshot.packs.len());

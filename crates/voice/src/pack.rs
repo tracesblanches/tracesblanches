@@ -764,7 +764,13 @@ mod tests {
             public_sources: vec![osm.clone()],
             personal_sources: vec![plan],
         };
-        let path = write_meta(&skimap_common::site::CHAPELLE_DES_BOIS, &b, &vm, &names).unwrap();
+        let path = write_meta(
+            skimap_common::site::site("chapelle-des-bois").expect("evaluation site"),
+            &b,
+            &vm,
+            &names,
+        )
+        .unwrap();
         assert_eq!(path, dir.path().join("voice.meta.json"));
         let m = LayerMeta::read(&path).unwrap();
         assert_eq!(

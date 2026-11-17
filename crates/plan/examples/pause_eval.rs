@@ -10,7 +10,14 @@
 //! cargo run --release -p skimap-plan --example pause_eval
 //! ```
 use skimap_common::layout::DataLayout;
-use skimap_common::site::{CERVIERES, CHAPELLE_DES_BOIS};
+/// Evaluation site of `data/sites.json`, test data.
+static CERVIERES: std::sync::LazyLock<skimap_common::site::Site> =
+    std::sync::LazyLock::new(|| *skimap_common::site::site("cervieres").expect("evaluation site"));
+/// Evaluation site of `data/sites.json`, test data.
+static CHAPELLE_DES_BOIS: std::sync::LazyLock<skimap_common::site::Site> =
+    std::sync::LazyLock::new(|| {
+        *skimap_common::site::site("chapelle-des-bois").expect("evaluation site")
+    });
 use skimap_plan::plan;
 use skimap_plan::presets;
 use skimap_plan::scenario::{self, Behaviour, Run, Scenario, Step};

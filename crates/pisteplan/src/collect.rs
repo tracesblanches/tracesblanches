@@ -419,7 +419,7 @@ pub fn discover_enj(dl: &Downloader, census: &[Domain]) -> Result<Vec<Candidate>
     for page in pages {
         let html = dl.fetch(&Request::get(SRC_ENJ, &page))?.text()?;
         let ls = links(&html);
-        // Sites of the massif: « /annuaire/site_nordique_de_chapelle_des_bois~….html ».
+        // Sites of the massif: « /annuaire/site_nordique_de_<commune>~….html ».
         let mut domains: BTreeSet<String> = BTreeSet::new();
         for l in &ls {
             if let Some(slug) = l

@@ -724,7 +724,7 @@ fn cmd_bench(layout: &DataLayout, dl: &Downloader, args: &[String]) -> Res<()> {
 
     // 1. Phone side, sampling: SKR1 rasters of Chapelle-des-Bois in memory (what the
     // phone loads from the pack), on the part of the track inside the site grid.
-    let site = &skimap_common::site::CHAPELLE_DES_BOIS;
+    let site = skimap_common::site::site("chapelle-des-bois").expect("evaluation site");
     let dir = layout.layer_dir(site, "offpiste")?;
     let g = OffpisteGrid::load(&dir)?;
     let exp: skimap_common::grid::Grid<u8> =

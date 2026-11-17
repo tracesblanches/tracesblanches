@@ -209,8 +209,8 @@ struct Header {
     nodata: Option<String>,
 }
 
-/// Largest decoded image, bytes: 512 MiB, eleven times the largest raster of the two
-/// sites (Cervières terrain model, 3317 × 3480 Float32, 46 MB). Without a limit, a corrupt
+/// Largest decoded image, bytes: 512 MiB, eleven times the largest raster of an alpine
+/// site (terrain model, 3317 × 3480 Float32, 46 MB). Without a limit, a corrupt
 /// or hostile header (a 16 GB image in a few hundred bytes, found by fuzzing, Q3 #103)
 /// makes the reader allocate until the process is killed.
 pub const MAX_DECODED_BYTES: usize = 512 << 20;

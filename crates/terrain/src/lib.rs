@@ -1,6 +1,6 @@
 //! IGN elevation per site: slope and aspect.
 //!
-//! Owned ticket P5 (#18): download the IGN LiDAR HD terrain model at 5 m over both sites,
+//! Owned ticket P5 (#18): download the IGN LiDAR HD terrain model at 5 m over a site,
 //! compute slope and aspect, compare with the IGN `SLOPES.MOUNTAIN` layer.
 //!
 //! - [`dem`] — LiDAR HD tiles from the Géoplateforme WMS-R, mosaic, crop, block mean.
@@ -23,7 +23,9 @@ pub mod ign_slopes;
 pub mod png;
 pub mod slope;
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::sync::LazyLock;
 use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
@@ -44,22 +46,44 @@ pub const LAYER: &str = "terrain";
 /// WMTS zoom used for the comparison with the IGN slope map (≈ 3.4 m pixels at 45° N).
 pub const COMPARISON_ZOOM: u8 = 15;
 
+/// Reference of research report 07 for one site (`data/report07.json`).
+#[derive(Debug, Clone, Deserialize)]
+struct Report07Site {
+    /// First and last tile, Lambert-93 kilometres, in x.
+    tiles_x: [i64; 2],
+    /// First and last tile, Lambert-93 kilometres, in y.
+    tiles_y: [i64; 2],
+    /// Steep-terrain share (≥ 30°) published by the report.
+    steep30: f64,
+    /// Flight and edition dates of the LiDAR HD tiles.
+    lidar: String,
+}
+
+#[derive(Deserialize)]
+struct Report07Table {
+    sites: BTreeMap<String, Report07Site>,
+}
+
+static REPORT07: LazyLock<BTreeMap<String, Report07Site>> = LazyLock::new(|| {
+    serde_json::from_str::<Report07Table>(include_str!("../data/report07.json"))
+        .expect("data/report07.json")
+        .sites
+});
+
 /// Steep-terrain share (≥ 30°) published by research report 07 and the Lambert-93 extent
 /// of the tile mosaic it was computed on (5 m LiDAR HD, `numpy.gradient` central
-/// differences, missing tiles excluded): Cervières tiles 0992–1001 × 6421–6428 (78 of 80),
-/// Chapelle-des-Bois 0933–0941 × 6613–6621 (65 of 81). Used as a cross-check.
+/// differences, missing tiles excluded), from the table `data/report07.json`; `None` for
+/// a site the report did not measure. Used as a cross-check.
 pub fn report07_reference(site: &Site) -> Option<(Extent, f64)> {
-    let mosaic = |kx0: i64, kx1: i64, ky0: i64, ky1: i64| Extent {
+    let r = REPORT07.get(site.id)?;
+    let ([kx0, kx1], [ky0, ky1]) = (r.tiles_x, r.tiles_y);
+    let mosaic = Extent {
         min_x: kx0 as f64 * 1000.0 - dem::TILE_SHIFT,
         min_y: (ky0 - 1) as f64 * 1000.0 + dem::TILE_SHIFT,
         max_x: (kx1 + 1) as f64 * 1000.0 - dem::TILE_SHIFT,
         max_y: ky1 as f64 * 1000.0 + dem::TILE_SHIFT,
     };
-    match site.id {
-        "cervieres" => Some((mosaic(992, 1001, 6421, 6428), 0.381)),
-        "chapelle-des-bois" => Some((mosaic(933, 941, 6613, 6621), 0.023)),
-        _ => None,
-    }
+    Some((mosaic, r.steep30))
 }
 
 /// Cross-check against report 07.
@@ -113,14 +137,22 @@ pub struct Timings {
     pub comparison: f64,
 }
 
-/// Sources of the terrain layer.
-pub fn sources() -> Vec<SourceRef> {
+/// Flight and edition dates of the LiDAR HD tiles of a site, when research report 07
+/// read them (`data/report07.json`).
+pub fn lidar_flights(site: &Site) -> Option<&'static str> {
+    REPORT07.get(site.id).map(|r| r.lidar.as_str())
+}
+
+/// Sources of the terrain layer of a site.
+pub fn sources(site: &Site) -> Vec<SourceRef> {
+    let edition = lidar_flights(site).map_or_else(
+        || "vol et édition propres à chaque dalle (métadonnées IGN LiDAR HD)".to_owned(),
+        |l| format!("{l} (rapport 07)"),
+    );
     vec![
         SourceRef::new("MNT LiDAR HD (5 m, rééchantillonné par le WMS)", format!("{}?LAYERS={}", dem::WMS_URL, dem::LAYER), "Licence Ouverte 2.0 (Etalab)", "IGN – MNT LiDAR HD")
 .producer("IGN")
-.edition(
-                "Cervières : vol août 2021, édition 15/03/2025 ; Chapelle-des-Bois : vol oct.-nov. 2022, édition 21/07/2025 (rapport 07)",
-            ),
+.edition(edition),
         SourceRef::new("Carte des pentes (SLOPES.MOUNTAIN), comparaison seulement", format!("https://data.geopf.fr/wmts?LAYER={}", ign_slopes::LAYER), "Géoplateforme IGN, sans clé ; licence d'un usage hors ligne non confirmée (features.md n° 5) : la couche n'est utilisée que pour la comparaison, rien n'en est redistribué", "IGN – Carte des pentes")
 .producer("IGN"),
     ]
@@ -211,7 +243,7 @@ pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<Terrai
         tickets: vec!["P5 (#18)".into()],
         validity: Some("relief permanent (date des levés LiDAR HD, voir sources)".into()),
         crs: Some("EPSG:2154 (Lambert-93), altitudes IGN69".into()),
-        sources: sources(),
+        sources: sources(site),
         files: fmeta,
         notes: vec![
             "Grille Lambert-93 de 5 m dont l'origine est décalée de 0,25 m (grille des dalles LiDAR HD).".into(),

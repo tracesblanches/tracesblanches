@@ -408,8 +408,8 @@ pub const PLAN_Q_CHILDREN: f64 = 0.8;
 pub const CHILD_LIGHT_MARGIN_MIN: f64 = 60.0;
 
 /// The one testimony the priors of children of 8 and more are set on (n = 1, not a study;
-/// a user of the app, November 2026). The prior of that group on the loops of about 20 km
-/// of Chapelle-des-Bois (C5: 3 h 15 to 3 h 40) gives 3 h 30 to 4 h 30 moving and 5 h 30 to
+/// a user of the app, November 2026). The prior of that group on loops of about 20 km of a
+/// Jura domain (C5: 3 h 15 to 3 h 40) gives 3 h 30 to 4 h 30 moving and 5 h 30 to
 /// 6 h 30 in total (median); tested in `skimap_plan` (`tests/pace.rs`).
 pub const TESTIMONY: &str = "famille avec enfants débutants, classique : « 20 bornes par jour et jusqu'à piste rouge. Ça nous a pris 4 h de ski et 6 h en tout peut-être, avec les pauses et les détours » (témoignage unique, n = 1)";
 

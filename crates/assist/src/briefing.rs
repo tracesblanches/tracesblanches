@@ -4,8 +4,8 @@
 //! # Candidates
 //!
 //! - the nordic **domains** touching the site (layer `domaines`, P3);
-//! - the **itineraries** of the status sources (ENJ at Chapelle-des-Bois, Nordic France at
-//!   Cervières, layer `status`, P13), each assigned to the domain holding most of its
+//! - the **itineraries** of the status sources of the site (ENJ, Nordic France, town hall
+//!   page; layer `status`, P13), each assigned to the domain holding most of its
 //!   points (Nordic France pistes take the geometry of the OSM ways of the same name).
 //!
 //! # Score
@@ -674,8 +674,11 @@ pub fn day(data: &SiteData, date: NaiveDate, opts: &Options) -> DayBriefing {
                 .is_some_and(|c| c < 30.0),
         })
     });
-    let mut crowd =
-        crowd::forecast_day(data.site.id, crowd_date, conditions.as_ref()).map(CrowdInfo::from);
+    let mut crowd = Some(CrowdInfo::from(crowd::forecast_day(
+        &data.site,
+        crowd_date,
+        conditions.as_ref(),
+    )));
     // The calendars and the opening dates of A4 are those of 2026-27: outside, only the
     // weekends and the conditions count, and the opening dates say nothing.
     let calendar_known = (NaiveDate::from_ymd_opt(2026, 9, 1).expect("date")
@@ -1159,7 +1162,11 @@ mod tests {
     use super::*;
     use crate::layers::{Area, Domain, Status, Weather, WeatherHour};
     use crate::snow_quality::Quality;
-    use skimap_common::site::CHAPELLE_DES_BOIS;
+    /// Evaluation site of `data/sites.json`, test data.
+    static CHAPELLE_DES_BOIS: std::sync::LazyLock<skimap_common::site::Site> =
+        std::sync::LazyLock::new(|| {
+            *skimap_common::site::site("chapelle-des-bois").expect("evaluation site")
+        });
 
     fn hours(date: NaiveDate, f: impl Fn(u32) -> (f64, f64, f64, f64)) -> Vec<WeatherHour> {
         (0..24 * 3)

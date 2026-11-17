@@ -368,7 +368,11 @@ pub fn equipment(data: &SiteData, o: &Outing) -> Equipment {
 mod tests {
     use super::*;
     use crate::layers::{Area, Areas, Weather, WeatherHour, WeatherPoint};
-    use skimap_common::site::CERVIERES;
+    /// Evaluation site of `data/sites.json`, test data.
+    static CERVIERES: std::sync::LazyLock<skimap_common::site::Site> =
+        std::sync::LazyLock::new(|| {
+            *skimap_common::site::site("cervieres").expect("evaluation site")
+        });
 
     fn data(chill: f64, fog: bool) -> SiteData {
         let d0 = NaiveDate::from_ymd_opt(2027, 1, 12)

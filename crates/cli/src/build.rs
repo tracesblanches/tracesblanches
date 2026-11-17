@@ -1357,7 +1357,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let layout = DataLayout::new(dir.path());
         let at = parse_instant("2027-01-10").unwrap();
-        let e = zones_at(&layout, &skimap_common::site::CERVIERES, 44.85, 6.77, at).unwrap_err();
+        let e = zones_at(
+            &layout,
+            skimap_common::site::site("cervieres").expect("evaluation site"),
+            44.85,
+            6.77,
+            at,
+        )
+        .unwrap_err();
         assert!(format!("{e:#}").contains("skimap zones cervieres"), "{e:#}");
     }
 }
@@ -1379,7 +1386,7 @@ mod resume_tests {
         calls: &Cell<[u32; 3]>,
         journal: &Mutex<Vec<Vec<StepRecord>>>,
     ) -> BuildOutcome {
-        let site = &skimap_common::site::CERVIERES;
+        let site = skimap_common::site::site("cervieres").expect("evaluation site");
         let j = |s: &[StepRecord]| journal.lock().unwrap().push(s.to_vec());
         let shared = Shared {
             resume,
@@ -1647,7 +1654,7 @@ mod outage_tests {
     }
 
     fn run(dir: &Path, dl: &Downloader, base: &str, resume: Option<Resume<'_>>) -> BuildOutcome {
-        let site = &skimap_common::site::CERVIERES;
+        let site = skimap_common::site::site("cervieres").expect("evaluation site");
         let shared = Shared {
             resume,
             ..Shared::default()

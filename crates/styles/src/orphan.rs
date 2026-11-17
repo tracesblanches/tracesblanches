@@ -1,5 +1,5 @@
 //! No orphan layer: every layer of a style draws at least one feature of the real packs
-//! (one of them suffices: avalanche areas exist at Cervières only). Filters are evaluated
+//! (one of them suffices: the CLPA avalanche areas exist in the Hautes-Alpes only). Filters are evaluated
 //! on every feature of every tile at the zooms where the layer is visible. A pack without
 //! the file of a source (optional sources, `metadata.skimap:optional_sources`) counts no
 //! feature for its layers.

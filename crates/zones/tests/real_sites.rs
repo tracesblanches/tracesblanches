@@ -16,7 +16,15 @@ mod fixtures;
 use std::path::PathBuf;
 
 use skimap_common::geom::BBox;
-use skimap_common::site::{CERVIERES, CHAPELLE_DES_BOIS, Site};
+use skimap_common::site::Site;
+/// Evaluation site of `data/sites.json`, test data.
+static CERVIERES: std::sync::LazyLock<skimap_common::site::Site> =
+    std::sync::LazyLock::new(|| *skimap_common::site::site("cervieres").expect("evaluation site"));
+/// Evaluation site of `data/sites.json`, test data.
+static CHAPELLE_DES_BOIS: std::sync::LazyLock<skimap_common::site::Site> =
+    std::sync::LazyLock::new(|| {
+        *skimap_common::site::site("chapelle-des-bois").expect("evaluation site")
+    });
 use skimap_zones::geom::{bbox_polygon, geodesic_area_m2};
 use skimap_zones::{Topic, ZoneKind, ZoneLayer};
 

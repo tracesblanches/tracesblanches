@@ -78,7 +78,8 @@ pub const PISTES_LAYER: &str = "pistes";
 /// File of [`PISTES_LAYER`] read by [`build`].
 pub const PISTES_FILE: &str = "pistes.geojson";
 /// Footprints smaller than this (m²) are counted as slivers in the summary (digitising
-/// artefacts: 11 of the 171 CLPA records of Cervières are below it); they are kept.
+/// artefacts: about 6 % of the CLPA records of a Queyras commune are below it); they are
+/// kept.
 pub const SLIVER_AREA_M2: f64 = 100.0;
 /// Base name of the layer inside the zip archive.
 const SHP_BASE: &str = "L_ALEA_AVALANCHE_005";
@@ -315,7 +316,7 @@ pub struct Summary {
     pub networks: Vec<NetworkTotals>,
     /// Totals per piste name, sorted by decreasing length inside footprints.
     pub pistes: Vec<PisteTotals>,
-    /// Comparison with report 07 (Cervières only).
+    /// Comparison with report 07 (sites the report measured, `data/report07.json`).
     pub reconciliation: Vec<Reconciliation>,
     /// BERA of the day, if `bera/bera.json` exists.
     pub bera: Option<BeraContext>,
@@ -488,19 +489,6 @@ fn feature_collection(features: Vec<Value>) -> Value {
     json!({ "type": "FeatureCollection", "features": features })
 }
 
-/// Values of report 07 for Cervières (section B4): network length and length inside the
-/// footprints, total and per piste (km).
-pub const REPORT07_CERVIERES: &[(&str, f64)] = &[
-    ("total", 34.5),
-    ("inside", 5.78),
-    ("Liaison Le Laus - Les Fonts", 1.38),
-    ("Le Chemin du Sioux", 1.14),
-    ("Le Cancel", 1.03),
-    ("Izoard", 0.85),
-    ("La Pinatelle", 0.42),
-    ("L'Aigalan", 0.34),
-];
-
 /// Builds the layer from given piste lines (the OSM crate layer or an Overpass dump) and
 /// writes it. `pistes_source` describes the lines in the summary, `source` is their
 /// provenance in the metadata.
@@ -548,8 +536,8 @@ pub fn build_with_pistes(
         let b = e.poly.bbox;
         b.0 <= bx1 && bx0 <= b.2 && b.1 <= by1 && by0 <= b.3
     };
-    // Records of the site: intersecting the site box or in the site commune (the commune
-    // of Cervières extends beyond the box).
+    // Records of the site: intersecting the site box or in the site commune (a commune can
+    // extend beyond the box).
     let all_in_box: Vec<&Emprise> = emprises
         .iter()
         .filter(|e| in_box(e) || e.attr("INSEE") == site.insee)
@@ -690,13 +678,14 @@ pub fn build_with_pistes(
     });
 
     let nordic = &networks[0];
-    let reconciliation = if site.id == "cervieres" {
-        REPORT07_CERVIERES
+    // Comparison with report 07 (section B4) when the report measured the site.
+    let reconciliation = if let Some(r) = crate::report07::for_site(site) {
+        r.clpa_km
             .iter()
-            .map(|&(item, v)| Reconciliation {
-                item: item.to_owned(),
-                report07: v,
-                recomputed: match item {
+            .map(|(item, v)| Reconciliation {
+                item: item.clone(),
+                report07: *v,
+                recomputed: match item.as_str() {
                     "total" => nordic.length_km,
                     "inside" => nordic.inside_clpa_km,
                     name => pistes

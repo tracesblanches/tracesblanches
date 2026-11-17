@@ -132,13 +132,12 @@ pub struct ExposureSummary {
     pub disclaimers: Vec<String>,
 }
 
-/// Report 07 pre-filter figures of a site: box and shares at α = 18° and 30°.
+/// Report 07 pre-filter figures of a site: box and shares at α = 18° and 30°
+/// (`data/report07.json`; `None` for a site the report did not measure).
 pub fn report07_prefilter(site: &Site) -> Option<(BBox, f64, f64)> {
-    match site.id {
-        "cervieres" => Some((BBox::new(44.82, 6.70, 44.88, 6.82), 1.0, 0.690)),
-        "chapelle-des-bois" => Some((BBox::new(46.57, 6.06, 46.64, 6.16), 0.087, 0.010)),
-        _ => None,
-    }
+    crate::report07::for_site(site)
+        .and_then(|r| r.prefilter)
+        .map(|p| (p.bbox, p.alpha18, p.alpha30))
 }
 
 fn shares<const K: usize>(data: &[u8], codes: [u8; K]) -> (u64, [f64; K]) {
@@ -424,19 +423,35 @@ fn write_layer(
     let mut sources = vec![
         SourceRef::new(
             "MNT LiDAR HD (5 m, rééchantillonné par le WMS), via la couche terrain",
-            format!("{}?LAYERS={}", skimap_terrain::dem::WMS_URL, skimap_terrain::dem::LAYER),
+            format!(
+                "{}?LAYERS={}",
+                skimap_terrain::dem::WMS_URL,
+                skimap_terrain::dem::LAYER
+            ),
             "Licence Ouverte 2.0 (Etalab)",
             "IGN – MNT LiDAR HD",
         )
         .producer("IGN"),
         SourceRef::new(
             "MNH LiDAR HD (hauteur de canopée, 5 m, rééchantillonné par le WMS)",
-            format!("{}?LAYERS={}", skimap_terrain::dem::WMS_URL, super::forest::MNH_LAYER),
+            format!(
+                "{}?LAYERS={}",
+                skimap_terrain::dem::WMS_URL,
+                super::forest::MNH_LAYER
+            ),
             "Licence Ouverte 2.0 (Etalab)",
             "IGN – MNH LiDAR HD",
         )
         .producer("IGN")
-        .note("vols LiDAR HD : Cervières août 2021, Chapelle-des-Bois oct.-nov. 2022 (rapport 07) ; les coupes postérieures n'apparaissent pas"),
+        .note(match skimap_terrain::lidar_flights(site) {
+            Some(l) => format!(
+                "vols LiDAR HD : {l} (rapport 07) ; les coupes postérieures n'apparaissent pas"
+            ),
+            None => {
+                "vols LiDAR HD propres à chaque dalle ; les coupes postérieures n'apparaissent pas"
+                    .to_owned()
+            }
+        }),
         pistes_source,
         SourceRef::new(
             "Méthode : AutoATES v3.0, instantané ISSW 2026 (Sykes, Knies, Haegeli, Anthony-Malone, Statham), portage Rust",
@@ -496,7 +511,7 @@ fn write_layer(
         "Zones de départ : pente (Horn, comme GDAL), abri au vent (médiane des angles sur 60 m), forêt ; logique floue et seuils des valeurs ISSW 2026 d'AutoATES v3.0, sans rugosité ; tamis de 1000 m² (algorithme de gdal_sieve).".into(),
         "Écoulement : Flow-Py (com4FlowPy, moteur Numba porté opération par opération), α = 30° (fréquent) et 18° (rare), exposant 8, seuil de flux 0,003, z_delta ≤ 270 m, frottement et détraînement en forêt (forestDetrainment).".into(),
         "Forêt : cellule « arbre » si la hauteur de canopée du MNH LiDAR HD à 5 m est ≥ 3 m ; couvert = part des cellules « arbre » sur 3 × 3 cellules (15 m). Choix non calibrés.".into(),
-        "Accord avec la référence Python (AutoATES v3.0 + AvaFrame, mêmes entrées, Cervières 5 m, mesuré le 15/11/2026) : classes identiques sur les 10 087 708 cellules ; détail dans oracle_comparison_5m.json quand l'exemple oracle_compare a tourné.".into(),
+        "Accord avec la référence Python (AutoATES v3.0 + AvaFrame, mêmes entrées, 5 m, site de validation de l'oracle, mesuré le 15/11/2026) : classes identiques sur les 10 087 708 cellules ; détail dans oracle_comparison_5m.json quand l'exemple oracle_compare a tourné.".into(),
     ]);
     meta.notes = notes;
     meta.parameters = json!({
@@ -547,7 +562,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("skimap-avalanche-test-{}", std::process::id()));
         let layout = DataLayout::new(&root);
-        let site = &skimap_common::site::CERVIERES;
+        let site = skimap_common::site::site("cervieres").expect("evaluation site");
         let dir = layout.layer_dir(site, LAYER).unwrap();
         DataLayout::ensure(&dir).unwrap();
         let r = Raster {

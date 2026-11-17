@@ -117,7 +117,7 @@ pub enum ChallengeKind {
 /// A challenge and its progress.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct ChallengeView {
-    /// Identifier (`gtj-srn`, `domain-cervieres`, `km-500`).
+    /// Identifier (`gtj-srn`, `domain-<site>`, `km-500`).
     pub id: String,
     /// Kind.
     pub kind: ChallengeKind,

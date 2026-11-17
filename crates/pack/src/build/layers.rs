@@ -749,7 +749,7 @@ pub const UNAUTHORISED_SOURCES: [&str; 7] = [
     "enquête permanente sur les avalanches",
     "enj snowmap",
     "nordic france",
-    "mairie de cervières",
+    "page info damage",
     "open-meteo",
 ];
 

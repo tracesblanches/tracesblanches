@@ -6,8 +6,7 @@
 //! `skimap_avalanche::exposure::forest::fetch_mnh`, shared downloader and cache), never
 //! the whole bounding box. The avalanche exposure model of the avalanche crate
 //! (`skimap_avalanche::exposure::model`, AutoATES v3.0 port, P17) runs on that mosaic,
-//! unless the chunk lies in the exposure layer of a site (Cervières, Chapelle-des-Bois),
-//! which also merges the CLPA footprints and is what the phone reads.
+//! unless the chunk lies in the exposure layer of a built site, which also merges the CLPA footprints and is what the phone reads.
 //!
 //! Limits: release areas farther than the margin are not seen (a runout from more than
 //! 1.5 km away needs a drop of about 500 m at α = 18°); the model is a model, never a

@@ -38,6 +38,12 @@
             "provenance": "OSM node place=hamlet « Les Fonts » (Overpass, 14/11/2026)"
           }
         ],
+        "season": {
+          "first": "2026-12-19",
+          "last": "2027-03-31",
+          "source": "Ouverture du domaine nordique 2026-27 (mairie) : « A partir du 19 décembre 2026 jusqu'au 31 mars 2027 » (rapport 02)",
+          "url": "https://cervieres.fr/domaine-nordique-2/domaine-nordique/"
+        },
         "archived_day": "2026-01-09",
         "plan_requests": [
           {

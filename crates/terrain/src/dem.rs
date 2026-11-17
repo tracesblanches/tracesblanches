@@ -253,7 +253,7 @@ pub const NODATA_MARGIN: usize = 2;
 /// Sets to `NaN` every valid cell within `margin` cells (8-neighbourhood) of a `NaN` cell.
 ///
 /// The WMS resampling mixes the `-9999` fill value into the 5 m cells along the edge of
-/// the LiDAR HD coverage: on Cervières, the first ring of valid cells next to no-data
+/// the LiDAR HD coverage: on an alpine site at the Italian border, the first ring of valid cells next to no-data
 /// deviates up to 2 650 m from its neighbours (e.g. 317 m instead of 2 252 m). The second
 /// ring is close to the interior and the third is like the interior; two rings are
 /// dropped.

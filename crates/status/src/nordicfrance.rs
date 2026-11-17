@@ -1,6 +1,7 @@
 //! Nordic France white-label station widget (`/widget/marqueblanche/station/<id>`), the
-//! bulletin the ski areas fill in with the « Nordic App ». Cervières - Izoard is station
-//! 3167 (found in nordicalpesdusud.com, report 02).
+//! bulletin the ski areas fill in with the « Nordic App ». The station identifier of a
+//! site comes from the site table (`status.nordicfrance_station`, found on the regional
+//! portals, report 02).
 //!
 //! **Personal use only**: no API, no licence; reading the server-rendered HTML without an
 //! agreement is only acceptable for personal, low-frequency use (report 03). Polled at
@@ -314,6 +315,9 @@ mod tests {
         assert_eq!(z.pistes[1].comment, None);
         let v = serde_json::to_value(&s).unwrap();
         assert_eq!(stamps(&v), ["mise à jour 06/04", "damage IZOARD 04/03"]);
-        assert_eq!(station_id(&skimap_common::site::CERVIERES), Some(3167));
+        assert_eq!(
+            station_id(skimap_common::site::site("cervieres").expect("evaluation site")),
+            Some(3167)
+        );
     }
 }

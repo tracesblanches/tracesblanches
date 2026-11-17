@@ -8,17 +8,15 @@
 //!   `skimap domaines` from the census (`skimap-cli`, `france.rs`). Without that file, the
 //!   registry holds the evaluation sites only.
 //! - Site-specific data live in data tables, not in code: `data/sites.json` (working box,
-//!   commune and verified massifs of the two evaluation sites, starts, archived day, plan
-//!   requests, proof outings, status sources) and `data/status_sources.json` (trail status
-//!   source of each census domain, research report 08).
+//!   commune and verified massifs of the evaluation sites, starts, published season,
+//!   archived day, plan requests, proof outings, status sources) and
+//!   `data/status_sources.json` (trail status source of each census domain, research
+//!   report 08). No code branches on a site identifier.
 //!
-//! The v1 evaluation sites, Cervières (05) and Chapelle-des-Bois (25), are two census
-//! domains like the others: same identifiers as before (`cervieres`,
-//! `chapelle-des-bois`), their hand-picked working box kept by the table. Their massifs
-//! were verified by P6 (#19) on the snowtools polygons (`UMR-CNRM/snowtools`,
-//! `massifs.shp`) against the commune outlines (geo.api.gouv.fr): Queyras (17) covers 100 %
-//! of Cervières; Haut-Doubs (55) covers 93.2 % of Chapelle-des-Bois and the village,
-//! Haut-Jura (56) the Risoux side (6.0 %). The Jura has no BERA.
+//! The evaluation sites of `data/sites.json` are census domains like the others: the table
+//! only overrides values (hand-picked working box, massifs verified by P6 (#19) on the
+//! snowtools polygons, `UMR-CNRM/snowtools` `massifs.shp`, against the commune outlines of
+//! geo.api.gouv.fr) and adds local data. Tests and examples use them as test data.
 //!
 //! Bounding boxes are WGS84 and may extend beyond France: crates that need French-only
 //! data clip with commune or department outlines.
@@ -99,7 +97,7 @@ pub struct StatusSources {
     pub enj_city: Option<u32>,
     /// Nordic France white-label widget station identifier.
     pub nordicfrance_station: Option<u32>,
-    /// Town hall « Info damage » page (format of the Cervières page).
+    /// Town hall « Info damage » page (WordPress table per sector, `skimap_status::mairie`).
     pub town_hall_page: Option<&'static str>,
 }
 
@@ -422,12 +420,28 @@ pub struct ProofOuting {
     pub offpiste: bool,
 }
 
+/// Opening dates of a domain, as published by the domain.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Season {
+    /// First open day.
+    pub first: NaiveDate,
+    /// Last open day.
+    pub last: NaiveDate,
+    /// Where the dates were published.
+    pub source: String,
+    /// URL of the publication.
+    pub url: String,
+}
+
 /// Local data of a site (evaluation table).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct LocalData {
     /// Start points, main first.
     #[serde(default)]
     pub starts: Vec<Start>,
+    /// Published opening dates of the domain.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub season: Option<Season>,
     /// Day archived in `assist/history/` for the day plans.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub archived_day: Option<NaiveDate>,
@@ -486,19 +500,6 @@ impl IntoIterator for EvaluationSites {
 /// Evaluation sites of the v1 proof of concept, from `data/sites.json`: the sites the
 /// tests and examples compare with the research reports.
 pub static SITES: EvaluationSites = EvaluationSites;
-
-/// Cervières (Hautes-Alpes), from `data/sites.json`.
-pub static CERVIERES: LazyLock<Site> = LazyLock::new(|| evaluation("cervieres"));
-
-/// Chapelle-des-Bois (Doubs), from `data/sites.json`.
-pub static CHAPELLE_DES_BOIS: LazyLock<Site> = LazyLock::new(|| evaluation("chapelle-des-bois"));
-
-fn evaluation(id: &str) -> Site {
-    *EVALUATION_SITES
-        .iter()
-        .find(|s| s.id == id)
-        .unwrap_or_else(|| panic!("data/sites.json has no site `{id}`"))
-}
 
 /// Records of the evaluation table (overrides of the census values).
 pub fn evaluation_records() -> &'static [SiteRecord] {
@@ -668,7 +669,7 @@ impl Registry {
 // --- Identifiers ----------------------------------------------------------------------
 
 /// ASCII slug: lower case, accents removed, every other run of characters a single `-`
-/// (« Chapelle-des-Bois » → `chapelle-des-bois`, « Alpe d'Huez » → `alpe-d-huez`).
+/// (« Les Rousses » → `les-rousses`, « Alpe d'Huez » → `alpe-d-huez`).
 pub fn slug(name: &str) -> String {
     let mut out = String::new();
     for c in name.chars() {
@@ -988,6 +989,10 @@ pub fn corridor(line: &[(f64, f64)], half_width: f64) -> Vec<(f64, f64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    static CERVIERES: LazyLock<Site> = LazyLock::new(|| *site("cervieres").unwrap());
+    static CHAPELLE_DES_BOIS: LazyLock<Site> =
+        LazyLock::new(|| *site("chapelle-des-bois").unwrap());
 
     #[test]
     fn lookup() {

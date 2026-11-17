@@ -1,0 +1,29 @@
+{
+  "about": "Références du rapport de recherche 07 par site, lues par skimap-avalanche : pré-filtre de l'exposition (emprise WGS84 et parts atteintes à α = 18° et 30°, exposure::build::report07_prefilter) et longueurs du réseau nordique dans les emprises CLPA (section B4, km : total, dans les emprises, puis par piste, historic::report07_reconciliation). Un site absent n'a pas de comparaison.",
+  "sites": {
+    "cervieres": {
+      "prefilter": {
+        "bbox": { "south": 44.82, "west": 6.70, "north": 44.88, "east": 6.82 },
+        "alpha18": 1.0,
+        "alpha30": 0.690
+      },
+      "clpa_km": [
+        ["total", 34.5],
+        ["inside", 5.78],
+        ["Liaison Le Laus - Les Fonts", 1.38],
+        ["Le Chemin du Sioux", 1.14],
+        ["Le Cancel", 1.03],
+        ["Izoard", 0.85],
+        ["La Pinatelle", 0.42],
+        ["L'Aigalan", 0.34]
+      ]
+    },
+    "chapelle-des-bois": {
+      "prefilter": {
+        "bbox": { "south": 46.57, "west": 6.06, "north": 46.64, "east": 6.16 },
+        "alpha18": 0.087,
+        "alpha30": 0.010
+      }
+    }
+  }
+}

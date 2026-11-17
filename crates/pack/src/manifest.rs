@@ -52,7 +52,7 @@ pub struct Manifest {
 /// Site description.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SiteInfo {
-    /// Site identifier (`cervieres`, `chapelle-des-bois`).
+    /// Site identifier (registry identifier, e.g. `les-saisies`).
     pub id: String,
     /// Display name.
     pub name: String,
