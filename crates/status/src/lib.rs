@@ -113,13 +113,20 @@ fn source_ref(name: &str, url: &str, licence: &str, attribution: &str) -> Source
     SourceRef::new(name, url, licence, attribution).personal_use_only()
 }
 
+/// The pistes layer of a site, to which the ENJ itineraries are attached.
+struct EnjPistes {
+    graphs: join::ItineraryGraphs,
+    ways: Vec<join::OsmWay>,
+    bbox: skimap_common::geom::BBox,
+}
+
 fn poll_enj(
     dir: &std::path::Path,
     dl: &Downloader,
     city: u32,
     now: DateTime<Utc>,
     latest: &mut serde_json::Map<String, Value>,
-    ways: Option<&[join::OsmWay]>,
+    pistes: Option<&EnjPistes>,
     stats: &mut serde_json::Map<String, Value>,
 ) -> Result<SourcePoll> {
     let (snap, origin) = enj::fetch_status(dl, city)?;
@@ -130,6 +137,7 @@ fn poll_enj(
 
     let geoms = enj::fetch_geometry(dl, city)?;
     let mut along = Vec::new();
+    let (mut points, mut attached, mut reachable) = (0_usize, 0_usize, 0_usize);
     let features: Vec<Value> = snap
         .treks
         .iter()
@@ -137,20 +145,34 @@ fn poll_enj(
             let (geometry, gpx) = geoms.get(&t.id).cloned().unwrap_or((Value::Null, None));
             let geometry = strip_z(geometry);
             let practice = join::practice_of(t.practice.as_deref().unwrap_or(""));
-            let matched: Option<Vec<&join::OsmWay>> =
-                ways.map(|w| join::ways_along(&geometry, practice, w));
-            let ids: Option<Vec<i64>> = matched
-                .as_ref()
-                .map(|m| m.iter().map(|w| w.osm_way_id).collect());
-            let osm_len = matched
-                .as_ref()
-                .map(|m| (m.iter().map(|w| w.length_m).sum::<f64>() * 10.0).round() / 10.0 + 0.0);
+            let matched =
+                pistes.map(|p| p.graphs.match_itinerary(&geometry, practice, Some(p.bbox)));
+            let ids: Option<Vec<i64>> = matched.as_ref().map(|m| m.ways.clone());
+            let osm_len = pistes.zip(ids.as_ref()).map(|(p, ids)| {
+                let len: f64 = p
+                    .ways
+                    .iter()
+                    .filter(|w| ids.binary_search(&w.osm_way_id).is_ok())
+                    .map(|w| w.length_m)
+                    .sum();
+                (len * 10.0).round() / 10.0 + 0.0
+            });
+            if let Some(m) = &matched {
+                points += m.points;
+                attached += m.attached;
+                reachable += m.reachable;
+            }
             along.push(json!({
                 "itinerary": format!("{}:{}", enj::SOURCE, t.id),
                 "name": t.name,
+                "practice": practice,
                 "ways": ids.as_ref().map(Vec::len),
                 "osm_length_m": osm_len,
                 "length_m": t.length_m,
+                "points": matched.as_ref().map(|m| m.points),
+                "attached_rate": matched.as_ref().map(|m| (m.rate() * 1000.0).round() / 1000.0),
+                "reachable": matched.as_ref().map(|m| m.reachable),
+                "gaps": matched.as_ref().map(|m| &m.gaps),
             }));
             json!({
                 "type": "Feature",
@@ -182,11 +204,15 @@ fn poll_enj(
         "enj_join".to_owned(),
         json!({
             "rule": format!(
-                "voies OSM de la pratique dont au moins {:.0} % des points (tous les 10 m) sont à moins de {} m de l'itinéraire ENJ",
-                join::ALONG_SHARE * 100.0,
-                join::ALONG_DISTANCE_M
+                "itinéraire ENJ échantillonné tous les 10 m et apparié au graphe des pistes de sa pratique par HMM (comme le rattachement C2) ; voies OSM du chemin de Viterbi appariées sur au moins {} m (ou la moitié de la voie) à moins de {} m",
+                join::MIN_MATCHED_M,
+                join::MATCH_MAX_M
             ),
-            "pistes_layer": ways.is_some(),
+            "pistes_layer": pistes.is_some(),
+            "points_in_box": points,
+            "attached_rate": (points > 0).then(|| (attached as f64 / points as f64 * 1000.0).round() / 1000.0),
+            "points_reachable": reachable,
+            "attached_rate_reachable": (reachable > 0).then(|| (attached as f64 / reachable as f64 * 1000.0).round() / 1000.0),
             "itineraries": along,
         }),
     );
@@ -330,8 +356,13 @@ pub fn poll(
     if let Some(city) = enj::city_id(site) {
         // OSM ways of the itineraries, when the pistes layer was built.
         let pistes_path = layout.layer_dir(site, "pistes")?.join("pistes.geojson");
-        let ways = if pistes_path.is_file() {
-            Some(join::read_pistes(&pistes_path)?)
+        let pistes = if pistes_path.is_file() {
+            let dir = layout.layer_dir(site, "pistes")?;
+            Some(EnjPistes {
+                graphs: join::ItineraryGraphs::load(site.id, &dir)?,
+                ways: join::read_pistes(&pistes_path)?,
+                bbox: site.bbox,
+            })
         } else {
             None
         };
@@ -341,7 +372,7 @@ pub fn poll(
             city,
             now,
             &mut latest,
-            ways.as_deref(),
+            pistes.as_ref(),
             &mut stats,
         )?);
         refs.push(source_ref(

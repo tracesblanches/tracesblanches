@@ -11,18 +11,26 @@
 //!   ([`skimap_common::names::name_score`]); a row that designates no widget piste is
 //!   joined to OSM itself, any practice.
 //! - Names joined to no way are reported ([`JoinReport`]), never guessed.
-//! - The ENJ itineraries have their own geometry: [`ways_along`] gives the OSM ways that
-//!   run along it (at least [`ALONG_SHARE`] of the way within [`ALONG_DISTANCE_M`]), so
-//!   that every source names the OSM ways it gives a state to (`osm_way_ids`).
+//! - The ENJ itineraries have their own geometry, drawn by hand: [`ItineraryGraphs`]
+//!   map matches it on the trail graph of its practice with the HMM of the GPS matching
+//!   (C2) and gives the OSM ways of the Viterbi path, so that every source names the OSM
+//!   ways it gives a state to (`osm_way_ids`). The former rule, [`ways_along`] (ways with
+//!   [`ALONG_SHARE`] of their points within [`ALONG_DISTANCE_M`]), attached only half of
+//!   the itineraries' length (a way longer than the stretch it shares with the itinerary
+//!   was refused); it stays as the reference of the measure (example `enj_join`).
 //! - Every feature carries `state_at`, the date of the state as the source publishes it
 //!   ([`day_month_date`] for the widget's « Mise à jour »), and `osm_practice`
 //!   (`nordic`, `foot`, `any`).
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use serde::Serialize;
 use serde_json::{Value, json};
+use skimap_common::geom::{BBox, LonLat};
 use skimap_common::names::{name_key, name_score, same_name};
+use skimap_core::graph::{EdgeAttrs, EdgeKind, GraphData, PisteGraph};
+use skimap_core::matching::{Fix, MatchParams, MatchState, Matcher};
 
 use crate::error::{Error, Result};
 use crate::mairie::{self, MairiePage, MairieRow};
@@ -180,6 +188,9 @@ fn seg_dist(p: (f64, f64), a: (f64, f64), b: (f64, f64)) -> f64 {
     ((p.0 - x).powi(2) + (p.1 - y).powi(2)).sqrt()
 }
 
+/// A sample point of an itinerary and the way it is matched to, with the distance.
+type MatchedPoint = (LonLat, Option<(i64, f64)>);
+
 /// Segments of a line by grid cell.
 type SegmentGrid = std::collections::HashMap<(i64, i64), Vec<((f64, f64), (f64, f64))>>;
 
@@ -202,7 +213,8 @@ fn samples(line: &[(f64, f64)]) -> Vec<(f64, f64)> {
 }
 
 /// OSM ways suiting `practice` that run along the line geometry `geometry` (GeoJSON
-/// `LineString` or `MultiLineString`, WGS84), sorted by identifier.
+/// `LineString` or `MultiLineString`, WGS84), sorted by identifier: the former rule of the
+/// ENJ itineraries, kept as the reference of [`ItineraryGraphs::match_itinerary`].
 pub fn ways_along<'a>(geometry: &Value, practice: Practice, ways: &'a [OsmWay]) -> Vec<&'a OsmWay> {
     let lines = lines_of(geometry);
     let Some(lat0) = lines.iter().flatten().map(|p| p.1).next() else {
@@ -251,6 +263,345 @@ pub fn ways_along<'a>(geometry: &Value, practice: Practice, ways: &'a [OsmWay]) 
         })
         .collect();
     out.sort_by_key(|w| w.osm_way_id);
+    out
+}
+
+/// Greatest distance (m) from an itinerary point to the way it is matched to for the point
+/// to count as attached: beyond, the HMM may still follow the network (hand-drawn detour)
+/// but the way is not taken as the itinerary's.
+pub const MATCH_MAX_M: f64 = 50.0;
+/// Least matched length (m) of a way for it to belong to an itinerary (or half the way,
+/// when shorter): a few points matched at a junction do not give the crossing way.
+pub const MIN_MATCHED_M: f64 = 30.0;
+/// Least length (m) of a run of unattached points reported as a gap.
+pub const GAP_MIN_M: f64 = 50.0;
+
+/// The trail graph of the `pistes` layer (`graph_edges.geojson`), one copy per practice
+/// (the edges of the practice and the connectors, every edge two-way: an itinerary is
+/// drawn in either direction), on which the ENJ itineraries are map matched.
+#[derive(Debug, Clone)]
+pub struct ItineraryGraphs {
+    nordic: PisteGraph,
+    foot: PisteGraph,
+    any: PisteGraph,
+}
+
+impl ItineraryGraphs {
+    /// Reads the graph of a `pistes` layer directory.
+    pub fn load(site: &str, dir: &Path) -> Result<Self> {
+        let g = PisteGraph::load_osm_layer(site, dir)
+            .map_err(|e| Error::format("pistes", format!("graph: {e}")))?;
+        Self::new(&g)
+    }
+
+    /// The practice copies of a graph.
+    pub fn new(g: &PisteGraph) -> Result<Self> {
+        let keep = |f: &dyn Fn(&EdgeAttrs) -> bool| -> Result<PisteGraph> {
+            let d = g.data();
+            let edges = d
+                .edges
+                .iter()
+                .filter(|e| e.attrs.kind == EdgeKind::Connector || f(&e.attrs))
+                .map(|e| {
+                    let mut e = e.clone();
+                    e.oneway = false;
+                    e.profile = None;
+                    e
+                })
+                .collect();
+            PisteGraph::new(GraphData {
+                site: d.site.clone(),
+                nodes: d.nodes.clone(),
+                edges,
+                elevation_source: None,
+            })
+            .map_err(|e| Error::format("pistes", format!("graph: {e}")))
+        };
+        Ok(Self {
+            nordic: keep(&|a| a.nordic)?,
+            foot: keep(&|a| a.hike)?,
+            any: keep(&|_| true)?,
+        })
+    }
+
+    fn graph(&self, p: Practice) -> &PisteGraph {
+        match p {
+            Practice::Nordic => &self.nordic,
+            Practice::Foot => &self.foot,
+            Practice::Any => &self.any,
+        }
+    }
+
+    /// Map matches the line geometry `geometry` (GeoJSON `LineString` or
+    /// `MultiLineString`, WGS84) on the ways of `practice` with the HMM of the GPS
+    /// matching (C2, `skimap_core::matching`), the itinerary sampled every
+    /// [`SAMPLE_M`]. The ways of the Viterbi path matched over at least
+    /// [`MIN_MATCHED_M`] (or half the way) within [`MATCH_MAX_M`] belong to the
+    /// itinerary. Only the points inside `bbox` (the extent of the pistes layer) count in
+    /// the rate; the runs of unattached points are reported as [`Gap`]s.
+    pub fn match_itinerary(
+        &self,
+        geometry: &Value,
+        practice: Practice,
+        bbox: Option<BBox>,
+    ) -> ItineraryMatch {
+        let g = self.graph(practice);
+        let mut lengths: HashMap<i64, f64> = HashMap::new();
+        for (i, e) in g.edges().iter().enumerate() {
+            if let Some(id) = e.attrs.osm_way_id {
+                *lengths.entry(id).or_default() += g.length_m(i);
+            }
+        }
+        // Per line: (point, matched way and distance).
+        let mut lines: Vec<Vec<MatchedPoint>> = Vec::new();
+        for l in lines_of(geometry) {
+            let pts: Vec<LonLat> = l.iter().map(|p| LonLat::new(p.0, p.1)).collect();
+            let s = samples_lonlat(&pts);
+            let mut m = Matcher::new(
+                g,
+                MatchParams {
+                    history: s.len().max(1),
+                    ..MatchParams::default()
+                },
+            );
+            let mut t = 0.0;
+            for (k, p) in s.iter().enumerate() {
+                if k > 0 {
+                    t += s[k - 1].haversine_m(*p);
+                }
+                m.push(Fix { t_s: t, pos: *p });
+            }
+            let states = m.decode();
+            lines.push(
+                s.into_iter()
+                    .zip(states)
+                    .map(|(p, st)| {
+                        let w = match st {
+                            MatchState::OnTrail(c) => {
+                                g.edge(c.edge).attrs.osm_way_id.map(|id| (id, c.dist_m))
+                            }
+                            MatchState::OffTrail => None,
+                        };
+                        (p, w)
+                    })
+                    .collect(),
+            );
+        }
+        // Matched length and distances of the points, per way.
+        let mut matched: HashMap<i64, f64> = HashMap::new();
+        let mut dists: HashMap<i64, Vec<f64>> = HashMap::new();
+        for l in &lines {
+            for w in l.windows(2) {
+                if let (Some((a, da)), Some((b, db))) = (w[0].1, w[1].1)
+                    && a == b
+                    && da <= MATCH_MAX_M
+                    && db <= MATCH_MAX_M
+                {
+                    *matched.entry(a).or_default() += w[0].0.haversine_m(w[1].0);
+                    dists.entry(a).or_default().push(da);
+                }
+            }
+        }
+        let mut ways: Vec<i64> = matched
+            .iter()
+            .filter(|(id, m)| {
+                **m >= MIN_MATCHED_M.min(0.5 * lengths.get(id).copied().unwrap_or(0.0))
+            })
+            .map(|(id, _)| *id)
+            .collect();
+        ways.sort_unstable();
+        let attached = |w: Option<(i64, f64)>| {
+            w.is_some_and(|(id, d)| d <= MATCH_MAX_M && ways.binary_search(&id).is_ok())
+        };
+        let inside = |p: LonLat| bbox.is_none_or(|b| b.contains(p));
+        let way_matches = ways
+            .iter()
+            .map(|id| {
+                let mut d = dists.remove(id).unwrap_or_default();
+                d.sort_by(f64::total_cmp);
+                WayMatch {
+                    osm_way_id: *id,
+                    matched_m: matched[id].round(),
+                    way_m: lengths.get(id).copied().unwrap_or(0.0).round(),
+                    median_offset_m: d
+                        .get(d.len() / 2)
+                        .map_or(0.0, |v| (v * 10.0).round() / 10.0),
+                }
+            })
+            .collect();
+        let mut out = ItineraryMatch {
+            way_matches,
+            ..ItineraryMatch::default()
+        };
+        for l in &lines {
+            let mut run: Vec<LonLat> = Vec::new();
+            let close = |run: &mut Vec<LonLat>, out: &mut ItineraryMatch| {
+                let len: f64 = run.windows(2).map(|w| w[0].haversine_m(w[1])).sum();
+                if len >= GAP_MIN_M {
+                    out.gaps.push(self.gap(run, len, practice));
+                }
+                run.clear();
+            };
+            for (p, w) in l {
+                if !inside(*p) {
+                    close(&mut run, &mut out);
+                    continue;
+                }
+                out.points += 1;
+                if attached(*w) {
+                    out.attached += 1;
+                    out.reachable += 1;
+                    if w.is_some_and(|(_, d)| d <= ALONG_DISTANCE_M) {
+                        out.attached_within_along += 1;
+                    }
+                    close(&mut run, &mut out);
+                } else {
+                    if g.snap(*p, MATCH_MAX_M).is_some() {
+                        out.reachable += 1;
+                    }
+                    run.push(*p);
+                }
+            }
+            close(&mut run, &mut out);
+        }
+        out.ways = ways;
+        out
+    }
+
+    fn gap(&self, run: &[LonLat], length_m: f64, practice: Practice) -> Gap {
+        let mid = run[run.len() / 2];
+        // Share of the points with a way within MATCH_MAX_M, and the least distance.
+        let near = |g: &PisteGraph| {
+            let d: Vec<f64> = run
+                .iter()
+                .filter_map(|p| g.snap(*p, 200.0).map(|s| s.dist_m))
+                .collect();
+            let share = d.iter().filter(|d| **d <= MATCH_MAX_M).count() as f64 / run.len() as f64;
+            (share, d.into_iter().reduce(f64::min))
+        };
+        let (own_share, own) = near(self.graph(practice));
+        let (any_share, any) = near(&self.any);
+        let cause = if own_share >= 0.5 {
+            GapCause::Unmatched
+        } else if any_share >= 0.5 {
+            GapCause::OtherPractice
+        } else {
+            GapCause::NoWay
+        };
+        let r = |v: f64| (v * 1e5).round() / 1e5;
+        Gap {
+            at: [r(mid.lon), r(mid.lat)],
+            length_m: length_m.round(),
+            near_share: (own_share * 100.0).round() / 100.0,
+            nearest_way_m: own.map(f64::round),
+            nearest_any_way_m: any.map(f64::round),
+            cause,
+        }
+    }
+}
+
+/// Why a stretch of an itinerary is attached to no way.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GapCause {
+    /// Most of the stretch has no way of the pistes layer, of any practice, within
+    /// [`MATCH_MAX_M`]: the trail is not in OSM (or not tagged as a piste).
+    NoWay,
+    /// Most of the stretch has only ways of another practice within [`MATCH_MAX_M`] (a
+    /// snowshoe itinerary along a ski way, …).
+    OtherPractice,
+    /// Most of the stretch has a way of the practice within [`MATCH_MAX_M`], but the
+    /// HMM did not keep it.
+    Unmatched,
+}
+
+/// A run of unattached points of an itinerary.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Gap {
+    /// Middle point, `[lon, lat]`.
+    pub at: [f64; 2],
+    /// Length, m.
+    pub length_m: f64,
+    /// Share of the points with a way of the practice within [`MATCH_MAX_M`].
+    pub near_share: f64,
+    /// Least distance from the run to a way of the practice (within 200 m), m.
+    pub nearest_way_m: Option<f64>,
+    /// Least distance from the run to a way of any practice (within 200 m), m.
+    pub nearest_any_way_m: Option<f64>,
+    /// Cause.
+    pub cause: GapCause,
+}
+
+/// One way of an itinerary.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct WayMatch {
+    /// OSM way identifier.
+    pub osm_way_id: i64,
+    /// Length of the itinerary matched to the way, m.
+    pub matched_m: f64,
+    /// Length of the way, m.
+    pub way_m: f64,
+    /// Median distance from the matched points to the way, m.
+    pub median_offset_m: f64,
+}
+
+/// Outcome of the matching of an itinerary.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct ItineraryMatch {
+    /// OSM ways of the itinerary, sorted.
+    pub ways: Vec<i64>,
+    /// The same ways with the length and offset of their match.
+    pub way_matches: Vec<WayMatch>,
+    /// Sample points inside the pistes layer extent.
+    pub points: usize,
+    /// Of which matched to one of [`Self::ways`] within [`MATCH_MAX_M`].
+    pub attached: usize,
+    /// Of which within [`ALONG_DISTANCE_M`] of it.
+    pub attached_within_along: usize,
+    /// Sample points inside the extent with a way of the practice within
+    /// [`MATCH_MAX_M`] (attached or not): the points the pistes layer can carry.
+    pub reachable: usize,
+    /// Runs of unattached points of at least [`GAP_MIN_M`].
+    pub gaps: Vec<Gap>,
+}
+
+impl ItineraryMatch {
+    /// Attached share of the points inside the extent (1 without points).
+    pub fn rate(&self) -> f64 {
+        if self.points == 0 {
+            1.0
+        } else {
+            self.attached as f64 / self.points as f64
+        }
+    }
+
+    /// Attached share of the reachable points (1 without any).
+    pub fn reachable_rate(&self) -> f64 {
+        if self.reachable == 0 {
+            1.0
+        } else {
+            self.attached as f64 / self.reachable as f64
+        }
+    }
+}
+
+/// Points every [`SAMPLE_M`] along a WGS84 polyline (ends included).
+fn samples_lonlat(line: &[LonLat]) -> Vec<LonLat> {
+    let mut out = Vec::new();
+    for s in line.windows(2) {
+        let (a, b) = (s[0], s[1]);
+        let n = (a.haversine_m(b) / SAMPLE_M).ceil().max(1.0) as usize;
+        for k in 0..n {
+            let t = k as f64 / n as f64;
+            out.push(LonLat::new(
+                a.lon + t * (b.lon - a.lon),
+                a.lat + t * (b.lat - a.lat),
+            ));
+        }
+    }
+    if let Some(l) = line.last() {
+        out.push(*l);
+    }
     out
 }
 
@@ -621,6 +972,118 @@ mod tests {
             Some("2025-12-20")
         );
         assert_eq!(day_month_date("x", "2026-11-15T01:45:36Z"), None);
+    }
+
+    /// A graph of three ways, in metres east / north of 6.7 E 44.8 N: way 10, a long
+    /// Nordic way from (0, 0) to (3000, 0); way 11, a Nordic way from (3000, 0) to
+    /// (3000, 1000); way 12, a walking way from (0, 0) to (0, -1000).
+    fn toy_graphs() -> ItineraryGraphs {
+        let (lon0, lat0): (f64, f64) = (6.7, 44.8);
+        let at = |x: f64, y: f64| {
+            json!([
+                lon0 + x / (111_320.0 * lat0.to_radians().cos()),
+                lat0 + y / 110_540.0
+            ])
+        };
+        let node = |i: u64, x, y| {
+            json!({"type": "Feature", "geometry": {"type": "Point",
+            "coordinates": at(x, y)}, "properties": {"node": i}})
+        };
+        let edge = |i: u64, from: u64, to: u64, way: i64, uses: &str, pts: Vec<(f64, f64)>| {
+            json!({"type": "Feature", "geometry": {"type": "LineString",
+                "coordinates": pts.iter().map(|p| at(p.0, p.1)).collect::<Vec<_>>()},
+                "properties": {"edge": i, "from": from, "to": to, "kind": "piste",
+                    "osm_way_id": way, "uses": [uses], "oneway": true}})
+        };
+        let nodes = json!({"type": "FeatureCollection", "features": [
+            node(0, 0.0, 0.0), node(1, 3000.0, 0.0), node(2, 3000.0, 1000.0), node(3, 0.0, -1000.0)]});
+        let line = |a: (f64, f64), b: (f64, f64)| {
+            (0..=20)
+                .map(|k| {
+                    let t = f64::from(k) / 20.0;
+                    (a.0 + t * (b.0 - a.0), a.1 + t * (b.1 - a.1))
+                })
+                .collect::<Vec<_>>()
+        };
+        let edges = json!({"type": "FeatureCollection", "features": [
+            edge(0, 0, 1, 10, "nordic", line((0.0, 0.0), (3000.0, 0.0))),
+            edge(1, 1, 2, 11, "nordic", line((3000.0, 0.0), (3000.0, 1000.0))),
+            edge(2, 0, 3, 12, "hike", line((0.0, 0.0), (0.0, -1000.0))),
+        ]});
+        let g = PisteGraph::from_geojson("toy", &edges.to_string(), &nodes.to_string()).unwrap();
+        ItineraryGraphs::new(&g).unwrap()
+    }
+
+    fn toy_line(pts: &[(f64, f64)]) -> Value {
+        let (lon0, lat0): (f64, f64) = (6.7, 44.8);
+        json!({"type": "LineString", "coordinates": pts.iter().map(|p| json!([
+            lon0 + p.0 / (111_320.0 * lat0.to_radians().cos()),
+            lat0 + p.1 / 110_540.0, 1000.0])).collect::<Vec<_>>()})
+    }
+
+    #[test]
+    fn itineraries_map_matched_on_the_ways_of_their_practice() {
+        let g = toy_graphs();
+        // Drawn 35 m north of way 10 over its last 1000 m (a third of the way: the 80 %
+        // rule refused it), against the one-way direction, then up way 11 drawn 15 m
+        // off, then 600 m on a trail missing from OSM.
+        let it = toy_line(&[
+            (3000.0, 900.0),
+            (3015.0, 500.0),
+            (3015.0, 35.0),
+            (2000.0, 35.0),
+            (2000.0, 635.0),
+        ]);
+        let m = g.match_itinerary(&it, Practice::Nordic, None);
+        assert_eq!(m.ways, vec![10, 11]);
+        assert!(m.points > 250 && m.points < 270, "{}", m.points);
+        let gap_points = m.points - m.attached;
+        assert!((55..=62).contains(&gap_points), "{gap_points}");
+        assert_eq!(m.gaps.len(), 1);
+        assert_eq!(m.gaps[0].cause, GapCause::NoWay);
+        assert!(
+            (540.0..=600.0).contains(&m.gaps[0].length_m),
+            "{:?}",
+            m.gaps[0]
+        );
+        assert!(m.reachable < m.points && m.reachable_rate() > 0.98);
+        let w10 = &m.way_matches[0];
+        assert!((900.0..=1060.0).contains(&w10.matched_m), "{w10:?}");
+        assert!((34.0..=36.0).contains(&w10.median_offset_m), "{w10:?}");
+        // Former rule: way 10 is mostly away from the itinerary, way 11 within 20 m.
+        let old: Vec<i64> = ways_along(&it, Practice::Nordic, &[])
+            .iter()
+            .map(|w| w.osm_way_id)
+            .collect();
+        assert!(old.is_empty());
+        // A snowshoe itinerary along the walking way only gets it; along the ski way it
+        // gets nothing (a gap with ways of another practice).
+        let foot = toy_line(&[(10.0, -50.0), (10.0, -900.0)]);
+        assert_eq!(
+            g.match_itinerary(&foot, Practice::Foot, None).ways,
+            vec![12]
+        );
+        let m = g.match_itinerary(
+            &toy_line(&[(100.0, 5.0), (2500.0, 5.0)]),
+            Practice::Foot,
+            None,
+        );
+        assert!(m.ways.is_empty());
+        assert_eq!(m.gaps[0].cause, GapCause::OtherPractice);
+        // Points outside the box (north of 497 m: about 40 points up way 11 and 14 on
+        // the missing trail) do not count; the missing trail is 460 m inside.
+        let b = BBox::new(44.79, 6.69, 44.8045, 6.75);
+        let m = g.match_itinerary(&it, Practice::Nordic, Some(b));
+        assert!((190..=200).contains(&m.points), "{}", m.points);
+        assert_eq!(m.gaps.len(), 1);
+        assert!((44..=50).contains(&(m.points - m.attached)), "{m:?}");
+        // A crossing at a junction does not take the crossing way.
+        let cross = toy_line(&[(-300.0, 0.0), (-10.0, 0.0), (0.0, 10.0), (0.0, 600.0)]);
+        assert!(
+            g.match_itinerary(&cross, Practice::Any, None)
+                .ways
+                .is_empty()
+        );
     }
 
     #[test]

@@ -3415,6 +3415,7 @@ dependencies = [
  "serde",
  "serde_json",
  "skimap-common",
+ "skimap-core",
  "tempfile",
  "thiserror 2.0.21",
 ]

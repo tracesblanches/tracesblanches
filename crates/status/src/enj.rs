@@ -337,6 +337,61 @@ pub fn fetch_geometry(
         .collect())
 }
 
+/// URL of the itineraries crossing a box, with their geometry (all practices).
+pub fn bbox_url(b: skimap_common::geom::BBox) -> String {
+    format!(
+        "{API}/trek/?in_bbox={},{},{},{}&language=fr&fields=id,name,practice,geometry",
+        b.west, b.south, b.east, b.north
+    )
+}
+
+/// An itinerary with its geometry.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TrekGeometry {
+    /// Geotrek identifier.
+    pub id: i64,
+    /// Name.
+    pub name: String,
+    /// Practice name.
+    pub practice: Option<String>,
+    /// GeoJSON geometry as published (with altitude).
+    pub geometry: Value,
+}
+
+#[derive(Deserialize)]
+struct RawTrekGeometry {
+    id: i64,
+    name: String,
+    #[serde(default)]
+    practice: Option<i64>,
+    #[serde(default)]
+    geometry: Option<Value>,
+}
+
+/// Itineraries crossing a box with their geometry, cached one day: the ENJ itineraries of
+/// any site, whether or not its ENJ city is known (measure of the map matching, X12).
+pub fn fetch_in_bbox(dl: &Downloader, b: skimap_common::geom::BBox) -> Result<Vec<TrekGeometry>> {
+    let (treks, _) = parse_pages::<RawTrekGeometry>(
+        dl,
+        &bbox_url(b),
+        CachePolicy::Normal,
+        Some(Duration::from_secs(86_400)),
+    )?;
+    let mut out: Vec<TrekGeometry> = treks
+        .into_iter()
+        .filter_map(|t| {
+            Some(TrekGeometry {
+                id: t.id,
+                name: t.name,
+                practice: t.practice.and_then(practice_name).map(str::to_owned),
+                geometry: t.geometry?,
+            })
+        })
+        .collect();
+    out.sort_by_key(|t| t.id);
+    Ok(out)
+}
+
 /// Published stamps of a snapshot: the distinct `update_datetime` values, truncated to the
 /// minute (the API writes them in batches a few seconds apart).
 pub fn stamps(v: &Value) -> Vec<String> {
