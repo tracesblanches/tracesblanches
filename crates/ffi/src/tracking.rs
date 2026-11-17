@@ -86,8 +86,8 @@ pub enum TrackingError {
         /// What is wrong.
         detail: String,
     },
-    /// No assistant layers for this site (the morning needs the two evaluation sites'
-    /// layers).
+    /// The pack does not carry its site (written before P163, #163) and the site is not
+    /// one the app knows without it.
     #[error("no day plan for the site {site}")]
     Unsupported {
         /// Site of the pack.
@@ -975,7 +975,7 @@ pub fn voice_choice(voice_root: String, site: String, phone_lang: String) -> Voi
 /// reason is the error's text.
 pub fn load_layers(pack_dir: &Path, work: &Path) -> Result<SiteData, String> {
     let pack = Pack::open(pack_dir.to_path_buf()).map_err(|e| e.to_string())?;
-    let site = skimap_common::site::site(&pack.manifest().site.id).map_err(|e| e.to_string())?;
+    let site = crate::tracking_day::pack_site(&pack).map_err(|e| e.to_string())?;
     let view = PackView::build(&pack, work).map_err(|e| e.to_string())?;
     SiteData::load(&view.layout, site, &Paths::default()).map_err(|e| e.to_string())
 }

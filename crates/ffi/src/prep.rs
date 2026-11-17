@@ -171,11 +171,7 @@ pub fn prep_run(
     let tx = text::of(lang);
     let today = NaiveDate::parse_from_str(&today, "%Y-%m-%d").map_err(invalid)?;
     let pack = Pack::open(PathBuf::from(&pack_dir)).map_err(invalid)?;
-    let site = skimap_common::site::site(&pack.manifest().site.id).map_err(|_| {
-        TrackingError::Unsupported {
-            site: pack.manifest().site.id.clone(),
-        }
-    })?;
+    let site = crate::tracking_day::pack_site(&pack)?;
     let covered = forecast_days(&pack);
     let view = PackView::build(&pack, Path::new(&work_dir))?;
     let mut data = SiteData::load(&view.layout, site, &Paths::default()).map_err(invalid)?;

@@ -485,13 +485,36 @@ pub fn group_solo(lang: Lang) -> Result<GroupView, TrackingError> {
     )
 }
 
-/// Starts of a site, main first (`skimap_common::site::starts`: the evaluation table, else
-/// the starts the pipeline found for every domain, X9), names in `lang`.
-#[uniffi::export]
-pub fn day_starts(site_id: String, lang: Lang) -> Vec<DayStart> {
-    let Ok(site) = skimap_common::site::site(&site_id) else {
-        return Vec::new();
-    };
+/// The site of a pack, read from its manifest (P163, #163): the record the pack carries
+/// (kind, box, massifs, the starts found by the pipeline), so that any installed pack of
+/// France plans offline; a pack written before the record knew only the evaluation sites.
+pub fn pack_site(pack: &Pack) -> Result<&'static Site, TrackingError> {
+    let info = &pack.manifest().site;
+    match &info.record {
+        Some(r) if r.id == info.id => {
+            skimap_common::site::interned(r).map_err(|e| TrackingError::Invalid {
+                detail: e.to_string(),
+            })
+        }
+        Some(r) => Err(TrackingError::Invalid {
+            detail: format!("manifest: site `{}`, record of `{}`", info.id, r.id),
+        }),
+        None => skimap_common::site::site(&info.id).map_err(|_| TrackingError::Unsupported {
+            site: info.id.clone(),
+        }),
+    }
+}
+
+/// Whether the morning can open on this pack: its site is known offline ([`pack_site`])
+/// and it carries the trail graph.
+fn plannable(pack: &Pack) -> bool {
+    pack.manifest().layer("piste-graph").is_some() && pack_site(pack).is_ok()
+}
+
+/// Starts of a site, main first (`skimap_common::site::starts`: the evaluation table,
+/// else the starts the pipeline found for every domain, X9, carried by the pack), names
+/// in `lang`.
+pub fn site_starts(site: &Site, lang: Lang) -> Vec<DayStart> {
     let tx = skimap_plan::text::of(lang);
     let mut out: Vec<DayStart> = Vec::new();
     for s in skimap_common::site::starts(site) {
@@ -509,13 +532,33 @@ pub fn day_starts(site_id: String, lang: Lang) -> Vec<DayStart> {
     out
 }
 
-/// Sites the phone can plan a day on (the trail graph and the assistant's layers exist
-/// for them).
+/// Starts of the site of the pack in `pack_dir` ([`site_starts`]), read offline from the
+/// pack; empty when the pack cannot be read or does not carry its site.
 #[uniffi::export]
-pub fn day_sites() -> Vec<String> {
-    skimap_common::site::SITES
-        .iter()
-        .map(|s| s.id.to_owned())
+pub fn day_pack_starts(pack_dir: String, lang: Lang) -> Vec<DayStart> {
+    Pack::open(PathBuf::from(pack_dir))
+        .ok()
+        .and_then(|p| pack_site(&p).ok())
+        .map_or_else(Vec::new, |s| site_starts(s, lang))
+}
+
+/// Starts of a site by identifier ([`site_starts`]): a site whose pack was opened in this
+/// process ([`pack_site`]), else an evaluation site; empty otherwise. With the pack at
+/// hand, [`day_pack_starts`] needs no earlier opening.
+#[uniffi::export]
+pub fn day_starts(site_id: String, lang: Lang) -> Vec<DayStart> {
+    skimap_common::site::known(&site_id).map_or_else(Vec::new, |s| site_starts(s, lang))
+}
+
+/// Installed packs under `root` the phone can plan a day on (any site of France whose
+/// pack carries its site and the trail graph), as [`crate::list_packs`] lists them.
+#[uniffi::export]
+pub fn day_packs(root: String) -> Vec<crate::info::PackEntry> {
+    crate::info::list_packs(Path::new(&root))
+        .into_iter()
+        .filter(|e| {
+            e.error.is_none() && Pack::open(PathBuf::from(&e.dir)).is_ok_and(|p| plannable(&p))
+        })
         .collect()
 }
 
@@ -559,11 +602,7 @@ pub fn open_day_planner(
 ) -> Result<Arc<DayPlanner>, TrackingError> {
     let t0 = Instant::now();
     let pack = Pack::open(PathBuf::from(&pack_dir))?;
-    let site = skimap_common::site::site(&pack.manifest().site.id).map_err(|_| {
-        TrackingError::Unsupported {
-            site: pack.manifest().site.id.clone(),
-        }
-    })?;
+    let site = pack_site(&pack)?;
     let view = PackView::build(&pack, Path::new(&work_dir))?;
     let data = SiteData::load(&view.layout, site, &Paths::default()).map_err(|e| {
         TrackingError::Invalid {
