@@ -37,11 +37,20 @@ pub const PERSONAL_SOURCES: [&str; 7] = [
     "open-meteo",
 ];
 
-/// Whether names read from this source may not go into a published pack.
+/// Whether names read from this source may not go into a published pack: its licence
+/// family is personal (`skimap_common::licence::of_source`: marked `personal_use_only`,
+/// no reuse licence known, a licence still to confirm, #171), or it is one of
+/// [`PERSONAL_SOURCES`].
 pub fn personal(s: &SourceRef) -> bool {
     let name = s.name.to_lowercase();
-    s.personal_use_only || PERSONAL_SOURCES.iter().any(|p| name.contains(p))
+    !skimap_common::licence::of_source(s).public()
+        || PERSONAL_SOURCES.iter().any(|p| name.contains(p))
 }
+
+/// Why the names of the OSM huts are personal: they only complete refuges.info for one
+/// feature type, which no licence allows in a published pack (L3 rule 1,
+/// docs/licences/l3-combinaison.md, #171).
+pub const OSM_HUTS_PERSONAL: &str = "abris OSM : ils complètent refuges.info (CC BY-SA) pour un même type d'objet, ce qu'aucune licence ne permet dans un pack publié (règle 1 de docs/licences/l3-combinaison.md) : noms à usage personnel";
 
 /// Names of a site split by provenance, with their sources.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -223,8 +232,9 @@ pub fn plan_piste_names(plan_pistes: &Value) -> BTreeSet<PisteName> {
 }
 
 /// Hut and shelter names of the `refuges` layer: refuges.info huts, staffed refuges and
-/// gîtes; OSM `alpine_hut`, `wilderness_hut` and `shelter` (not bus shelters).
-pub fn place_names(refuges_info: &Value, osm: &Value) -> BTreeSet<String> {
+/// gîtes (publishable, CC BY-SA); OSM `alpine_hut`, `wilderness_hut` and `shelter` (not
+/// bus shelters) that refuges.info does not name (personal: [`OSM_HUTS_PERSONAL`]).
+pub fn place_names(refuges_info: &Value, osm: &Value) -> (BTreeSet<String>, BTreeSet<String>) {
     let mut out = BTreeSet::new();
     for f in features(refuges_info) {
         let p = &f["properties"];
@@ -236,17 +246,20 @@ pub fn place_names(refuges_info: &Value, osm: &Value) -> BTreeSet<String> {
             out.insert(n);
         }
     }
+    let known: BTreeSet<String> = out.iter().map(|n| name_clip_id(n)).collect();
+    let mut osm_names = BTreeSet::new();
     for f in features(osm) {
         let p = &f["properties"];
         if matches!(
             p["kind"].as_str(),
             Some("alpine_hut" | "wilderness_hut" | "shelter")
         ) && let Some(n) = trimmed(&p["tags"]["name"])
+            && !known.contains(&name_clip_id(&n))
         {
-            out.insert(n);
+            osm_names.insert(n);
         }
     }
-    out
+    (out, osm_names)
 }
 
 /// Last days of the months that end a protection period (months 1..=12, wrapping).
@@ -358,7 +371,7 @@ pub fn site_names(layout: &DataLayout, site: &Site) -> Result<SiteNames> {
         &pistes_meta,
     );
     let refuges_meta = meta("refuges")?;
-    let places = place_names(
+    let (places, osm_places) = place_names(
         &read_json(
             &dir("refuges")?.join("refuges_info.geojson"),
             site,
@@ -396,17 +409,21 @@ pub fn site_names(layout: &DataLayout, site: &Site) -> Result<SiteNames> {
     // The piste layer: one personal source would make every piste name personal.
     let pistes_personal = pistes_meta.sources.iter().any(personal);
     pistes_meta.sources.into_iter().for_each(&mut add);
-    // Names come from refuges.info and OSM: the OSM huts are read from the local Geofabrik
-    // extracts (X5); layers built before X5 name the Overpass endpoint.
-    refuges_meta
-        .sources
-        .into_iter()
-        .filter(|s| {
-            s.url.contains("refuges.info/api/bbox")
-                || s.url.contains("download.geofabrik.de")
-                || s.url.contains("overpass")
-        })
-        .for_each(&mut add);
+    // Names come from refuges.info (publishable) and OSM: the OSM huts are read from the
+    // local Geofabrik extracts (X5); layers built before X5 name the Overpass endpoint.
+    // The OSM hut names are personal (L3 rule 1), so is their source here; without any,
+    // the source gives no name said.
+    for mut s in refuges_meta.sources {
+        if s.url.contains("refuges.info/api/bbox") {
+            add(s);
+        } else if (s.url.contains("download.geofabrik.de") || s.url.contains("overpass"))
+            && !osm_places.is_empty()
+        {
+            s.note = Some(OSM_HUTS_PERSONAL.to_owned());
+            s.personal_use_only = true;
+            add(s);
+        }
+    }
     for key in ["inpn", "biodiv-sports", "geo-admin"] {
         if let Some(s) = zone_source(key, &zones_meta.sources) {
             add(s.clone());
@@ -443,6 +460,7 @@ pub fn site_names(layout: &DataLayout, site: &Site) -> Result<SiteNames> {
     let per_places: BTreeSet<String> = zones
         .personal
         .into_iter()
+        .chain(osm_places)
         .filter(|p| !place_ids.contains(&name_clip_id(p)))
         .collect();
     let per_dates: BTreeSet<DayMonth> = zones
@@ -523,10 +541,30 @@ mod tests {
             {"properties": {"kind": "shelter", "tags": {"name": "Abri"}}},
             {"properties": {"kind": "bus_shelter", "tags": {"name": "Arrêt"}}},
         ]});
+        // refuges.info names are publishable; OSM huts only complete them (L3 rule 1,
+        // docs/licences/l3-combinaison.md): their names are personal (#171).
+        let (public, personal) = place_names(&ri, &osm);
         assert_eq!(
-            place_names(&ri, &osm).into_iter().collect::<Vec<_>>(),
-            vec!["Abri".to_owned(), "Refuge des Fonts".to_owned()]
+            public.into_iter().collect::<Vec<_>>(),
+            vec!["Refuge des Fonts".to_owned()]
         );
+        assert_eq!(
+            personal.into_iter().collect::<Vec<_>>(),
+            vec!["Abri".to_owned()]
+        );
+    }
+
+    /// A source whose licence is still to be checked is personal (#171), whatever its
+    /// `personal_use_only` says: the decision of `skimap_common::licence`.
+    #[test]
+    fn unverified_licence_is_personal() {
+        let s = |l: &str| SourceRef::new("INPN", "https://x", l, "PatriNat");
+        assert!(personal(&s(
+            "« other-open » selon data.gouv.fr, à confirmer (F5, #11)"
+        )));
+        assert!(personal(&s("non vérifiée (F5, #11)")));
+        assert!(!personal(&s("Licence Ouverte 2.0")));
+        assert!(!personal(&s("CC BY-SA 2.0")));
     }
 
     fn zone_sources() -> Vec<SourceRef> {
@@ -541,7 +579,7 @@ mod tests {
             SourceRef::new(
                 "INPN espaces protégés (PatriNat)",
                 "https://data.geopf.fr/wfs/ows",
-                "other-open",
+                "Licence Ouverte 2.0",
                 "PatriNat",
             ),
             bsp,
@@ -640,7 +678,12 @@ mod tests {
             &out.join("refuges/refuges_info.geojson"),
             &json!({"features": [{"properties": {"type_label": "refuge gardé", "name": "Refuge des Fonts"}}]}),
         );
-        write(&out.join("refuges/osm.geojson"), &json!({"features": []}));
+        write(
+            &out.join("refuges/osm.geojson"),
+            &json!({"features": [
+                {"properties": {"kind": "alpine_hut", "tags": {"name": "Refuge des Fonts"}}},
+                {"properties": {"kind": "shelter", "tags": {"name": "Abri du Laus"}}}]}),
+        );
         let mut zm = LayerMeta::new("zones", "cervieres");
         zm.sources = zone_sources();
         zm.write(&out.join("zones")).unwrap();
@@ -693,7 +736,9 @@ mod tests {
         // « Le Gibera » is on the plan too, but OSM publishes it: public only.
         assert_eq!(pistes(&s.personal), ["piste.la-pinatelle.noire"]);
         assert_eq!(s.public.places, ["Casse Déserte", "Refuge des Fonts"]);
-        assert_eq!(s.personal.places, ["Aigle royal"]);
+        // The OSM shelter refuges.info lacks: personal (L3 rule 1, #171); the OSM hut
+        // refuges.info names is said from refuges.info.
+        assert_eq!(s.personal.places, ["Abri du Laus", "Aigle royal"]);
         assert_eq!(s.personal.dates, [DayMonth { day: 30, month: 4 }]);
         assert!(s.public.dates.is_empty());
         assert_eq!(s.public.site, "Cervières");
@@ -701,21 +746,21 @@ mod tests {
         assert!(s.public_sources.iter().all(|x| !personal(x)));
         assert!(s.personal_sources.iter().all(|x| x.personal_use_only));
         let names: Vec<&str> = s.personal_sources.iter().map(|x| x.name.as_str()).collect();
-        assert_eq!(names.len(), 2, "{names:?}");
+        assert_eq!(names.len(), 3, "{names:?}");
         assert!(names.iter().any(|n| n.starts_with("Biodiv'sports")));
         assert!(names.iter().any(|n| n.starts_with("Plan des pistes")));
-        // Camptocamp gives no name; the OSM extract does.
+        // Camptocamp gives no name; the OSM extract gives personal ones only.
         assert!(
             s.public_sources
                 .iter()
-                .all(|x| !x.name.starts_with("Camptocamp"))
+                .all(|x| !x.name.starts_with("Camptocamp") && !x.url.contains("geofabrik"))
         );
         assert!(
-            s.public_sources
+            s.personal_sources
                 .iter()
                 .any(|x| x.url.contains("download.geofabrik.de"))
         );
-        assert_eq!(s.all().places.len(), 3);
+        assert_eq!(s.all().places.len(), 4);
 
         // The same names given without their provenance: classified against the layers.
         let given = s.all();
@@ -727,7 +772,7 @@ mod tests {
         // Unknown provenance, a personal source among those given: nothing is public.
         let u = SiteNames::unclassified(&given, &s.personal_sources);
         assert!(u.public.pistes.is_empty() && u.public.places.is_empty());
-        assert_eq!(u.personal.places.len(), 3);
+        assert_eq!(u.personal.places.len(), 4);
         let u = SiteNames::unclassified(&given, &s.public_sources);
         assert_eq!(u.public, given);
 
@@ -739,6 +784,6 @@ mod tests {
         )
         .unwrap();
         assert!(s2.personal.pistes.is_empty());
-        assert_eq!(s2.personal_sources.len(), 1);
+        assert_eq!(s2.personal_sources.len(), 2);
     }
 }

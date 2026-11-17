@@ -394,7 +394,7 @@ fn layer_meta(site: &Site, r: &CoverageReport, opts: &CoverageOptions) -> LayerM
             SourceRef::new("ARCEP, Mon Réseau Mobile, couvertures théoriques 2G/3G voix", Operator::ALL.iter().map(|o| rel.url(*o)).collect::<Vec<_>>().join(" "), "Licence Ouverte (data.gouv.fr, jeu « Mon Réseau Mobile », fr-lo)", "Arcep, Mon Réseau Mobile")
                 .edition(rel.quarter_end())
                 .note("simulations des opérateurs ; résolution non documentée ; Free : pas de carte 2G depuis 2024 T4"),
-            SourceRef::new("geo.api.gouv.fr, contours des communes (partie française de l'emprise)", format!("{}/departements/<code>/communes?format=geojson&geometry=contour", skimap_zones::sources::jurisdiction::API), "non vérifiée (F5, #11)", "geo.api.gouv.fr (Etalab, IGN)"),
+            SourceRef::new("geo.api.gouv.fr, contours des communes (partie française de l'emprise)", format!("{}/departements/<code>/communes?format=geojson&geometry=contour", skimap_zones::sources::jurisdiction::API), "ODbL 1.0 (jeu data.gouv.fr « Contours administratifs » servi par l'API, d'après Admin Express de l'IGN et OpenStreetMap)", "Contours administratifs (data.gouv.fr, ODbL) via geo.api.gouv.fr : IGN Admin Express, © contributeurs OpenStreetMap"),
         ],
         notes: vec![
             "Le 112 peut passer par l'antenne de n'importe quel opérateur : seule l'union des quatre réseaux compte (réponse ministérielle QE 4594, JO du 20/01/2026).".into(),

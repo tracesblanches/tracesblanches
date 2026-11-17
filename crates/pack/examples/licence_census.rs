@@ -11,8 +11,9 @@
 //!     --example licence_census -- <site>...
 //! ```
 //!
-//! Development build of each pack: no basemap, offline downloader (the ign slope tiles
-//! from its cache when present). Writes the packs
+//! Development build of each pack: no basemap, offline downloader; the ign slope tiles
+//! with `SKIMAP_PACK_IGN_SLOPES=1` (from the download cache: only for sites whose tiles
+//! were fetched). Writes the packs
 //! into `<data>/out/<site>/pack/` of the working copy: never run it on `data/`.
 
 use std::collections::BTreeMap;
@@ -62,7 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 personal_sources: personal,
                 plan_ign: false,
                 osm: false,
-                ign_slopes: true,
+                ign_slopes: std::env::var("SKIMAP_PACK_IGN_SLOPES").is_ok_and(|v| v == "1"),
                 voice: true,
                 offpiste: true,
                 ..BuildOptions::default()

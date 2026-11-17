@@ -336,13 +336,13 @@ fn layer_meta(
             FileMeta::new("build_report.json", "résumé de la construction"),
         ],
         sources: vec![
-            SourceRef::new("INPN espaces protégés (PatriNat)", format!("{} couches {}", crate::sources::GEOPF_WFS, inpn::LAYERS.iter().map(|l| l.0).collect::<Vec<_>>().join(", ")), "« other-open » selon data.gouv.fr, à confirmer (F5, #11)", "PatriNat (OFB, MNHN, CNRS, IRD), Inventaire national du patrimoine naturel")
+            SourceRef::new("INPN espaces protégés (PatriNat)", format!("{} couches {}", crate::sources::GEOPF_WFS, inpn::LAYERS.iter().map(|l| l.0).collect::<Vec<_>>().join(", ")), "Licence Ouverte 2.0 (data.gouv.fr : « INPN - Données du programme Natura 2000 » fr-lo, MNHN ; « Espaces naturels protégés » lov2, Système d'information sur la biodiversité ; « INPN - Données du programme Espaces Protégés » other-open, MNHN)", "PatriNat (OFB, MNHN, CNRS, IRD), Inventaire national du patrimoine naturel")
                 .note("WFS Géoplateforme, sortie demandée en CRS:84 (la valeur par défaut est EPSG:3857)"),
-            SourceRef::new("Géoportail de l'urbanisme, servitudes d'utilité publique", format!("{} couche {}", crate::sources::GEOPF_WFS, gpu::LAYER), "non vérifiée (F5, #11)", "Géoportail de l'urbanisme")
+            SourceRef::new("Géoportail de l'urbanisme, servitudes d'utilité publique", format!("{} couche {}", crate::sources::GEOPF_WFS, gpu::LAYER), "Licence Ouverte (CGU du Géoportail de l'urbanisme : « L'utilisation des données d'urbanisme est soumise aux conditions définies dans la licence ouverte »)", "Géoportail de l'urbanisme")
                 .note("seule source des sites inscrits (R111-33) ; AC1, AC2, AC4, AS1, A7 conservées"),
             SourceRef::new("geo.admin.ch (OFEV districts francs, swissBOUNDARIES3D)", swiss::identify_url(swiss::LAYER_DISTRICTS, b), "opendata.swiss « terms_by » (attribution obligatoire)", "© OFEV, © swisstopo")
                 .note("districts francs : parties à protection intégrale ou partielle seulement"),
-            SourceRef::new("geo.api.gouv.fr, contours des communes", format!("{}/departements/<code>/communes?format=geojson&geometry=contour", jurisdiction::API), "non vérifiée (F5, #11)", "geo.api.gouv.fr (Etalab, IGN)")
+            SourceRef::new("geo.api.gouv.fr, contours des communes", format!("{}/departements/<code>/communes?format=geojson&geometry=contour", jurisdiction::API), "ODbL 1.0 (jeu data.gouv.fr « Contours administratifs » servi par l'API, d'après Admin Express de l'IGN et OpenStreetMap)", "Contours administratifs (data.gouv.fr, ODbL) via geo.api.gouv.fr : IGN Admin Express, © contributeurs OpenStreetMap")
                 .note("France, départements et communes citées par les règles"),
         ],
         notes: vec![

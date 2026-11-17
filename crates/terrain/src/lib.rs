@@ -153,7 +153,7 @@ pub fn sources(site: &Site) -> Vec<SourceRef> {
         SourceRef::new("MNT LiDAR HD (5 m, rééchantillonné par le WMS)", format!("{}?LAYERS={}", dem::WMS_URL, dem::LAYER), "Licence Ouverte 2.0 (Etalab)", "IGN – MNT LiDAR HD")
 .producer("IGN")
 .edition(edition),
-        SourceRef::new("Carte des pentes (SLOPES.MOUNTAIN), comparaison seulement", format!("https://data.geopf.fr/wmts?LAYER={}", ign_slopes::LAYER), "Géoplateforme IGN, sans clé ; licence d'un usage hors ligne non confirmée (features.md n° 5) : la couche n'est utilisée que pour la comparaison, rien n'en est redistribué", "IGN – Carte des pentes")
+        SourceRef::new("Carte des pentes (SLOPES.MOUNTAIN), comparaison seulement", format!("https://data.geopf.fr/wmts?LAYER={}", ign_slopes::LAYER), "Licence Ouverte 2.0 (Etalab) : couche sans licence renseignée, les CGU de cartes.gouv.fr appliquent alors la Licence Ouverte (« A défaut, la Licence Ouverte / Open Licence – Etalab s'applique ») ; utilisée ici pour la comparaison seulement", "IGN – Carte des pentes")
 .producer("IGN"),
     ]
 }
