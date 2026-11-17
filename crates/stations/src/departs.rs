@@ -76,6 +76,8 @@ pub struct Point {
     pub url: String,
     /// Domains of the point.
     pub domains: Vec<String>,
+    /// Score added to the point (a car park cleared in winter, X9b).
+    pub bonus: f64,
 }
 
 /// Reads `pois.geojson`.
@@ -107,6 +109,7 @@ pub fn read_points(v: &Value) -> Vec<Point> {
                     .flatten()
                     .filter_map(|d| d["id"].as_str().map(str::to_owned))
                     .collect(),
+                bonus: 0.0,
             })
         })
         .collect()
@@ -132,7 +135,11 @@ pub enum Method {
     Near,
     /// Network point nearest to the village (tourist office or ski school).
     Village,
-    /// Census representative point (on the network).
+    /// End of an SRN route (X9b): the dead end of the routes nearest to the village, else
+    /// the beginning of the longest route (published routes start where one parks).
+    RouteEnd,
+    /// Census representative point (on the network); for an SRN area, its representative
+    /// point (on a route).
     Centre,
 }
 
@@ -161,6 +168,11 @@ pub struct DepartsFile {
     pub notes: Vec<String>,
     /// Census id → starts, main first.
     pub domains: BTreeMap<String, Vec<Depart>>,
+    /// SRN area id (`srn_areas.geojson`) → starts, best first (X9b): every start found
+    /// along the routes, the registry keeps the best of each site or section
+    /// ([`crate::departs_srn::pick`]).
+    #[serde(default)]
+    pub srn: BTreeMap<String, Vec<Depart>>,
 }
 
 impl DepartsFile {
@@ -174,25 +186,25 @@ impl DepartsFile {
 /// A segment of the network: ends (local metres) and way index.
 type Segment = ((f64, f64), (f64, f64), usize);
 
-struct Net {
+pub(crate) struct Net {
     /// Vertices: position (local metres) and whether a dead end of the network.
-    vertices: Vec<((f64, f64), bool)>,
+    pub(crate) vertices: Vec<((f64, f64), bool)>,
     /// Segments.
-    segments: Vec<Segment>,
+    pub(crate) segments: Vec<Segment>,
 }
 
 /// A point snapped to the network.
 #[derive(Debug, Clone, Copy)]
-struct Snap {
+pub(crate) struct Snap {
     /// Nearest point of the network (local metres).
-    xy: (f64, f64),
+    pub(crate) xy: (f64, f64),
     /// Way of that point.
-    way: usize,
+    pub(crate) way: usize,
     /// Distance, m.
-    dist: f64,
+    pub(crate) dist: f64,
 }
 
-fn d2(a: (f64, f64), b: (f64, f64)) -> f64 {
+pub(crate) fn d2(a: (f64, f64), b: (f64, f64)) -> f64 {
     ((a.0 - b.0).powi(2) + (a.1 - b.1).powi(2)).sqrt()
 }
 
@@ -208,7 +220,7 @@ fn project(p: (f64, f64), a: (f64, f64), b: (f64, f64)) -> (f64, f64) {
 }
 
 impl Net {
-    fn new(ways: &[Way], local: &Local) -> Self {
+    pub(crate) fn new(ways: &[Way], local: &Local) -> Self {
         let mut deg: HashMap<i64, u32> = HashMap::new();
         for w in ways {
             let n = w.points.len();
@@ -238,7 +250,7 @@ impl Net {
         net
     }
 
-    fn nearest(&self, p: (f64, f64)) -> Option<Snap> {
+    pub(crate) fn nearest(&self, p: (f64, f64)) -> Option<Snap> {
         self.segments
             .iter()
             .map(|(a, b, way)| {
@@ -264,7 +276,7 @@ struct Candidate<'a> {
     score: f64,
 }
 
-fn private(p: &Point) -> bool {
+pub(crate) fn private(p: &Point) -> bool {
     matches!(
         p.access.as_deref(),
         Some("private" | "no" | "customers" | "permit" | "residents")
@@ -282,10 +294,105 @@ fn kind_fr(kind: &str) -> (&'static str, &'static str, &'static str) {
     }
 }
 
+/// What a place is, for the words of its starts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlaceKind {
+    /// Groomed nordic domain of the census.
+    Domain,
+    /// SRN play area (`srn_areas.geojson`, `kind: domaine`).
+    SrnArea,
+    /// SRN traverse (`kind: traversee`).
+    Traverse,
+}
+
+/// A place whose starts are searched: a census domain or an SRN area.
+#[derive(Debug, Clone)]
+pub struct Place {
+    /// Kind.
+    pub kind: PlaceKind,
+    /// Display name.
+    pub name: String,
+    /// Representative point (on the network).
+    pub point: LonLat,
+}
+
+impl Place {
+    /// A census domain.
+    pub fn domain(d: &Domain) -> Self {
+        Self {
+            kind: PlaceKind::Domain,
+            name: d.name.clone(),
+            point: d.point,
+        }
+    }
+
+    /// « du domaine X », « de la zone SRN X », « de la traversée X ».
+    pub fn of_fr(&self) -> String {
+        match self.kind {
+            PlaceKind::Domain => format!("du domaine {}", self.name),
+            PlaceKind::SrnArea => format!("de la zone SRN {}", self.name),
+            PlaceKind::Traverse => format!("de la traversée {}", self.name),
+        }
+    }
+
+    /// « the X area », « the X SRN area », « the X traverse ».
+    pub fn the_en(&self) -> String {
+        match self.kind {
+            PlaceKind::Domain => format!("the {} area", self.name),
+            PlaceKind::SrnArea => format!("the {} SRN area", self.name),
+            PlaceKind::Traverse => format!("the {} traverse", self.name),
+        }
+    }
+
+    /// What its network is made of: « pistes », « itinéraires ».
+    pub fn trails_fr(&self) -> &'static str {
+        match self.kind {
+            PlaceKind::Domain => "pistes",
+            PlaceKind::SrnArea | PlaceKind::Traverse => "itinéraires",
+        }
+    }
+
+    /// One trail of its network, French and English: « piste », « itinéraire ».
+    pub fn trail(&self) -> (&'static str, &'static str) {
+        match self.kind {
+            PlaceKind::Domain => ("piste", "trail"),
+            PlaceKind::SrnArea | PlaceKind::Traverse => ("itinéraire", "route"),
+        }
+    }
+}
+
 /// Starts of one domain from its points (those of `pois.geojson` attached to it), its
 /// trail ways and, for the fallbacks, its representative point.
 pub fn domain_departs(d: &Domain, ways: &[Way], points: &[&Point]) -> Vec<Depart> {
-    let local = Local::new(d.point);
+    let place = Place::domain(d);
+    let mut out = clustered(&place, ways, points, MAX_STARTS, MIN_SHARE);
+    if out.is_empty() {
+        let local = Local::new(d.point);
+        let net = Net::new(ways, &local);
+        out.push(fallback(d, &net, &local, points));
+    }
+    number(&mut out);
+    out
+}
+
+/// Numbers the starts `depart-1`, `depart-2`…
+pub fn number(out: &mut [Depart]) {
+    for (i, o) in out.iter_mut().enumerate() {
+        o.start.id = format!("depart-{}", i + 1);
+    }
+}
+
+/// Starts of a place from its points next to its network: clusters of points, the
+/// best `max` kept, each at least `min_share` of the best score. Empty without such
+/// points (the caller's fallbacks).
+pub fn clustered(
+    place: &Place,
+    ways: &[Way],
+    points: &[&Point],
+    max: usize,
+    min_share: f64,
+) -> Vec<Depart> {
+    let local = Local::new(place.point);
     let net = Net::new(ways, &local);
     let mut cands: Vec<Candidate> = Vec::new();
     for p in points {
@@ -308,6 +415,7 @@ pub fn domain_departs(d: &Domain, ways: &[Way], points: &[&Point]) -> Vec<Depart
         if p.kind == "parking" {
             score += p.capacity.map_or(0.0, |c| (c / 50.0).min(2.0));
         }
+        score += p.bonus;
         if net.dead_end_within(xy, TRAILHEAD_M) {
             score += 1.0;
         }
@@ -339,8 +447,8 @@ pub fn domain_departs(d: &Domain, ways: &[Way], points: &[&Point]) -> Vec<Depart
     }
     clusters.sort_by(|a, b| b.1.total_cmp(&a.1));
     let best = clusters.first().map_or(0.0, |c| c.1);
-    clusters.retain(|c| c.1 >= MIN_SHARE * best);
-    clusters.truncate(MAX_STARTS);
+    clusters.retain(|c| c.1 >= min_share * best);
+    clusters.truncate(max);
 
     let mut out: Vec<Depart> = Vec::new();
     for (head, score, members) in &clusters {
@@ -354,15 +462,16 @@ pub fn domain_departs(d: &Domain, ways: &[Way], points: &[&Point]) -> Vec<Depart
         let h = &cands[*head];
         let way_name = ways[h.snap.way].name.clone();
         let (kname, kphrase, ken) = kind_fr(&h.point.kind);
+        let (trail_fr, _) = place.trail();
         let (name, phrase, phrase_en) = match named.and_then(|c| c.point.name.clone()) {
             Some(n) => {
                 let n = named_as(named.map_or("", |c| c.point.kind.as_str()), &n);
-                (format!("{n} ({})", d.name), n.clone(), None)
+                (format!("{n} ({})", place.name), n.clone(), None)
             }
             None => (
-                format!("{kname} ({})", d.name),
-                format!("{kphrase} du domaine {}", d.name),
-                Some(format!("the {} area {ken}", d.name)),
+                format!("{kname} ({})", place.name),
+                format!("{kphrase} {}", place.of_fr()),
+                Some(format!("{} {ken}", place.the_en())),
             ),
         };
         let pos = local.lonlat(h.snap.xy);
@@ -382,7 +491,7 @@ pub fn domain_departs(d: &Domain, ways: &[Way], points: &[&Point]) -> Vec<Depart
                         .join(", "),
                     h.point.url,
                     way_name
-                        .map(|w| format!(", piste « {w} »"))
+                        .map(|w| format!(", {trail_fr} « {w} »"))
                         .unwrap_or_default()
                 ),
             },
@@ -409,8 +518,9 @@ pub fn domain_departs(d: &Domain, ways: &[Way], points: &[&Point]) -> Vec<Depart
                     .iter()
                     .any(|o| o.start.name.ends_with(&format!(" — {w}")))
             });
+        let (t_fr, t_en) = place.trail();
         let (fr, en) = match trail {
-            Some(w) => (format!("piste « {w} »"), format!("« {w} » trail")),
+            Some(w) => (format!("{t_fr} « {w} »"), format!("« {w} » {t_en}")),
             None => {
                 let (x, y) = local.xy(out[i].start.position());
                 let (x0, y0) = local.xy(out[0].start.position());
@@ -429,12 +539,6 @@ pub fn domain_departs(d: &Domain, ways: &[Way], points: &[&Point]) -> Vec<Depart
             "{} ({en})",
             o.phrase_en.clone().unwrap_or_else(|| o.phrase.clone())
         ));
-    }
-    if out.is_empty() {
-        out.push(fallback(d, &net, &local, points));
-    }
-    for (i, o) in out.iter_mut().enumerate() {
-        o.start.id = format!("depart-{}", i + 1);
     }
     out
 }
@@ -606,6 +710,28 @@ pub struct DepartsOutput {
     pub by_method: BTreeMap<String, usize>,
     /// Starts written.
     pub starts: usize,
+    /// SRN areas and traverses per method of their best start (X9b).
+    pub srn_by_method: BTreeMap<String, usize>,
+    /// SRN starts written.
+    pub srn_starts: usize,
+    /// Car parks near SRN areas left out as closed in winter.
+    pub srn_winter_closed: usize,
+}
+
+/// Starts of the SRN areas (X9b) given to [`write`].
+#[derive(Debug, Clone, Default)]
+pub struct SrnStarts {
+    /// Area id → starts, best first.
+    pub areas: BTreeMap<String, Vec<Depart>>,
+    /// Car parks left out as closed in winter.
+    pub winter_closed: usize,
+}
+
+fn method_name(m: Method) -> String {
+    serde_json::to_value(m)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_owned))
+        .unwrap_or_default()
 }
 
 /// Geometry of the trail ways of the planet extract.
@@ -633,6 +759,7 @@ pub fn write(
     ds: &[Domain],
     domain_ways: &DomainWays,
     geometry: &HashMap<i64, Way>,
+    srn: SrnStarts,
     osm_valid_at: Option<String>,
 ) -> Result<DepartsOutput> {
     let pois_path = dir.join("pois.geojson");
@@ -651,14 +778,7 @@ pub fn write(
     let mut starts = 0;
     for (id, list) in &domains {
         if let Some(m) = list.first() {
-            *by_method
-                .entry(
-                    serde_json::to_value(m.method)
-                        .ok()
-                        .and_then(|v| v.as_str().map(str::to_owned))
-                        .unwrap_or_default(),
-                )
-                .or_default() += 1;
+            *by_method.entry(method_name(m.method)).or_default() += 1;
         }
         for (rank, s) in list.iter().enumerate() {
             starts += 1;
@@ -668,14 +788,33 @@ pub fn write(
             ));
         }
     }
+    let mut srn_by_method: BTreeMap<String, usize> = BTreeMap::new();
+    let mut srn_starts = 0;
+    for (id, list) in &srn.areas {
+        if let Some(m) = list.first() {
+            *srn_by_method.entry(method_name(m.method)).or_default() += 1;
+        }
+        for (rank, s) in list.iter().enumerate() {
+            srn_starts += 1;
+            feats.push(feature(
+                point(s.start.position()),
+                json!({"srn": id, "rank": rank + 1, "name": s.start.name, "method": s.method, "score": s.score, "points": s.points}),
+            ));
+        }
+    }
+    let mut all_notes = notes();
+    if !srn.areas.is_empty() {
+        all_notes.extend(crate::departs_srn::notes());
+    }
     let path = dir.join(FILE);
     write_json(
         &path,
         &DepartsFile {
             generated_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
             osm_valid_at,
-            notes: notes(),
+            notes: all_notes,
             domains,
+            srn: srn.areas,
         },
     )?;
     write_geojson(&dir.join(GEOJSON), &feats)?;
@@ -683,11 +822,15 @@ pub fn write(
         path,
         by_method,
         starts,
+        srn_by_method,
+        srn_starts,
+        srn_winter_closed: srn.winter_closed,
     })
 }
 
 /// Builds the starts of every domain: census, `pois.geojson` of the stations layer, trail
-/// geometry of the planet extract.
+/// geometry of the planet extract; then those of the SRN areas when the SRN layer exists
+/// (`srn/srn_areas.geojson`, X9b), from the local OSM index.
 pub fn build(
     layout: &DataLayout,
     dl: &skimap_common::download::Downloader,
@@ -696,8 +839,9 @@ pub fn build(
     let (ds, ways) = crate::domains::load(&census_dir)?;
     let planet = skimap_osm::extract::load_planet(dl)?;
     let geometry = planet_ways(&planet);
+    let srn = crate::departs_srn::build(layout, dl)?;
     let dir = layout.france_layer_dir(crate::LAYER)?;
-    write(&dir, &ds, &ways, &geometry, planet.valid_at.clone())
+    write(&dir, &ds, &ways, &geometry, srn, planet.valid_at.clone())
 }
 
 #[cfg(test)]
@@ -732,6 +876,7 @@ mod tests {
             access: None,
             url: format!("https://www.openstreetmap.org/node/{}", (lon * 1e4) as i64),
             domains: vec!["net-1".into()],
+            bonus: 0.0,
         }
     }
 

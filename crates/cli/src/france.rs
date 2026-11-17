@@ -459,6 +459,11 @@ pub fn apply_departs(layout: &DataLayout, records: &mut [SiteRecord]) -> Result<
     let file = skimap_stations::departs::DepartsFile::read(&path)?;
     let mut n = 0;
     for r in records.iter_mut() {
+        if matches!(r.kind, SiteKind::SrnArea | SiteKind::Traverse) {
+            r.starts = srn_starts(&file, r);
+            n += usize::from(!r.starts.is_empty());
+            continue;
+        }
         let Some(list) = r.census_id.as_ref().and_then(|c| file.domains.get(c)) else {
             continue;
         };
@@ -576,6 +581,28 @@ pub fn refresh_registry_enj(ctx: &Ctx) -> Result<Option<EnjDetection>> {
     Ok(d)
 }
 
+/// Starts of an SRN site or section (X9b) from the starts of its area in `departs.json`:
+/// the best of the area, or of those inside the box of the section (the best of the area
+/// when none is inside).
+fn srn_starts(file: &skimap_stations::departs::DepartsFile, r: &SiteRecord) -> Vec<site::Start> {
+    use skimap_stations::departs_srn::pick;
+    let Some(list) = file.srn.get(r.parent.as_deref().unwrap_or(&r.id)) else {
+        return Vec::new();
+    };
+    let mut picked = if r.parent.is_some() {
+        pick(list, Some(&r.bbox))
+    } else {
+        Vec::new()
+    };
+    if picked.is_empty() {
+        picked = pick(list, None);
+        if r.parent.is_some() {
+            picked.truncate(1);
+        }
+    }
+    picked.into_iter().map(|d| d.start).collect()
+}
+
 /// Trail starts (X9) after a run of the stations layer: rebuilt when the station cards
 /// ran (new OSM points) or when `departs.json` is missing, then written into the registry.
 pub fn departs_after_stations(
@@ -586,12 +613,27 @@ pub fn departs_after_stations(
         .layout
         .france_layer_dir(skimap_stations::LAYER)?
         .join(skimap_stations::departs::FILE);
-    if !ran.iter().any(|r| r == "fiches") && path.is_file() {
+    if !ran.iter().any(|r| r == "fiches") && path.is_file() && !srn_newer(&ctx.layout, &path)? {
         return Ok(None);
     }
     let out = skimap_stations::departs::build(&ctx.layout, &ctx.dl)?;
     refresh_registry_starts(&ctx.layout)?;
     Ok(Some(out))
+}
+
+/// Whether the SRN areas or routes (`srn/`) were written after `departs` (X9b: their
+/// starts are then out of date).
+fn srn_newer(layout: &DataLayout, departs: &Path) -> Result<bool> {
+    use skimap_stations::departs_srn::{AREAS_FILE, ROUTES_FILE, SRN_LAYER};
+    let modified = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    let Some(at) = modified(departs) else {
+        return Ok(true);
+    };
+    let dir = layout.france_layer_dir(SRN_LAYER)?;
+    Ok([AREAS_FILE, ROUTES_FILE]
+        .iter()
+        .filter_map(|f| modified(&dir.join(f)))
+        .any(|m| m > at))
 }
 
 /// Rewrites the registry file with the starts of `stations/departs.json` (X9), after the
@@ -1179,5 +1221,63 @@ mod tests {
             out[1].name
         );
         Registry::from_records(out).unwrap();
+    }
+
+    #[test]
+    fn srn_sites_and_sections_take_their_starts() {
+        use skimap_stations::departs::{Depart, DepartsFile, Method};
+        // The stations crate names the SRN files without depending on skimap-srn.
+        assert_eq!(
+            skimap_stations::departs_srn::SRN_LAYER,
+            skimap_srn::build::LAYER
+        );
+        assert_eq!(
+            skimap_stations::departs_srn::AREAS_FILE,
+            skimap_srn::build::AREAS_FILE
+        );
+        assert_eq!(
+            skimap_stations::departs_srn::ROUTES_FILE,
+            skimap_srn::build::ROUTES_FILE
+        );
+        let d = |lon: f64, score: f64| Depart {
+            start: site::Start {
+                id: String::new(),
+                name: format!("{lon}"),
+                phrase: String::new(),
+                phrase_en: None,
+                lon,
+                lat: 46.0,
+                provenance: String::new(),
+            },
+            method: Method::Points,
+            score,
+            points: Vec::new(),
+        };
+        let file = DepartsFile {
+            generated_at: String::new(),
+            osm_valid_at: None,
+            notes: Vec::new(),
+            domains: BTreeMap::new(),
+            srn: BTreeMap::from([(
+                "srn-traversee-x".to_owned(),
+                vec![d(6.0, 9.0), d(6.1, 8.0), d(6.5, 2.0)],
+            )]),
+        };
+        let mut parent = site::evaluation_records()[1].clone();
+        parent.id = "srn-traversee-x".into();
+        parent.kind = SiteKind::Traverse;
+        parent.census_id = None;
+        let lon = |v: Vec<site::Start>| v.iter().map(|s| s.lon).collect::<Vec<_>>();
+        assert_eq!(lon(srn_starts(&file, &parent)), vec![6.0, 6.1]);
+        let mut section = parent.clone();
+        section.id = "srn-traversee-x-2".into();
+        section.parent = Some(parent.id.clone());
+        section.bbox = BBox::new(45.9, 6.4, 46.1, 6.6);
+        assert_eq!(lon(srn_starts(&file, &section)), vec![6.5]);
+        // A section without a start inside: the best of the area.
+        section.bbox = BBox::new(45.9, 7.0, 46.1, 7.2);
+        assert_eq!(lon(srn_starts(&file, &section)), vec![6.0]);
+        parent.id = "other".into();
+        assert!(srn_starts(&file, &parent).is_empty());
     }
 }

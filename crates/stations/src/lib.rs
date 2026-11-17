@@ -8,7 +8,8 @@
 //!   OpenStreetMap and OpenSkiMap (ODbL) and SkiRadar (attribution « skiradar.fr »);
 //! - `pois.geojson`: the OSM points behind the cards, with their domains;
 //! - `departs.json`, `departs.geojson`: the trail starts of every domain (X9, #143,
-//!   [`departs`]), written by the CLI after the cards ran;
+//!   [`departs`]) and of every SRN area and traverse (X9b, [`departs_srn`]), written by the
+//!   CLI after the cards ran or the SRN layer changed;
 //! - with `personal_sources` only (the issuers display no reuse licence): `titres.json`
 //!   (titles, validity, dated prices, members, source states), `titres.geojson`
 //!   (footprint of each title), `couverture.json` (titles valid on each domain, ways of
@@ -22,6 +23,7 @@
 pub mod catalogue;
 pub mod contacts;
 pub mod departs;
+pub mod departs_srn;
 pub mod domains;
 pub mod error;
 pub mod fiche;
@@ -793,13 +795,14 @@ fn write_meta(
                 "url": "page OSM", "osm_type": "node, way, relation", "osm_id": "identifiant OSM",
                 "domains": "domaines : id, distance_m à l'emprise",
             })),
-        FileMeta::new(departs::FILE, "départs des pistes de chaque domaine (X9), du principal au moins fréquenté : foyers, accueils, écoles de ski et parkings OSM près du réseau ramenés sur le réseau ; repli sur le point du réseau le plus proche d'un parking, du village ou du recensement")
+        FileMeta::new(departs::FILE, "départs des pistes de chaque domaine (X9), du principal au moins fréquenté : foyers, accueils, écoles de ski et parkings OSM près du réseau ramenés sur le réseau ; repli sur le point du réseau le plus proche d'un parking, du village ou du recensement ; départs des zones et traversées SRN (X9b) : parkings ouverts l'hiver, foyers et accueils nordiques OSM ramenés sur les itinéraires amorces, repli sur l'extrémité d'itinéraire la plus proche du village ou le point représentatif")
             .licence(pois::LICENCE)
             .properties_json(&json!({
                 "domains": "identifiant du domaine (recensement P3) → départs : id, name, phrase, phrase_en, lon, lat, provenance, method (points, near, village, centre), score, points (pages OSM)",
+                "srn": "identifiant de la zone SRN (srn_areas.geojson) → tous ses départs, du meilleur au moins bon, mêmes champs ; method (points, near, route_end, centre)",
                 "osm_valid_at": "date des données OSM des pistes", "notes": "méthode",
             })),
-        FileMeta::new(departs::GEOJSON, "un point par départ (contrôle sur carte) : domain, rank, name, method, score, points")
+        FileMeta::new(departs::GEOJSON, "un point par départ (contrôle sur carte) : domain ou srn, rank, name, method, score, points")
             .licence(pois::LICENCE),
         FileMeta::new("status.json", "état de chaque partie et de chaque source : dernière lecture réussie, erreur, titres conservés (stale) ou retirés (perime), politique de rafraîchissement"),
         FileMeta::new("journal.jsonl", "journal des changements entre deux rafraîchissements : at, part (stations, titres, site_pages, sources), id, change (added, removed, changed, état d'une source), detail (champs modifiés ou erreur)"),

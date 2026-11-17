@@ -108,10 +108,11 @@ enum Command {
     /// H2 #133), `data/out/france/stations/`: every part now; needs the census. Titles,
     /// prices and validity zones only with `SKIMAP_PERSONAL_SOURCES`.
     Stations,
-    /// Trail starts of every census domain (X9, #143), `data/out/france/stations/departs.json`,
-    /// from the points of the stations layer and the trail network; then the starts of the
-    /// site registry. Run by `skimap stations` and `skimap refresh` too when the station
-    /// cards ran.
+    /// Trail starts of every census domain (X9, #143) and of every SRN area and traverse
+    /// (X9b), `data/out/france/stations/departs.json`, from the OSM points (stations layer,
+    /// local index) and the trail or route network; then the starts of the site registry.
+    /// Run by `skimap stations` and `skimap refresh` too when the station cards ran or the
+    /// SRN layer changed.
     Departs,
     /// ENJ domains (X12b, #146): every groomed station of the registry whose envelope is
     /// crossed by an ENJ ski itinerary is polled on the ENJ by its box (`skimap status-poll`);
@@ -610,11 +611,14 @@ fn departs(c: &build::Ctx) -> Result<()> {
     let out = skimap_stations::departs::build(&c.layout, &c.dl)?;
     let n = france::refresh_registry_starts(&c.layout)?;
     println!(
-        "départs -> {} ({:.1} s) : {} départs, domaines par méthode du départ principal {:?} ; {n} sites du registre avec départs",
+        "départs -> {} ({:.1} s) : {} départs, domaines par méthode du départ principal {:?} ; zones SRN : {} départs, par méthode du meilleur départ {:?}, {} parkings fermés l'hiver écartés ; {n} sites du registre avec départs",
         out.path.display(),
         t.elapsed().as_secs_f64(),
         out.starts,
-        out.by_method
+        out.by_method,
+        out.srn_starts,
+        out.srn_by_method,
+        out.srn_winter_closed
     );
     Ok(())
 }
