@@ -15,6 +15,7 @@ import fr.skimap.core.TurnDirection
 import fr.skimap.core.openTracking
 import fr.skimap.tracking.Activity
 import fr.skimap.tracking.AlertKind
+import fr.skimap.tracking.BackGuide
 import fr.skimap.tracking.Batch
 import fr.skimap.tracking.Clip
 import fr.skimap.tracking.GpsMode
@@ -86,6 +87,12 @@ class RustTrackingCore(
     override fun backStart(tMs: Long): Batch = map(session.backStart(tMs))
 
     override fun backStop(): Batch = map(session.backStop())
+
+    override fun setCar(
+        tMs: Long,
+        lon: Double,
+        lat: Double,
+    ): Batch = map(session.setCar(lon, lat))
 
     override fun sayNext(tMs: Long): Utterance? = session.sayNext(tMs)?.let(::utterance)
 
@@ -200,6 +207,21 @@ class RustTrackingCore(
                 proposal = g.proposal?.let { Proposal(it.id.toInt(), it.kind, it.text) },
                 switch = g.switch?.let { RouteSwitch(it.route, it.cause, it.reverted, it.refusable) },
                 profileProposal = g.profileProposal?.let { ProfileProposal(it.name, it.profileJson, it.text) },
+                back =
+                    g.back?.let {
+                        BackGuide(
+                            target = it.target,
+                            targetName = it.targetName,
+                            way = it.way,
+                            hereLon = it.hereLon,
+                            hereLat = it.hereLat,
+                            guideLon = it.guideLon,
+                            guideLat = it.guideLat,
+                            guideBearingDeg = it.guideBearingDeg,
+                            guideDistanceM = it.guideDistanceM,
+                            offWay = it.offWay,
+                        )
+                    },
             )
     }
 }

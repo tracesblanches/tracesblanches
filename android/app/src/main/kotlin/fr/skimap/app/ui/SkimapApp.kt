@@ -51,6 +51,7 @@ import fr.skimap.app.R
 import fr.skimap.app.data.Appearance
 import fr.skimap.app.data.PackProblem
 import fr.skimap.app.data.Practice
+import fr.skimap.app.data.rememberOnline
 import fr.skimap.app.guidance.GuidanceOverlay
 import fr.skimap.app.ui.domains.DomainPickerDialog
 import fr.skimap.app.ui.domains.DomainsViewModel
@@ -151,6 +152,7 @@ fun SkimapApp(
                 mapShown = mapShownFor == styleName(opened),
                 mapMoved = moved,
                 autoUpdate = autoUpdate,
+                online = rememberOnline(),
                 actions =
                     MapActions(
                         recenter = controller::recenter,
@@ -234,6 +236,8 @@ fun MapScreen(
     initialSheetOpen: Boolean = false,
     autoUpdate: Boolean = true,
     appearance: Appearance? = null,
+    /** A network is there: a pack past its validity is invited (gently) to be updated. */
+    online: Boolean = false,
     map: @Composable () -> Unit,
 ) {
     var sheetOpen by rememberSaveable { mutableStateOf(initialSheetOpen) }
@@ -269,7 +273,7 @@ fun MapScreen(
                 .windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(8.dp),
         ) {
-            StatusChip(info, siteName, texts, today, state.error, Modifier.align(Alignment.TopStart))
+            StatusChip(info, siteName, texts, today, state.error, online, Modifier.align(Alignment.TopStart))
             GuidanceOverlay(info.siteId)
             // One hint at a time, only when it matters: the bearing in the fog (K7), the less exposed terrain (V7).
             fr.skimap.app.fog
@@ -389,8 +393,10 @@ private fun Chip(
 }
 
 /**
- * One line at the top: site and piste status. The validity shows only when it matters
- * (last day, expired), in words and on the error colour.
+ * One line at the top: site and piste status. The validity shows only when it matters: the
+ * last day, in words on the error colour; past it, the date of the last update on a
+ * neutral colour (never « périmé », nothing blocked), with an invitation to update when a
+ * network is there.
  */
 @Composable
 private fun StatusChip(
@@ -399,10 +405,11 @@ private fun StatusChip(
     texts: PackTexts,
     today: LocalDate,
     error: PackProblem?,
+    online: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val validity = PackTexts.validity(info, today)
-    val warn = validity == Validity.EXPIRED || validity == Validity.LAST_DAY
+    val warn = validity == Validity.LAST_DAY
     Column(modifier.testTag(Tags.HEADER), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Chip {
             Text(
@@ -418,6 +425,15 @@ private fun StatusChip(
         if (alert != null) {
             Chip(color = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer) {
                 Text(alert, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+        } else if (validity == Validity.PAST) {
+            Chip(color = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer) {
+                Text(
+                    texts.validityText(info, today, online),
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }

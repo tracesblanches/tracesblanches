@@ -224,10 +224,18 @@ class MapScreenTest {
     }
 
     @Test
-    fun expiredPackIsSaidInWords() {
-        val expired = readyState().let { it.copy(opened = it.opened.copy(info = Fixtures.info(validUntil = "2026-11-14"))) }
-        rule.setContent { Themed { TestMapScreen(expired) } }
-        rule.onNodeWithText("Périmé depuis le 14 novembre 2026 : mettez le pack à jour").assertIsDisplayed()
+    fun packPastItsValidityShowsItsUpdateDate() {
+        val past = readyState().let { it.copy(opened = it.opened.copy(info = Fixtures.info(validUntil = "2026-11-14"))) }
+        rule.setContent { Themed { TestMapScreen(past) } }
+        rule.onNodeWithText("Mis à jour le 15 novembre 2026").assertIsDisplayed()
+        rule.onNodeWithText("Périmé", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun packPastItsValidityInvitesToUpdateWhenOnline() {
+        val past = readyState().let { it.copy(opened = it.opened.copy(info = Fixtures.info(validUntil = "2026-11-14"))) }
+        rule.setContent { Themed { TestMapScreen(past, online = true) } }
+        rule.onNodeWithText("Mis à jour le 15 novembre 2026 · connecté : vous pouvez le mettre à jour").assertIsDisplayed()
     }
 
     /**

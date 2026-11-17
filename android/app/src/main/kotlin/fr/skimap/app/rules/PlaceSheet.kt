@@ -1,5 +1,6 @@
 package fr.skimap.app.rules
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,10 +33,12 @@ import androidx.compose.ui.unit.dp
 import fr.skimap.app.R
 import fr.skimap.app.fog.FogActivity
 import fr.skimap.app.fog.Outings
+import fr.skimap.app.guidance.SkiTrackingService
 import fr.skimap.app.offpiste.OffpisteActivity
 import fr.skimap.app.ui.theme.GloveTarget
 import fr.skimap.core.PlaceRules
 import fr.skimap.core.placeRules
+import fr.skimap.tracking.Tracking
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -44,6 +47,7 @@ object PlaceTags {
     const val SHEET = "place_sheet"
     const val FOG = "place_fog"
     const val OFFPISTE = "place_offpiste"
+    const val CAR = "place_car"
 }
 
 /** A place touched long on the map. */
@@ -90,6 +94,11 @@ fun PlaceSheet(
                 onDismiss()
                 context.startActivity(OffpisteActivity.intent(context, site, place.lat, place.lon))
             },
+            onCar = {
+                onDismiss()
+                Tracking.setCar(context, SkiTrackingService::class.java, place.lat, place.lon)
+                Toast.makeText(context, R.string.place_car_done, Toast.LENGTH_SHORT).show()
+            },
         )
     }
 }
@@ -100,6 +109,7 @@ fun PlaceContent(
     rules: PlaceRules?,
     onFog: () -> Unit,
     onOffpiste: () -> Unit,
+    onCar: () -> Unit = {},
 ) {
     Column(
         Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).navigationBarsPadding(),
@@ -115,6 +125,10 @@ fun PlaceContent(
         }
         OutlinedButton(onClick = onOffpiste, modifier = Modifier.fillMaxWidth().heightIn(min = GloveTarget).testTag(PlaceTags.OFFPISTE)) {
             Text(stringResource(R.string.place_offpiste))
+        }
+        // « La voiture est ici » (K4): optional, the car is recorded on its own at the start.
+        OutlinedButton(onClick = onCar, modifier = Modifier.fillMaxWidth().heightIn(min = GloveTarget).testTag(PlaceTags.CAR)) {
+            Text(stringResource(R.string.place_car))
         }
         val r = rules ?: return@Column
         Text(

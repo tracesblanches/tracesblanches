@@ -63,7 +63,8 @@
 
     <string name="validity_valid">Valable jusqu\'au %1$s</string>
     <string name="validity_last_day">Dernier jour de validité : %1$s</string>
-    <string name="validity_expired">Périmé depuis le %1$s : mettez le pack à jour</string>
+    <string name="validity_updated">Mis à jour le %1$s</string>
+    <string name="validity_updated_online">Mis à jour le %1$s · connecté : vous pouvez le mettre à jour</string>
     <string name="validity_unknown">Validité inconnue</string>
     <plurals name="status_open">
         <item quantity="one">%d ouverte</item>

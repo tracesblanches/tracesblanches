@@ -65,7 +65,8 @@
 
     <string name="validity_valid">Valid until %1$s</string>
     <string name="validity_last_day">Last day of validity: %1$s</string>
-    <string name="validity_expired">Out of date since %1$s: update the pack</string>
+    <string name="validity_updated">Updated %1$s</string>
+    <string name="validity_updated_online">Updated %1$s · online: you can update it</string>
     <string name="validity_unknown">Validity unknown</string>
     <plurals name="status_open">
         <item quantity="one">%d open</item>

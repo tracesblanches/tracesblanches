@@ -76,6 +76,10 @@ object FogTags {
     const val ARROW = "fog_arrow"
     const val VOICE = "fog_voice"
     const val CALIBRATION = "fog_calibration"
+
+    /** The arrow of « ramène-moi » over the map ([BackArrow]). */
+    const val BACK_HINT = "back_arrow_hint"
+    const val BACK_ARROW = "back_arrow"
 }
 
 /** What the bearing screen shows. */
@@ -299,7 +303,7 @@ private fun BearingPanel(
         } else {
             val rel = b.relativeDeg
             val description = stringResource(R.string.fog_arrow, target?.name.orEmpty()) + (b.turnText?.let { ", $it" } ?: "")
-            Arrow(rel ?: 0.0, Modifier.size(160.dp).testTag(FogTags.ARROW).semantics { contentDescription = description })
+            BearingArrow(rel ?: 0.0, Modifier.size(160.dp).testTag(FogTags.ARROW).semantics { contentDescription = description })
             Text(b.distanceText, style = MaterialTheme.typography.headlineMedium)
             Text(b.bearingText, style = MaterialTheme.typography.titleMedium)
             b.turnText?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
@@ -322,9 +326,12 @@ private fun BearingPanel(
     }
 }
 
-/** An arrow turned by [relDeg] (0: straight ahead, positive: to the right). */
+/**
+ * An arrow turned by [relDeg] (0: straight ahead, positive: to the right): the bearing
+ * screen's, and the arrow of « ramène-moi » on the map ([BackArrow]).
+ */
 @Composable
-private fun Arrow(
+internal fun BearingArrow(
     relDeg: Double,
     modifier: Modifier = Modifier,
 ) {

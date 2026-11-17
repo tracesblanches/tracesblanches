@@ -105,7 +105,7 @@ class GuidanceNotifier(
             }
 
             p != null -> {
-                b.setContentText(p.text)
+                b.setContentText(if (p.kind == Proposal.BACK) context.getString(R.string.back_proposal) else p.text)
                 b.addAction(0, context.getString(R.string.accept), action(Tracking.ACTION_ACCEPT, CODE_ACCEPT))
                 b.addAction(0, context.getString(R.string.decline), action(Tracking.ACTION_DECLINE, CODE_DECLINE))
             }

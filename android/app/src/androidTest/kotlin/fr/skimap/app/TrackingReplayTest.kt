@@ -363,4 +363,106 @@ class TrackingReplayTest {
 
     @Test
     fun familyProposal() = replay("family")
+
+    /**
+     * « Ramène-moi » after the first half of a replayed outing (K4): the target is the car
+     * recorded on its own at the start, the way is computed on the phone, and skiing where
+     * the arrow points (the next useful point of the way) leads to the car with the arrival
+     * said, never off the way.
+     */
+    @Test
+    fun bringMeBackFollowsTheArrowToTheCar() {
+        val dir = prepare("refuge")
+        assumeTrue("Q9 data or pack missing on the device", dir != null)
+        grant()
+        val scenario = ActivityScenario.launch(MainActivity::class.java)
+        try {
+            val start =
+                Intent(target, SkiTrackingService::class.java)
+                    .setAction(Tracking.ACTION_START)
+                    .putExtra(Tracking.EXTRA_PLAN_DIR, dir!!.absolutePath)
+                    .putExtra(Tracking.EXTRA_REPLAY, true)
+            ContextCompat.startForegroundService(target, start)
+            val (s, conn) = bind()
+            val deadline = System.currentTimeMillis() + 30_000
+            while (Tracking.state.value !is TrackingState.Running && System.currentTimeMillis() < deadline) Thread.sleep(50)
+            assertTrue("tracking running", Tracking.state.value is TrackingState.Running)
+            val fixes =
+                File(dir, "scenario.jsonl")
+                    .readLines()
+                    .filter { it.isNotBlank() }
+                    .map(::JSONObject)
+                    .filter { it.has("fix") }
+                    .map { it.getJSONObject("fix") }
+                    .map { loc(ms(it), it.getJSONObject("pos").getDouble("lon"), it.getJSONObject("pos").getDouble("lat")) }
+            val out = fixes.take(fixes.size / 3)
+            out.chunked(BATCH).forEach { b -> onService(s) { s.fixes(b, emptyList()) } }
+            var t = out.last().time + 1000
+            onService(s) { s.inject { it.backStart(t) } }
+            onService(s) {}
+            val running = Tracking.state.value as TrackingState.Running
+            assertEquals("back", running.guidance.route)
+            val back = running.guidance.back!!
+            assertEquals("car", back.target)
+            val car =
+                Location("").apply {
+                    latitude = out.first().latitude
+                    longitude = out.first().longitude
+                }
+            var here =
+                Location("").apply {
+                    latitude = back.hereLat
+                    longitude = back.hereLon
+                }
+            var guide = back.guideLon to back.guideLat
+            var arrived = false
+            var offs = 0
+            repeat(MAX_STEPS) {
+                if (arrived) return@repeat
+                val batch =
+                    (1..BATCH).map {
+                        val g =
+                            Location("").apply {
+                                longitude = guide.first
+                                latitude = guide.second
+                            }
+                        val d = here.distanceTo(g).toDouble()
+                        val f = if (d > STEP_M) STEP_M / d else 1.0
+                        here =
+                            Location("").apply {
+                                longitude = here.longitude + f * (g.longitude - here.longitude)
+                                latitude = here.latitude + f * (g.latitude - here.latitude)
+                            }
+                        t += 2000
+                        loc(t, here.longitude, here.latitude)
+                    }
+                onService(s) { s.fixes(batch, emptyList()) }
+                val g = (Tracking.state.value as TrackingState.Running).guidance
+                val b = g.back
+                if (g.route != "back" || b == null) {
+                    arrived = true
+                } else {
+                    offs += if (b.offWay) 1 else 0
+                    guide = b.guideLon to b.guideLat
+                }
+            }
+            assertTrue("arrived", arrived)
+            assertTrue("${here.distanceTo(car)} m from the car", here.distanceTo(car) < 60f)
+            assertEquals(0, offs)
+            val kinds = s.stats.said.flatMap { it.kinds }
+            assertEquals(kinds.toString(), 1, kinds.count { it == "arrive" })
+            assertTrue(kinds.toString(), "back" in kinds)
+            onService(s) { s.inject { it.backStop() } }
+            Tracking.command(target, SkiTrackingService::class.java, Tracking.ACTION_STOP)
+            target.unbindService(conn)
+        } finally {
+            scenario.close()
+        }
+    }
+
+    private companion object {
+        const val BATCH = 5
+        const val MAX_STEPS = 600
+        const val STEP_M = 8.0
+    }
 }

@@ -258,6 +258,10 @@ abstract class TrackingService : Service() {
             }
         } else if (action == null) {
             if (core == null) stopSelf(startId)
+        } else if (action == Tracking.ACTION_CAR) {
+            val lon = intent.getDoubleExtra(Tracking.EXTRA_LON, Double.NaN)
+            val lat = intent.getDoubleExtra(Tracking.EXTRA_LAT, Double.NaN)
+            if (!lon.isNaN() && !lat.isNaN()) handler.post { setCar(lon, lat) }
         } else {
             commands[action]?.let { handler.post(it) }
         }
@@ -325,6 +329,8 @@ abstract class TrackingService : Service() {
             publish()
             return
         }
+        // The car set on the map before the outing (K4); otherwise the core records it.
+        Tracking.takePendingCar(this, System.currentTimeMillis())?.let { (lon, lat) -> setCar(lon, lat) }
         startSteps()
         val f =
             IntentFilter().apply {
@@ -561,6 +567,17 @@ abstract class TrackingService : Service() {
         stats.said += u
         lastSaid = u.text
         announcer.say(u)
+    }
+
+    /** « La voiture est ici » (K4). */
+    private fun setCar(
+        lon: Double,
+        lat: Double,
+    ) {
+        val c = core ?: return
+        runCatching { c.setCar(System.currentTimeMillis(), lon, lat) }
+            .onSuccess { b -> b?.let(::handle) }
+            .onFailure { Log.w(TAG, "tracking: car", it) }
     }
 
     private fun toggleBack() {

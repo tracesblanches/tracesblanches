@@ -122,6 +122,15 @@ class FakeCore : TrackingCore {
         return batch()
     }
 
+    override fun setCar(
+        tMs: Long,
+        lon: Double,
+        lat: Double,
+    ): Batch {
+        events += "car %.4f %.4f".format(java.util.Locale.ROOT, lon, lat)
+        return batch()
+    }
+
     override fun sayNext(tMs: Long): Utterance? = null
 
     override fun sayRemaining(tMs: Long): Utterance? = null
@@ -266,6 +275,58 @@ class ServiceTest {
         }
         shadowOf(s.looper).idle()
         assertEquals(listOf("screen true", "answer true", "answer false", "refuse", "back"), FakeService.core.events)
+    }
+
+    @Test
+    fun theCarSetOnTheMapReachesTheCore() {
+        val s = start()
+        s.onStartCommand(
+            Intent(app, FakeService::class.java)
+                .setAction(Tracking.ACTION_CAR)
+                .putExtra(Tracking.EXTRA_LON, 6.72)
+                .putExtra(Tracking.EXTRA_LAT, 44.85),
+            0,
+            2,
+        )
+        // Without a position: nothing.
+        s.onStartCommand(Intent(app, FakeService::class.java).setAction(Tracking.ACTION_CAR), 0, 3)
+        shadowOf(s.looper).idle()
+        assertEquals(listOf("screen true", "car 6.7200 44.8500"), FakeService.core.events)
+    }
+
+    @Test
+    fun theCarSetBeforeTheOutingIsTakenAtItsStartOnce() {
+        Tracking.publish(TrackingState.Idle)
+        Tracking.setCar(app, FakeService::class.java, 44.85, 6.72)
+        start()
+        assertEquals(listOf("car 6.7200 44.8500", "screen true"), FakeService.core.events)
+        assertEquals(null, Tracking.takePendingCar(app, System.currentTimeMillis()))
+        // Set more than 12 h before: the car is recorded at the start instead.
+        Tracking.publish(TrackingState.Idle)
+        val now = System.currentTimeMillis()
+        Tracking.setCar(app, FakeService::class.java, 44.85, 6.72, nowMs = now - Tracking.CAR_KEEP_MS - 1)
+        assertEquals(null, Tracking.takePendingCar(app, now))
+        Tracking.setCar(app, FakeService::class.java, 44.85, 6.72, nowMs = now - 60_000)
+        assertEquals(6.72 to 44.85, Tracking.takePendingCar(app, now))
+    }
+
+    @Test
+    fun goingBackIsProposedInWordsOfThePhone() {
+        val s = start()
+        val p = Proposal(Int.MAX_VALUE, Proposal.BACK, "Il est temps de rentrer. Être guidé jusqu'à la voiture ?")
+        FakeService.core.next = { g ->
+            Batch(emptyList(), emptyList(), emptyList(), listOf(p), emptyList(), null, null, g.copy(phase = Phase.MOVING, proposal = p))
+        }
+        val lm = app.getSystemService(LocationManager::class.java)
+        shadowOf(lm).simulateLocation(s.providerName, loc(1_000, 6.72, 44.85))
+        shadowOf(s.looper).idle()
+        val n = shadowOf(app.getSystemService(NotificationManager::class.java)).getNotification(GuidanceNotifier.ID)
+        assertEquals(listOf("Accepter", "Refuser", "Ramène-moi"), n.actions.map { it.title.toString() })
+        assertEquals("Il est temps de rentrer. Être guidé pour le retour ?", n.extras.getCharSequence("android.text").toString())
+        // Accepted from the notification: the answer goes to the core, which starts the way back.
+        s.onStartCommand(Intent(app, FakeService::class.java).setAction(Tracking.ACTION_ACCEPT), 0, 2)
+        shadowOf(s.looper).idle()
+        assertTrue(FakeService.core.events.toString(), "answer true" in FakeService.core.events)
     }
 
     @Test

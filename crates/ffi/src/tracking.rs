@@ -17,9 +17,14 @@
 //! group learns from (C11, `pace::digest`), and the state of the outing when the process
 //! is restarted (the inputs are replayed through a new tracker, a few milliseconds).
 //!
-//! « Ramène-moi » ([`TrackingSession::back_start`]) guides back along the way skied
-//! ([`crate::tracking_back`]); the tracker keeps running for the safety alerts.
+//! « Ramène-moi » ([`TrackingSession::back_start`]) guides back to the destination of the
+//! plan when it ends elsewhere, else to the car (recorded on its own at the start of the
+//! outing, corrected by [`TrackingSession::set_car`]), along the pistes of the pack or the
+//! way skied ([`crate::tracking_back`]); the tracker keeps running for the safety alerts.
+//! When the return time of the plan calls for going home and the tracker has no way home
+//! on the pistes, « ramène-moi » is proposed (one gesture to accept).
 
+use std::collections::BTreeSet;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
@@ -35,7 +40,7 @@ use skimap_plan::gps::{GpsInput, GpsMode, GpsParams, GpsRequest, GpsState};
 use skimap_plan::guidance::{self, Junction};
 use skimap_plan::pace::{ProposalKind, clock_fr, duration_fr};
 use skimap_plan::phrases::Voice;
-use skimap_plan::plan::DayPlan;
+use skimap_plan::plan::{DayPlan, KeyKind};
 use skimap_plan::session::{Activity, End, Phase, SessionEvent};
 use skimap_plan::speech::{Priority, Spoken};
 use skimap_plan::track::TrackView;
@@ -47,11 +52,18 @@ use skimap_voice::bank::Announcement;
 use skimap_voice::clips::Direction;
 use skimap_voice::pack::VoiceManifest;
 
-use crate::tracking_back::Backtrack;
+use crate::tracking_back::{
+    Backtrack, Car, CarSpotter, Network, Parking, Target, TargetKind, WayKind, choose_target,
+    pack_parkings, way_back,
+};
 use crate::tracking_day::{PACK_FILE, PLAN_FILE, PackView, TRACK_FILE};
 
 /// Inputs recorded next to the plan (JSON lines of `skimap_plan::tracker::Input`).
 pub const INPUTS_FILE: &str = "inputs.jsonl";
+/// The car set by the skier (« La voiture est ici »), next to the plan.
+pub const CAR_FILE: &str = "car.json";
+/// Number of the proposal of « ramène-moi » (the tracker numbers its own from 1).
+pub const BACK_PROPOSAL_ID: u32 = u32::MAX;
 /// Directory under the plan's where the pack's layers are linked in the pipeline layout
 /// ([`PackView`]) for the tracker ([`Tracker::with_layers`]).
 pub const LAYERS_DIR: &str = "layers";
@@ -579,6 +591,64 @@ pub struct GuidanceView {
     pub switch: Option<SwitchView>,
     /// Profile proposal waiting for an answer (X14).
     pub profile_proposal: Option<ProfileProposalView>,
+    /// « Ramène-moi » under way: where to, how, and the next useful point of the way.
+    pub back: Option<BackView>,
+}
+
+/// « Ramène-moi » under way: where it goes, how, and the next useful point of the way
+/// (the arrow of the screen points there with the compass: never straight across the
+/// terrain to the end).
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct BackView {
+    /// `destination` (of the day plan), `car`, `start` (no car known).
+    pub target: String,
+    /// Name of the destination or of the car park, when known.
+    pub target_name: Option<String>,
+    /// Target, longitude.
+    pub target_lon: f64,
+    /// Target, latitude.
+    pub target_lat: f64,
+    /// `pistes`, `trace_pistes` (back along the way skied to the pistes), `trace`.
+    pub way: String,
+    /// Last fix, longitude.
+    pub here_lon: f64,
+    /// Last fix, latitude.
+    pub here_lat: f64,
+    /// Next useful point of the way, longitude.
+    pub guide_lon: f64,
+    /// Next useful point of the way, latitude.
+    pub guide_lat: f64,
+    /// Bearing from the last fix to that point, degrees from true north.
+    pub guide_bearing_deg: f64,
+    /// Distance from the last fix to that point, metres.
+    pub guide_distance_m: f64,
+    /// Off the way (the arrow is shown on its own then).
+    pub off_way: bool,
+}
+
+/// The view of a way back for `target`, from the last fix `here`.
+pub(crate) fn back_view(
+    b: &Backtrack,
+    target: &Target,
+    way: WayKind,
+    here: Option<LonLat>,
+) -> BackView {
+    let here = here.unwrap_or_else(|| b.line()[0]);
+    let g = b.guide_point();
+    BackView {
+        target: target.kind.as_str().into(),
+        target_name: target.name.clone(),
+        target_lon: target.pos.lon,
+        target_lat: target.pos.lat,
+        way: way.as_str().into(),
+        here_lon: here.lon,
+        here_lat: here.lat,
+        guide_lon: g.lon,
+        guide_lat: g.lat,
+        guide_bearing_deg: crate::fog::bearing_deg(here, g),
+        guide_distance_m: here.haversine_m(g),
+        off_way: b.is_off(),
+    }
 }
 
 /// What a call produced, in order of kind.
@@ -696,6 +766,10 @@ struct Owned {
     /// zones without network, avalanche paths and protected zones.
     layers: Option<SiteData>,
     log: PathBuf,
+    /// Car parks of the pack.
+    parkings: Vec<Parking>,
+    /// Where the car set by the skier is kept.
+    car_file: PathBuf,
 }
 
 enum Cmd {
@@ -703,6 +777,7 @@ enum Cmd {
     Event(TrackEvent),
     BackStart(i64),
     BackStop,
+    SetCar(f64, f64),
     SayNext(i64),
     SayRemaining(i64),
     Guidance,
@@ -762,7 +837,16 @@ pub fn open_tracking(plan_dir: String) -> Result<Arc<TrackingSession>, TrackingE
     let pack_dir = PathBuf::from(String::from_utf8_lossy(&read(PACK_FILE)?).trim());
     let graph = load_graph(&pack_dir)?;
     let layers = load_layers(&pack_dir, &dir.join(LAYERS_DIR));
-    TrackingSession::start_with(plan, trk, graph, Some(pack_dir.join("voice")), layers, dir)
+    let parkings = pack_parkings(&pack_dir);
+    TrackingSession::start_full(
+        plan,
+        trk,
+        graph,
+        Some(pack_dir.join("voice")),
+        layers,
+        parkings,
+        dir,
+    )
 }
 
 /// The layers of the pack in `pack_dir` for the tracker (X11), loaded by the morning's
@@ -836,6 +920,20 @@ impl TrackingSession {
         layers: Result<SiteData, String>,
         plan_dir: PathBuf,
     ) -> Result<Arc<Self>, TrackingError> {
+        Self::start_full(plan, trk, graph, voice_dir, layers, Vec::new(), plan_dir)
+    }
+
+    /// [`TrackingSession::start_with`] with the car parks of the pack: the car recorded at
+    /// the start is moved onto the nearest one ([`crate::tracking_back::CarSpotter`]).
+    pub fn start_full(
+        plan: DayPlan,
+        trk: Vec<u8>,
+        graph: PisteGraph,
+        voice_dir: Option<PathBuf>,
+        layers: Result<SiteData, String>,
+        parkings: Vec<Parking>,
+        plan_dir: PathBuf,
+    ) -> Result<Arc<Self>, TrackingError> {
         let note = layers_note(&layers);
         let manifest = voice_dir.as_ref().and_then(|v| VoiceManifest::read(v).ok());
         let voice = manifest
@@ -856,6 +954,8 @@ impl TrackingSession {
             },
             layers: layers.ok(),
             log,
+            parkings,
+            car_file: plan_dir.join(CAR_FILE),
         };
         let (tx, rx) = channel::<Cmd>();
         let (rtx, rrx) = channel::<Result<Reply, TrackingError>>();
@@ -966,6 +1066,15 @@ impl TrackingSession {
         self.out(Cmd::BackStop)
     }
 
+    /// « La voiture est ici » (a long touch on the map): the car is there, not where it
+    /// was recorded; a way back to the car under way is computed again.
+    pub fn set_car(&self, lon: f64, lat: f64) -> Result<BatchOut, TrackingError> {
+        if !(lon.is_finite() && lat.is_finite()) {
+            return Err(invalid("position de la voiture invalide"));
+        }
+        self.out(Cmd::SetCar(lon, lat))
+    }
+
     /// The next direction, to say now (headset button, volume key).
     pub fn say_next(&self, t_ms: i64) -> Result<Option<SpokenView>, TrackingError> {
         self.said(Cmd::SayNext(t_ms))
@@ -1057,6 +1166,12 @@ struct Engine<'a> {
     trace: Vec<LonLat>,
     last: Option<(f64, LonLat)>,
     back: Option<Backtrack>,
+    /// Where the way back goes and how.
+    back_to: Option<(Target, WayKind)>,
+    /// The car.
+    car: CarSpotter,
+    /// Trails closed during the outing (OSM ways): the way back avoids them.
+    closed: BTreeSet<i64>,
     /// What the way back said per fix since the last call.
     back_steps: Vec<(i64, crate::tracking_back::BackStep)>,
     back_gps: GpsState,
@@ -1095,6 +1210,9 @@ impl<'a> Engine<'a> {
             trace: Vec::with_capacity(8192),
             last: None,
             back: None,
+            back_to: None,
+            car: CarSpotter::with(read_car(&o.car_file)),
+            closed: BTreeSet::new(),
             back_steps: Vec::new(),
             back_gps: GpsState::default(),
             last_gps: None,
@@ -1154,6 +1272,7 @@ impl<'a> Engine<'a> {
                 Some(p) if p.haversine_m(*pos) < TRACE_STEP_M => {}
                 _ => self.trace.push(*pos),
             }
+            self.car.fix(ts, *pos, &self.o.parkings);
             self.last = Some((ts, *pos));
             if let Some(b) = self.back.as_mut() {
                 let st = b.fix(ts, *pos);
@@ -1161,6 +1280,9 @@ impl<'a> Engine<'a> {
                     self.back_steps.push((t.timestamp_millis(), st));
                 }
             }
+        }
+        if let Input::Closed { ways, .. } = i {
+            self.closed.extend(ways.iter().copied());
         }
         self.tracker.push(i, &mut self.out);
     }
@@ -1213,6 +1335,20 @@ impl<'a> Engine<'a> {
                 self.inputs = inputs;
                 Ok(Reply::Out(Box::new(self.collect())))
             }
+            Cmd::Event(TrackEvent::Answer { t_ms, accept })
+                if self
+                    .proposal
+                    .as_ref()
+                    .is_some_and(|p| p.id == BACK_PROPOSAL_ID) =>
+            {
+                // The proposal of « ramène-moi » is the session's own: not the tracker's.
+                self.proposal = None;
+                Ok(Reply::Out(Box::new(if accept {
+                    self.start_back(t_ms)
+                } else {
+                    self.collect()
+                })))
+            }
             Cmd::Event(ev) => {
                 let i = ev.input();
                 if matches!(ev, TrackEvent::Refuse { .. }) {
@@ -1228,30 +1364,26 @@ impl<'a> Engine<'a> {
                 self.record(std::slice::from_ref(&i));
                 Ok(Reply::Out(Box::new(self.collect())))
             }
-            Cmd::BackStart(t_ms) => {
-                let here = self.last.map(|(_, p)| p);
-                self.back = here.and_then(|h| Backtrack::new(&self.trace, h));
-                self.back_gps = GpsState::default();
-                let mut out = self.collect();
-                let t = t_ms as f64 / 1000.0;
-                if let Some(b) = self.back.as_mut() {
-                    let a = b.start_announcement();
-                    out.spoken.push(self.o.clips.spoken(
-                        t_ms,
-                        &a,
-                        Priority::Direction,
-                        vec!["back".into()],
-                    ));
-                    let (st, req) = back_gps(&self.back_gps, b, t, self.last.map(|(_, p)| p));
-                    self.back_gps = st;
-                    out.gps = Some(gps_view(&req));
-                    self.last_gps = Some(req);
+            Cmd::BackStart(t_ms) => Ok(Reply::Out(Box::new(self.start_back(t_ms)))),
+            Cmd::SetCar(lon, lat) => {
+                let car = self.car.set(LonLat::new(lon, lat)).clone();
+                if let Ok(json) = serde_json::to_string(&car) {
+                    // Kept for a restart; the car is set all the same without it.
+                    let _ = std::fs::write(&self.o.car_file, json);
                 }
-                out.guidance = self.guidance();
-                Ok(Reply::Out(Box::new(out)))
+                let to_car = self
+                    .back_to
+                    .as_ref()
+                    .is_some_and(|(t, _)| t.kind != TargetKind::Destination);
+                if self.back.is_some() && to_car {
+                    let t_ms = self.last.map_or(0, |(t, _)| (t * 1000.0) as i64);
+                    return Ok(Reply::Out(Box::new(self.start_back(t_ms))));
+                }
+                Ok(Reply::Out(Box::new(self.collect())))
             }
             Cmd::BackStop => {
                 self.back = None;
+                self.back_to = None;
                 let mut out = self.collect();
                 if let Some(r) = self.tracker.gps_request() {
                     out.gps = Some(gps_view(&r));
@@ -1285,6 +1417,10 @@ impl<'a> Engine<'a> {
             guidance: placeholder_guidance(),
         };
         let backing = self.back.is_some();
+        // The return time calls for going home (A8's « turn around now »)…
+        let mut home_time = None;
+        // …and the tracker found a way home on the pistes.
+        let mut home_route = false;
         for o in self.out.drain(..) {
             match o {
                 Output::Spoken { t, spoken } => {
@@ -1294,6 +1430,9 @@ impl<'a> Engine<'a> {
                     }
                 }
                 Output::Alert { t, alert } => {
+                    if alert == Alert::TurnaroundNow {
+                        home_time = Some(ms(t));
+                    }
                     if !(backing && matches!(alert, Alert::OffRoute | Alert::BackOnRoute)) {
                         b.alerts.push(AlertView {
                             t_ms: ms(t),
@@ -1308,6 +1447,7 @@ impl<'a> Engine<'a> {
                     s_div,
                     ..
                 } => {
+                    home_route |= matches!(cause, Cause::NoTime);
                     self.switch_div = s_div;
                     let s = SwitchView {
                         t_ms: ms(t),
@@ -1398,6 +1538,16 @@ impl<'a> Engine<'a> {
                 }
             }
         }
+        if let Some(t_ms) = home_time
+            && crate::tracking_back::should_propose(
+                true,
+                home_route,
+                backing,
+                self.proposal.is_some(),
+            )
+        {
+            self.propose_back(t_ms, &mut b);
+        }
         self.refresh_route();
         self.expire();
         self.back_step(&mut b);
@@ -1461,6 +1611,7 @@ impl<'a> Engine<'a> {
         if arrived {
             // Arrived: the tracker's route and GPS mode again.
             self.back = None;
+            self.back_to = None;
             if let Some(r) = self.tracker.gps_request() {
                 b.gps = Some(gps_view(&r));
                 self.last_gps = Some(r);
@@ -1565,7 +1716,103 @@ impl<'a> Engine<'a> {
             proposal: self.proposal.clone(),
             switch: self.switch.clone(),
             profile_proposal: self.profile_proposal.clone(),
+            back: self
+                .back
+                .as_ref()
+                .zip(self.back_to.as_ref())
+                .map(|(b, (t, w))| back_view(b, t, *w, self.last.map(|(_, p)| p))),
         }
+    }
+
+    /// Where the day plan ends (its destination, named) and where it starts.
+    fn plan_ends(&self) -> (Option<(LonLat, Option<String>)>, Option<LonLat>) {
+        let p = &self.o.plan;
+        let end = p
+            .key_points
+            .iter()
+            .rev()
+            .find(|k| k.kind == KeyKind::Finish)
+            .map(|k| (k.pos, k.name.clone()));
+        let start = p
+            .key_points
+            .iter()
+            .find(|k| k.kind == KeyKind::Start)
+            .map_or(p.request.start, |k| k.pos);
+        (end, Some(start))
+    }
+
+    /// Where « ramène-moi » goes now ([`choose_target`]).
+    fn target(&self) -> Option<Target> {
+        let (end, start) = self.plan_ends();
+        choose_target(end, start, self.car.car(), self.trace.first().copied())
+    }
+
+    /// « Ramène-moi »: the target chosen, the way computed (pistes, else the way skied),
+    /// what is left said.
+    fn start_back(&mut self, t_ms: i64) -> BatchOut {
+        let here = self.last.map(|(_, p)| p);
+        let way = here.zip(self.target()).and_then(|(h, target)| {
+            let (_, start) = self.plan_ends();
+            let home = choose_target(None, start, self.car.car(), self.trace.first().copied());
+            let net = Network::new(
+                &self.o.graph,
+                self.o.plan.eta,
+                self.o.plan.request.max_difficulty,
+                &self.closed,
+            );
+            way_back(Some(&net), &self.trace, h, target, home)
+        });
+        self.back_to = way.as_ref().map(|w| (w.target.clone(), w.kind));
+        self.back = way.map(|w| w.back);
+        self.back_gps = GpsState::default();
+        if self
+            .proposal
+            .as_ref()
+            .is_some_and(|p| p.id == BACK_PROPOSAL_ID)
+        {
+            self.proposal = None;
+        }
+        let mut out = self.collect();
+        let t = t_ms as f64 / 1000.0;
+        if let Some(b) = self.back.as_mut() {
+            let a = b.start_announcement();
+            out.spoken.push(self.o.clips.spoken(
+                t_ms,
+                &a,
+                Priority::Direction,
+                vec!["back".into()],
+            ));
+            let (st, req) = back_gps(&self.back_gps, b, t, self.last.map(|(_, p)| p));
+            self.back_gps = st;
+            out.gps = Some(gps_view(&req));
+            self.last_gps = Some(req);
+        }
+        out.guidance = self.guidance();
+        out
+    }
+
+    /// The return time calls for going home and the tracker has no way on the pistes:
+    /// « ramène-moi » proposed, one gesture to accept ([`BACK_PROPOSAL_ID`]).
+    fn propose_back(&mut self, t_ms: i64, b: &mut BatchOut) {
+        if self.proposal.is_some() || self.last.is_none() {
+            return;
+        }
+        let p = ProposalView {
+            id: BACK_PROPOSAL_ID,
+            t_ms,
+            kind: "back".into(),
+            text: crate::tracking_back::proposal_text(self.target().as_ref()),
+        };
+        b.spoken.push(SpokenView {
+            t_ms,
+            text: p.text.clone(),
+            segments: Vec::new(),
+            all_clips: false,
+            priority: SpeechPriority::Safety,
+            kinds: vec!["back_proposal".into()],
+        });
+        self.proposal = Some(p.clone());
+        b.proposals.push(p);
     }
 
     fn say_next(&self, t_ms: i64) -> Option<SpokenView> {
@@ -1684,7 +1931,14 @@ fn placeholder_guidance() -> GuidanceView {
         proposal: None,
         switch: None,
         profile_proposal: None,
+        back: None,
     }
+}
+
+/// The car set by the skier before a restart, if any.
+fn read_car(path: &Path) -> Option<Car> {
+    let text = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str::<Car>(&text).ok().filter(|c| c.manual)
 }
 
 /// Packs fixes for [`TrackingSession::push_fixes`] (tests and tools; the app packs them
