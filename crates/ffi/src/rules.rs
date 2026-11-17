@@ -15,7 +15,8 @@ use chrono::{DateTime, Utc};
 use skimap_common::geom::LonLat;
 use skimap_core::zone_eval::{self, Verdict};
 use skimap_pack::Pack;
-use skimap_zones::layer::ZoneLayer;
+use skimap_zones::layer::{ZoneKind, ZoneLayer};
+use skimap_zones::local::{self, LocalStatus, OwnAct};
 use skimap_zones::rules::{RuleSet, Topic};
 
 use crate::PackError;
@@ -77,6 +78,11 @@ pub struct PlaceRules {
     pub zones: Vec<String>,
     /// Rules, in force first.
     pub rules: Vec<RuleLine>,
+    /// Local rules not verified at the place (G4): « Règles locales non vérifiées : APPB
+    /// X (arrêté de protection de biotope) : texte non lu ; arrêtés municipaux et
+    /// préfectoraux : non recensés. »; empty outside every zone with an act of its own and
+    /// every territory.
+    pub local_rules: String,
     /// What this is not (never a permission in itself).
     pub note: String,
 }
@@ -124,6 +130,46 @@ fn topic_key(t: Topic) -> &'static str {
         Topic::LeaveRoutes => "leave_routes",
         Topic::Fire => "fire",
     }
+}
+
+/// Items of the local rules not verified at the place: the zones containing it whose own
+/// act was not read or read in part ([`skimap_zones::local`]), even on the edge of the
+/// territories of the layer (a sliver of a reserve along a border), then the municipal
+/// decrees, never listed (French communes and départements are summed up by that line).
+fn local_items(
+    tx: &dyn text::Texts,
+    layer: &ZoneLayer,
+    rules: &RuleSet,
+    ev: &zone_eval::Evaluation,
+) -> Vec<String> {
+    let mut items = Vec::new();
+    let (mut fr, mut ch) = (false, false);
+    for z in ev.zones.iter().filter_map(|h| layer.get(&h.id)) {
+        match z.kind() {
+            ZoneKind::Country => fr = true,
+            ZoneKind::Canton => ch = true,
+            _ => {}
+        }
+        let Some((act, status)) = local::local_status(rules, z) else {
+            continue;
+        };
+        if matches!(act, OwnAct::ArretesMunicipaux | OwnAct::ArretesPrefectoraux) {
+            continue;
+        }
+        let a = tx.local_act(act);
+        match status {
+            LocalStatus::Unverified => items.push(tx.local_unverified(&z.props.name, a)),
+            LocalStatus::Partial => items.push(tx.local_partial(&z.props.name, a)),
+            LocalStatus::Read => {}
+        }
+    }
+    if fr {
+        items.push(tx.local_municipal_fr().to_owned());
+    }
+    if ch {
+        items.push(tx.local_municipal_ch().to_owned());
+    }
+    items
 }
 
 /// The rules at (`lon`, `lat`) at `at_ms` (epoch milliseconds) on the zones of the pack
@@ -198,6 +244,7 @@ pub fn place_rules(
         })
         .collect();
     lines.sort_by_key(|r| !r.active);
+    let local_rules = tx.local_rules(&local_items(tx, layer, rules, &ev));
     let local = ev.local_time;
     Ok(PlaceRules {
         at_text: tx.rules_at(local),
@@ -205,6 +252,7 @@ pub fn place_rules(
         topics,
         zones,
         rules: lines,
+        local_rules,
         note: tx.rules_note().into(),
     })
 }
@@ -212,6 +260,71 @@ pub fn place_rules(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn zone(
+        id: &str,
+        kind: ZoneKind,
+        name: &str,
+        b: skimap_common::geom::BBox,
+    ) -> skimap_zones::Zone {
+        skimap_zones::Zone::new(
+            skimap_zones::ZoneProps {
+                id: id.into(),
+                kind,
+                name: name.into(),
+                source: "test".into(),
+                url: None,
+                months: None,
+                practices: vec![],
+                designated: None,
+                area_ha: 1.0,
+                clipped: false,
+                note: None,
+            },
+            skimap_zones::geo::MultiPolygon::new(vec![skimap_zones::geom::bbox_polygon(b, 1)]),
+        )
+    }
+
+    /// An APPB whose act was not read, a département and a cœur de parc: the line says
+    /// which texts were not read, in both languages; nothing outside the territories.
+    #[test]
+    fn local_rules_not_verified_at_a_place() {
+        use skimap_common::geom::BBox;
+        let rules = RuleSet::embedded().unwrap();
+        let big = BBox::new(44.0, 6.0, 46.0, 8.0);
+        let small = BBox::new(45.0, 7.0, 45.1, 7.1);
+        let layer = ZoneLayer {
+            zones: vec![
+                zone("country:fr", ZoneKind::Country, "France", big),
+                zone("dept:73", ZoneKind::Department, "Savoie", big),
+                zone("inpn:FR3800000", ZoneKind::Appb, "Tourbière", small),
+                zone("inpn:FR3300001", ZoneKind::ParcNational, "Vanoise", small),
+                zone("n2000", ZoneKind::Natura2000Sic, "Natura", small),
+            ],
+        };
+        let at = DateTime::from_timestamp_millis(1_771_146_000_000).unwrap();
+        let ev = zone_eval::evaluate(&layer, &rules, LonLat::new(7.05, 45.05), at);
+        let fr = text::of(Lang::Fr);
+        let line = fr.local_rules(&local_items(fr, &layer, &rules, &ev));
+        assert_eq!(
+            line,
+            "Règles locales non vérifiées : Tourbière (arrêté de protection de biotope) : texte non lu ; \
+             Vanoise (réglementation du cœur de parc national) : texte non lu ; \
+             arrêtés municipaux et préfectoraux : non recensés."
+        );
+        let en = text::of(Lang::En);
+        let line = en.local_rules(&local_items(en, &layer, &rules, &ev));
+        assert!(
+            line.starts_with(
+                "Local rules not verified: Tourbière (biotope protection order): text not read; "
+            ),
+            "{line}"
+        );
+        // Outside every zone: nothing.
+        let out = zone_eval::evaluate(&layer, &rules, LonLat::new(9.0, 47.0), at);
+        assert!(local_items(fr, &layer, &rules, &out).is_empty());
+        assert_eq!(fr.local_rules(&[]), "");
+    }
 
     fn pack(site: &str) -> String {
         std::env::var("SKIMAP_DATA_DIR")
@@ -273,6 +386,59 @@ mod tests {
         assert_eq!(leave_of(&feb), "interdit");
         assert_ne!(leave_of(&aug), "interdit");
         assert!(aug.rules.iter().any(|r| !r.active && r.inactive.is_some()));
+    }
+
+    /// Every pack of the data directory: at an inner point of each zone whose own act was
+    /// not read, the place says « non vérifiées » and names the zone; every covered place
+    /// has the line.
+    #[test]
+    #[ignore = "needs data/out/<site>/pack"]
+    fn every_pack_names_the_unread_acts() {
+        let root = std::env::var("SKIMAP_DATA_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data"))
+            .join("out");
+        let (mut packs, mut checked, mut uncovered) = (0usize, 0usize, 0usize);
+        let t0 = std::time::Instant::now();
+        for e in std::fs::read_dir(&root).unwrap() {
+            let dir = e.unwrap().path().join("pack");
+            if !dir.join("manifest.json").exists() {
+                continue;
+            }
+            let d = dir.display().to_string();
+            let Ok(l) = load(&d) else { continue };
+            packs += 1;
+            let (layer, rules) = (&l.0, &l.1);
+            for z in &layer.zones {
+                let Some((act, LocalStatus::Unverified)) = local::local_status(rules, z) else {
+                    continue;
+                };
+                if act.is_territorial() {
+                    continue;
+                }
+                let Some(p) = skimap_zones::fields::inner_point(z) else {
+                    continue;
+                };
+                let r = place_rules(d.clone(), p.lon, p.lat, 1_771_146_000_000, Lang::Fr).unwrap();
+                if !r.covered {
+                    // On the edge of the territories (sliver along a border).
+                    uncovered += 1;
+                }
+                assert!(
+                    r.local_rules.starts_with("Règles locales non vérifiées")
+                        && r.local_rules.contains(&z.props.name),
+                    "{d} {}: {}",
+                    z.id(),
+                    r.local_rules
+                );
+                checked += 1;
+            }
+        }
+        eprintln!(
+            "{packs} packs, {checked} zones à acte non lu vérifiées ({uncovered} hors des territoires) en {:.2} s",
+            t0.elapsed().as_secs_f64()
+        );
+        assert!(packs > 0);
     }
 
     #[test]
