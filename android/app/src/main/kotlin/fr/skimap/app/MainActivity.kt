@@ -86,7 +86,8 @@ class MainActivity : ComponentActivity() {
             // The daily update, with its constraints (KEEP: scheduled once, not per launch).
             PackSync.schedulePeriodic(applicationContext, autoUpdate)
             // The France basemap (X20): the map of the whole country, before any pack.
-            PackSync.downloadFrance(applicationContext)
+            fr.skimap.app.sync.FranceBasemap
+                .download(applicationContext)
             // The voice follows the phone's language (VO6): one download when it changed.
             withContext(Dispatchers.IO) {
                 PackSync.followLanguage(applicationContext, PackSync.catalog(applicationContext).cached())
@@ -143,7 +144,11 @@ class MainActivity : ComponentActivity() {
                 initializer {
                     DomainsViewModel(
                         catalog = RustDomainCatalog({ context.assets.open("catalog.json").use { it.readBytes().decodeToString() } }),
-                        packs = RustPackRepository({ packsDir(context) }, franceDir = { PackSync.franceDir(context) }),
+                        packs =
+                            RustPackRepository({ packsDir(context) }, franceDir = {
+                                fr.skimap.app.sync.FranceBasemap
+                                    .dir(context)
+                            }),
                         locator = PlatformLocator(context),
                         downloads = WorkManagerDownloads(context),
                     )
@@ -158,7 +163,14 @@ class MainActivity : ComponentActivity() {
             viewModelFactory {
                 initializer {
                     MapViewModel(
-                        repository = RustPackRepository({ packsDir(context) }, franceDir = { PackSync.franceDir(context) }),
+                        repository =
+                            RustPackRepository(
+                                { packsDir(context) },
+                                franceDir = {
+                                    fr.skimap.app.sync.FranceBasemap
+                                        .dir(context)
+                                },
+                            ),
                         settings = PreferencesSettingsStore { context.getSharedPreferences("skimap", Context.MODE_PRIVATE) },
                         styles = AssetStyleSource({ context.assets }),
                         preferredPack = pack,

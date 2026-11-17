@@ -241,8 +241,9 @@ class PackSyncTest {
 
     /** Publishes the France basemap in [dir] into the store of the running server. */
     private fun publishFrance(dir: File) {
+        val server = checkNotNull(System.getProperty("skimap.server"))
         val p =
-            ProcessBuilder(checkNotNull(System.getProperty("skimap.server")), "publish-france", dir.absolutePath, "--store", store.absolutePath)
+            ProcessBuilder(server, "publish-france", dir.absolutePath, "--store", store.absolutePath)
                 .redirectErrorStream(true)
                 .start()
         val out = p.inputStream.bufferedReader().readText()
@@ -281,7 +282,8 @@ class PackSyncTest {
         assertEquals(1, next.files)
         assertEquals("tiles 2", File(phone, "france.pmtiles").readText())
 
-        val view = openMap(emptyList(), phone.absolutePath, File(checkNotNull(System.getProperty("skimap.styles")), "fond-clair.json").readText(), true, Lang.FR)
+        val style = File(checkNotNull(System.getProperty("skimap.styles")), "fond-clair.json").readText()
+        val view = openMap(emptyList(), phone.absolutePath, style, true, Lang.FR)
         assertEquals("libre", view.info.siteId)
         assertEquals("20261117", view.info.packVersion)
     }

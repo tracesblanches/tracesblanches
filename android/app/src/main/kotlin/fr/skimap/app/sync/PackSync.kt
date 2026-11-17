@@ -66,33 +66,6 @@ object PackSync {
 
     fun voiceDir(context: Context): File = File(context.getExternalFilesDir(null), "voice")
 
-    /** The France basemap of the phone (X20): under the packs, alone without any pack. */
-    fun franceDir(context: Context): File = File(context.getExternalFilesDir(null), "france")
-
-    /** Unique work of the France basemap; its `pack-` tag lets the map reload when it lands. */
-    const val FRANCE_WORK = "pack-france-basemap"
-
-    /**
-     * Fetches or revalidates the France basemap (X20): automatic, at every start, on any
-     * network (2 MB; the daily update revalidates it too). KEEP: one work at a time.
-     */
-    fun downloadFrance(context: Context) {
-        val request =
-            OneTimeWorkRequestBuilder<PackSyncWorker>()
-                .setConstraints(
-                    Constraints
-                        .Builder()
-                        .setRequiredNetworkType(NetworkType.CONNECTED)
-                        .setRequiresStorageNotLow(true)
-                        .build(),
-                ).setBackoffCriteria(BackoffPolicy.EXPONENTIAL, BACKOFF_SECONDS, TimeUnit.SECONDS)
-                .setInputData(workDataOf(PackSyncWorker.FRANCE to true))
-                .addTag(TAG)
-                .addTag(FRANCE_WORK)
-                .build()
-        WorkManager.getInstance(context).enqueueUniqueWork(FRANCE_WORK, ExistingWorkPolicy.KEEP, request)
-    }
-
     fun catalog(context: Context): ServerCatalog = ServerCatalog({ http(context) }, File(context.filesDir, "server"))
 
     /** Unique work name of a pack (site or voice language). */
@@ -263,7 +236,7 @@ class PackSyncWorker(
 
     /** The France basemap (X20): fetched, or revalidated (one request when unchanged). */
     private fun france(http: HttpSource): Result {
-        val r = FranceSyncer(http).sync(PackSync.franceDir(applicationContext))
+        val r = FranceSyncer(http).sync(FranceBasemap.dir(applicationContext))
         Log.i(TAG, "France basemap: build ${r.build ?: "unchanged"}, ${r.files} files, ${r.bytes} bytes, ${r.millis} ms")
         return Result.success(workDataOf(CHANGED to !r.upToDate))
     }
@@ -276,7 +249,7 @@ class PackSyncWorker(
         // The France basemap is revalidated with the packs; its failure leaves them be (its
         // own work retries it at the next start).
         try {
-            FranceSyncer(PackSync.http(ctx)).sync(PackSync.franceDir(ctx))
+            FranceSyncer(PackSync.http(ctx)).sync(FranceBasemap.dir(ctx))
         } catch (e: IOException) {
             Log.w(TAG, "France basemap not revalidated: $e")
         }

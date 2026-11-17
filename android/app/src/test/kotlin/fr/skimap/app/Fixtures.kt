@@ -206,7 +206,8 @@ class FakeRepository(
         // As the core: packs that do not open are skipped when another one opens.
         val ok = dirs.filterNot { it in broken }
         // As the core: the free mode opens without any pack over the France basemap.
-        if (ok.isEmpty() && !(free && france && dirs.isEmpty())) throw PackException.Invalid("manifest.json: EOF")
+        val overFrance = free && france && dirs.isEmpty()
+        if (ok.isEmpty() && !overFrance) throw PackException.Invalid("manifest.json: EOF")
         val dir = ok.firstOrNull().orEmpty()
         opened += dirs.joinToString("+")
         val (family, theme) = meta(styleJson)

@@ -1,5 +1,13 @@
 package fr.skimap.app.sync
 
+import android.content.Context
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.workDataOf
 import fr.skimap.core.SyncException
 import fr.skimap.core.francePlan
 import fr.skimap.core.installFrance
@@ -7,6 +15,39 @@ import fr.skimap.sync.Fetched
 import fr.skimap.sync.HttpSource
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.TimeUnit
+
+/** Where the France basemap lives on the phone, and its work (X20, #154). */
+object FranceBasemap {
+    /** The France basemap of the phone: under the packs, alone without any pack. */
+    fun dir(context: Context): File = File(context.getExternalFilesDir(null), "france")
+
+    /** Unique work of the France basemap; its `pack-` tag lets the map reload when it lands. */
+    const val WORK = "pack-france-basemap"
+
+    private const val BACKOFF_SECONDS = 30L
+
+    /**
+     * Fetches or revalidates the France basemap: automatic, at every start, on any network
+     * (2 MB; the daily update revalidates it too). KEEP: one work at a time.
+     */
+    fun download(context: Context) {
+        val request =
+            OneTimeWorkRequestBuilder<PackSyncWorker>()
+                .setConstraints(
+                    Constraints
+                        .Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .setRequiresStorageNotLow(true)
+                        .build(),
+                ).setBackoffCriteria(BackoffPolicy.EXPONENTIAL, BACKOFF_SECONDS, TimeUnit.SECONDS)
+                .setInputData(workDataOf(PackSyncWorker.FRANCE to true))
+                .addTag(PackSync.TAG)
+                .addTag(WORK)
+                .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(WORK, ExistingWorkPolicy.KEEP, request)
+    }
+}
 
 /** What a sync of the France basemap did. */
 data class FranceReport(
