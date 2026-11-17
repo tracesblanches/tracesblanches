@@ -113,6 +113,11 @@ enum Command {
     /// site registry. Run by `skimap stations` and `skimap refresh` too when the station
     /// cards ran.
     Departs,
+    /// ENJ domains (X12b, #146): every groomed station of the registry whose envelope is
+    /// crossed by an ENJ ski itinerary is polled on the ENJ by its box (`skimap status-poll`);
+    /// detected from the ENJ data themselves, written into the registry when it changed.
+    /// Run by `skimap domaines` too and by `skimap-job status`. Personal sources only.
+    EnjDomaines,
     /// Scheduled refresh (H1, H2): the due parts of the stations layer, then the hut layer
     /// of each site; idempotent (a second run the same day does nothing); summary in
     /// `data/out/france/refresh/status.json`, non-zero exit when a source is broken.
@@ -700,6 +705,18 @@ fn run(cli: Cli) -> Result<()> {
             print_json(&out.stats)
         }
         Command::Departs => departs(&ctx()?),
+        Command::EnjDomaines => {
+            let c = ctx()?;
+            if !c.cfg.personal_sources {
+                anyhow::bail!(
+                    "l'ENJ n'affiche aucune licence (ticket L1) : activer SKIMAP_PERSONAL_SOURCES"
+                );
+            }
+            match france::refresh_registry_enj(&c)? {
+                Some(d) => print_json(&d),
+                None => anyhow::bail!("registre absent : lancer d'abord `skimap domaines`"),
+            }
+        }
         Command::Refresh { sites } => {
             let c = ctx()?;
             let sites: Vec<&Site> = if sites.is_empty() {

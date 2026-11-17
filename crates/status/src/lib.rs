@@ -1,7 +1,7 @@
 //! Trail status snapshots (P13, #26), polled once for all users.
 //!
 //! The sources of a site come from the site table (`status`):
-//! - ENJ city: ENJ Snowmap Geotrek API ([`enj`]), field `route` (1 closed, 2 open),
+//! - ENJ city or domain box crossed by ENJ itineraries: ENJ Snowmap Geotrek API ([`enj`]), field `route` (1 closed, 2 open),
 //!   status notes in `labels`, `update_datetime`.
 //! - Nordic France station: white-label widget ([`nordicfrance`]).
 //! - Town hall page: « Info damage » page of the town hall ([`mairie`]).
@@ -123,19 +123,19 @@ struct EnjPistes {
 fn poll_enj(
     dir: &std::path::Path,
     dl: &Downloader,
-    city: u32,
+    area: enj::EnjArea,
     now: DateTime<Utc>,
     latest: &mut serde_json::Map<String, Value>,
     pistes: Option<&EnjPistes>,
     stats: &mut serde_json::Map<String, Value>,
 ) -> Result<SourcePoll> {
-    let (snap, origin) = enj::fetch_status(dl, city)?;
+    let (snap, origin) = enj::fetch_status(dl, area)?;
     let content =
         serde_json::to_value(&snap).map_err(|e| skimap_common::Error::json("ENJ snapshot", e))?;
     let store = Store::new(dir.join(enj::SOURCE));
     let (changed, snapshot) = record(&store, now, origin, &content)?;
 
-    let geoms = enj::fetch_geometry(dl, city)?;
+    let geoms = enj::fetch_geometry(dl, area)?;
     let mut along = Vec::new();
     let (mut points, mut attached, mut reachable) = (0_usize, 0_usize, 0_usize);
     let features: Vec<Value> = snap
@@ -236,16 +236,26 @@ fn poll_enj(
         }),
     )?;
     let counts = snap.counts();
+    let pc = |n: usize, d: usize| 100.0 * n as f64 / d.max(1) as f64;
     let summary = format!(
-        "{} itinéraires : {} ouverts, {} fermés",
+        "{} itinéraires : {} ouverts, {} fermés ; {}",
         snap.treks.len(),
         counts.get(&enj::TrailState::Open).copied().unwrap_or(0),
-        counts.get(&enj::TrailState::Closed).copied().unwrap_or(0)
+        counts.get(&enj::TrailState::Closed).copied().unwrap_or(0),
+        if pistes.is_some() {
+            format!(
+                "rattachement aux voies OSM : {:.1} % des {points} points dans l'emprise, {:.1} % des {reachable} points atteignables",
+                pc(attached, points),
+                pc(attached, reachable)
+            )
+        } else {
+            "couche pistes absente, pas de rattachement aux voies OSM".to_owned()
+        }
     );
     latest.insert(enj::SOURCE.to_owned(), content);
     Ok(SourcePoll {
         source: enj::SOURCE.to_owned(),
-        url: enj::status_url(city),
+        url: enj::status_url(area),
         origin: origin_name(origin).to_owned(),
         changed,
         snapshot,
@@ -353,7 +363,7 @@ pub fn poll(
         FileMeta::new("<source>/history.json", "fréquence de mise à jour observée"),
     ];
 
-    if let Some(city) = enj::city_id(site) {
+    if let Some(area) = enj::area(site) {
         // OSM ways of the itineraries, when the pistes layer was built.
         let pistes_path = layout.layer_dir(site, "pistes")?.join("pistes.geojson");
         let pistes = if pistes_path.is_file() {
@@ -369,7 +379,7 @@ pub fn poll(
         sources.push(poll_enj(
             &dir,
             dl,
-            city,
+            area,
             now,
             &mut latest,
             pistes.as_ref(),
@@ -377,7 +387,7 @@ pub fn poll(
         )?);
         refs.push(source_ref(
             "ENJ Snowmap (Geotrek), état des itinéraires",
-            &enj::status_url(city),
+            &enj::status_url(area),
             "aucune licence affichée (ticket L1) : usage personnel",
             "Espace Nordique Jurassien",
         ));

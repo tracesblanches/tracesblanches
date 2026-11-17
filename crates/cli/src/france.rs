@@ -481,6 +481,101 @@ pub fn apply_departs(layout: &DataLayout, records: &mut [SiteRecord]) -> Result<
     Ok(n)
 }
 
+/// Minimum number of ENJ ski itineraries crossing the box of a domain for it to be polled
+/// on the ENJ: one is enough, the poll attaches only the points inside the box.
+pub const ENJ_MIN_ITINERARIES: usize = 1;
+
+/// Outcome of the detection of the ENJ domains (X12b, #146).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct EnjDetection {
+    /// ENJ ski itineraries read (cross-country and multi-activity).
+    pub itineraries: usize,
+    /// Sites polled on the ENJ by their box: identifier → number of ski itineraries
+    /// crossing it.
+    pub sites: BTreeMap<String, usize>,
+    /// Census domains research report 08 attaches to the ENJ but no ENJ ski itinerary
+    /// crosses (checked by hand, never added).
+    pub report08_not_detected: Vec<String>,
+    /// Detected sites that report 08 does not attach to the ENJ.
+    pub detected_not_in_report08: Vec<String>,
+}
+
+/// Box in which the ENJ itineraries of a record are looked for: the envelope of the domain
+/// (the census hull, without the working margin), else its working box.
+fn enj_box(r: &SiteRecord) -> BBox {
+    r.envelope_bbox.unwrap_or(r.bbox)
+}
+
+/// Sets `status.enj_bbox` of every groomed station crossed by ENJ ski itineraries, from the
+/// ENJ data themselves (every ski itinerary with its geometry, [`skimap_status::enj`]):
+/// no table of ENJ sites. Sites with an ENJ city keep it. Pure, for tests.
+pub fn apply_enj(
+    records: &mut [SiteRecord],
+    treks: &[skimap_status::enj::TrekGeometry],
+) -> EnjDetection {
+    let mut d = EnjDetection {
+        itineraries: treks.len(),
+        ..Default::default()
+    };
+    for r in records.iter_mut() {
+        r.status.enj_bbox = None;
+        if !r.kind.has_groomed_trails() || !r.buildable() {
+            continue;
+        }
+        let b = enj_box(r);
+        let n = treks
+            .iter()
+            .filter(|t| skimap_status::enj::crosses(&t.geometry, &b))
+            .count();
+        let in_report = r.status_source.as_ref().is_some_and(|s| s.kind == "enj");
+        if n >= ENJ_MIN_ITINERARIES {
+            if r.status.enj_city.is_none() {
+                r.status.enj_bbox = Some(b);
+            }
+            d.sites.insert(r.id.clone(), n);
+            if !in_report {
+                d.detected_not_in_report08.push(r.id.clone());
+            }
+        } else if in_report {
+            d.report08_not_detected.push(r.id.clone());
+        }
+    }
+    d
+}
+
+/// Detects the ENJ domains ([`apply_enj`]) when the personal sources are enabled (the ENJ
+/// displays no licence, ticket L1); otherwise no site is polled on the ENJ by its box.
+pub fn detect_enj(ctx: &Ctx, records: &mut [SiteRecord]) -> Result<Option<EnjDetection>> {
+    if !ctx.cfg.personal_sources {
+        for r in records.iter_mut() {
+            r.status.enj_bbox = None;
+        }
+        return Ok(None);
+    }
+    let treks = skimap_status::enj::fetch_ski_coverage(&ctx.dl)?;
+    Ok(Some(apply_enj(records, &treks)))
+}
+
+/// Rewrites the registry with the ENJ domains detected from the ENJ data (X12b); written
+/// only when a site changed. No registry: nothing to do.
+pub fn refresh_registry_enj(ctx: &Ctx) -> Result<Option<EnjDetection>> {
+    let path = Registry::path(&ctx.layout)?;
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let body = std::fs::read(&path).with_context(|| format!("{}", path.display()))?;
+    let mut file: RegistryFile =
+        serde_json::from_slice(&body).with_context(|| format!("{}", path.display()))?;
+    let before: Vec<Option<BBox>> = file.sites.iter().map(|r| r.status.enj_bbox).collect();
+    let d = detect_enj(ctx, &mut file.sites)?;
+    let after: Vec<Option<BBox>> = file.sites.iter().map(|r| r.status.enj_bbox).collect();
+    if before != after {
+        Registry::from_records(file.sites.clone())?;
+        Registry::write(&path, &file)?;
+    }
+    Ok(d)
+}
+
 /// Trail starts (X9) after a run of the stations layer: rebuilt when the station cards
 /// ran (new OSM points) or when `departs.json` is missing, then written into the registry.
 pub fn departs_after_stations(
@@ -540,10 +635,12 @@ pub struct RegistrySummary {
     pub by_massif_status: BTreeMap<String, usize>,
     /// Sites with a BERA.
     pub with_bera: usize,
-    /// Sites with a usable trail status source (Nordic France widget or ENJ city).
+    /// Sites with a usable trail status source (Nordic France widget, ENJ city or box).
     pub with_status_source: usize,
     /// Sites with trail starts found by the stations layer (X9).
     pub with_starts: usize,
+    /// ENJ domains detected from the ENJ data (X12b); absent without personal sources.
+    pub enj: Option<EnjDetection>,
 }
 
 /// Builds the registry from the census (`data/out/france/domaines/domaines.geojson`), the
@@ -566,6 +663,7 @@ pub fn build_registry(ctx: &Ctx) -> Result<RegistrySummary> {
         records.extend(e);
     }
     let with_starts = apply_departs(&ctx.layout, &mut records)?;
+    let enj = detect_enj(ctx, &mut records)?;
     let registry = Registry::from_records(records.clone())?;
     let path = Registry::path(&ctx.layout)?;
     let dir = path.parent().expect("registry dir").to_owned();
@@ -574,7 +672,7 @@ pub fn build_registry(ctx: &Ctx) -> Result<RegistrySummary> {
         "Un site par domaine du recensement P3 (data/out/france/domaines/domaines.geojson) ; identifiant : nom en minuscules sans accents (site::slug), suffixe des chiffres de l'identifiant du recensement pour les homonymes sauf le plus grand.".to_owned(),
         format!("Emprise : enveloppe du domaine + {DOMAIN_MARGIN_M:.0} m (Lambert-93), sauf les sites d'évaluation (table data/sites.json de skimap-common). Au-delà de {MAX_SITE_SIDE_M:.0} m de côté, le site est découpé en tronçons recouvrants ({SECTION_OVERLAP_M:.0} m)."),
         format!("Massifs : polygones snowtools (massifs.shp), points tous les {MASSIF_SAMPLE_M:.0} m dans l'enveloppe, massifs d'au moins {:.0} % ; BERA si le massif principal est un massif du BERA.", MASSIF_MIN_SHARE * 100.0),
-        "État des pistes : rapport 08 (data/status_sources.json de skimap-common) ; seuls les widgets Nordic France et les villes ENJ sont lisibles par skimap-status (usage personnel).".to_owned(),
+        "État des pistes : rapport 08 (data/status_sources.json de skimap-common) ; seuls les widgets Nordic France et l'ENJ sont lisibles par skimap-status (usage personnel). Domaines ENJ : ceux dont l'enveloppe est traversée par au moins un itinéraire de ski de l'ENJ (API Geotrek, pratiques ski de fond et multi-activités), détectés à l'écriture du registre et par `skimap enj-domaines` ; aucune liste à la main.".to_owned(),
     ];
     Registry::write(
         &path,
@@ -624,9 +722,14 @@ pub fn build_registry(ctx: &Ctx) -> Result<RegistrySummary> {
         with_bera: records.iter().filter(|r| r.has_bera).count(),
         with_status_source: records
             .iter()
-            .filter(|r| r.status.nordicfrance_station.is_some() || r.status.enj_city.is_some())
+            .filter(|r| {
+                r.status.nordicfrance_station.is_some()
+                    || r.status.enj_city.is_some()
+                    || r.status.enj_bbox.is_some()
+            })
             .count(),
         with_starts,
+        enj,
     })
 }
 

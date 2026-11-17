@@ -91,10 +91,14 @@ impl SiteKind {
 }
 
 /// Trail status sources a site can be polled with (`skimap-status`, personal use only).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Default)]
 pub struct StatusSources {
     /// ENJ Snowmap city identifier (`cities=` filter of the Geotrek API).
     pub enj_city: Option<u32>,
+    /// Box of the domain crossed by ENJ ski itineraries (`in_bbox=` filter of the Geotrek
+    /// API), detected from the ENJ data when the registry is written; used when
+    /// [`StatusSources::enj_city`] is not set.
+    pub enj_bbox: Option<BBox>,
     /// Nordic France white-label widget station identifier.
     pub nordicfrance_station: Option<u32>,
     /// Town hall « Info damage » page (WordPress table per sector, `skimap_status::mairie`).
@@ -104,7 +108,7 @@ pub struct StatusSources {
 impl StatusSources {
     /// Whether no source is known.
     pub fn is_empty(&self) -> bool {
-        self.enj_city.is_none() && self.nordicfrance_station.is_none()
+        self.enj_city.is_none() && self.enj_bbox.is_none() && self.nordicfrance_station.is_none()
     }
 }
 
@@ -175,11 +179,15 @@ pub struct MassifRecord {
 }
 
 /// Trail status sources in the JSON tables.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct StatusRecord {
     /// ENJ Snowmap city identifier.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enj_city: Option<u32>,
+    /// Box of the domain crossed by ENJ ski itineraries, detected from the ENJ data (see
+    /// [`StatusSources::enj_bbox`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enj_bbox: Option<BBox>,
     /// Nordic France widget station identifier.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nordicfrance_station: Option<u32>,
@@ -284,6 +292,7 @@ impl SiteRecord {
             parent: self.parent.as_deref().map(leak),
             status: StatusSources {
                 enj_city: self.status.enj_city,
+                enj_bbox: self.status.enj_bbox,
                 nordicfrance_station: self.status.nordicfrance_station,
                 town_hall_page: self.status.town_hall_page.as_deref().map(leak),
             },
