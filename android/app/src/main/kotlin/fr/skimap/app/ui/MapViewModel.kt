@@ -117,7 +117,13 @@ class MapViewModel(
             val packs = repository.list()
             val readable = packs.filter { it.error == null }
             if (readable.isEmpty()) {
-                mutableState.value = MapUiState.NoPack(repository.packsDir.absolutePath, packs)
+                // Free mode over the France basemap alone (X20): the whole country without any pack.
+                if (repository.hasFrance()) {
+                    if (lastCamera == null) lastCamera = withContext(io) { settings.camera() }
+                    open(emptyList(), free = true, packs, start)
+                } else {
+                    mutableState.value = MapUiState.NoPack(repository.packsDir.absolutePath, packs)
+                }
                 return@launch
             }
             val (remembered, practice) = withContext(io) { settings.get() to settings.practice() }
@@ -251,7 +257,7 @@ class MapViewModel(
                 if (previous is MapUiState.Ready) {
                     previous.copy(error = e.problem())
                 } else {
-                    MapUiState.Failed(dirs.first(), e.problem(), packs)
+                    MapUiState.Failed(dirs.firstOrNull().orEmpty(), e.problem(), packs)
                 }
         }
     }

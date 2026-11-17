@@ -1,0 +1,87 @@
+package fr.skimap.app.sync
+
+import fr.skimap.core.SyncException
+import fr.skimap.core.francePlan
+import fr.skimap.core.installFrance
+import fr.skimap.sync.Fetched
+import fr.skimap.sync.HttpSource
+import java.io.File
+import java.io.IOException
+
+/** What a sync of the France basemap did. */
+data class FranceReport(
+    /** Build of the basemap on the phone now (`null`: none). */
+    val build: String?,
+    /** Nothing new on the server (304 or same description). */
+    val upToDate: Boolean,
+    /** Files and bytes downloaded. */
+    val files: Int,
+    val bytes: Long,
+    val millis: Long,
+)
+
+/**
+ * The France basemap (X20, #154): one light background of the whole of France, shared by
+ * every pack, kept on the phone so that the free mode moves over the whole country without
+ * any pack (`crates/server/docs/api.md`, « Fond de France »). Revalidates the description
+ * (`If-None-Match`; 304: one request, done), downloads the files the core says are missing
+ * (resumed, named by their SHA-256), lets the core check and install them, the description
+ * last. The basemap in place stays readable at every step.
+ */
+class FranceSyncer(
+    private val http: HttpSource,
+    private val nanoTime: () -> Long = System::nanoTime,
+) {
+    /** Syncs the France basemap into [dir]. */
+    fun sync(dir: File): FranceReport {
+        val t0 = nanoTime()
+        dir.mkdirs()
+        val etagFile = File(dir.parentFile, "${dir.name}.etag")
+        val installed = File(dir, DESCRIPTION).isFile
+        val etag = etagFile.takeIf { installed && it.isFile }?.readText()
+        val millis = { (nanoTime() - t0) / NANOS_PER_MILLI }
+        return when (val r = http.fetch(DESCRIPTION_URL, etag)) {
+            Fetched.NotModified -> {
+                FranceReport(null, upToDate = true, files = 0, bytes = 0, millis = millis())
+            }
+
+            is Fetched.Body -> {
+                val json = r.bytes.decodeToString()
+                val plan = francePlan(json, dir.absolutePath)
+                if (!plan.upToDate) install(json, dir, plan.files)
+                r.etag?.let { etagFile.writeText(it) }
+                FranceReport(plan.build, plan.upToDate, plan.files.size, plan.downloadBytes.toLong(), millis())
+            }
+        }
+    }
+
+    private fun install(
+        json: String,
+        dir: File,
+        files: List<fr.skimap.core.FranceFile>,
+    ) {
+        val work = File(dir.parentFile, ".${dir.name}.download")
+        for (f in files) {
+            http.download(FILES_URL + f.sha256, File(work, f.sha256), f.sha256, f.bytes.toLong())
+        }
+        try {
+            installFrance(json, dir.absolutePath, work.absolutePath)
+        } catch (e: SyncException.Corrupt) {
+            // The core deleted the bad file: downloaded again on the next attempt.
+            throw IOException("France basemap: $e", e)
+        }
+        work.deleteRecursively()
+    }
+
+    companion object {
+        /** Description of the France basemap on the server. */
+        const val DESCRIPTION_URL = "/v1/basemap/france.json"
+
+        /** Files of the France basemap on the server, by SHA-256. */
+        const val FILES_URL = "/v1/basemap/files/"
+
+        /** Name of the description in the basemap directory. */
+        const val DESCRIPTION = "france.json"
+        private const val NANOS_PER_MILLI = 1_000_000L
+    }
+}

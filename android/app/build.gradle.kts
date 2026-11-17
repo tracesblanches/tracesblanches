@@ -112,7 +112,7 @@ abstract class StyleAssetsTask : DefaultTask() {
         val out = outputDir.get().asFile.resolve("styles")
         outputDir.get().asFile.deleteRecursively()
         out.mkdirs()
-        val copied = styles.files.filter { it.name != "pack-schema.json" }
+        val copied = styles.files.filter { !it.name.endsWith("-schema.json") }
         // fond, srn, guidage, each light (clair) and dark (sombre).
         check(copied.size == 6) { "expected 6 styles in styles/, found ${copied.map { it.name }}" }
         copied.forEach { it.copyTo(out.resolve(it.name), overwrite = true) }

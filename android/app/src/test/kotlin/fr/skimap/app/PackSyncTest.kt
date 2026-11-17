@@ -1,10 +1,12 @@
 package fr.skimap.app
 
+import fr.skimap.app.sync.FranceSyncer
 import fr.skimap.app.sync.PackSyncer
 import fr.skimap.app.sync.ServerCatalog
 import fr.skimap.app.sync.SyncTarget
 import fr.skimap.core.Lang
 import fr.skimap.core.listPacks
+import fr.skimap.core.openMap
 import fr.skimap.core.openPacks
 import fr.skimap.core.syncState
 import fr.skimap.sync.HttpSource
@@ -235,6 +237,53 @@ class PackSyncTest {
         // The site pack has no voice files of its own in this test: the two are apart.
         PackSyncer(http()).sync(target())
         assertFalse(File(pack("test"), "voice/clips").exists())
+    }
+
+    /** Publishes the France basemap in [dir] into the store of the running server. */
+    private fun publishFrance(dir: File) {
+        val p =
+            ProcessBuilder(checkNotNull(System.getProperty("skimap.server")), "publish-france", dir.absolutePath, "--store", store.absolutePath)
+                .redirectErrorStream(true)
+                .start()
+        val out = p.inputStream.bufferedReader().readText()
+        assertEquals(out, 0, p.waitFor())
+    }
+
+    /** The France basemap (X20): first download, 304, new tiles only, then readable by the core. */
+    @Test
+    fun franceBasemapDownloadThenRevalidation() {
+        val phone = File(tmp.root, "phone/france")
+        val s = FranceSyncer(http())
+        // Nothing published yet: an HTTP error, retried later by the work; nothing installed.
+        try {
+            s.sync(phone)
+            fail("no France basemap published")
+        } catch (e: IOException) {
+            assertTrue(e.toString(), e.toString().contains("404"))
+        }
+        assertFalse(File(phone, "france.json").exists())
+
+        publishFrance(FranceFixture.write(tmp.newFolder("pipeline-1"), tiles = "tiles 1", build = "20261110.pmtiles"))
+        val first = s.sync(phone)
+        println("France basemap, first download: $first")
+        assertEquals("20261110.pmtiles", first.build)
+        assertEquals(2, first.files)
+        assertEquals("tiles 1", File(phone, "france.pmtiles").readText())
+        assertFalse(File(phone.parentFile, ".france.download").exists())
+
+        val again = s.sync(phone)
+        println("France basemap, unchanged: $again")
+        assertTrue(again.upToDate)
+
+        publishFrance(FranceFixture.write(tmp.newFolder("pipeline-2"), tiles = "tiles 2", build = "20261117.pmtiles"))
+        val next = s.sync(phone)
+        println("France basemap, new build: $next")
+        assertEquals(1, next.files)
+        assertEquals("tiles 2", File(phone, "france.pmtiles").readText())
+
+        val view = openMap(emptyList(), phone.absolutePath, File(checkNotNull(System.getProperty("skimap.styles")), "fond-clair.json").readText(), true, Lang.FR)
+        assertEquals("libre", view.info.siteId)
+        assertEquals("20261117", view.info.packVersion)
     }
 
     @Test
