@@ -146,6 +146,7 @@ fn the_morning_opens_on_packs_of_several_massifs() {
                 work.path().join("prep-view").display().to_string(),
                 out.path().display().to_string(),
                 None,
+                None,
                 today,
                 1,
                 Lang::Fr,

@@ -106,10 +106,12 @@ object PrepWork {
         val out = dir(context).also { it.mkdirs() }
         val today = LocalDate.now().toString()
         val group = Outings.groupJson(context)
+        // The outing the morning starts from: the last choice, else the core's default (#170).
+        val outing = store.outing
         val days = mutableListOf<String>()
         val skipped = mutableListOf<String>()
         for (p in Outings.packDirs(context)) {
-            runCatching { prepRun(p.path, Outings.workDir(context).path, out.path, group, today, DAYS, appLang()) }
+            runCatching { prepRun(p.path, Outings.workDir(context).path, out.path, group, outing, today, DAYS, appLang()) }
                 .onSuccess { r ->
                     days += r.days.map { "${it.siteId} ${it.date}" }
                     skipped += r.skipped.map { context.getString(R.string.label_value, p.name, it) }

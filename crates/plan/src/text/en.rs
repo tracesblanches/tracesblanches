@@ -50,6 +50,32 @@ impl Texts for En {
         )
     }
 
+    fn outing_label(
+        &self,
+        budget_min: u32,
+        style: Style,
+        easy_only: bool,
+        return_before: Option<chrono::NaiveTime>,
+    ) -> String {
+        let (h, m) = (budget_min / 60, budget_min % 60);
+        let mut s = match (h, m) {
+            (0, m) => format!("{m} min"),
+            (h, 0) => format!("{h} h"),
+            (h, m) => format!("{h} h {m:02} min"),
+        };
+        s.push_str(match style {
+            Style::Skating => ", skating",
+            Style::Classic => ", classic",
+        });
+        if easy_only {
+            s.push_str(", green and blue");
+        }
+        if let Some(t) = return_before {
+            s.push_str(&format!(", back before {}:{:02}", t.hour(), t.minute()));
+        }
+        s
+    }
+
     fn start_phrase<'a>(&self, fr: &'a str, en: Option<&'a str>) -> &'a str {
         en.unwrap_or(fr)
     }

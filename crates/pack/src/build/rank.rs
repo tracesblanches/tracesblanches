@@ -9,9 +9,9 @@
 //! start on a smaller part can give three. So, once the pack is written, the morning of
 //! the phone (`skimap_plan::plan::morning_in`, the same code, on the same files: the
 //! pack is read through [`crate::view::PackView`] as on the phone) is run from each start
-//! of the site record, for the app's default request ([`BUDGET_MIN`] min, classic,
-//! [`START_TIME`], the first day of the pack's forecast), and the starts of the record
-//! are reordered:
+//! of the site record, for the app's default outing (`skimap_plan::outing::Outing::DEFAULT`,
+//! the one the morning and the evening preparation ask, #170) at [`START_TIME`], the
+//! first day of the pack's forecast, and the starts of the record are reordered:
 //!
 //! 1. most loops proposed (out-and-backs included: the morning proposes them only when no
 //!    real loop fits);
@@ -32,23 +32,18 @@ use skimap_assist::inputs::{Paths, SiteData};
 use skimap_common::Lang;
 use skimap_common::site::{Site, SiteRecord};
 use skimap_core::routing::Style;
-use skimap_plan::plan::{PlanRequest, morning_in};
+use skimap_plan::outing::{self, Outing};
+use skimap_plan::plan::morning_in;
 
 use crate::manifest::{StartRanking, StartScore};
 use crate::reader::Pack;
 use crate::view::PackView;
 
-/// Time available of the app's default outing, minutes (`DayInputs.budgetMin`).
-pub const BUDGET_MIN: f64 = 120.0;
-/// Technique of the app's default outing (`DayInputs.skating` false).
-pub const STYLE: Style = Style::Classic;
+/// The outing the starts are ranked for: the app's default (#170).
+pub const OUTING: Outing = Outing::DEFAULT;
 /// Start time asked, local `HH:MM`: a fixed one, so that the light and the best time of
 /// the day do not decide between starts.
 pub const START_TIME: &str = "10:00";
-/// Earliest start of the request (the morning's default).
-pub const EARLIEST: &str = "08:00";
-/// Loops proposed by the morning.
-pub const MAX_RESULTS: usize = 3;
 
 fn hm(s: &str) -> NaiveTime {
     NaiveTime::parse_from_str(s, "%H:%M").expect("constant time")
@@ -86,8 +81,12 @@ pub fn rank(
             }
         });
     let mut ranking = StartRanking {
-        budget_min: BUDGET_MIN,
-        style: "classic".to_owned(),
+        budget_min: OUTING.budget_min,
+        style: match OUTING.style {
+            Style::Classic => "classic",
+            Style::Skating => "skating",
+        }
+        .to_owned(),
         date: date.to_string(),
         start_time: START_TIME.to_owned(),
         starts: Vec::new(),
@@ -134,19 +133,14 @@ fn score(
     registry_rank: usize,
     date: NaiveDate,
 ) -> StartScore {
-    let req = PlanRequest {
-        label: "2 h, classique".to_owned(),
-        start: start.position(),
-        start_name: start.phrase.clone(),
+    let req = OUTING.request(
+        start.position(),
+        start.phrase.clone(),
         date,
-        start_time: Some(hm(START_TIME)),
-        earliest: hm(EARLIEST),
-        budget_min: BUDGET_MIN,
-        style: STYLE,
-        return_before: None,
-        max_difficulty: None,
-        max_results: MAX_RESULTS,
-    };
+        Some(hm(START_TIME)),
+        outing::EARLIEST,
+        Lang::Fr,
+    );
     let m = morning_in(data, &req, None, Lang::Fr);
     let loops = &m.suggestions.suggestions;
     StartScore {

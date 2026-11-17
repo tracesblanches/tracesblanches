@@ -33,6 +33,7 @@ pub mod fallback;
 pub mod gps;
 pub mod guidance;
 pub mod line;
+pub mod outing;
 pub mod pace;
 pub mod pace_eval;
 pub mod phrases;

@@ -26,6 +26,7 @@ use skimap_core::graph::{Difficulty, PisteGraph};
 use skimap_core::routing::Style;
 use skimap_pack::Pack;
 use skimap_plan::course::Course;
+use skimap_plan::outing::Outing;
 use skimap_plan::pace;
 use skimap_plan::plan::{self, Context, DayPlan, KeyKind, Morning, PlanRequest};
 
@@ -111,6 +112,55 @@ pub struct DayRequest {
     /// Hardest difficulty wanted: `novice` (green), `easy` (blue), `intermediate` (red),
     /// `advanced` (black); `None`: any.
     pub max_difficulty: Option<String>,
+}
+
+/// The outing the skier asks (#170): what the morning's choices keep from one day to the
+/// next, and what the evening preparation asks.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct DayOuting {
+    /// Time available, minutes (model time).
+    pub budget_min: f64,
+    /// Skating (else classic).
+    pub skating: bool,
+    /// Back before, `HH:MM`.
+    pub return_before: Option<String>,
+    /// Green and blue pistes only.
+    pub easy_only: bool,
+}
+
+impl DayOuting {
+    /// The planner's outing.
+    pub fn to_outing(&self) -> Result<Outing, TrackingError> {
+        Ok(Outing {
+            budget_min: self.budget_min,
+            style: style(self.skating),
+            return_before: self.return_before.as_deref().map(parse_time).transpose()?,
+            easy_only: self.easy_only,
+        })
+    }
+
+    fn of(o: &Outing) -> Self {
+        Self {
+            budget_min: o.budget_min,
+            skating: o.style == Style::Skating,
+            return_before: o.return_before.map(|t| t.format("%H:%M").to_string()),
+            easy_only: o.easy_only,
+        }
+    }
+}
+
+/// The outing of the app until the skier chooses another (`Outing::DEFAULT` of
+/// `skimap_plan::outing`: 2 h, classic), the same for the morning, the evening
+/// preparation and the ranking of the starts of a pack (#170).
+#[uniffi::export]
+pub fn day_default_outing() -> DayOuting {
+    DayOuting::of(&Outing::DEFAULT)
+}
+
+/// Label of an outing in `lang` (« 2 h, classique »).
+#[uniffi::export]
+pub fn day_outing_label(outing: DayOuting, lang: Lang) -> Result<String, TrackingError> {
+    Ok(outing.to_outing()?.label(lang))
 }
 
 /// A group (C11) as the app edits it.
