@@ -1329,6 +1329,32 @@ pub fn vectorize(grid: &Grid<f32>, spec: &ClassSpec, params: &Params) -> Result<
 }
 
 /// Builds a class layer from the pipeline GeoTIFF, if present: `layers/<id>.pmtiles`.
+/// Key of the class layer of `spec` ([`crate::build::parts`]): its source GeoTIFF and
+/// metadata (size and SHA-256), the layer description, the vectorisation parameters and
+/// the `personal_sources` option.
+pub fn part_key(
+    spec: &ClassSpec,
+    out: &Path,
+    params: &Params,
+    personal_sources: bool,
+) -> Result<String> {
+    let dir = out.join(spec.origin);
+    let mut k = crate::build::parts::Key::new(&format!("class:{}", spec.id));
+    k.add("spec", &format!("{spec:?}"))
+        .add("params", &format!("{params:?}"))
+        .add("personal_sources", &personal_sources.to_string());
+    k.add_file("source", &dir.join(spec.file))?;
+    k.add_file("meta", &dir.join(spec.meta))?;
+    Ok(k.finish())
+}
+
+/// The metadata copy of a class layer taken from the previous pack
+/// ([`crate::build::parts`]): the layer entry names it.
+pub fn copy_meta_of(spec: &ClassSpec, out: &Path, root: &Path) -> Result<()> {
+    copy_meta(&out.join(spec.origin), spec.meta, root)?;
+    Ok(())
+}
+
 pub fn include(
     spec: &ClassSpec,
     out: &Path,

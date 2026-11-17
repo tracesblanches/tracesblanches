@@ -567,3 +567,71 @@ fn assert_restricted_free(pack: &Pack) {
         }
     }
 }
+
+/// #164: a pack rebuilt with unchanged inputs takes its class polygons and export
+/// overlays from the previous one (same bytes); a changed source makes them again.
+#[test]
+fn heavy_parts_are_taken_over_while_their_inputs_do_not_change() {
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    let layout = DataLayout::new(tmp.path());
+    let dl = Downloader::builder(layout.cache_root())
+        .offline(true)
+        .build()
+        .unwrap();
+    let opts = BuildOptions {
+        plan_ign: false,
+        osm: false,
+        ign_slopes: false,
+        ..BuildOptions::default()
+    };
+    let export_dir = tmp.path().join("out/cervieres/export");
+    let sha = |p: &Pack, file: &str| {
+        p.manifest()
+            .files
+            .iter()
+            .find(|f| f.path == file)
+            .map(|f| f.sha256.clone())
+            .unwrap()
+    };
+    let first = build(&CERVIERES, &layout, &dl, &opts).unwrap();
+    assert!(first.reused.is_empty());
+    let p1 = Pack::open(&first.pack_dir).unwrap();
+    let slope1 = sha(&p1, "layers/slope.pmtiles");
+    skimap_pack::export::export(&p1, &export_dir).unwrap();
+    let mbtiles1 = std::fs::read(export_dir.join("locus/pentes.mbtiles")).unwrap();
+
+    // Another layer changed, not the slope: its polygons and overlay are taken over.
+    write(
+        &tmp.path().join("out/cervieres/refuges/refuges.meta.json"),
+        &json!({"generated_at": "2026-11-17T06:00:00Z", "valid_for": "x", "sources": []}),
+    );
+    let second = build(&CERVIERES, &layout, &dl, &opts).unwrap();
+    assert_eq!(second.reused, ["class:slope"]);
+    let p2 = Pack::open(&second.pack_dir).unwrap();
+    assert!(p2.verify().unwrap().is_empty());
+    assert_eq!(sha(&p2, "layers/slope.pmtiles"), slope1);
+    assert_eq!(
+        p2.manifest().layer("slope"),
+        p1.manifest().layer("slope"),
+        "same manifest entry"
+    );
+    let r = skimap_pack::export::export(&p2, &export_dir).unwrap();
+    assert!(r.files.iter().any(|f| f.path == "locus/pentes.mbtiles"));
+    assert_eq!(
+        std::fs::read(export_dir.join("locus/pentes.mbtiles")).unwrap(),
+        mbtiles1
+    );
+
+    // A new slope grid: made again.
+    let slope = tmp.path().join("out/cervieres/terrain/slope_5m.tif");
+    let mut g = skimap_common::geotiff::read_f32(&slope).unwrap();
+    for v in g.data_mut().iter_mut().take(50_000) {
+        *v = 50.0;
+    }
+    skimap_common::geotiff::write_f32(&slope, &g).unwrap();
+    let third = build(&CERVIERES, &layout, &dl, &opts).unwrap();
+    assert!(third.reused.is_empty());
+    let p3 = Pack::open(&third.pack_dir).unwrap();
+    assert_ne!(sha(&p3, "layers/slope.pmtiles"), slope1);
+}
