@@ -718,3 +718,188 @@ fn real_packs_with_every_style() {
         );
     }
 }
+
+/// A France basemap directory (X20): description, archive and the Regular glyphs.
+fn france_dir(dir: &Path) {
+    use skimap_pack::france::{FONTS_DIR, FORMAT, FORMAT_VERSION, FranceBasemap, TILES_FILE};
+    use skimap_pack::manifest::{FileEntry, Source};
+    std::fs::create_dir_all(dir.join(FONTS_DIR).join("Source Sans Pro Regular")).unwrap();
+    std::fs::write(dir.join(TILES_FILE), b"PMTiles").unwrap();
+    std::fs::write(
+        dir.join(FONTS_DIR)
+            .join("Source Sans Pro Regular/0-255.pbf"),
+        b"glyphs",
+    )
+    .unwrap();
+    let entry = |rel: &str| {
+        let (bytes, sha256) = skimap_pack::reader::sha256_file(&dir.join(rel)).unwrap();
+        FileEntry {
+            path: rel.to_owned(),
+            bytes,
+            sha256,
+        }
+    };
+    let d = FranceBasemap {
+        format: FORMAT.to_owned(),
+        format_version: FORMAT_VERSION,
+        build: "20261117.pmtiles".to_owned(),
+        schema: "4.15.2".to_owned(),
+        data_date: "2026-11-17".to_owned(),
+        bbox: [-5.5, 41.2, 9.8, 51.3],
+        minzoom: 0,
+        maxzoom: 6,
+        files: vec![
+            entry("fonts/Source Sans Pro Regular/0-255.pbf"),
+            entry(TILES_FILE),
+        ],
+        sources: vec![Source::new(
+            "Protomaps",
+            "https://build.protomaps.com/20261117.pmtiles",
+            "ODbL 1.0",
+            "© les contributeurs d'OpenStreetMap, Protomaps",
+        )],
+    };
+    std::fs::write(
+        dir.join(skimap_pack::france::DESCRIPTION_FILE),
+        serde_json::to_vec(&d).unwrap(),
+    )
+    .unwrap();
+}
+
+/// Free mode without any pack (X20): the France basemap alone, with its glyphs, every
+/// style; without France basemap either, an error.
+#[test]
+fn france_basemap_alone_without_pack() {
+    use skimap_ffi::open_map;
+    let tmp = tempfile::tempdir().unwrap();
+    let fr = tmp.path().join("france");
+    france_dir(&fr);
+    for name in STYLES {
+        let view = open_map(
+            vec![],
+            Some(fr.display().to_string()),
+            style_json(name),
+            true,
+            Lang::Fr,
+        )
+        .unwrap();
+        assert_eq!(view.set.len(), 0);
+        assert_eq!(view.info.site_id, "libre");
+        assert_eq!(
+            view.info.validity_note,
+            "Aucun pack installé : fond de France seul, données du 2026-11-17."
+        );
+        assert_eq!(view.info.basemaps[0].id, "france");
+        assert!(view.info.bounds.west < -5.0 && view.info.bounds.east > 9.5);
+        let v: Value = serde_json::from_str(&view.style.json).unwrap();
+        check_layers(&v);
+        let ids = layer_ids(&v);
+        assert!(ids.contains(&"france-water"), "{name}: {ids:?}");
+        assert!(ids.contains(&"france-place"), "{name}: {ids:?}");
+        // Only the background, the France basemap and the runtime sources.
+        for l in v["layers"].as_array().unwrap() {
+            let src = l["source"].as_str();
+            assert!(
+                matches!(
+                    src,
+                    None | Some("france" | "position" | "selection" | "route" | "decision")
+                ),
+                "{name}: {} from {src:?}",
+                l["id"]
+            );
+        }
+        let url = v["sources"]["france"]["url"].as_str().unwrap();
+        let path = file_path(url.strip_prefix("pmtiles://").unwrap());
+        assert_eq!(path, fr.join("france.pmtiles"));
+        let g = v["glyphs"]
+            .as_str()
+            .unwrap()
+            .replace("{fontstack}", "Source Sans Pro Regular")
+            .replace("{range}", "0-255");
+        assert!(file_path(&g).is_file(), "{g}");
+        assert!(v.get("sprite").is_none());
+        assert_eq!(
+            view.style.attributions,
+            vec!["© les contributeurs d'OpenStreetMap, Protomaps".to_owned()]
+        );
+    }
+    let e = open_map(vec![], None, style_json("fond-clair"), true, Lang::Fr).unwrap_err();
+    assert!(matches!(e, PackError::Invalid { .. }), "{e:?}");
+    // A France basemap in area mode is not a pack.
+    assert!(
+        open_map(
+            vec![],
+            Some(fr.display().to_string()),
+            style_json("fond-clair"),
+            false,
+            Lang::Fr
+        )
+        .is_err()
+    );
+}
+
+/// With packs, the France basemap is drawn once, under every pack; without it, its
+/// layers are left out and named in `missing`.
+#[test]
+fn france_basemap_under_the_packs() {
+    use skimap_ffi::open_map;
+    let tmp = tempfile::tempdir().unwrap();
+    let fr = tmp.path().join("france");
+    france_dir(&fr);
+    let a = tmp.path().join("packs/a");
+    let b = tmp.path().join("packs/b");
+    test_pack(&a, 1);
+    test_pack(&b, 2);
+    let dirs = vec![a.display().to_string(), b.display().to_string()];
+    let view = open_map(
+        dirs.clone(),
+        Some(fr.display().to_string()),
+        style_json("srn-clair"),
+        true,
+        Lang::Fr,
+    )
+    .unwrap();
+    let v: Value = serde_json::from_str(&view.style.json).unwrap();
+    check_layers(&v);
+    check_urls(&v, &[tmp.path()]);
+    let ids = layer_ids(&v);
+    let pos = |id: &str| {
+        ids.iter()
+            .position(|x| *x == id)
+            .unwrap_or_else(|| panic!("{id}"))
+    };
+    assert_eq!(
+        ids.iter().filter(|i| i.starts_with("france-water")).count(),
+        1
+    );
+    assert!(v["sources"].get("france~p1").is_none());
+    assert!(pos("background") < pos("france-water"));
+    assert!(pos("france-road") < pos("ign-forest"));
+    assert!(pos("france-place") < pos("ign-place-commune-low"));
+    // The glyphs stay those of the packs.
+    assert!(v["glyphs"].as_str().unwrap().contains("/packs/a/"));
+    assert!(view.style.missing.iter().all(|m| !m.contains("france")));
+    assert!(
+        view.style
+            .attributions
+            .iter()
+            .any(|a| a.contains("Protomaps"))
+    );
+
+    // A France basemap that does not open is left out when packs open.
+    let broken = open_map(
+        dirs.clone(),
+        Some(tmp.path().join("nowhere").display().to_string()),
+        style_json("srn-clair"),
+        true,
+        Lang::Fr,
+    )
+    .unwrap();
+    let v: Value = serde_json::from_str(&broken.style.json).unwrap();
+    assert!(layer_ids(&v).iter().all(|i| !i.starts_with("france")));
+    assert!(v["sources"].get("france").is_none());
+    assert!(broken.style.missing.iter().any(|m| m.contains("france")));
+    // Same through open_packs (no France basemap).
+    let old = open_packs(dirs, style_json("srn-clair"), true, Lang::Fr).unwrap();
+    assert_eq!(old.style.json, broken.style.json);
+}

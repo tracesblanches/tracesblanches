@@ -25,8 +25,7 @@ use crate::build::osm::{self, BuildInfo};
 use crate::build::{assets, copy_file, create_dir, list_files, plan_ign, source, write_json};
 use crate::error::{Error, Result};
 use crate::france::{
-    self, BBOX, DESCRIPTION_FILE, FONT_STACKS, FORMAT, FORMAT_VERSION, FranceBasemap,
-    TILES_FILE,
+    self, BBOX, DESCRIPTION_FILE, FONT_STACKS, FORMAT, FORMAT_VERSION, FranceBasemap, TILES_FILE,
 };
 use crate::reader::TileArchive;
 
@@ -96,7 +95,11 @@ pub fn build(
         .filter(|d| d.verify(out).is_ok());
     if wanted_build.is_none() && !renews(current.as_ref(), &latest, maxzoom) {
         let basemap = current.ok_or_else(|| Error::Pack("France basemap vanished".into()))?;
-        tracing::info!(in_use = basemap.build, latest = latest.key, "France basemap kept");
+        tracing::info!(
+            in_use = basemap.build,
+            latest = latest.key,
+            "France basemap kept"
+        );
         return Ok(Built {
             basemap,
             kept: true,
