@@ -4,6 +4,7 @@
 
 use chrono::{NaiveDate, NaiveTime};
 use skimap_assist::inputs::SiteData;
+use skimap_common::Lang;
 use skimap_common::layout::DataLayout;
 use skimap_common::site::{PlanPreset, PresetStyle, Site};
 use skimap_core::graph::Difficulty;
@@ -30,6 +31,12 @@ pub fn archived_day(site: &Site) -> Option<NaiveDate> {
 /// (`skimap_common::site::starts`). Without a fixed time, the start time is the best time
 /// of A9 from 8 h.
 pub fn requests(site: &Site, date: NaiveDate) -> Vec<PlanRequest> {
+    requests_in(site, date, Lang::Fr)
+}
+
+/// [`requests`] with the start names in `lang` (VO6).
+pub fn requests_in(site: &Site, date: NaiveDate, lang: Lang) -> Vec<PlanRequest> {
+    let tx = crate::text::of(lang);
     let t = |h, m| NaiveTime::from_hms_opt(h, m, 0).expect("time");
     let hhmm = |s: &Option<String>| {
         s.as_deref()
@@ -67,7 +74,9 @@ pub fn requests(site: &Site, date: NaiveDate) -> Vec<PlanRequest> {
             PlanRequest {
                 label: p.label.clone(),
                 start: s.position(),
-                start_name: s.phrase.clone(),
+                start_name: tx
+                    .start_phrase(&s.phrase, s.phrase_en.as_deref())
+                    .to_owned(),
                 date,
                 start_time: hhmm(&p.start_time),
                 earliest: t(8, 0),

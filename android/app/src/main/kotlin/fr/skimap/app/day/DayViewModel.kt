@@ -175,7 +175,7 @@ object RustDayBackend : DayBackend {
         }
     }
 
-    override fun starts(siteId: String): List<DayStart> = dayStarts(siteId)
+    override fun starts(siteId: String): List<DayStart> = dayStarts(siteId, appLang())
 
     override fun readPlan(planDir: String): DayPlanView? = runCatching { readDayPlan(planDir, appLang()) }.getOrNull()
 }

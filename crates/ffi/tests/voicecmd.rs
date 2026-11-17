@@ -71,7 +71,7 @@ fn commands_on(site: &'static Site, budget_min: f64, return_before: Option<&str>
     .unwrap();
     let req = DayRequest {
         label: "sortie".into(),
-        start: day_starts(site.id.into()).remove(0),
+        start: day_starts(site.id.into(), Lang::Fr).remove(0),
         date: "2026-11-16".into(),
         start_time: Some("10:00".into()),
         earliest: "08:00".into(),

@@ -4,7 +4,9 @@ use chrono::{Datelike, NaiveDate, NaiveDateTime, Timelike};
 
 use super::Texts;
 use crate::crowd::{CrowdLevel, Population};
+use crate::equipment::Kind as EquipmentKind;
 use crate::snow_quality::{Quality, SlopeClass, Slot};
+use crate::wax::SnowType;
 
 /// French.
 pub struct Fr;
@@ -699,6 +701,312 @@ impl Texts for Fr {
             "{nodes} nœuds sur {of} ({} km de pistes) ne sont pas atteignables depuis {start} : réseau \
              séparé ou sens uniques dans le graphe des pistes (C1)",
             self.num(km, 1)
+        )
+    }
+
+    fn bt_surface(&self, class: &str, qualities: &[&str]) -> String {
+        format!("{class} : {}", qualities.join(" puis "))
+    }
+
+    fn bt_sep(&self) -> &'static str {
+        " ; "
+    }
+
+    fn bt_gusts(&self, kmh: f64) -> String {
+        format!("rafales jusqu'à {kmh:.0} km/h")
+    }
+
+    fn bt_fog(&self, hours: f64) -> String {
+        format!("brouillard {hours} h")
+    }
+
+    fn bt_snowfall(&self) -> &'static str {
+        "chute de neige"
+    }
+
+    fn bt_rain(&self) -> &'static str {
+        "pluie"
+    }
+
+    fn bt_cold(&self, chill: &str) -> String {
+        format!("ressenti jusqu'à {chill} °C")
+    }
+
+    fn bt_sun(&self) -> &'static str {
+        "soleil"
+    }
+
+    fn bt_crowd(&self, level: CrowdLevel) -> String {
+        format!(
+            "journée {} : pic supposé de 10 h 30 à 14 h",
+            self.crowd_level(level)
+        )
+    }
+
+    fn bt_near_deadline(&self, deadline: NaiveDateTime) -> String {
+        format!(
+            "retour à moins de 30 min de l'heure limite ({})",
+            self.clock(deadline)
+        )
+    }
+
+    fn bt_other_start(&self, start: NaiveDateTime, lost: &[String]) -> String {
+        format!("départ à {} : {}", self.clock(start), lost.join(", "))
+    }
+
+    fn bt_best(
+        &self,
+        start: NaiveDateTime,
+        back: NaiveDateTime,
+        minutes: f64,
+        why: &[String],
+        others: &[String],
+    ) -> String {
+        let vs = if others.is_empty() {
+            String::new()
+        } else {
+            format!(" ; {}", others.join(" ; "))
+        };
+        format!(
+            "Meilleur départ vers {} (retour vers {}, sortie de {} min) : {}{vs}.",
+            self.clock(start),
+            self.clock(back),
+            minutes.round(),
+            if why.is_empty() {
+                "rien ne distingue les créneaux".into()
+            } else {
+                why.join(", ")
+            }
+        )
+    }
+
+    fn bt_none(&self, minutes: f64, deadline: Option<NaiveDateTime>) -> String {
+        format!(
+            "Pas de créneau : une sortie de {} min ne finit pas avant l'heure limite{}.",
+            minutes.round(),
+            deadline
+                .map(|d| format!(" ({})", self.clock(d)))
+                .unwrap_or_default()
+        )
+    }
+
+    fn wax_snow_type(&self, t: SnowType) -> &'static str {
+        match t {
+            SnowType::New => "neige fraîche",
+            SnowType::Old => "neige ancienne à grains fins",
+            SnowType::CoarseFrozen => "neige regelée à gros grains, croûte ou glace",
+            SnowType::TransformedMoist => "neige transformée humide",
+            SnowType::Wet => "neige mouillée",
+        }
+    }
+
+    fn wax_window(
+        &self,
+        hours: (u32, u32),
+        air: &str,
+        snow: &str,
+        snow_type: SnowType,
+        kick: &str,
+        glide: (&str, &str),
+        glide_alt: Option<(&str, &str)>,
+    ) -> String {
+        let galt = glide_alt
+            .map(|(p, b)| format!(" ou {p} ({b})"))
+            .unwrap_or_default();
+        format!(
+            "{} h–{} h, air {air} °C, neige ≈ {snow} °C, {} : classique, {kick} ; glisse \
+             classique et skating {} ({}){galt}.",
+            hours.0,
+            hours.1,
+            self.wax_snow_type(snow_type),
+            glide.0,
+            glide.1
+        )
+    }
+
+    fn wax_kick(&self, kick: (&str, &str), alt: Option<(&str, &str)>) -> String {
+        let alt = alt
+            .map(|(p, b)| format!(" ou {p} ({b})"))
+            .unwrap_or_default();
+        format!("retenue {} ({}){alt}", kick.0, kick.1)
+    }
+
+    fn wax_kick_uncertain(
+        &self,
+        skins: Option<&str>,
+        kick: (&str, &str),
+        alt: Option<(&str, &str)>,
+    ) -> String {
+        let alt = alt
+            .map(|(p, b)| format!(" ou {p} ({b})"))
+            .unwrap_or_default();
+        format!(
+            "retenue incertaine, {} ; sinon {} ({}){alt}",
+            skins.unwrap_or("skis à écailles ou peaux"),
+            kick.0,
+            kick.1
+        )
+    }
+
+    fn wax_model(&self, snow_type: SnowType, mean: f64, min: f64, max: f64) -> String {
+        format!(
+            "{} (modèle de qualité de neige A3, plat), air {mean:+.1} °C en moyenne ({min:+.1} à {max:+.1})",
+            self.wax_snow_type(snow_type),
+        )
+        .replace('.', ",")
+    }
+
+    fn wax_colder_than_all(&self) -> &'static str {
+        "plus froid que toutes les plages : V05 Polar, à la limite"
+    }
+
+    fn wax_warmer_than_hard(&self) -> &'static str {
+        "plus chaud que les farts durs pour cette neige : klister universel"
+    }
+
+    fn wax_coarse_frozen(&self) -> &'static str {
+        "neige regelée à gros grains : klister (Toko, Swix)"
+    }
+
+    fn wax_fresh_near_zero(&self) -> &'static str {
+        "neige fraîche autour de 0 °C : le fart de retenue botte ou glisse"
+    }
+
+    fn wax_refrozen_then_wet(&self, first: Quality, last: Quality) -> String {
+        format!(
+            "{} au début du créneau, {} ensuite : aucun fart ne tient tout le créneau",
+            self.quality(first),
+            self.quality(last)
+        )
+    }
+
+    fn wax_crosses_zero(&self, min: f64, max: f64) -> String {
+        format!("la température passe de {min:+.0} à {max:+.0} °C dans le créneau")
+    }
+
+    fn wax_wet_falling(&self) -> &'static str {
+        "pluie ou neige mouillée qui tombe"
+    }
+
+    fn wax_skins(&self, why: &str) -> String {
+        format!("skis à écailles ou peaux conseillés ({why})")
+    }
+
+    fn wax_glide(&self, air: f64, snow: f64) -> String {
+        format!(
+            "glisse : air {air:+.1} °C (tables Swix), neige estimée {snow:+.1} °C (tables Toko)"
+        )
+        .replace('.', ",")
+    }
+
+    fn wax_humidity(&self, pct: f64) -> String {
+        format!("humidité {pct:.0} %")
+    }
+
+    fn wax_humidity_unknown(&self) -> &'static str {
+        "humidité inconnue (absente de la couche météo)"
+    }
+
+    fn wax_day(&self, morning: &str, afternoon: Option<&str>) -> String {
+        match afternoon {
+            Some(a) => format!("Matin {morning} Après-midi {a}"),
+            None => format!("Matin {morning} Même fartage l'après-midi."),
+        }
+    }
+
+    fn eq_label(&self, k: EquipmentKind) -> &'static str {
+        match k {
+            EquipmentKind::AvalancheKit => "DVA, pelle et sonde",
+            EquipmentKind::Headlamp => "frontale",
+            EquipmentKind::WarmLayer => "couche chaude en plus",
+            EquipmentKind::FaceProtection => "moufles et protection du visage",
+            EquipmentKind::PowerBank => "batterie externe",
+            EquipmentKind::TellSomeone => {
+                "prévenir un proche de l'itinéraire et de l'heure de retour"
+            }
+            EquipmentKind::Compass => "boussole",
+            EquipmentKind::SunProtection => "lunettes de soleil et crème",
+            EquipmentKind::WaxlessSkis => "skis à écailles ou peaux",
+        }
+    }
+
+    fn eq_exposed(&self, km: f64) -> String {
+        format!(
+            "{} km en terrain exposé aux avalanches (modèle)",
+            self.num(km, 1)
+        )
+    }
+
+    fn eq_clpa(&self, km: f64) -> String {
+        format!(
+            "{} km dans des zones d'avalanche connues (CLPA)",
+            self.num(km, 1)
+        )
+    }
+
+    fn eq_offpiste_bera(&self, level: u8) -> String {
+        format!("hors piste avec un BERA à {level} sur 5")
+    }
+
+    fn eq_back_after_sunset(&self, back: NaiveDateTime, sunset: NaiveDateTime) -> String {
+        format!(
+            "retour prévu vers {}, coucher du soleil à {}",
+            self.clock(back),
+            self.clock(sunset)
+        )
+    }
+
+    fn eq_start_before_sunrise(&self, start: NaiveDateTime, sunrise: NaiveDateTime) -> String {
+        format!(
+            "départ à {}, avant le lever du soleil ({})",
+            self.clock(start),
+            self.clock(sunrise)
+        )
+    }
+
+    fn eq_chill(&self, chill: &str) -> String {
+        format!("ressenti jusqu'à {chill} °C")
+    }
+
+    fn eq_no_network(&self, km: f64, pct: f64) -> String {
+        format!(
+            "{} km sans aucun réseau mobile, même pour le 112 ({pct} % de l'itinéraire)",
+            self.num(km, 1)
+        )
+    }
+
+    fn eq_offpiste(&self) -> &'static str {
+        "sortie hors des pistes"
+    }
+
+    fn eq_long(&self, minutes: f64) -> String {
+        format!("sortie de plus de 3 h ({minutes} min estimées)")
+    }
+
+    fn eq_fog(&self, hours: usize) -> String {
+        format!("brouillard prévu ({hours} h pendant la sortie)")
+    }
+
+    fn eq_clear_sky(&self, cloud_pct: f64) -> String {
+        format!("ciel dégagé ({cloud_pct:.0} % de nuages)")
+    }
+
+    fn eq_kick_unreliable(&self) -> &'static str {
+        "retenue du fart incertaine ce jour-là (fartage A2)"
+    }
+
+    fn eq_nothing(&self, outing: &str) -> String {
+        format!("{outing} : rien de particulier à ajouter à l'équipement habituel.")
+    }
+
+    fn eq_take(&self, outing: &str, items: &[(&str, &str)]) -> String {
+        format!(
+            "{outing} — à emporter : {}.",
+            items
+                .iter()
+                .map(|(l, r)| format!("{l} ({r})"))
+                .collect::<Vec<_>>()
+                .join(" ; ")
         )
     }
 }

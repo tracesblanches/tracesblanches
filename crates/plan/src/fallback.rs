@@ -186,19 +186,6 @@ fn snap_route<M: CostModel>(r: &Router<'_, M>, from: Snap, to: Snap) -> Option<R
     r.route_snaps(from, to).ok().filter(|r| r.cost.is_finite())
 }
 
-fn minutes(s: f64) -> String {
-    let m = (s / 60.0).round().abs() as i64;
-    if m < 60 {
-        format!("{m} min")
-    } else {
-        format!("{} h {:02}", m / 60, m % 60)
-    }
-}
-
-fn km(m: f64) -> String {
-    format!("{:.1}", m / 1000.0).replace('.', ",")
-}
-
 fn names_text(names: &[String]) -> String {
     let mut v: Vec<String> = names.iter().take(4).cloned().collect();
     if names.len() > 4 {
@@ -224,6 +211,8 @@ pub struct Loop<'a> {
     /// Largest model time of a whole route that still ends before the limit (with the C7
     /// factor), seconds, if there is a limit.
     pub budget_s: Option<f64>,
+    /// Language of the texts (VO6).
+    pub lang: skimap_common::Lang,
 }
 
 struct Built {
@@ -242,7 +231,8 @@ impl Loop<'_> {
         }
     }
 
-    fn closed_text(name: &Option<String>, span: Option<(f64, f64)>) -> String {
+    fn closed_text(&self, name: &Option<String>, span: Option<(f64, f64)>) -> String {
+        let tx = crate::text::of(self.lang);
         let name = match name {
             Some(n) => {
                 let parts: Vec<&str> = n.split(" / ").collect();
@@ -252,13 +242,9 @@ impl Loop<'_> {
                     n.clone()
                 }
             }
-            None => "la piste sans nom".into(),
+            None => tx.fb_unnamed_trail().into(),
         };
-        format!(
-            "Si {name} est fermée{}",
-            span.map(|(a, b)| format!(" (de {} à {} km de la boucle)", km(a), km(b)))
-                .unwrap_or_default()
-        )
+        tx.fb_closed(&name, span)
     }
 
     fn fallback(
@@ -295,41 +281,26 @@ impl Loop<'_> {
     }
 
     fn describe(&self, f: &mut Fallback) {
-        let at = match f.junction {
-            Some(j) => format!("au carrefour à {} km", km(self.junctions[j].s)),
-            None => "au départ".to_owned(),
-        };
+        let tx = crate::text::of(self.lang);
+        let at = tx.fb_at(f.junction.map(|j| self.junctions[j].s));
         f.text = match &f.kind {
-            FallbackKind::Exit => format!(
-                "Sortie {at} : {} km au total au lieu de {}, {} de moins (modèle C5), par {}",
-                km(f.length_m),
-                km(self.course.length_m()),
-                minutes(f.saves_s),
-                names_text(&f.names)
+            FallbackKind::Exit => tx.fb_exit(
+                &at,
+                f.length_m,
+                self.course.length_m(),
+                f.saves_s,
+                &names_text(&f.names),
             ),
-            FallbackKind::Detour { name, .. } if !f.exists() => format!(
-                "{} : aucun autre passage dans le graphe des pistes",
-                Self::closed_text(name, f.closed_span)
-            ),
-            FallbackKind::Detour { name, rejoins, .. } => format!(
-                "{} : contournement {at}{}, {} km au total, {} {} (modèle C5), par {}",
-                Self::closed_text(name, f.closed_span),
-                if *rejoins {
-                    format!(
-                        ", retour sur la boucle à {} km",
-                        km(f.s_rejoin.unwrap_or_default())
-                    )
-                } else {
-                    ", puis directement vers l'arrivée".into()
-                },
-                km(f.length_m),
-                minutes(f.saves_s),
-                if f.saves_s >= 0.0 {
-                    "de moins"
-                } else {
-                    "de plus"
-                },
-                names_text(&f.names)
+            FallbackKind::Detour { name, .. } if !f.exists() => {
+                tx.fb_no_detour(&self.closed_text(name, f.closed_span))
+            }
+            FallbackKind::Detour { name, rejoins, .. } => tx.fb_detour(
+                &self.closed_text(name, f.closed_span),
+                &at,
+                rejoins.then(|| f.s_rejoin.unwrap_or_default()),
+                f.length_m,
+                f.saves_s,
+                &names_text(&f.names),
             ),
         };
     }
@@ -585,6 +556,7 @@ mod tests {
             max_difficulty: None,
             min_exit_saving_s: 60.0,
             budget_s: None,
+            lang: skimap_common::Lang::Fr,
         };
         let all = l.all();
         // Exits from 1 km to 1 km before the end: node 1 (1.0 km, back along « Sud », 2 km

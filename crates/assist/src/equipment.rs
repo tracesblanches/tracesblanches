@@ -24,6 +24,7 @@ use skimap_voice::bank::Item;
 
 use crate::inputs::SiteData;
 use crate::layers::densify;
+use crate::text::Lang;
 
 /// An outing.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -70,17 +71,12 @@ pub enum Kind {
 impl Kind {
     /// French label.
     pub fn label_fr(self) -> &'static str {
-        match self {
-            Kind::AvalancheKit => "DVA, pelle et sonde",
-            Kind::Headlamp => "frontale",
-            Kind::WarmLayer => "couche chaude en plus",
-            Kind::FaceProtection => "moufles et protection du visage",
-            Kind::PowerBank => "batterie externe",
-            Kind::TellSomeone => "prévenir un proche de l'itinéraire et de l'heure de retour",
-            Kind::Compass => "boussole",
-            Kind::SunProtection => "lunettes de soleil et crème",
-            Kind::WaxlessSkis => "skis à écailles ou peaux",
-        }
+        self.label(Lang::Fr)
+    }
+
+    /// Label in `lang`.
+    pub fn label(self, lang: Lang) -> &'static str {
+        crate::text::of(lang).eq_label(self)
     }
 
     /// Item of the phrase bank, when there is one.
@@ -157,16 +153,14 @@ impl Equipment {
     }
 }
 
-fn fmt(x: f64) -> String {
-    format!("{x:.1}").replace('.', ",")
-}
-
-fn hhmm(t: NaiveDateTime) -> String {
-    format!("{} h {:02}", t.hour(), t.minute())
-}
-
 /// Equipment list of an outing.
 pub fn equipment(data: &SiteData, o: &Outing) -> Equipment {
+    equipment_in(data, o, Lang::Fr)
+}
+
+/// [`equipment`] with the texts in `lang` (the phone's language, VO6).
+pub fn equipment_in(data: &SiteData, o: &Outing, lang: Lang) -> Equipment {
+    let tx = crate::text::of(lang);
     let date: NaiveDate = o.start.date();
     let back = o.start
         + Duration::seconds(
@@ -224,126 +218,74 @@ pub fn equipment(data: &SiteData, o: &Outing) -> Equipment {
     let mut add = |kind: Kind, reason: String| {
         items.push(Entry {
             kind,
-            label: kind.label_fr(),
+            label: tx.eq_label(kind),
             reason,
         })
     };
     let mut why = Vec::new();
     if exposed >= 0.05 {
-        why.push(format!(
-            "{} km en terrain exposé aux avalanches (modèle)",
-            fmt(exposed)
-        ));
+        why.push(tx.eq_exposed(exposed));
     }
     if clpa >= 0.05 {
-        why.push(format!(
-            "{} km dans des zones d'avalanche connues (CLPA)",
-            fmt(clpa)
-        ));
+        why.push(tx.eq_clpa(clpa));
     }
     if o.offpiste && bera.is_some_and(|l| l >= 3) {
-        why.push(format!(
-            "hors piste avec un BERA à {} sur 5",
-            bera.unwrap_or(0)
-        ));
+        why.push(tx.eq_offpiste_bera(bera.unwrap_or(0)));
     }
     if !why.is_empty() {
         add(Kind::AvalancheKit, why.join(", "));
     }
     if let Some((rise, set)) = suns {
         if back + Duration::hours(1) > set {
-            add(
-                Kind::Headlamp,
-                format!(
-                    "retour prévu vers {}, coucher du soleil à {}",
-                    hhmm(back),
-                    hhmm(set)
-                ),
-            );
+            add(Kind::Headlamp, tx.eq_back_after_sunset(back, set));
         } else if o.start < rise {
-            add(
-                Kind::Headlamp,
-                format!(
-                    "départ à {}, avant le lever du soleil ({})",
-                    hhmm(o.start),
-                    hhmm(rise)
-                ),
-            );
+            add(Kind::Headlamp, tx.eq_start_before_sunrise(o.start, rise));
         }
     }
     if let Some(c) = w.as_ref().and_then(|w| w.wind_chill_min_c) {
         if c <= -10.0 {
-            add(
-                Kind::WarmLayer,
-                format!("ressenti jusqu'à {} °C", crate::briefing::degrees(c)),
-            );
+            add(Kind::WarmLayer, tx.eq_chill(&crate::briefing::degrees(c)));
         }
         if c <= -20.0 {
             add(
                 Kind::FaceProtection,
-                format!("ressenti jusqu'à {} °C", crate::briefing::degrees(c)),
+                tx.eq_chill(&crate::briefing::degrees(c)),
             );
         }
     }
     let long_no_net = no_net >= 1.0 || (total > 0.0 && no_net / total >= 0.25);
     if long_no_net {
-        let r = format!(
-            "{} km sans aucun réseau mobile, même pour le 112 ({} % de l'itinéraire)",
-            fmt(no_net),
-            (100.0 * no_net / total.max(1e-9)).round()
-        );
+        let r = tx.eq_no_network(no_net, (100.0 * no_net / total.max(1e-9)).round());
         add(Kind::PowerBank, r.clone());
         add(Kind::TellSomeone, r);
     } else if o.duration_min > 180.0 || o.offpiste {
         add(
             Kind::TellSomeone,
             if o.offpiste {
-                "sortie hors des pistes".into()
+                tx.eq_offpiste().into()
             } else {
-                format!(
-                    "sortie de plus de 3 h ({} min estimées)",
-                    o.duration_min.round()
-                )
+                tx.eq_long(o.duration_min.round())
             },
         );
     }
     if let Some(w) = &w
         && w.fog_hours > 0
     {
-        add(
-            Kind::Compass,
-            format!("brouillard prévu ({} h pendant la sortie)", w.fog_hours),
-        );
+        add(Kind::Compass, tx.eq_fog(w.fog_hours));
     }
     if let Some(c) = w.as_ref().and_then(|w| w.cloud_mean_pct)
         && c < 30.0
     {
-        add(
-            Kind::SunProtection,
-            format!("ciel dégagé ({c:.0} % de nuages)"),
-        );
+        add(Kind::SunProtection, tx.eq_clear_sky(c));
     }
     if o.kick_unreliable {
-        add(
-            Kind::WaxlessSkis,
-            "retenue du fart incertaine ce jour-là (fartage A2)".into(),
-        );
+        add(Kind::WaxlessSkis, tx.eq_kick_unreliable().into());
     }
     let text = if items.is_empty() {
-        format!(
-            "{} : rien de particulier à ajouter à l'équipement habituel.",
-            o.label
-        )
+        tx.eq_nothing(&o.label)
     } else {
-        format!(
-            "{} — à emporter : {}.",
-            o.label,
-            items
-                .iter()
-                .map(|e| format!("{} ({})", e.label, e.reason))
-                .collect::<Vec<_>>()
-                .join(" ; ")
-        )
+        let pairs: Vec<(&str, &str)> = items.iter().map(|e| (e.label, e.reason.as_str())).collect();
+        tx.eq_take(&o.label, &pairs)
     };
     Equipment {
         outing: o.clone(),

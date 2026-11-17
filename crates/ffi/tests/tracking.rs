@@ -223,7 +223,7 @@ fn morning_to_recap(site: &'static Site, date: &str, budget_min: f64, return_bef
         skimap_ffi::card::Lang::Fr,
     )
     .unwrap();
-    let start = day_starts(site.id.into()).remove(0);
+    let start = day_starts(site.id.into(), skimap_ffi::card::Lang::Fr).remove(0);
     let req = DayRequest {
         label: "sortie en famille".into(),
         start,
@@ -663,7 +663,7 @@ fn full_data_bring_me_back() {
     .unwrap();
     let req = DayRequest {
         label: "3 h".into(),
-        start: day_starts("cervieres".into()).remove(0),
+        start: day_starts("cervieres".into(), skimap_ffi::card::Lang::Fr).remove(0),
         date: "2026-11-16".into(),
         start_time: Some("10:00".into()),
         earliest: "08:00".into(),

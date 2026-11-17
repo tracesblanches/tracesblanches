@@ -182,11 +182,11 @@ pub fn morning_in(
     let day = briefing::day(data, date, &briefing::Options { home: None, lang });
     let quality = point.and_then(|p| day.snow_quality.iter().find(|q| q.point == p.id));
     let wax = match (point, quality) {
-        (Some(p), Some(q)) => wax::day_wax(p, q),
+        (Some(p), Some(q)) => wax::day_wax_in(p, q, lang),
         _ => None,
     };
     let best = point.map(|p| {
-        best_time::best_time(
+        best_time::best_time_in(
             p,
             quality,
             day.crowd.as_ref().map(|c| c.level),
@@ -196,6 +196,7 @@ pub fn morning_in(
                 earliest: req.earliest,
                 classes: Vec::new(),
             },
+            lang,
         )
     });
     let start_time = req
@@ -226,7 +227,7 @@ pub fn morning_in(
         .suggestions
         .iter()
         .map(|s| {
-            equipment::equipment(
+            equipment::equipment_in(
                 data,
                 &equipment::Outing {
                     label: s.label.clone(),
@@ -237,6 +238,7 @@ pub fn morning_in(
                     offpiste: false,
                     kick_unreliable,
                 },
+                lang,
             )
         })
         .collect();
@@ -624,18 +626,21 @@ pub struct DayPlan {
     /// ([`crate::pace::with_pace`]).
     #[serde(default)]
     pub pace: Option<crate::pace::PlanPace>,
+    /// Language of the texts of the plan (VO6); French when absent (plans written before).
+    #[serde(default = "lang_fr", skip_serializing_if = "is_fr")]
+    pub lang: Lang,
 }
 
-fn hhmm(t: NaiveDateTime) -> String {
-    format!("{} h {:02}", t.hour(), t.minute())
+fn lang_fr() -> Lang {
+    Lang::Fr
+}
+
+fn is_fr(l: &Lang) -> bool {
+    *l == Lang::Fr
 }
 
 fn secs(s: f64) -> Duration {
     Duration::milliseconds((s * 1000.0).round() as i64)
-}
-
-fn km(m: f64) -> String {
-    format!("{:.1}", m / 1000.0).replace('.', ",")
 }
 
 /// Runs of a predicate along a line, sampled every 10 m: (start, end) in metres; runs
@@ -1171,6 +1176,7 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
         max_difficulty: m.request.max_difficulty,
         min_exit_saving_s: MIN_EXIT_SAVING_S,
         budget_s: limit.map(|l| (l - departure).num_seconds() as f64 / tp.eta_factor),
+        lang: m.lang,
     };
     let mut plans_b = Vec::new();
     let mut latest_exit = Vec::new();
@@ -1511,14 +1517,15 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
         weather,
         clips,
         notes,
-        never_safe: NEVER_SAFE.into(),
+        never_safe: crate::text::of(m.lang).never_safe().into(),
         pace: None,
+        lang: m.lang,
     };
     // The group of the morning: its time and the turnaround at its pace (C11).
     if let Some(group) = &m.group {
         crate::pace::with_pace(&mut plan, g, group)?;
     }
-    debug_assert!(never_safe(&plan.text_fr()));
+    debug_assert!(never_safe(&plan.text()));
     Ok(plan)
 }
 
@@ -1573,154 +1580,103 @@ impl DayPlan {
         Ok(())
     }
 
-    /// The plan in French, for reading it in the morning (and by hand).
+    /// The plan in French, for reading it in the morning (and by hand); the texts made
+    /// when the plan was built stay in the plan's language ([`DayPlan::text`]).
     pub fn text_fr(&self) -> String {
+        self.text_in(Lang::Fr)
+    }
+
+    /// The plan in its language ([`DayPlan::lang`]).
+    pub fn text(&self) -> String {
+        self.text_in(self.lang)
+    }
+
+    /// The plan with its headings in `lang`.
+    pub fn text_in(&self, lang: Lang) -> String {
+        let tx = crate::text::of(lang);
         let mut t = Vec::new();
         let r = &self.route;
-        t.push(format!(
-            "Plan du {} — {} — départ {} à {}",
-            briefing::date_fr(self.date),
-            self.request.label,
-            self.request.start_name,
-            hhmm(self.departure)
+        t.push(tx.p_title(
+            self.date,
+            &self.request.label,
+            &self.request.start_name,
+            self.departure,
         ));
-        t.push(format!(
-            "Boucle n° {} : {} — {} km, D+ {} m, environ {} min (modèle C5, {}), score {}",
+        t.push(tx.p_loop(
             r.rank,
-            r.label,
-            format!("{:.1}", r.length_km).replace('.', ","),
+            &r.label,
+            r.length_km,
             r.gain_m,
-            r.model_min.round(),
-            match self.request.style {
-                Style::Classic => "classique",
-                Style::Skating => "skating",
-            },
-            format!("{:.2}", r.score).replace('.', ",")
+            r.model_min,
+            self.request.style,
+            r.score,
         ));
-        t.push(format!("Pistes : {}", r.names.join(", ")));
+        t.push(tx.p_trails(&r.names));
         let ta = &self.turnaround;
-        t.push(format!(
-            "Arrivée prévue {} au rythme du modèle, {} avec la marge de 20 %{}{}",
-            hhmm(ta.arrival),
-            hhmm(ta.arrival_with_margin),
-            ta.deadline
-                .map(|d| format!(" ; limite de lumière moins 30 min (C7) : {}", hhmm(d)))
-                .unwrap_or_default(),
-            ta.return_before
-                .map(|d| format!(" ; retour demandé avant {}", hhmm(d)))
-                .unwrap_or_default()
+        t.push(tx.p_arrival(
+            ta.arrival,
+            ta.arrival_with_margin,
+            ta.deadline,
+            ta.return_before,
         ));
         if let Some(p) = &self.pace {
             t.push(p.text.clone());
         }
-        t.push(match ta.latest_turnaround {
-            Some(x) if self.pace.is_some() => format!(
-                "Demi-tour au plus tard à {} au rythme prévu du groupe (A8, C11)",
-                hhmm(x)
-            ),
-            Some(x) => format!("Demi-tour au plus tard à {} au rythme prévu (A8)", hhmm(x)),
-            None => "La boucle finit avant la limite de lumière au rythme prévu : pas d'heure de demi-tour imposée".into(),
-        });
-        t.push("Raisons :".into());
+        t.push(tx.p_turnaround(ta.latest_turnaround, self.pace.is_some()));
+        t.push(tx.p_reasons().into());
         for x in &r.reasons {
-            t.push(format!("  - {} [{:+.2}]", x.text, x.points).replace('.', ","));
+            t.push(tx.p_reason(&x.text, x.points));
         }
-        t.push("Points clés (heure de passage au rythme du modèle) :".into());
+        t.push(tx.p_key_points().into());
         for k in &self.key_points {
-            let what = match k.kind {
-                KeyKind::Start => "départ",
-                KeyKind::Turn => "carrefour annoncé",
-                KeyKind::Junction => "carrefour évident (rien n'est dit)",
-                KeyKind::Refuge => "refuge",
-                KeyKind::NoNetworkStart => "début de zone sans réseau",
-                KeyKind::NoNetworkEnd => "fin de zone sans réseau",
-                KeyKind::AvalancheStart => "début de zone d'avalanche connue (CLPA)",
-                KeyKind::AvalancheEnd => "fin de zone d'avalanche connue",
-                KeyKind::Finish => "arrivée",
-            };
-            t.push(format!(
-                "  {} km  {}  {}{}",
-                km(k.s),
-                hhmm(k.at),
-                what,
-                k.name
-                    .as_ref()
-                    .map(|n| format!(" : {n}"))
-                    .unwrap_or_default()
-            ));
+            t.push(tx.p_key_point(k.s, k.at, tx.p_key_kind(k.kind), k.name.as_deref()));
         }
-        t.push("Annonces prévues :".into());
+        t.push(tx.p_announcements().into());
         for a in &self.announcements {
             let when = match a.trigger {
-                Trigger::Departure => "au départ".to_owned(),
-                Trigger::At { s, .. } => format!("à {} km", km(s)),
-                Trigger::Arrival => "à l'arrivée".to_owned(),
+                Trigger::Departure => tx.p_when(None, false),
+                Trigger::At { s, .. } => tx.p_when(Some(s), false),
+                Trigger::Arrival => tx.p_when(None, true),
             };
-            t.push(format!("  {when} [{:?}] « {} »", a.priority, a.text));
+            t.push(tx.p_announcement(&when, &format!("{:?}", a.priority), &a.text));
         }
-        t.push(format!("Plans B ({}) :", self.plans_b.len()));
+        t.push(tx.p_plans_b(self.plans_b.len()));
         for b in &self.plans_b {
-            t.push(format!(
-                "  - {} — annonce « {} »",
-                b.fallback.text,
-                b.switch.text()
-            ));
+            t.push(tx.p_plan_b(&b.fallback.text, &b.switch.text()));
         }
         for (j, at) in &ta.latest_exit {
-            t.push(format!(
-                "  sortie du carrefour à {} km : y passer avant {} pour finir avant la limite",
-                km(self.junctions[*j].s),
-                hhmm(*at)
-            ));
+            t.push(tx.p_latest_exit(self.junctions[*j].s, *at));
         }
-        t.push("Matin :".into());
+        t.push(tx.p_morning().into());
         for (k, s) in &self.morning {
             for l in &s.text {
-                t.push(format!("  [{k}] {l}"));
+                t.push(tx.p_morning_line(k, l));
             }
             let spoken: Vec<String> = s.voice.iter().map(|e| e.announce().text()).collect();
             if !spoken.is_empty() {
-                t.push(format!("  [{k}, voix] {}", spoken.join(" ")));
+                t.push(tx.p_morning_voice(k, &spoken.join(" ")));
             }
         }
-        t.push("Équipement :".into());
+        t.push(tx.p_equipment().into());
         for i in &self.equipment {
-            t.push(format!("  - {} : {}", i.label, i.reason));
+            t.push(tx.p_item(&i.label, &i.reason));
         }
         if !self.refuges.is_empty() {
-            t.push(format!(
-                "Refuges à moins de {} m de la boucle : {}",
-                REFUGE_NEAR_M,
-                self.refuges
-                    .iter()
-                    .map(|r| r
-                        .name
+            let names: Vec<String> = self
+                .refuges
+                .iter()
+                .map(|r| {
+                    r.name
                         .clone()
-                        .unwrap_or_else(|| format!("abri sans nom ({})", r.kind)))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ));
+                        .unwrap_or_else(|| tx.p_unnamed_shelter(&r.kind))
+                })
+                .collect();
+            t.push(tx.p_refuges(REFUGE_NEAR_M, &names));
         }
-        t.push(format!(
-            "Clips : {} nécessaires, {} absents du pack{}",
-            self.clips.required.len(),
-            self.clips.missing.len(),
-            if self.clips.missing.is_empty() {
-                String::new()
-            } else {
-                format!(
-                    " ({})",
-                    self.clips
-                        .missing
-                        .iter()
-                        .cloned()
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            }
-        ));
+        let missing: Vec<String> = self.clips.missing.iter().cloned().collect();
+        t.push(tx.p_clips(self.clips.required.len(), &missing));
         for n in &self.notes {
-            t.push(format!("Limite : {n}"));
+            t.push(tx.p_limit(n));
         }
         t.push(self.never_safe.clone());
         t.join("\n") + "\n"
@@ -1746,7 +1702,7 @@ pub fn write(
     let j = dir.join(format!("{stem}.json"));
     let t = dir.join(format!("{stem}.txt"));
     skimap_common::output::write_text(&j, &(plan.to_json()? + "\n"))?;
-    skimap_common::output::write_text(&t, &plan.text_fr())?;
+    skimap_common::output::write_text(&t, &plan.text())?;
     let g = data
         .graph
         .as_ref()

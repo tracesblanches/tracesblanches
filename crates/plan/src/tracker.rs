@@ -66,7 +66,7 @@ use crate::guidance::{self, Junction};
 use crate::line::turn_deg;
 use crate::pace::{
     self, PaceReason, PaceRoute, ProfileFitParams, ProfileProposal, Proposal, ProposalKind,
-    ProposeParams, proposal_announcement, proposal_text,
+    ProposeParams, proposal_announcement, proposal_text_in,
 };
 use crate::phrases::{self, Voice};
 use crate::plan::{self, DayPlan, PlannedAnnouncement, Trigger};
@@ -1029,30 +1029,17 @@ impl<'a> Tracker<'a> {
         let pace = (model > 60.0).then(|| (t1 - t0) / model);
         let len = f64::from(v.length());
         let done = if len > 0.0 { self.cursor / len } else { 0.0 };
-        let comma = |x: String| x.replace('.', ",");
-        let text = format!(
-            "{} : {} km en {} min de mouvement et {} min d'arrêt ; {} % de l'itinéraire suivi ({} km){} ; {} changement(s) d'itinéraire, {} annonce(s){}",
-            match end {
-                End::Arrived => "Sortie terminée à l'arrivée",
-                End::Abandoned => "Sortie interrompue loin de l'arrivée",
-            },
-            comma(format!("{:.1}", tot.distance_m / 1000.0)),
+        let text = crate::text::of(self.plan.lang).recap(
+            end,
+            tot.distance_m / 1000.0,
             (moving / 60.0).round(),
             (tot.paused_s / 60.0).round(),
             (done * 100.0).round(),
-            comma(format!("{:.1}", len / 1000.0)),
-            pace.map(|p| format!(
-                ", temps réel / temps du modèle : {}",
-                comma(format!("{p:.2}"))
-            ))
-            .unwrap_or_default(),
+            len / 1000.0,
+            pace,
             self.switches,
             self.spoken,
-            if self.refuges.is_empty() {
-                String::new()
-            } else {
-                format!(", arrêts : {}", self.refuges.join(", "))
-            }
+            &self.refuges,
         );
         Recap {
             end,
@@ -2414,7 +2401,14 @@ impl<'a> Tracker<'a> {
             arrival_lo: lo,
             arrival_hi: hi,
             delay_min: (delay / 60.0).round(),
-            text: proposal_text(reason, slower_pct, kind, (arr, lo, hi), saved),
+            text: proposal_text_in(
+                reason,
+                slower_pct,
+                kind,
+                (arr, lo, hi),
+                saved,
+                self.plan.lang,
+            ),
             announcement: proposal_announcement(reason, kind, arr),
         };
         self.offer(

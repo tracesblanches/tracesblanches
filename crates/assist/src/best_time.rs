@@ -31,6 +31,7 @@ use crate::briefing::{Factor, Reason};
 use crate::crowd::CrowdLevel;
 use crate::layers::WeatherPoint;
 use crate::snow_quality::DayQuality;
+use crate::text::Lang;
 
 /// A request.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -71,7 +72,7 @@ pub struct BestTime {
     pub best: Option<Start>,
     /// Every start tried.
     pub starts: Vec<Start>,
-    /// Text, French.
+    /// Text, in the language asked ([`best_time_in`]).
     pub text: String,
 }
 
@@ -94,17 +95,26 @@ fn push(out: &mut Vec<Reason>, factor: Factor, points: f64, text: String) {
     });
 }
 
-fn hhmm(t: NaiveDateTime) -> String {
-    format!("{} h {:02}", t.hour(), t.minute())
-}
-
-/// Best time to leave at a point, with its snow quality of the day and the crowd level.
+/// Best time to leave at a point, with its snow quality of the day and the crowd level;
+/// text in French ([`best_time_in`]).
 pub fn best_time(
     point: &WeatherPoint,
     quality: Option<&DayQuality>,
     crowd: Option<CrowdLevel>,
     req: &Request,
 ) -> BestTime {
+    best_time_in(point, quality, crowd, req, Lang::Fr)
+}
+
+/// [`best_time`] with the texts in `lang` (the phone's language, VO6).
+pub fn best_time_in(
+    point: &WeatherPoint,
+    quality: Option<&DayQuality>,
+    crowd: Option<CrowdLevel>,
+    req: &Request,
+    lang: Lang,
+) -> BestTime {
+    let tx = crate::text::of(lang);
     let p = TurnaroundParams::default();
     let deadline = turnaround::deadline(req.date, point.position, &p)
         .map(|d| skimap_core::ephemeris::local_time(d.deadline));
@@ -162,7 +172,7 @@ pub fn best_time(
                         .hours
                         .iter()
                         .filter(|h| h.time + Duration::hours(1) > t && h.time < back)
-                        .map(|h| h.quality.label_fr())
+                        .map(|h| tx.quality(h.quality))
                         .collect();
                     let mut uniq: Vec<&str> = Vec::new();
                     for q in qs {
@@ -170,20 +180,20 @@ pub fn best_time(
                             uniq.push(q);
                         }
                     }
-                    format!("{} : {}", c.class.label_fr(), uniq.join(" puis "))
+                    tx.bt_surface(&tx.slope_class(&c.class), &uniq)
                 })
                 .collect();
-            push(&mut reasons, Factor::SnowSurface, m - 2.0, what.join(" ; "));
+            push(
+                &mut reasons,
+                Factor::SnowSurface,
+                m - 2.0,
+                what.join(tx.bt_sep()),
+            );
         }
         let gust = share(&|h| h.gust_kmh.is_some_and(|g| g >= 40.0));
         if gust > 0.0 {
             let g = hours.iter().filter_map(|h| h.gust_kmh).fold(0.0, f64::max);
-            push(
-                &mut reasons,
-                Factor::Wind,
-                -gust,
-                format!("rafales jusqu'à {g:.0} km/h"),
-            );
+            push(&mut reasons, Factor::Wind, -gust, tx.bt_gusts(g));
         }
         let fog = share(&|h| h.fog == Some(true));
         if fog > 0.0 {
@@ -191,7 +201,7 @@ pub fn best_time(
                 &mut reasons,
                 Factor::Fog,
                 -0.5 * fog,
-                format!("brouillard {} h", (fog * n).round()),
+                tx.bt_fog((fog * n).round()),
             );
         }
         let snow = share(&|h| h.snowfall_cm.is_some_and(|s| s >= 1.0));
@@ -200,7 +210,7 @@ pub fn best_time(
                 &mut reasons,
                 Factor::Snowfall,
                 -0.3 * snow,
-                "chute de neige".into(),
+                tx.bt_snowfall().into(),
             );
         }
         let rain = share(&|h| {
@@ -209,7 +219,7 @@ pub fn best_time(
                 && h.temperature_c.is_some_and(|t| t > 0.5)
         });
         if rain > 0.0 {
-            push(&mut reasons, Factor::Rain, -rain, "pluie".into());
+            push(&mut reasons, Factor::Rain, -rain, tx.bt_rain().into());
         }
         let cold = share(&|h| h.wind_chill_c.is_some_and(|c| c <= -15.0));
         if cold > 0.0 {
@@ -221,14 +231,14 @@ pub fn best_time(
                 &mut reasons,
                 Factor::Cold,
                 -0.5 * cold,
-                format!("ressenti jusqu'à {} °C", crate::briefing::degrees(c)),
+                tx.bt_cold(&crate::briefing::degrees(c)),
             );
         }
         let sun = share(&|h| {
             h.cloud_cover_pct.is_some_and(|c| c < 30.0) && sunrise.is_some_and(|r| h.time >= r)
         });
         if sun > 0.0 {
-            push(&mut reasons, Factor::Sun, 0.2 * sun, "soleil".into());
+            push(&mut reasons, Factor::Sun, 0.2 * sun, tx.bt_sun().into());
         }
         if let Some(level) = crowd.filter(|l| *l >= CrowdLevel::Busy) {
             let peak0 = req.date.and_hms_opt(10, 30, 0).expect("time");
@@ -241,23 +251,13 @@ pub fn best_time(
                 } else {
                     0.5
                 };
-                push(
-                    &mut reasons,
-                    Factor::Crowd,
-                    -w * frac,
-                    format!("journée {} : pic supposé de 10 h 30 à 14 h", level.label()),
-                );
+                push(&mut reasons, Factor::Crowd, -w * frac, tx.bt_crowd(level));
             }
         }
         if let Some(d) = deadline
             && (d - back).num_minutes() < 30
         {
-            push(
-                &mut reasons,
-                Factor::Data,
-                -0.5,
-                format!("retour à moins de 30 min de l'heure limite ({})", hhmm(d)),
-            );
+            push(&mut reasons, Factor::Data, -0.5, tx.bt_near_deadline(d));
         }
         let score = reasons.iter().map(|r| r.points).sum();
         starts.push(Start {
@@ -288,8 +288,7 @@ pub fn best_time(
                     })
                     .map(|r| r.text.clone())
                     .collect();
-                (!lost.is_empty())
-                    .then(|| format!("départ à {} : {}", hhmm(o.start), lost.join(", ")))
+                (!lost.is_empty()).then(|| tx.bt_other_start(o.start, &lost))
             };
             let pick = |early: bool| {
                 starts
@@ -302,30 +301,9 @@ pub fn best_time(
                     .and_then(worse)
             };
             let alts: Vec<String> = [pick(true), pick(false)].into_iter().flatten().collect();
-            let vs = if alts.is_empty() {
-                String::new()
-            } else {
-                format!(" ; {}", alts.join(" ; "))
-            };
-            format!(
-                "Meilleur départ vers {} (retour vers {}, sortie de {} min) : {}{vs}.",
-                hhmm(b.start),
-                hhmm(b.back),
-                req.duration_min.round(),
-                if why.is_empty() {
-                    "rien ne distingue les créneaux".into()
-                } else {
-                    why.join(", ")
-                }
-            )
+            tx.bt_best(b.start, b.back, req.duration_min, &why, &alts)
         }
-        None => format!(
-            "Pas de créneau : une sortie de {} min ne finit pas avant l'heure limite{}.",
-            req.duration_min.round(),
-            deadline
-                .map(|d| format!(" ({})", hhmm(d)))
-                .unwrap_or_default()
-        ),
+        None => tx.bt_none(req.duration_min, deadline),
     };
     BestTime {
         request: req.clone(),
