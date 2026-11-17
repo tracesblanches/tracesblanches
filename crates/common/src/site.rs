@@ -139,6 +139,9 @@ pub struct Site {
     pub parent: Option<&'static str>,
     /// Trail status sources.
     pub status: StatusSources,
+    /// Trail starts found by the pipeline (X9, `data/out/france/stations/departs.json`),
+    /// main first; empty when not computed.
+    pub starts: &'static [Start],
 }
 
 impl Site {
@@ -245,6 +248,10 @@ pub struct SiteRecord {
     /// Local data (evaluation table only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub local: Option<LocalData>,
+    /// Trail starts found by the pipeline for every census domain (X9,
+    /// `data/out/france/stations/departs.json`), main first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub starts: Vec<Start>,
 }
 
 fn leak(s: &str) -> &'static str {
@@ -280,6 +287,7 @@ impl SiteRecord {
                 nordicfrance_station: self.status.nordicfrance_station,
                 town_hall_page: self.status.town_hall_page.as_deref().map(leak),
             },
+            starts: Box::leak(self.starts.clone().into_boxed_slice()),
         }
     }
 
@@ -526,11 +534,13 @@ pub fn local(site_id: &str) -> Option<&'static LocalData> {
         .and_then(|r| r.local.as_ref())
 }
 
-/// Start points of a site: those of the table, or else one at the site centre (the
-/// representative point of a census domain, on its network).
+/// Start points of a site: those of the evaluation table, else those the pipeline found
+/// (X9, [`Site::starts`]), or else one at the site centre (the representative point of a
+/// census domain, on its network).
 pub fn starts(site: &Site) -> Vec<Start> {
     match local(site.id) {
         Some(l) if !l.starts.is_empty() => l.starts.clone(),
+        _ if !site.starts.is_empty() => site.starts.to_vec(),
         _ => vec![Start {
             id: "centre".into(),
             name: format!("Centre du domaine {}", site.name),
@@ -997,6 +1007,33 @@ mod tests {
     static CERVIERES: LazyLock<Site> = LazyLock::new(|| *site("cervieres").unwrap());
     static CHAPELLE_DES_BOIS: LazyLock<Site> =
         LazyLock::new(|| *site("chapelle-des-bois").unwrap());
+
+    #[test]
+    fn registry_sites_take_the_pipeline_starts() {
+        // A census site of the registry: its starts (X9) are those of its record.
+        let mut r = evaluation_records()[0].clone();
+        r.id = "domaine-test".into();
+        r.local = None;
+        let centre = starts(&r.to_site());
+        assert_eq!(centre.len(), 1);
+        assert_eq!(centre[0].id, "centre");
+        r.starts = vec![Start {
+            id: "depart-1".into(),
+            name: "Foyer (Test)".into(),
+            phrase: "le foyer nordique du domaine Test".into(),
+            phrase_en: Some("the Test area nordic lodge".into()),
+            lon: r.commune_center.lon,
+            lat: r.commune_center.lat,
+            provenance: "déduit (X9)".into(),
+        }];
+        let json = serde_json::to_string(&r).unwrap();
+        let back: SiteRecord = serde_json::from_str(&json).unwrap();
+        let reg = Registry::from_records(vec![back]).unwrap();
+        let s = starts(reg.get("domaine-test").unwrap());
+        assert_eq!(s, r.starts);
+        // The evaluation table keeps its own starts.
+        assert_eq!(starts(&CERVIERES)[0].id, "le-laus");
+    }
 
     #[test]
     fn lookup() {

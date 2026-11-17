@@ -91,12 +91,17 @@ fn stations_state(ctx: &Ctx, now: DateTime<Utc>) -> StationsState {
     match skimap_stations::refresh(&ctx.layout, &ctx.dl, ctx.cfg.personal_sources, now, false) {
         Ok(r) => {
             let state = skimap_stations::refresh::State::read(&r.dir.join("refresh_state.json"));
+            let mut failed_parts: Vec<String> = state
+                .parts
+                .iter()
+                .filter_map(|(k, p)| p.error.as_ref().map(|e| format!("{k}: {e}")))
+                .collect();
+            // Trail starts (X9) from the new points; a failure keeps the previous ones.
+            if let Err(e) = crate::france::departs_after_stations(ctx, &r.ran) {
+                failed_parts.push(format!("departs: {e:#}"));
+            }
             StationsState {
-                failed_parts: state
-                    .parts
-                    .iter()
-                    .filter_map(|(k, p)| p.error.as_ref().map(|e| format!("{k}: {e}")))
-                    .collect(),
+                failed_parts,
                 ran: r.ran,
                 skipped: r.skipped,
                 changes: r.changes,

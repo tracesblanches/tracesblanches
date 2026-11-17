@@ -108,6 +108,11 @@ enum Command {
     /// H2 #133), `data/out/france/stations/`: every part now; needs the census. Titles,
     /// prices and validity zones only with `SKIMAP_PERSONAL_SOURCES`.
     Stations,
+    /// Trail starts of every census domain (X9, #143), `data/out/france/stations/departs.json`,
+    /// from the points of the stations layer and the trail network; then the starts of the
+    /// site registry. Run by `skimap stations` and `skimap refresh` too when the station
+    /// cards ran.
+    Departs,
     /// Scheduled refresh (H1, H2): the due parts of the stations layer, then the hut layer
     /// of each site; idempotent (a second run the same day does nothing); summary in
     /// `data/out/france/refresh/status.json`, non-zero exit when a source is broken.
@@ -594,6 +599,21 @@ fn build_all(cfg: &Config, registry: &Registry, a: BuildAllArgs) -> Result<()> {
     Ok(())
 }
 
+/// Trail starts of every domain (X9), then the starts of the registry.
+fn departs(c: &build::Ctx) -> Result<()> {
+    let t = std::time::Instant::now();
+    let out = skimap_stations::departs::build(&c.layout, &c.dl)?;
+    let n = france::refresh_registry_starts(&c.layout)?;
+    println!(
+        "départs -> {} ({:.1} s) : {} départs, domaines par méthode du départ principal {:?} ; {n} sites du registre avec départs",
+        out.path.display(),
+        t.elapsed().as_secs_f64(),
+        out.starts,
+        out.by_method
+    );
+    Ok(())
+}
+
 fn print_json<T: serde::Serialize>(v: &T) -> Result<()> {
     println!("{}", serde_json::to_string_pretty(v)?);
     Ok(())
@@ -670,7 +690,7 @@ fn run(cli: Cli) -> Result<()> {
         Command::Stations => {
             let c = ctx()?;
             let t = std::time::Instant::now();
-            let out = skimap_stations::build(&c.layout, &c.dl, cfg.personal_sources)?;
+            let out = c.stations(true)?;
             println!(
                 "stations -> {} ({:.1} s, personal_sources = {})",
                 out.dir.display(),
@@ -679,6 +699,7 @@ fn run(cli: Cli) -> Result<()> {
             );
             print_json(&out.stats)
         }
+        Command::Departs => departs(&ctx()?),
         Command::Refresh { sites } => {
             let c = ctx()?;
             let sites: Vec<&Site> = if sites.is_empty() {

@@ -64,6 +64,11 @@ impl Local {
     pub fn xy(&self, p: LonLat) -> (f64, f64) {
         ((p.lon - self.lon0) * self.kx, (p.lat - self.lat0) * self.ky)
     }
+
+    /// Point at `xy` metres east and north of the centre (inverse of [`Local::xy`]).
+    pub fn lonlat(&self, xy: (f64, f64)) -> LonLat {
+        LonLat::new(self.lon0 + xy.0 / self.kx, self.lat0 + xy.1 / self.ky)
+    }
 }
 
 fn seg_dist(p: (f64, f64), a: (f64, f64), b: (f64, f64)) -> f64 {

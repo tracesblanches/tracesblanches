@@ -82,14 +82,17 @@ impl Ctx {
 
     /// H1, H2: station cards and access titles of France, `data/out/france/stations/`
     /// (needs the census): the parts that are due now, every part with `force`.
+    /// Then the trail starts of every domain (X9) when the cards ran.
     pub fn stations(&self, force: bool) -> Result<skimap_stations::RefreshReport> {
-        Ok(skimap_stations::refresh(
+        let r = skimap_stations::refresh(
             &self.layout,
             &self.dl,
             self.cfg.personal_sources,
             Utc::now(),
             force,
-        )?)
+        )?;
+        crate::france::departs_after_stations(self, &r.ran)?;
+        Ok(r)
     }
 
     /// P5: terrain layer.
