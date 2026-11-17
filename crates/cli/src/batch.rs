@@ -813,6 +813,7 @@ pub fn meteo_step_at(ctx: &Ctx, sites: &[&Site], run: Option<DateTime<Utc>>) -> 
                 at: Some(now_rfc3339()),
                 outputs: None,
                 resumed: false,
+                inputs: None,
             };
         }
     };
@@ -847,6 +848,7 @@ pub fn meteo_step_at(ctx: &Ctx, sites: &[&Site], run: Option<DateTime<Utc>>) -> 
         at: Some(now_rfc3339()),
         outputs: None,
         resumed: false,
+        inputs: None,
     }
 }
 
@@ -893,6 +895,7 @@ fn stations_step(ctx: &Ctx, france: &France<'_>, force: bool) -> StepRecord {
         at: Some(now_rfc3339()),
         outputs: None,
         resumed: false,
+        inputs: None,
     }
 }
 
@@ -937,6 +940,7 @@ pub fn record_standalone(layout: &DataLayout, site: &Site, step: &str, line: &st
         at: Some(at.clone()),
         outputs,
         resumed: false,
+        inputs: Some(crate::build::step_inputs(step, site)),
     };
     for d in dependents(step) {
         if let Some(s) = rec.outcome.steps.iter_mut().find(|s| s.name == *d)
@@ -950,6 +954,20 @@ pub fn record_standalone(layout: &DataLayout, site: &Site, step: &str, line: &st
     rec.ok = rec.outcome.ok();
     skimap_common::output::write_json(&france::record_path(layout, site.id), &rec)?;
     Ok(())
+}
+
+/// `rec` with the fingerprint of the fields each step read ([`crate::build::step_inputs`])
+/// where it lacks: a record written before the steps recorded it (#164) was built with
+/// its site record whole.
+fn with_step_inputs(mut rec: BuildRecord) -> BuildRecord {
+    if rec.outcome.steps.iter().any(|s| s.inputs.is_none())
+        && let Ok(site) = skimap_common::site::interned(&rec.inputs.record)
+    {
+        for s in rec.outcome.steps.iter_mut().filter(|s| s.inputs.is_none()) {
+            s.inputs = Some(crate::build::step_inputs(&s.name, site));
+        }
+    }
+    rec
 }
 
 /// Builds one site under its lock: orphan temporary files removed, steps of the previous
@@ -971,8 +989,9 @@ fn build_site(
     if removed > 0 {
         tracing::warn!(site = site.id, removed, "orphan temporary files removed");
     }
-    let previous =
-        france::read_record(&ctx.layout, site.id).filter(|r| !force && r.inputs.resumable_by(&inp));
+    let previous = france::read_record(&ctx.layout, site.id)
+        .filter(|r| !force && r.inputs.resumable_by(&inp))
+        .map(with_step_inputs);
     let resume = previous.as_ref().map(|r| crate::build::Resume {
         previous: &r.outcome.steps,
         max_age,
@@ -1210,7 +1229,7 @@ mod tests {
     /// Steps of a batch without the pipeline: the stations step adds a start to the site
     /// in the registry file when asked (as `france::refresh_registry_starts` does after
     /// new station cards); a site build records its inputs and whether the previous
-    /// record could be taken over (as `build_site`).
+    /// record was written with the same site record (every step can then be taken over).
     struct Fake {
         new_start: std::sync::atomic::AtomicBool,
         /// Per site build: site, starts of the site built, previous record taken over.
@@ -1247,6 +1266,7 @@ mod tests {
                 at: Some(now_rfc3339()),
                 outputs: None,
                 resumed: false,
+                inputs: None,
             }
         }
 
@@ -1259,6 +1279,7 @@ mod tests {
                 at: Some(now_rfc3339()),
                 outputs: None,
                 resumed: false,
+                inputs: None,
             }
         }
 
@@ -1297,7 +1318,7 @@ mod tests {
         /// A site build: its record.
         fn build(&self, ctx: &Ctx, site: &'static Site, inp: BuildInputs) -> Result<BuildOutcome> {
             let taken_over = france::read_record(&ctx.layout, site.id)
-                .is_some_and(|r| r.inputs.resumable_by(&inp));
+                .is_some_and(|r| r.inputs.resumable_by(&inp) && r.inputs.record == inp.record);
             self.builds
                 .lock()
                 .unwrap()
@@ -1310,6 +1331,7 @@ mod tests {
                 at: Some(now_rfc3339()),
                 outputs: None,
                 resumed: taken_over,
+                inputs: None,
             };
             let outcome = BuildOutcome {
                 site: site.id.to_owned(),
@@ -1452,6 +1474,7 @@ mod tests {
             outputs: crate::build::step_dir(name)
                 .and_then(|d| crate::build::fingerprint(&dir.join(d))),
             resumed: false,
+            inputs: None,
         };
         let names = [
             "terrain",
@@ -1567,7 +1590,14 @@ mod tests {
             now
         ));
         assert!(older.resumable_by(&rec.inputs));
-        assert!(!other.resumable_by(&rec.inputs), "another site record");
+        // Another record of the site: each step decides on the fields it reads (#164).
+        assert!(other.resumable_by(&rec.inputs));
+        let mut another_site = rec.inputs.clone();
+        another_site.record.id = "autre".into();
+        assert!(!another_site.resumable_by(&rec.inputs), "another site");
+        let mut public = rec.inputs.clone();
+        public.personal_sources = !public.personal_sources;
+        assert!(!public.resumable_by(&rec.inputs), "personal_sources");
     }
 
     /// B167: a step that ends `ok` without producing anything is listed in `status.json`
@@ -1607,6 +1637,7 @@ mod tests {
             at: Some("2026-11-17T10:00:00Z".into()),
             outputs: None,
             resumed: false,
+            inputs: None,
         };
         let rec = BuildRecord {
             inputs: BuildInputs {
