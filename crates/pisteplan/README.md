@@ -103,10 +103,38 @@ Vérification à la main contre le plan (encadrés et légende relus à l'écran
 
 La relecture a aussi trouvé deux erreurs, corrigées depuis : « Combe Verte » (bleue) était lue verte à cause du mot « Verte », et « Le Gy » était coupée par la couche texte.
 
+## Pistes absentes d'OSM : tracés estimés (G1, #117)
+
+`estimate` (voir la documentation du module) : la ligne de l'encre de la piste sur le plan, là où aucune piste OSM ne passe, retrouvée par le nom écrit sur la carte (12 pt) ou l'encadré de départ (30 pt), reportée par le calage, suivie sur les chemins BD TOPO du couloir (erreur p90 du calage) si elle l'est sur 60 % au moins, sinon reportée telle quelle. Toujours `certainty` = `incertain`, score = ancre × qualité du calage × part suivie, rien sous 0,3. Garde-fous ajoutés après la mesure : rien sur un plan dont le calage n'est confirmé par aucun appariement exact, rien pour une ligne de légende qui ne se lit pas comme un nom (`plausible_name`). Le lien vers le plan officiel (`source_plan_url`) est sur chaque piste transcrite.
+
+Mesure du 17/11/2026 (exemple `plan_pistes`, 12 domaines de six massifs, plan retenu par `register_site`) :
+
+| Massif | Domaine | Plan retenu | Lignes de légende | Exact + modèle | Tracés estimés (avant garde-fous) | Tracés estimés (après) |
+|---|---|---|---|---|---|---|
+| Jura | Chapelle-des-Bois (essai) | ENJ Val de Mouthe | 57 | 29 + 5 | 4 | 4 |
+| Jura | Les Rousses | ENJ Haut-Jura Grandvaux | 68 | 22 + 5 | 5 | 4 |
+| Jura | Plateau de Retord | ENJ Giron Haut-Bugey Retord | 41 | 14 + 9 | 1 | 1 |
+| Alpes du Nord | Le Revard | nf-13666 | 28 | 2 + 1 | 0 | 0 |
+| Alpes du Nord | Haut-Vercors | nf-12162 | 18 | 0 + 0 | 4 | 0 |
+| Alpes du Sud | Cervières (essai) | nf-14976 | 8 | 3 + 0 | 0 | 0 |
+| Alpes du Sud | La Colle-Saint-Michel | nf-12464 | 12 | 5 + 1 | 0 | 0 |
+| Alpes du Sud | Vallouise-Pelvoux | nf-11077 | 0 | 0 | 0 | 0 |
+| Vosges | Le Markstein | nf-3218 | 10 | 0 | 0 | 0 |
+| Vosges | Ventron | nf-6345 | 2 | 0 | 0 | 0 |
+| Massif central | Laguiole | nf-8449 | 0 | 0 | 0 | 0 |
+| Pyrénées | Plateau de Beille | nf-14151 | 0 | 0 | 0 | 0 |
+| **Total** | 12 domaines | | 244 | 75 + 21 | **14** | **9** |
+
+Les 9 tracés gardés sont tous des lignes du plan reportées (`estimated_drawing`) sauf un (Le Fort des Rousses, chemins IGN sur 64 %), de 200 m à 1,6 km, score 0,38 à 0,43.
+
+Contrôle à l'œil des 14 tracés écrits avant les garde-fous (plan et tracé superposés, images locales jamais publiées) : 0 bon, 7 approximatifs, 7 faux. Approximatifs : la bonne ligne du plan, mais seulement un morceau de 200 m à 1,6 km d'une piste de 1,7 à 8,5 km, OSM ayant des voies sans nom ou d'un autre nom sur le reste (Chapelle-des-Bois : La Chaux Mourant, Ravier, Piste éclairée, Bougaud ; Les Rousses : Le Fort des Rousses, La Norbière ; Retord : Pré Tardy). Faux : les 4 du Haut-Vercors, plan calé sans aucun appariement exact (lignes reportées à des centaines de mètres ; deux noms sont des fragments, « iè e », « des pistes ») ; « km sa » aux Rousses (fragment de texte) ; La Victor Arbez et Chaumoz aux Rousses (ancrés sur la ligne d'un nom voisin ou d'un hameau). Les deux garde-fous retirent 5 des 7 faux et aucun approximatif : après eux, 9 tracés, 7 approximatifs et 2 faux.
+
+Réglages (exemple `estimate_sweep`, un calage par site, 36 combinaisons : explication OSM 4, 6, 8 pt ; nom 12, 20, 30 pt ; encadré 30, 45 pt ; part suivie 0,4, 0,6) : Cervières, La Colle-Saint-Michel et le Markstein ne donnent aucun tracé, quel que soit le réglage ; le Revard un seul (rayon du nom 30 pt, 270 m) ; le Plateau de Retord de 1 à 3 morceaux de 190 à 940 m. Chapelle-des-Bois : les mêmes 4 pistes à 6 et 8 pt, mais des morceaux plus longs à 6 pt (Ravier 843 m au lieu de 416, Bougaud 1 780 au lieu de 959, La Chaux Mourant 654 au lieu de 401) ; à 4 pt, 6 à 8 pistes, dont des lignes qui longent une piste OSM décalée par le calage (Les Gentianes, La Passerelle : 0 et 11 % suivis). Rayon du nom 30 pt : + Mortes (200 à 380 m). Les réglages restent 8 / 12 / 30 pt, 60 %, 0,3 : 6 pt allongerait les morceaux sans changer les pistes trouvées, mais n'a pas été contrôlé à l'œil ; c'est le premier essai à faire. Ce qui limite G1 est l'ancrage : sur ces 12 domaines, la plupart des pistes sans OSM n'ont pas leur nom écrit sur la carte (plans à pastilles numérotées ou couleurs seules), et les chemins BD TOPO ne suivent presque jamais une piste du Jura tracée à travers prés (part suivie médiane 0,04 sur les 9 tracés gardés).
+
 ## Limites
 
 - Cervières : image floue de 1 280 px. Les lignes y sont fines, la piste bleue a presque la couleur du fond turquoise, et l'OCR ne lit pas « Savare » (ambigu), « Izoard » ni les deux liaisons. Les longueurs lues par OCR sont fausses (« 75km » pour 7,5 km), elles ne sont pas transcrites.
-- 17 pistes de Chapelle-des-Bois n'ont aucune relation OSM du même nom ; le modèle en rattache 4 à une relation d'une autre graphie. Restent 13 (les liaisons, Le Gy, La Lanterne…), listées, pas devinées : c'est l'entrée de G1, sans tracé estimé à ce jour. Combe des Cives : la relation OSM (7,4 km) déborde le trait du plan (11 km imprimés).
+- 17 pistes de Chapelle-des-Bois n'ont aucune relation OSM du même nom ; le modèle en rattache 4 à une relation d'une autre graphie. Restent 13 (les liaisons, Le Gy, La Lanterne…), listées : c'est l'entrée de G1 (tracés estimés, ci-dessous). Combe des Cives : la relation OSM (7,4 km) déborde le trait du plan (11 km imprimés).
 - Sens : flèches lues à Chapelle-des-Bois seulement. Le plan de Cervières n'en dessine pas. Une flèche est un trou de l'encre (triangle blanc cerné) ; son sens est le signe de l'asymétrie de ses pixels le long de la ligne. Dans un extrait relu à la main, 10 flèches sur 12 sont trouvées. Le sens est donné par voie (`plan_ways.geojson`), pas par piste.
 - Les PDF n'ont ni `ETag` ni `Last-Modified` : un nouveau plan n'est vu qu'à l'expiration du cache (30 jours).
 - Stabilité du test exact (X4, #138, exemple `stability`) : la fiche automatique est perturbée de neuf façons réalistes (telle quelle, zone de carte ± 3 pt, seuils des encres ± ΔE 2, largeur de trait ± 10 %, références des encres ± 6 niveaux), le plan recalé et apparié à chaque fois. Règle actuelle : Chapelle-des-Bois de 28 à 30 pistes exactes (29 ± 1 ; La Feuillat bascule 5 fois sur 9, Les Tourbières 1 fois), Cervières de 1 à 3 (2 ± 1 ; La Pinatelle et le Chemin du Sioux basculent). La cause visible est le rayon choisi par plan (12, 8 ou 3 pt selon la fiche). Une couverture tolérante au décalage local (`transcribe::tolerant_share` : ligne de l'encre à 3 pt, même sens, une fois la géométrie déplacée de son meilleur décalage, au plus l'erreur p90 des jonctions tenues à l'écart, soit 3 à 4 pt) a été mesurée et **n'est pas adoptée** : un décalage pour toute la piste perd des pistes sans gagner en stabilité (Chapelle 23 à 25 au seuil 0,4) ; un décalage par morceau de 200 m donne Chapelle 27 à 29 et Cervières 2 sur 2 sous toutes les fiches au seuil 0,4, sans gain net à Chapelle. Son seuil ne peut pas être justifié par une courbe précision / rappel faute de vérité : les copies décalées ne sont pas des négatifs de la couverture (elles tombent souvent sur d'autres pistes de la même encre, dessinées), et l'égalité des noms dit le nom, pas le dessin. Il faudrait un jeu relu à la main.

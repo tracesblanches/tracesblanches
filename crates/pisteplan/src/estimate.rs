@@ -27,6 +27,9 @@
 //! 4. **Score** (0 to 1): anchor (map label 1, departure box 0.7) × registration quality
 //!    (exp(−p90 / 400 m)) × share of the line followed (half that share for a drawing).
 //!    Below [`MIN_SCORE`] nothing is written.
+//! 5. **Guards** (measured on six massifs, #117): nothing is estimated on a plan whose
+//!    registration no exact match confirms, nor for a legend line that does not read as a
+//!    name ([`plausible_name`]).
 //!
 //! The result is always `incertain`: never shown as a sure piste (dotted on the map, the
 //! card says « Tracé incertain, d'après le plan de la station »).
@@ -78,6 +81,33 @@ pub const GRADE_FREE: f64 = 0.12;
 /// Anchor weights.
 const ANCHOR_LABEL: f64 = 1.0;
 const ANCHOR_BOX: f64 = 0.7;
+
+/// Settings of the estimation (defaults: the constants above).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct Params {
+    /// [`EXPLAINED_PT`].
+    pub explained_pt: f64,
+    /// [`LABEL_RADIUS_PT`].
+    pub label_radius_pt: f64,
+    /// [`BOX_RADIUS_PT`].
+    pub box_radius_pt: f64,
+    /// [`MIN_COVERED`].
+    pub min_covered: f64,
+    /// [`MIN_SCORE`].
+    pub min_score: f64,
+}
+
+impl Default for Params {
+    fn default() -> Self {
+        Self {
+            explained_pt: EXPLAINED_PT,
+            label_radius_pt: LABEL_RADIUS_PT,
+            box_radius_pt: BOX_RADIUS_PT,
+            min_covered: MIN_COVERED,
+            min_score: MIN_SCORE,
+        }
+    }
+}
 
 /// BD TOPO natures that cannot carry a nordic piste.
 pub const EXCLUDED_NATURES: [&str; 6] = [
@@ -165,26 +195,69 @@ pub fn parse_paths(v: &Value) -> Result<Vec<Path>> {
 /// IGN Géoplateforme WFS (BD TOPO).
 pub const IGN_WFS_URL: &str = crate::osmref::IGN_WFS_URL;
 
-/// Paths and tracks of `b` from the BD TOPO (IGN WFS, source `ign`, pages of 5 000).
+/// Features per WFS page.
+const WFS_PAGE: usize = 5000;
+/// The Géoplateforme answers `400` past two pages (`STARTINDEX` ≥ 10 000): a box with
+/// more features is split in four, down to this depth.
+const WFS_MAX_SPLIT: u32 = 6;
+
+fn wfs_page(dl: &Downloader, b: &BBox, start: usize) -> Result<(Value, Fetched)> {
+    let url = format!(
+        "{IGN_WFS_URL}?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAMES=BDTOPO_V3:troncon_de_route&BBOX={:.5},{:.5},{:.5},{:.5},urn:ogc:def:crs:EPSG::4326&COUNT={WFS_PAGE}&STARTINDEX={start}&OUTPUTFORMAT=application/json",
+        b.south, b.west, b.north, b.east,
+    );
+    let f = dl.fetch(&Request::get("ign", &url))?;
+    let v: Value = f.json()?;
+    Ok((v, f))
+}
+
+fn paths_box(
+    dl: &Downloader,
+    b: &BBox,
+    depth: u32,
+    out: &mut Vec<Value>,
+    first: &mut Option<Fetched>,
+) -> Result<()> {
+    let count = |v: &Value| v["features"].as_array().map_or(0, Vec::len);
+    let (v0, f0) = wfs_page(dl, b, 0)?;
+    first.get_or_insert(f0);
+    if count(&v0) < WFS_PAGE {
+        out.push(v0);
+        return Ok(());
+    }
+    let (v1, _) = wfs_page(dl, b, WFS_PAGE)?;
+    if count(&v1) < WFS_PAGE || depth >= WFS_MAX_SPLIT {
+        out.push(v0);
+        out.push(v1);
+        return Ok(());
+    }
+    // More than two pages: four quarters.
+    let (mlat, mlon) = ((b.south + b.north) / 2.0, (b.west + b.east) / 2.0);
+    for q in [
+        BBox::new(b.south, b.west, mlat, mlon),
+        BBox::new(b.south, mlon, mlat, b.east),
+        BBox::new(mlat, b.west, b.north, mlon),
+        BBox::new(mlat, mlon, b.north, b.east),
+    ] {
+        paths_box(dl, &q, depth + 1, out, first)?;
+    }
+    Ok(())
+}
+
+/// Paths and tracks of `b` from the BD TOPO (IGN WFS, source `ign`, pages of 5 000; a box
+/// of more than two pages is split in four), each section once.
 pub fn paths_ign(dl: &Downloader, b: &BBox) -> Result<(Vec<Path>, Fetched)> {
-    let mut out = Vec::new();
+    let mut pages = Vec::new();
     let mut first = None;
-    for page in 0..40 {
-        let url = format!(
-            "{IGN_WFS_URL}?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAMES=BDTOPO_V3:troncon_de_route&BBOX={:.5},{:.5},{:.5},{:.5},urn:ogc:def:crs:EPSG::4326&COUNT=5000&STARTINDEX={}&OUTPUTFORMAT=application/json",
-            b.south,
-            b.west,
-            b.north,
-            b.east,
-            page * 5000
-        );
-        let f = dl.fetch(&Request::get("ign", &url))?;
-        let v: Value = f.json()?;
-        let n = v["features"].as_array().map_or(0, Vec::len);
-        out.extend(parse_paths(&v)?);
-        first.get_or_insert(f);
-        if n < 5000 {
-            break;
+    paths_box(dl, b, 0, &mut pages, &mut first)?;
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for v in &pages {
+        for p in parse_paths(v)? {
+            let key = (p.id.clone(), p.xy[0][0].to_bits(), p.xy[0][1].to_bits());
+            if seen.insert(key) {
+                out.push(p);
+            }
         }
     }
     let first = first.ok_or_else(|| Error::Data("no WFS page".into()))?;
@@ -295,6 +368,11 @@ fn ground_length(reg: &Registration, runs: &[Vec<P2>]) -> f64 {
 
 /// Lines drawn in each piste ink where no OSM piste way runs (step 1).
 pub fn drawn_lines(reg: &Registration) -> Vec<DrawnLine> {
+    drawn_lines_with(reg, &Params::default())
+}
+
+/// [`drawn_lines`] with the settings `prm`.
+pub fn drawn_lines_with(reg: &Registration, prm: &Params) -> Vec<DrawnLine> {
     let osm = osm_on_plan(reg);
     let cos_max = MAX_ANGLE_DEG.to_radians().cos();
     let k = reg.input.pt_per_px;
@@ -316,7 +394,7 @@ pub fn drawn_lines(reg: &Registration) -> Vec<DrawnLine> {
                 let p = s[i];
                 let explained = !reg.spec.on_map(p[0], p[1])
                     || osm
-                        .locate_within_distance(p, EXPLAINED_PT * EXPLAINED_PT)
+                        .locate_within_distance(p, prm.explained_pt * prm.explained_pt)
                         .any(|g| (g.data[0] * t[0] + g.data[1] * t[1]).abs() >= cos_max);
                 if explained {
                     if cur.len() >= 2 {
@@ -426,6 +504,9 @@ pub struct Estimated {
     pub lines: Vec<Vec<P2>>,
     /// Geometry length, m.
     pub length_m: f64,
+    /// The plan's line of the piste, page points (local diagnostics).
+    #[serde(skip)]
+    pub drawn: Vec<Vec<P2>>,
     /// Details.
     pub estimate: Estimate,
     /// Paths used (`ign/<cleabs>`).
@@ -463,10 +544,28 @@ pub fn corridor_m(reg: &Registration) -> f64 {
         .clamp(MIN_CORRIDOR_M, MAX_CORRIDOR_M)
 }
 
-/// Pistes to estimate: not transcribed, a piste ink (ski, link, shared track).
+/// Words of a legend line that name no piste (« Plan des pistes », « 5 km »).
+const NOT_A_NAME: [&str; 14] = [
+    "piste", "pistes", "plan", "km", "des", "les", "la", "le", "du", "de", "et", "boucle",
+    "depart", "liaison",
+];
+
+/// Whether a legend line reads as the name of a piste: a word that is not
+/// [`NOT_A_NAME`], of at least four letters or capitalised (« Le Gy »). Measured on six massifs (#117): fragments of the text
+/// layer or of the OCR (« iè e », « km sa », « des pistes ») were estimated as pistes and
+/// all were wrong; an estimated trace is shown under its name, a fragment never is.
+pub fn plausible_name(name: &str) -> bool {
+    name.split(|c: char| !c.is_alphabetic()).any(|w| {
+        let n = w.chars().count();
+        let capital = w.chars().next().is_some_and(char::is_uppercase);
+        (n >= 4 || (capital && n >= 2)) && !NOT_A_NAME.contains(&fold(w).as_str())
+    })
+}
+
+/// Pistes to estimate: not transcribed, a piste ink (ski, link, shared track), a name.
 fn wanted(reg: &Registration, d: &Decision) -> Option<usize> {
     let ink = d.entry.ink?;
-    if d.status.is_some() {
+    if d.status.is_some() || !plausible_name(&d.entry.name_read) {
         return None;
     }
     let kind = reg.spec.inks.get(ink)?.kind;
@@ -481,6 +580,7 @@ fn wanted(reg: &Registration, d: &Decision) -> Option<usize> {
 /// (line index, anchor).
 fn assign(
     reg: &Registration,
+    prm: &Params,
     decisions: &[Decision],
     lines: &[DrawnLine],
     not: &mut Vec<NotEstimated>,
@@ -508,7 +608,7 @@ fn assign(
         for t in &labels {
             for (li, l) in lines.iter().enumerate().filter(|(_, l)| l.ink == ink) {
                 let dd = l.distance_rect_pt(&t.rect);
-                if dd <= LABEL_RADIUS_PT && best.is_none_or(|(_, a)| dd < a.distance()) {
+                if dd <= prm.label_radius_pt && best.is_none_or(|(_, a)| dd < a.distance()) {
                     best = Some((li, Anchor::Label(dd)));
                 }
             }
@@ -526,7 +626,8 @@ fn assign(
                 .filter(|&&(j, ink2)| {
                     j != i && ink2 == ink && {
                         let r = &decisions[j].entry.rect;
-                        dist(c, [(r[0] + r[2]) / 2.0, (r[1] + r[3]) / 2.0]) <= 4.0 * BOX_RADIUS_PT
+                        dist(c, [(r[0] + r[2]) / 2.0, (r[1] + r[3]) / 2.0])
+                            <= 4.0 * prm.box_radius_pt
                     }
                 })
                 .count()
@@ -537,7 +638,7 @@ fn assign(
                     .enumerate()
                     .filter(|(_, l)| l.ink == ink)
                     .map(|(li, l)| (li, l.distance_rect_pt(&d.entry.rect)))
-                    .filter(|&(_, dd)| dd <= BOX_RADIUS_PT)
+                    .filter(|&(_, dd)| dd <= prm.box_radius_pt)
                     .collect();
                 if near.len() == 1 {
                     best = Some((near[0].0, Anchor::Box(near[0].1)));
@@ -711,13 +812,38 @@ pub fn estimate(
     decisions: &[Decision],
     paths_of: &mut dyn FnMut(&BBox) -> Result<Vec<Path>>,
 ) -> Result<Outcome> {
+    estimate_with(reg, decisions, &Params::default(), paths_of)
+}
+
+/// [`estimate`] with the settings `prm`.
+pub fn estimate_with(
+    reg: &Registration,
+    decisions: &[Decision],
+    prm: &Params,
+    paths_of: &mut dyn FnMut(&BBox) -> Result<Vec<Path>>,
+) -> Result<Outcome> {
     let mut out = Outcome {
         corridor_m: corridor_m(reg),
         ..Outcome::default()
     };
-    let lines = drawn_lines(reg);
+    // A registration that no exact match confirms is not trusted to carry a line onto
+    // the ground: on the plans measured (#117) every trace estimated on such a plan was
+    // wrong (lines carried hundreds of metres away).
+    if !decisions
+        .iter()
+        .any(|d| d.status.is_some() && d.method == Some(MatchMethod::Exact))
+    {
+        for d in decisions.iter().filter(|d| wanted(reg, d).is_some()) {
+            out.not_estimated.push(NotEstimated {
+                name: d.entry.name_read.clone(),
+                reason: "calage du plan confirmé par aucune piste appariée exactement : pas de tracé estimé".to_owned(),
+            });
+        }
+        return Ok(out);
+    }
+    let lines = drawn_lines_with(reg, prm);
     out.drawn_lines = lines.len();
-    let assigned = assign(reg, decisions, &lines, &mut out.not_estimated);
+    let assigned = assign(reg, prm, decisions, &lines, &mut out.not_estimated);
     if assigned.is_empty() {
         return Ok(out);
     }
@@ -745,7 +871,7 @@ pub fn estimate(
     for (&i, &(li, anchor)) in &assigned {
         let line = &carried[&i];
         let (pieces, covered, used) = follow(line, &paths, corridor);
-        let (method, geom, sources, fit) = if covered >= MIN_COVERED && !pieces.is_empty() {
+        let (method, geom, sources, fit) = if covered >= prm.min_covered && !pieces.is_empty() {
             (
                 MatchMethod::EstimatedPaths,
                 pieces,
@@ -761,11 +887,12 @@ pub fn estimate(
             )
         };
         let score = anchor.weight() * quality * fit;
-        if score < MIN_SCORE {
+        if score < prm.min_score {
             out.not_estimated.push(NotEstimated {
                 name: decisions[i].entry.name_read.clone(),
                 reason: format!(
-                    "tracé estimé trop incertain : score {score:.2} < {MIN_SCORE} (ligne suivie sur {:.0} % par les chemins)",
+                    "tracé estimé trop incertain : score {score:.3} < {} (ligne suivie sur {:.0} % par les chemins)",
+                    prm.min_score,
                     covered * 100.0
                 ),
             });
@@ -777,6 +904,7 @@ pub fn estimate(
             score,
             length_m: geom.iter().map(|l| polyline_m(l)).sum(),
             lines: geom,
+            drawn: lines[li].runs.clone(),
             estimate: Estimate {
                 anchor: anchor.name().to_owned(),
                 corridor_m: corridor.round(),
@@ -863,6 +991,22 @@ mod tests {
         assert_eq!(p[0].id, "ign/A");
         // 10 m over ~77 m.
         assert!((p[0].grade - 0.13).abs() < 0.01, "{}", p[0].grade);
+    }
+
+    #[test]
+    fn fragments_are_not_names() {
+        for bad in ["iè e", "km sa", "des pistes", "Plan des pistes", "5,5 km"] {
+            assert!(!plausible_name(bad), "{bad}");
+        }
+        for ok in [
+            "La Lanterne",
+            "Bougaud",
+            "Pré Tardy",
+            "Liaison Mouthe - Chez Liadet",
+            "Le Gy",
+        ] {
+            assert!(plausible_name(ok), "{ok}");
+        }
     }
 
     #[test]

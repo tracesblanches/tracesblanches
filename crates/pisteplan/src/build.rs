@@ -548,6 +548,8 @@ pub struct BuildReport {
     pub stats: serde_json::Value,
     /// Decisions on every piste of the legend.
     pub decisions: Vec<transcribe::Decision>,
+    /// Estimated traces of the pistes absent from OSM (G1).
+    pub estimated: crate::estimate::Outcome,
 }
 
 /// OCR read rate against the text layer: share of the words of the map (three letters
@@ -1065,6 +1067,7 @@ pub fn transcribe_and_write(
         dir,
         stats,
         decisions,
+        estimated,
     })
 }
 

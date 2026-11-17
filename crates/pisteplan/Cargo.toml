@@ -80,3 +80,7 @@ required-features = ["pipeline"]
 [[example]]
 name = "stability"
 required-features = ["pipeline"]
+
+[[example]]
+name = "estimate_sweep"
+required-features = ["pipeline"]
