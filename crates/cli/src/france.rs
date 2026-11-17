@@ -1053,4 +1053,62 @@ mod tests {
         );
         Registry::from_records(out).unwrap();
     }
+
+    #[test]
+    fn srn_sites_and_sections_take_their_starts() {
+        use skimap_stations::departs::{Depart, DepartsFile, Method};
+        // The stations crate names the SRN files without depending on skimap-srn.
+        assert_eq!(
+            skimap_stations::departs_srn::SRN_LAYER,
+            skimap_srn::build::LAYER
+        );
+        assert_eq!(
+            skimap_stations::departs_srn::AREAS_FILE,
+            skimap_srn::build::AREAS_FILE
+        );
+        assert_eq!(
+            skimap_stations::departs_srn::ROUTES_FILE,
+            skimap_srn::build::ROUTES_FILE
+        );
+        let d = |lon: f64, score: f64| Depart {
+            start: site::Start {
+                id: String::new(),
+                name: format!("{lon}"),
+                phrase: String::new(),
+                phrase_en: None,
+                lon,
+                lat: 46.0,
+                provenance: String::new(),
+            },
+            method: Method::Points,
+            score,
+            points: Vec::new(),
+        };
+        let file = DepartsFile {
+            generated_at: String::new(),
+            osm_valid_at: None,
+            notes: Vec::new(),
+            domains: BTreeMap::new(),
+            srn: BTreeMap::from([(
+                "srn-traversee-x".to_owned(),
+                vec![d(6.0, 9.0), d(6.1, 8.0), d(6.5, 2.0)],
+            )]),
+        };
+        let mut parent = site::evaluation_records()[1].clone();
+        parent.id = "srn-traversee-x".into();
+        parent.kind = SiteKind::Traverse;
+        parent.census_id = None;
+        let lon = |v: Vec<site::Start>| v.iter().map(|s| s.lon).collect::<Vec<_>>();
+        assert_eq!(lon(srn_starts(&file, &parent)), vec![6.0, 6.1]);
+        let mut section = parent.clone();
+        section.id = "srn-traversee-x-2".into();
+        section.parent = Some(parent.id.clone());
+        section.bbox = BBox::new(45.9, 6.4, 46.1, 6.6);
+        assert_eq!(lon(srn_starts(&file, &section)), vec![6.5]);
+        // A section without a start inside: the best of the area.
+        section.bbox = BBox::new(45.9, 7.0, 46.1, 7.2);
+        assert_eq!(lon(srn_starts(&file, &section)), vec![6.0]);
+        parent.id = "other".into();
+        assert!(srn_starts(&file, &parent).is_empty());
+    }
 }
