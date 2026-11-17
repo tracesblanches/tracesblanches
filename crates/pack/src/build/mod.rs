@@ -290,7 +290,16 @@ fn build_into(
     }
     if opts.ign_slopes {
         let t = Instant::now();
-        layers.push(raster::ign_slopes(site.bbox, dl, root)?);
+        // Published only when its source may be (skimap_common::licence, #171).
+        if layers::restricted(&[raster::ign_slopes_source()]) && !opts.personal_sources {
+            missing.push(Missing {
+                id: "ign-slopes".to_owned(),
+                reason: "source à usage personnel seulement : option personal_sources désactivée"
+                    .to_owned(),
+            });
+        } else {
+            layers.push(raster::ign_slopes(site.bbox, dl, root)?);
+        }
         timings.push(("ign slope tiles".to_owned(), t.elapsed().as_secs_f64()));
     }
 

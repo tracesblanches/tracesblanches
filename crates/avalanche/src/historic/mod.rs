@@ -513,8 +513,8 @@ pub fn build_with_pistes(
     sources.push(SourceRef::new(
         "Contour de la commune (geo.api.gouv.fr)",
         commune_request(site).url(),
-        "Licence Ouverte 2.0",
-        "IGN, Admin Express via geo.api.gouv.fr",
+        "ODbL 1.0 (jeu data.gouv.fr « Contours administratifs » servi par l'API, d'après Admin Express de l'IGN et OpenStreetMap)",
+        "Contours administratifs (data.gouv.fr, ODbL) via geo.api.gouv.fr : IGN Admin Express, © contributeurs OpenStreetMap",
     ));
     let emprises = if covered {
         let zip = dl.fetch(&ddt05_request())?;

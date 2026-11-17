@@ -39,7 +39,7 @@
   "sources": [
     {
       "attribution": "PatriNat (OFB, MNHN, CNRS, IRD), Inventaire national du patrimoine naturel",
-      "licence": "« other-open » selon data.gouv.fr, à confirmer (F5, #11)",
+      "licence": "Licence Ouverte 2.0 (data.gouv.fr : « INPN - Données du programme Natura 2000 » fr-lo, MNHN ; « Espaces naturels protégés » lov2, Système d'information sur la biodiversité ; « INPN - Données du programme Espaces Protégés » other-open, MNHN)",
       "name": "INPN espaces protégés (PatriNat)",
       "note": "WFS Géoplateforme, sortie demandée en CRS:84 (la valeur par défaut est EPSG:3857)",
       "personal_use_only": false,
@@ -47,7 +47,7 @@
     },
     {
       "attribution": "Géoportail de l'urbanisme",
-      "licence": "non vérifiée (F5, #11)",
+      "licence": "Licence Ouverte (CGU du Géoportail de l'urbanisme : « L'utilisation des données d'urbanisme est soumise aux conditions définies dans la licence ouverte »)",
       "name": "Géoportail de l'urbanisme, servitudes d'utilité publique",
       "note": "seule source des sites inscrits (R111-33) ; AC1, AC2, AC4, AS1, A7 conservées",
       "personal_use_only": false,
@@ -62,8 +62,8 @@
       "url": "https://api3.geo.admin.ch/rest/services/api/MapServer/identify?geometry=6.02,46.54,6.2,46.68&geometryType=esriGeometryEnvelope&layers=all:ch.bafu.bundesinventare-jagdbanngebiete&sr=4326&tolerance=0&returnGeometry=true&geometryFormat=geojson&lang=fr"
     },
     {
-      "attribution": "geo.api.gouv.fr (Etalab, IGN)",
-      "licence": "non vérifiée (F5, #11)",
+      "attribution": "Contours administratifs (data.gouv.fr, ODbL) via geo.api.gouv.fr : IGN Admin Express, © contributeurs OpenStreetMap",
+      "licence": "ODbL 1.0 (jeu data.gouv.fr « Contours administratifs » servi par l'API, d'après Admin Express de l'IGN et OpenStreetMap)",
       "name": "geo.api.gouv.fr, contours des communes",
       "note": "France, départements et communes citées par les règles",
       "personal_use_only": false,

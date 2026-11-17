@@ -1,10 +1,9 @@
 {
   "clips.Fixed": 97,
-  "clips.Name": 46,
+  "clips.Name": 41,
   "clips.Value": 753,
   "dates": 0,
   "name.bergerie-de-soulier": "Bergerie de soulier.",
-  "name.bivacco-corradini": "Bivacco Corradini.",
   "name.bivouac-matteo-corradini": "Bivouac Matteo Corradini.",
   "name.bois-des-ayes": "Bois des Ayes.",
   "name.bois-des-ayes-du": "Bois des Ayes.",
@@ -12,7 +11,6 @@
   "name.cabane-de-la-gardere": "Cabane de la Gardère.",
   "name.cabane-du-querelay": "Cabane du Querelay.",
   "name.cabane-du-serre": "Cabane du Serre.",
-  "name.capanna-mautino": "Capanna Mautino.",
   "name.casse-deserte": "Casse Déserte.",
   "name.cervieres": "Cervières.",
   "name.claree": "Clarée.",
@@ -20,9 +18,6 @@
   "name.queyras": "Queyras.",
   "name.refuge-des-fonts-de-cervieres": "Refuge des Fonts de Cervières.",
   "name.refuge-la-yourte-des-ayes": "Refuge La Yourte des Ayes.",
-  "name.refuge-napoleon": "Refuge Napoléon.",
-  "name.rifugio-combe-d-imbert": "Rifugio Combe d'Imbert.",
-  "name.rifugio-militare-alpino-brigata-alpina-taurinense": "Rifugio militare alpino Brigata Alpina Taurinense.",
   "name.rochebrune-izoard-vallee-de-la-cerveyrette": "Rochebrune, Izoard, Vallée de la Cerveyrette.",
   "name.ruine-de-la-bergerie-de-peyre-moutte": "Ruine de la bergerie de Peyre Moutte.",
   "name.steppique-durancien-et-queyrassin": "Steppique Durancien et Queyrassin.",
@@ -50,5 +45,5 @@
   "piste.souliers.rouge": "Souliers, piste rouge.",
   "piste.traversee-du-queyras-chanteloube": "Traversée du Queyras, Chanteloube.",
   "pistes": 23,
-  "places": 23
+  "places": 18
 }

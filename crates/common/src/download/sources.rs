@@ -181,7 +181,8 @@ pub fn known_sources() -> Vec<SourcePolicy> {
             .personal_use_only(),
         // data.gouv.fr static files (ARCEP, DATAtourisme CSV, snowpack simulation).
         SourcePolicy::new("datagouv").max_age(DAY),
-        // geo.api.gouv.fr (commune outlines). 0.75 to 1.3 s per request measured
+        // geo.api.gouv.fr (commune outlines: data.gouv.fr « Contours administratifs », ODbL,
+        // #171; names and codes: INSEE COG, Licence Ouverte). 0.75 to 1.3 s per request measured
         // (15/11/2026): 4 in flight, still at most 10/s.
         SourcePolicy::new("geo-api")
             .limits([RateLimit::new(10, SECOND)])

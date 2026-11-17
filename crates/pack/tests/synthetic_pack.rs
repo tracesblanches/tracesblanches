@@ -28,7 +28,7 @@ fn write(path: &Path, v: &Value) {
 
 fn meta(personal: bool) -> Value {
     json!({"generated_at": "2026-11-14T22:00:00Z", "valid_until": "2026-12-14",
-           "sources": [{"name": "src", "url": "https://example.org", "licence": "LO", "attribution": "Attr A",
+           "sources": [{"name": "src", "url": "https://example.org", "licence": "Licence Ouverte 2.0", "attribution": "Attr A",
                         "personal_use_only": personal}]})
 }
 
@@ -259,7 +259,7 @@ fn public_pack_has_no_restricted_source() {
     write(
         &out.join("zones/zones.meta.json"),
         &json!({"generated_at": "x", "sources": [
-            {"name": "INPN", "url": "https://inpn.mnhn.fr", "licence": "LO", "attribution": "PatriNat"},
+            {"name": "INPN", "url": "https://inpn.mnhn.fr", "licence": "Licence Ouverte 2.0", "attribution": "PatriNat"},
             {"name": "Biodiv'sports", "url": "https://biodiv-sports.fr", "licence": "?", "attribution": "Biodiv'sports (LPO AuRA)"}]}),
     );
     // Avalanche exposure fused with the CLPA (marked personal), and a core raster made
@@ -406,7 +406,7 @@ fn public_pack_voice_leaves_out_personal_names() {
         &json!({"layer": "voice", "site": "cervieres", "generated_at": "2026-11-15T10:00:00Z",
                 "sources": [
                     {"name": "Pocket TTS", "url": "https://huggingface.co/kyutai", "licence": "CC-BY-4.0", "attribution": "Kyutai"},
-                    {"name": "INPN espaces protégés (PatriNat)", "url": "https://data.geopf.fr/wfs/ows", "licence": "other-open", "attribution": "PatriNat"},
+                    {"name": "INPN espaces protégés (PatriNat)", "url": "https://data.geopf.fr/wfs/ows", "licence": "Licence Ouverte 2.0", "attribution": "PatriNat"},
                     // Not marked, recognised by name (older metadata).
                     {"name": "Biodiv'sports", "url": "https://biodiv-sports.fr", "licence": "?", "attribution": "Biodiv'sports"},
                     {"name": "Plan des pistes - Cervières", "url": "https://example.org/plan.pdf", "licence": "?", "attribution": "OT", "personal_use_only": true}],

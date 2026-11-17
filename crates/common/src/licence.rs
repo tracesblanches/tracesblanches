@@ -23,7 +23,9 @@ use crate::meta::SourceRef;
 pub enum Family {
     /// Open Database License (OpenStreetMap and its derivatives).
     Odbl,
-    /// Attribution only: Licence Ouverte (Etalab), CC BY, CC0, ODC-BY.
+    /// Attribution only: Licence Ouverte (Etalab), CC BY, CC0, ODC-BY, opendata.swiss
+    /// « terms_by », SkiRadar; the code licences of a ported method (MIT, EUPL) and of
+    /// the snowtools contours (CeCILL-C); links and facts cited (nothing reproduced).
     Attribution,
     /// Creative Commons share-alike (CC BY-SA, any version).
     ShareAlike,
@@ -73,7 +75,24 @@ pub fn classify(licence: &str) -> Family {
         "cc-by-2",
         "cc-by-3",
         "cc-by-4",
-    ]) {
+        // opendata.swiss « terms_by » : « Utilisation libre. Obligation d'indiquer la
+        // source » (geo.admin.ch, swisstopo OGD).
+        "opendata.swiss « terms_by »",
+        "terms_by",
+        // SkiRadar : « Données factuelles réutilisables avec attribution ».
+        "données factuelles réutilisables avec attribution",
+        "réutilisation avec attribution",
+        // Code of a method ported (MIT, EUPL) and the snowtools massif contours
+        // (CeCILL-C, whose copyleft covers the component itself, art. 5.3.3: only a
+        // raster derived from them is delivered, docs/licences/f2-licence-code.md).
+        "mit ",
+        "eupl",
+        "cecill-c",
+        // Nothing reproduced: links, or facts cited with their source.
+        "liens seulement",
+        "plages de température citées (faits)",
+    ]) || l == "mit"
+    {
         Family::Attribution
     } else {
         Family::Personal
@@ -124,6 +143,12 @@ impl Group {
                 "usage personnel : sources sans licence de réutilisation connue ou licences incompatibles mêlées"
             }
         }
+    }
+
+    /// Whether a file of the group may hold OSM (ODbL) data: the ODbL file, and a
+    /// personal one (never published); not a CC BY-SA file (#171).
+    pub fn fits_osm(self) -> bool {
+        Family::Odbl.fits(self)
     }
 
     /// Every group, in pack order.
@@ -184,6 +209,48 @@ mod tests {
             ("non indiquée", Family::Personal),
             ("non vérifiée (F5, #11)", Family::Personal),
             ("", Family::Personal),
+        ] {
+            assert_eq!(classify(l), f, "{l}");
+        }
+    }
+
+    /// Licence texts of the sources of the published layers (#171): read on the source's
+    /// page, attribution only or ODbL; a text still to confirm stays personal.
+    #[test]
+    fn families_of_the_sources_checked_for_171() {
+        for (l, f) in [
+            (
+                "opendata.swiss « terms_by » (attribution obligatoire)",
+                Family::Attribution,
+            ),
+            (
+                "Données factuelles réutilisables avec attribution « skiradar.fr » et lien vers la fiche",
+                Family::Attribution,
+            ),
+            (
+                "réutilisation avec attribution « skiradar.fr » et lien vers la fiche",
+                Family::Attribution,
+            ),
+            ("CeCILL-C (dépôt UMR-CNRM/snowtools)", Family::Attribution),
+            ("MIT", Family::Attribution),
+            ("EUPL-1.2 (AvaFrame) ; Flow-Py GPL-3.0", Family::Attribution),
+            (
+                "liens seulement, aucune donnée reprise",
+                Family::Attribution,
+            ),
+            (
+                "plages de température citées (faits), pages consultées le 15/11/2026",
+                Family::Attribution,
+            ),
+            (
+                "ODbL 1.0 (jeu data.gouv.fr « Contours administratifs »)",
+                Family::Odbl,
+            ),
+            ("mitigée", Family::Personal),
+            (
+                "« other-open » selon data.gouv.fr, à confirmer (F5, #11)",
+                Family::Personal,
+            ),
         ] {
             assert_eq!(classify(l), f, "{l}");
         }

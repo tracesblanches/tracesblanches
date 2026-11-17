@@ -25,7 +25,7 @@ use skimap_common::grid::Grid;
 use crate::build::layers::{EntryParts, Outcome, copy_meta, layer_entry, read_meta, restricted};
 use crate::build::source;
 use crate::error::{Error, Result};
-use crate::manifest::{Layer, LayerKind, LegendEntry, Missing, RasterInfo, ValueEncoding};
+use crate::manifest::{Layer, LayerKind, LegendEntry, Missing, RasterInfo, Source, ValueEncoding};
 use crate::png;
 use crate::tiles::{TILE_SIZE, TileData, TileKey, pixel_lat, pixel_lon, tiles_covering};
 
@@ -574,6 +574,18 @@ pub fn include(
 /// Zooms of the IGN slope map copied into the pack.
 pub const IGN_SLOPES_ZOOMS: (u8, u8) = (11, 15);
 
+/// Source of the IGN slope map tiles: the layer gives no licence in its metadata (it has
+/// none), and the CGU of cartes.gouv.fr then apply the Licence Ouverte (docs/licences/
+/// l2-ign.md, #171).
+pub fn ign_slopes_source() -> Source {
+    source(
+        "IGN, carte des pentes (WMTS GEOGRAPHICALGRIDSYSTEMS.SLOPES.MOUNTAIN, RGE ALTI 5 m)",
+        "https://data.geopf.fr/wmts?LAYER=GEOGRAPHICALGRIDSYSTEMS.SLOPES.MOUNTAIN",
+        "Licence Ouverte 2.0 (Etalab) : couche sans licence renseignée, les CGU de cartes.gouv.fr appliquent alors la Licence Ouverte (« A défaut, la Licence Ouverte / Open Licence – Etalab s'applique »)",
+        "© IGN – carte des pentes",
+    )
+}
+
 /// IGN slope map tiles (WMTS `SLOPES.MOUNTAIN`) of the site box, as served (RGBA PNG).
 pub fn ign_slopes(bbox: BBox, dl: &Downloader, root: &Path) -> Result<Layer> {
     let (minz, maxz) = IGN_SLOPES_ZOOMS;
@@ -597,12 +609,7 @@ pub fn ign_slopes(bbox: BBox, dl: &Downloader, root: &Path) -> Result<Layer> {
             color: hex(c.color),
         })
         .collect();
-    let src = source(
-        "IGN, carte des pentes (WMTS GEOGRAPHICALGRIDSYSTEMS.SLOPES.MOUNTAIN, RGE ALTI 5 m)",
-        "https://data.geopf.fr/wmts?LAYER=GEOGRAPHICALGRIDSYSTEMS.SLOPES.MOUNTAIN",
-        "Licence Ouverte 2.0 (Etalab) ; usage hors ligne à confirmer (features.md n° 5)",
-        "© IGN – carte des pentes",
-    );
+    let src = ign_slopes_source();
     let metadata = json!({
         "name": "Carte des pentes IGN",
         "type": "overlay",
@@ -631,8 +638,8 @@ pub fn ign_slopes(bbox: BBox, dl: &Downloader, root: &Path) -> Result<Layer> {
         valid_from: None,
         valid_until: None,
         validity: Some("relief permanent (RGE ALTI 5 m)".to_owned()),
+        personal_use_only: restricted(std::slice::from_ref(&src)),
         sources: vec![src],
-        personal_use_only: false,
         bytes,
         features: None,
         geometry_types: Vec::new(),

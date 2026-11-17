@@ -807,6 +807,10 @@ pub fn include(spec: &Spec, out: &Path, root: &Path, personal_sources: bool) -> 
             if let Transform::Licence(g) = spec.transform {
                 if let Some(fs) = v.get_mut("features").and_then(Value::as_array_mut) {
                     fs.retain(|f| feature_group(&f["properties"]) == g);
+                    if !g.fits_osm() {
+                        fs.iter_mut()
+                            .for_each(|f| osm_stations_by_key(&mut f["properties"]));
+                    }
                 }
                 if v["features"].as_array().is_none_or(Vec::is_empty) {
                     return Ok(Outcome::Missing(Missing {
@@ -1029,11 +1033,26 @@ pub const UNAUTHORISED_SOURCES: [&str; 7] = [
     "open-meteo",
 ];
 
-/// Whether a source may not go into a published pack: marked `personal_use_only`, or one
-/// of [`UNAUTHORISED_SOURCES`].
+/// Whether a source may not go into a published pack: its licence family is personal
+/// (`skimap_common::licence::of_source`: marked `personal_use_only`, no reuse licence
+/// known, a licence still to confirm, #171), or it is one of [`UNAUTHORISED_SOURCES`].
 pub fn unauthorised(s: &Source) -> bool {
     let name = s.name.to_lowercase();
-    s.personal_use_only || UNAUTHORISED_SOURCES.iter().any(|u| name.contains(u))
+    !licence::of_source(s).public() || UNAUTHORISED_SOURCES.iter().any(|u| name.contains(u))
+}
+
+/// The OSM stations an SRN area cites (`stations[]`), in a file that may not hold OSM
+/// data (CC BY-SA): only their OSM key (`id`), a reference by key that the OSMF
+/// « Collective Database » guideline admits; their name and the figures computed from
+/// their OSM geometry (`area_share`, `km_inside`) are left out (#171).
+pub fn osm_stations_by_key(props: &mut Value) {
+    if let Some(st) = props.get_mut("stations").and_then(Value::as_array_mut) {
+        for s in st.iter_mut() {
+            if let Some(o) = s.as_object_mut() {
+                o.retain(|k, _| k == "id");
+            }
+        }
+    }
 }
 
 /// Whether any of `sources` may not go into a published pack ([`unauthorised`]).
@@ -1370,6 +1389,82 @@ mod tests {
         assert_eq!(personal["srn-areas-personnel"].0, s(&["a-osm-c2c", "a-gt"]));
         assert!(personal["srn-routes-personnel"].2 && !personal["srn-routes"].2);
         assert_eq!(personal["srn-routes"], public["srn-routes"]);
+    }
+
+    /// A source whose licence is still to be checked (« non vérifiée ») keeps its layer
+    /// out of a published pack, even when it is not marked `personal_use_only` (#171):
+    /// the decision is the licence family of `skimap_common::licence`.
+    #[test]
+    fn unverified_licences_stay_out_of_public_packs() {
+        let out = tempfile::tempdir().unwrap();
+        let dir = out.path().join("coverage");
+        std::fs::create_dir_all(&dir).unwrap();
+        let fc = json!({"type": "FeatureCollection", "features": [{"type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [6.0, 46.0]}, "properties": {}}]});
+        std::fs::write(dir.join("no_network.geojson"), fc.to_string()).unwrap();
+        let src = |name: &str, l: &str| json!({"name": name, "url": "https://x", "licence": l, "attribution": name});
+        let write_meta = |l: &str| {
+            let meta = json!({"layer": "coverage", "site": "s", "generated_at": "2026-11-17T00:00:00Z",
+                "sources": [src("ARCEP", "Licence Ouverte (fr-lo)"), src("Contours", l)]});
+            std::fs::write(dir.join("coverage.meta.json"), meta.to_string()).unwrap();
+        };
+        let spec = catalog()
+            .into_iter()
+            .find(|s| s.id == "no-network")
+            .unwrap();
+        let root = tempfile::tempdir().unwrap();
+        write_meta("non vérifiée (F5, #11)");
+        assert!(matches!(
+            include(&spec, out.path(), root.path(), false).unwrap(),
+            Outcome::Missing(_)
+        ));
+        let Outcome::Included(l) = include(&spec, out.path(), root.path(), true).unwrap() else {
+            panic!("personal pack");
+        };
+        assert!(l.personal_use_only);
+        write_meta("ODbL 1.0 (jeu « Contours administratifs »)");
+        let Outcome::Included(l) = include(&spec, out.path(), root.path(), false).unwrap() else {
+            panic!("published pack");
+        };
+        assert!(!l.personal_use_only);
+    }
+
+    /// An SRN area of the CC BY-SA file names no OSM station and carries no figure
+    /// computed from OSM geometry: only the OSM key of the station (reference by key,
+    /// OSMF « Collective Database » guideline); the ODbL file keeps them (#171).
+    #[test]
+    fn cc_by_sa_areas_cite_osm_stations_by_key_only() {
+        let out = tempfile::tempdir().unwrap();
+        let dir = out.path().join("srn");
+        std::fs::create_dir_all(&dir).unwrap();
+        let poly = json!({"type": "Polygon", "coordinates": [[[6.0, 46.0], [6.01, 46.0], [6.01, 46.01], [6.0, 46.0]]]});
+        let station =
+            json!([{"id": "site-1", "name": "Station OSM", "area_share": 0.5, "km_inside": 3.2}]);
+        let area = |id: &str, l: &str| {
+            json!({"type": "Feature", "geometry": poly.clone(),
+                   "properties": {"id": id, "kind": "domaine", "licences": [l], "stations": station.clone()}})
+        };
+        let areas = json!({"type": "FeatureCollection", "features": [
+            area("a-osm", "ODbL 1.0"), area("a-c2c", "CC BY-SA 3.0")]});
+        std::fs::write(dir.join("srn_areas.geojson"), areas.to_string()).unwrap();
+        let meta = json!({"layer": "srn", "site": "s", "generated_at": "2026-11-17T00:00:00Z",
+            "sources": [{"name": "OSM", "url": "https://x", "licence": "ODbL 1.0", "attribution": "OSM"},
+                        {"name": "Camptocamp", "url": "https://x", "licence": "CC BY-SA 3.0", "attribution": "C2C"}]});
+        std::fs::write(dir.join("srn.meta.json"), meta.to_string()).unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let stations = |id: &str| -> Value {
+            let spec = catalog().into_iter().find(|s| s.id == id).unwrap();
+            let Outcome::Included(l) = include(&spec, out.path(), root.path(), false).unwrap()
+            else {
+                panic!("{id}");
+            };
+            let v: Value =
+                serde_json::from_str(&std::fs::read_to_string(root.path().join(&l.file)).unwrap())
+                    .unwrap();
+            v["features"][0]["properties"]["stations"].clone()
+        };
+        assert_eq!(stations("srn-areas"), station);
+        assert_eq!(stations("srn-areas-cc-by-sa"), json!([{"id": "site-1"}]));
     }
 
     #[test]

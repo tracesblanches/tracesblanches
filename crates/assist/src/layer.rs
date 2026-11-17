@@ -564,6 +564,21 @@ pub fn build(site: &Site, layout: &DataLayout, opts: &Options) -> Result<Output>
     })
 }
 
+/// Adds the sources of this run to those of the earlier runs: a source already listed
+/// (same name and URL) takes the terms read now (its licence may have been checked
+/// since, #171), a new one is appended.
+fn merge_sources<'a>(sources: &mut Vec<SourceRef>, run: impl IntoIterator<Item = &'a SourceRef>) {
+    for s in run {
+        match sources
+            .iter_mut()
+            .find(|x| x.url == s.url && x.name == s.name)
+        {
+            Some(x) => *x = s.clone(),
+            None => sources.push(s.clone()),
+        }
+    }
+}
+
 fn write_meta(
     dir: &std::path::Path,
     site: &Site,
@@ -594,11 +609,7 @@ fn write_meta(
             "Toko",
         ),
     ];
-    for s in data.sources.iter().chain(&charts) {
-        if !sources.iter().any(|x| x.url == s.url && x.name == s.name) {
-            sources.push(s.clone());
-        }
-    }
+    merge_sources(&mut sources, data.sources.iter().chain(&charts));
     runs.insert(
         date.to_string(),
         json!({
@@ -668,4 +679,20 @@ fn write_meta(
     }
     .write(dir)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A source of an earlier run whose licence was checked since takes the terms read
+    /// now (#171): the old text « non vérifiée » does not stay in the metadata.
+    #[test]
+    fn sources_of_earlier_runs_take_the_current_terms() {
+        let src = |l: &str| SourceRef::new("geo.api.gouv.fr", "https://geo.api.gouv.fr", l, "x");
+        let other = SourceRef::new("BERA", "https://b", "Licence Ouverte 2.0", "MF");
+        let mut sources = vec![src("non vérifiée (F5, #11)"), other.clone()];
+        merge_sources(&mut sources, &[src("ODbL 1.0")]);
+        assert_eq!(sources, vec![src("ODbL 1.0"), other]);
+    }
 }
