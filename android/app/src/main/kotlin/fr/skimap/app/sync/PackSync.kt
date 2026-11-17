@@ -252,6 +252,8 @@ class PackSyncWorker(
             FranceSyncer(PackSync.http(ctx)).sync(FranceBasemap.dir(ctx))
         } catch (e: IOException) {
             Log.w(TAG, "France basemap not revalidated: $e")
+        } catch (e: SyncException) {
+            Log.w(TAG, "France basemap not installed: $e")
         }
         val catalog = PackSync.catalog(ctx)
         val sites = (catalog.refresh() ?: catalog.cached()).associateBy { it.siteId }

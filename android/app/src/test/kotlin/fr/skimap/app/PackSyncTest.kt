@@ -276,6 +276,24 @@ class PackSyncTest {
         println("France basemap, unchanged: $again")
         assertTrue(again.upToDate)
 
+        // Its own work and the daily update at once (as at the first start): one at a time,
+        // both succeed, the basemap stays whole.
+        publishFrance(FranceFixture.write(tmp.newFolder("pipeline-race"), tiles = "tiles race", build = "20261112.pmtiles"))
+        val errors = java.util.Collections.synchronizedList(mutableListOf<Throwable>())
+        val threads =
+            List(2) {
+                Thread {
+                    try {
+                        FranceSyncer(http()).sync(phone)
+                    } catch (e: Throwable) {
+                        errors += e
+                    }
+                }.apply { start() }
+            }
+        threads.forEach { it.join() }
+        assertEquals(emptyList<Throwable>(), errors.toList())
+        assertEquals("tiles race", File(phone, "france.pmtiles").readText())
+
         publishFrance(FranceFixture.write(tmp.newFolder("pipeline-2"), tiles = "tiles 2", build = "20261117.pmtiles"))
         val next = s.sync(phone)
         println("France basemap, new build: $next")

@@ -73,8 +73,13 @@ class FranceSyncer(
     private val http: HttpSource,
     private val nanoTime: () -> Long = System::nanoTime,
 ) {
-    /** Syncs the France basemap into [dir]. */
-    fun sync(dir: File): FranceReport {
+    /**
+     * Syncs the France basemap into [dir]. One sync at a time in the process: its own work
+     * and the daily update may run together, and share the download directory.
+     */
+    fun sync(dir: File): FranceReport = synchronized(LOCK) { syncAlone(dir) }
+
+    private fun syncAlone(dir: File): FranceReport {
         val t0 = nanoTime()
         dir.mkdirs()
         val etagFile = File(dir.parentFile, "${dir.name}.etag")
@@ -120,6 +125,9 @@ class FranceSyncer(
 
         /** Files of the France basemap on the server, by SHA-256. */
         const val FILES_URL = "/v1/basemap/files/"
+
+        /** Held by a sync of the France basemap (one directory per phone). */
+        private val LOCK = Any()
 
         /** Name of the description in the basemap directory. */
         const val DESCRIPTION = "france.json"
