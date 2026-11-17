@@ -1,7 +1,7 @@
 //! Builds the zones layer of the given sites (all sites by default).
 //!
 //! ```sh
-//! cargo run --release -p skimap-zones --features pipeline --example build_zones -- cervieres
+//! cargo run --release -p skimap-zones --features pipeline --example build_zones -- <site>
 //! ```
 //!
 //! Same as `skimap zones <site>` (several sites at once).

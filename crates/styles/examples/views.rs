@@ -3,7 +3,7 @@
 //! pistes (domain).
 //!
 //! ```sh
-//! cargo run --release -p skimap-styles --example views -- data/out/cervieres/pack
+//! cargo run --release -p skimap-styles --example views -- data/out/<site>/pack
 //! ```
 
 use skimap_common::geom::BBox;

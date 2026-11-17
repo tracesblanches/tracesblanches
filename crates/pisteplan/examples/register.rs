@@ -2,7 +2,7 @@
 //! prints the key figures; in `diag_dir` (a local directory, never the outputs: the
 //! picture is the resort's) it writes the plan with the OSM pistes carried onto it.
 //!
-//! `SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-pisteplan --features pipeline --example register -- /tmp/diag cervieres`
+//! `SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-pisteplan --features pipeline --example register -- /tmp/diag <site>`
 
 use std::path::PathBuf;
 use std::time::Instant;

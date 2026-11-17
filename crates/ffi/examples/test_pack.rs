@@ -1,5 +1,6 @@
 //! Writes the test pack of the Android app (instrumented and JVM tests, Q8 #108):
-//! synthetic pistes, piste status and refuges around Cervières, built by the pack builder
+//! synthetic pistes, piste status and refuges around the first evaluation site (test data,
+//! `skimap_common::site::SITES`), built by the pack builder
 //! of the pipeline (offline, no basemap download), plus what the validated styles of
 //! `styles/` read from a Plan IGN basemap: a synthetic `basemap/plan-ign.pmtiles` (forest,
 //! road and water in the IGN source layers), glyph ranges (empty: no text is drawn) and a
@@ -25,9 +26,9 @@ use skimap_common::download::Downloader;
 use skimap_common::geom::BBox;
 use skimap_common::layout::DataLayout;
 use skimap_common::meta::SourceRef;
-/// Evaluation site of `data/sites.json`, test data.
-static CERVIERES: std::sync::LazyLock<skimap_common::site::Site> =
-    std::sync::LazyLock::new(|| *skimap_common::site::site("cervieres").expect("evaluation site"));
+/// First evaluation site of `data/sites.json` (test data): the box the synthetic data fill.
+static TEST_SITE: std::sync::LazyLock<skimap_common::site::Site> =
+    std::sync::LazyLock::new(|| skimap_common::site::SITES[0]);
 use skimap_pack::build::{BuildOptions, build, list_files};
 use skimap_pack::manifest::{Basemap, MANIFEST_FILE, Manifest};
 use skimap_pack::tiles::tiles_covering;
@@ -61,7 +62,7 @@ pub(crate) fn write_test_pack(out: &Path, variant: u8) -> Res<String> {
     if work.exists() {
         std::fs::remove_dir_all(&work)?;
     }
-    pipeline_outputs(&work.join("out/cervieres"), variant)?;
+    pipeline_outputs(&work.join("out").join(TEST_SITE.id), variant)?;
     let layout = DataLayout::new(&work);
     let dl = Downloader::builder(layout.cache_root())
         .offline(true)
@@ -75,7 +76,7 @@ pub(crate) fn write_test_pack(out: &Path, variant: u8) -> Res<String> {
         personal_sources: true,
         ..BuildOptions::default()
     };
-    let report = build(&CERVIERES, &layout, &dl, &opts)?;
+    let report = build(&TEST_SITE, &layout, &dl, &opts)?;
     let pack = report.pack_dir;
     add_basemap(&pack, VERSIONS[usize::from(variant - 1)])?;
     if out.exists() {
@@ -103,7 +104,7 @@ pub(crate) fn write_test_pack(out: &Path, variant: u8) -> Res<String> {
 /// Trail-pass zones of the test pack (schema of `crates/ffi/src/fees.rs`, no producer in
 /// `main` yet): the site pass over the area and a national pass beyond it.
 fn add_fee_zones(pack: &Path, m: &mut Manifest) -> Res<()> {
-    let b = CERVIERES.bbox;
+    let b = TEST_SITE.bbox;
     let rect = |w: f64, s: f64, e: f64, n: f64| {
         json!({"type": "Polygon",
         "coordinates": [[[w, s], [e, s], [e, n], [w, n], [w, s]]]})
@@ -166,8 +167,8 @@ pub(crate) fn write_voice_pack(out: &Path, lang: &str) -> Res<String> {
         "format_version": skimap_pack::manifest::FORMAT_VERSION,
         "pack_version": VERSIONS[0], "generator": "skimap-ffi test_pack", "generated_at": "2026-11-15T06:00:00Z",
         "site": {"id": format!("test-voice-{lang}"), "name": format!("Pack de test, voix {lang}"), "department": "05",
-                 "bbox": [CERVIERES.bbox.west, CERVIERES.bbox.south, CERVIERES.bbox.east, CERVIERES.bbox.north],
-                 "center": [CERVIERES.commune_center.lon, CERVIERES.commune_center.lat]},
+                 "bbox": [TEST_SITE.bbox.west, TEST_SITE.bbox.south, TEST_SITE.bbox.east, TEST_SITE.bbox.north],
+                 "center": [TEST_SITE.commune_center.lon, TEST_SITE.commune_center.lat]},
         "valid_for": {"until": null, "until_layer": null, "note": "voix"},
         "personal_sources": false, "basemaps": [], "layers": [],
         "voice": {"status": "present", "manifest": "voice/manifest.json", "clips_dir": "voice/clips",
@@ -487,8 +488,8 @@ fn gzip(data: &[u8]) -> Res<Vec<u8>> {
 /// basemap style, adds the basemap to the manifest, sets the version and lists the files
 /// again.
 fn add_basemap(pack: &Path, version: &str) -> Res<()> {
-    let bbox = CERVIERES.bbox;
-    let c = CERVIERES.commune_center;
+    let bbox = TEST_SITE.bbox;
+    let c = TEST_SITE.commune_center;
     let near = BBox::new(c.lat - 0.03, c.lon - 0.04, c.lat + 0.03, c.lon + 0.04);
     let mut coords: Vec<(u8, u32, u32)> = tiles_covering(bbox, 8, 13);
     coords.extend(tiles_covering(near, 14, 14));

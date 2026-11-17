@@ -1,7 +1,7 @@
 //! Prints the inventory of a pack as JSON (exploration while writing styles).
 //!
 //! ```sh
-//! cargo run --release -p skimap-styles --example inventory -- data/out/cervieres/pack
+//! cargo run --release -p skimap-styles --example inventory -- data/out/<site>/pack
 //! ```
 
 use std::path::PathBuf;

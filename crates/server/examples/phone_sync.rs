@@ -2,7 +2,7 @@
 //! and bytes it took. What the app does in Kotlin, with the same pack-crate calls.
 //!
 //! ```sh
-//! cargo run --release -p skimap-server --example phone_sync -- http://127.0.0.1:8080 cervieres /tmp/phone/cervieres
+//! cargo run --release -p skimap-server --example phone_sync -- http://127.0.0.1:8080 <site> /tmp/phone/<site>
 //! ```
 
 use std::path::PathBuf;

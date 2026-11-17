@@ -470,7 +470,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let layout = DataLayout::new(cfg.data_dir);
     let args: Vec<String> = std::env::args().skip(1).collect();
     let ids: Vec<&str> = if args.is_empty() {
-        vec!["cervieres", "chapelle-des-bois"]
+        skimap_common::site::SITES.iter().map(|s| s.id).collect()
     } else {
         args.iter().map(String::as_str).collect()
     };

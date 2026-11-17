@@ -3,7 +3,7 @@
 //!
 //! ```sh
 //! cargo run --release -p skimap-styles --example dump_layer -- \
-//!     data/out/cervieres/pack/basemap/osm.pmtiles pois kind=parking 14
+//!     data/out/<site>/pack/basemap/osm.pmtiles pois kind=parking 14
 //! ```
 
 use skimap_pack::reader::TileArchive;

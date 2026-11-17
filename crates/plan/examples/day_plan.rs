@@ -3,7 +3,7 @@
 //!
 //! ```sh
 //! cargo run --release -p skimap-plan --example day_plan            # both sites
-//! cargo run --release -p skimap-plan --example day_plan -- cervieres
+//! cargo run --release -p skimap-plan --example day_plan -- <site>
 //! ```
 
 use std::time::Instant;

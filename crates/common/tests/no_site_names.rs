@@ -6,10 +6,12 @@
 //! Scanned: `crates/`, `android/*/src/main`, `deploy/`, `styles/`, code and documentation
 //! (`.md`, `.html`: a document measures on « le jeu de test alpin / jurassien », defined
 //! once in `docs/architecture/donnees.md`, and writes `<site>` in its commands). URLs are
-//! not read (a source is cited by its address, which may contain a commune name). Not
-//! scanned: test data (directories `tests`, `fixtures`, `goldens`, `benches`, `oracle`,
-//! `demo`, the Android benchmark module, the trailing `#[cfg(test)] mod … {` of a Rust
-//! file, the evaluation reports of [`REPORTS`]), data tables (directories `data`, the zone
+//! not read (a source is cited by its address, which may contain a commune name). Examples
+//! and oracles are scanned: they take their site as an argument, or the evaluation sites
+//! from the registry (`skimap_common::site::SITES`) when they serve as tests. Not scanned:
+//! test data (directories `tests`, `fixtures`, `goldens`, `benches`, `demo`, the Android
+//! benchmark module, the trailing `#[cfg(test)] mod … {` of a Rust file, the evaluation
+//! reports of [`REPORTS`], the hand-made references of [`GOLDS`]), data tables (directories `data`, the zone
 //! rules, the Android catalogue, the style schema snapshot). Outside the scanned roots:
 //! `docs/tickets.yaml` (ticket history, written when the two evaluation sites were the
 //! scope), `research/` (dated research reports) and the rest of `docs/` (the test sets are
@@ -21,9 +23,7 @@ use std::path::{Path, PathBuf};
 const NAMES: [&str; 3] = ["cervieres", "chapelle-des-bois", "chapelle_des_bois"];
 
 /// Path components that mark test data.
-const TEST_DIRS: [&str; 8] = [
-    "tests", "fixtures", "goldens", "benches", "examples", "oracle", "demo", "target",
-];
+const TEST_DIRS: [&str; 6] = ["tests", "fixtures", "goldens", "benches", "demo", "target"];
 
 /// Data tables (site-specific values belong there), relative to the workspace.
 const DATA_FILES: [&str; 4] = [
@@ -37,6 +37,25 @@ const DATA_FILES: [&str; 4] = [
 /// names their commune (« … – Capanna Mautino ») and on the off-piste routes of the test
 /// sets.
 const REPORTS: [&str; 1] = ["crates/srndiff/docs/relecture.md"];
+
+/// Examples that are evaluations against hand-made references on the test sets: the value
+/// is the reference itself (a place, a piste, an OSM way or a route of that site), not a
+/// choice of site.
+const GOLDS: [&str; 7] = [
+    // Off-piste bench cases: endpoints chosen on the map of each test set.
+    "crates/core/examples/offpiste_bench.rs",
+    // Route and matching benches: hut destinations of each test set.
+    "crates/core/examples/common/mod.rs",
+    // Census checks: OSM ways and figures of research reports 02, 04 and 07.
+    "crates/osm/examples/domaines.rs",
+    "crates/osm/examples/pistes.rs",
+    // OCR read rate: labels of one official plan read by hand.
+    "crates/pisteplan/examples/ocr_gold.rs",
+    // SR1 review list: published itineraries and the off-piste routes of the test sets.
+    "crates/srndiff/examples/srndiff.rs",
+    // Voice samples: piste and place names of each test pack.
+    "crates/voice/examples/voice_pack.rs",
+];
 
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -73,6 +92,7 @@ fn fold(line: &str) -> String {
 fn scanned(rel: &Path) -> bool {
     let s = rel.to_string_lossy().replace('\\', "/");
     if REPORTS.contains(&s.as_str())
+        || GOLDS.contains(&s.as_str())
         || DATA_FILES
             .iter()
             .any(|d| s == *d || s.starts_with(&format!("{d}/")))
@@ -173,6 +193,10 @@ fn the_guard_sees_a_site_name() {
     assert!(scanned(Path::new("crates/x/README.md")));
     assert!(scanned(Path::new("crates/x/docs/a.html")));
     assert!(!scanned(Path::new("crates/srndiff/docs/relecture.md")));
+    // Examples and oracles are scanned, the hand-made references are not.
+    assert!(scanned(Path::new("crates/x/examples/a.rs")));
+    assert!(scanned(Path::new("crates/x/oracle/a.py")));
+    assert!(!scanned(Path::new("crates/osm/examples/pistes.rs")));
     let doc =
         "| Cervières | [PDF](https://x.fr/Cervieres.pdf) |\n[PDF](https://x.fr/Cervieres.pdf)\n";
     let found = offending(Path::new("a.md"), doc);
