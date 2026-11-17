@@ -39,10 +39,20 @@ impl Ctx {
 
     /// P2: pistes layer (reads the planet extract unless given).
     pub fn pistes(&self, site: &Site, planet: Option<&Planet>) -> Result<PistesOutput> {
-        Ok(match planet {
-            Some(p) => skimap_osm::extract::build_from(site, &self.layout, p)?,
-            None => skimap_osm::extract::build(site, &self.layout, &self.dl)?,
-        })
+        let loaded;
+        let p = match planet {
+            Some(p) => p,
+            None => {
+                loaded = skimap_osm::extract::load_planet(&self.dl)?;
+                &loaded
+            }
+        };
+        Ok(skimap_osm::extract::build_from_with(
+            site,
+            &self.layout,
+            p,
+            self.cfg.personal_sources,
+        )?)
     }
 
     /// P3: census of France, `data/out/france/domaines/`.
