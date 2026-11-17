@@ -19,6 +19,7 @@
 
 pub mod catalogue;
 pub mod contacts;
+pub mod departs;
 pub mod domains;
 pub mod error;
 pub mod fiche;

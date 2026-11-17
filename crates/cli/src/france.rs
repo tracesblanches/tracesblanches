@@ -383,6 +383,7 @@ fn census_records(features: &[Value], massifs: &[Massif]) -> Result<Vec<SiteReco
             km_routes: None,
             sections: Vec::new(),
             local: None,
+            starts: Vec::new(),
         };
         add_sections(&mut out, rec, sections, &polys, massifs);
     }
@@ -438,10 +439,62 @@ fn srn_records(features: &[Value], massifs: &[Massif]) -> Result<Vec<SiteRecord>
             km_routes: p["km_routes"].as_f64(),
             sections: Vec::new(),
             local: None,
+            starts: Vec::new(),
         };
         add_sections(&mut out, rec, sections, &polys, massifs);
     }
     Ok(out)
+}
+
+/// Sets the trail starts of the census sites from `stations/departs.json` (X9) when it
+/// exists: a site takes the starts of its census domain, a section those inside its box
+/// (the parent's main one if none). Returns the number of sites with starts.
+pub fn apply_departs(layout: &DataLayout, records: &mut [SiteRecord]) -> Result<usize> {
+    let path = layout
+        .france_layer_dir(skimap_stations::LAYER)?
+        .join(skimap_stations::departs::FILE);
+    if !path.is_file() {
+        return Ok(0);
+    }
+    let file = skimap_stations::departs::DepartsFile::read(&path)?;
+    let mut n = 0;
+    for r in records.iter_mut() {
+        let Some(list) = r.census_id.as_ref().and_then(|c| file.domains.get(c)) else {
+            continue;
+        };
+        let mut starts: Vec<site::Start> = list.iter().map(|d| d.start.clone()).collect();
+        if r.parent.is_some() {
+            let inside: Vec<site::Start> = starts
+                .iter()
+                .filter(|s| r.bbox.contains(s.position()))
+                .cloned()
+                .collect();
+            if !inside.is_empty() {
+                starts = inside;
+            } else {
+                starts.truncate(1);
+            }
+        }
+        r.starts = starts;
+        n += usize::from(!r.starts.is_empty());
+    }
+    Ok(n)
+}
+
+/// Rewrites the registry file with the starts of `stations/departs.json` (X9), after the
+/// stations layer ran; no registry: nothing to do.
+pub fn refresh_registry_starts(layout: &DataLayout) -> Result<usize> {
+    let path = Registry::path(layout)?;
+    if !path.is_file() {
+        return Ok(0);
+    }
+    let body = std::fs::read(&path).with_context(|| format!("{}", path.display()))?;
+    let mut file: RegistryFile =
+        serde_json::from_slice(&body).with_context(|| format!("{}", path.display()))?;
+    let n = apply_departs(layout, &mut file.sites)?;
+    Registry::from_records(file.sites.clone())?;
+    Registry::write(&path, &file)?;
+    Ok(n)
 }
 
 fn read_features(path: &Path) -> Result<Vec<Value>> {
@@ -471,6 +524,8 @@ pub struct RegistrySummary {
     pub with_bera: usize,
     /// Sites with a usable trail status source (Nordic France widget or ENJ city).
     pub with_status_source: usize,
+    /// Sites with trail starts found by the stations layer (X9).
+    pub with_starts: usize,
 }
 
 /// Builds the registry from the census (`data/out/france/domaines/domaines.geojson`), the
@@ -492,6 +547,7 @@ pub fn build_registry(ctx: &Ctx) -> Result<RegistrySummary> {
         extra = e.iter().filter(|r| r.parent.is_none()).count();
         records.extend(e);
     }
+    let with_starts = apply_departs(&ctx.layout, &mut records)?;
     let registry = Registry::from_records(records.clone())?;
     let path = Registry::path(&ctx.layout)?;
     let dir = path.parent().expect("registry dir").to_owned();
@@ -552,6 +608,7 @@ pub fn build_registry(ctx: &Ctx) -> Result<RegistrySummary> {
             .iter()
             .filter(|r| r.status.nordicfrance_station.is_some() || r.status.enj_city.is_some())
             .count(),
+        with_starts,
     })
 }
 

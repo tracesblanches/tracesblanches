@@ -139,6 +139,9 @@ pub struct Site {
     pub parent: Option<&'static str>,
     /// Trail status sources.
     pub status: StatusSources,
+    /// Trail starts found by the pipeline (X9, `data/out/france/stations/departs.json`),
+    /// main first; empty when not computed.
+    pub starts: &'static [Start],
 }
 
 impl Site {
@@ -245,6 +248,10 @@ pub struct SiteRecord {
     /// Local data (evaluation table only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub local: Option<LocalData>,
+    /// Trail starts found by the pipeline for every census domain (X9,
+    /// `data/out/france/stations/departs.json`), main first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub starts: Vec<Start>,
 }
 
 fn leak(s: &str) -> &'static str {
@@ -280,6 +287,7 @@ impl SiteRecord {
                 nordicfrance_station: self.status.nordicfrance_station,
                 town_hall_page: self.status.town_hall_page.as_deref().map(leak),
             },
+            starts: Box::leak(self.starts.clone().into_boxed_slice()),
         }
     }
 
@@ -526,11 +534,13 @@ pub fn local(site_id: &str) -> Option<&'static LocalData> {
         .and_then(|r| r.local.as_ref())
 }
 
-/// Start points of a site: those of the table, or else one at the site centre (the
-/// representative point of a census domain, on its network).
+/// Start points of a site: those of the evaluation table, else those the pipeline found
+/// (X9, [`Site::starts`]), or else one at the site centre (the representative point of a
+/// census domain, on its network).
 pub fn starts(site: &Site) -> Vec<Start> {
     match local(site.id) {
         Some(l) if !l.starts.is_empty() => l.starts.clone(),
+        _ if !site.starts.is_empty() => site.starts.to_vec(),
         _ => vec![Start {
             id: "centre".into(),
             name: format!("Centre du domaine {}", site.name),
