@@ -55,7 +55,7 @@ Lues dans `data/out/<site>/` avec leurs `<couche>.meta.json` (schéma `common::m
 | `no-network`, `coverage-area` | `coverage/` | |
 | `avalanche-areas`, `avalanche-crossings`, `avalanche-summary` | `avalanche-historic/` | vides sur le jeu de test jurassien (pas de CLPA) |
 | `bera` | `bera/` | |
-| `refuges-info`, `refuges-osm`, `refuges-camptocamp`, `refuges-links` | `refuges/` | trois fichiers, pas de fusion (licences, L3) |
+| `refuges-info`, `refuges-osm`, `refuges-camptocamp`, `refuges-links` | `refuges/` | trois fichiers, pas de fusion (licences, L3) ; `refuges-info` et `refuges-osm` portent `plan_refuge` (refuges du plan de la journée, même refuge dans les deux sources gardé une fois, X21), lu tel quel par le téléphone |
 | `status`, `status-summary` | `status/` | usage personnel : seulement avec `personal_sources` |
 | `meteo-hourly` | `meteo-hourly/` | usage personnel |
 | `routes`, `route-offpiste-*`, `piste-graph` | `routes/` | itinéraires de preuve (C1, C3, C5), graphe de pistes typé du noyau |
