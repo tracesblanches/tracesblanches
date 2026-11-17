@@ -24,16 +24,19 @@ La base n'est reconstruite que quand le paquet depuis la base dépasse un dixiè
 ## Paquet (`.skb`)
 
 ```text
-"SKMPBND1"                  8 octets
+"SKMPBND2"                  8 octets
 longueur de l'en-tête       u64 petit-boutiste
-en-tête                     l'Update en JSON compact
+en-tête                     l'Update en JSON compact, compressé gzip
 manifeste                   gzip (longueur : manifest_gzip_bytes), sauf si à jour
-blobs de fetch[]            tels quels, dans l'ordre, longueurs de fetch[].bytes
+blobs de fetch[]            dans l'ordre : gzip si fetch[].gzip_bytes est présent (sa longueur),
+                            sinon tels quels (longueur fetch[].bytes)
 ```
 
-`Update` (`update::Update`, format `skimap-pack-update` version 1) : `site`, `from_version` (nul : depuis rien), `to_version`, `manifest` (empreinte et taille du `manifest.json` décompressé), `fetch` (contenus absents de la version de départ, chacun une fois, avec les chemins qui les utilisent), `fetch_bytes`, `reused_files`, `removed`, `files`, `total_bytes`, `valid_for`, `changes`, `manifest_gzip_bytes`.
+`Update` (`update::Update`, format `skimap-pack-update` version 2) : `site`, `from_version` (nul : depuis rien), `to_version`, `manifest` (empreinte et taille du `manifest.json` décompressé), `fetch` (contenus absents de la version de départ, chacun une fois, avec les chemins qui les utilisent ; `gzip_bytes` quand le blob est stocké compressé), `fetch_bytes` (contenus décompressés), `reused_files`, `removed`, `files`, `total_bytes`, `valid_for`, `changes`, `manifest_gzip_bytes`.
 
-Seul le manifeste est compressé (≈ 60 ko au lieu de 280 ko sur le jeu de test alpin) : les gros fichiers le sont déjà (PMTiles, SKR gzip, Opus). Le téléphone n'a rien à décompresser d'autre et lit chaque blob directement dans le paquet, sans le déballer d'abord.
+Un paquet est servi en binaire : ni Cloudflare ni le serveur ne le compressent en transit. Le paquet compresse donc lui-même (gzip niveau maximal, sans nom ni date : même entrée, mêmes octets) l'en-tête, le manifeste et chaque blob texte (`update::compressible` : chemins en `.json`, `.geojson`, `.tsv`, `.txt`, `.csv` et les glyphes `.pbf`) quand il en sort plus petit ; les gros fichiers déjà compressés partent tels quels (PMTiles, SKR gzip, PNG, Opus). Le téléphone décompresse chaque blob en l'installant et vérifie la taille et le SHA-256 du contenu décompressé (jamais plus d'octets que la taille annoncée) ; le pack installé est identique à celui du serveur.
+
+Compatibilité : un paquet de format 1 (magie `SKMPBND1`, en-tête JSON en clair, aucun blob compressé) s'installe toujours. Une app antérieure au format 2 refuse proprement un paquet `SKMPBND2` (« not a skimap bundle ») et garde son pack : il faut mettre l'app à jour.
 
 ## Synchronisation (ce que fait l'app)
 
@@ -58,3 +61,21 @@ Publication de deux jours de neige consécutifs (simulation du 13/11 puis du 14/
 | Pack installé identique à celui du pipeline | oui (969 fichiers, SHA-256) | oui (1 208 fichiers) |
 
 L'index est servi en JSON (14 ko) ; Cloudflare le compresse en transit. Tests : `tests/update.rs` (premier téléchargement, delta, réutilisation par contenu, doublons, blob corrompu, échange interrompu, paquet tronqué, contenus manquants), `src/sync.rs` (plans), `crates/server/tests/packs.rs` (de bout en bout en HTTP).
+
+## Mesures du format 2 (17/11/2026, sorties réelles, sans sources à usage personnel, #160)
+
+Huit sites de huit massifs (Haute-Maurienne, Briançonnais, Aravis, Vercors, Pyrénées, Cantal, Vosges, Jura), copie de travail des sorties du 15/11, trois runs AROME successifs rejoués (`SKIMAP_AROME_RUN` : 16/11 09 h UTC, 17/11 03 h, 17/11 09 h), `build-all --stale` puis `skimap-server publish` après chaque run, même procédure avant (main 541306e) et après :
+
+| Site | Par run (03 h → 09 h) avant | après | Quotidien (J-1 09 h → J 09 h) avant | après | Premier téléchargement avant | après |
+|---|---|---|---|---|---|---|
+| bessans | 1 425 566 | 79 705 | 1 898 033 | 489 776 | 27,77 Mo | 24,71 Mo |
+| domaine-nordique-de-nevache | 1 436 249 | 82 671 | 2 224 892 | 747 245 | 41,20 Mo | 37,77 Mo |
+| le-grand-bornand | 1 392 206 | 74 007 | 1 603 741 | 224 797 | 21,54 Mo | 18,99 Mo |
+| autrans | 1 053 786 | 82 760 | 1 262 209 | 152 148 | 34,54 Mo | 30,58 Mo |
+| font-romeu-odeillo-via | 1 334 878 | 65 865 | 1 435 646 | 96 236 | 16,59 Mo | 14,26 Mo |
+| le-lioran | 570 000 | 55 326 | 676 567 | 100 835 | 12,81 Mo | 10,77 Mo |
+| gerardmer | 1 448 029 | 82 442 | 1 651 602 | 131 238 | 43,79 Mo | 39,29 Mo |
+| les-rousses | 1 463 694 | 79 012 | 1 683 088 | 130 015 | 24,69 Mo | 20,37 Mo |
+| **8 packs** | **10,12 Mo** | **0,60 Mo** | **12,44 Mo** | **2,07 Mo** | **222,9 Mo** | **196,7 Mo** |
+
+Octets du paquet (`.skb`) servi au téléphone. Un paquet par run (Briançonnais, 82,7 ko) : en-tête 2,6 ko, manifeste 25,0 ko, briefing de l'assistant 14,8 ko (275 ko décompressé), boucles suggérées 11,8 ko, qualité de neige 11,0 ko, `pack.meta.json` 6,6 ko, météo heure par heure 5,0 ko (90 ko), métadonnées 5,4 ko. Le paquet quotidien y ajoute la neige du jour (PMTiles déjà compressés : 590 ko sur ce site, 365 ko à Bessans), seule part au-dessus de 200 ko. Synchronisation de bout en bout en HTTP (`examples/phone_sync`, serveur local) : base puis paquet quotidien, pack installé identique à l'octet à celui du pipeline sur les huit sites, puis 304.
