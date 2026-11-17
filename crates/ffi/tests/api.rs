@@ -906,3 +906,28 @@ fn france_basemap_under_the_packs() {
     let old = open_packs(dirs, style_json("srn-clair"), true, Lang::Fr).unwrap();
     assert_eq!(old.style.json, broken.style.json);
 }
+
+/// The bearing targets come from the refuge layers every pack holds (`refuges-info`,
+/// `refuges-osm`, flagged for the plan, X21), not from the merged sheets most packs lack
+/// (#162): the huts of the plan, a hut of both sources once, a water point or a bus
+/// shelter never.
+#[test]
+fn fog_targets_offer_the_refuges_of_every_pack() {
+    let tmp = tempfile::tempdir().unwrap();
+    test_pack(tmp.path(), 1);
+    let pack = Pack::open(tmp.path()).unwrap();
+    assert!(
+        pack.layer("refuges").is_err(),
+        "no merged sheets in this pack"
+    );
+    let targets =
+        skimap_ffi::fog::fog_targets(tmp.path().display().to_string(), None, None, Lang::Fr, 0)
+            .unwrap();
+    let mut refuges: Vec<&str> = targets
+        .iter()
+        .filter(|t| t.kind == "refuge")
+        .map(|t| t.name.as_str())
+        .collect();
+    refuges.sort_unstable();
+    assert_eq!(refuges, ["Abri OSM", "Cabane du test", "Refuge du test"]);
+}
