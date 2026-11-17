@@ -137,6 +137,14 @@ const EN: &[(&str, &str)] = &[
     ("Tarif", "Price"),
     ("Station", "Ski area"),
     ("Voir le plan officiel", "See the official trail map"),
+    (
+        "© les contributeurs d'OpenStreetMap (ODbL)",
+        "© OpenStreetMap contributors (ODbL)",
+    ),
+    (
+        "© les contributeurs de Camptocamp.org (CC BY-SA 3.0)",
+        "© Camptocamp.org contributors (CC BY-SA 3.0)",
+    ),
 ];
 
 /// `fr` in `lang`.
@@ -378,7 +386,7 @@ fn refuges_osm(p: &Map<String, Value>, l: Lang) -> Card {
         facts,
         phones,
         links,
-        source: "© les contributeurs d'OpenStreetMap (ODbL)".to_owned(),
+        source: t(l, "© les contributeurs d'OpenStreetMap (ODbL)").to_owned(),
         updated: None,
     }
 }
@@ -450,7 +458,7 @@ fn camptocamp(p: &Map<String, Value>, l: Lang) -> Card {
         facts,
         phones: Vec::new(),
         links,
-        source: "© les contributeurs de Camptocamp.org (CC BY-SA 3.0)".to_owned(),
+        source: t(l, "© les contributeurs de Camptocamp.org (CC BY-SA 3.0)").to_owned(),
         updated: None,
     }
 }

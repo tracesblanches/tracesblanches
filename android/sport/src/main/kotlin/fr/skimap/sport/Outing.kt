@@ -7,6 +7,7 @@ import org.xmlpull.v1.XmlPullParser
 import java.io.File
 import java.io.StringReader
 import java.time.Instant
+import java.util.Locale
 
 /** Strava's sport type of the outing (`sport_type` of the API) and Health Connect's. */
 enum class SportType(
@@ -68,6 +69,7 @@ data class Outing(
             recap: String?,
             distanceKm: Double,
             sport: SportType,
+            french: Boolean = Locale.getDefault().language == "fr",
         ): Outing {
             val track = Gpx.read(File(gpx).readText())
             require(track.points.size >= 2) { "trace without two points: $gpx" }
@@ -78,7 +80,7 @@ data class Outing(
                 id = "${File(planDir).name}-${track.startMs}",
                 gpx = gpx,
                 name = name,
-                description = Description.of(recap, conditions),
+                description = Description.of(recap, conditions, french),
                 sport = sport,
                 startMs = track.startMs,
                 endMs = track.endMs,
@@ -88,18 +90,27 @@ data class Outing(
     }
 }
 
-/** The description sent with the outing: the recap, the conditions of the morning, the app. */
+/**
+ * The description sent with the outing: the recap, the conditions of the morning, the app;
+ * in French on a French phone, in English otherwise (the recap and the conditions come from
+ * the core in the same language).
+ */
 object Description {
     const val SIGNATURE = "Sortie guidée par skimap (cartes IGN, OpenStreetMap)."
+    const val SIGNATURE_EN = "Outing guided by skimap (IGN maps, OpenStreetMap)."
+
+    /** The line of the app in French or English. */
+    fun signature(french: Boolean): String = if (french) SIGNATURE else SIGNATURE_EN
 
     fun of(
         recap: String?,
         conditions: List<String>,
+        french: Boolean,
     ): String =
         buildList {
             recap?.trim()?.takeIf { it.isNotEmpty() }?.let(::add)
-            if (conditions.isNotEmpty()) add("Conditions : " + conditions.joinToString(" "))
-            add(SIGNATURE)
+            if (conditions.isNotEmpty()) add((if (french) "Conditions : " else "Conditions: ") + conditions.joinToString(" "))
+            add(signature(french))
         }.joinToString("\n\n")
 }
 

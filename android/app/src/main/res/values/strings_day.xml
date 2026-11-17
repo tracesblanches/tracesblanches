@@ -26,6 +26,7 @@
     <string name="day_cancel">Cancel</string>
     <string name="day_briefing">The day</string>
     <string name="day_briefing_more">Full briefing</string>
+    <string name="day_no_pack">No area pack on this phone.</string>
     <string name="day_best_time">Best time</string>
     <string name="day_wax">Wax</string>
     <string name="day_loops">Proposed loops</string>

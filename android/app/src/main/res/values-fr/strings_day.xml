@@ -26,6 +26,7 @@
     <string name="day_cancel">Annuler</string>
     <string name="day_briefing">Le jour</string>
     <string name="day_briefing_more">Tout le briefing</string>
+    <string name="day_no_pack">Aucun pack de domaine sur ce téléphone.</string>
     <string name="day_best_time">Meilleur moment</string>
     <string name="day_wax">Fartage</string>
     <string name="day_loops">Boucles proposées</string>

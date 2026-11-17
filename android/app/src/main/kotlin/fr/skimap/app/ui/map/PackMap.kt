@@ -22,6 +22,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import fr.skimap.app.appLang
 import fr.skimap.app.data.CameraSpot
 import fr.skimap.app.data.OpenedPack
 import fr.skimap.app.group.GroupMembersOnMap
@@ -327,7 +328,7 @@ private fun firstBounds(opened: OpenedPack): Bounds? = opened.packBounds.firstOr
 fun styleName(opened: OpenedPack): String = opened.style.name
 
 /** Language of the cards: French on a French phone, English otherwise (VO6). */
-fun cardLang(locale: java.util.Locale): Lang = if (locale.language == "fr") Lang.FR else Lang.EN
+fun cardLang(locale: java.util.Locale): Lang = appLang(locale)
 
 /** Time from `setStyle` to the first fully rendered frame of that style. */
 private class RenderTimer {

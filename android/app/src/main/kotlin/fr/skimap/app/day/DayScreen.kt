@@ -41,6 +41,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -56,7 +57,6 @@ import fr.skimap.core.GroupView
 import fr.skimap.core.LoopView
 import fr.skimap.core.MorningView
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 /** Test tags of the morning screen. */
 object DayTags {
@@ -168,8 +168,8 @@ internal fun DayHeader(state: DayUi.Ready) {
         )
         Text(
             state.inputs.date
-                .format(DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.FRANCE))
-                .replaceFirstChar { it.titlecase(Locale.FRANCE) },
+                .format(DateTimeFormatter.ofPattern("EEEE d MMMM", LocalConfiguration.current.locales[0]))
+                .replaceFirstChar { it.titlecase(LocalConfiguration.current.locales[0]) },
             style = MaterialTheme.typography.bodyMedium,
         )
     }

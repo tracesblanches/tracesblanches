@@ -18,6 +18,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import fr.skimap.app.guidance.SkiTrackingService
 import fr.skimap.core.DayRequest
+import fr.skimap.core.Lang
 import fr.skimap.core.dayStarts
 import fr.skimap.core.openDayPlanner
 import fr.skimap.tracking.Tracking
@@ -81,7 +82,7 @@ class TrackingEnergyTest {
         }
         shell("appops set ${target.packageName} android:mock_location allow")
         // Today's plan, starting now (the morning on the phone).
-        val planner = openDayPlanner(pack.absolutePath, File(target.filesDir, "packview").absolutePath)
+        val planner = openDayPlanner(pack.absolutePath, File(target.filesDir, "packview").absolutePath, Lang.FR)
         val now = LocalTime.now()
         val req =
             DayRequest(

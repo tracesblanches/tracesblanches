@@ -27,6 +27,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -140,7 +141,7 @@ fun PlanScreen(
 }
 
 private fun keyPointText(k: KeyPointView): String =
-    "${k.at} · " + "%.1f km".format(Locale.FRANCE, k.km) + " · ${k.kind}" + (k.name?.let { " · $it" } ?: "")
+    "${k.at} · " + "%.1f km".format(Locale.getDefault(), k.km) + " · ${k.kind}" + (k.name?.let { " · $it" } ?: "")
 
 @Composable
 private fun StopDialog(
@@ -161,7 +162,8 @@ private fun PlanSummary(plan: DayPlanView) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(stringResource(R.string.plan_departure, plan.departure, plan.startName), style = MaterialTheme.typography.bodyLarge)
             Text(
-                "%.1f km · ".format(Locale.FRANCE, plan.lengthKm) + stringResource(R.string.plan_back, plan.expectedBack),
+                "%.1f km · ".format(LocalConfiguration.current.locales[0], plan.lengthKm) +
+                    stringResource(R.string.plan_back, plan.expectedBack),
                 style = MaterialTheme.typography.bodyLarge,
             )
             plan.limit?.let { Text(stringResource(R.string.plan_limit, it), style = MaterialTheme.typography.bodyLarge) }

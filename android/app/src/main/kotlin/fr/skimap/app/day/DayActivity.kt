@@ -234,8 +234,8 @@ private fun DayRoot(vm: DayViewModel) {
             DayMessage(null)
         }
 
-        is DayUi.Unavailable -> {
-            DayMessage(s.message)
+        DayUi.Unavailable -> {
+            DayMessage(stringResource(R.string.day_no_pack))
         }
 
         is DayUi.Ready -> {

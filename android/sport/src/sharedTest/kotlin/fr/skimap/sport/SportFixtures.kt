@@ -60,6 +60,6 @@ object SportFixtures {
         name: String = "2026-01-15-chaumoz",
     ): Outing {
         val gpx = outingDir(root, name)
-        return Outing.of(gpx.parent, gpx.path, "Sortie terminée. 6,2 km en 1 h 10.", 6.2, sport)
+        return Outing.of(gpx.parent, gpx.path, "Sortie terminée. 6,2 km en 1 h 10.", 6.2, sport, french = true)
     }
 }

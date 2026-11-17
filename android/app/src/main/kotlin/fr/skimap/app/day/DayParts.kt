@@ -39,6 +39,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -54,7 +55,6 @@ import fr.skimap.core.GroupView
 import fr.skimap.core.LoopView
 import fr.skimap.core.MorningView
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 private val DURATIONS = listOf(60, 90, 120, 180, 240)
 private val RETURNS = listOf(null, "15:00", "16:00", "17:00")
@@ -109,7 +109,11 @@ internal fun Inputs(
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         ChoiceRow(stringResource(R.string.day_start)) {
             state.starts.forEach { s: DayStart ->
-                Choice(s.name.replaceFirstChar { it.titlecase(Locale.FRANCE) }, i.start == s, { actions.setInputs { it.copy(start = s) } })
+                Choice(
+                    s.name.replaceFirstChar { it.titlecase(LocalConfiguration.current.locales[0]) },
+                    i.start == s,
+                    { actions.setInputs { it.copy(start = s) } },
+                )
             }
         }
         ChoiceRow(stringResource(R.string.day_duration)) {
@@ -155,9 +159,10 @@ internal fun MorningCards(m: MorningView) {
     var all by rememberSaveable { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Card(stringResource(R.string.day_briefing)) {
-            // The first line repeats the site and date shown above.
+            // The first line repeats the site and date shown above; the core gives the
+            // lines shown first (snow quality, sunset).
             val lines = m.briefing.drop(1)
-            val shown = if (all) lines else lines.filter { it.startsWith("Coucher") || it.startsWith("Qualité") }.take(2)
+            val shown = if (all) lines else m.briefingShort.take(BRIEFING_SHOWN)
             shown.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
             if (!all && lines.isNotEmpty()) {
                 TextButton(onClick = { all = true }, modifier = Modifier.heightIn(min = 48.dp)) {
@@ -195,7 +200,11 @@ internal fun LoopCard(
                     Text(stringResource(R.string.day_if_all_goes_well), style = MaterialTheme.typography.labelMedium)
                 }
                 Text(
-                    stringResource(R.string.day_loop_stats, "%.1f".format(Locale.FRANCE, l.lengthKm), l.gainM.toInt()),
+                    stringResource(
+                        R.string.day_loop_stats,
+                        "%.1f".format(LocalConfiguration.current.locales[0], l.lengthKm),
+                        l.gainM.toInt(),
+                    ),
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Text("${l.timeText} · ${l.backText}", style = MaterialTheme.typography.bodyMedium)
@@ -211,8 +220,8 @@ internal fun LoopCard(
                     Text(
                         stringResource(
                             R.string.day_loop_status,
-                            "%.1f".format(Locale.FRANCE, l.statusKm[0]),
-                            "%.1f".format(Locale.FRANCE, l.statusKm[1]),
+                            "%.1f".format(LocalConfiguration.current.locales[0], l.statusKm[0]),
+                            "%.1f".format(LocalConfiguration.current.locales[0], l.statusKm[1]),
                         ),
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -234,4 +243,5 @@ internal fun LoopCard(
 }
 
 private const val REASONS_SHOWN = 4
+private const val BRIEFING_SHOWN = 2
 private const val STATUS_PARTS = 3

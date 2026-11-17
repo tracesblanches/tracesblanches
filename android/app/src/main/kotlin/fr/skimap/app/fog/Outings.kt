@@ -2,6 +2,7 @@ package fr.skimap.app.fog
 
 import android.content.Context
 import fr.skimap.app.MainActivity
+import fr.skimap.app.appLang
 import fr.skimap.app.day.DayStore
 import fr.skimap.core.Lang
 import java.io.File
@@ -45,5 +46,5 @@ object Outings {
     fun workDir(context: Context): File = File(context.filesDir, "packview")
 
     /** Language of the texts said: French on a French phone, English otherwise. */
-    fun lang(): Lang = if (Locale.getDefault().language == "fr") Lang.FR else Lang.EN
+    fun lang(): Lang = appLang()
 }

@@ -1,6 +1,7 @@
 package fr.skimap.app.community
 
 import android.content.Context
+import fr.skimap.app.appLang
 import fr.skimap.app.day.DayStore
 import fr.skimap.core.GroupView
 import fr.skimap.core.groupLearn
@@ -30,7 +31,7 @@ class DayStoreLearning(
         var g = solo() ?: return 0
         var n = 0
         for (f in observations) {
-            g = runCatching { groupLearn(g.modelJson, f.readText()) }.getOrNull() ?: continue
+            g = runCatching { groupLearn(g.modelJson, f.readText(), appLang()) }.getOrNull() ?: continue
             n++
         }
         if (n > 0) store.putGroup(g)

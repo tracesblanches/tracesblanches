@@ -89,6 +89,10 @@ object DayFixtures {
                 "Qualité de neige (depart-des-pistes) : Au plat (1087 m) : neige humide et lourde entre 10 h et 15 h.",
                 "Coucher du soleil 17 h 02.",
             ),
+            listOf(
+                "Qualité de neige (depart-des-pistes) : Au plat (1087 m) : neige humide et lourde entre 10 h et 15 h.",
+                "Coucher du soleil 17 h 02.",
+            ),
             "Meilleur départ vers 12 h 30 (retour vers 16 h 06) : neige humide et lourde puis transformée.",
             "Matin 9 h–12 h, air +5 °C, neige ≈ 0 °C, neige mouillée : classique, retenue incertaine, skis à écailles conseillés.",
             loops,
@@ -96,6 +100,56 @@ object DayFixtures {
             "2 adultes, enfants de 10 et 14 ans",
             "Ce plan n'est jamais une garantie : informations indicatives, lisez le BERA et les sources officielles, et décidez sur place.",
             191u,
+        )
+
+    /** The groups on a phone in English. */
+    val groupsEn =
+        listOf(
+            group("Family with beginner children", "2 adults, children of 10 and 14").copy(learned = "prior, no outing learned"),
+            group("Solo", "1 adult").copy(learned = "prior, no outing learned"),
+        )
+
+    /** The same morning on a phone in English: the core's English texts (VO6). */
+    val loopsEn =
+        listOf(
+            loops[0].copy(
+                timeText = "2 h 35 to 6 h 10",
+                backText = "median 3 h 40, planned on 4 h 50 (slow side), back around 14:50",
+                reasons = listOf("10.1 km on open trails", "surface: transformed snow softening (corn)", "light wind (gusts 15 km/h)"),
+                equipment = listOf("Waxless skis — uncertain grip on transformed snow", "Headlamp — back close to sunset"),
+            ),
+            loops[1].copy(
+                timeText = "4 h 10 to 9 h 50",
+                backText = "back between 14:10 and 19:50",
+                warning = "Expected back after the limit of 16:00: a long loop for this group",
+                reasons = listOf("12.5 km on open trails"),
+            ),
+        )
+
+    val morningEn =
+        morning.copy(
+            startTime = "10:00",
+            briefing =
+                listOf(
+                    "Chapelle-des-Bois — Monday 16 November 2026",
+                    "Areas:",
+                    "1. Site nordique de Morbier (score -3.37): 1 route open out of 3 (5 km out of 20).",
+                    "Snow quality (depart-des-pistes): On the flat (1087 m): wet heavy snow between 10:00 and 15:00.",
+                    "Sunset 17:02.",
+                ),
+            briefingShort =
+                listOf(
+                    "Snow quality (depart-des-pistes): On the flat (1087 m): wet heavy snow between 10:00 and 15:00.",
+                    "Sunset 17:02.",
+                ),
+            bestTime = "Best start around 12:30 (back around 16:06): wet heavy snow, then transformed.",
+            wax = "Morning 9:00–12:00, air +5 °C, snow ≈ 0 °C, wet snow: classic, uncertain grip, waxless skis advised.",
+            loops = loopsEn,
+            notes = listOf("snow map: not in the pack"),
+            group = "2 adults, children of 10 and 14",
+            neverSafe =
+                "This plan is never a guarantee: information is indicative, read the BERA and the official " +
+                    "sources, and decide on the spot.",
         )
 
     fun ready(

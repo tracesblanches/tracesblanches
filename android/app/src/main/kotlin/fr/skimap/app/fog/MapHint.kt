@@ -17,6 +17,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import fr.skimap.app.R
+import fr.skimap.app.appLang
 import fr.skimap.app.rules.LowExposure
 import fr.skimap.app.rules.LowExposureWarning
 import fr.skimap.core.fogExpected
@@ -64,7 +65,7 @@ fun MapHint(modifier: Modifier = Modifier) {
                 withContext(Dispatchers.IO) {
                     if (isGuided(d)) return@withContext null
                     runCatching {
-                        val p = readDayPlan(d)
+                        val p = readDayPlan(d, appLang())
                         val fog = fogExpected(d, System.currentTimeMillis())
                         DayFacts(p.startName, p.line[1], p.line[0], fog)
                     }.getOrNull()
