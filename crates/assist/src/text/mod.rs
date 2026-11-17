@@ -9,6 +9,7 @@ pub use skimap_common::Lang;
 
 use crate::crowd::{CrowdLevel, Population};
 use crate::equipment::Kind as EquipmentKind;
+use crate::inputs::LayerName;
 use crate::snow_quality::{Quality, SlopeClass, Slot};
 use crate::wax::SnowType;
 
@@ -521,4 +522,11 @@ pub trait Texts: Sync {
         deadline: Option<NaiveDateTime>,
         turn: NaiveDateTime,
     ) -> String;
+
+    // ---- Missing layers.
+
+    /// Name of a layer of the assistant.
+    fn layer_name(&self, l: LayerName) -> &'static str;
+    /// A layer that could not be read, and why (reader error, local path).
+    fn layer_missing(&self, l: LayerName, why: &str) -> String;
 }

@@ -1,0 +1,84 @@
+{
+  "alerts.le-laus": [],
+  "alerts.les-fonts": [],
+  "best_time.le-laus": [
+    "Best start around 8:30 (back around 10:54, 120 min outing): no time slot stands out."
+  ],
+  "best_time.les-fonts": [
+    "Best start around 8:00 (back around 10:24, 120 min outing): no time slot stands out."
+  ],
+  "briefing.0.text": [
+    "Cervières — Sunday 15 November 2026",
+    "Areas:",
+    "1. Les Fonts (score -2.75): no trail status source for this area; 0 cm of estimated snow (median, map of 14/11, 0 % of the points ≥ 20 cm): too little to groom [-3.00]; light wind (gusts 20 km/h); 6 °C on average, feels like 0 °C; crowd level moderate (Sunday) [-0.25]; 15 km as the crow flies [-0.30]; 40 km of nordic trails (OSM) [+0.80].",
+    "2. Cervières (score -12.81): 2 routes open out of 3 (10 km out of 15) but too little estimated snow: to be checked; area closed on this date (opening dates published by the town) [-10.00]; 0 cm of estimated snow (median, map of 14/11, 0 % of the points ≥ 20 cm): too little to groom [-3.00]; light wind (gusts 15 km/h); 8 °C on average, feels like 4 °C; crowd level moderate (Sunday) [-0.25]; 8 km as the crow flies [-0.16]; 30 km of nordic trails (OSM) [+0.60].",
+    "Routes (the first 5 not closed):",
+    "1. Chemin du Blétonnet (score -3.46): open according to the source, but too little estimated snow: probably an off-season status, to be checked; 0 cm of estimated snow (median, map of 14/11, 0 % of the points ≥ 20 cm): too little to groom [-3.00]; light wind (gusts 15 km/h); 8 °C on average, feels like 4 °C; crowd level moderate (Sunday) [-0.25]; 11 km as the crow flies [-0.21].",
+    "2. Souliers (score -3.59): open according to the source, but too little estimated snow: probably an off-season status, to be checked; 0 cm of estimated snow (median, map of 14/11, 0 % of the points ≥ 20 cm): too little to groom [-3.00]; light wind (gusts 20 km/h); 6 °C on average, feels like 0 °C; weather of the point Les Fonts, 9 km away; crowd level moderate (Sunday) [-0.25]; 17 km as the crow flies [-0.34].",
+    "Snow quality (le-laus): No or too little estimated snow at the point (0 cm, 1750 m): snow quality not assessed.",
+    "Snow quality (les-fonts): No or too little estimated snow at the point (0 cm, 2040 m): snow quality not assessed.",
+    "Sunset 17:05.",
+    "Data: BERA; trail status; nordic areas; historic avalanche paths; avalanche exposure; Nordic France : 2/3 ouverts."
+  ],
+  "briefing.0.voice": [
+    "Point du jour. Cervières. Deux pistes ouvertes. Température, six degrés. Vent de dix kilomètres heure. Affluence moyenne. Coucher du soleil. Dix-sept heures."
+  ],
+  "briefing.1.text": [
+    "Cervières — Monday 16 November 2026",
+    "Areas:",
+    "1. Les Fonts (score -2.50): no trail status source for this area; 0 cm of estimated snow (median, map of 14/11, 0 % of the points ≥ 20 cm): too little to groom [-3.00]; light wind (gusts 20 km/h); 6 °C on average, feels like 0 °C; crowd level calm; 15 km as the crow flies [-0.30]; 40 km of nordic trails (OSM) [+0.80].",
+    "2. Cervières (score -12.56): 2 routes open out of 3 (10 km out of 15) (last known status) but too little estimated snow: to be checked; area closed on this date (opening dates published by the town) [-10.00]; 0 cm of estimated snow (median, map of 14/11, 0 % of the points ≥ 20 cm): too little to groom [-3.00]; light wind (gusts 15 km/h); 8 °C on average, feels like 4 °C; crowd level calm; 8 km as the crow flies [-0.16]; 30 km of nordic trails (OSM) [+0.60].",
+    "Routes (the first 5 not closed):",
+    "1. Chemin du Blétonnet (score -3.21): open according to the source, but too little estimated snow: probably an off-season status, to be checked (last known status); 0 cm of estimated snow (median, map of 14/11, 0 % of the points ≥ 20 cm): too little to groom [-3.00]; light wind (gusts 15 km/h); 8 °C on average, feels like 4 °C; crowd level calm; 11 km as the crow flies [-0.21].",
+    "2. Souliers (score -3.34): open according to the source, but too little estimated snow: probably an off-season status, to be checked (last known status); 0 cm of estimated snow (median, map of 14/11, 0 % of the points ≥ 20 cm): too little to groom [-3.00]; light wind (gusts 20 km/h); 6 °C on average, feels like 0 °C; weather of the point Les Fonts, 9 km away; crowd level calm; 17 km as the crow flies [-0.34].",
+    "Snow quality (le-laus): No or too little estimated snow at the point (0 cm, 1750 m): snow quality not assessed.",
+    "Snow quality (les-fonts): No or too little estimated snow at the point (0 cm, 2040 m): snow quality not assessed.",
+    "Sunset 17:04.",
+    "Data: BERA; trail status; nordic areas; historic avalanche paths; avalanche exposure; trail status: last known (15/11 07:30); Nordic France : 2/3 ouverts."
+  ],
+  "briefing.1.voice": [
+    "Point du jour. Cervières. Deux pistes ouvertes. Température, six degrés. Vent de dix kilomètres heure. Affluence faible. Coucher du soleil. Dix-sept heures."
+  ],
+  "quality.le-laus": [
+    "dimanche 15 novembre 2026 — le-laus (1750 m). F fraîche, V soufflée, A ancienne sèche, T transformée (décaille), H humide, S soupe, D dure regelée, G glace",
+    "heure  flat  N20 NE20  E20 SE20  S20 SW20  W20 NW20  N40 NE40  E40 SE40  S40 SW40  W40 NW40",
+    "  06 h    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D",
+    "  07 h    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D",
+    "  08 h    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D",
+    "  09 h    T    D    T    T    T    T    D    D    D    D    D    T    T    T    D    D    D",
+    "  10 h    T    T    T    T    T    T    T    T    T    D    T    T    H    H    T    T    D",
+    "  11 h    T    T    T    T    H    H    T    T    T    T    T    H    H    H    H    T    T",
+    "  12 h    H    T    T    H    H    H    H    T    T    T    T    H    H    H    H    T    T",
+    "  13 h    H    T    T    H    H    H    H    H    T    T    T    H    H    H    H    H    T",
+    "  14 h    H    T    T    H    H    H    H    H    T    T    T    T    H    H    H    H    T",
+    "  15 h    H    T    T    T    H    H    H    H    T    T    T    T    H    H    H    H    T",
+    "  16 h    T    T    T    T    T    H    H    H    T    T    T    T    H    H    H    H    T",
+    "  17 h    T    T    T    T    T    T    T    T    T    T    T    T    T    H    H    T    T",
+    "  18 h    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T",
+    "  19 h    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T",
+    "No or too little estimated snow at the point (0 cm, 1750 m): snow quality not assessed."
+  ],
+  "quality.les-fonts": [
+    "dimanche 15 novembre 2026 — les-fonts (2040 m). F fraîche, V soufflée, A ancienne sèche, T transformée (décaille), H humide, S soupe, D dure regelée, G glace",
+    "heure  flat  N20 NE20  E20 SE20  S20 SW20  W20 NW20  N40 NE40  E40 SE40  S40 SW40  W40 NW40",
+    "  06 h    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D",
+    "  07 h    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D",
+    "  08 h    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D    D",
+    "  09 h    D    D    D    T    T    T    D    D    D    D    D    T    T    T    D    D    D",
+    "  10 h    T    D    T    T    T    T    T    D    D    D    T    T    H    T    T    D    D",
+    "  11 h    T    T    T    T    H    H    T    T    T    T    T    H    H    H    T    T    T",
+    "  12 h    T    T    T    H    H    H    H    T    T    T    T    H    H    H    H    T    T",
+    "  13 h    H    T    T    H    H    H    H    H    T    T    T    H    H    H    H    H    T",
+    "  14 h    H    T    T    H    H    H    H    H    T    T    T    T    H    H    H    H    T",
+    "  15 h    H    T    T    T    H    H    H    H    T    T    T    T    H    H    H    H    T",
+    "  16 h    T    T    T    T    T    H    H    H    T    T    T    T    T    H    H    H    T",
+    "  17 h    T    T    T    T    T    T    T    T    T    T    T    T    T    T    H    T    T",
+    "  18 h    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T",
+    "  19 h    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T    T",
+    "No or too little estimated snow at the point (0 cm, 2040 m): snow quality not assessed."
+  ],
+  "synthesis": [
+    "Today's BERA of the Queyras massif is not loaded: read it before you go, the avalanche risk is never zero in the mountains. Weather from 9:00 to 16:00 (Le Laus, 1750 m): from 6 to 9 °C, light wind. On the trails of the site: fire forbidden, stoves included (Cervières) (outside France and Switzerland, no known rule); 14 % of the trails without any mobile network, not even for 112.",
+    "Avalanche bulletin not available offline. Check it before you set off. Temperature, eight degrees. Wind, ten kilometres per hour. Fires are banned in this municipality, stoves included."
+  ]
+}

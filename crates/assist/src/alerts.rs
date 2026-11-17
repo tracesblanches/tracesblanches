@@ -118,7 +118,7 @@ pub struct Alert {
     /// Voice event.
     #[serde(skip)]
     pub event: Event,
-    /// Spoken text (phrase bank).
+    /// Spoken text (phrase bank, in the language of the monitor).
     pub spoken: String,
 }
 
@@ -326,7 +326,7 @@ impl<'a> Monitor<'a> {
         };
         let mut push = |m: &mut Self, kind: Kind, text: String, event: Event| {
             m.last.insert(kind, now);
-            let spoken = event.announce().text();
+            let spoken = event.announce().in_lang(m.lang).text();
             out.push(Alert {
                 at: now,
                 kind,
@@ -484,7 +484,19 @@ pub fn replay(
     trace: &[(f64, f64)],
     p: Params,
 ) -> Vec<Alert> {
-    let mut m = Monitor::new(start, profile, point, p);
+    replay_in(start, profile, point, trace, p, Lang::Fr)
+}
+
+/// [`replay`] with the texts in `lang` (VO6).
+pub fn replay_in(
+    start: NaiveDateTime,
+    profile: &Profile,
+    point: &WeatherPoint,
+    trace: &[(f64, f64)],
+    p: Params,
+    lang: Lang,
+) -> Vec<Alert> {
+    let mut m = Monitor::new(start, profile, point, p).in_lang(lang);
     trace
         .iter()
         .flat_map(|(t_s, along)| m.update(start + Duration::seconds(*t_s as i64), *along))
@@ -494,6 +506,16 @@ pub fn replay(
 /// Weather alerts of a day: an outing from 10 h of 5 hours model time (planned return at
 /// 16 h with the 1.2 margin), at the planned pace, one update every 5 minutes.
 pub fn day_replay(point: &WeatherPoint, date: chrono::NaiveDate, p: Params) -> Vec<Alert> {
+    day_replay_in(point, date, p, Lang::Fr)
+}
+
+/// [`day_replay`] with the texts in `lang` (VO6).
+pub fn day_replay_in(
+    point: &WeatherPoint,
+    date: chrono::NaiveDate,
+    p: Params,
+    lang: Lang,
+) -> Vec<Alert> {
     let n = 300;
     let profile = Profile {
         dist_m: (0..=n).map(|i| f64::from(i) * 50.0).collect(),
@@ -502,7 +524,7 @@ pub fn day_replay(point: &WeatherPoint, date: chrono::NaiveDate, p: Params) -> V
     };
     let start = date.and_hms_opt(10, 0, 0).expect("10 h");
     let trace = synthetic_trace(&profile, 1.0, 300.0);
-    replay(start, &profile, point, &trace, p)
+    replay_in(start, &profile, point, &trace, p, lang)
 }
 
 /// A trace along the route at the model speed divided by `slowdown` (1: on time),

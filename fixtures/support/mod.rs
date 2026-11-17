@@ -21,6 +21,7 @@
 
 #![allow(dead_code)]
 
+pub mod french;
 pub mod golden;
 pub mod privacy;
 

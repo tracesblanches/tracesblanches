@@ -26,7 +26,7 @@ fn minutes(s: f64) -> String {
     if m < 60 {
         format!("{m} min")
     } else {
-        format!("{} h {:02}", m / 60, m % 60)
+        format!("{} h {:02} min", m / 60, m % 60)
     }
 }
 
@@ -290,7 +290,7 @@ impl Texts for En {
         if m < 60 {
             format!("{m} min")
         } else {
-            format!("{} h {:02}", m / 60, m % 60)
+            format!("{} h {:02} min", m / 60, m % 60)
         }
     }
 

@@ -293,12 +293,17 @@ fn the_sets_are_the_rules() {
 /// the day and of the next one (text, voice), per point the snow quality of the day, the
 /// wax and the best time for 2 h, the weather replay of the alerts; the synthesis.
 fn outputs(name: &str, d: &SiteData) -> Vec<(String, String)> {
+    outputs_in(name, d, skimap_assist::text::Lang::Fr)
+}
+
+/// [`outputs`] with the texts in `lang`.
+fn outputs_in(name: &str, d: &SiteData, lang: skimap_assist::text::Lang) -> Vec<(String, String)> {
     use skimap_assist::{alerts, best_time, briefing, synthesis, wax};
     let date = set(name).date();
     let mut out = Vec::new();
     let opts = briefing::Options {
         home: Some(home(name)),
-        lang: skimap_assist::text::Lang::Fr,
+        lang,
     };
     let b = briefing::brief(d, date, 1, &opts);
     for (i, day) in b.days.iter().enumerate() {
@@ -312,7 +317,7 @@ fn outputs(name: &str, d: &SiteData) -> Vec<(String, String)> {
             format!("quality.{}", q.point),
             skimap_assist::layer::quality_table(q),
         ));
-        if let Some(w) = wax::day_wax(p, q) {
+        if let Some(w) = wax::day_wax_in(p, q, lang) {
             out.push((
                 format!("wax.{}", q.point),
                 format!(
@@ -320,11 +325,11 @@ fn outputs(name: &str, d: &SiteData) -> Vec<(String, String)> {
                     w.text,
                     w.morning.reasons.join(" ; "),
                     w.afternoon.reasons.join(" ; "),
-                    w.voice().announce().text()
+                    w.voice().announce().in_lang(lang).text()
                 ),
             ));
         }
-        let bt = best_time::best_time(
+        let bt = best_time::best_time_in(
             p,
             Some(q),
             crowd,
@@ -334,11 +339,12 @@ fn outputs(name: &str, d: &SiteData) -> Vec<(String, String)> {
                 earliest: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
                 classes: vec![],
             },
+            lang,
         );
         out.push((format!("best_time.{}", q.point), bt.text.clone()));
     }
     for p in &d.weather.as_ref().unwrap().points {
-        let a = alerts::day_replay(p, date, alerts::Params::default());
+        let a = alerts::day_replay_in(p, date, alerts::Params::default(), lang);
         out.push((
             format!("alerts.{}", p.id),
             a.iter()
@@ -355,8 +361,12 @@ fn outputs(name: &str, d: &SiteData) -> Vec<(String, String)> {
                 .join("\n"),
         ));
     }
-    let s = synthesis::synthesise(d, date);
-    let voice: Vec<String> = s.voice.iter().map(|e| e.announce().text()).collect();
+    let s = synthesis::synthesise_in(d, date, lang);
+    let voice: Vec<String> = s
+        .voice
+        .iter()
+        .map(|e| e.announce().in_lang(lang).text())
+        .collect();
     out.push((
         "synthesis".into(),
         format!("{}\n{}", s.text(), voice.join(" ")),
@@ -388,6 +398,90 @@ fn golden_outputs_of_every_set() {
             // Never « sans danger », in any output.
             let low = v.to_lowercase();
             assert!(!low.contains("sans danger"), "{} {key}: {v}", s.name);
+        }
+        k.check();
+    }
+}
+
+/// The same outputs in English (VO6): golden fingerprints
+/// (`fixtures/golden/assist/weather-<set>.en.json`) and no French left in the texts (the
+/// voice stays the French bank, said in English by the voice pack; names of the data and
+/// the snow quality table aside).
+#[test]
+fn golden_outputs_of_every_set_in_english() {
+    for s in &SETS {
+        let d = data(s.name);
+        let mut k = fixtures::golden::Golden::new(&format!("assist/weather-{}.en", s.name));
+        let all = outputs_in(s.name, &d, skimap_assist::text::Lang::En);
+        let mut names: Vec<String> = vec![d.site.name.to_owned()];
+        names.extend(d.domains.iter().map(|x| x.name.clone()));
+        if let Some(st) = &d.status {
+            names.extend(st.itineraries.iter().map(|i| i.name.clone()));
+            names.extend(st.messages.iter().cloned());
+            names.extend(st.conflicts.iter().cloned());
+        }
+        for p in &d.pistes {
+            names.extend(p.name.iter().cloned());
+            names.extend(p.relations.iter().cloned());
+        }
+        names.extend(
+            d.weather
+                .iter()
+                .flat_map(|w| w.points.iter().map(|p| p.name.clone())),
+        );
+        names.extend(
+            d.weather
+                .iter()
+                .flat_map(|w| w.points.iter().map(|p| p.id.clone())),
+        );
+        names.extend(
+            d.zones
+                .iter()
+                .flat_map(|(l, _)| l.zones.iter().map(|z| z.props.name.clone())),
+        );
+        for (key, v) in &all {
+            k.lines(key, v);
+            let low = v.to_lowercase();
+            assert!(!low.contains("safe"), "{} {key}: {v}", s.name);
+            if key.starts_with("quality.") {
+                continue;
+            }
+            // The text lines (the voice line of the wax and the synthesis is the French
+            // bank).
+            let lines: Vec<&str> = v.lines().collect();
+            let text: &[&str] = match key.as_str() {
+                k if k.starts_with("wax.") => &lines[..lines.len() - 1],
+                "synthesis" => &lines[..1],
+                k if k.ends_with(".voice") => &[],
+                k if k.starts_with("alerts.") => &[],
+                // Checked below, the text of each alert.
+                _ => &lines,
+            };
+            for l in text {
+                let left = fixtures::french::french_in(l, &names);
+                assert!(
+                    left.is_empty(),
+                    "{} {key}: French {left:?} in « {l} »",
+                    s.name
+                );
+            }
+        }
+        let date = set(s.name).date();
+        for p in &d.weather.as_ref().unwrap().points {
+            for a in skimap_assist::alerts::day_replay_in(
+                p,
+                date,
+                skimap_assist::alerts::Params::default(),
+                skimap_assist::text::Lang::En,
+            ) {
+                let left = fixtures::french::french_in(&a.text, &names);
+                assert!(
+                    left.is_empty(),
+                    "{}: French {left:?} in « {} »",
+                    s.name,
+                    a.text
+                );
+            }
         }
         k.check();
     }

@@ -663,7 +663,7 @@ impl DayPlanner {
             .loaded
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut v = l.data.missing.clone();
+        let mut v = l.data.missing_in(self.lang);
         v.extend(l.ctx.missing.iter().cloned());
         v
     }

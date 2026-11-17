@@ -242,7 +242,7 @@ pub fn morning_in(
             )
         })
         .collect();
-    let mut notes: Vec<String> = data.missing.clone();
+    let mut notes: Vec<String> = data.missing_in(lang);
     let t = crate::text::of(lang);
     if point.is_none() {
         notes.push(t.no_hourly_weather().into());
@@ -1638,11 +1638,12 @@ impl DayPlan {
                 Trigger::At { s, .. } => tx.p_when(Some(s), false),
                 Trigger::Arrival => tx.p_when(None, true),
             };
-            t.push(tx.p_announcement(&when, &format!("{:?}", a.priority), &a.text));
+            let said = a.announcement.in_lang(lang).text();
+            t.push(tx.p_announcement(&when, &format!("{:?}", a.priority), &said));
         }
         t.push(tx.p_plans_b(self.plans_b.len()));
         for b in &self.plans_b {
-            t.push(tx.p_plan_b(&b.fallback.text, &b.switch.text()));
+            t.push(tx.p_plan_b(&b.fallback.text, &b.switch.in_lang(lang).text()));
         }
         for (j, at) in &ta.latest_exit {
             t.push(tx.p_latest_exit(self.junctions[*j].s, *at));
@@ -1652,7 +1653,11 @@ impl DayPlan {
             for l in &s.text {
                 t.push(tx.p_morning_line(k, l));
             }
-            let spoken: Vec<String> = s.voice.iter().map(|e| e.announce().text()).collect();
+            let spoken: Vec<String> = s
+                .voice
+                .iter()
+                .map(|e| e.announce().in_lang(lang).text())
+                .collect();
             if !spoken.is_empty() {
                 t.push(tx.p_morning_voice(k, &spoken.join(" ")));
             }

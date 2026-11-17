@@ -597,7 +597,7 @@ pub fn day(data: &SiteData, date: NaiveDate, opts: &Options) -> DayBriefing {
         opts,
         t,
     };
-    let mut notes = data.missing.clone();
+    let mut notes = data.missing_in(opts.lang);
     if !calendar_known {
         notes.push(t.calendars_2026_27().into());
     }

@@ -5,6 +5,7 @@ use chrono::{Datelike, NaiveDate, NaiveDateTime, Timelike};
 use super::Texts;
 use crate::crowd::{CrowdLevel, Population};
 use crate::equipment::Kind as EquipmentKind;
+use crate::inputs::LayerName;
 use crate::snow_quality::{Quality, SlopeClass, Slot};
 use crate::wax::SnowType;
 
@@ -1243,5 +1244,26 @@ impl Texts for Fr {
             self.clock(turn)
         )
         .replace('.', ",")
+    }
+
+    fn layer_name(&self, l: LayerName) -> &'static str {
+        match l {
+            LayerName::Weather => "météo horaire",
+            LayerName::Snow => "carte d'enneigement",
+            LayerName::Bera => "BERA",
+            LayerName::Status => "état des pistes",
+            LayerName::Domains => "domaines",
+            LayerName::Pistes => "pistes",
+            LayerName::Clpa => "avalanches historiques",
+            LayerName::NoNetwork => "zones sans réseau",
+            LayerName::Zones => "zones et règles",
+            LayerName::Route => "itinéraire prévu",
+            LayerName::Graph => "graphe des pistes",
+            LayerName::Exposure => "exposition aux avalanches",
+        }
+    }
+
+    fn layer_missing(&self, l: LayerName, why: &str) -> String {
+        format!("{} : {why}", self.layer_name(l))
     }
 }

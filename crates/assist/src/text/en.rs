@@ -5,6 +5,7 @@ use chrono::{Datelike, NaiveDate, NaiveDateTime, Timelike};
 use super::Texts;
 use crate::crowd::{CrowdLevel, Population};
 use crate::equipment::Kind as EquipmentKind;
+use crate::inputs::LayerName;
 use crate::snow_quality::{Quality, SlopeClass, Slot};
 use crate::wax::SnowType;
 
@@ -498,7 +499,7 @@ impl Texts for En {
         if m < 60 {
             format!("{m} min")
         } else {
-            format!("{} h {:02}", m / 60, m % 60)
+            format!("{} h {:02} min", m / 60, m % 60)
         }
     }
 
@@ -1248,5 +1249,26 @@ impl Texts for En {
             deadline.map(|d| self.clock(d)).unwrap_or_default(),
             self.clock(turn)
         )
+    }
+
+    fn layer_name(&self, l: LayerName) -> &'static str {
+        match l {
+            LayerName::Weather => "hourly weather",
+            LayerName::Snow => "snow map",
+            LayerName::Bera => "BERA",
+            LayerName::Status => "trail status",
+            LayerName::Domains => "nordic areas",
+            LayerName::Pistes => "trails",
+            LayerName::Clpa => "historic avalanche paths",
+            LayerName::NoNetwork => "zones without network",
+            LayerName::Zones => "zones and rules",
+            LayerName::Route => "planned route",
+            LayerName::Graph => "trail graph",
+            LayerName::Exposure => "avalanche exposure",
+        }
+    }
+
+    fn layer_missing(&self, l: LayerName, why: &str) -> String {
+        format!("{}: {why}", self.layer_name(l))
     }
 }
