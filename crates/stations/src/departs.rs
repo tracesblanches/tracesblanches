@@ -4,13 +4,13 @@
 //! - the OSM points of the station cards (`pois.geojson`): nordic lodges (`foyer`), pass
 //!   desks (`ticket`), ski schools and car parks (not private) near the domain;
 //! - the trail network of the domain (OpenSnowMap planet extract, ways of
-//!   `domaines_ways.json`): each point is snapped to the nearest network vertex, a point
+//!   `domaines_ways.json`): each point is snapped to the nearest point of the network, a point
 //!   near a dead end of the network (trailhead) counts more;
 //! - points within [`CLUSTER_M`] of each other make one start (a car park beside a lodge).
 //!
 //! The best [`MAX_STARTS`] starts are kept, main first. A domain without any such point
-//! gets the network vertex nearest to its nearest tourist office or ski school (the
-//! village), else the census representative point (on the network), with the method said.
+//! gets the network point nearest to its nearest lodge, desk or car park, else to its
+//! nearest tourist office or ski school (the village), else the census representative point (on the network), with the method said.
 //!
 //! Output: `departs.json` (census id → starts, the shape of
 //! [`skimap_common::site::Start`] plus method and score) and `departs.geojson` (one point
@@ -44,13 +44,17 @@ pub const TRAILHEAD_M: f64 = 150.0;
 /// from a lodge with its own car parks).
 pub const MIN_SHARE: f64 = 0.25;
 
+/// Largest distance of the point of a [`Method::Near`] start to the network, m.
+pub const NEAR_MAX_M: f64 = 1000.0;
+
 /// Weight of a kind of point and its largest distance to the network, m.
 pub fn kind_rule(kind: &str) -> Option<(f64, f64)> {
     match kind {
         "foyer" => Some((5.0, 300.0)),
         "ticket" => Some((4.0, 300.0)),
         "ski_school" => Some((2.0, 300.0)),
-        "parking" => Some((2.0, 200.0)),
+        // The point of a car park area is its centre, often far inside a large lot.
+        "parking" => Some((2.0, 300.0)),
         _ => None,
     }
 }
@@ -123,7 +127,10 @@ pub struct Way {
 pub enum Method {
     /// From lodges, pass desks, ski schools or car parks next to the network.
     Points,
-    /// Network vertex nearest to the village (tourist office or ski school).
+    /// Network point nearest to a lodge, desk or car park of the domain farther than the
+    /// distances of [`kind_rule`].
+    Near,
+    /// Network point nearest to the village (tourist office or ski school).
     Village,
     /// Census representative point (on the network).
     Centre,
@@ -165,14 +172,36 @@ impl DepartsFile {
 }
 
 struct Net {
-    xy: Vec<(f64, f64)>,
-    pos: Vec<LonLat>,
-    dead_end: Vec<bool>,
-    way: Vec<usize>,
+    /// Vertices: position (local metres) and whether a dead end of the network.
+    vertices: Vec<((f64, f64), bool)>,
+    /// Segments: ends (local metres) and way index.
+    segments: Vec<((f64, f64), (f64, f64), usize)>,
+}
+
+/// A point snapped to the network.
+#[derive(Debug, Clone, Copy)]
+struct Snap {
+    /// Nearest point of the network (local metres).
+    xy: (f64, f64),
+    /// Way of that point.
+    way: usize,
+    /// Distance, m.
+    dist: f64,
 }
 
 fn d2(a: (f64, f64), b: (f64, f64)) -> f64 {
     ((a.0 - b.0).powi(2) + (a.1 - b.1).powi(2)).sqrt()
+}
+
+fn project(p: (f64, f64), a: (f64, f64), b: (f64, f64)) -> (f64, f64) {
+    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+    let l2 = dx * dx + dy * dy;
+    let t = if l2 == 0.0 {
+        0.0
+    } else {
+        (((p.0 - a.0) * dx + (p.1 - a.1) * dy) / l2).clamp(0.0, 1.0)
+    };
+    (a.0 + t * dx, a.1 + t * dy)
 }
 
 impl Net {
@@ -184,48 +213,51 @@ impl Net {
                 *deg.entry(*id).or_default() += if i == 0 || i + 1 == n { 1 } else { 2 };
             }
         }
+        let mut seen: HashMap<i64, ()> = HashMap::new();
         let mut net = Net {
-            xy: Vec::new(),
-            pos: Vec::new(),
-            dead_end: Vec::new(),
-            way: Vec::new(),
+            vertices: Vec::new(),
+            segments: Vec::new(),
         };
-        let mut seen: HashMap<i64, usize> = HashMap::new();
         for (wi, w) in ways.iter().enumerate() {
-            for (id, p) in &w.points {
-                if seen.contains_key(id) {
-                    continue;
+            let xy: Vec<(f64, f64)> = w.points.iter().map(|(_, p)| local.xy(*p)).collect();
+            for (k, (id, _)) in w.points.iter().enumerate() {
+                if seen.insert(*id, ()).is_none() {
+                    net.vertices.push((xy[k], deg.get(id) == Some(&1)));
                 }
-                seen.insert(*id, net.xy.len());
-                net.xy.push(local.xy(*p));
-                net.pos.push(*p);
-                net.dead_end.push(deg.get(id) == Some(&1));
-                net.way.push(wi);
+            }
+            for pair in xy.windows(2) {
+                net.segments.push((pair[0], pair[1], wi));
+            }
+            if xy.len() == 1 {
+                net.segments.push((xy[0], xy[0], wi));
             }
         }
         net
     }
 
-    fn nearest(&self, p: (f64, f64)) -> Option<(usize, f64)> {
-        self.xy
+    fn nearest(&self, p: (f64, f64)) -> Option<Snap> {
+        self.segments
             .iter()
-            .enumerate()
-            .map(|(i, q)| (i, d2(p, *q)))
-            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(a, b, way)| {
+                let xy = project(p, *a, *b);
+                Snap {
+                    xy,
+                    way: *way,
+                    dist: d2(p, xy),
+                }
+            })
+            .min_by(|a, b| a.dist.total_cmp(&b.dist))
     }
 
     fn dead_end_within(&self, p: (f64, f64), m: f64) -> bool {
-        self.xy
-            .iter()
-            .zip(&self.dead_end)
-            .any(|(q, e)| *e && d2(p, *q) <= m)
+        self.vertices.iter().any(|(q, e)| *e && d2(p, *q) <= m)
     }
 }
 
 struct Candidate<'a> {
     point: &'a Point,
     xy: (f64, f64),
-    vertex: usize,
+    snap: Snap,
     score: f64,
 }
 
@@ -254,19 +286,18 @@ pub fn domain_departs(d: &Domain, ways: &[Way], points: &[&Point]) -> Vec<Depart
     let net = Net::new(ways, &local);
     let mut cands: Vec<Candidate> = Vec::new();
     for p in points {
-        let Some((mut w, max)) = kind_rule(&p.kind) else {
+        let Some((_, max)) = kind_rule(&p.kind) else {
             continue;
         };
-        if p.kind == "ticket" && p.name.as_deref().is_some_and(alpine) {
-            w = ALPINE_DESK_WEIGHT;
-        }
+        let w = weight(p);
         if p.kind == "parking" && private(p) {
             continue;
         }
         let xy = local.xy(p.pos);
-        let Some((vertex, dist)) = net.nearest(xy) else {
+        let Some(snap) = net.nearest(xy) else {
             continue;
         };
+        let dist = snap.dist;
         if dist > max {
             continue;
         }
@@ -280,7 +311,7 @@ pub fn domain_departs(d: &Domain, ways: &[Way], points: &[&Point]) -> Vec<Depart
         cands.push(Candidate {
             point: p,
             xy,
-            vertex,
+            snap,
             score,
         });
     }
@@ -314,12 +345,11 @@ pub fn domain_departs(d: &Domain, ways: &[Way], points: &[&Point]) -> Vec<Depart
         // Named after the best named lodge or desk, else the best named point, else the
         // kind of the head.
         let named = ms.iter().filter(|c| c.point.name.is_some()).max_by(|a, b| {
-            let r = |c: &Candidate| kind_rule(&c.point.kind).map_or(0.0, |k| k.0);
+            let r = |c: &Candidate| weight(c.point);
             r(a).total_cmp(&r(b)).then(b.score.total_cmp(&a.score))
         });
         let h = &cands[*head];
-        let v = h.vertex;
-        let way_name = ways[net.way[v]].name.clone();
+        let way_name = ways[h.snap.way].name.clone();
         let (kname, kphrase, ken) = kind_fr(&h.point.kind);
         let (name, phrase, phrase_en) = match named.and_then(|c| c.point.name.clone()) {
             Some(n) => {
@@ -332,7 +362,7 @@ pub fn domain_departs(d: &Domain, ways: &[Way], points: &[&Point]) -> Vec<Depart
                 Some(format!("the {} area {ken}", d.name)),
             ),
         };
-        let pos = net.pos[v];
+        let pos = local.lonlat(h.snap.xy);
         out.push(Depart {
             start: Start {
                 id: String::new(),
@@ -367,8 +397,9 @@ pub fn domain_departs(d: &Domain, ways: &[Way], points: &[&Point]) -> Vec<Depart
         {
             continue;
         }
-        let trail = ways[net.way[nearest_vertex(&net, &local, &out[i])]]
-            .name
+        let trail = net
+            .nearest(local.xy(out[i].start.position()))
+            .and_then(|s| ways[s.way].name.clone())
             .clone()
             .filter(|w| {
                 !out[..i]
@@ -456,20 +487,42 @@ fn direction(dx: f64, dy: f64) -> (&'static str, &'static str) {
     DIRS[((bearing + 22.5) / 45.0) as usize % 8]
 }
 
-fn nearest_vertex(net: &Net, local: &Local, o: &Depart) -> usize {
-    net.nearest(local.xy(o.start.position()))
-        .map_or(0, |(i, _)| i)
+/// Weight of a point for the starts: that of its kind, less for an alpine desk.
+fn weight(p: &Point) -> f64 {
+    match kind_rule(&p.kind) {
+        Some(_) if p.kind == "ticket" && p.name.as_deref().is_some_and(alpine) => {
+            ALPINE_DESK_WEIGHT
+        }
+        Some((w, _)) => w,
+        None => 0.0,
+    }
 }
 
 fn fallback(d: &Domain, net: &Net, local: &Local, points: &[&Point]) -> Depart {
-    let village = points
-        .iter()
-        .filter(|p| matches!(p.kind.as_str(), "tourist_office" | "ski_school"))
-        .filter_map(|p| net.nearest(local.xy(p.pos)).map(|(v, m)| (p, v, m)))
-        .min_by(|a, b| a.2.total_cmp(&b.2));
-    let (pos, method, provenance, score, urls) = match village {
-        Some((p, v, _)) => (
-            net.pos[v],
+    let nearest = |kinds: &dyn Fn(&Point) -> bool| {
+        points
+            .iter()
+            .filter(|p| kinds(p))
+            .filter_map(|p| net.nearest(local.xy(p.pos)).map(|s| (p, s)))
+            .min_by(|a, b| a.1.dist.total_cmp(&b.1.dist))
+    };
+    let near =
+        nearest(&|p: &Point| kind_rule(&p.kind).is_some() && !(p.kind == "parking" && private(p)))
+            .filter(|(_, s)| s.dist <= NEAR_MAX_M);
+    let village = nearest(&|p: &Point| matches!(p.kind.as_str(), "tourist_office" | "ski_school"));
+    let (pos, method, provenance, score, urls) = match (near, village) {
+        (Some((p, s)), _) => (
+            local.lonlat(s.xy),
+            Method::Near,
+            format!(
+                "déduit (X9) : point du réseau le plus proche de {} ({}, à {:.0} m du réseau)",
+                p.kind, p.url, s.dist
+            ),
+            0.0,
+            vec![p.url.clone()],
+        ),
+        (None, Some((p, s))) => (
+            local.lonlat(s.xy),
             Method::Village,
             format!(
                 "déduit (X9) : point du réseau le plus proche du village ({}, {})",
@@ -478,7 +531,7 @@ fn fallback(d: &Domain, net: &Net, local: &Local, points: &[&Point]) -> Depart {
             0.0,
             vec![p.url.clone()],
         ),
-        None => (
+        (None, None) => (
             d.point,
             Method::Centre,
             "point représentatif du domaine (recensement P3 : point du réseau le plus proche du barycentre) ; aucun foyer, accueil ni parking OSM près des pistes".to_owned(),
@@ -533,10 +586,10 @@ pub fn all_departs(
 pub fn notes() -> Vec<String> {
     vec![
         format!(
-            "Départs déduits pour chaque domaine (X9) : foyers nordiques, accueils (ticket), écoles de ski et parkings non privés OSM rattachés au domaine (pois.geojson), à moins de 300 m (200 m pour un parking) du réseau ; chaque point est ramené au point du réseau le plus proche ; poids foyer 5, accueil 4, école 2, parking 2 + places/50 (≤ 2) ; +1 près d'une extrémité du réseau (< {TRAILHEAD_M:.0} m) ; points à moins de {CLUSTER_M:.0} m réunis ; au plus {MAX_STARTS} départs, chacun au moins {:.0} % du score du premier.",
+            "Départs déduits pour chaque domaine (X9) : foyers nordiques, accueils (ticket), écoles de ski et parkings non privés OSM rattachés au domaine (pois.geojson), à moins de 300 m du réseau ; chaque point est ramené au point du réseau le plus proche ; poids foyer 5, accueil 4, école 2, parking 2 + places/50 (≤ 2) ; +1 près d'une extrémité du réseau (< {TRAILHEAD_M:.0} m) ; points à moins de {CLUSTER_M:.0} m réunis ; au plus {MAX_STARTS} départs, chacun au moins {:.0} % du score du premier.",
             MIN_SHARE * 100.0
         ),
-        "Sans tel point : point du réseau le plus proche de l'office de tourisme ou de l'école de ski (method = village), sinon point représentatif du recensement (method = centre).".to_owned(),
+        format!("Sans tel point : point du réseau le plus proche du foyer, de l'accueil ou du parking le plus proche du réseau (à moins de {NEAR_MAX_M:.0} m, method = near), sinon de l'office de tourisme ou de l'école de ski (method = village), sinon point représentatif du recensement (method = centre). Caisses des remontées mécaniques (nom) : poids {ALPINE_DESK_WEIGHT}."),
         "Réseau : ways du domaine (domaines_ways.json) lus dans l'extrait OpenSnowMap planet_pistes (ODbL).".to_owned(),
     ]
 }
@@ -705,8 +758,8 @@ mod tests {
         assert_eq!(s[0].method, Method::Points);
         assert_eq!(s[0].start.name, "Foyer des Plans (Les Plans)");
         assert_eq!(s[0].start.phrase, "Foyer des Plans");
-        // On the dead end of the first trail.
-        assert_eq!((s[0].start.lon, s[0].start.lat), (6.001, 46.01));
+        // On the first trail, beside the lodge (projected on the segment).
+        assert_eq!((s[0].start.lon, s[0].start.lat), (6.0012, 46.01));
         assert_eq!(s[0].points.len(), 2);
         // The far car park is a second start at the other dead end, named by its kind.
         assert_eq!(s.len(), 2);
@@ -724,13 +777,18 @@ mod tests {
         let d = domain();
         let mut private = pt("parking", None, 6.001, 46.0101);
         private.access = Some("private".into());
-        let far = pt("foyer", None, 6.01, 46.02); // ~1.1 km from the trails
+        let far = pt("foyer", None, 6.01, 46.016); // ~670 m from the trails
         let office = pt("tourist_office", None, 6.0205, 46.0115);
         let pts = vec![&private, &far, &office];
         let s = domain_departs(&d, &ways(), &pts);
         assert_eq!(s.len(), 1);
+        // The far lodge, on the nearest point of the network.
+        assert_eq!(s[0].method, Method::Near);
+        assert_eq!((s[0].start.lon, s[0].start.lat), (6.01, 46.01));
+        // Only the private car park and the village.
+        let s = domain_departs(&d, &ways(), &[&private, &office]);
         assert_eq!(s[0].method, Method::Village);
-        assert_eq!((s[0].start.lon, s[0].start.lat), (6.02, 46.01));
+        assert_eq!((s[0].start.lon, s[0].start.lat), (6.0205, 46.01));
         // Nothing at all: the census point.
         let s = domain_departs(&d, &ways(), &[]);
         assert_eq!(s[0].method, Method::Centre);
