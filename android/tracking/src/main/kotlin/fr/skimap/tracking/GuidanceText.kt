@@ -32,27 +32,6 @@ data class GuidanceLabels(
     val short: String,
 ) {
     companion object {
-        val FR =
-            GuidanceLabels(
-                Locale.FRANCE,
-                "à gauche",
-                "à droite",
-                "légèrement à gauche",
-                "légèrement à droite",
-                "restez à gauche",
-                "restez à droite",
-                "tout droit",
-                "demi-tour",
-                "Retour : ",
-                "Départ %1\$s",
-                "Sortie terminée",
-                "Arrivée dans %1\$s",
-                "Pause · ",
-                "Au refuge · ",
-                "%1\$s restantes · arrivée %2\$s%3\$s",
-                "%1\$s · arrivée %2\$s",
-            )
-
         /** The labels of the app's language (string resources: `values`, `values-fr`). */
         fun of(context: Context): GuidanceLabels {
             val r = context.resources
@@ -81,14 +60,14 @@ data class GuidanceLabels(
 
 /**
  * Texts of the thin banner and of the lock-screen notification, in the app's language
- * ([GuidanceLabels]; French by default here): short, rounded so that they change only when
+ * ([GuidanceLabels], always passed by the caller): short, rounded so that they change only when
  * it matters (the notification is posted again only when one of them changes).
  */
 object GuidanceText {
     /** « 80 m », « 250 m », « 1,2 km » (« 1.2 km » in English), « 12 km ». */
     fun distance(
         m: Double,
-        locale: Locale = Locale.FRANCE,
+        locale: Locale,
     ): String =
         when {
             m < STEP_10_UNDER -> "${(m / STEP_10).roundToLong() * STEP_10.toLong()} m"
@@ -106,7 +85,7 @@ object GuidanceText {
     /** « à gauche », « légèrement à droite »… */
     fun turn(
         t: Turn,
-        l: GuidanceLabels = GuidanceLabels.FR,
+        l: GuidanceLabels,
     ): String =
         when (t) {
             Turn.LEFT -> l.left
@@ -134,7 +113,7 @@ object GuidanceText {
     fun headline(
         g: Guidance,
         withArrow: Boolean = true,
-        l: GuidanceLabels = GuidanceLabels.FR,
+        l: GuidanceLabels,
     ): String {
         val back = if (g.route == "back") l.back else ""
         return when {
@@ -170,7 +149,7 @@ object GuidanceText {
     /** Second line: time left and arrival. */
     fun detail(
         g: Guidance,
-        l: GuidanceLabels = GuidanceLabels.FR,
+        l: GuidanceLabels,
     ): String {
         val range = g.arrivalRange?.let { " ($it)" } ?: ""
         return pause(g, l) + l.detail.format(g.remainingText, g.arrival, range)
@@ -179,18 +158,18 @@ object GuidanceText {
     /** Second line of the thin banner on the map: « 1 h 05 · arrivée 12 h 40 » (the range is in the notification and the plan). */
     fun short(
         g: Guidance,
-        l: GuidanceLabels = GuidanceLabels.FR,
+        l: GuidanceLabels,
     ): String = pause(g, l) + l.short.format(g.remainingText, g.arrival)
 
     /** Status bar chip (Live Updates): the distance to the next turn, else the time left. */
     fun chip(
         g: Guidance,
-        l: GuidanceLabels = GuidanceLabels.FR,
+        l: GuidanceLabels,
     ): String = if (g.nextDistanceM != null && g.phase == Phase.MOVING) distance(g.nextDistanceM, l.locale) else g.remainingText
 
     /** What the user hears and reads when the core says nothing (spoken description). */
     fun accessibility(
         g: Guidance,
-        l: GuidanceLabels = GuidanceLabels.FR,
+        l: GuidanceLabels,
     ): String = "${headline(g, l = l)}. ${detail(g, l)}."
 }

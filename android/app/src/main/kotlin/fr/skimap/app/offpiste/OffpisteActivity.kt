@@ -52,6 +52,7 @@ import fr.skimap.app.data.PlatformLocator
 import fr.skimap.app.fog.FogActivity
 import fr.skimap.app.fog.GuidedTrackingService
 import fr.skimap.app.fog.Outings
+import fr.skimap.app.ui.CoreErrors
 import fr.skimap.app.ui.theme.GloveTarget
 import fr.skimap.app.ui.theme.SkimapTheme
 import fr.skimap.core.FogTarget
@@ -140,7 +141,7 @@ class OffpisteActivity : ComponentActivity() {
             planner =
                 withContext(Dispatchers.IO) {
                     runCatching { openOffpiste(pack.path, Outings.workDir(applicationContext).path, appLang()) }
-                        .onFailure { ui = ui.copy(error = it.message) }
+                        .onFailure { ui = ui.copy(error = CoreErrors.text(it, resources)) }
                         .getOrNull()
                 }
         }
@@ -183,7 +184,7 @@ class OffpisteActivity : ComponentActivity() {
                 withContext(Dispatchers.Default) {
                     runCatching { p.route(a, b, at, Outings.groupJson(applicationContext)) }
                 }
-            ui = ui.copy(working = false, route = r.getOrNull(), error = r.exceptionOrNull()?.message)
+            ui = ui.copy(working = false, route = r.getOrNull(), error = r.exceptionOrNull()?.let { CoreErrors.text(it, resources) })
         }
     }
 

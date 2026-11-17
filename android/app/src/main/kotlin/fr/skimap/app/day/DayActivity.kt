@@ -33,6 +33,7 @@ import fr.skimap.app.R
 import fr.skimap.app.guidance.AppSportActivity
 import fr.skimap.app.guidance.OutingExport
 import fr.skimap.app.guidance.SkiTrackingService
+import fr.skimap.app.ui.CoreErrors
 import fr.skimap.app.ui.theme.SkimapTheme
 import fr.skimap.core.DayPlanView
 import fr.skimap.sport.Queued
@@ -65,6 +66,7 @@ class DayActivity : ComponentActivity() {
                     workDir = { File(ctx.filesDir, "packview") },
                     preferredSite = intent.getStringExtra(EXTRA_SITE),
                     today = LocalDate.now(),
+                    errorText = { CoreErrors.text(it, ctx.resources) },
                 )
             }
         }
@@ -172,7 +174,7 @@ private fun DayRoot(vm: DayViewModel) {
                     DayActivity.startOuting(context, p, contact)
                     morning = false
                     DayActivity.sendPlan(context, p, contact)
-                }.onFailure { Toast.makeText(context, it.message, Toast.LENGTH_LONG).show() }
+                }.onFailure { Toast.makeText(context, CoreErrors.text(it, context.resources), Toast.LENGTH_LONG).show() }
             validating = false
         }
     }

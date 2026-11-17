@@ -195,6 +195,12 @@ class ServiceTest {
         accuracy = 5f
     }
 
+    /** The French words of the guidance come from `values-fr`, those of the tests too. */
+    @Test
+    fun frenchGuidanceLabelsAreTheResources() {
+        assertEquals(FRENCH_LABELS, GuidanceLabels.of(app))
+    }
+
     @Test
     fun startsInTheForegroundAppliesTheCoresGpsModeAndBatches() {
         val s = start()
@@ -457,6 +463,5 @@ class ServiceEnglishTest {
         val n = shadowOf(app.getSystemService(NotificationManager::class.java)).getNotification(GuidanceNotifier.ID)
         assertEquals("← 1.2 km left · Greffier", n.extras.getCharSequence("android.title").toString())
         assertEquals(listOf("Accept", "Decline", "Take me back"), n.actions.map { it.title.toString() })
-        assertEquals(GuidanceLabels.FR, GuidanceLabels.FR.copy())
     }
 }

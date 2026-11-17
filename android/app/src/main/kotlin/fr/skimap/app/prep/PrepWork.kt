@@ -17,6 +17,7 @@ import fr.skimap.app.R
 import fr.skimap.app.appLang
 import fr.skimap.app.day.DayStore
 import fr.skimap.app.fog.Outings
+import fr.skimap.app.ui.CoreErrors
 import fr.skimap.core.prepRun
 import org.json.JSONObject
 import java.io.File
@@ -113,7 +114,7 @@ object PrepWork {
                     days += r.days.map { "${it.siteId} ${it.date}" }
                     skipped += r.skipped.map { context.getString(R.string.label_value, p.name, it) }
                 }.onFailure {
-                    skipped += context.getString(R.string.label_value, p.name, it.message.orEmpty())
+                    skipped += context.getString(R.string.label_value, p.name, CoreErrors.text(it, context.resources))
                     Log.w("skimap", "prep ${p.name}", it)
                 }
         }
