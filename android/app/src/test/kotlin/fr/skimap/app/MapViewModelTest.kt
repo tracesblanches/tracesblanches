@@ -264,6 +264,7 @@ class MapViewModelTest {
             val s = vm.state.value as MapUiState.Ready
             assertTrue(s.free)
             assertEquals("", repo.opened.last())
+            assertEquals(0, s.opened.packCount)
 
             // Without it, the empty screen as before.
             val none = vm(FakeRepository(entries = emptyList()))

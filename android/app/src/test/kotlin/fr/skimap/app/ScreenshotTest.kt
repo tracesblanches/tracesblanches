@@ -95,6 +95,16 @@ class ScreenshotTest {
         capture("sheet_dark_large_font")
     }
 
+    /** Free mode over the France basemap alone, no pack installed (X20, #162): the header says so. */
+    @Test
+    fun mapFranceOnly() {
+        val ready = readyState(free = true)
+        val opened = Fixtures.opened("", "France, aucun domaine installé").copy(packCount = 0)
+        rule.setContent { Themed { TestMapScreen(ready.copy(packs = emptyList(), opened = opened)) } }
+        rule.onNodeWithText("France · aucun domaine installé").assertExists()
+        capture("map_france_only")
+    }
+
     @Test
     fun noPack() {
         rule.setContent {

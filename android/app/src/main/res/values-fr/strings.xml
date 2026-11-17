@@ -13,6 +13,8 @@
     <string name="mode_free">Tout afficher (mode libre)</string>
     <string name="mode_area">Un domaine : %1$s</string>
     <string name="free_mode_name">Tous les domaines installés</string>
+    <string name="no_pack_site">France</string>
+    <string name="no_pack_status">aucun domaine installé</string>
     <string name="sheet_practice">Pratique</string>
     <string name="practice_fond">Ski de fond sur pistes damées</string>
     <string name="practice_srn">Ski de randonnée nordique, hors piste</string>

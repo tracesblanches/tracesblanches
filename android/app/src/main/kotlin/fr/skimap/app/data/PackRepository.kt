@@ -26,6 +26,8 @@ data class OpenedPack(
     val packBounds: List<Bounds> = emptyList(),
     /** Name of each pack shown, in order (the style suffix `~p<k>` is pack `k`). */
     val packNames: List<String> = emptyList(),
+    /** Packs the core opened (0: free mode over the France basemap alone, no pack installed). */
+    val packCount: Int = 1,
 )
 
 /** Packs stored on the phone. Every read goes through the Rust reader (crates/ffi). */
@@ -95,7 +97,7 @@ class RustPackRepository(
                 val view = openMap(dirs, france()?.absolutePath, styleJson, free, appLang())
                 current?.destroy()
                 current = view.set
-                OpenedPack(view.info, view.style, view.coreVersion)
+                OpenedPack(view.info, view.style, view.coreVersion, packCount = view.set.len().toInt())
             }
         }
 

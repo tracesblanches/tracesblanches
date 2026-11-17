@@ -94,5 +94,17 @@ class ThemeAndTextsTest {
         assertEquals("No piste status in this pack", texts().statusText(null, PARIS))
         assertEquals("All installed areas", texts().siteName(info, free = true))
         assertEquals("Cervières", texts().siteName(info, free = false))
+        // No pack installed (#162): never « all installed areas », no piste status to miss.
+        val france = texts().siteName(info, free = true, packCount = 0)
+        assertEquals("France · no area installed", texts().headerText(info, france, packCount = 0))
+        assertEquals("Cervières · 0 open, 8 closed", texts().headerText(info, "Cervières"))
+    }
+
+    @Test
+    @Config(qualifiers = "fr")
+    fun noPackHeaderFrench() {
+        val info = Fixtures.info()
+        val france = texts().siteName(info, free = true, packCount = 0)
+        assertEquals("France · aucun domaine installé", texts().headerText(info, france, packCount = 0))
     }
 }
