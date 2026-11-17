@@ -285,6 +285,48 @@ fn estimated_pistes_are_dotted_and_optional() {
     }
 }
 
+/// A pack whose estimated traces hold only some of the declared difficulties (four blue
+/// traces on a Jura site, #162) passes: the style draws every declared value, the pack
+/// need not hold them all. A value outside the declared schema is still refused.
+#[test]
+fn estimated_pistes_of_one_colour_pass() {
+    let snapshot = Snapshot::load().expect("styles/pack-schema.json");
+    let fc = json!({"type": "FeatureCollection", "features": (0..4).map(|i| json!({
+        "type": "Feature",
+        "geometry": {"type": "LineString", "coordinates": [[6.0 + f64::from(i) * 0.01, 46.5], [6.005, 46.51]]},
+        "properties": {"name": "Piste", "colour": "blue", "difficulty": "easy",
+                       "certainty": "incertain", "method": "estimated_paths", "score": 0.5,
+                       "plan_url": "https://example.org/plan.pdf"}
+    })).collect::<Vec<_>>()});
+    let mut pack = snapshot.packs[0].clone();
+    let layer = skimap_styles::inventory::geojson_layer(&fc);
+    assert!(layer.keys["difficulty"].values.is_some(), "values recorded");
+    pack.geojson
+        .insert("layers/pistes-estimees.geojson".to_owned(), layer);
+    let packs = std::slice::from_ref(&pack);
+    for (name, s) in all() {
+        let errors = validate_with(&s, packs, &snapshot.packs);
+        assert!(errors.is_empty(), "{name}:\n{}", errors.join("\n"));
+    }
+    // A colour the producer never writes is refused.
+    let mut s = style(Kind::Fond, Theme::Clair);
+    let i = layer_index(&s, "pistes-estimees");
+    s["layers"][i]["paint"]["line-color"] = json!([
+        "match",
+        ["get", "difficulty"],
+        "expert",
+        "#000000",
+        "#0000ff"
+    ]);
+    let errors = validate_with(&s, packs, &snapshot.packs);
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.contains("difficulty never has the value")),
+        "{errors:?}"
+    );
+}
+
 fn layer_index(s: &Value, id: &str) -> usize {
     s["layers"]
         .as_array()
