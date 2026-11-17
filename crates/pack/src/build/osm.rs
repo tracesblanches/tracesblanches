@@ -33,7 +33,7 @@ use skimap_common::geom::BBox;
 use skimap_common::layout::DataLayout;
 use skimap_common::site::Site;
 
-use crate::build::extract::{ExtractStats, HttpRanges};
+use crate::build::extract::{Archive, ExtractStats, HttpRanges, RangeSource, decompress_tile};
 use crate::build::{assets, copy_file, create_dir, dir_size, source, write_bytes};
 use crate::error::{Error, Result};
 use crate::manifest::Basemap;
@@ -209,10 +209,19 @@ impl BoxChange {
     }
 }
 
-/// Compares the tiles of the highest zoom of `newer` (they cover `bbox`) with `older`,
-/// after decompression.
-pub fn box_change(older: &TileArchive, newer: &TileArchive, bbox: BBox) -> Result<BoxChange> {
-    let zoom = newer.zoom_range().1;
+/// Compares the tiles of `bbox` at the highest zoom read from the latest build
+/// (`newer`, up to `maxzoom`: only those tiles, their leaf directories and data are read,
+/// not the extract of the whole box) with the extract in use `older`, after
+/// decompression.
+pub fn box_change(
+    older: &TileArchive,
+    newer: &mut Archive<'_>,
+    bbox: BBox,
+    maxzoom: u8,
+) -> Result<BoxChange> {
+    let zoom = maxzoom.min(newer.header().zooms.1);
+    let compression = newer.header().tile_compression;
+    let tiles = newer.tiles_at(bbox, zoom)?;
     let mut out = BoxChange {
         zoom,
         tiles: 0,
@@ -220,9 +229,11 @@ pub fn box_change(older: &TileArchive, newer: &TileArchive, bbox: BBox) -> Resul
     };
     for (z, x, y) in tiles_covering(bbox, zoom, zoom) {
         out.tiles += 1;
-        let (a, b) = (older.raw_tile(z, x, y)?, newer.raw_tile(z, x, y)?);
-        let differ = match (&a, &b) {
-            (Some(a), Some(b)) => a != b && older.tile(z, x, y)? != newer.tile(z, x, y)?,
+        let (a, b) = (older.raw_tile(z, x, y)?, tiles.get(&(z, x, y)));
+        let differ = match (&a, b) {
+            (Some(a), Some(b)) => {
+                a != b && older.tile(z, x, y)? != Some(decompress_tile(b, compression)?)
+            }
             (None, None) => false,
             _ => true,
         };
@@ -317,38 +328,19 @@ pub struct Chosen {
     pub decision: Decision,
 }
 
-/// Chooses between the extract in use (`current`, with its build) and the extract of
-/// the latest build, by [`decide`].
-pub fn choose(
-    current: Option<(BuildInfo, PathBuf)>,
-    latest: (BuildInfo, PathBuf),
-    bbox: BBox,
-) -> Result<Chosen> {
-    let change = match &current {
-        Some((cur, cur_path)) if needs_comparison(Some(cur), &latest.0) => Some(box_change(
-            &TileArchive::open(cur_path)?,
-            &TileArchive::open(&latest.1)?,
-            bbox,
-        )?),
-        _ => None,
-    };
-    let decision = decide(current.as_ref().map(|c| &c.0), &latest.0, change);
-    let (build, path) = match current {
-        Some(c) if !decision.adopts() => c,
-        _ => latest.clone(),
-    };
-    Ok(Chosen {
-        build,
-        path,
-        latest: latest.0,
-        change,
-        decision,
-    })
+/// File of the build in use of a site box, `<site>-z<zoom>-<box>.current.json`.
+fn state_path(dir: &Path, site: &Site, maxzoom: u8) -> PathBuf {
+    dir.join(format!(
+        "{}-z{maxzoom}-{}.current.json",
+        site.id,
+        box_name(site.bbox)
+    ))
 }
 
 /// The extract the pack uses: the one of the build in use, recorded in
 /// `extracts/<site>-z<zoom>-<box>.current.json`, or the one of `latest` when [`decide`]
-/// adopts it (then recorded in its place).
+/// adopts it (then recorded in its place). The latest build is read by range requests
+/// ([`HttpRanges`]).
 pub fn current_extract(
     site: &Site,
     layout: &DataLayout,
@@ -356,12 +348,32 @@ pub fn current_extract(
     latest: &BuildInfo,
     maxzoom: u8,
 ) -> Result<Chosen> {
+    let url = format!("{BUILD_BASE}{}", latest.key);
+    let src = HttpRanges {
+        dl,
+        source: SOURCE,
+        url: &url,
+    };
+    current_extract_from(site, layout, latest, maxzoom, &src)
+}
+
+/// [`current_extract`] with the latest build read from `src`.
+///
+/// When the build in use must be compared with the latest one ([`needs_comparison`]),
+/// only the tiles of the box at the highest zoom are read from the latest build
+/// ([`box_change`]); its extract of the whole box is read (the tiles already read are
+/// not read again) and written only when it is adopted. Before (X26), the whole extract
+/// of every new build was read for every site to be compared, and kept: 26 MB a day for
+/// eight sites, all of it for builds kept aside (#164).
+pub fn current_extract_from(
+    site: &Site,
+    layout: &DataLayout,
+    latest: &BuildInfo,
+    maxzoom: u8,
+    src: &dyn RangeSource,
+) -> Result<Chosen> {
     let dir = extracts_dir(layout)?;
-    let state = dir.join(format!(
-        "{}-z{maxzoom}-{}.current.json",
-        site.id,
-        box_name(site.bbox)
-    ));
+    let state = state_path(&dir, site, maxzoom);
     let current: Option<(BuildInfo, PathBuf)> = match std::fs::read(&state) {
         Ok(b) => {
             let build: BuildInfo = serde_json::from_slice(&b)
@@ -372,19 +384,61 @@ pub fn current_extract(
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
         Err(e) => return Err(Error::io(&state, e)),
     };
-    let latest_path = cached_extract(site, layout, dl, latest, maxzoom)?;
-    let chosen = choose(current, (latest.clone(), latest_path), site.bbox)?;
-    if chosen.decision.adopts() && chosen.decision != Decision::Same {
-        let body = serde_json::to_vec_pretty(&chosen.build)
+    let mut archive: Option<Archive<'_>> = None;
+    let change = match &current {
+        Some((cur, cur_path)) if needs_comparison(Some(cur), latest) => {
+            let a = archive.insert(Archive::open(src)?);
+            Some(box_change(
+                &TileArchive::open(cur_path)?,
+                a,
+                site.bbox,
+                maxzoom,
+            )?)
+        }
+        _ => None,
+    };
+    let decision = decide(current.as_ref().map(|c| &c.0), latest, change);
+    let (build, path) = match current {
+        Some(c) if !decision.adopts() => c,
+        _ => {
+            let path = extract_path(&dir, site, &latest.key, maxzoom);
+            if !path.is_file() {
+                let a = match archive.as_mut() {
+                    Some(a) => a,
+                    None => archive.insert(Archive::open(src)?),
+                };
+                let t = std::time::Instant::now();
+                let s = a.extract(site.bbox, maxzoom, &path)?;
+                tracing::info!(
+                    site = site.id,
+                    build = latest.key,
+                    ?s,
+                    seconds = t.elapsed().as_secs_f64(),
+                    "Protomaps extract"
+                );
+            }
+            (latest.clone(), path)
+        }
+    };
+    if decision.adopts() && decision != Decision::Same {
+        let body = serde_json::to_vec_pretty(&build)
             .map_err(|e| Error::json("Protomaps build in use", e))?;
         write_bytes(&state, &body)?;
     }
+    let chosen = Chosen {
+        build,
+        path,
+        latest: latest.clone(),
+        change,
+        decision,
+    };
     tracing::info!(
         site = site.id,
         in_use = chosen.build.key,
         latest = latest.key,
         change = ?chosen.change,
         decision = ?chosen.decision,
+        reads = ?archive.as_ref().map(Archive::reads),
         "Protomaps build"
     );
     Ok(chosen)
@@ -571,6 +625,42 @@ fn renewal_note(c: &Chosen) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::cell::RefCell;
+    use std::fs::File;
+
+    /// A local build read by ranges, every read recorded.
+    struct Recorded(File, RefCell<Vec<(u64, u64)>>);
+
+    impl Recorded {
+        fn open(p: &Path) -> Self {
+            Self(File::open(p).unwrap(), RefCell::new(Vec::new()))
+        }
+
+        /// Bytes read from the tile data section.
+        fn data_bytes(&self) -> u64 {
+            let first = self.0.read(0, crate::build::extract::FIRST_READ).unwrap();
+            let h = crate::build::extract::parse_header(&first).unwrap();
+            self.1
+                .borrow()
+                .iter()
+                .filter(|(o, _)| *o >= h.data.0 && *o < h.data.0 + h.data.1)
+                .map(|(_, l)| l)
+                .sum()
+        }
+
+        /// Length of the tile data section.
+        fn data_len(&self) -> u64 {
+            let first = self.0.read(0, crate::build::extract::FIRST_READ).unwrap();
+            crate::build::extract::parse_header(&first).unwrap().data.1
+        }
+    }
+
+    impl RangeSource for Recorded {
+        fn read(&self, offset: u64, len: u64) -> Result<Vec<u8>> {
+            self.1.borrow_mut().push((offset, len));
+            self.0.read(offset, len)
+        }
+    }
 
     #[test]
     fn latest_build_is_the_last_key() {
@@ -690,10 +780,6 @@ mod tests {
         let site = &skimap_common::site::SITES[0];
         let tmp = tempfile::tempdir().unwrap();
         let layout = DataLayout::new(tmp.path());
-        let dl = Downloader::builder(layout.cache_root())
-            .offline(true)
-            .build()
-            .unwrap();
         let dir = extracts_dir(&layout).unwrap();
         let box_tiles = tiles_covering(site.bbox, 15, 15);
         let n = box_tiles.len();
@@ -711,8 +797,10 @@ mod tests {
         let mut published: Vec<(String, Decision, String)> = Vec::new();
         for day in 0..12u32 {
             let key = format!("202611{:02}", 12 + day);
-            let path = extract_path(&dir, site, &key, 15);
-            write_day(&path, site.bbox, &key, |z, x, y| {
+            // The daily build (here: the box only), read by ranges.
+            let build = tmp.path().join("builds").join(format!("{key}.pmtiles"));
+            std::fs::create_dir_all(build.parent().unwrap()).unwrap();
+            write_day(&build, site.bbox, &key, |z, x, y| {
                 if (2..=9).contains(&z) {
                     // Wide tiles: every build changes them.
                     return day;
@@ -725,7 +813,23 @@ mod tests {
                 }
                 0
             });
-            let chosen = current_extract(site, &layout, &dl, &info(&key, "4.15.2"), 15).unwrap();
+            let src = Recorded::open(&build);
+            let chosen =
+                current_extract_from(site, &layout, &info(&key, "4.15.2"), 15, &src).unwrap();
+            // A build kept aside: only the tiles of the highest zoom were read, and no
+            // extract of it was written (#164).
+            let written = extract_path(&dir, site, &key, 15).is_file();
+            assert_eq!(written, chosen.decision.adopts(), "day {day}");
+            let stored = TileArchive::open(&build).unwrap();
+            let z15: u64 = box_tiles
+                .iter()
+                .map(|&(z, x, y)| stored.raw_tile(z, x, y).unwrap().unwrap().len() as u64)
+                .sum();
+            if chosen.decision == Decision::Kept {
+                assert_eq!(src.data_bytes(), z15, "day {day}: the zoom 15 tiles only");
+            } else if chosen.decision.adopts() {
+                assert_eq!(src.data_bytes(), src.data_len(), "day {day}: read once");
+            }
             let root = tmp.path().join(format!("pack-{day}"));
             let rel = format!("basemap/{ID}.pmtiles");
             copy_file(&chosen.path, &root.join(&rel)).unwrap();
@@ -772,23 +876,30 @@ mod tests {
         let site = &skimap_common::site::SITES[0];
         let tmp = tempfile::tempdir().unwrap();
         let layout = DataLayout::new(tmp.path());
-        let dl = Downloader::builder(layout.cache_root())
-            .offline(true)
-            .build()
-            .unwrap();
         let dir = extracts_dir(&layout).unwrap();
-        for key in ["20261112", "20261113"] {
-            write_day(
-                &extract_path(&dir, site, key, 15),
-                site.bbox,
-                key,
-                |_, _, _| 0,
-            );
-        }
-        let first = current_extract(site, &layout, &dl, &info("20261112", "4.15.2"), 15).unwrap();
+        let build = |key: &str| {
+            let p = tmp.path().join(format!("{key}.pmtiles"));
+            write_day(&p, site.bbox, key, |_, _, _| 0);
+            Recorded::open(&p)
+        };
+        let first = current_extract_from(
+            site,
+            &layout,
+            &info("20261112", "4.15.2"),
+            15,
+            &build("20261112"),
+        )
+        .unwrap();
         assert_eq!(first.decision, Decision::First);
         std::fs::remove_file(extract_path(&dir, site, "20261112", 15)).unwrap();
-        let next = current_extract(site, &layout, &dl, &info("20261113", "4.15.2"), 15).unwrap();
+        let next = current_extract_from(
+            site,
+            &layout,
+            &info("20261113", "4.15.2"),
+            15,
+            &build("20261113"),
+        )
+        .unwrap();
         assert_eq!(next.decision, Decision::First);
         assert_eq!(next.build.key, "20261113.pmtiles");
     }
@@ -804,10 +915,12 @@ mod tests {
         write_day(&b, site.bbox, "b", |z, x, y| {
             u32::from(z < 15 || (z, x, y) == first)
         });
+        let src = Recorded::open(&b);
         let c = box_change(
             &TileArchive::open(&a).unwrap(),
-            &TileArchive::open(&b).unwrap(),
+            &mut Archive::open(&src).unwrap(),
             site.bbox,
+            15,
         )
         .unwrap();
         assert_eq!(c.zoom, 15);

@@ -65,6 +65,10 @@ required-features = ["pipeline"]
 name = "basemap_sizes"
 required-features = ["pipeline"]
 
+[[example]]
+name = "osm_daily_bytes"
+required-features = ["pipeline"]
+
 [[test]]
 name = "synthetic_pack"
 required-features = ["pipeline"]
