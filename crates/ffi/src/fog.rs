@@ -1352,6 +1352,7 @@ impl Engine {
                     kind: TargetKind::Start,
                     pos: b.end(),
                     name: None,
+                    recorded: None,
                 };
                 back_view(b, &start, WayKind::Trace, self.last.map(|(_, p)| p))
             }),

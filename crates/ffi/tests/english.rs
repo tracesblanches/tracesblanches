@@ -445,6 +445,7 @@ fn every_text_of_the_ffi_has_its_english() {
         kind,
         pos: LonLat::new(6.0, 45.0),
         name: name.map(str::to_owned),
+        recorded: None,
     };
     for tg in [
         Some(target(TargetKind::Destination, Some("G"))),
