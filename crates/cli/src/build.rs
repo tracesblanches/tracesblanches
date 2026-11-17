@@ -935,6 +935,83 @@ pub fn step_dir(step: &str) -> Option<&'static str> {
     })
 }
 
+/// Number of features of a GeoJSON file, without keeping them; `Err` when the file is
+/// missing or is not a feature collection.
+fn feature_count(path: &Path) -> std::result::Result<usize, String> {
+    #[derive(Deserialize)]
+    struct Fc {
+        features: Vec<serde::de::IgnoredAny>,
+    }
+    let body = std::fs::read(path).map_err(|e| format!("{} : {e}", path.display()))?;
+    serde_json::from_slice::<Fc>(&body)
+        .map(|f| f.features.len())
+        .map_err(|e| format!("{} illisible : {e}", path.display()))
+}
+
+/// Whether a directory holds at least one file (temporary files left out).
+fn has_files(dir: &Path) -> bool {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    rd.flatten().any(|e| {
+        if e.file_type().is_ok_and(|t| t.is_dir()) {
+            has_files(&e.path())
+        } else {
+            !e.file_name().to_string_lossy().contains(".tmp")
+        }
+    })
+}
+
+/// Why a step that ended `ok` produced nothing usable, from its outputs on disk in the
+/// output directory of the site (`site_dir`); `None` when it produced something (B167:
+/// an empty layer is reported in the build log and in `status.json`, never silently).
+/// Empty means: no output file at all; no piste; no hut or shelter from any of the three
+/// sources; no zone (the country and the department are always there); no pack manifest.
+pub fn empty_output(step: &str, site_dir: &Path, site: &Site) -> Option<String> {
+    let dir_name = step_dir(step)?;
+    let dir = site_dir.join(dir_name);
+    if !has_files(&dir) {
+        return Some(format!("aucun fichier écrit dans {dir_name}/"));
+    }
+    let count = |files: &[&str]| -> std::result::Result<usize, String> {
+        files
+            .iter()
+            .map(|f| feature_count(&dir.join(f)))
+            .sum::<std::result::Result<usize, String>>()
+    };
+    let (files, nothing): (&[&str], String) = match step {
+        "pistes" => (
+            &["pistes.geojson"],
+            if site.kind.has_groomed_trails() {
+                "aucune piste OSM dans l'emprise d'une station damée : emprise du registre ou extrait OSM en défaut".into()
+            } else {
+                format!(
+                    "aucune piste damée dans l'emprise ({} : itinéraires hors piste seulement)",
+                    site.kind.label_fr()
+                )
+            },
+        ),
+        "refuges" => (
+            &["refuges_info.geojson", "osm.geojson", "camptocamp.geojson"],
+            "aucun refuge ni abri dans l'emprise (refuges.info, OSM, Camptocamp)".into(),
+        ),
+        "zones" => (
+            &["zones.geojson"],
+            "aucune zone, pas même le pays et le département".into(),
+        ),
+        "build-pack" => {
+            return (!dir.join("manifest.json").is_file())
+                .then(|| "pack sans manifest.json".to_owned());
+        }
+        _ => return None,
+    };
+    match count(files) {
+        Ok(0) => Some(nothing),
+        Ok(_) => None,
+        Err(e) => Some(e),
+    }
+}
+
 /// Fingerprint of a directory: sha256 over its files (relative path, size, sha256 of
 /// the content), in path order; temporary files (`*.tmp*`) left out. `None` when the
 /// directory does not exist.
@@ -1125,6 +1202,13 @@ impl<'a> Run<'a> {
                 format!("{name:<19} {seconds:>7.2}s  sans objet : {line}")
             }
             StepState::Disabled => format!("{name:<19} {:>8}  ignoré : {line}", "-"),
+        };
+        let shown = match r.state {
+            StepState::Ok => match empty_output(name, &self.out_dir, self.site) {
+                Some(why) => format!("{shown}\n{:<19} {:>8}  VIDE : {why}", "", ""),
+                None => shown,
+            },
+            _ => shown,
         };
         let _ = writeln!(self.log, "{shown}");
         let _ = self.log.flush();
@@ -1355,6 +1439,68 @@ pub fn zones_at(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// B167: what an `ok` step left on disk says whether it produced anything.
+    #[test]
+    fn empty_outputs() {
+        let d = tempfile::tempdir().unwrap();
+        let rec = |groomed: bool| {
+            skimap_common::site::evaluation_records()
+                .iter()
+                .find(|r| r.kind.has_groomed_trails() == groomed)
+                .cloned()
+        };
+        let station = skimap_common::site::interned(&rec(true).unwrap()).unwrap();
+        let mut srn = rec(true).unwrap();
+        srn.id = format!("{}-srn", srn.id);
+        srn.kind = skimap_common::site::SiteKind::SrnArea;
+        let srn = skimap_common::site::interned(&srn).unwrap();
+        let dir = d.path();
+        let fc = |n: usize| {
+            serde_json::json!({"type": "FeatureCollection", "features": vec![serde_json::json!({}); n]})
+                .to_string()
+        };
+        // Nothing written at all.
+        for step in ["pistes", "terrain", "build-pack"] {
+            assert!(
+                empty_output(step, dir, station)
+                    .unwrap()
+                    .starts_with("aucun fichier"),
+                "{step}"
+            );
+        }
+        // Steps without an output directory are never judged.
+        assert_eq!(empty_output("domaines", dir, station), None);
+        std::fs::create_dir_all(dir.join("pistes")).unwrap();
+        std::fs::write(dir.join("pistes/pistes.geojson"), fc(0)).unwrap();
+        assert!(
+            empty_output("pistes", dir, station)
+                .unwrap()
+                .contains("station damée")
+        );
+        assert!(
+            empty_output("pistes", dir, srn)
+                .unwrap()
+                .contains("hors piste")
+        );
+        std::fs::write(dir.join("pistes/pistes.geojson"), fc(3)).unwrap();
+        assert_eq!(empty_output("pistes", dir, station), None);
+        std::fs::write(dir.join("pistes/pistes.geojson"), "{").unwrap();
+        assert!(
+            empty_output("pistes", dir, station)
+                .unwrap()
+                .contains("illisible")
+        );
+        // A pack directory without its manifest.
+        std::fs::create_dir_all(dir.join("pack/layers")).unwrap();
+        std::fs::write(dir.join("pack/layers/x.pmtiles"), b"x").unwrap();
+        assert_eq!(
+            empty_output("build-pack", dir, station).as_deref(),
+            Some("pack sans manifest.json")
+        );
+        std::fs::write(dir.join("pack/manifest.json"), b"{}").unwrap();
+        assert_eq!(empty_output("build-pack", dir, station), None);
+    }
 
     #[test]
     fn instants() {
