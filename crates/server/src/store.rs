@@ -4,6 +4,7 @@
 //! ```text
 //! <store>/public/catalog.json                    every site (short cache, ETag)
 //! <store>/public/sites/<site>/index.json         latest version, base and delta bundles
+//! <store>/public/sites/<site>/voice/<lang>/index.json   the same for a voice pack (VO6)
 //! <store>/public/bundles/<sha256>.skb            bundles, immutable (name = SHA-256)
 //! <store>/blobs/<aa>/<sha256>                    contents of the kept versions (internal)
 //! <store>/sites/<site>/versions/<version>.json   kept versions (internal)
@@ -16,6 +17,13 @@
 //! Only `public/` is served (and could be copied as is to an object store). A bundle is
 //! written, then the index that names it (by rename): a phone never sees an index whose
 //! bundles are missing.
+//!
+//! Voice packs (VO6): a pack without basemaps or layers whose voice slot names a language
+//! (`skimap_pack::build::build_voice_pack`) is published under the key `<site>/voice/<lang>`
+//! (`sites/<site>/voice/<lang>/` inside, `public/sites/<site>/voice/<lang>/index.json`
+//! served) and listed in the `voice` field of its site in the catalog. Its base bundle is
+//! rebuilt at every publication: a first download, or a change of language, is a single
+//! bundle.
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -135,6 +143,55 @@ pub struct CatalogSite {
     pub latest: LatestVersion,
     /// Size of a first download (base bundle + delta from the base).
     pub first_download_bytes: u64,
+    /// Voice packs of the site, one per language (VO6), sorted by language.
+    #[serde(default)]
+    pub voice: Vec<CatalogVoice>,
+}
+
+/// A voice pack of a site in the catalog (VO6).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CatalogVoice {
+    /// Language (`fr`, `en`).
+    pub lang: String,
+    /// Index URL, relative to the server.
+    pub index_url: String,
+    /// Latest version.
+    pub latest: LatestVersion,
+    /// Size of a first download: the base bundle, rebuilt at every publication.
+    pub first_download_bytes: u64,
+}
+
+/// Separator of the key of a voice pack: `<site>/voice/<lang>`.
+const VOICE_KEY: &str = "/voice/";
+
+/// Language codes of the voice packs: two lowercase ASCII letters.
+fn valid_lang(s: &str) -> bool {
+    s.len() == 2 && s.bytes().all(|b| b.is_ascii_lowercase())
+}
+
+/// Whether `key` is a site or a voice pack of a site (`<site>/voice/<lang>`).
+fn valid_key(key: &str) -> bool {
+    match key.split_once(VOICE_KEY) {
+        Some((site, lang)) => valid_site(site) && valid_lang(lang),
+        None => valid_site(key),
+    }
+}
+
+/// Store key of a pack: its site, or `<site>/voice/<lang>` for a voice pack (VO6: no
+/// basemap, no layer, a voice slot with its language).
+pub fn pack_key(m: &Manifest) -> String {
+    match voice_lang(m) {
+        Some(lang) => format!("{}{VOICE_KEY}{lang}", m.site.id),
+        None => m.site.id.clone(),
+    }
+}
+
+/// Language of a voice pack, `None` for a site pack.
+pub fn voice_lang(m: &Manifest) -> Option<&str> {
+    m.voice
+        .lang
+        .as_deref()
+        .filter(|_| m.basemaps.is_empty() && m.layers.is_empty())
 }
 
 /// Site identifiers of the pipeline (`skimap_common::site::slug`); up to 128 bytes: SRN
@@ -220,9 +277,57 @@ impl Store {
         self.public().join("catalog.json")
     }
 
-    /// Served path of a site index, `None` for a malformed name.
+    /// Served path of a site index (or of a voice pack, key `<site>/voice/<lang>`),
+    /// `None` for a malformed name.
     pub fn index_path(&self, site: &str) -> Option<PathBuf> {
-        valid_site(site).then(|| self.public().join("sites").join(site).join("index.json"))
+        valid_key(site).then(|| self.public().join("sites").join(site).join("index.json"))
+    }
+
+    /// Served path of the index of the voice pack of `site` in `lang`.
+    pub fn voice_index_path(&self, site: &str, lang: &str) -> Option<PathBuf> {
+        self.index_path(&format!("{site}{VOICE_KEY}{lang}"))
+    }
+
+    /// Languages of the published voice packs of a site, sorted.
+    pub fn voice_langs(&self, site: &str) -> Result<Vec<String>> {
+        let dir = self.public().join("sites").join(site).join("voice");
+        let mut out = Vec::new();
+        let rd = match fs::read_dir(&dir) {
+            Ok(rd) => rd,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(out),
+            Err(e) => return Err(e.into()),
+        };
+        for e in rd {
+            let e = e?;
+            let lang = e.file_name().to_string_lossy().into_owned();
+            if valid_lang(&lang) && e.path().join("index.json").is_file() {
+                out.push(lang);
+            }
+        }
+        out.sort();
+        Ok(out)
+    }
+
+    /// Every published key: the sites and their voice packs.
+    fn keys(&self) -> Result<Vec<String>> {
+        let mut out = Vec::new();
+        let mut dirs: Vec<String> = Vec::new();
+        for e in fs::read_dir(self.public().join("sites"))? {
+            let name = e?.file_name().to_string_lossy().into_owned();
+            if valid_site(&name) {
+                dirs.push(name);
+            }
+        }
+        dirs.sort();
+        for site in dirs {
+            if self.index_path(&site).is_some_and(|p| p.is_file()) {
+                out.push(site.clone());
+            }
+            for lang in self.voice_langs(&site)? {
+                out.push(format!("{site}{VOICE_KEY}{lang}"));
+            }
+        }
+        Ok(out)
     }
 
     /// Served path of a bundle, `None` for a malformed name.
@@ -441,8 +546,9 @@ impl Store {
         let manifest_path = pack_dir.join(MANIFEST_FILE);
         let manifest_bytes = fs::read(&manifest_path)?;
         let new = parse_manifest(&manifest_bytes, &manifest_path.display().to_string())?;
-        let site = new.site.id.clone();
-        if !valid_site(&site) || !valid_version(&new.pack_version) {
+        let site = pack_key(&new);
+        let voice_pack = voice_lang(&new).is_some();
+        if !valid_key(&site) || !valid_version(&new.pack_version) {
             bail!("bad site {site:?} or version {:?}", new.pack_version);
         }
 
@@ -526,6 +632,8 @@ impl Store {
             .as_ref()
             .and_then(|b| versions.iter().find(|v| v.pack_version == b.version));
         let keep_base = match (base_entry, &base) {
+            // A voice pack is downloaded whole when the language changes: one bundle.
+            _ if voice_pack => false,
             (Some(be), Some(b))
                 if self
                     .bundle_path(&b.bundle.sha256)
@@ -656,11 +764,23 @@ impl Store {
                 .iter()
                 .find(|d| d.from.as_deref() == Some(i.base_version.as_str()))
                 .map_or(0, |d| d.bytes);
+            let mut voice = Vec::new();
+            for lang in self.voice_langs(&id)? {
+                let key = format!("{id}{VOICE_KEY}{lang}");
+                let Some(v) = self.index(&key)? else { continue };
+                voice.push(CatalogVoice {
+                    lang,
+                    index_url: format!("/v1/sites/{key}/index.json"),
+                    first_download_bytes: v.base.bytes,
+                    latest: v.latest,
+                });
+            }
             sites.push(CatalogSite {
                 site: i.site.clone(),
                 index_url: format!("/v1/sites/{id}/index.json"),
                 first_download_bytes: i.base.bytes + from_base,
                 latest: i.latest,
+                voice,
             });
         }
         let c = Catalog {
@@ -676,7 +796,7 @@ impl Store {
     fn collect_garbage(&self) -> Result<(u64, u64)> {
         let mut blobs: HashSet<String> = HashSet::new();
         let mut bundles: HashSet<String> = HashSet::new();
-        for site in self.sites()? {
+        for site in self.keys()? {
             for v in self.versions(&site)? {
                 let m = self.manifest(&v)?;
                 blobs.insert(v.manifest_sha256.clone());

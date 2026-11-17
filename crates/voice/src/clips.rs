@@ -308,7 +308,7 @@ pub fn until(d: DayMonth) -> Clip {
 }
 
 macro_rules! fixed_phrases {
-    ($( $(#[$m:meta])* $v:ident = $key:literal => $text:literal, )*) => {
+    ($( $(#[$m:meta])* $v:ident = $key:literal => $text:literal, $en:literal, )*) => {
         /// Fixed phrases (no parameter).
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
         #[serde(rename_all = "snake_case")]
@@ -318,9 +318,14 @@ macro_rules! fixed_phrases {
             /// Every fixed phrase.
             pub const ALL: &'static [Fixed] = &[ $( Fixed::$v, )* ];
 
-            /// Clip of the phrase.
+            /// Clip of the phrase (French).
             pub fn clip(self) -> Clip {
                 match self { $( Fixed::$v => Clip::new(concat!("fix.", $key), $text), )* }
+            }
+
+            /// English text of the phrase (VO6), same clip id.
+            pub fn english(self) -> &'static str {
+                match self { $( Fixed::$v => $en, )* }
             }
         }
     };
@@ -328,189 +333,199 @@ macro_rules! fixed_phrases {
 
 fixed_phrases! {
     /// Destination reached.
-    Arrive = "arrive" => "Vous arrivez à destination.",
+    Arrive = "arrive" => "Vous arrivez à destination.", "You have arrived at your destination.",
     /// Off the planned route.
-    OffRoute = "off-route" => "Vous avez quitté l'itinéraire.",
+    OffRoute = "off-route" => "Vous avez quitté l'itinéraire.", "You have left the route.",
     /// The route is on the left.
-    RouteLeft = "route-left" => "Il est sur votre gauche.",
+    RouteLeft = "route-left" => "Il est sur votre gauche.", "It is on your left.",
     /// The route is on the right.
-    RouteRight = "route-right" => "Il est sur votre droite.",
+    RouteRight = "route-right" => "Il est sur votre droite.", "It is on your right.",
     /// The route is behind.
-    RouteBehind = "route-behind" => "Il est derrière vous.",
+    RouteBehind = "route-behind" => "Il est derrière vous.", "It is behind you.",
     /// The route is ahead.
-    RouteAhead = "route-ahead" => "Il est devant vous.",
+    RouteAhead = "route-ahead" => "Il est devant vous.", "It is ahead of you.",
     /// More than the last grid distance away.
-    RouteFar = "route-far" => "Il est à plus de deux kilomètres.",
+    RouteFar = "route-far" => "Il est à plus de deux kilomètres.", "It is more than two kilometres away.",
     /// Back on the route.
-    BackOnRoute = "back-on-route" => "Vous êtes de nouveau sur l'itinéraire.",
+    BackOnRoute = "back-on-route" => "Vous êtes de nouveau sur l'itinéraire.", "You are back on the route.",
     /// Reassurance signal.
-    Reassurance = "reassurance" => "Toujours sur l'itinéraire.",
+    Reassurance = "reassurance" => "Toujours sur l'itinéraire.", "Still on the route.",
     /// Turn back now.
-    TurnaroundNow = "turnaround-now" => "Faites demi-tour maintenant, afin de rentrer avant la nuit.",
+    TurnaroundNow = "turnaround-now" => "Faites demi-tour maintenant, afin de rentrer avant la nuit.", "Turn back now, to be home before dark.",
     /// Label before a clock time.
-    TurnaroundDeadline = "turnaround-deadline" => "Heure limite de demi-tour.",
+    TurnaroundDeadline = "turnaround-deadline" => "Heure limite de demi-tour.", "Turnaround time.",
     /// Turnaround moved earlier because of a delay.
-    TurnaroundLate = "turnaround-late" => "Vous êtes en retard sur l'heure prévue. Le demi-tour est avancé.",
+    TurnaroundLate = "turnaround-late" => "Vous êtes en retard sur l'heure prévue. Le demi-tour est avancé.", "You are behind schedule. The turnaround is brought forward.",
     /// Protected zone ahead.
-    ZoneAhead = "zone-ahead" => "Attention, zone protégée devant.",
+    ZoneAhead = "zone-ahead" => "Attention, zone protégée devant.", "Caution, protected area ahead.",
     /// Protected zone entered.
-    ZoneEntered = "zone-entered" => "Vous entrez dans une zone protégée.",
+    ZoneEntered = "zone-entered" => "Vous entrez dans une zone protégée.", "You are entering a protected area.",
     /// Rule: stay on marked routes.
-    RuleStayOnRoutes = "rule-stay" => "Restez sur les itinéraires balisés.",
+    RuleStayOnRoutes = "rule-stay" => "Restez sur les itinéraires balisés.", "Stay on the marked routes.",
     /// Rule: no entry.
-    RuleNoEntry = "rule-no-entry" => "Accès interdit.",
+    RuleNoEntry = "rule-no-entry" => "Accès interdit.", "No entry.",
     /// Rule: no bivouac.
-    RuleNoBivouac = "rule-no-bivouac" => "Bivouac interdit.",
+    RuleNoBivouac = "rule-no-bivouac" => "Bivouac interdit.", "No camping.",
     /// Rule: no fire.
-    RuleNoFire = "rule-no-fire" => "Feux interdits.",
+    RuleNoFire = "rule-no-fire" => "Feux interdits.", "No fires.",
     /// Rule: dogs on a leash.
-    RuleDogsLeash = "rule-dogs-leash" => "Chiens tenus en laisse.",
+    RuleDogsLeash = "rule-dogs-leash" => "Chiens tenus en laisse.", "Dogs must be kept on a lead.",
     /// Rule: no dogs.
-    RuleNoDogs = "rule-no-dogs" => "Chiens interdits.",
+    RuleNoDogs = "rule-no-dogs" => "Chiens interdits.", "No dogs allowed.",
     /// Rule: wildlife quiet zone.
-    RuleQuiet = "rule-quiet" => "Zone de quiétude de la faune, restez discret.",
+    RuleQuiet = "rule-quiet" => "Zone de quiétude de la faune, restez discret.", "Wildlife quiet area, please keep quiet.",
     /// No network ahead (after a distance clip).
-    NoNetworkAhead = "no-network-ahead" => "Début de zone sans aucun réseau, même pour les appels d'urgence.",
+    NoNetworkAhead = "no-network-ahead" => "Début de zone sans aucun réseau, même pour les appels d'urgence.", "Start of an area with no network at all, not even for emergency calls.",
     /// No network zone entered.
-    NoNetworkEntered = "no-network-entered" => "Vous entrez en zone sans aucun réseau. Les appels d'urgence ne passent pas.",
+    NoNetworkEntered = "no-network-entered" => "Vous entrez en zone sans aucun réseau. Les appels d'urgence ne passent pas.", "You are entering an area with no network at all. Emergency calls will not get through.",
     /// End of the no-network zone.
-    NoNetworkExit = "no-network-exit" => "Fin de la zone sans réseau.",
+    NoNetworkExit = "no-network-exit" => "Fin de la zone sans réseau.", "End of the area without network.",
     /// Daily briefing opening (before the site name).
-    BriefingIntro = "briefing-intro" => "Point du jour.",
+    BriefingIntro = "briefing-intro" => "Point du jour.", "Today's briefing.",
     /// No avalanche bulletin for the massif (Jura).
-    NoBulletin = "no-bulletin" => "Pas de bulletin d'avalanche pour ce massif.",
+    NoBulletin = "no-bulletin" => "Pas de bulletin d'avalanche pour ce massif.", "No avalanche bulletin for this mountain range.",
     /// Every piste is open.
-    AllOpen = "all-open" => "Toutes les pistes sont ouvertes.",
+    AllOpen = "all-open" => "Toutes les pistes sont ouvertes.", "All trails are open.",
     /// Label before a recommended piste or place.
-    Recommended = "recommended" => "Conseillé aujourd'hui.",
+    Recommended = "recommended" => "Conseillé aujourd'hui.", "Recommended today.",
     /// Fog forecast.
-    Fog = "fog" => "Brouillard prévu.",
+    Fog = "fog" => "Brouillard prévu.", "Fog is forecast.",
     /// Snowfall forecast.
-    Snowfall = "snowfall" => "Chutes de neige prévues.",
+    Snowfall = "snowfall" => "Chutes de neige prévues.", "Snowfall is forecast.",
     /// Light wind.
-    WindCalm = "wind-calm" => "Le vent sera faible.",
+    WindCalm = "wind-calm" => "Le vent sera faible.", "The wind will be light.",
     /// Label before the sunset time.
-    Sunset = "sunset" => "Coucher du soleil.",
+    Sunset = "sunset" => "Coucher du soleil.", "Sunset.",
     /// Label before the best start time.
-    BestTime = "best-time" => "Meilleur moment pour partir.",
+    BestTime = "best-time" => "Meilleur moment pour partir.", "Best time to set off.",
     /// Snow: fresh.
-    SnowFresh = "snow-fresh" => "Neige fraîche.",
+    SnowFresh = "snow-fresh" => "Neige fraîche.", "Fresh snow.",
     /// Snow: hard, refrozen.
-    SnowHard = "snow-hard" => "Neige dure et regelée.",
+    SnowHard = "snow-hard" => "Neige dure et regelée.", "Hard, refrozen snow.",
     /// Snow: transformed (spring snow).
-    SnowTransformed = "snow-transformed" => "Neige transformée.",
+    SnowTransformed = "snow-transformed" => "Neige transformée.", "Spring snow.",
     /// Snow: wet, heavy.
-    SnowWet = "snow-wet" => "Neige humide et lourde.",
+    SnowWet = "snow-wet" => "Neige humide et lourde.", "Wet, heavy snow.",
     /// Snow: wind-blown.
-    SnowWindblown = "snow-windblown" => "Neige soufflée par le vent.",
+    SnowWindblown = "snow-windblown" => "Neige soufflée par le vent.", "Wind-blown snow.",
     /// Snow: icy patches.
-    SnowIcy = "snow-icy" => "Plaques de glace.",
+    SnowIcy = "snow-icy" => "Plaques de glace.", "Icy patches.",
     /// Crowd: low.
-    CrowdLow = "crowd-low" => "Affluence faible.",
+    CrowdLow = "crowd-low" => "Affluence faible.", "Few people expected.",
     /// Crowd: medium.
-    CrowdMedium = "crowd-medium" => "Affluence moyenne.",
+    CrowdMedium = "crowd-medium" => "Affluence moyenne.", "Moderately busy.",
     /// Crowd: high.
-    CrowdHigh = "crowd-high" => "Affluence forte.",
+    CrowdHigh = "crowd-high" => "Affluence forte.", "Very busy.",
     /// Label before the equipment list.
-    EquipmentIntro = "equipment-intro" => "À emporter.",
+    EquipmentIntro = "equipment-intro" => "À emporter.", "To take with you.",
     /// Avalanche transceiver, shovel, probe.
-    ItemAvalancheKit = "item-avalanche-kit" => "DVA, pelle et sonde, l'itinéraire traverse du terrain avalancheux.",
+    ItemAvalancheKit = "item-avalanche-kit" => "DVA, pelle et sonde, l'itinéraire traverse du terrain avalancheux.", "Transceiver, shovel and probe, the route crosses avalanche terrain.",
     /// Head torch.
-    ItemHeadlamp = "item-headlamp" => "Une frontale, le retour est proche de la nuit.",
+    ItemHeadlamp = "item-headlamp" => "Une frontale, le retour est proche de la nuit.", "A head torch, you will be back close to nightfall.",
     /// Extra warm layer.
-    ItemWarmLayer = "item-warm-layer" => "Une couche chaude en plus, il fera très froid.",
+    ItemWarmLayer = "item-warm-layer" => "Une couche chaude en plus, il fera très froid.", "An extra warm layer, it will be very cold.",
     /// Power bank.
-    ItemPowerBank = "item-power-bank" => "Une batterie externe, une partie de l'itinéraire est sans réseau.",
+    ItemPowerBank = "item-power-bank" => "Une batterie externe, une partie de l'itinéraire est sans réseau.", "A power bank, part of the route has no network.",
     /// Tell someone.
-    ItemTellSomeone = "item-tell-someone" => "Prévenez un proche de votre itinéraire et de votre heure de retour.",
+    ItemTellSomeone = "item-tell-someone" => "Prévenez un proche de votre itinéraire et de votre heure de retour.", "Tell someone your route and when you expect to be back.",
     /// Compass.
-    ItemCompass = "item-compass" => "Une boussole, du brouillard est prévu.",
+    ItemCompass = "item-compass" => "Une boussole, du brouillard est prévu.", "A compass, fog is forecast.",
     /// Label before the wax advice.
-    WaxIntro = "wax-intro" => "Fartage.",
+    WaxIntro = "wax-intro" => "Fartage.", "Waxing.",
     /// Kick wax: green.
-    KickGreen = "kick-green" => "Fart de retenue vert.",
+    KickGreen = "kick-green" => "Fart de retenue vert.", "Green grip wax.",
     /// Kick wax: blue.
-    KickBlue = "kick-blue" => "Fart de retenue bleu.",
+    KickBlue = "kick-blue" => "Fart de retenue bleu.", "Blue grip wax.",
     /// Kick wax: violet.
-    KickViolet = "kick-violet" => "Fart de retenue violet.",
+    KickViolet = "kick-violet" => "Fart de retenue violet.", "Violet grip wax.",
     /// Kick wax: red.
-    KickRed = "kick-red" => "Fart de retenue rouge.",
+    KickRed = "kick-red" => "Fart de retenue rouge.", "Red grip wax.",
     /// Kick: klister.
-    KickKlister = "kick-klister" => "Klister.",
+    KickKlister = "kick-klister" => "Klister.", "Klister.",
     /// Kick: skins or waxless.
-    KickSkins = "kick-skins" => "Prenez des skis à écailles ou des peaux.",
+    KickSkins = "kick-skins" => "Prenez des skis à écailles ou des peaux.", "Take waxless skis or skins.",
     /// Glide wax: cold snow.
-    GlideCold = "glide-cold" => "Fart de glisse pour neige froide.",
+    GlideCold = "glide-cold" => "Fart de glisse pour neige froide.", "Glide wax for cold snow.",
     /// Glide wax: medium snow.
-    GlideMedium = "glide-medium" => "Fart de glisse pour neige moyenne.",
+    GlideMedium = "glide-medium" => "Fart de glisse pour neige moyenne.", "Glide wax for medium snow.",
     /// Glide wax: warm, wet snow.
-    GlideWarm = "glide-warm" => "Fart de glisse pour neige chaude et humide.",
+    GlideWarm = "glide-warm" => "Fart de glisse pour neige chaude et humide.", "Glide wax for warm, wet snow.",
     /// Segment through a known avalanche path (CLPA).
-    AvalancheSegment = "avalanche-segment" => "Attention, ce tronçon traverse une zone d'avalanche connue.",
+    AvalancheSegment = "avalanche-segment" => "Attention, ce tronçon traverse une zone d'avalanche connue.", "Caution, this section crosses a known avalanche path.",
     /// Wind rising.
-    WindRising = "wind-rising" => "Le vent se lève.",
+    WindRising = "wind-rising" => "Le vent se lève.", "The wind is rising.",
     /// Fog coming.
-    FogComing = "fog-coming" => "Le brouillard arrive.",
+    FogComing = "fog-coming" => "Le brouillard arrive.", "Fog is coming in.",
     /// Snow starting.
-    SnowStarting = "snow-starting" => "Il commence à neiger.",
+    SnowStarting = "snow-starting" => "Il commence à neiger.", "It is starting to snow.",
     /// Temperature dropping.
-    TempDrop = "temp-drop" => "La température baisse fortement.",
+    TempDrop = "temp-drop" => "La température baisse fortement.", "The temperature is dropping sharply.",
     /// Label before the battery autonomy.
-    Autonomy = "autonomy" => "Autonomie restante.",
+    Autonomy = "autonomy" => "Autonomie restante.", "Battery time remaining.",
     /// Battery low.
-    BatteryLow = "battery-low" => "Batterie faible. Gardez de la réserve pour un appel d'urgence.",
+    BatteryLow = "battery-low" => "Batterie faible. Gardez de la réserve pour un appel d'urgence.", "Battery low. Keep some charge for an emergency call.",
     /// The BERA of the day could not be read offline (A7).
-    AvalancheOffline = "avalanche-offline" => "Bulletin d'avalanche non disponible hors ligne. Consultez-le avant de partir.",
+    AvalancheOffline = "avalanche-offline" => "Bulletin d'avalanche non disponible hors ligne. Consultez-le avant de partir.", "Avalanche bulletin not available offline. Check it before you set off.",
     /// Reminder after « no bulletin » or the BERA level (A7).
-    AvalanchesPossible = "avalanches-possible" => "Des avalanches restent possibles sur les fortes pentes.",
+    AvalanchesPossible = "avalanches-possible" => "Des avalanches restent possibles sur les fortes pentes.", "Avalanches remain possible on steep slopes.",
     /// The planned route crosses historic avalanche paths (A7, P20).
-    RouteAvalancheAreas = "route-avalanche-areas" => "Votre itinéraire traverse des zones d'avalanche connues.",
+    RouteAvalancheAreas = "route-avalanche-areas" => "Votre itinéraire traverse des zones d'avalanche connues.", "Your route crosses known avalanche paths.",
     /// The planned route crosses a protected area (A7, C8).
-    RouteProtectedZone = "route-protected-zone" => "Votre itinéraire traverse une zone protégée.",
+    RouteProtectedZone = "route-protected-zone" => "Votre itinéraire traverse une zone protégée.", "Your route crosses a protected area.",
     /// Part of the planned route has no network at all (A7, P12).
-    RouteNoNetwork = "route-no-network" => "Une partie de l'itinéraire est sans aucun réseau, même pour les appels d'urgence.",
+    RouteNoNetwork = "route-no-network" => "Une partie de l'itinéraire est sans aucun réseau, même pour les appels d'urgence.", "Part of the route has no network at all, not even for emergency calls.",
     /// Fire forbidden by the commune, stoves included (A7, P10).
-    FireStovesForbidden = "fire-stoves-forbidden" => "Feu interdit sur la commune, réchauds compris.",
+    FireStovesForbidden = "fire-stoves-forbidden" => "Feu interdit sur la commune, réchauds compris.", "Fires are banned in this municipality, stoves included.",
     /// Cold, dry snow (A3).
-    SnowColdDry = "snow-cold-dry" => "Neige froide et sèche.",
+    SnowColdDry = "snow-cold-dry" => "Neige froide et sèche.", "Cold, dry snow.",
     /// Sunglasses and sunscreen: clear sky (A6).
-    ItemSunProtection = "item-sun-protection" => "Des lunettes de soleil et de la crème, le ciel sera dégagé.",
+    ItemSunProtection = "item-sun-protection" => "Des lunettes de soleil et de la crème, le ciel sera dégagé.", "Sunglasses and sunscreen, the sky will be clear.",
     /// Mittens and face protection: very cold (A6).
-    ItemFaceProtection = "item-face-protection" => "Des moufles et une protection du visage, il fera très froid.",
+    ItemFaceProtection = "item-face-protection" => "Des moufles et une protection du visage, il fera très froid.", "Mittens and face protection, it will be very cold.",
     /// Waxless skis or skins: grip wax unreliable (A6, A2).
-    ItemWaxless = "item-waxless" => "Des skis à écailles ou des peaux, le fart de retenue tiendra mal.",
+    ItemWaxless = "item-waxless" => "Des skis à écailles ou des peaux, le fart de retenue tiendra mal.", "Waxless skis or skins, grip wax will not hold well.",
     /// A trail of the planned route is closed: switch to a detour (J2).
-    PlanClosedAhead = "plan-closed-ahead" => "Piste fermée sur votre itinéraire. Nouvel itinéraire.",
+    PlanClosedAhead = "plan-closed-ahead" => "Piste fermée sur votre itinéraire. Nouvel itinéraire.", "Trail closed on your route. New route.",
     /// A trail of the planned route is closed and no other way is known (J2).
-    PlanClosedNoDetour = "plan-closed-no-detour" => "Piste fermée sur votre itinéraire, aucun autre passage connu.",
+    PlanClosedNoDetour = "plan-closed-no-detour" => "Piste fermée sur votre itinéraire, aucun autre passage connu.", "Trail closed on your route, no other way known.",
     /// Conditions worsen: switch to the shortcut to the finish (J2).
-    PlanShortcut = "plan-shortcut" => "Les conditions changent. Raccourci vers l'arrivée.",
+    PlanShortcut = "plan-shortcut" => "Les conditions changent. Raccourci vers l'arrivée.", "Conditions are changing. Shortcut to the finish.",
     /// Late: switch to a shorter version of the loop (J2).
-    PlanShortened = "plan-shortened" => "Vous êtes en retard sur l'heure prévue. Boucle raccourcie pour rentrer à l'heure.",
+    PlanShortened = "plan-shortened" => "Vous êtes en retard sur l'heure prévue. Boucle raccourcie pour rentrer à l'heure.", "You are behind schedule. Loop shortened to get back on time.",
     /// Off the route for a while: new route computed (J2).
-    PlanRerouted = "plan-rerouted" => "Nouvel itinéraire calculé.",
+    PlanRerouted = "plan-rerouted" => "Nouvel itinéraire calculé.", "New route calculated.",
     /// The previous route is kept, the plan B refused (J2).
-    PlanKept = "plan-kept" => "Itinéraire initial conservé.",
+    PlanKept = "plan-kept" => "Itinéraire initial conservé.", "Original route kept.",
     /// No time left: the fastest way home does not start with a U-turn (J2).
-    PlanHomeNow = "plan-home-now" => "Il faut rentrer maintenant par le plus court, afin d'arriver avant la nuit.",
+    PlanHomeNow = "plan-home-now" => "Il faut rentrer maintenant par le plus court, afin d'arriver avant la nuit.", "Head back now by the shortest way, to be home before dark.",
     /// End of the outing (J3).
-    PlanFinished = "plan-finished" => "Sortie terminée.",
+    PlanFinished = "plan-finished" => "Sortie terminée.", "Outing finished.",
     /// Proposal reason: the group moves slower than planned (C11).
-    PlanPaceSlower = "plan-pace-slower" => "Vous allez moins vite que prévu.",
+    PlanPaceSlower = "plan-pace-slower" => "Vous allez moins vite que prévu.", "You are slower than planned.",
     /// Proposal reason: slower and more stops (C11).
-    PlanPaceSlowerPauses = "plan-pace-slower-pauses" => "Vous allez moins vite que prévu, avec plus de pauses.",
+    PlanPaceSlowerPauses = "plan-pace-slower-pauses" => "Vous allez moins vite que prévu, avec plus de pauses.", "You are slower than planned, with more breaks.",
     /// Proposal reason: more stops than planned (C11).
-    PlanPacePauses = "plan-pace-pauses" => "Vous faites plus de pauses que prévu.",
+    PlanPacePauses = "plan-pace-pauses" => "Vous faites plus de pauses que prévu.", "You are taking more breaks than planned.",
     /// Proposal, first part (then `loop.back.*`): the short loop (C11).
-    PlanProposeShort = "plan-propose-short" => "Je vous propose la boucle courte,",
+    PlanProposeShort = "plan-propose-short" => "Je vous propose la boucle courte,", "I suggest the short loop,",
     /// Proposal, first part (then `loop.back.*`): the nearest exit (C11).
-    PlanProposeExit = "plan-propose-exit" => "Je vous propose la sortie la plus proche,",
+    PlanProposeExit = "plan-propose-exit" => "Je vous propose la sortie la plus proche,", "I suggest the nearest exit,",
     /// Proposal, first part (then `loop.back.*`): keep the loop, new return time (C11).
-    PlanProposeKeep = "plan-propose-keep" => "Je vous propose de garder la boucle,",
+    PlanProposeKeep = "plan-propose-keep" => "Je vous propose de garder la boucle,", "I suggest keeping the loop,",
     /// A proposal was accepted (C11).
-    PlanProposalAccepted = "plan-proposal-accepted" => "Proposition acceptée.",
+    PlanProposalAccepted = "plan-proposal-accepted" => "Proposition acceptée.", "Suggestion accepted.",
     /// The pace observed fits another group profile better: choose it? (X14, one gesture.)
-    PlanProfileMismatch = "plan-profile-mismatch" => "Votre rythme ressemble à celui d'un autre profil. Voulez-vous le choisir ?",
+    PlanProfileMismatch = "plan-profile-mismatch" => "Votre rythme ressemble à celui d'un autre profil. Voulez-vous le choisir ?", "Your pace is closer to another profile. Do you want to choose it?",
+    /// « Ramène-moi » proposed: the return time calls for going home (#54).
+    BackTime = "back-time" => "Il est temps de rentrer.", "Time to head back.",
+    /// « Ramène-moi », to the car (one gesture to accept).
+    BackToCar = "back-to-car" => "Être guidé jusqu'à la voiture ?", "Shall I guide you back to the car?",
+    /// « Ramène-moi », to the start of the outing.
+    BackToStart = "back-to-start" => "Être guidé jusqu'au départ ?", "Shall I guide you back to the start?",
+    /// « Ramène-moi », to the end of the day plan.
+    BackToFinish = "back-to-finish" => "Être guidé jusqu'à l'arrivée ?", "Shall I guide you to the finish?",
+    /// « Ramène-moi », to the named place said just before.
+    BackToThere = "back-to-there" => "Être guidé jusque-là ?", "Shall I guide you there?",
 }
 
 impl Fixed {
@@ -626,9 +641,21 @@ mod tests {
                     || b == b'-')
             );
             let end = if f.continued() { "," } else { "." };
-            // A question asks for one gesture (X14).
-            let question = *f == Fixed::PlanProfileMismatch && c.text.ends_with(" ?");
+            // A question asks for one gesture (X14, « ramène-moi »).
+            let asks = matches!(
+                f,
+                Fixed::PlanProfileMismatch
+                    | Fixed::BackToCar
+                    | Fixed::BackToStart
+                    | Fixed::BackToFinish
+                    | Fixed::BackToThere
+            );
+            let question = asks && c.text.ends_with(" ?");
             assert!(c.text.ends_with(end) || question, "{}", c.text);
+            let en = f.english();
+            let question = asks && en.ends_with('?') && !en.ends_with(" ?");
+            assert!(en.ends_with(end) || question, "{en}");
+            assert!(en.is_ascii(), "English text with French letters: {en}");
         }
     }
 }

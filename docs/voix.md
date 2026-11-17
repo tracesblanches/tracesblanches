@@ -20,3 +20,5 @@ Parties :
   - [Commandes vocales hors ligne (V3 #66, VO5 #87, A11 #98, 15/11/2026)](voix/commandes-vocales.md#commandes-vocales-hors-ligne-v3-66-vo5-87-a11-98-15112026)
 - [Proposition de profil (X14)](voix/profil.md)
   - [Proposition de profil (X14, 15/11/2026)](voix/profil.md#proposition-de-profil-x14-15112026)
+- [Voix anglaise et paquets de voix par langue (VO6)](voix/anglais.md)
+  - [Voix anglaise et paquets de voix par langue (VO6 #129, 17/11/2026)](voix/anglais.md#voix-anglaise-et-paquets-de-voix-par-langue-vo6-129-17112026)

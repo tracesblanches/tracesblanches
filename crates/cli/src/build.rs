@@ -238,13 +238,14 @@ impl Ctx {
     /// VO3: voice clips of the pack with the names of the built layers (`pistes`,
     /// `refuges`, `zones`, `plan_pistes`), split by provenance by `skimap_voice` (the clips
     /// of personal-use names are listed in `personal.json`, left out of a published pack);
-    /// Pocket TTS on this workstation (`VoiceConfig::from_env`).
+    /// Pocket TTS on this workstation (`VoiceConfig::from_env_lang`), in `lang` (VO6).
     pub fn voice(
         &self,
         site: &Site,
+        lang: skimap_voice::Lang,
     ) -> Result<(skimap_voice::pack::VoiceBuild, skimap_voice::SiteNames)> {
         let names = skimap_voice::site_names(&self.layout, site)?;
-        let cfg = skimap_voice::VoiceConfig::from_env()?;
+        let cfg = skimap_voice::VoiceConfig::from_env_lang(lang)?;
         let b = skimap_voice::build_site(site, &self.layout, &names, &cfg)?;
         Ok((b, names))
     }
@@ -262,6 +263,42 @@ impl Ctx {
             &self.dl,
             &opts,
         )?)
+    }
+
+    /// VO6: the voice packs of the site, one per language whose voice layer is built
+    /// (`voice/`, `voice-en/`), in `data/out/<site>/voice-pack/<lang>/`, each checked;
+    /// published apart from the base pack.
+    pub fn build_voice_packs(&self, site: &Site) -> Result<Vec<skimap_pack::build::BuildReport>> {
+        let mut out = Vec::new();
+        for lang in skimap_voice::Lang::ALL {
+            let layer = lang.layer();
+            if !self
+                .layout
+                .out_dir(site)
+                .join(&layer)
+                .join("manifest.json")
+                .is_file()
+            {
+                continue;
+            }
+            let r = skimap_pack::build::build_voice_pack(
+                site,
+                &self.layout,
+                &layer,
+                lang.code(),
+                self.cfg.personal_sources,
+            )?;
+            let problems = skimap_pack::Pack::open(&r.pack_dir)?.verify()?;
+            if !problems.is_empty() {
+                bail!(
+                    "relecture du pack de voix {} : {}",
+                    lang.code(),
+                    problems.join(" ; ")
+                );
+            }
+            out.push(r);
+        }
+        Ok(out)
     }
 
     /// P21: export of the pack for Locus Map and OsmAnd, `data/out/<site>/export/`.
@@ -706,6 +743,7 @@ impl Ctx {
             if !problems.is_empty() {
                 bail!("relecture du pack : {}", problems.join(" ; "));
             }
+            self.build_voice_packs(site)?;
             let mut slow: Vec<&(String, f64)> = r.timings.iter().filter(|t| t.1 >= 1.0).collect();
             slow.sort_by(|a, b| b.1.total_cmp(&a.1));
             let slow: Vec<String> = slow.iter().map(|(k, s)| format!("{k} {s:.1} s")).collect();

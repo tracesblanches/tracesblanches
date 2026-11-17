@@ -141,13 +141,15 @@ object OpusDecoder {
  * Says the core's announcements (K5, J4): the pack's clips assembled and played in one
  * go, with a transient audio focus that ducks the music and is given back at once
  * (report 09: short playbacks, no session kept open); the Android voice reads the whole
- * text when a clip is missing (`docs/voix.md`). One announcement at a time, in order, on
- * its own thread; the text-to-speech engine starts only when first needed.
+ * text when a clip is missing (`docs/voix.md`), in the language of the announcements
+ * (VO6: the phone's, English by default, or that of the voice pack in use, [language]).
+ * One announcement at a time, in order, on its own thread; the text-to-speech engine
+ * starts only when first needed.
  */
 @Suppress("TooManyFunctions")
 class Announcer(
     private val context: Context,
-    private val locale: Locale = Locale.FRANCE,
+    @Volatile private var locale: Locale = localeOf(phoneLang()),
 ) : AutoCloseable {
     private val audio: ExecutorService = Executors.newSingleThreadExecutor { Thread(it, "skimap-voice") }
     private val manager = context.getSystemService(AudioManager::class.java)
@@ -173,6 +175,20 @@ class Announcer(
 
     /** Called after each announcement, on the voice thread. */
     var onDone: ((Utterance, Boolean) -> Unit)? = null
+
+    /** Language of the Android voice (`fr`, `en`): that of the core's announcements. */
+    fun language(code: String) {
+        val l = localeOf(code)
+        audio.execute {
+            if (l != locale) {
+                locale = l
+                ttsConfigured = false
+            }
+        }
+    }
+
+    /** Language the Android voice reads now, for the tests and the logs. */
+    val languageCode: String get() = locale.language
 
     fun say(u: Utterance) {
         audio.execute {
@@ -348,11 +364,17 @@ class Announcer(
         audio.shutdown()
     }
 
-    private companion object {
-        const val TAG = "skimap"
-        const val MARGIN_MS = 300L
-        const val MS_PER_S = 1000L
-        const val TTS_INIT_S = 20L
-        const val TTS_MAX_S = 30L
+    companion object {
+        private const val TAG = "skimap"
+        private const val MARGIN_MS = 300L
+        private const val MS_PER_S = 1000L
+        private const val TTS_INIT_S = 20L
+        private const val TTS_MAX_S = 30L
+
+        /** Language of the app for the phone's: `fr` on a French phone, else `en` (VO6). */
+        fun phoneLang(locale: Locale = Locale.getDefault()): String = if (locale.language == "fr") "fr" else "en"
+
+        /** Voice locale of a language code: French of France, else British English. */
+        fun localeOf(code: String): Locale = if (code.startsWith("fr")) Locale.FRANCE else Locale.UK
     }
 }

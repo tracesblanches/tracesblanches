@@ -119,6 +119,29 @@ object PackSync {
         WorkManager.getInstance(context).cancelUniqueWork(workName(site, voiceLang))
     }
 
+    /**
+     * The voice follows the phone's language (VO6): for every installed site whose voice in
+     * that language is published ([sites], the server catalog) and not installed, one
+     * download is queued (one bundle). Offline it waits for a network; the voice installed
+     * in the other language stays and speaks until the new one is installed, then it is
+     * removed. Returns the sites queued.
+     */
+    fun followLanguage(
+        context: Context,
+        sites: List<fr.skimap.core.ServerSite>,
+        lang: String = WorkManagerDownloads.voiceLang(),
+    ): List<String> {
+        val installed = listPacks(packsDir(context).absolutePath).map { it.siteId }.toSet()
+        return sites
+            .filter { it.siteId in installed }
+            .mapNotNull { site -> site.voice.firstOrNull { it.lang == lang }?.let { site.siteId to it } }
+            .filterNot { (id, _) -> File(voiceDir(context), "$id/$lang/voice/manifest.json").isFile }
+            .map { (id, v) ->
+                download(context, id, v.indexUrl, v.firstDownloadBytes.toLong(), voiceLang = v.lang)
+                id
+            }
+    }
+
     /** Daily update of the installed packs, with its constraints; [on] = false removes it. */
     fun schedulePeriodic(
         context: Context,
@@ -228,6 +251,8 @@ class PackSyncWorker(
                 log(vr)
             }
         }
+        // A voice in the phone's language not installed yet (language changed): queued.
+        PackSync.followLanguage(ctx, sites.values.toList())
         return Result.success(workDataOf(CHANGED to changed))
     }
 

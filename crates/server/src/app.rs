@@ -298,6 +298,9 @@ impl Handler for App {
             ["v1", "sites", site, "index.json"] if read => {
                 self.mutable(req, self.store.index_path(site))
             }
+            ["v1", "sites", site, "voice", lang, "index.json"] if read => {
+                self.mutable(req, self.store.voice_index_path(site, lang))
+            }
             ["v1", "bundles", name] if read => self.bundle(req, name),
             ["v1", "trips", rest @ ..] => self.trips(req, rest),
             ["v1", "strava", rest @ ..] => self.strava(req, rest),

@@ -26,7 +26,15 @@ import fr.skimap.tracking.TrackingState
  * the contact (K10, pre-filled, sent by the user).
  */
 class SkiTrackingService : TrackingService() {
-    override fun openCore(planDir: String): TrackingCore = RustTrackingCore.open(planDir)
+    override fun openCore(planDir: String): TrackingCore =
+        RustTrackingCore.open(
+            planDir,
+            fr.skimap.app.sync.PackSync
+                .voiceDir(this)
+                .absolutePath,
+            fr.skimap.app.sync.WorkManagerDownloads
+                .voiceLang(),
+        )
 
     /** The group mode (N2): BLE advertising and batched scan during the outing, if this phone has a group. */
     override fun extensions(planDir: String): List<OutingExtension> = listOf(GroupLink(RustGroupBackend(), GroupStore(this), planDir))

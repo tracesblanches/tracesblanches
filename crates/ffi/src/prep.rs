@@ -583,7 +583,8 @@ mod tests {
         prep_take(d.plan_dir.clone().unwrap(), taken.display().to_string()).unwrap();
         let v = crate::tracking_day::read_day_plan(taken.display().to_string()).unwrap();
         assert!(v.pace_text.is_some());
-        let s = crate::tracking::open_tracking(taken.display().to_string()).unwrap();
+        let s =
+            crate::tracking::open_tracking(taken.display().to_string(), None, "fr".into()).unwrap();
         assert_eq!(s.replayed(), 0);
         let st = prep_read(
             out.path().display().to_string(),

@@ -85,6 +85,10 @@ class MainActivity : ComponentActivity() {
             autoUpdate = withContext(Dispatchers.IO) { settings.autoUpdate() }
             // The daily update, with its constraints (KEEP: scheduled once, not per launch).
             PackSync.schedulePeriodic(applicationContext, autoUpdate)
+            // The voice follows the phone's language (VO6): one download when it changed.
+            withContext(Dispatchers.IO) {
+                PackSync.followLanguage(applicationContext, PackSync.catalog(applicationContext).cached())
+            }
             // Preparation of the next days on charge and Wi-Fi (E2), the less exposed terrain layer (V7).
             fr.skimap.app.prep.PrepWork
                 .schedule(applicationContext)

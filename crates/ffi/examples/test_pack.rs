@@ -12,7 +12,7 @@
 //! The optional `2` writes version 2 of the same pack (another piste status, another
 //! refuge capacity, a later `pack_version`): the server publishes both, the app updates
 //! from one to the other by a delta (K2). `voice-en` writes a voice language pack apart
-//! (VO6): site `test-voice-en`, a clip manifest and two clips, nothing else. Deterministic apart from the build times written
+//! (VO6): site `test`, voice slot `en`, a clip manifest and two clips, nothing else. Deterministic apart from the build times written
 //! in the manifest. About 40 kB.
 
 use std::io::Write as _;
@@ -135,9 +135,11 @@ fn add_fee_zones(pack: &Path, m: &mut Manifest) -> Res<()> {
     Ok(())
 }
 
-/// Writes a voice language pack of the test site into `out` (replaced if it exists): the
-/// layout of the clips of a site pack (`voice/manifest.json`, `voice/clips/*.opus`) in a
-/// pack of its own, site `test-voice-<lang>`. The clips are not real Opus files.
+/// Writes a voice language pack of the test site into `out` (replaced if it exists), as
+/// `skimap_pack::build::build_voice_pack` does (VO6): the clips (`voice/manifest.json`,
+/// `voice/clips/*.opus`) in a pack of its own, site `test`, no basemap, no layer, its
+/// voice slot naming the language; the server lists it in the `voice` field of the site.
+/// The clips are not real Opus files.
 pub(crate) fn write_voice_pack(out: &Path, lang: &str) -> Res<String> {
     if out.exists() {
         std::fs::remove_dir_all(out)?;
@@ -145,8 +147,8 @@ pub(crate) fn write_voice_pack(out: &Path, lang: &str) -> Res<String> {
     let clips = out.join("voice/clips");
     std::fs::create_dir_all(&clips)?;
     let texts = [
-        ("tourner-a-droite", "Turn right"),
-        ("refuge-du-test", "Test hut"),
+        ("turn.right.now", "Turn right."),
+        ("name.refuge-du-test", "Refuge du test."),
     ];
     for (id, _) in texts {
         std::fs::write(
@@ -156,9 +158,13 @@ pub(crate) fn write_voice_pack(out: &Path, lang: &str) -> Res<String> {
     }
     write_json(
         &out.join("voice/manifest.json"),
-        &json!({"lang": lang, "clips": texts.iter().map(|(id, t)| json!({"id": id, "text": t,
-                                                                          "file": format!("clips/{id}.opus")}))
-                                         .collect::<Vec<_>>()}),
+        &json!({"format": 1, "lang": lang, "voice": "estelle", "model": "test", "model_sha256": "",
+                "seed": 42, "sample_rate": 24000, "opus_kbps": 24, "pauses_ms": [150, 400],
+                "clips": texts.iter().map(|(id, t)| json!({"id": id, "kind": "fixed", "text": t,
+                    "file": format!("clips/{id}.opus"), "duration_ms": 500, "bytes": 1, "tokens": 3,
+                    "lead_trim_ms": 0, "tail_trim_ms": 0, "gain_db": 0.0, "end_burst": false,
+                    "seed": 42, "onset_clipped": false}))
+                .collect::<Vec<_>>()}),
     )?;
     let files = list_files(out)?;
     let bytes: u64 = files.iter().map(|f| f.bytes).sum();
@@ -166,12 +172,12 @@ pub(crate) fn write_voice_pack(out: &Path, lang: &str) -> Res<String> {
         "format": skimap_pack::manifest::FORMAT,
         "format_version": skimap_pack::manifest::FORMAT_VERSION,
         "pack_version": VERSIONS[0], "generator": "skimap-ffi test_pack", "generated_at": "2026-11-15T06:00:00Z",
-        "site": {"id": format!("test-voice-{lang}"), "name": format!("Pack de test, voix {lang}"), "department": "05",
+        "site": {"id": "test", "name": "Pack de test", "department": "05",
                  "bbox": [TEST_SITE.bbox.west, TEST_SITE.bbox.south, TEST_SITE.bbox.east, TEST_SITE.bbox.north],
                  "center": [TEST_SITE.commune_center.lon, TEST_SITE.commune_center.lat]},
         "valid_for": {"until": null, "until_layer": null, "note": "voix"},
         "personal_sources": false, "basemaps": [], "layers": [],
-        "voice": {"status": "present", "manifest": "voice/manifest.json", "clips_dir": "voice/clips",
+        "voice": {"status": "present", "lang": lang, "manifest": "voice/manifest.json", "clips_dir": "voice/clips",
                   "clips": texts.len(), "bytes": bytes, "sources": [], "note": format!("voix de test, {lang}")},
         "missing": [], "attributions": [], "files": [], "total_bytes": 0
     }))?;
@@ -623,7 +629,9 @@ mod tests {
         let voice = tmp.path().join("packs/test-voice-en");
         write_voice_pack(&voice, "en").unwrap();
         let pv = skimap_pack::Pack::open(&voice).unwrap();
-        assert_eq!(pv.manifest().site.id, "test-voice-en");
+        assert_eq!(pv.manifest().site.id, "test");
+        assert_eq!(pv.manifest().voice.lang.as_deref(), Some("en"));
+        skimap_voice::pack::VoiceManifest::read(&voice.join("voice")).unwrap();
         assert_eq!(pv.manifest().files.len(), 3);
     }
 }

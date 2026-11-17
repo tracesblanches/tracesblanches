@@ -114,7 +114,7 @@ fn commands_on(site: &'static Site, budget_min: f64, return_before: Option<&str>
     );
 
     // A third of the outing, fixes in batches of ten as the phone sends them.
-    let s = open_tracking(v.plan_dir.clone()).unwrap();
+    let s = open_tracking(v.plan_dir.clone(), None, "fr".into()).unwrap();
     let fixes: Vec<(i64, f64, f64)> = run
         .inputs
         .iter()

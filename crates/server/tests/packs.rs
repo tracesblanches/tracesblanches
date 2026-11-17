@@ -351,3 +351,105 @@ fn publish_many_sites_writes_one_catalog() {
             .all(|r| r.as_ref().unwrap().status == "unchanged")
     );
 }
+
+/// A voice pack of `lang` (VO6): no basemap, no layer, clips and a voice slot naming its
+/// language.
+fn make_voice_pack(dir: &Path, version: &str, lang: &str, clip: &[u8]) {
+    make_pack(
+        dir,
+        version,
+        &[
+            ("voice/manifest.json", b"{\"clips\":[]}"),
+            ("voice/clips/fix.arrive.opus", clip),
+        ],
+    );
+    let path = dir.join("manifest.json");
+    let mut m: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    m["layers"] = serde_json::json!([]);
+    m["voice"] = serde_json::json!({"status": "present", "lang": lang,
+        "manifest": "voice/manifest.json", "clips_dir": "voice/clips", "clips": 1,
+        "bytes": clip.len(), "note": "n"});
+    std::fs::write(&path, serde_json::to_vec_pretty(&m).unwrap()).unwrap();
+}
+
+#[test]
+fn voice_packs_apart() {
+    let t = tempfile::tempdir().unwrap();
+    let clock = Arc::new(ManualClock::new(
+        Utc.with_ymd_and_hms(2026, 11, 15, 2, 0, 0).unwrap(),
+    ));
+    let store = Store::open(t.path().join("store")).unwrap();
+    let retention = Retention::default();
+    let site = t.path().join("out/cervieres/pack");
+    make_pack(&site, "v01", &files(b"{\"risk\":1}", b"1", BASEMAP));
+    store.publish(&site, clock.now(), retention).unwrap();
+    for (lang, clip) in [("fr", &[1u8; 5000][..]), ("en", &[2u8; 6000][..])] {
+        let dir = t.path().join(format!("out/cervieres/voice-pack/{lang}"));
+        make_voice_pack(&dir, "v01", lang, clip);
+        let r = store.publish(&dir, clock.now(), retention).unwrap();
+        assert_eq!(r.site, format!("cervieres/voice/{lang}"));
+        assert!(r.rebased);
+    }
+    // A new English voice: the base is rebuilt (a change of language is one bundle) and
+    // the delta from v01 is kept for the daily update.
+    clock.advance(Duration::hours(12));
+    let en = t.path().join("out/cervieres/voice-pack/en");
+    make_voice_pack(&en, "v02", "en", &[3u8; 6000]);
+    let r = store.publish(&en, clock.now(), retention).unwrap();
+    assert!(r.rebased);
+    assert_eq!(r.bundles.len(), 2, "{:?}", r.bundles);
+
+    // The site and its voices: the catalog lists them, the site index is unchanged.
+    assert_eq!(store.sites().unwrap(), ["cervieres"]);
+    assert_eq!(store.voice_langs("cervieres").unwrap(), ["en", "fr"]);
+    let app = App::new(
+        Store::open(t.path().join("store")).unwrap(),
+        None,
+        None,
+        "https://skimap.test",
+        "contact@example.org",
+        clock.clone(),
+    );
+    let server = skimap_server::http::serve("127.0.0.1:0", 4, Arc::new(app)).unwrap();
+    let addr = server.addr;
+    let c = get(addr, "/v1/catalog.json").json();
+    let voice = &c["sites"][0]["voice"];
+    assert_eq!(voice[0]["lang"], "en");
+    assert_eq!(
+        voice[0]["index_url"],
+        "/v1/sites/cervieres/voice/en/index.json"
+    );
+    assert_eq!(voice[0]["latest"]["version"], "v02");
+    assert_eq!(voice[1]["lang"], "fr");
+    assert_eq!(c["sites"].as_array().unwrap().len(), 1);
+    assert_eq!(index(addr).latest.version, "v01");
+    assert!(
+        index(addr).latest.total_bytes > 100_000,
+        "the site pack itself"
+    );
+
+    // The phone of an English speaker: one bundle, the English clips only.
+    let en_index: SiteIndex =
+        serde_json::from_slice(&get(addr, "/v1/sites/cervieres/voice/en/index.json").body).unwrap();
+    assert_eq!(en_index.base_version, "v02");
+    let bundles = plan(&en_index, None);
+    assert_eq!(bundles.len(), 1);
+    assert_eq!(voice[0]["first_download_bytes"], bundles[0].bytes);
+    let phone = t.path().join("phone/voice/cervieres/en");
+    let dl = t.path().join("dl.skb");
+    std::fs::write(&dl, get(addr, &bundles[0].url).body).unwrap();
+    apply_bundle(&phone, &dl).unwrap();
+    let p = Pack::open(&phone).unwrap();
+    assert!(p.verify().unwrap().is_empty());
+    assert_eq!(p.manifest().voice.lang.as_deref(), Some("en"));
+    assert_eq!(
+        std::fs::read(phone.join("voice/clips/fix.arrive.opus")).unwrap(),
+        [3u8; 6000]
+    );
+    assert!(!phone.join("layers").exists() && !phone.join("basemap").exists());
+    assert_eq!(
+        get(addr, "/v1/sites/cervieres/voice/de-x/index.json").status,
+        404
+    );
+    server.stop();
+}

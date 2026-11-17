@@ -91,5 +91,11 @@ for site in "$@"; do
   if [ -f "$SKIMAP_DATA_DIR/out/$site/pack/manifest.json" ]; then
     step skimap-server publish "$SKIMAP_DATA_DIR/out/$site/pack"
   fi
+  # Voice packs, one per language, published apart from the base pack (VO6).
+  for voice in "$SKIMAP_DATA_DIR/out/$site"/voice-pack/*/; do
+    if [ -f "${voice}manifest.json" ]; then
+      step skimap-server publish "${voice%/}"
+    fi
+  done
 done
 exit $rc

@@ -61,7 +61,9 @@ pub struct BuildOptions {
     /// comparison in the viewer. Off by default: about 20 MB for a mountain site, offline licence
     /// unconfirmed (features.md n° 5).
     pub ign_slopes: bool,
-    /// Include the voice clips when the voice crate produced them.
+    /// Include the voice clips when the voice crate produced them. Off by default (VO6):
+    /// the clips go to a voice pack per language ([`build_voice_pack`]), downloaded only for
+    /// the language of the phone; the base pack has none.
     pub voice: bool,
     /// Include the off-piste rasters of the core (`data/out/<site>/offpiste/`, gzipped).
     pub offpiste: bool,
@@ -79,7 +81,7 @@ impl Default for BuildOptions {
             protomaps_build: None,
             personal_sources: false,
             ign_slopes: false,
-            voice: true,
+            voice: false,
             offpiste: true,
             class_params: class_tiles::Params::default(),
         }
@@ -241,7 +243,7 @@ fn build_into(
     }
 
     let voice = if opts.voice {
-        voice_slot(&out, root, opts.personal_sources)?
+        voice_slot(&out.join("voice"), root, opts.personal_sources)?
     } else {
         absent_voice("voix non demandée pour ce pack")
     };
@@ -383,6 +385,7 @@ fn leading_date(s: &str) -> Option<String> {
 fn absent_voice(note: &str) -> VoiceSlot {
     VoiceSlot {
         status: "absent".to_owned(),
+        lang: None,
         manifest: None,
         clips_dir: None,
         clips: 0,
@@ -396,7 +399,122 @@ fn absent_voice(note: &str) -> VoiceSlot {
 /// sources (`clips`: ids; `skimap_voice::pack::PERSONAL_FILE`).
 pub const VOICE_PERSONAL_FILE: &str = "personal.json";
 
-/// Copies the voice clips (`data/out/<site>/voice/manifest.json` and `clips/`) if present.
+/// Directory of the voice pack of a site in a language: `data/out/<site>/voice-pack/<lang>/`.
+pub fn voice_pack_dir(site: &Site, layout: &DataLayout, lang: &str) -> Result<PathBuf> {
+    Ok(layout.layer_dir(site, VOICE_PACK_LAYER)?.join(lang))
+}
+
+/// Layer of the voice packs of a site in `data/out/<site>/` (one directory per language).
+pub const VOICE_PACK_LAYER: &str = "voice-pack";
+
+/// Builds the voice pack of `site` in `lang` (VO6): a pack of its own, without basemaps
+/// or layers, whose voice slot holds the clips of the voice layer `voice_layer`
+/// (`voice` for French, `voice-en` for English) and names its language; written to
+/// [`voice_pack_dir`] and published apart from the base pack (one index per site and
+/// language). Its version is the build time, like a site pack.
+pub fn build_voice_pack(
+    site: &Site,
+    layout: &DataLayout,
+    voice_layer: &str,
+    lang: &str,
+    personal_sources: bool,
+) -> Result<BuildReport> {
+    let now = chrono::Utc::now();
+    let pack_version = now.format("%Y%m%dT%H%M%SZ").to_string();
+    let final_dir = voice_pack_dir(site, layout, lang)?;
+    let parent = final_dir
+        .parent()
+        .ok_or_else(|| Error::Pack("voice pack directory without parent".into()))?;
+    create_dir(parent)?;
+    let tmp = parent.join(format!(".{lang}-build-{pack_version}"));
+    if tmp.exists() {
+        remove_dir(&tmp)?;
+    }
+    create_dir(&tmp)?;
+    let built = (|| -> Result<BuildReport> {
+        let mut voice = voice_slot(
+            &layout.out_dir(site).join(voice_layer),
+            &tmp,
+            personal_sources,
+        )?;
+        if voice.status != "present" {
+            return Err(Error::Pack(format!(
+                "{} {lang}: no voice to pack ({})",
+                site.id, voice.note
+            )));
+        }
+        voice.lang = Some(lang.to_owned());
+        let files = list_files(&tmp)?;
+        let total_bytes = files.iter().map(|f| f.bytes).sum();
+        let mut attributions = Vec::new();
+        for s in &voice.sources {
+            if !s.attribution.is_empty() && !attributions.contains(&s.attribution) {
+                attributions.push(s.attribution.clone());
+            }
+        }
+        let manifest = Manifest {
+            format: FORMAT.to_owned(),
+            format_version: FORMAT_VERSION,
+            pack_version: pack_version.clone(),
+            generator: format!("{} {}", crate::CRATE, env!("CARGO_PKG_VERSION")),
+            generated_at: now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            site: site_info(site),
+            valid_for: PackValidity {
+                until: None,
+                until_layer: None,
+                note: "Voix : à refaire quand les noms du pack changent.".to_owned(),
+            },
+            personal_sources,
+            basemaps: Vec::new(),
+            layers: Vec::new(),
+            voice,
+            missing: Vec::new(),
+            attributions,
+            files,
+            total_bytes,
+        };
+        write_json(&tmp.join(MANIFEST_FILE), &manifest)?;
+        Ok(BuildReport {
+            pack_dir: final_dir.clone(),
+            pack_version: pack_version.clone(),
+            total_bytes,
+            bytes_by_group: group_sizes(&manifest.files),
+            layers: Vec::new(),
+            missing: Vec::new(),
+            timings: Vec::new(),
+        })
+    })();
+    match built {
+        Ok(r) => {
+            if final_dir.exists() {
+                remove_dir(&final_dir)?;
+            }
+            std::fs::rename(&tmp, &final_dir).map_err(|e| Error::io(&tmp, e))?;
+            Ok(r)
+        }
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&tmp);
+            Err(e)
+        }
+    }
+}
+
+fn site_info(site: &Site) -> SiteInfo {
+    SiteInfo {
+        id: site.id.to_owned(),
+        name: site.name.to_owned(),
+        department: site.department.to_owned(),
+        bbox: [
+            site.bbox.west,
+            site.bbox.south,
+            site.bbox.east,
+            site.bbox.north,
+        ],
+        center: [site.commune_center.lon, site.commune_center.lat],
+    }
+}
+
+/// Copies the voice clips (`<voice layer>/manifest.json` and `clips/`) if present.
 ///
 /// The clips speak names read from the layers (pistes, refuges, zones, piste plans). With
 /// `personal_sources` every clip is copied. Without, a layer with its list of personal
@@ -404,8 +522,8 @@ pub const VOICE_PERSONAL_FILE: &str = "personal.json";
 /// personal-use sources: Biodiv'sports, piste plans), with a manifest without them and
 /// `voice.meta.json` without the personal-use sources; a layer without that list (built
 /// before it) is left out whole when one of its sources is personal use.
-fn voice_slot(out: &Path, root: &Path, personal_sources: bool) -> Result<VoiceSlot> {
-    let src = out.join("voice");
+fn voice_slot(src: &Path, root: &Path, personal_sources: bool) -> Result<VoiceSlot> {
+    let src = src.to_path_buf();
     let meta_path = src.join("voice.meta.json");
     let restricted = layers::read_meta(&meta_path)?
         .as_ref()
@@ -448,6 +566,7 @@ fn voice_slot(out: &Path, root: &Path, personal_sources: bool) -> Result<VoiceSl
     };
     Ok(VoiceSlot {
         status: "present".to_owned(),
+        lang: None,
         manifest: Some("voice/manifest.json".to_owned()),
         clips_dir: Some("voice/clips".to_owned()),
         clips: n,
@@ -581,6 +700,7 @@ fn public_voice(src: &Path, dst: &Path) -> Result<VoiceSlot> {
     }
     Ok(VoiceSlot {
         status: "present".to_owned(),
+        lang: None,
         manifest: Some("voice/manifest.json".to_owned()),
         clips_dir: Some("voice/clips".to_owned()),
         clips: n,
