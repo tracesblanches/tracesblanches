@@ -477,6 +477,8 @@ struct Kernel<'a> {
     dist2d: [f64; 9],
     /// Squared horizontal distance to the neighbour `k`, m² (3-D distance of `calcDistMin`).
     h2: [f64; 9],
+    /// Offset of the neighbour `k` of the 3 × 3 window from its north-west cell.
+    offset: [usize; 9],
     tan_alpha: f64,
     no_fr_z: f64,
     no_de_z: f64,
@@ -527,6 +529,7 @@ impl<'a> Kernel<'a> {
             ds: ds0.map(|d| d * cell),
             dist2d,
             h2,
+            offset: std::array::from_fn(|k| (k / 3) * w + k % 3),
             tan_alpha: p.alpha.to_radians().tan(),
             no_fr_z,
             no_de_z,
@@ -661,18 +664,6 @@ impl<'a> Kernel<'a> {
             } else {
                 self.tan_alpha
             };
-            let mut zdn = [0f64; 9];
-            for i in 0..9 {
-                let v = z_delta + (altitude - dem_ng[i]) - self.ds[i] * tan_alpha;
-                zdn[i] = if v < 0.0 {
-                    0.0
-                } else if v > max_z {
-                    max_z
-                } else {
-                    v
-                };
-            }
-
             // calc_persistence (all 1 on the start cell and its children).
             let mut persistence = [1f64; 9];
             if !(e.is_start || e.first_parent_start) {
@@ -697,18 +688,32 @@ impl<'a> Kernel<'a> {
             // reference with `tan β ≤ 0` are 0 in the table: adding them (or the 0 of a
             // closed direction) to the non-negative sum does not change it, and their
             // weight stays 0.
+            // The energy line heights `zdn` (calc_z_delta, clamped to 0..max_z) are computed
+            // in the same pass: they do not depend on the persistence.
             let t8 = cells.tb_exp(r, c);
             let tb = [t8[0], t8[1], t8[2], t8[3], 0.0, t8[4], t8[5], t8[6], t8[7]];
-            let mut open = [false; 9];
+            let mut zdn = [0f64; 9];
+            // Weights of the closed directions are +0: dividing them gives the +0 of the
+            // reference, so the division runs on every direction (branch-free).
+            let mut tb_open = [0f64; 9];
             let mut tb_sum = 0.0;
             for i in 0..9 {
-                open[i] = (zdn[i] > 0.0) & (persistence[i] > 0.0);
-                tb_sum += if open[i] { tb[i] } else { 0.0 };
+                let v = z_delta + (altitude - dem_ng[i]) - self.ds[i] * tan_alpha;
+                zdn[i] = if v < 0.0 {
+                    0.0
+                } else if v > max_z {
+                    max_z
+                } else {
+                    v
+                };
+                let open = (zdn[i] > 0.0) & (persistence[i] > 0.0);
+                tb_open[i] = if open { tb[i] } else { 0.0 };
+                tb_sum += tb_open[i];
             }
             let mut r_t = [0f64; 9];
             if tb_sum > 0.0 {
                 for i in 0..9 {
-                    r_t[i] = if open[i] { tb[i] / tb_sum } else { 0.0 };
+                    r_t[i] = tb_open[i] / tb_sum;
                 }
             }
 
@@ -730,9 +735,10 @@ impl<'a> Kernel<'a> {
             }
 
             // calc_distribution (fluxDistOldVersion = False).
+            // The reference tests the sum of `r_t` (non-negative terms, at most 1 each): it is
+            // positive exactly when one term is.
             let mut dist = [0f64; 9];
-            let rt_sum: f64 = r_t.iter().sum();
-            if rt_sum > 0.0 {
+            if r_t.iter().any(|v| *v > 0.0) {
                 let mut pr = [0f64; 9];
                 let mut pr_sum = 0.0;
                 for i in 0..9 {
@@ -741,12 +747,9 @@ impl<'a> Kernel<'a> {
                 }
                 if pr_sum > 0.0 {
                     for i in 0..9 {
-                        // A zero product gives +0 in the reference too (flux > 0).
-                        dist[i] = if pr[i] != 0.0 {
-                            pr[i] / pr_sum * flux
-                        } else {
-                            0.0
-                        };
+                        // The reference gives +0 to a zero product: a product of
+                        // non-negative factors is +0, and +0 / pr_sum × flux is +0 too.
+                        dist[i] = pr[i] / pr_sum * flux;
                     }
                 }
             }
@@ -800,8 +803,7 @@ impl<'a> Kernel<'a> {
             for &(_, _, i) in &ch[..nch] {
                 let czd = zdn[i];
                 let cflux = dist[i];
-                let (dr, dc) = (i / 3, i % 3);
-                let cidx = base + dr * w + dc;
+                let cidx = base + self.offset[i];
                 if let Some(pq) = work.pending(cidx) {
                     let q = &mut work.queue[pq];
                     q.flux += cflux;
@@ -822,8 +824,8 @@ impl<'a> Kernel<'a> {
                     work.set_pending(cidx, work.queue.len());
                     work.modified.push(cidx as u32);
                     work.queue.push(Entry {
-                        r: (r + dr - 1) as u32,
-                        c: (c + dc - 1) as u32,
+                        r: (r + i / 3 - 1) as u32,
+                        c: (c + i % 3 - 1) as u32,
                         zdelta: czd,
                         flux: cflux,
                         min_distance: 0.0,
