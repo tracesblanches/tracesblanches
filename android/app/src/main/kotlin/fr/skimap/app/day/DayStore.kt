@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
 import fr.skimap.app.appLang
+import fr.skimap.core.DayOuting
 import fr.skimap.core.GroupView
 import fr.skimap.core.groupDefault
 import fr.skimap.core.groupLearn
@@ -12,6 +13,7 @@ import fr.skimap.core.groupRead
 import fr.skimap.core.groupSolo
 import org.json.JSONArray
 import java.io.File
+import kotlin.math.roundToInt
 
 /** The contact who gets the plan (K10): the user's SMS app is opened on this number. */
 data class Contact(
@@ -76,6 +78,34 @@ class DayStore(
 
     fun selectedGroup(): String? = prefs().getString(KEY_SELECTED, null)
 
+    /**
+     * The outing last chosen in the morning (#170), `null` before any choice: the next
+     * mornings and the evening preparation start from it.
+     */
+    var outing: DayOuting?
+        get() {
+            val p = prefs()
+            if (!p.contains(KEY_BUDGET)) return null
+            return DayOuting(
+                budgetMin = p.getInt(KEY_BUDGET, 0).toDouble(),
+                skating = p.getBoolean(KEY_SKATING, false),
+                returnBefore = p.getString(KEY_RETURN, null),
+                easyOnly = p.getBoolean(KEY_EASY, false),
+            )
+        }
+        set(o) {
+            prefs().edit {
+                if (o == null) {
+                    listOf(KEY_BUDGET, KEY_SKATING, KEY_RETURN, KEY_EASY).forEach { remove(it) }
+                } else {
+                    putInt(KEY_BUDGET, o.budgetMin.roundToInt())
+                    putBoolean(KEY_SKATING, o.skating)
+                    putString(KEY_RETURN, o.returnBefore)
+                    putBoolean(KEY_EASY, o.easyOnly)
+                }
+            }
+        }
+
     fun selectGroup(name: String?) {
         prefs().edit { putString(KEY_SELECTED, name) }
     }
@@ -127,6 +157,10 @@ class DayStore(
         private const val KEY_NUMBER = "contact_number"
         private const val KEY_GROUPS = "groups"
         private const val KEY_SELECTED = "group"
+        private const val KEY_BUDGET = "outing_budget_min"
+        private const val KEY_SKATING = "outing_skating"
+        private const val KEY_RETURN = "outing_return_before"
+        private const val KEY_EASY = "outing_easy_only"
         const val GROUP_FILE = "group.txt"
         const val OBSERVATION_FILE = "observation.json"
         const val LEARNED_FILE = "learned.txt"

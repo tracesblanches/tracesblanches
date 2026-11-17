@@ -10,12 +10,14 @@ import fr.skimap.app.day.DayStore
 import fr.skimap.app.day.DayUi
 import fr.skimap.app.day.DayViewModel
 import fr.skimap.app.day.earliestStart
+import fr.skimap.core.DayOuting
 import fr.skimap.core.DayPlanView
 import fr.skimap.core.DayRequest
 import fr.skimap.core.DayStart
 import fr.skimap.core.GroupSpec
 import fr.skimap.core.Lang
 import fr.skimap.core.MorningView
+import fr.skimap.core.dayDefaultOuting
 import fr.skimap.core.groupNew
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -134,6 +136,35 @@ class DayViewModelTest {
             v.selectGroup(other)
             assertEquals(other.modelJson, b.requests.last().second)
             assertEquals("Seul", store().selectedGroup())
+        }
+
+    @Test
+    fun theMorningStartsFromTheLastChoiceElseTheCoreDefault() =
+        runTest {
+            ctx
+                .getSharedPreferences("day-test", Context.MODE_PRIVATE)
+                .edit()
+                .clear()
+                .commit()
+            // No choice yet: the core's default outing, the one the evening prepares (#170).
+            assertNull(store().outing)
+            val b = FakeDayBackend()
+            vm(b)
+            val first = b.requests.last().first
+            val default = dayDefaultOuting()
+            assertEquals(default.budgetMin, first.budgetMin, 0.0)
+            assertEquals(default.skating, first.skating)
+            assertEquals(default.returnBefore, first.returnBefore)
+            assertNull(first.maxDifficulty)
+            // A choice is kept: the next morning and the evening preparation start from it.
+            vm(b).setInputs { it.copy(budgetMin = 90, skating = true, returnBefore = "16:00") }
+            assertEquals(DayOuting(90.0, true, "16:00", false), store().outing)
+            val b2 = FakeDayBackend()
+            vm(b2)
+            val next = b2.requests.single().first
+            assertEquals("1 h 30, skating, retour avant 16 h 00", next.label)
+            assertEquals(90.0, next.budgetMin, 0.0)
+            assertTrue(next.skating)
         }
 
     @Test

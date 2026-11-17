@@ -3,7 +3,7 @@ package fr.skimap.app.day
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import fr.skimap.app.appLang
-import fr.skimap.app.durationText
+import fr.skimap.core.DayOuting
 import fr.skimap.core.DayPlanView
 import fr.skimap.core.DayPlanner
 import fr.skimap.core.DayRequest
@@ -13,6 +13,8 @@ import fr.skimap.core.GroupView
 import fr.skimap.core.Lang
 import fr.skimap.core.MorningView
 import fr.skimap.core.TrackingException
+import fr.skimap.core.dayDefaultOuting
+import fr.skimap.core.dayOutingLabel
 import fr.skimap.core.dayPacks
 import fr.skimap.core.dayStarts
 import fr.skimap.core.groupNew
@@ -30,18 +32,35 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.LocalDate
 import java.time.LocalTime
+import kotlin.math.roundToInt
 
-/** What the skier asks in the morning (J5): a few choices, all with a default. */
+/**
+ * What the skier asks in the morning (J5): a few choices, all with a default. The outing
+ * (time, technique, pistes, return) starts from the skier's last choice, else from the
+ * core's default outing, the one the evening preparation and the ranking of the starts
+ * ask too (#170).
+ */
 data class DayInputs(
     val date: LocalDate,
-    val start: DayStart? = null,
-    val budgetMin: Int = 120,
-    val skating: Boolean = false,
+    val start: DayStart?,
+    val budgetMin: Int,
+    val skating: Boolean,
     /** « 16:00 », or none. */
-    val returnBefore: String? = null,
+    val returnBefore: String?,
     /** Green and blue pistes only. */
-    val easyOnly: Boolean = false,
-)
+    val easyOnly: Boolean,
+) {
+    /** The outing of these choices, as the core and the evening preparation take it. */
+    fun outing() = DayOuting(budgetMin.toDouble(), skating, returnBefore, easyOnly)
+
+    companion object {
+        /** The choices of [outing] on [date], no start yet. */
+        fun of(
+            date: LocalDate,
+            outing: DayOuting,
+        ) = DayInputs(date, null, outing.budgetMin.roundToInt(), outing.skating, outing.returnBefore, outing.easyOnly)
+    }
+}
 
 /** The morning screen. */
 sealed interface DayUi {
@@ -99,16 +118,8 @@ fun dayRequest(
     lang: Lang = appLang(),
 ): DayRequest? {
     val s = i.start ?: return null
-    val label =
-        buildString {
-            val w = RequestWords.of(lang)
-            append(durationText(i.budgetMin, lang))
-            append(if (i.skating) ", skating" else ", ${w.classic}")
-            if (i.easyOnly) append(", ${w.easy}")
-            i.returnBefore?.let { append(", ${w.backBefore} ${it.replace(":", w.clockSeparator)}") }
-        }
     return DayRequest(
-        label = label,
+        label = dayOutingLabel(i.outing(), lang),
         start = s,
         date = i.date.toString(),
         startTime = null,
@@ -179,22 +190,8 @@ object RustDayBackend : DayBackend {
     override fun readPlan(planDir: String): DayPlanView? = runCatching { readDayPlan(planDir, appLang()) }.getOrNull()
 }
 
-/** Words of the label of a request (the core keeps it with the plan), in the app's language. */
-private data class RequestWords(
-    val classic: String,
-    val easy: String,
-    val backBefore: String,
-    val clockSeparator: String,
-    /** Error of « Valider la journée » without a loop. */
-    val noLoop: String,
-) {
-    companion object {
-        private val FR = RequestWords("classique", "vertes et bleues", "retour avant", " h ", "aucune boucle à valider")
-        private val EN = RequestWords("classic", "green and blue", "back before", ":", "no loop to validate")
-
-        fun of(lang: Lang): RequestWords = if (lang == Lang.FR) FR else EN
-    }
-}
+/** Error of « Valider la journée » without a loop, in the app's language. */
+private fun noLoop(lang: Lang): String = if (lang == Lang.FR) "aucune boucle à valider" else "no loop to validate"
 
 /**
  * The morning (J5, K9, C11): opens the pack's layers once, recomputes the loops when a
@@ -220,7 +217,7 @@ class DayViewModel(
     val validated: StateFlow<DayPlanView?> = plan.asStateFlow()
     private var planner: DayBackend.Planner? = null
     private var computing: Job? = null
-    private var inputs = DayInputs(today)
+    private var inputs = DayInputs.of(today, store.outing ?: dayDefaultOuting())
 
     init {
         viewModelScope.launch { load() }
@@ -277,6 +274,8 @@ class DayViewModel(
 
     fun setInputs(f: (DayInputs) -> DayInputs) {
         inputs = f(inputs)
+        // The last choice is the outing of the next mornings and of the evening preparation (#170).
+        store.outing = inputs.outing()
         update { it.copy(inputs = inputs) }
         recompute()
     }
@@ -332,7 +331,7 @@ class DayViewModel(
         val p = planner
         val s = state.value as? DayUi.Ready
         if (p == null || s == null || s.morning?.loops.isNullOrEmpty()) {
-            return Result.failure(IllegalStateException(RequestWords.of(appLang()).noLoop))
+            return Result.failure(IllegalStateException(noLoop(appLang())))
         }
         return withContext(io) {
             try {

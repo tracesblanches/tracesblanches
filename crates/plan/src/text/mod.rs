@@ -42,6 +42,18 @@ pub trait Texts: Sync {
     /// English counterpart when the site table gives one.
     fn start_phrase<'a>(&self, fr: &'a str, en: Option<&'a str>) -> &'a str;
 
+    // ---- The outing asked (`crate::outing`).
+
+    /// Label of an outing: « 2 h, classique », « 1 h 30, skating, vertes et bleues,
+    /// retour avant 16 h 00 ».
+    fn outing_label(
+        &self,
+        budget_min: u32,
+        style: Style,
+        easy_only: bool,
+        return_before: Option<chrono::NaiveTime>,
+    ) -> String;
+
     // ---- The plan as text (`DayPlan::text`).
 
     /// First line: date, label, start, departure.

@@ -23,16 +23,18 @@ use std::time::Instant;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use skimap_assist::inputs::{Paths, SiteData};
+use skimap_common::geom::LonLat;
 use skimap_core::battery::{self, Device, Measured, Usage};
 use skimap_core::calibration::ProfileModel;
 use skimap_pack::Pack;
+use skimap_plan::outing::Outing;
 use skimap_plan::pace;
 use skimap_plan::plan::{self, Context};
 
 use crate::card::Lang;
 use crate::text;
 use crate::tracking::{TrackingError, epoch_ms};
-use crate::tracking_day::{PACK_FILE, PLAN_FILE, PackView, TRACK_FILE};
+use crate::tracking_day::{DayOuting, PACK_FILE, PLAN_FILE, PackView, TRACK_FILE};
 
 /// Summary of a prepared day, next to its plan.
 pub const PREPARED_FILE: &str = "prepared.json";
@@ -140,14 +142,17 @@ fn copy_plan(from: &Path, to: &Path) -> Result<(), TrackingError> {
 
 /// Prepares the next `days` days after `today` (`YYYY-MM-DD`) on the pack in `pack_dir`:
 /// mornings and plans written under `<out_dir>/<site>/<date>/`; `work_dir` receives the
-/// pipeline view of the pack; `group_json`: the group (C11) the times are for; texts in
-/// `lang`.
+/// pipeline view of the pack; `group_json`: the group (C11) the times are for; `outing`:
+/// the skier's last choice in the morning, `None` for the app's default outing (#170: the
+/// evening prepares what the morning shows, from the same first start); texts in `lang`.
 #[uniffi::export]
+#[allow(clippy::too_many_arguments)]
 pub fn prep_run(
     pack_dir: String,
     work_dir: String,
     out_dir: String,
     group_json: Option<String>,
+    outing: Option<DayOuting>,
     today: String,
     days: u32,
     lang: Lang,
@@ -166,6 +171,8 @@ pub fn prep_run(
         .map(serde_json::from_str)
         .transpose()
         .map_err(invalid)?;
+    let outing = outing.map_or(Ok(Outing::DEFAULT), |o| o.to_outing())?;
+    let starts = crate::tracking_day::site_starts(site, lang);
     let mut out = Vec::new();
     let mut skipped = Vec::new();
     for k in 1..=days {
@@ -174,14 +181,20 @@ pub fn prep_run(
             skipped.push(tx.skipped_no_forecast(&tx.day(date)));
             continue;
         }
-        let Some(mut req) = skimap_plan::presets::requests(site, date)
-            .into_iter()
-            .next()
-        else {
+        // The morning of the app on that day: its first start, the outing asked, the best
+        // time of the day from 8 h (#170).
+        let Some(start) = starts.first() else {
             skipped.push(tx.skipped_no_start(&tx.day(date)));
             continue;
         };
-        req.date = date;
+        let req = outing.request(
+            LonLat::new(start.lon, start.lat),
+            start.name.clone(),
+            date,
+            None,
+            skimap_plan::outing::EARLIEST,
+            lang,
+        );
         let m = plan::morning_in(&data, &req, model.as_ref(), lang);
         let dir = Path::new(&out_dir).join(site.id).join(date.to_string());
         std::fs::create_dir_all(&dir).map_err(invalid)?;
@@ -513,6 +526,7 @@ mod tests {
             work.path().display().to_string(),
             out.path().display().to_string(),
             Some(fam.model_json),
+            None,
             today.clone(),
             3,
             Lang::Fr,
