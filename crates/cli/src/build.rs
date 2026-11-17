@@ -448,12 +448,9 @@ impl Ctx {
                 s.graph_components
             ))
         });
-        // France layer: a batch refreshes it once before its sites (`Shared::stations_once`).
-        if !shared.stations_once {
-            run.step("stations", &["domaines"], || {
-                Ok(describe_stations(&self.stations(shared.force_stations)?))
-            });
-        }
+        // The stations layer of France (H1, H2) is not a step of the site: `build-all`
+        // refreshes it before reading the inputs of its sites (it rewrites their starts,
+        // X9; #164).
         run.step("terrain", &[], || {
             let t = self.terrain(site)?;
             let r07 = t.report07.as_ref().map_or_else(String::new, |r| {
@@ -885,11 +882,6 @@ impl<'c> France<'c> {
 pub struct Shared<'a> {
     /// France-wide inputs, read on demand once for every site of a batch.
     pub france: Option<&'a France<'a>>,
-    /// The stations layer of France (H1, H2) is refreshed once by the batch, not by the
-    /// `build-all` of each site.
-    pub stations_once: bool,
-    /// Refresh every part of the stations layer, due or not (`build-all --force`).
-    pub force_stations: bool,
     /// Steps taken over from the previous run of the site.
     pub resume: Option<Resume<'a>>,
     /// Called with the steps so far after every step (journal of the site, so that an
