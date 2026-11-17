@@ -334,6 +334,26 @@ fn the_validator_refuses_broken_styles() {
             }),
         ),
         (
+            "source-layer nope absent from the tiles of france",
+            Box::new(|s| {
+                let i = layer_index(s, "france-forest");
+                s["layers"][i]["source-layer"] = json!("nope");
+            }),
+        ),
+        (
+            "kind never has the value",
+            Box::new(|s| {
+                let i = layer_index(s, "france-glacier");
+                s["layers"][i]["filter"] = json!(["==", ["get", "kind"], "glacière"]);
+            }),
+        ),
+        (
+            "shared source absent from the France basemap",
+            Box::new(|s| {
+                s["sources"]["france"]["url"] = json!("pmtiles://france/autre.pmtiles");
+            }),
+        ),
+        (
             "absent from the tiles",
             Box::new(|s| {
                 let i = layer_index(s, "ign-forest");

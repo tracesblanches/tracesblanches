@@ -65,6 +65,16 @@ const SEMIBOLD: &str = "Source Sans Pro Semibold";
 const BOLD: &str = "Source Sans Pro Bold";
 const ITALIC: &str = "Source Sans Pro Italic";
 
+/// Source of the France basemap (X20, #154), shared by every pack: the app resolves it
+/// to the France basemap of its cache, once, under the packs
+/// (`metadata.skimap:shared_sources`), and leaves it out with its layers when absent.
+pub const FRANCE_SOURCE: &str = "france";
+/// Zoom from which the France basemap gives way to the packs: past it, its roads, forests
+/// and borders (zoom 6 tiles enlarged) would no longer match the Plan IGN drawn over them.
+pub const FRANCE_DETAIL_UNTIL: f64 = 11.0;
+/// Zoom from which the Plan IGN names the communes ([`localities`]): the France names stop.
+pub const FRANCE_NAMES_UNTIL: f64 = 10.0;
+
 /// Empty GeoJSON, the initial data of runtime sources.
 fn empty() -> Value {
     json!({"type": "FeatureCollection", "features": []})
@@ -79,6 +89,11 @@ fn all_sources() -> Map<String, Value> {
         "ign".into(),
         json!({"type": "vector", "url": "pmtiles://basemap/plan-ign.pmtiles",
                "attribution": "© IGN Plan IGN v2"}),
+    );
+    m.insert(
+        FRANCE_SOURCE.into(),
+        json!({"type": "vector", "url": format!("pmtiles://{}", crate::inventory::FRANCE_TILES),
+               "attribution": "Protomaps © OpenStreetMap"}),
     );
     m.insert(
         "osm".into(),
@@ -262,6 +277,83 @@ fn osm(id: &str, ty: &str, source_layer: &str, rest: Value) -> Value {
     let mut l = layer(id, ty, Some("osm"), rest);
     l["source-layer"] = json!(source_layer);
     l
+}
+
+/// A layer of the France basemap (Protomaps schema).
+fn france(id: &str, ty: &str, source_layer: &str, rest: Value) -> Value {
+    let mut l = layer(id, ty, Some(FRANCE_SOURCE), rest);
+    l["source-layer"] = json!(source_layer);
+    l
+}
+
+/// The France basemap under everything (X20, #154): sea and lakes, forest, glaciers,
+/// towns, motorways, borders, then the names of the towns. Where a pack is installed its
+/// Plan IGN layers cover it; past [`FRANCE_DETAIL_UNTIL`] only the water stays.
+fn france_ground(p: &Palette) -> Vec<Value> {
+    vec![
+        france(
+            "france-water",
+            "fill",
+            "water",
+            json!({"filter": ["==", ["geometry-type"], "Polygon"],
+                   "paint": {"fill-color": p.water}}),
+        ),
+        france(
+            "france-forest",
+            "fill",
+            "landcover",
+            json!({"maxzoom": FRANCE_DETAIL_UNTIL, "filter": eq("kind", json!("forest")),
+                   "paint": {"fill-color": p.forest_faint}}),
+        ),
+        france(
+            "france-glacier",
+            "fill",
+            "landcover",
+            json!({"maxzoom": FRANCE_DETAIL_UNTIL, "filter": eq("kind", json!("glacier")),
+                   "paint": {"fill-color": p.glacier}}),
+        ),
+        france(
+            "france-urban",
+            "fill",
+            "landcover",
+            json!({"maxzoom": FRANCE_DETAIL_UNTIL, "filter": eq("kind", json!("urban_area")),
+                   "paint": {"fill-color": p.built}}),
+        ),
+        france(
+            "france-boundary",
+            "line",
+            "boundaries",
+            json!({"maxzoom": FRANCE_DETAIL_UNTIL, "filter": eq("kind", json!("country")),
+                   "layout": {"line-join": "round"},
+                   "paint": {"line-color": p.text_soft, "line-width": zl(&[(4.0, 0.8), (10.0, 1.6)]),
+                             "line-dasharray": [3, 2]}}),
+        ),
+        france(
+            "france-road",
+            "line",
+            "roads",
+            json!({"minzoom": 5, "maxzoom": FRANCE_DETAIL_UNTIL,
+                   "filter": one_of("kind", &["highway", "major_road"]),
+                   "layout": {"line-cap": "round", "line-join": "round"},
+                   "paint": {"line-color": p.road_major, "line-width": zl(&[(5.0, 0.5), (10.0, 1.4)])}}),
+        ),
+    ]
+}
+
+/// Names of the towns of the France basemap, until the Plan IGN names them.
+fn france_names(p: &Palette) -> Value {
+    france(
+        "france-place",
+        "symbol",
+        "places",
+        json!({"maxzoom": FRANCE_NAMES_UNTIL, "filter": eq("kind", json!("locality")),
+               "layout": {"text-field": ["coalesce", ["get", "name:fr"], ["get", "name"]],
+                          "text-font": [REGULAR],
+                          "text-size": zl(&[(5.0, 11.0), (9.0, 14.0)]),
+                          "symbol-sort-key": ["-", 0, ["coalesce", ["get", "population_rank"], 0]],
+                          "text-max-width": 8, "text-padding": 4},
+               "paint": text_paint(p.text, p.halo, 2.0)}),
+    )
 }
 
 /// Marks a layer for the contrast check: its colour against the colour of `against`
@@ -1488,6 +1580,7 @@ fn position(p: &Palette) -> Vec<Value> {
 fn fond(theme: Theme) -> Vec<Value> {
     let p = theme.palette();
     let mut v = vec![background(p)];
+    v.extend(france_ground(p));
     v.extend(ground_cover(p, false));
     v.extend(snow(p, "snow-groomed"));
     v.extend(water(p, 13.0));
@@ -1506,6 +1599,7 @@ fn fond(theme: Theme) -> Vec<Value> {
     v.extend(station_points(p));
     v.extend(huts(p, theme, 11.0, 13.0, 14.0, true));
     v.push(piste_labels(p, 13.0, 14.0));
+    v.push(france_names(p));
     v.extend(localities(p, 15.0, 13.0, Some(15.0)));
     v.extend(oronyms(p, false));
     v.push(selection(p));
@@ -1516,6 +1610,7 @@ fn fond(theme: Theme) -> Vec<Value> {
 fn srn(theme: Theme) -> Vec<Value> {
     let p = theme.palette();
     let mut v = vec![background(p)];
+    v.extend(france_ground(p));
     v.extend(ground_cover(p, true));
     v.extend(snow(p, "snow-srn"));
     // One reading at a time (X6, #140): the avalanche exposure at the scale of the
@@ -1601,6 +1696,7 @@ fn srn(theme: Theme) -> Vec<Value> {
                           "text-max-width": 8, "text-padding": 6},
                "paint": text_paint(p.text_soft, p.halo, 2.0)}),
     ));
+    v.push(france_names(p));
     v.extend(localities(p, 14.0, 12.0, Some(14.0)));
     v.extend(oronyms(p, true));
     v.push(selection(p));
@@ -1611,6 +1707,7 @@ fn srn(theme: Theme) -> Vec<Value> {
 fn guidage(theme: Theme) -> Vec<Value> {
     let p = theme.palette();
     let mut v = vec![background(p)];
+    v.extend(france_ground(p));
     v.extend(ground_cover(p, false));
     v.push(ign(
         "ign-water",
@@ -1657,6 +1754,7 @@ fn guidage(theme: Theme) -> Vec<Value> {
         ),
         "background",
     ));
+    v.push(france_names(p));
     v.extend(localities(p, 17.0, 14.0, None));
     // Yellow disc (contrast with dark ground), dark ring (contrast with snow).
     v.push(contrast(
@@ -1793,9 +1891,10 @@ pub fn group_of(id: &str) -> Option<&'static str> {
             "ign-place",
             "ign-oro",
             "ign-lieu-dit",
+            "france-place",
         ]) {
             "noms"
-        } else if id == "background" || starts(&["ign"]) {
+        } else if id == "background" || starts(&["ign", "france"]) {
             "fond"
         } else if starts(&["pistes"]) {
             "pistes"
@@ -1882,6 +1981,10 @@ pub fn style(kind: Kind, theme: Theme) -> Value {
         .copied()
         .filter(|id| used.contains(id))
         .collect();
+    let shared: Vec<&str> = [FRANCE_SOURCE]
+        .into_iter()
+        .filter(|id| used.contains(id))
+        .collect();
     let toggles: Vec<&str> = layers
         .iter()
         .filter(|l| l["layout"]["visibility"] == "none")
@@ -1898,6 +2001,7 @@ pub fn style(kind: Kind, theme: Theme) -> Value {
             "skimap:runtime_sources": runtime,
             "skimap:optional_layers": toggles,
             "skimap:optional_sources": optional,
+            "skimap:shared_sources": shared,
             "skimap:feature_states": states,
             "skimap:groups": groups
         },

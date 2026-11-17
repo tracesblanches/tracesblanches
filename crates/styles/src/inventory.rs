@@ -250,6 +250,28 @@ pub fn geojson_layer(fc: &serde_json::Value) -> Layer {
 }
 
 impl Inventory {
+    /// Inventory of the France basemap directory (`france.json`, X20 #154): its archive
+    /// under the path the styles name it, [`FRANCE_TILES`].
+    pub fn from_france(dir: &Path) -> Result<Self> {
+        let d = skimap_pack::france::FranceBasemap::read(dir).map_err(Error::pack)?;
+        let mut inv = Inventory {
+            site: "france".to_string(),
+            ..Self::default()
+        };
+        inv.vector.insert(
+            FRANCE_TILES.to_string(),
+            Archive::read(&dir.join(skimap_pack::france::TILES_FILE))?,
+        );
+        inv.fonts.insert(
+            FRANCE_FONTS.to_string(),
+            font_stacks(&dir.join(skimap_pack::france::FONTS_DIR))?,
+        );
+        if d.tiles().is_none() {
+            return Err(Error::Json(dir.display().to_string(), "no archive".into()));
+        }
+        Ok(inv)
+    }
+
     /// Inventory of a pack directory (`data/out/<site>/pack`).
     pub fn from_pack(dir: &Path) -> Result<Self> {
         let pack = Pack::open(dir).map_err(Error::pack)?;
@@ -307,6 +329,12 @@ impl Inventory {
         Ok(inv)
     }
 }
+
+/// Path of the France basemap archive in the styles (`pmtiles://france/france.pmtiles`):
+/// the app resolves `france/` to the directory of the France basemap, not to a pack.
+pub const FRANCE_TILES: &str = "france/france.pmtiles";
+/// Glyph directory of the France basemap, as the styles would name it.
+pub const FRANCE_FONTS: &str = "france/fonts";
 
 /// Sprite paths of a style `sprite` (string or array of `{id, url}`).
 pub fn sprite_paths(sprite: Option<&serde_json::Value>) -> Vec<String> {
