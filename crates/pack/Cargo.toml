@@ -15,6 +15,7 @@ pipeline = [
     "skimap-common/geotiff",
     "dep:skimap-terrain",
     "dep:skimap-zones",
+    "dep:skimap-core",
     "dep:chrono",
     "dep:rayon",
     "dep:rusqlite",
@@ -34,6 +35,8 @@ thiserror.workspace = true
 # Pipeline only.
 skimap-terrain = { workspace = true, optional = true }
 skimap-zones = { workspace = true, optional = true }
+# Refuges of the day plan flagged in the pack (X21, #155).
+skimap-core = { workspace = true, optional = true }
 chrono = { workspace = true, optional = true }
 rayon = { workspace = true, optional = true }
 rusqlite = { workspace = true, optional = true }

@@ -199,6 +199,7 @@ fn build_into(
     if let Some(l) = piste_labels(root, &layers)? {
         layers.push(l);
     }
+    plan_refuges(root, &mut layers)?;
     for o in stations::include(layout, site.bbox, root, opts.personal_sources)? {
         match o {
             layers::Outcome::Included(l) => layers.push(*l),
@@ -342,6 +343,45 @@ fn piste_labels(root: &Path, layers: &[Layer]) -> Result<Option<Layer>> {
         "Une ligne par itinéraire (relation OSM, sinon noms du plan des pistes, sinon nom de la voie), voies jointes bout à bout là où deux voies de l'itinéraire seulement se touchent ; pour placer les noms le long des pistes. Propriétés : `name`, `difficulty`, `length_m`, `ways`.".to_owned(),
     ];
     Ok(Some(l))
+}
+
+/// Pack layers of the refuges the day plan reads (refuges.info, OSM).
+const PLAN_REFUGE_LAYERS: [&str; 2] = ["refuges-info", "refuges-osm"];
+
+/// Flags in the `refuges-info` and `refuges-osm` layers of the pack, as written, the
+/// refuges of the day plan ([`skimap_core::huts::mark`], X21 #155: the same hut in both
+/// sources kept once), so that the phone reads the flag instead of comparing the two
+/// layers when a pack opens. The layers stay two files.
+fn plan_refuges(root: &Path, layers: &mut [Layer]) -> Result<()> {
+    let read = |l: &Layer| -> Result<Value> {
+        let path = root.join(&l.file);
+        let text = std::fs::read_to_string(&path).map_err(|e| Error::io(&path, e))?;
+        serde_json::from_str(&text).map_err(|e| Error::json(&l.file, e))
+    };
+    let find = |id: &str| {
+        layers
+            .iter()
+            .position(|l| l.id == id && l.format == "geojson")
+    };
+    let at = PLAN_REFUGE_LAYERS.map(find);
+    if at.iter().all(Option::is_none) {
+        return Ok(());
+    }
+    let value = |i: Option<usize>| i.map_or(Ok(Value::Null), |i| read(&layers[i]));
+    let (mut info, mut osm) = (value(at[0])?, value(at[1])?);
+    let counts = skimap_core::huts::mark(&mut info, &mut osm);
+    for ((i, v), n) in at.into_iter().zip([info, osm]).zip([counts.0, counts.1]) {
+        let Some(i) = i else { continue };
+        let l = &mut layers[i];
+        let bytes = serde_json::to_vec(&v).map_err(|e| Error::json(&l.file, e))?;
+        l.bytes = write_bytes(&root.join(&l.file), &bytes)?;
+        l.notes.push(format!(
+            "Refuges du plan de la journée : propriété `{}` (vrai sur {n} entités) ; un refuge présent dans les deux sources (moins de {} m) n'est retenu qu'une fois, celui de refuges.info.",
+            skimap_core::huts::PLAN_FLAG,
+            skimap_core::huts::SAME_PLACE_M
+        ));
+    }
+    Ok(())
 }
 
 /// Earliest explicit `valid_until` date among the layers.

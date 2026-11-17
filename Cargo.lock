@@ -3247,6 +3247,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "skimap-common",
+ "skimap-core",
  "skimap-terrain",
  "skimap-voice",
  "skimap-zones",
