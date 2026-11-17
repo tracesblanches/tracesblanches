@@ -26,11 +26,15 @@ Neige (`snow-groomed-0..2` dans fond, `snow-srn-0..2` dans SRN) : polygones vect
 
 ## Sources facultatives (packs publics)
 
-`metadata.skimap:optional_sources` liste les sources qu'un pack peut ne pas avoir : `avalanche-areas` (CLPA, usage personnel), `avalanche-exposure` (fusionnée avec la CLPA à Cervières), `avalanche-segments`, `snow-groomed`, `snow-srn`, `srn-areas`, `srn-routes`, `piste-labels` (packs antérieurs), `fee-zones` (usage personnel), `stations-pois`. L'app et le visualiseur retirent alors la source et ses couches. Les fonds, `pistes`, `zones`, `no-network`, les trois couches de refuges et `slope` sont requis : leur absence est une erreur. Le validateur vérifie une source facultative sur les packs qui l'ont (ou sur le schéma déclaré de `fee-zones`, `src/declared.rs`) ; `validate_with` contrôle un pack seul contre l'instantané :
+`metadata.skimap:optional_sources` liste les sources qu'un pack peut ne pas avoir : `avalanche-areas` (CLPA, usage personnel), `avalanche-exposure` (fusionnée avec la CLPA à Cervières), `avalanche-segments`, `snow-groomed`, `snow-srn`, `srn-areas`, `srn-routes`, `piste-labels` (packs antérieurs), `fee-zones` (usage personnel), `stations-pois`, `pistes-estimees` (usage personnel : packs personnels des sites dont le plan en a). L'app et le visualiseur retirent alors la source et ses couches. Les fonds, `pistes`, `zones`, `no-network`, les trois couches de refuges et `slope` sont requis : leur absence est une erreur. Le validateur vérifie une source facultative sur les packs qui l'ont (ou sur le schéma déclaré de `fee-zones`, `src/declared.rs`) ; `validate_with` contrôle un pack seul contre l'instantané :
 
 ```sh
 cargo run --release -p skimap-styles --example check_packs -- <dossier de pack>...
 ```
+
+## Pistes estimées d'après le plan (G1, #117)
+
+Pistes du plan officiel absentes d'OSM (`pistes-estimees`, pack `layers::estimated_pistes`, packs personnels seulement : la géométrie dérive du plan) : couche `pistes-estimees` (groupe `pistes`), filtre `certainty` = `incertain`, points ronds (`line-dasharray` [0,1, 2], extrémités rondes) dès z12 ; couleur de difficulté dans fond et SRN, gris de contexte dans guidage. Jamais dessinée comme une piste sûre ; la fiche dit « Tracé incertain, d'après le plan de la station » et donne le lien « Voir le plan officiel ». Schéma déclaré dans `src/declared.rs` (les packs de preuve sont publics).
 
 ## État inconnu, SRN, redevance, secours
 

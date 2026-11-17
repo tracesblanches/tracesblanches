@@ -106,9 +106,25 @@ pub fn declared_values(path: &str, key: &str) -> BTreeSet<String> {
 /// Schema of a pack layer documented before any crate produces it, in the format of
 /// `metadata.skimap:runtime_sources` (geometry, properties with their type or values):
 /// the trail-pass zones `layers/fee-zones.geojson` (H2, #133), documented in
-/// `android/docs/telechargement.md` and read by the app (`crates/ffi/src/fees.rs`).
+/// `android/docs/telechargement.md` and read by the app (`crates/ffi/src/fees.rs`), and
+/// the estimated traces `layers/pistes-estimees.geojson` (G1, #117: personal packs only,
+/// the proof packs are public).
 pub fn declared_layer(path: &str) -> Option<serde_json::Value> {
     match path {
+        // Estimated traces of the pistes absent from OSM (G1, #117), `skimap-pack`
+        // `layers::estimated_pistes`: personal packs of the sites whose plan has some.
+        "layers/pistes-estimees.geojson" => Some(serde_json::json!({
+            "geometry": "LineString",
+            "properties": {
+                "name": "string",
+                "colour": ["green", "blue", "red", "black"],
+                "difficulty": ["novice", "easy", "intermediate", "advanced"],
+                "certainty": ["incertain"],
+                "method": ["estimated_paths", "estimated_drawing"],
+                "score": "number",
+                "plan_url": "string"
+            }
+        })),
         "layers/fee-zones.geojson" => Some(serde_json::json!({
             "geometry": "Polygon",
             "properties": {

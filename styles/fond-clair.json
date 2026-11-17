@@ -1365,6 +1365,68 @@
     },
     {
       "filter": [
+        "==",
+        [
+          "get",
+          "certainty"
+        ],
+        "incertain"
+      ],
+      "id": "pistes-estimees",
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "metadata": {
+        "skimap:group": "pistes"
+      },
+      "minzoom": 12,
+      "paint": {
+        "line-color": [
+          "match",
+          [
+            "coalesce",
+            [
+              "get",
+              "difficulty"
+            ],
+            ""
+          ],
+          "novice",
+          "#008c45",
+          "easy",
+          "#0062c4",
+          "intermediate",
+          "#d81e1e",
+          "advanced",
+          "#111111",
+          "#6b6b6b"
+        ],
+        "line-dasharray": [
+          0.1,
+          2
+        ],
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          12.0,
+          2.5,
+          14.0,
+          4.0,
+          16.0,
+          6.0
+        ]
+      },
+      "source": "pistes-estimees",
+      "type": "line"
+    },
+    {
+      "filter": [
         "all",
         [
           "in",
@@ -2574,7 +2636,8 @@
       "srn-routes",
       "piste-labels",
       "fee-zones",
-      "stations-pois"
+      "stations-pois",
+      "pistes-estimees"
     ],
     "skimap:relative_urls": true,
     "skimap:runtime_sources": {
@@ -2622,6 +2685,10 @@
     },
     "pistes": {
       "data": "layers/pistes.geojson",
+      "type": "geojson"
+    },
+    "pistes-estimees": {
+      "data": "layers/pistes-estimees.geojson",
       "type": "geojson"
     },
     "position": {

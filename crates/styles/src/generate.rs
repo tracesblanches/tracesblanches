@@ -99,6 +99,7 @@ fn all_sources() -> Map<String, Value> {
         "srn-routes",
         "fee-zones",
         "stations-pois",
+        "pistes-estimees",
     ] {
         m.insert(id.into(), geojson(&format!("layers/{id}.geojson")));
     }
@@ -122,9 +123,10 @@ fn all_sources() -> Map<String, Value> {
 /// and the exposure fused with it at Cervières), layers only some sites have (SRN areas
 /// and itineraries, snow outside the simulated massifs, avalanche exposure outside the
 /// mountains), layers added after older packs were built (piste name lines) and the
-/// trail-pass zones (no producer yet). The basemaps, pistes, zones, network, huts and
-/// slope are in every pack: their absence is an error.
-pub const OPTIONAL_SOURCES: [&str; 10] = [
+/// trail-pass zones (no producer yet), the estimated traces of the pistes absent from OSM
+/// (personal packs of the sites whose plan has some). The basemaps, pistes, zones,
+/// network, huts and slope are in every pack: their absence is an error.
+pub const OPTIONAL_SOURCES: [&str; 11] = [
     "avalanche-areas",
     "avalanche-segments",
     "avalanche-exposure",
@@ -135,6 +137,7 @@ pub const OPTIONAL_SOURCES: [&str; 10] = [
     "piste-labels",
     "fee-zones",
     "stations-pois",
+    "pistes-estimees",
 ];
 
 /// Feature states the app sets (`metadata.skimap:feature_states`): source → state → what
@@ -1326,6 +1329,25 @@ fn srn_labels(p: &Palette) -> Value {
     )
 }
 
+/// Pistes of the official plan absent from OSM (`pistes-estimees`, G1 #117): an estimated
+/// trace, never drawn as a sure piste. Round dots of the difficulty colour (grey in
+/// guidage, like the other pistes there), as wide as the piste core, from z12.
+fn estimated_pistes(p: &Palette, kind: Kind) -> Value {
+    let (color, width) = match kind {
+        Kind::Fond => (piste_color(p), zl(&[(12.0, 2.5), (14.0, 4.0), (16.0, 6.0)])),
+        Kind::Srn => (piste_color(p), zl(&[(12.0, 1.6), (16.0, 3.5)])),
+        Kind::Guidage => (json!(p.piste_context), zl(&[(12.0, 1.5), (16.0, 3.0)])),
+    };
+    layer(
+        "pistes-estimees",
+        "line",
+        Some("pistes-estimees"),
+        json!({"minzoom": 12, "filter": eq("certainty", json!("incertain")),
+               "layout": {"line-cap": "round", "line-join": "round"},
+               "paint": {"line-color": color, "line-width": width, "line-dasharray": [0.1, 2]}}),
+    )
+}
+
 /// Trail-pass validity zones (`fee-zones`, schema of `android/docs/telechargement.md`):
 /// the footprints of the domains where each pass is valid. Neutral thin dotted outline;
 /// once the app knows the pass of the user (feature state `valid`), its zones get a
@@ -1477,6 +1499,7 @@ fn fond(theme: Theme) -> Vec<Value> {
     v.extend(srn_layers(p, false));
     v.push(exposure_segments(p, 3, true));
     v.extend(pistes(p, true));
+    v.push(estimated_pistes(p, Kind::Fond));
     v.extend(status_closed(p, true));
     v.push(oneway_arrows(p, theme));
     v.extend(access_points(p, true));
@@ -1551,6 +1574,7 @@ fn srn(theme: Theme) -> Vec<Value> {
     v.extend(avalanche_areas(p));
     v.push(exposure_segments(p, 2, false));
     v.extend(pistes(p, false));
+    v.push(estimated_pistes(p, Kind::Srn));
     v.extend(status_closed(p, false));
     v.extend(srn_layers(p, true).into_iter().skip(2));
     v.extend(access_points(p, false));
@@ -1608,6 +1632,7 @@ fn guidage(theme: Theme) -> Vec<Value> {
         json!({"filter": nordic(), "layout": {"line-cap": "round", "line-join": "round"},
                "paint": {"line-color": p.piste_context, "line-width": zl(&[(10.0, 1.0), (16.0, 3.0)])}}),
     ));
+    v.push(estimated_pistes(p, Kind::Guidage));
     v.push(layer(
         "route-done",
         "line",
