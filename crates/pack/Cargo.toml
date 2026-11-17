@@ -16,6 +16,8 @@ pipeline = [
     "dep:skimap-terrain",
     "dep:skimap-zones",
     "dep:skimap-core",
+    "dep:skimap-assist",
+    "dep:skimap-plan",
     "dep:chrono",
     "dep:rayon",
     "dep:rusqlite",
@@ -37,6 +39,9 @@ skimap-terrain = { workspace = true, optional = true }
 skimap-zones = { workspace = true, optional = true }
 # Refuges of the day plan flagged in the pack (X21, #155).
 skimap-core = { workspace = true, optional = true }
+# The starts of the site ranked by the planner on the pack (#166): the phone's morning.
+skimap-assist = { workspace = true, optional = true }
+skimap-plan = { workspace = true, optional = true }
 chrono = { workspace = true, optional = true }
 rayon = { workspace = true, optional = true }
 rusqlite = { workspace = true, optional = true }

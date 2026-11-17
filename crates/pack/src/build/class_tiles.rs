@@ -89,11 +89,11 @@ pub struct Params {
 }
 
 /// Patches smaller than 200 m² (8 cells of 5 m) are removed: see the measurements of the
-/// crate documentation (`docs/format.md`, class layers).
+/// crate documentation (`docs/format/couches.md`, class layers).
 pub const MIN_PATCH_M2: f64 = 200.0;
 
 /// Patches and holes of the inner levels smaller than 400 m² (16 cells) are removed:
-/// measurements in `docs/format.md`.
+/// measurements in `docs/format/couches.md`.
 pub const MIN_INNER_PATCH_M2: f64 = 400.0;
 
 impl Default for Params {

@@ -199,6 +199,7 @@ mod tests {
                 bbox: [0.0; 4],
                 center: [0.0; 2],
                 record: None,
+                start_ranking: None,
             },
             latest: LatestVersion {
                 version: latest.into(),

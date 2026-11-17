@@ -20,7 +20,6 @@ use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use skimap_assist::inputs::{Paths, SiteData};
 use skimap_assist::suggest::GroupTime;
 use skimap_common::geom::LonLat;
-use skimap_common::layout::DataLayout;
 use skimap_common::site::Site;
 use skimap_core::calibration::{GroupProfile, Level, OutingObs, ProfileModel};
 use skimap_core::graph::{Difficulty, PisteGraph};
@@ -71,80 +70,9 @@ fn io(path: &Path, e: std::io::Error) -> TrackingError {
     }
 }
 
-/// The pipeline layout of a pack's files, as symbolic links.
-#[derive(Debug, Clone)]
-pub struct PackView {
-    /// Root of the layout (`<root>/out/<site>/<layer>/`).
-    pub layout: DataLayout,
-    /// Links made.
-    pub links: usize,
-}
-
-impl PackView {
-    /// Links every file of `pack` (layers, their metadata, the voice layer) under `root`
-    /// at the place it comes from in the pipeline (`out/<site>/<origin>`). `root` is
-    /// emptied first: a view is rebuilt from the pack it shows.
-    pub fn build(pack: &Pack, root: &Path) -> Result<Self, TrackingError> {
-        let site = &pack.manifest().site.id;
-        let base = root.join("out").join(site);
-        if base.exists() {
-            std::fs::remove_dir_all(&base).map_err(|e| io(&base, e))?;
-        }
-        let mut links = 0;
-        let mut link = |target: PathBuf, at: PathBuf| -> Result<(), TrackingError> {
-            if let Some(dir) = at.parent() {
-                std::fs::create_dir_all(dir).map_err(|e| io(dir, e))?;
-            }
-            if at.symlink_metadata().is_ok() {
-                return Ok(());
-            }
-            symlink(&target, &at).map_err(|e| io(&at, e))?;
-            links += 1;
-            Ok(())
-        };
-        let ext = |p: &str| Path::new(p).extension().map(|e| e.to_ascii_lowercase());
-        for l in &pack.manifest().layers {
-            skimap_pack::reader::check_relative(&l.origin)?;
-            // A file converted for the phone (GeoTIFF → PMTiles) is not what the loaders
-            // read: left out, reported missing by them.
-            if ext(&l.file) != ext(&l.origin) {
-                continue;
-            }
-            let at = base.join(&l.origin);
-            link(pack.path(&l.file)?, at.clone())?;
-            if let (Some(meta), Some(dir)) = (&l.meta, at.parent()) {
-                let src = pack.path(meta)?;
-                if let Some(name) = src.file_name() {
-                    link(src.clone(), dir.join(name))?;
-                }
-            }
-        }
-        let voice = pack.root().join("voice");
-        if voice.join("manifest.json").is_file() {
-            link(voice, base.join("voice"))?;
-        }
-        Ok(Self {
-            layout: DataLayout::new(root),
-            links,
-        })
-    }
-}
-
-#[cfg(unix)]
-fn symlink(target: &Path, at: &Path) -> std::io::Result<()> {
-    std::os::unix::fs::symlink(target, at)
-}
-
-#[cfg(not(unix))]
-fn symlink(target: &Path, at: &Path) -> std::io::Result<()> {
-    if target.is_dir() {
-        Err(std::io::Error::other("directory links need unix"))
-    } else {
-        skimap_common::output::copy_file(target, at)
-            .map(|_| ())
-            .map_err(std::io::Error::other)
-    }
-}
+/// The pipeline layout of a pack's files, as symbolic links (in `skimap_pack`, where the
+/// pack build also ranks the starts on the pack itself, #166).
+pub use skimap_pack::view::PackView;
 
 /// A start proposed for the site (the start points of the site's ready-made requests).
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]

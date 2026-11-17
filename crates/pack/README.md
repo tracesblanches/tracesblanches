@@ -34,7 +34,7 @@ API : `skimap_pack::build::build(site, &layout, &downloader, &BuildOptions) -> B
 ## Sommaire
 
 1. [Fonds de carte (P4)](docs/fonds-de-carte.md) : Plan IGN v2 et OSM Protomaps, tailles par zoom, choix
-2. [Format du pack (P14)](docs/format.md) : arborescence, manifeste, couches reprises, rasters, tailles
+2. [Format du pack (P14)](docs/format.md) : arborescence, manifeste (départs classés par le planificateur, #166), couches reprises, rasters, tailles
 3. [Visualiseur (P15)](../../tools/viewer/README.md) : ouverture sur le poste et sur le Pixel
 4. [Export Locus Map / OsmAnd (P21)](docs/export.md) : fichiers, validation, liste de vérification
 5. [Mises à jour et synchronisation (K2, S0, E1)](docs/mise-a-jour.md) : index, paquets, plan de synchro, application côté téléphone, mesures

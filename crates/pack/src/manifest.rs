@@ -69,6 +69,56 @@ pub struct SiteInfo {
     /// the phone then knows only the evaluation sites.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub record: Option<SiteRecord>,
+    /// How the planner ranked the starts of [`SiteInfo::record`] (#166): the starts of
+    /// the record are in this order, best first. `None` in packs written before it, and
+    /// for a site without starts in its record.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_ranking: Option<StartRanking>,
+}
+
+/// The starts of a site ranked by the planner at the end of the pack build (#166): the
+/// morning of the phone (`skimap_plan::plan::morning_in`, the same code) run on the pack
+/// itself from each start, for the app's default outing.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StartRanking {
+    /// Time available asked, minutes (the app's default outing).
+    pub budget_min: f64,
+    /// Technique asked (`classic`, the app's default).
+    pub style: String,
+    /// Day asked (`AAAA-MM-JJ`): the first day of the pack's forecast, else the build day.
+    pub date: String,
+    /// Start time asked (`HH:MM`).
+    pub start_time: String,
+    /// Every start of the record, in its order (best first), with what the planner found.
+    pub starts: Vec<StartScore>,
+    /// Why the starts kept the registry order (the planner could not run), if so.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    /// Time of the ranking (view of the pack, layers, one morning per start), ms.
+    pub compute_ms: u64,
+}
+
+/// What the planner found from one start ([`StartRanking`]).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StartScore {
+    /// Identifier of the start (`skimap_common::site::Start::id`).
+    pub id: String,
+    /// Its place in the registry (0: the start the pipeline put first, X9).
+    pub registry_rank: usize,
+    /// Loops proposed (at most 3, the morning's), out-and-backs included.
+    pub loops: usize,
+    /// Of which real loops (less than a quarter of their length travelled twice).
+    pub real_loops: usize,
+    /// Score of the best loop (`skimap_assist::suggest`), if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub best_score: Option<f64>,
+    /// Length of each loop, km.
+    pub lengths_km: Vec<f64>,
+    /// Length of each loop on stretches travelled once (its network km), km.
+    pub network_km: Vec<f64>,
+    /// The planner's last note when it found no loop.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
 }
 
 /// Validity of the whole pack.

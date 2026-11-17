@@ -54,7 +54,7 @@ fn summary(label: &str, rows: &[Row]) {
         }
     }
     println!(
-        "{label} : départ principal < 25 % des km nordiques du domaine : {} {quarter:?}, < 50 % : {}, < 75 % : {} ; départ principal sur une partie < {LOOP_KM:.0} km alors que la plus grande fait plus : {} {short_main:?} ; plus grande partie sans départ : {} {main_unserved:?}",
+        "{label} : départ principal < 25 % des km nordiques du domaine : {} {quarter:?}, < 50 % : {}, < 75 % : {} ; départ principal sur une partie < {LOOP_KM} km alors que la plus grande fait plus : {} {short_main:?} ; plus grande partie sans départ : {} {main_unserved:?}",
         below[0],
         below[1],
         below[2],

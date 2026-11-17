@@ -101,6 +101,27 @@ impl Pack {
         serde_json::from_slice(&bytes).map_err(|e| Error::json(&l.file, e))
     }
 
+    /// Days of the hourly forecast the pack carries (`meteo-hourly`, first point), those
+    /// with 8 hours or more, `AAAA-MM-JJ`, in order; empty without it.
+    pub fn forecast_days(&self) -> Vec<String> {
+        let Ok(v) = self.read_json("meteo-hourly") else {
+            return Vec::new();
+        };
+        let mut count = std::collections::BTreeMap::<String, usize>::new();
+        for p in v["points"].as_array().into_iter().flatten().take(1) {
+            for h in p["hours"].as_array().into_iter().flatten() {
+                if let Some(d) = h["time"].as_str().and_then(|s| s.get(..10)) {
+                    *count.entry(d.to_owned()).or_default() += 1;
+                }
+            }
+        }
+        count
+            .into_iter()
+            .filter(|(_, n)| *n >= 8)
+            .map(|(d, _)| d)
+            .collect()
+    }
+
     /// Features of a GeoJSON layer.
     pub fn read_geojson(&self, id: &str) -> Result<geojson::FeatureCollection> {
         let l = self.layer(id)?;
