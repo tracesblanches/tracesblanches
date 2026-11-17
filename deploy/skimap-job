@@ -6,8 +6,11 @@
 #
 #   skimap-job build-all <site>...   # everything (heavy)
 #   skimap-job snow      <site>...   # snow J-1, routing rasters
-#   skimap-job bera      <site>...   # avalanche bulletin
-#   skimap-job status    <site>...   # trail status (personal sources)
+#   skimap-job bera      [<site>...] # avalanche bulletin (default: every built site of
+#                                    # the registry whose massif has a BERA)
+#   skimap-job status    [<site>...] # trail status, personal sources (default: every
+#                                    # built groomed station of the registry with a
+#                                    # readable status source)
 #   skimap-job meteo     <site>...   # hourly weather (personal sources)
 #   skimap-job refresh   [<site>...] # station cards and titles of France (once), huts of
 #                                    # the sites (default: every built site); daily
@@ -60,6 +63,19 @@ if [ "$task" = catchup ]; then
     --stop-after-min "${SKIMAP_CATCHUP_STOP_AFTER_MIN:-240}"
   step skimap-server publish --all-in "$SKIMAP_DATA_DIR/out"
   exit $rc
+fi
+
+# bera and status without explicit sites: the sites of the registry they apply to
+# (`skimap sites --ids`: BERA massif / readable status source, pipeline outputs on the
+# volume; the other sites get these layers from build-all and the catch-up).
+if [ $# -eq 0 ] && { [ "$task" = bera ] || [ "$task" = status ]; }; then
+  if ! sites=$(skimap sites --ids --built "--$task"); then
+    echo "FAILED: skimap sites --ids --built --$task" >&2
+    exit 1
+  fi
+  [ -n "$sites" ] || echo "no built site for $task"
+  # shellcheck disable=SC2086
+  set -- $sites
 fi
 
 for site in "$@"; do

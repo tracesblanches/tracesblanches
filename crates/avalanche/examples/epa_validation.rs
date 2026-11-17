@@ -2,7 +2,7 @@
 //! INRAE), personal use only:
 //!
 //! ```sh
-//! SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-avalanche --example epa_validation -- cervieres
+//! SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-avalanche --example epa_validation -- <site>
 //! ```
 //!
 //! The EPA terms (avalanches.fr, checked 15/11/2026) allow reproduction only for a

@@ -30,7 +30,7 @@ Variables d'environnement lues par `common::config::Config::from_env` :
 
 Les clés sont des `Secret` qui s'affichent `***` : elles n'apparaissent dans aucun journal, aucun message d'erreur, aucun fichier du cache.
 
-`personal_sources` est désactivé par défaut parce que ces sources n'autorisent pas la redistribution : widget Nordic France et page de la mairie de Cervières (HTML sans licence), état ENJ (aucune licence affichée, L1), API gratuite d'Open-Meteo (usage non commercial). Sans l'option, `meteo` et `status-poll` refusent de tourner, le recensement (P3) ignore Nordic France et `stations` n'écrit ni titres ni prix (pages des émetteurs sans licence) ; avec, chaque source concernée porte `personal_use_only: true` dans les métadonnées.
+`personal_sources` est désactivé par défaut parce que ces sources n'autorisent pas la redistribution : widget Nordic France et pages « Info damage » des mairies (HTML sans licence), état ENJ (aucune licence affichée, L1), API gratuite d'Open-Meteo (usage non commercial). Sans l'option, `meteo` et `status-poll` refusent de tourner, le recensement (P3) ignore Nordic France et `stations` n'écrit ni titres ni prix (pages des émetteurs sans licence) ; avec, chaque source concernée porte `personal_use_only: true` dans les métadonnées.
 
 ## Métadonnées des couches
 
@@ -56,10 +56,16 @@ Registre `common::site::Registry`, lu par toutes les sous-commandes depuis `data
 
 Chaque fiche (`SiteRecord`) : `id` (nom sans accents, `site::slug` ; chiffres du recensement pour les homonymes), `name`, `kind`, `census_id`, `department`, `insee`, `commune`, `bbox` (WGS84 : enveloppe + 2 km comptés en Lambert-93), `envelope_bbox`, `massifs` (code, nom, part), `massif_status` (`verified` 264, `outside` 6, `assumed` 2), `has_bera` (156), `status_source` (rapport 08), `km_nordic`, `sections` / `parent` (au-delà de 25 km de côté, tronçons recouvrants de 1 km). Règles détaillées : [france.md](france.md).
 
-Données propres à un site dans des tables : `crates/common/data/sites.json` (les deux sites d'évaluation : emprise, commune et massifs vérifiés, sources d'état, départs, jour archivé, demandes de plan) et `crates/common/data/status_sources.json` (source d'état de chaque domaine) :
+Données propres à un site dans des tables : `crates/common/data/sites.json` (les deux sites d'évaluation, jeux de test : emprise, commune et massifs vérifiés, sources d'état, départs, jour archivé, demandes de plan) et `crates/common/data/status_sources.json` (source d'état de chaque domaine).
 
-- Cervières (05), INSEE 05027, emprise 44.77,6.66,44.92,6.86 ; massif 17 Queyras (100 % de la commune) ; BERA ;
-- Chapelle-des-Bois (25), INSEE 25121, emprise 46.54,6.02,46.68,6.20 ; massifs 55 Haut-Doubs (93,2 %) puis 56 Haut-Jura (6,0 %) ; pas de BERA dans le Jura.
+### Jeux de test
+
+Deux domaines du registre, construits comme les autres, servent de données de référence aux tests (`fixtures/`, goldens) et aux mesures des documents ; les documents les appellent « jeu de test alpin » et « jeu de test jurassien » :
+
+- jeu de test alpin : Cervières (05, `cervieres`), INSEE 05027, emprise 44.77,6.66,44.92,6.86 ; massif 17 Queyras (100 % de la commune) ; BERA ;
+- jeu de test jurassien : Chapelle-des-Bois (25, `chapelle-des-bois`), INSEE 25121, emprise 46.54,6.02,46.68,6.20 ; massifs 55 Haut-Doubs (93,2 %) puis 56 Haut-Jura (6,0 %) ; pas de BERA dans le Jura.
+
+Leurs mesures valent pour ces deux domaines, pas pour la France entière ; aucun code ne les traite à part.
 
 Rattachement vérifié sur les polygones snowtools (`UMR-CNRM/snowtools`, `massifs.shp`) et le contour des communes. Les emprises débordent sur l'Italie et la Suisse : les crates qui ne veulent que la France découpent avec les contours des communes.
 

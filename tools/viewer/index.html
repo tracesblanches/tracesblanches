@@ -4,7 +4,7 @@
   Serve the repository root with a static server that answers HTTP Range requests
   (PMTiles; python3 -m http.server does not), then open this page:
     cargo run --release -p skimap-pack --features pipeline --example serve -- <repo> 127.0.0.1:8765
-    google-chrome "http://127.0.0.1:8765/tools/viewer/index.html?pack=../../data/out/cervieres/pack/"
+    google-chrome "http://127.0.0.1:8765/tools/viewer/index.html?pack=../../data/out/<site>/pack/"
   Styles by practice (K15, #123): ../../styles/<fond|srn|guidage>-<clair|sombre>.json, the same
   files as the app; ?style=srn&theme=sombre&panel=0&focus=decision for screenshots.
   See tools/viewer/README.md (phone: adb reverse).

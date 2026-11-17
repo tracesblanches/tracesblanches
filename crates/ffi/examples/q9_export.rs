@@ -1,11 +1,11 @@
 //! Q9 scenarios for the app's instrumented test (K4, K5, K6, E1): real outings simulated on
-//! the Cervières plan of the archived day (`skimap_plan::scenario`, as in
+//! the plan of the archived day of an evaluation site (`skimap_plan::scenario`, as in
 //! `crates/plan/tests/scenarios.rs`), written with what the core says for them, so that
 //! the phone replays the same inputs through its location service and checks that it says,
 //! switches and sets the GPS exactly as the core does.
 //!
 //! ```sh
-//! cargo run --release -p skimap-ffi --example q9_export -- OUT_DIR
+//! cargo run --release -p skimap-ffi --example q9_export -- OUT_DIR [SITE]
 //! adb push OUT_DIR/. /data/local/tmp/skimap-q9/
 //! ```
 //!
@@ -13,16 +13,14 @@
 //! `scenario.jsonl` (the inputs, `skimap_plan::tracker::Input` per line) and
 //! `expected.json` (spoken texts with their kinds and whether every clip is in the pack,
 //! alerts, switches, proposals, session decisions, GPS requests, each with its time).
-//! Reads `data/out/cervieres/` (pipeline outputs, archived day, pack).
+//! SITE: an evaluation site (archived day and plan requests in `data/sites.json`), default
+//! the first one. Reads `data/out/<site>/` (pipeline outputs, archived day, pack).
 
 use std::path::PathBuf;
 
 use chrono::NaiveTime;
 use serde_json::{Value, json};
 use skimap_common::layout::DataLayout;
-/// Evaluation site of `data/sites.json`, test data.
-static CERVIERES: std::sync::LazyLock<skimap_common::site::Site> =
-    std::sync::LazyLock::new(|| *skimap_common::site::site("cervieres").expect("evaluation site"));
 use skimap_plan::plan::{self, KeyKind};
 use skimap_plan::presets;
 use skimap_plan::scenario::{self, Behaviour, Scenario, Step};
@@ -31,17 +29,25 @@ use skimap_plan::tracker::{Output, Tracker, TrackerParams};
 use skimap_voice::pack::VoiceManifest;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let out = PathBuf::from(std::env::args().nth(1).ok_or("usage: q9_export OUT_DIR")?);
+    let out = PathBuf::from(
+        std::env::args()
+            .nth(1)
+            .ok_or("usage: q9_export OUT_DIR [SITE]")?,
+    );
+    let site = match std::env::args().nth(2) {
+        Some(id) => skimap_common::site::site(&id)?,
+        None => &skimap_common::site::SITES[0],
+    };
     let root = std::env::var("SKIMAP_DATA_DIR")
         .unwrap_or_else(|_| format!("{}/../../data", env!("CARGO_MANIFEST_DIR")));
     let layout = DataLayout::new(&root);
-    let pack = layout.out_dir(&CERVIERES).join("pack");
+    let pack = layout.out_dir(site).join("pack");
     let vdir = pack.join("voice");
     let manifest = VoiceManifest::read(&vdir)?;
     let voice = skimap_plan::phrases::Voice::new(&manifest, "pack");
-    let (mut data, ctx) = presets::load(&layout, &CERVIERES)?;
-    let date = presets::past_day(&CERVIERES);
-    let base = presets::requests(&CERVIERES, date).remove(0);
+    let (mut data, ctx) = presets::load(&layout, site)?;
+    let date = presets::past_day(site);
+    let base = presets::requests(site, date).remove(0);
     let mut family = base.clone();
     family.start_time = NaiveTime::from_hms_opt(10, 0, 0);
     for (req, scenarios) in [

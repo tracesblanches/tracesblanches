@@ -14,15 +14,15 @@ Deux fonds vectoriels par pack, chacun en PMTiles avec son style MapLibre, son s
 ## OpenStreetMap, Protomaps (`build::osm`)
 
 - Extrait du build quotidien `https://build.protomaps.com/AAAAMMJJ.pmtiles` (139 Go, liste `build-metadata.protomaps.dev/builds.json` lue par le téléchargeur, source `protomaps`), emprise du site, zooms 0 à 15 (le maximum des builds).
-- L'extrait se fait en Rust par requêtes partielles du téléchargeur commun (`build::extract` : en-tête et répertoire racine dans les 16 premiers Kio, répertoires feuilles des seules tuiles de l'emprise, données lues en plages fusionnées quand l'écart est d'au plus 256 Kio ; chaque plage est une entrée du cache). Build 20261114 : Cervières 581 tuiles, 9 répertoires feuilles, 26 lectures de données (5,7 Mo lus), 58 s au premier passage (1 requête/s) ; Chapelle-des-Bois 537 tuiles, 8 feuilles, 26 lectures, 35 s. Les tuiles sont identiques octet pour octet à celles de `pmtiles extract` (go-pmtiles 1.31.2), qui n'est plus nécessaire (test `protomaps_extract`, ignoré par défaut). L'extrait est gardé dans `data/cache/protomaps/extracts/<site>-<build>-z<zoom>-<emprise>.pmtiles` et réutilisé.
+- L'extrait se fait en Rust par requêtes partielles du téléchargeur commun (`build::extract` : en-tête et répertoire racine dans les 16 premiers Kio, répertoires feuilles des seules tuiles de l'emprise, données lues en plages fusionnées quand l'écart est d'au plus 256 Kio ; chaque plage est une entrée du cache). Build 20261114 : Jeu de test alpin 581 tuiles, 9 répertoires feuilles, 26 lectures de données (5,7 Mo lus), 58 s au premier passage (1 requête/s) ; Jeu de test jurassien 537 tuiles, 8 feuilles, 26 lectures, 35 s. Les tuiles sont identiques octet pour octet à celles de `pmtiles extract` (go-pmtiles 1.31.2), qui n'est plus nécessaire (test `protomaps_extract`, ignoré par défaut). L'extrait est gardé dans `data/cache/protomaps/extracts/<site>-<build>-z<zoom>-<emprise>.pmtiles` et réutilisé.
 - Style : `assets/protomaps/style-light-fr.json`, généré une fois par `assets/protomaps/generate.mjs` avec `@protomaps/basemaps` 5.7.2 (thème « light », libellés en français) ; polices Noto Sans (Regular, Medium, Italic) et sprite `v4/light` téléchargés depuis `protomaps.github.io/basemaps-assets` (source `protomaps-assets`). La pile Devanagari du style n'est pas copiée.
 - Licence ODbL (Produced Work), attribution « Protomaps © OpenStreetMap ».
 
 ## Mesures (14-15/11/2026, build Protomaps 20261114)
 
-Taille de l'archive selon le zoom maximal (`examples/basemap_sizes.rs` : mêmes tuiles réécrites en PMTiles pour chaque zoom maximal ; le zoom 17 n'a été téléchargé que pour Cervières) :
+Taille de l'archive selon le zoom maximal (`examples/basemap_sizes.rs` : mêmes tuiles réécrites en PMTiles pour chaque zoom maximal ; le zoom 17 n'a été téléchargé que pour le jeu de test alpin) :
 
-| Zoom max | Plan IGN Cervières | Plan IGN Chapelle | OSM Cervières | OSM Chapelle |
+| Zoom max | Plan IGN, test alpin | Plan IGN, test jurassien | OSM, test alpin | OSM, test jurassien |
 |---|---|---|---|---|
 | 12 | 2,50 Mo (36 tuiles) | 2,13 Mo (31) | 2,24 Mo | 2,81 Mo |
 | 13 | 4,08 Mo (72) | 3,78 Mo (67) | 2,57 Mo | 3,23 Mo |
@@ -37,7 +37,7 @@ Les zooms 0 à 12 pèsent déjà 2 à 2,5 Mo : peu de tuiles, mais chacune couvr
 
 - Plan IGN : à z16 la précision des coordonnées est de 0,1 m (tuile de 430 m à 45° N, 4 096 unités) ; au-delà, MapLibre agrandit le z16. Capture comparée au zoom 17,5 sur le col d'Izoard (z16 agrandi contre vraies tuiles z17) : routes, ruisseaux et chemins identiques, seuls les libellés changent de place. Le z17 coûterait +5,4 Mo (+47 %) et 5 772 requêtes de plus par site (≈ 25 min au débit observé de 3 à 4 tuiles/s) pour des couches qui n'apparaissent qu'aux zooms 17-18 (bornes, parcelles, adresses).
 - OSM : 3,6 et 4,6 Mo pour tous les zooms du build ; aucune raison de couper.
-- Avec style, sprite et glyphes : Plan IGN 13,1 Mo (Cervières) et 13,0 Mo (Chapelle-des-Bois), OSM 4,6 et 5,6 Mo.
+- Avec style, sprite et glyphes : Plan IGN 13,1 Mo (jeu de test alpin) et 13,0 Mo (jeu de test jurassien), OSM 4,6 et 5,6 Mo.
 
 L'extrait de `pmtiles extract` faisait 3,57 et 4,53 Mo (581 et 537 tuiles), l'extrait Rust 3,59 et 4,55 Mo (mêmes tuiles, répertoires écrits par la crate `pmtiles`).
 

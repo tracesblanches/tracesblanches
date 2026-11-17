@@ -1,22 +1,14 @@
 //! Downloads the Geofabrik extracts, builds (or reads) the local OSM index (X5) and prints
-//! its figures and the huts of the two evaluation sites.
+//! its figures and the huts of the given sites (default: the evaluation sites, test data).
 //!
 //! ```sh
-//! RUST_LOG=info cargo run --release -p skimap-osm --example local_index
+//! RUST_LOG=info cargo run --release -p skimap-osm --example local_index [site ...]
 //! ```
 
 use std::time::Instant;
 
 use skimap_common::config::Config;
 use skimap_common::download::Downloader;
-/// Evaluation site of `data/sites.json`, test data.
-static CERVIERES: std::sync::LazyLock<skimap_common::site::Site> =
-    std::sync::LazyLock::new(|| *skimap_common::site::site("cervieres").expect("evaluation site"));
-/// Evaluation site of `data/sites.json`, test data.
-static CHAPELLE_DES_BOIS: std::sync::LazyLock<skimap_common::site::Site> =
-    std::sync::LazyLock::new(|| {
-        *skimap_common::site::site("chapelle-des-bois").expect("evaluation site")
-    });
 use skimap_osm::local::{self, Kind};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -45,7 +37,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .count();
         println!("  {} : {n} (abris {huts})", k.as_str());
     }
-    for s in [&CERVIERES, &CHAPELLE_DES_BOIS] {
+    let registry = skimap_common::site::Registry::load(&layout)?;
+    let ids: Vec<String> = std::env::args().skip(1).collect();
+    let sites: Vec<&skimap_common::site::Site> = if ids.is_empty() {
+        skimap_common::site::SITES.iter().collect()
+    } else {
+        ids.iter()
+            .map(|id| registry.get(id))
+            .collect::<Result<_, _>>()?
+    };
+    for s in sites {
         let t = Instant::now();
         let v = idx.query(&[s.bbox], |e| local::is_hut(|k| e.get(k)));
         println!(

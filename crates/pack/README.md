@@ -16,10 +16,10 @@ cargo run --release -p skimap-pack --features pipeline --example build_pack
 cargo run --release -p skimap-pack --features pipeline --example export_pack
 # visualiseur
 cargo run --release -p skimap-pack --features pipeline --example serve -- . 127.0.0.1:8765
-google-chrome "http://127.0.0.1:8765/tools/viewer/index.html?pack=../../data/out/cervieres/pack/"
+google-chrome "http://127.0.0.1:8765/tools/viewer/index.html?pack=../../data/out/<site>/pack/"
 # mesures P4 (warm : remplit le cache IGN par tranches de temps bornées)
-cargo run --release -p skimap-pack --features pipeline --example basemap_sizes -- warm cervieres 17 150
-cargo run --release -p skimap-pack --features pipeline --example basemap_sizes -- 17 cervieres
+cargo run --release -p skimap-pack --features pipeline --example basemap_sizes -- warm <site> 17 150
+cargo run --release -p skimap-pack --features pipeline --example basemap_sizes -- 17 <site>
 # polygones de pente et d'exposition : mesures pour un seuil de petites taches
 cargo run --release -p skimap-pack --features pipeline --example class_tiles -- patch=200 inner=400
 # contrôles

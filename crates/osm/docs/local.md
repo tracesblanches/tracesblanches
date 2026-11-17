@@ -32,7 +32,7 @@ Une requête par emprise donne la même réponse JSON qu'Overpass `out center ta
 
 Comparaison avec les sorties construites par Overpass le 15/11/2026 à 01 h 11 et 01 h 37 UTC (extraits Geofabrik : données du 14/11/2026 à 21 h 20 UTC) :
 
-| | Cervières | Chapelle-des-Bois |
+| | Jeu de test alpin | Jeu de test jurassien |
 |---|---|---|
 | éléments OSM (`osm.geojson`) | 20 / 20, mêmes identifiants | 73 / 73, mêmes identifiants |
 | propriétés (étiquettes, type, `ref:refuges.info`, téléphones, `in_france`) | identiques | identiques |

@@ -6,7 +6,7 @@
 
 Accord Rust / référence, mêmes entrées (`oracle_comparison_<cell>m.json`) :
 
-| | Cervières 5 m | Cervières 10 m | Chapelle-des-Bois 5 m | Connaught 21 m (atelier) |
+| | Jeu de test alpin 5 m | Jeu de test alpin 10 m | Jeu de test jurassien 5 m | Connaught 21 m (atelier) |
 |---|---|---|---|---|
 | Cellules classées | 10 087 708 | 2 518 015 | 7 789 943 | 42 011 |
 | Pente, abri au vent | identiques au bit | identiques | identiques | identiques |
@@ -18,7 +18,7 @@ Accord Rust / référence, mêmes entrées (`oracle_comparison_<cell>m.json`) :
 
 Les écarts résiduels de l'écoulement rare (±1 chemin sur 0,1 % des cellules atteintes à 5 m) ne sont pas expliqués : le kernel est porté opération par opération et l'écoulement fréquent est identique ; ils ne changent aucune classe sur nos deux sites. À Connaught, la grille du couvert de l'atelier est décalée d'environ 1 m de celle du MNT et la référence la rééchantillonne pour le classifieur ; nous non.
 
-Temps, cas dominant (Cervières, emprise entière, 5 m, 11,5 M cellules, 6,15 M départs rares, 5,77 milliards de visites de cellules) :
+Temps, cas dominant (jeu de test alpin, emprise entière, 5 m, 11,5 M cellules, 6,15 M départs rares, 5,77 milliards de visites de cellules) :
 
 | | Référence Python (numba) | Rust |
 |---|---|---|
@@ -26,26 +26,26 @@ Temps, cas dominant (Cervières, emprise entière, 5 m, 11,5 M cellules, 6,15 M 
 | Écoulement rare | 402 s | 111 s / 63 s |
 | Travail entier (de l'entrée aux classes) | **601 s** | **136 s / 79 s** (×4,4 / ×7,6) |
 | Couche complète (`exposure_build`, MNH en cache, écritures, validation) | — | 82 à 91 s selon les passages (20 fils) ; 135 s au premier passage (téléchargement du MNH) |
-| Chapelle-des-Bois, travail entier | 49 s | 4,5 s |
+| Jeu de test jurassien, travail entier | 49 s | 4,5 s |
 | Mémoire maximale | 7,9 Go + 3,5 Go par processus | 1,8 Go (sensibilité, 20 fils) |
 
 Couche utilisateur :
 
-| | Cervières | Chapelle-des-Bois |
+| | Jeu de test alpin | Jeu de test jurassien |
 |---|---|---|
 | Peu exposé / exposé / très exposé (cellules) | 9,3 / 51,8 / 38,8 % | 86,2 / 13,7 / 0,1 % |
 | Réseau nordique de la commune, 34,5 km / 82,6 km | 12,5 % peu exposé | 86,2 % peu exposé |
 | Rapport 07 (cône sans forêt) : part atteignable à 18° / 30° | 100 % / 69 % | 8,7 % / 1,0 % |
 | Nous : part non « peu exposé » des longueurs avec donnée (boîte du rapport) | 87,5 % | 12,7 % (17,7 % en comptant les 6,8 km hors LiDAR HD) |
 
-À Chapelle-des-Bois, la part non « peu exposé » dépasse le majorant du rapport (8,7 %) : 59 % des cellules « exposé » sont en classe ATES 0–1 mais à moins de 10 m d'un petit talus raide (zone de départ avant tamis, souvent un bord de route ou de ruisseau), 41 % sont en classe ATES 2 (votes de pente sur 300 m et de clairières forestières du classifieur dev8).
+Sur le jeu de test jurassien, la part non « peu exposé » dépasse le majorant du rapport (8,7 %) : 59 % des cellules « exposé » sont en classe ATES 0–1 mais à moins de 10 m d'un petit talus raide (zone de départ avant tamis, souvent un bord de route ou de ruisseau), 41 % sont en classe ATES 2 (votes de pente sur 300 m et de clairières forestières du classifieur dev8).
 
 ## Accélération (X25, #159, 15/11/2026)
 
-Résultats identiques au bit près : `exposure_fingerprint` (SHA-256 de chaque raster intermédiaire et final : pente, abri au vent, zones de départ, les quatre couches des deux écoulements, classes ATES, exposition) donne les mêmes empreintes avant et après sur Cervières et Chapelle-des-Bois ; les fichiers de la couche (`exposure_5m.tif`, `exposure_model_5m.tif`, `ates_5m.tif`, `canopy_5m.tif`, `segments.geojson`) et `summary.json` hors temps sont identiques octet pour octet. L'accord avec la référence AutoATES (100 % des classes) est donc inchangé.
+Résultats identiques au bit près : `exposure_fingerprint` (SHA-256 de chaque raster intermédiaire et final : pente, abri au vent, zones de départ, les quatre couches des deux écoulements, classes ATES, exposition) donne les mêmes empreintes avant et après sur les deux jeux de test (alpin et jurassien) ; les fichiers de la couche (`exposure_5m.tif`, `exposure_model_5m.tif`, `ates_5m.tif`, `canopy_5m.tif`, `segments.geojson`) et `summary.json` hors temps sont identiques octet pour octet. L'accord avec la référence AutoATES (100 % des classes) est donc inchangé.
 
-- Écoulement : `tan β^exp` vers les 8 voisins ne dépend pas du chemin ; il est calculé une fois par cellule (par tuiles de 64 × 64, au premier passage) au lieu de deux `powf`, un `atan` et un `tan` par voisin ouvert et par visite ; l'angle de parcours est l'`atan` du maximum de Δh / d, pris une fois par cellule (`atan` monotone) ; parents lus dans la file au lieu d'être copiés ; état par fil mis à zéro paresseusement ; maxima atomiques sans écriture quand la valeur ne monte pas. Temps processeur d'un fil sur 194 M visites de Cervières : 47,6 s → 20,6 s (×2,3).
+- Écoulement : `tan β^exp` vers les 8 voisins ne dépend pas du chemin ; il est calculé une fois par cellule (par tuiles de 64 × 64, au premier passage) au lieu de deux `powf`, un `atan` et un `tan` par voisin ouvert et par visite ; l'angle de parcours est l'`atan` du maximum de Δh / d, pris une fois par cellule (`atan` monotone) ; parents lus dans la file au lieu d'être copiés ; état par fil mis à zéro paresseusement ; maxima atomiques sans écriture quand la valeur ne monte pas. Temps processeur d'un fil sur 194 M visites du jeu de test alpin : 47,6 s → 20,6 s (×2,3).
 - Abri au vent : sélection des deux statistiques d'ordre du quantile au lieu du tri des ~450 angles, deux `atan` au lieu de 450.
 - Écriture : emprises CLPA rastérisées une fois (au lieu de trois), validations, GeoTIFF et tronçons écrits en parallèle.
 
-Mesures sur la machine partagée (charge 70 à 90 sur 20 cœurs, donc très dispersées) : modèle de Cervières 173 s → 118 s (extrême 131 → 97 s), Chapelle-des-Bois 11,4 → 4,3 s ; couche complète `exposure_build` Chapelle-des-Bois 23,5 → 6,8 s, Cervières 71 s après (159 à 186 s avant dans les mêmes conditions).
+Mesures sur la machine partagée (charge 70 à 90 sur 20 cœurs, donc très dispersées) : modèle du jeu de test alpin 173 s → 118 s (extrême 131 → 97 s), jeu de test jurassien 11,4 → 4,3 s ; couche complète `exposure_build` jeu de test jurassien 23,5 → 6,8 s, jeu de test alpin 71 s après (159 à 186 s avant dans les mêmes conditions).

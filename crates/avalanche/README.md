@@ -11,4 +11,4 @@ Sommaire :
 3. [Résultats : accord avec la référence, temps, couche utilisateur](docs/exposure-results.md)
 4. [Validation contre la CLPA et l'EPA (P18), limites](docs/exposure-validation.md)
 
-En bref : la couche `avalanche-exposure` (`exposure_5m.tif`, codes 1 « terrain peu exposé (modèle) », 2 « exposé », 3 « très exposé ») reproduit à 100 % des cellules l'implémentation de référence AutoATES v3.0 sur Cervières et Chapelle-des-Bois, 7,6 fois plus vite ; le modèle seul laisse 1,68 % de la surface CLPA de Cervières en « peu exposé » (objectif 0, non atteint), d'où la fusion des emprises CLPA dans la couche. Jamais « sûr » ni « sans danger ».
+En bref : la couche `avalanche-exposure` (`exposure_5m.tif`, codes 1 « terrain peu exposé (modèle) », 2 « exposé », 3 « très exposé ») reproduit à 100 % des cellules l'implémentation de référence AutoATES v3.0 sur les deux jeux de test (alpin et jurassien), 7,6 fois plus vite ; le modèle seul laisse 1,68 % de la surface CLPA du jeu de test alpin en « peu exposé » (objectif 0, non atteint), d'où la fusion des emprises CLPA dans la couche. Jamais « sûr » ni « sans danger ».

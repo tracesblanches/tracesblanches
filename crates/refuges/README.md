@@ -12,7 +12,7 @@ Refuges et abris : refuges.info, OSM, Camptocamp (pipeline). Tickets : P11 (#24)
 | Camptocamp | `/waypoints?wtyp=hut,shelter,gite&bbox=` (EPSG:3857) puis `/waypoints/<id>?cook=fr` | CC BY-SA 3.0 (licence par document) | capacité hors gardiennage (`capacity`), gardée, gardiennage, matelas, couvertures, gaz, chauffage hors gardiennage, période de gardiennage, auteurs |
 | geo.api.gouv.fr | `communes?lat=&lon=` | Licence Ouverte 2.0 | `in_france` (les emprises débordent sur l'Italie et la Suisse) |
 
-Mise à jour de refuges.info : l'instantané complet de l'emprise est gardé 7 jours (politique du téléchargeur) ; chaque construction demande en plus les points modifiés depuis cet instantané (`depuis=<date unix>`, gardé 1 h) et les pose par-dessus. Un nouvel instantané chaque semaine rattrape les suppressions. Les commentaires sont gardés 1 jour. Vérification à la main de `depuis` : sur Cervières, `depuis` = maintenant − 30 jours renvoie 7 points, dont deux dont la fiche date de 2023 et 2024 ; un nouveau commentaire compte donc comme une modification.
+Mise à jour de refuges.info : l'instantané complet de l'emprise est gardé 7 jours (politique du téléchargeur) ; chaque construction demande en plus les points modifiés depuis cet instantané (`depuis=<date unix>`, gardé 1 h) et les pose par-dessus. Un nouvel instantané chaque semaine rattrape les suppressions. Les commentaires sont gardés 1 jour. Vérification à la main de `depuis` : sur le jeu de test alpin, `depuis` = maintenant − 30 jours renvoie 7 points, dont deux dont la fiche date de 2023 et 2024 ; un nouveau commentaire compte donc comme une modification.
 
 ## Licences et couches
 
@@ -29,7 +29,7 @@ Les trois sources restent dans trois fichiers ; aucune base fusionnée n'est pro
 
 Données personnelles (`privacy`) : seuls les téléphones d'établissement sont gardés : `phone` Camptocamp d'un gîte ou d'un refuge gardé, `phone` / `contact:phone` OSM d'un `alpine_hut`, et dans le texte « Propriétaires » de refuges.info une ligne qui nomme une mairie, un office de tourisme, un PC sécurité (toute cabane) ou porte « Tél », « SMS », « Réservation » (gîte ou refuge gardé ouvert). Jamais : `phone_custodian`, un numéro sur une ligne qui nomme une personne (« Gardien : … »), un fax, un e-mail, le texte ou l'auteur d'un commentaire. Les textes libres (accès, remarques, propriétaire, description OSM, période Camptocamp) perdent numéros, e-mails et noms (« M. », « Mme », « Gardien : », prénom + NOM). `privacy::findings` vérifie chaque fichier écrit (test réel ignoré `tests/real_sites.rs`).
 
-Au 15/11/2026 : Cervières 12 fiches (1 refuge gardé, 1 téléphone : Camptocamp pour les Fonts ; le portable du gardien nommé sur refuges.info est écarté), Chapelle-des-Bois 63 fiches (6 gîtes, 7 fiches avec téléphone : 3 gîtes, 3 abris par la mairie, 1 par le PC sécurité ; Prés d'Haut et Enguenelles sans numéro publiable).
+Au 15/11/2026 : Jeu de test alpin 12 fiches (1 refuge gardé, 1 téléphone : Camptocamp pour les Fonts ; le portable du gardien nommé sur refuges.info est écarté), jeu de test jurassien 63 fiches (6 gîtes, 7 fiches avec téléphone : 3 gîtes, 3 abris par la mairie, 1 par le PC sécurité ; Prés d'Haut et Enguenelles sans numéro publiable).
 
 ## Sorties
 
@@ -39,7 +39,7 @@ API : `skimap_refuges::build(site, &layout, &downloader)`. Exemple : `cargo run 
 
 ## Chiffres au 14/11/2026 comparés au rapport 06
 
-| | Cervières | Rapport 06 | Chapelle-des-Bois | Rapport 06 |
+| | Jeu de test alpin | Rapport 06 | Jeu de test jurassien | Rapport 06 |
 |---|---|---|---|---|
 | refuges.info, total | 22 | 22 | 69 | 69 |
 | cabanes non gardées (France / hors France) | 7 / 1 | 8 (7 en France) | 15 / 42 | 57, dont 42 hors France |
@@ -51,11 +51,11 @@ API : `skimap_refuges::build(site, &layout, &downloader)`. Exemple : `cargo run 
 | OSM `amenity=shelter` | 10 / 0, dont 5 abribus | 10 / 0, dont 5 abribus | 19 / 40, dont 4 abribus | 19 / 40 |
 | OSM `ref:refuges.info` / `fireplace` / `winter_room` | 7 / 1 / 0 | 5 / 1 / 0 | 54 / 42 / 0 | 53 / 42 / 0 |
 | Camptocamp hut / shelter / gîte | 3 / 1 / 1 | 3 / 1 / 1 | 1 / 20 / 2 | 1 / 20 / 2 |
-| Camptocamp avec capacité hors gardiennage | 3 (Fonts de Cervières : 9 places, `always_accessible`) | Fonts : 9 places | 1 | — |
+| Camptocamp avec capacité hors gardiennage | 3 (refuge des Fonts : 9 places, `always_accessible`) | Fonts : 9 places | 1 | — |
 | lieux reliés (`links.json`) | 9 : 7 par `ref:refuges.info`, Camptocamp 3 vers refuges.info et 2 vers OSM | — | 57 : 54 par `ref:refuges.info`, 3 par position ; 22 Camptocamp vers refuges.info | — |
 
-Les 7 `ref:refuges.info` de Cervières contre 5 au rapport : deux éléments OSM portent la référence sans être des abris (point d'eau « Fontaine des Fonts de Cervières », `kind = other`). Le rapport 06 compte `opening_hours` sur les restaurants, que ce ticket ne garde pas.
+Les 7 `ref:refuges.info` du jeu de test alpin contre 5 au rapport : deux éléments OSM portent la référence sans être des abris (point d'eau « Fontaine des Fonts », `kind = other`). Le rapport 06 compte `opening_hours` sur les restaurants, que ce ticket ne garde pas.
 
-Temps : premier passage 60 s (Cervières) et 87 s (Chapelle), presque tout en appels réseau (geo.api.gouv.fr pour `in_france`, 23 fiches Camptocamp, une reprise sur un 502 d'Overpass) ; second passage depuis le cache : 0,02 s pour les deux sites.
+Temps : premier passage 60 s (jeu de test alpin) et 87 s (jeu de test jurassien), presque tout en appels réseau (geo.api.gouv.fr pour `in_france`, 23 fiches Camptocamp, une reprise sur un 502 d'Overpass) ; second passage depuis le cache : 0,02 s pour les deux sites.
 
 Limites : refuges.info n'a aucun champ « ouvert en hiver » ni « local d'hiver » ; Camptocamp ne donne la capacité hors gardiennage que pour 4 abris sur 28 ; `winter_room` n'est renseigné sur aucun élément OSM des deux sites.

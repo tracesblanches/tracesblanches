@@ -4,7 +4,7 @@
 //! builds of the crate can be compared bit for bit on the real case:
 //!
 //! ```sh
-//! cargo run --release -p skimap-avalanche --example exposure_fingerprint -- cervieres chapelle-des-bois
+//! cargo run --release -p skimap-avalanche --example exposure_fingerprint -- <site>...
 //! ```
 
 use std::time::Instant;

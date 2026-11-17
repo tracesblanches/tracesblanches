@@ -9,7 +9,7 @@
 
 Chiffres (14-15/11/2026, données OSM du 13/11) :
 
-| | Cervières | Chapelle-des-Bois |
+| | Jeu de test alpin | Jeu de test jurassien |
 |---|---|---|
 | Graphe | 189 nœuds, 223 arêtes, 66,7 km, 0 km à sens unique, 5 composantes | 623 nœuds, 741 arêtes, 302,4 km, 90,6 km à sens unique, 13 composantes |
 | Profils d'altitude | 223 / 223 arêtes (66,7 km), 110 stations interpolées sur 7 002 | 682 / 741 arêtes (271,0 / 302,4 km : le reste est en Suisse), 476 sur 31 350 |
@@ -24,8 +24,8 @@ Itinéraires de preuve (plus court chemin ; longueur égale à la somme des `len
 |---|---|---|---|
 | Le Laus → refuge des Fonts | 11,36 km | 462 / 145 m | refuge : refuges.info 2 040 m, MNT 2 042 m |
 | Le Laus (Cancel) → Brunissard par l'Izoard | 16,62 km | 700 / 591 m | point haut 2 360 m (col d'Izoard 2 360 m) ; fontaine 1 840 / 1 835 m |
-| Chapelle-des-Bois → Chalet Gaillard | 12,90 km (13,0 km au temps, D+ 360 m au lieu de 413) | 413 / 260 m | chalet 1 232 / 1 235 m |
+| Jeu de test jurassien → Chalet Gaillard | 12,90 km (13,0 km au temps, D+ 360 m au lieu de 413) | 413 / 260 m | chalet 1 232 / 1 235 m |
 | Chalet Gaillard → refuge des Prés d'Haut | 20,46 km (retour 21,94 km : sens uniques) | 511 / 484 m | refuge 1 276 / 1 262 m |
 | Chalet des Ministres → abri de la Citadelle | 23,42 km | 594 / 537 m | 1 223 / 1 223 m, 1 280 / 1 279 m |
 
-Limites constatées dans les données P2 : à Cervières, la « Liaison Le Laus - Les Fonts » et les pistes du Cancel s'arrêtent à 18 m l'une de l'autre au Laus (connecteurs P2 ≤ 10 m) : deux composantes, pas d'itinéraire Les Fonts → Izoard. À Chapelle-des-Bois, 41 des 533 nœuds de la composante principale sont hors de sa plus grande composante fortement connexe (sens uniques) : 146 des 2 000 requêtes aléatoires n'ont pas d'itinéraire. Le D+ dépend du pas du profil dans le Jura (Chapelle → Chalet Gaillard : 413 m à 10 m, 378 m à 50 m), peu à Cervières (462 / 455 m).
+Limites constatées dans les données P2 : sur le jeu de test alpin, la « Liaison Le Laus - Les Fonts » et les pistes du Cancel s'arrêtent à 18 m l'une de l'autre au Laus (connecteurs P2 ≤ 10 m) : deux composantes, pas d'itinéraire Les Fonts → Izoard. Sur le jeu de test jurassien, 41 des 533 nœuds de la composante principale sont hors de sa plus grande composante fortement connexe (sens uniques) : 146 des 2 000 requêtes aléatoires n'ont pas d'itinéraire. Le D+ dépend du pas du profil dans le Jura (village du jeu de test jurassien → Chalet Gaillard : 413 m à 10 m, 378 m à 50 m), peu sur le jeu de test alpin (462 / 455 m).

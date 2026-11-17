@@ -29,11 +29,11 @@ Référence pour l'app (K2) : [docs/api.md](docs/api.md). Alerte : [docs/alerte.
 
 ```sh
 skimap-server serve                              # variables ci-dessous
-skimap-server publish data/out/cervieres/pack    # JSON : paquets écrits, delta quotidien, base, ménage
+skimap-server publish data/out/<site>/pack    # JSON : paquets écrits, delta quotidien, base, ménage
 skimap-server send-test-email <adresse>
 cargo test -p skimap-server                      # dont faux relais SMTP, faux Strava, horloge simulée
 cargo test -p skimap-server --test smtp -- --ignored   # STARTTLS réel avec smtp.gmail.com:587
-cargo run --release -p skimap-server --example phone_sync -- http://127.0.0.1:8080 cervieres /tmp/phone/cervieres
+cargo run --release -p skimap-server --example phone_sync -- http://127.0.0.1:8080 <site> /tmp/phone/<site>
 ```
 
 ## Configuration (variables d'environnement)
@@ -54,9 +54,9 @@ Les secrets ne sont jamais journalisés (`Debug` masqué) ; les journaux ne gard
 
 ## Publication
 
-`publish` vérifie le pack (`Pack::verify`), ne republie pas un pack identique au dernier à `pack.meta.json` près (date de construction), copie les nouveaux contenus, choisit la base (reconstruite quand le paquet depuis elle dépasse 10 % du pack), écrit les paquets depuis la base et depuis les 8 dernières versions, puis l'index et le catalogue (renommages atomiques : un index ne nomme jamais un paquet absent), et supprime les contenus et paquets que plus rien ne nomme (ceux de l'index précédent restent une publication de plus, pour les téléchargements en cours). Mesuré le 15/11/2026 : première publication 5,7 s (Cervières) et 2,5 s (Chapelle-des-Bois) ; publication quotidienne 0,17 s et 0,13 s. Chaque relance d'une couche réécrit sa date de génération dans ses métadonnées et produit donc une nouvelle version (123 ko à Chapelle-des-Bois) : un CronJob par mise à jour des données, pas plus.
+`publish` vérifie le pack (`Pack::verify`), ne republie pas un pack identique au dernier à `pack.meta.json` près (date de construction), copie les nouveaux contenus, choisit la base (reconstruite quand le paquet depuis elle dépasse 10 % du pack), écrit les paquets depuis la base et depuis les 8 dernières versions, puis l'index et le catalogue (renommages atomiques : un index ne nomme jamais un paquet absent), et supprime les contenus et paquets que plus rien ne nomme (ceux de l'index précédent restent une publication de plus, pour les téléchargements en cours). Mesuré le 15/11/2026 : première publication 5,7 s (jeu de test alpin) et 2,5 s (jeu de test jurassien) ; publication quotidienne 0,17 s et 0,13 s. Chaque relance d'une couche réécrit sa date de génération dans ses métadonnées et produit donc une nouvelle version (123 ko sur le jeu de test jurassien) : un CronJob par mise à jour des données, pas plus.
 
-Sans `personal_sources` (le cas du serveur), le pack ne contient pas `status`, `status-summary` (état des pistes : ENJ, page de la mairie de Cervières), `meteo-hourly` (Open-Meteo, usage non commercial), ni `assist-briefing`, `assist-wax`, `assist-snow-quality`, `assist-suggestions` (l'assistant lit la météo et l'état des pistes) ; le recensement des domaines n'utilise pas Nordic France. Le pack de Cervières passe de 45,1 à 43,9 Mo.
+Sans `personal_sources` (le cas du serveur), le pack ne contient pas `status`, `status-summary` (état des pistes : ENJ, pages « Info damage » des mairies), `meteo-hourly` (Open-Meteo, usage non commercial), ni `assist-briefing`, `assist-wax`, `assist-snow-quality`, `assist-suggestions` (l'assistant lit la météo et l'état des pistes) ; le recensement des domaines n'utilise pas Nordic France. Le pack du jeu de test alpin passe de 45,1 à 43,9 Mo.
 
 ## Limites
 

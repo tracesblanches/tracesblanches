@@ -18,7 +18,7 @@ Le pipeline prépare une fois par site des rasters compacts sur la grille Lamber
 | `snow_<date>.skr` | `u8` | classes de neige du jour (25 m), date lue dans `snow.meta.json` (`valid_from`) ; au plus 7 dates (`SNOW_DATES_KEPT`) : celles de l'exécution, puis les plus récentes de l'`offpiste.meta.json` précédent ; les autres fichiers `snow_<date>.skr` sont supprimés |
 | `exposure_5m.skr` | `u8` | exposition aux avalanches de la couche `avalanche-exposure` (fusion CLPA) : 1 terrain peu exposé (modèle), 2 exposé, 3 très exposé, 255 absente ; écrit par `prepare_with_exposure` (`skimap offpiste-prepare` le lit avec `read_exposure_grid` de la crate avalanche) |
 
-Format `SKR1` : en-tête de 72 octets (magic, type, taille, EPSG, valeur absente, géotransformation GDAL), puis les cellules. Les fichiers sont écrits en différences le long des lignes (bit 0x80 de l'octet de type ; premier point de chaque ligne tel quel, puis différence avec le voisin de gauche modulo 2^8 ou 2^16, octets faibles de la ligne puis octets forts) : sans perte, et le gzip du pack passe de 17,1 à 8,6 Mo pour l'altitude de Cervières (10,5 à 5,7 Mo à Chapelle-des-Bois), de 7,2 à 5,8 Mo pour la pente ; les rasters de classes ne changent pas. Le lecteur lit les deux formes ; un lecteur qui ne connaît que la forme brute refuse la nouvelle (type inconnu) au lieu de la mal lire. Contrôle : fichiers de Rust identiques octet pour octet à la transformation faite par un oracle Python sur les fichiers bruts. La lecture n'a besoin que de `std` : le téléphone n'embarque ni décodeur GeoTIFF ni pile HTTP. Les rasters gardent les entrées du coût, pas un coût figé : pente maximale et poids sont des paramètres de la requête (`CostParams`), les zones dépendent de la date (`zone_policy`), la neige change chaque jour.
+Format `SKR1` : en-tête de 72 octets (magic, type, taille, EPSG, valeur absente, géotransformation GDAL), puis les cellules. Les fichiers sont écrits en différences le long des lignes (bit 0x80 de l'octet de type ; premier point de chaque ligne tel quel, puis différence avec le voisin de gauche modulo 2^8 ou 2^16, octets faibles de la ligne puis octets forts) : sans perte, et le gzip du pack passe de 17,1 à 8,6 Mo pour l'altitude du jeu de test alpin (10,5 à 5,7 Mo sur le jeu de test jurassien), de 7,2 à 5,8 Mo pour la pente ; les rasters de classes ne changent pas. Le lecteur lit les deux formes ; un lecteur qui ne connaît que la forme brute refuse la nouvelle (type inconnu) au lieu de la mal lire. Contrôle : fichiers de Rust identiques octet pour octet à la transformation faite par un oracle Python sur les fichiers bruts. La lecture n'a besoin que de `std` : le téléphone n'embarque ni décodeur GeoTIFF ni pile HTTP. Les rasters gardent les entrées du coût, pas un coût figé : pente maximale et poids sont des paramètres de la requête (`CostParams`), les zones dépendent de la date (`zone_policy`), la neige change chaque jour.
 
 ## Zones à une date
 
@@ -57,11 +57,11 @@ Le coût pondère « exposé » ×3 : ce n'est plus un temps sur ces cellules. L
 
 ## Cas qui domine (C4) : 10 × 10 km à 5 m
 
-Poste (Intel Core Ultra 7 265K), Cervières, fenêtre 2 000 × 2 000 (4 M cellules), extrémités aux coins SO et NE : A* 0,165 s (1,19 M cellules développées, 36 Mo de recherche), Dijkstra 0,178 s, destination inaccessible 0,256 s ; requête complète ≈ 0,22 s, pic mémoire 108 Mo. Chapelle-des-Bois : A* 0,306 s. La mesure sur le Pixel 8 (`bench … --power`) reste à faire, téléphone branché.
+Poste (Intel Core Ultra 7 265K), jeu de test alpin, fenêtre 2 000 × 2 000 (4 M cellules), extrémités aux coins SO et NE : A* 0,165 s (1,19 M cellules développées, 36 Mo de recherche), Dijkstra 0,178 s, destination inaccessible 0,256 s ; requête complète ≈ 0,22 s, pic mémoire 108 Mo. Jeu de test jurassien : A* 0,306 s. La mesure sur le Pixel 8 (`bench … --power`) reste à faire, téléphone branché.
 
 ## Limites
 
 - Pas de forêt pour l'instant ; exposition aux avalanches : modèle plus emprises CLPA, rien n'est « sûr ».
 - `cost_s` n'est un temps que sur neige suffisante, hors piste, sans zone à éviter ni dévers ; le temps estimé est l'affaire de C5. Poids à calibrer.
 - Itinéraires balisés = graphe OSM, approximation des annexes des arrêtés ; sens unique ignoré ; 8 voisins (longueur surestimée de 8 % au plus).
-- Altitude : 8,6 Mo gzip à Cervières après le codage en différences (17,1 avant).
+- Altitude : 8,6 Mo gzip sur le jeu de test alpin après le codage en différences (17,1 avant).

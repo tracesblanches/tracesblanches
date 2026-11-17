@@ -43,7 +43,7 @@ cargo test -p skimap-srndiff --test real_sites -- --ignored   # SKR1 des deux si
 ```
 
 - `pipeline::refs` : tracés cotés (G5 : PNR du Vercors, OSM, Camptocamp ; skirandonneenordique.com, 49 topos français avec GPX) et tracés C3 ; groupes d'un même itinéraire entre sources.
-- `pipeline::corridor` : relief et canopée LiDAR HD sur les seules dalles à moins de 1,5 km du tracé (téléchargeur commun, fonctions de `skimap-terrain` et `skimap-avalanche`), modèle d'exposition aux avalanches sur ce couloir, ou couche d'exposition du site (CLPA comprises) à Cervières et Chapelle-des-Bois ; réseau et zones des deux sites.
+- `pipeline::corridor` : relief et canopée LiDAR HD sur les seules dalles à moins de 1,5 km du tracé (téléchargeur commun, fonctions de `skimap-terrain` et `skimap-avalanche`), modèle d'exposition aux avalanches sur ce couloir, ou couche d'exposition du site (CLPA comprises) sur les deux jeux de test (alpin et jurassien) ; réseau et zones des deux sites.
 - `pipeline::roads` : routes ouvertes l'hiver de la BD TOPO de l'IGN (WFS) comme sorties.
 - `pipeline::eval` : matrices de confusion, kappa pondéré, calibrage sur une grille, validation en laissant un itinéraire (toutes sources) de côté.
 

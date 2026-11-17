@@ -48,32 +48,29 @@
 //! adb shell getprop ro.product.model
 //! adb push target/aarch64-linux-android/release/examples/offpiste_bench /data/local/tmp/
 //! adb shell chmod 755 /data/local/tmp/offpiste_bench
-//! adb shell mkdir -p /data/local/tmp/skimap-data/out/cervieres/zones \
-//!     /data/local/tmp/skimap-data/out/chapelle-des-bois/zones
-//! adb push data/out/cervieres/offpiste /data/local/tmp/skimap-data/out/cervieres/
-//! adb push data/out/cervieres/zones/zones.geojson data/out/cervieres/zones/rules.json \
-//!     /data/local/tmp/skimap-data/out/cervieres/zones/
-//! adb push data/out/chapelle-des-bois/offpiste /data/local/tmp/skimap-data/out/chapelle-des-bois/
-//! adb push data/out/chapelle-des-bois/zones/zones.geojson \
-//!     data/out/chapelle-des-bois/zones/rules.json /data/local/tmp/skimap-data/out/chapelle-des-bois/zones/
-//! # Time and memory (USB connected), dominating case: Cervières 10 x 10 km
+//! adb shell mkdir -p /data/local/tmp/skimap-data/out/<site>/zones \
+//!     /data/local/tmp/skimap-data/out/<site>/zones
+//! adb push data/out/<site>/offpiste /data/local/tmp/skimap-data/out/<site>/
+//! adb push data/out/<site>/zones/zones.geojson data/out/<site>/zones/rules.json \
+//!     /data/local/tmp/skimap-data/out/<site>/zones/
+//! # Time and memory (USB connected), dominating case: first evaluation site, 10 x 10 km window
 //! adb shell 'cd /data/local/tmp && SKIMAP_DATA_DIR=/data/local/tmp/skimap-data ./offpiste_bench \
-//!     bench cervieres skimap-data/out/cervieres/offpiste/snow_2026-02-15.skr --iters 5' \
-//!     > bench_pixel8_cervieres_10km.json
+//!     bench <site> skimap-data/out/<site>/offpiste/snow_2026-02-15.skr --iters 5' \
+//!     > bench_pixel8_<site>_10km.json
 //! # Same on the X3 big core only (cpu 8) and on a little A510 core (cpu 0)
 //! adb shell 'cd /data/local/tmp && SKIMAP_DATA_DIR=/data/local/tmp/skimap-data taskset 100 \
-//!     ./offpiste_bench bench cervieres skimap-data/out/cervieres/offpiste/snow_2026-02-15.skr \
-//!     --iters 5' > bench_pixel8_cervieres_10km_x3.json
+//!     ./offpiste_bench bench <site> skimap-data/out/<site>/offpiste/snow_2026-02-15.skr \
+//!     --iters 5' > bench_pixel8_<site>_10km_x3.json
 //! adb shell 'cd /data/local/tmp && SKIMAP_DATA_DIR=/data/local/tmp/skimap-data taskset 1 \
-//!     ./offpiste_bench bench cervieres skimap-data/out/cervieres/offpiste/snow_2026-02-15.skr \
-//!     --iters 3' > bench_pixel8_cervieres_10km_a510.json
-//! # Whole site (16.6 km window, 11 M cells) and Chapelle-des-Bois 10 x 10 km
+//!     ./offpiste_bench bench <site> skimap-data/out/<site>/offpiste/snow_2026-02-15.skr \
+//!     --iters 3' > bench_pixel8_<site>_10km_a510.json
+//! # Whole site (16.6 km window, 11 M cells) and the second evaluation site, 10 x 10 km
 //! adb shell 'cd /data/local/tmp && SKIMAP_DATA_DIR=/data/local/tmp/skimap-data ./offpiste_bench \
-//!     bench cervieres skimap-data/out/cervieres/offpiste/snow_2026-02-15.skr --iters 3 \
-//!     --window-km 20' > bench_pixel8_cervieres_full.json
+//!     bench <site> skimap-data/out/<site>/offpiste/snow_2026-02-15.skr --iters 3 \
+//!     --window-km 20' > bench_pixel8_<site>_full.json
 //! adb shell 'cd /data/local/tmp && SKIMAP_DATA_DIR=/data/local/tmp/skimap-data ./offpiste_bench \
-//!     bench chapelle-des-bois skimap-data/out/chapelle-des-bois/offpiste/snow_2026-02-15.skr \
-//!     --iters 5' > bench_pixel8_chapelle_10km.json
+//!     bench <site> skimap-data/out/<site>/offpiste/snow_2026-02-15.skr \
+//!     --iters 5' > bench_pixel8_<site>_10km.json
 //! # Energy: the phone must run on battery. Wireless debugging (Developer options >
 //! # Wireless debugging > Pair device with pairing code), then unplug the USB cable.
 //! adb pair <ip>:<pairing port> <code>
@@ -81,8 +78,8 @@
 //! adb shell dumpsys battery | grep -E 'powered|status|level'   # all "powered: false"
 //! adb shell cat /sys/class/power_supply/battery/current_now /sys/class/power_supply/battery/voltage_now
 //! adb shell 'cd /data/local/tmp && SKIMAP_DATA_DIR=/data/local/tmp/skimap-data ./offpiste_bench \
-//!     bench cervieres skimap-data/out/cervieres/offpiste/snow_2026-02-15.skr --iters 30 --power' \
-//!     > bench_pixel8_cervieres_10km_power.json
+//!     bench <site> skimap-data/out/<site>/offpiste/snow_2026-02-15.skr --iters 30 --power' \
+//!     > bench_pixel8_<site>_10km_power.json
 //! ```
 //!
 //! Energy of the work = (mean power of `workload` − mean power of `idle`) × duration of

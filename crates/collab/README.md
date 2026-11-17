@@ -24,7 +24,7 @@ cargo run -p skimap-collab --features phone --example challenge_assets -- \
 
 ## Résultats (15/11/2026)
 
-- Défi « domaine complet » sur les pistes des packs : Cervières 196 lignes, 68,3 km ; les 12 itinéraires prêts du pack en couvrent 31,4 km (46 %). Chapelle-des-Bois 691 lignes, 311,5 km (toutes les pistes de l'emprise du pack, Risoux et Mouthe compris) ; les 18 itinéraires en couvrent 60,7 km (19 %). Trois couvertures en 4 ms et 8 ms (release, poste).
+- Défi « domaine complet » sur les pistes des packs : Jeu de test alpin 196 lignes, 68,3 km ; les 12 itinéraires prêts du pack en couvrent 31,4 km (46 %). Jeu de test jurassien 691 lignes, 311,5 km (toutes les pistes de l'emprise du pack, Risoux et Mouthe compris) ; les 18 itinéraires en couvrent 60,7 km (19 %). Trois couvertures en 4 ms et 8 ms (release, poste).
 - GTJ à ski de randonnée nordique (couche SRN, DATAtourisme) : 99,8 km (publiée : 100 km) ; 1374 points simplifiés à 789 (10 m), 15 Ko dans l'app.
 - Stockage : 10 000 signalements insérés en 1,8 s, un site listé en 1 ms (SQLite en mémoire, release).
 

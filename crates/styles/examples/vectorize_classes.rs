@@ -7,9 +7,9 @@
 //!
 //! ```sh
 //! cargo run --release -p skimap-styles --example vectorize_classes -- \
-//!     data/out/cervieres/terrain/slope_5m.tif 30,35,40,45 /tmp/slope.geojson
+//!     data/out/<site>/terrain/slope_5m.tif 30,35,40,45 /tmp/slope.geojson
 //! cargo run --release -p skimap-styles --example vectorize_classes -- \
-//!     data/out/cervieres/avalanche-exposure/exposure_5m.tif 2,3 /tmp/exposure.geojson
+//!     data/out/<site>/avalanche-exposure/exposure_5m.tif 2,3 /tmp/exposure.geojson
 //! ```
 
 use std::collections::VecDeque;

@@ -13,7 +13,7 @@ Only execution settings differ from the defaults, and none changes a result:
   * [FlowPy] tile_size is set above the domain size: one tile, no overlap recomputation
     (com4FlowPy tiles a 15 km domain into 2 x 2 tiles overlapping by 12 km otherwise);
   * com4FlowPy cpuCount and maxChunks are set to --procs: the default 500 chunks would
-    each return 12 full-size float32 arrays (275 GB at 5 m over Cervieres);
+    each return 12 full-size float32 arrays (275 GB at 5 m over the alpine test site);
   * no AOI clipping (the whole DEM is processed), no colourised outputs.
 """
 import argparse

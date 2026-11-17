@@ -1,4 +1,5 @@
-//! X10 (#144): false pauses and stops found on synthetic outings of both sites, every
+//! X10 (#144): false pauses and stops found on synthetic outings of every evaluation site
+//! (test data, archived day of `data/sites.json`), every
 //! request: a skier at the C5 pace and slower (the pace divided by 2, 3, 4: climbs of 0.2 to
 //! 0.7 m/s), a family and an adult with random stops (C11 `Behaviour`), four GPS (σ 10 and
 //! 15 m, forest); the fixes alone with the thresholds of before X10 (`avant`: the flat's on
@@ -10,14 +11,6 @@
 //! cargo run --release -p skimap-plan --example pause_eval
 //! ```
 use skimap_common::layout::DataLayout;
-/// Evaluation site of `data/sites.json`, test data.
-static CERVIERES: std::sync::LazyLock<skimap_common::site::Site> =
-    std::sync::LazyLock::new(|| *skimap_common::site::site("cervieres").expect("evaluation site"));
-/// Evaluation site of `data/sites.json`, test data.
-static CHAPELLE_DES_BOIS: std::sync::LazyLock<skimap_common::site::Site> =
-    std::sync::LazyLock::new(|| {
-        *skimap_common::site::site("chapelle-des-bois").expect("evaluation site")
-    });
 use skimap_plan::plan;
 use skimap_plan::presets;
 use skimap_plan::scenario::{self, Behaviour, Run, Scenario, Step};
@@ -65,7 +58,7 @@ fn score(run: &Run) -> (usize, usize, usize, usize) {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let l = DataLayout::new(std::env::var("SKIMAP_DATA_DIR").unwrap_or_else(|_| "data".into()));
     let mut tot = std::collections::BTreeMap::new();
-    for site in [&CERVIERES, &CHAPELLE_DES_BOIS] {
+    for site in skimap_common::site::SITES {
         let (mut data, ctx) = presets::load(&l, site)?;
         for req in presets::requests(site, presets::past_day(site)) {
             let m = plan::morning(&data, &req);

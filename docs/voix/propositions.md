@@ -39,7 +39,7 @@ Erreurs : « Je propose » entendu « Je vous propose » ou « Propose » après
 
 **Voix publique et voix personnelle** : les noms viennent des couches construites (`skimap_voice::sources::site_names`) avec leur provenance. Un nom est public si une source publiable le donne (OSM et OpenSnowMap, refuges.info, INPN, geo.admin.ch), personnel sinon (Biodiv'sports, plan des pistes de station P22, source inconnue) ; mêmes sources reconnues par nom que le pack (`PERSONAL_SOURCES` = `UNAUTHORISED_SOURCES`, testé). La couche liste ces clips dans `voice/personal.json` (`PersonalClips` : ids et sources ; le manifeste lu par le téléphone ne change pas) ; `voice.meta.json` liste les sources personnelles marquées `personal_use_only`. Le pack sans `personal_sources` copie la voix sans ces clips ni ces sources (manifeste et métadonnées refaits, `personal.json` non copié) ; avec, il copie tout (une couche sans `personal.json` et avec une source personnelle reste écartée en entier). Test `public_pack_from_real_outputs_has_no_restricted_source` (pack public construit depuis `data/out`) : aucun nom ni date Biodiv'sports, aucun nom du plan absent d'OSM dans la voix publique ; il échoue si le filtre est retiré ou si la liste des clips personnels est ignorée (deux mutations essayées).
 
-| | Cervières | Chapelle-des-Bois |
+| | Jeu de test alpin | Jeu de test jurassien |
 |---|---|---|
 | Noms publics (pistes, lieux, dates) | 23, 23, 0 | 105, 100, 0 |
 | Noms personnels | 5 lieux (espèces de Biodiv'sports : « Aigle royal »…), 4 dates | 3 pistes du plan (« Grande Combe », « La Victor Arbez », « Paradis »), 6 lieux (« APPB … », « Grand tétras - hiver », « Site RAMSAR … »), 1 date |
