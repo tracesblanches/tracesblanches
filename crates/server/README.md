@@ -30,6 +30,7 @@ Référence pour l'app (K2) : [docs/api.md](docs/api.md). Alerte : [docs/alerte.
 ```sh
 skimap-server serve                              # variables ci-dessous
 skimap-server publish data/out/<site>/pack    # JSON : paquets écrits, delta quotidien, base, ménage
+skimap-server publish-france data/out/france-basemap   # fond de France (X20) : JSON, fichiers écrits, ménage
 skimap-server send-test-email <adresse>
 cargo test -p skimap-server                      # dont faux relais SMTP, faux Strava, horloge simulée
 cargo test -p skimap-server --test smtp -- --ignored   # STARTTLS réel avec smtp.gmail.com:587
