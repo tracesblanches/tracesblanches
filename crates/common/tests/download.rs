@@ -314,6 +314,61 @@ fn etag_revalidation_uses_304() {
     assert_eq!(seen[2].header("if-none-match"), Some("\"v1\""));
 }
 
+/// X26 (#160): data published by edition (IGN tiles, no `ETag` nor `Last-Modified`) stays
+/// in the cache whatever its age while it was validated after the edition date, and is
+/// downloaded again once a newer edition is announced.
+#[test]
+fn current_since_keeps_an_edition_whatever_its_age() {
+    let srv = TestServer::start(|_, n| Reply::ok(&format!("tile {n}")));
+    let dir = tempfile::tempdir().unwrap();
+    // A source whose cache lifetime is over at once: only the edition date keeps a body.
+    let dl = downloader(dir.path(), policy("t").max_age(Duration::ZERO));
+    let url = srv.url("/tile");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    let f = dl.fetch(&Request::get("t", &url)).unwrap();
+    assert_eq!(
+        (f.origin, f.text().unwrap()),
+        (Origin::Downloaded, "tile 1".into())
+    );
+    let fetched_at = f.meta.fetched_at_unix;
+
+    // Edition older than the download: served from the cache, as often as asked, by this
+    // process or the next one.
+    let edition = Request::get("t", &url).current_since(fetched_at - 86_400);
+    for d in [
+        &dl,
+        &downloader(dir.path(), policy("t").max_age(Duration::ZERO)),
+    ] {
+        let f = d.fetch(&edition).unwrap();
+        assert_eq!(
+            (f.origin, f.text().unwrap()),
+            (Origin::Cache, "tile 1".into())
+        );
+        assert_eq!(f.meta.fetched_at_unix, fetched_at);
+    }
+    // The age limit alone would have asked again.
+    assert_eq!(
+        dl.fetch(&Request::get("t", &url)).unwrap().origin,
+        Origin::Downloaded
+    );
+    assert_eq!(srv.count(), 2);
+
+    // A newer edition: downloaded once, then current again.
+    let newer = Request::get("t", &url).current_since(now + 3600);
+    assert_eq!(dl.fetch(&newer).unwrap().origin, Origin::Downloaded);
+    let after = Request::get("t", &url).current_since(now);
+    let f = dl.fetch(&after).unwrap();
+    assert_eq!(
+        (f.origin, f.text().unwrap()),
+        (Origin::Cache, "tile 3".into())
+    );
+    assert_eq!(srv.count(), 3);
+}
+
 #[test]
 fn last_modified_revalidation_uses_if_modified_since() {
     const LM: &str = "Wed, 11 Nov 2026 08:00:00 GMT";

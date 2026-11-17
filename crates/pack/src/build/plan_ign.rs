@@ -8,7 +8,17 @@
 //!
 //! The Licence Ouverte asks for the source and the date of its last update: the
 //! attribution carries the revision date of the IGN catalogue record `IGNF_PLAN-IGN`
-//! ([`CSW_URL`], [`revision_date`]) and the dates the tiles were downloaded (cache).
+//! ([`CSW_URL`], [`revision_date`]) and, in the manifest, the dates the tiles were
+//! downloaded (cache).
+//!
+//! Reproducible (X26, #160): two builds without a new IGN edition give the same archive,
+//! byte for byte. The tiles (and the TileJSON) are kept in the cache for as long as the
+//! record keeps its revision date ([`current_since`]): the TMS sends neither `ETag` nor
+//! `Last-Modified`, so an age limit re-downloaded every tile, identical, once a month.
+//! The archive metadata holds only what the content depends on ([`archive_metadata`]):
+//! the download dates, which depend on the cache, stay in the manifest. On 15/11/2026
+//! the tile download date in the archive made two builds of the same tiles differ, and
+//! the whole 11 MB archive went into the daily update.
 
 use std::io::Read;
 use std::path::Path;
@@ -38,6 +48,9 @@ pub const CSW_URL: &str = "https://data.geopf.fr/csw?service=CSW&version=2.0.2&r
 pub const ID: &str = "plan-ign";
 /// Lowest zoom stored: the whole site fits in one or two tiles at zoom 0 to 9.
 pub const MINZOOM: u8 = 0;
+/// Cache lifetime of the catalogue record: a new IGN edition is seen within a day (one
+/// request of 90 kB a day for every site; the record has no `ETag` either).
+const RECORD_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
 
 /// URL of one tile.
 pub fn tile_url(z: u8, x: u32, y: u32) -> String {
@@ -54,15 +67,32 @@ const NOT_FOUND_ATTEMPTS: u32 = 4;
 
 /// MVT bytes of one tile (cache, then network); gzip bodies are inflated.
 pub fn fetch_tile(dl: &Downloader, z: u8, x: u32, y: u32) -> Result<Vec<u8>> {
-    Ok(fetch_tile_dated(dl, z, x, y)?.0)
+    Ok(fetch_tile_dated(dl, z, x, y, None)?.0)
 }
 
-/// [`fetch_tile`], with the time the body was downloaded (Unix seconds).
-fn fetch_tile_dated(dl: &Downloader, z: u8, x: u32, y: u32) -> Result<(Vec<u8>, u64)> {
+/// Request of an IGN resource that only changes with a new edition: current while
+/// validated after `since` ([`current_since`]), else the cache lifetime of the source.
+fn edition_request(url: &str, since: Option<u64>) -> Request {
+    let req = Request::get(SOURCE, url);
+    match since {
+        Some(t) => req.current_since(t),
+        None => req,
+    }
+}
+
+/// [`fetch_tile`], with the time the body was downloaded (Unix seconds); with `since`,
+/// a cached tile validated after it is used whatever its age.
+fn fetch_tile_dated(
+    dl: &Downloader,
+    z: u8,
+    x: u32,
+    y: u32,
+    since: Option<u64>,
+) -> Result<(Vec<u8>, u64)> {
     let url = tile_url(z, x, y);
     let mut attempt = 0;
     let (body, fetched_at) = loop {
-        match dl.fetch(&Request::get(SOURCE, &url)) {
+        match dl.fetch(&edition_request(&url, since)) {
             Ok(f) => break (f.bytes()?, f.meta.fetched_at_unix),
             Err(skimap_common::Error::Status { status: 404, .. })
                 if attempt + 1 < NOT_FOUND_ATTEMPTS =>
@@ -87,22 +117,24 @@ fn fetch_tile_dated(dl: &Downloader, z: u8, x: u32, y: u32) -> Result<(Vec<u8>, 
 
 /// Every tile of the box for `minzoom..=maxzoom`, `(z, x, y, mvt)`; empty tiles skipped.
 pub fn fetch_tiles(dl: &Downloader, bbox: BBox, minzoom: u8, maxzoom: u8) -> Result<Vec<TileData>> {
-    Ok(fetch_tiles_dated(dl, bbox, minzoom, maxzoom)?.0)
+    Ok(fetch_tiles_dated(dl, bbox, minzoom, maxzoom, None)?.0)
 }
 
-/// [`fetch_tiles`], with the oldest and newest download times of the tiles (Unix s).
+/// [`fetch_tiles`], with the oldest and newest download times of the tiles (Unix s);
+/// `since` as in [`fetch_tile_dated`].
 fn fetch_tiles_dated(
     dl: &Downloader,
     bbox: BBox,
     minzoom: u8,
     maxzoom: u8,
+    since: Option<u64>,
 ) -> Result<(Vec<TileData>, (u64, u64))> {
     let list = tiles_covering(bbox, minzoom, maxzoom);
     // Tiles fetched on several threads (the downloader bounds the requests in flight).
     let fetched = skimap_common::download::fetch_all(
         &list,
         skimap_common::download::FETCH_THREADS,
-        |&(z, x, y)| fetch_tile_dated(dl, z, x, y),
+        |&(z, x, y)| fetch_tile_dated(dl, z, x, y, since),
     )?;
     tracing::info!(total = list.len(), "Plan IGN tiles");
     let mut out = Vec::with_capacity(list.len());
@@ -148,6 +180,20 @@ pub fn revision_date(xml: &str) -> Option<String> {
         })
 }
 
+/// Start (Unix s, UTC) of the day after the revision date `YYYY-MM-DD`: a tile validated
+/// from then on belongs to that edition (one downloaded on the day of the revision may
+/// predate it, and is downloaded again once).
+pub fn current_since(revision: &str) -> Result<u64> {
+    let day = chrono::NaiveDate::parse_from_str(revision, "%Y-%m-%d")
+        .map_err(|e| Error::Pack(format!("IGN revision date {revision:?}: {e}")))?;
+    let next = day
+        .succ_opt()
+        .and_then(|d| d.and_hms_opt(0, 0, 0))
+        .ok_or_else(|| Error::Pack(format!("IGN revision date {revision:?} out of range")))?;
+    u64::try_from(next.and_utc().timestamp())
+        .map_err(|_| Error::Pack(format!("IGN revision date {revision:?} before 1970")))
+}
+
 /// `YYYY-MM-DD` (UTC) of a Unix time.
 fn day(unix: u64) -> String {
     chrono::DateTime::from_timestamp(i64::try_from(unix).unwrap_or(i64::MAX), 0)
@@ -155,8 +201,27 @@ fn day(unix: u64) -> String {
         .unwrap_or_default()
 }
 
-/// Attribution of the basemap: source, date of the last update of the data, and when the
-/// tiles were downloaded (one day or a range).
+/// Attribution stored in the archive: source and date of the last update of the data,
+/// nothing that depends on the cache.
+pub fn archive_attribution(revision: &str) -> String {
+    format!(
+        "© IGN – Plan IGN v2, mise à jour du {revision} (fiche IGNF_PLAN-IGN), Licence Ouverte Etalab 2.0"
+    )
+}
+
+/// Metadata of the archive: a function of the IGN edition (revision date) and of the
+/// vector layers of the TileJSON only, so that the same tiles give the same bytes.
+pub fn archive_metadata(revision: &str, tilejson: &Value) -> Value {
+    json!({
+        "name": "Plan IGN v2",
+        "attribution": archive_attribution(revision),
+        "vector_layers": tilejson.get("vector_layers").cloned().unwrap_or(json!([])),
+        "skimap:source": TMS_URL,
+    })
+}
+
+/// Attribution of the basemap in the manifest: source, date of the last update of the
+/// data, and when the tiles were downloaded (one day or a range).
 pub fn attribution(revision: &str, fetched: (u64, u64)) -> String {
     let (a, b) = (day(fetched.0), day(fetched.1));
     let when = if a == b {
@@ -220,6 +285,22 @@ pub fn rewrite_style(mut style: Value) -> Result<Value> {
     Ok(style)
 }
 
+/// The catalogue record, asked again after [`RECORD_MAX_AGE`]; while the catalogue does
+/// not answer, the last record of the cache (its edition stays the current one).
+fn fetch_record(dl: &Downloader) -> Result<String> {
+    let req = Request::get(SOURCE, CSW_URL).max_age(RECORD_MAX_AGE);
+    match dl.fetch(&req) {
+        Ok(f) => Ok(f.text()?),
+        Err(e) => match dl.fetch(&req.cache(skimap_common::download::CachePolicy::Offline)) {
+            Ok(f) => {
+                tracing::warn!(error = %e, "IGN catalogue unavailable, last record kept");
+                Ok(f.text()?)
+            }
+            Err(_) => Err(e.into()),
+        },
+    }
+}
+
 /// Builds the Plan IGN basemap into `root/basemap/`.
 pub fn build(bbox: BBox, dl: &Downloader, root: &Path, maxzoom: u8) -> Result<Basemap> {
     let style_raw: Value = dl.fetch(&Request::get(SOURCE, STYLE_URL))?.json()?;
@@ -240,19 +321,15 @@ pub fn build(bbox: BBox, dl: &Downloader, root: &Path, maxzoom: u8) -> Result<Ba
     assets::fetch_sprite(dl, SOURCE, &sprite_url, &dir.join("sprite"), "PlanIgn")?;
     assets::fetch_glyphs(dl, SOURCE, &glyphs_url, &stacks, &dir.join("fonts"))?;
 
-    let tilejson: Value = dl.fetch(&Request::get(SOURCE, METADATA_URL))?.json()?;
-    let record = dl.fetch(&Request::get(SOURCE, CSW_URL))?.text()?;
+    let record = fetch_record(dl)?;
     let revision = revision_date(&record).ok_or_else(|| {
         Error::Pack("IGN catalogue record IGNF_PLAN-IGN without citation date".into())
     })?;
-    let (tiles, fetched) = fetch_tiles_dated(dl, bbox, MINZOOM, maxzoom)?;
+    let since = Some(current_since(&revision)?);
+    let tilejson: Value = dl.fetch(&edition_request(METADATA_URL, since))?.json()?;
+    let (tiles, fetched) = fetch_tiles_dated(dl, bbox, MINZOOM, maxzoom, since)?;
     let attribution = attribution(&revision, fetched);
-    let metadata = json!({
-        "name": "Plan IGN v2",
-        "attribution": attribution,
-        "vector_layers": tilejson.get("vector_layers").cloned().unwrap_or(json!([])),
-        "skimap:source": TMS_URL,
-    });
+    let metadata = archive_metadata(&revision, &tilejson);
     let archive = root.join("basemap").join(format!("{ID}.pmtiles"));
     let archive_bytes = write_pmtiles(&archive, &tiles, &metadata, bbox, MINZOOM, maxzoom)?;
     let bytes = archive_bytes + dir_size(&dir)?;
@@ -336,6 +413,93 @@ mod tests {
         );
         assert!(
             attribution("2026-10-08", (1_794_650_400, 1_794_650_500)).contains("le 2026-11-14,")
+        );
+    }
+
+    #[test]
+    fn tiles_are_current_from_the_day_after_the_revision() {
+        // 2026-10-09T00:00:00Z.
+        assert_eq!(current_since("2026-10-08").unwrap(), 1_791_504_000);
+        assert_eq!(
+            current_since("2026-12-31").unwrap(),
+            current_since("2026-12-30").unwrap() + 86_400
+        );
+        assert!(current_since("08/10/2026").is_err());
+    }
+
+    /// Tiles of a small pyramid, with repeated contents (deduplicated by the writer) and
+    /// sizes that compress differently.
+    fn sample_tiles() -> Vec<TileData> {
+        let mut out = Vec::new();
+        for z in 0..=6u8 {
+            let n = 1u32 << z.min(2);
+            for x in 0..n {
+                for y in 0..n {
+                    let body: Vec<u8> = if (x + y) % 3 == 0 {
+                        b"same tile".to_vec()
+                    } else {
+                        (0..(200 + 37 * u32::from(z) + x * 11 + y))
+                            .map(|i| (i * 31 + x * 7 + y * 13 + u32::from(z)) as u8)
+                            .collect()
+                    };
+                    out.push(((z, x, y), body));
+                }
+            }
+        }
+        out
+    }
+
+    /// X26 (#160): two builds of the same tiles without a new IGN edition give the same
+    /// archive, byte for byte, whatever the order the tiles arrive in and whenever they
+    /// were downloaded (the download dates stay out of the archive).
+    #[test]
+    fn two_writes_of_the_same_tiles_are_identical() {
+        let dir = tempfile::tempdir().unwrap();
+        let bbox = BBox {
+            west: 6.7,
+            south: 44.8,
+            east: 6.9,
+            north: 44.9,
+        };
+        let tilejson = json!({"vector_layers": [{"id": "routes", "fields": {"nom": "String"}}],
+                              "tiles": ["https://x/{z}/{x}/{y}.pbf"]});
+        let tiles = sample_tiles();
+        let write = |name: &str, tiles: &[TileData], meta: &Value| {
+            let p = dir.path().join(name);
+            let n = write_pmtiles(&p, tiles, meta, bbox, MINZOOM, 6).unwrap();
+            let bytes = std::fs::read(&p).unwrap();
+            assert_eq!(n, bytes.len() as u64);
+            bytes
+        };
+        let meta = archive_metadata("2026-10-08", &tilejson);
+        let a = write("a.pmtiles", &tiles, &meta);
+        let b = write(
+            "b.pmtiles",
+            &tiles,
+            &archive_metadata("2026-10-08", &tilejson),
+        );
+        assert_eq!(a, b, "two writes of the same tiles differ");
+        let mut shuffled = tiles.clone();
+        shuffled.reverse();
+        shuffled.rotate_left(5);
+        assert_eq!(a, write("c.pmtiles", &shuffled, &meta), "tile order leaks");
+
+        // Nothing of the cache in the archive metadata: the attribution of the manifest
+        // (with the download dates) is not the one stored.
+        let stored = meta.to_string();
+        assert!(!stored.contains("téléchargées"), "{stored}");
+        assert_eq!(
+            meta["attribution"],
+            "© IGN – Plan IGN v2, mise à jour du 2026-10-08 (fiche IGNF_PLAN-IGN), Licence Ouverte Etalab 2.0"
+        );
+        // A new IGN edition does change the archive.
+        assert_ne!(
+            a,
+            write(
+                "d.pmtiles",
+                &tiles,
+                &archive_metadata("2026-12-01", &tilejson)
+            )
         );
     }
 
