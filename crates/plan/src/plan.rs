@@ -1116,7 +1116,7 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
         name: s.label.clone(),
         line: s.line.clone(),
     });
-    let synth = synthesis::synthesise(data, date);
+    let synth = synthesis::synthesise_in(data, date, m.lang);
     data.route = previous;
     let data: &SiteData = data;
     let g = data

@@ -958,19 +958,22 @@ impl<'a> Tracker<'a> {
                             hours: Vec::new(),
                         }),
                     };
-                    self.monitor = Some(match &self.plan.pace {
-                        // The group of the plan (C11): the turnaround at the time it is
-                        // planned on, with its light margin.
-                        Some(pace) => alerts::Monitor::for_model(
-                            start,
-                            &profile,
-                            point,
-                            p,
-                            &pace::plan_model(pace),
-                            self.ratio,
-                        ),
-                        None => alerts::Monitor::with(start, Cow::Owned(profile), point, p),
-                    });
+                    self.monitor = Some(
+                        match &self.plan.pace {
+                            // The group of the plan (C11): the turnaround at the time it is
+                            // planned on, with its light margin.
+                            Some(pace) => alerts::Monitor::for_model(
+                                start,
+                                &profile,
+                                point,
+                                p,
+                                &pace::plan_model(pace),
+                                self.ratio,
+                            ),
+                            None => alerts::Monitor::with(start, Cow::Owned(profile), point, p),
+                        }
+                        .in_lang(self.plan.lang),
+                    );
                 }
                 SessionEvent::Paused { t: tp } => {
                     self.speech.set_paused(true);

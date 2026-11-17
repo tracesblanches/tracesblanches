@@ -426,6 +426,19 @@ impl BeraAspects {
         .filter_map(|(f, l)| f.then_some(l))
         .collect()
     }
+
+    /// Labels of the most dangerous aspects in `lang`, from north clockwise.
+    pub fn labels_in(&self, lang: crate::text::Lang) -> Vec<&'static str> {
+        let t = crate::text::of(lang);
+        [
+            self.n, self.ne, self.e, self.se, self.s, self.sw, self.w, self.nw,
+        ]
+        .into_iter()
+        .enumerate()
+        .filter(|(_, f)| *f)
+        .map(|(i, _)| t.aspect(i))
+        .collect()
+    }
 }
 
 /// The parts of a bulletin the assistant uses.

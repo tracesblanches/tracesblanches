@@ -1024,4 +1024,229 @@ impl Texts for En {
                 .join("; ")
         )
     }
+
+    fn sy_altitude(&self, loc: &str) -> String {
+        if let Some(a) = loc.strip_prefix('>') {
+            format!("above {a} m")
+        } else if let Some(a) = loc.strip_prefix('<') {
+            format!("below {a} m")
+        } else {
+            loc.to_owned()
+        }
+    }
+
+    fn sy_risk_other(&self, loc: &str, level: u8) -> String {
+        format!(" {} ({level} out of 5 lower down)", self.sy_altitude(loc))
+    }
+
+    fn sy_aspects(&self, aspects: &[&str]) -> String {
+        format!(", {} slopes the most exposed", aspects.join(", "))
+    }
+
+    fn sy_read_bulletin(&self) -> &'static str {
+        ": read the whole bulletin before you go"
+    }
+
+    fn sy_no_bera_jura(&self, no_bulletin: &str) -> String {
+        format!(
+            "{no_bulletin} (Jura): avalanches remain possible on steep slopes, the SLF \
+             bulletin covers the nearby Swiss Jura"
+        )
+    }
+
+    fn sy_no_bera(&self, no_bulletin: &str) -> String {
+        format!("{no_bulletin}: avalanches remain possible on steep slopes")
+    }
+
+    fn sy_bera_missing(&self, massif: Option<&str>, loaded: bool) -> String {
+        let massif = massif.map_or_else(|| "massif".to_owned(), |m| format!("{m} massif"));
+        if loaded {
+            format!(
+                "Today's BERA of the {massif} is not available offline: read it before you \
+                 go, the avalanche risk is never zero in the mountains"
+            )
+        } else {
+            format!(
+                "Today's BERA of the {massif} is not loaded: read it before you go, the \
+                 avalanche risk is never zero in the mountains"
+            )
+        }
+    }
+
+    fn sy_clpa(&self, km: f64, paths: usize) -> String {
+        format!(
+            "; your route crosses {} km of {paths} known avalanche paths (CLPA)",
+            self.num(km, 1)
+        )
+    }
+
+    fn sy_clpa_none(&self) -> &'static str {
+        "; your route crosses no known avalanche path (CLPA), which does not rule out an \
+         avalanche elsewhere"
+    }
+
+    fn sy_clpa_no_map(&self) -> &'static str {
+        "; no map of the known avalanche paths (CLPA) in this massif"
+    }
+
+    fn sy_no_weather(&self) -> &'static str {
+        "No offline weather for this day."
+    }
+
+    fn sy_no_forecast(&self, point: &str) -> String {
+        format!("No offline weather forecast for this day at the point {point}.")
+    }
+
+    fn sy_temperature(&self, min: &str, max: Option<&str>) -> String {
+        match max {
+            None => format!("{min} °C"),
+            Some(max) => format!("from {min} to {max} °C"),
+        }
+    }
+
+    fn sy_chill(&self, chill: &str) -> String {
+        format!("feels like {chill} °C")
+    }
+
+    fn sy_wind_light(&self) -> &'static str {
+        "light wind"
+    }
+
+    fn sy_fog(&self, hours: usize) -> String {
+        format!("fog possible ({hours} h)")
+    }
+
+    fn sy_snow(&self, cm: f64) -> String {
+        format!("{} cm of snow", self.num(cm, 0))
+    }
+
+    fn sy_freezing(&self, m: f64) -> String {
+        format!("freezing level around {m} m")
+    }
+
+    fn sy_clear(&self) -> &'static str {
+        "clear sky"
+    }
+
+    fn sy_overcast(&self) -> &'static str {
+        "overcast"
+    }
+
+    fn sy_weather(&self, point: &str, elevation: f64, parts: &[String]) -> String {
+        format!(
+            "Weather from 9:00 to 16:00 ({point}, {elevation} m): {}.",
+            parts.join(", ")
+        )
+    }
+
+    fn sy_verdict(
+        &self,
+        topic: skimap_zones::rules::Topic,
+        verdict: skimap_core::zone_eval::Verdict,
+        stoves: bool,
+    ) -> Option<&'static str> {
+        use skimap_core::zone_eval::Verdict;
+        use skimap_zones::rules::Topic;
+        Some(match (topic, verdict) {
+            (Topic::Access, Verdict::Forbidden) => "no entry",
+            (Topic::Access, Verdict::ForbiddenInPlaces) => "no entry in places",
+            (Topic::Access, Verdict::AvoidRecommended) => "wildlife quiet zone to avoid",
+            (Topic::LeaveRoutes, Verdict::Forbidden) => "leaving the marked routes forbidden",
+            (Topic::LeaveRoutes, Verdict::ForbiddenInPlaces) => {
+                "leaving the trails forbidden in places (private land)"
+            }
+            (Topic::LeaveRoutes, Verdict::AvoidRecommended) => "stay on the routes",
+            (Topic::Bivouac, Verdict::Forbidden) => "bivouac forbidden",
+            (Topic::Fire, Verdict::Forbidden) if stoves => "fire forbidden, stoves included",
+            (Topic::Fire, Verdict::Forbidden) => "fire forbidden",
+            _ => return None,
+        })
+    }
+
+    fn sy_night(&self, words: &str) -> String {
+        format!("at night, {words}")
+    }
+
+    fn sy_zones_more(&self, first: &str, second: &str, others: usize) -> String {
+        format!(" ({first}, {second} and {others} others)")
+    }
+
+    fn sy_until(&self, day: u8, month: u8) -> String {
+        format!(" until {day} {}", skimap_voice::en::month_name(month))
+    }
+
+    fn sy_rules_not_loaded(&self) -> &'static str {
+        "rules of the protected zones not loaded"
+    }
+
+    fn sy_no_rule(&self) -> &'static str {
+        "no known access rule active this day"
+    }
+
+    fn sy_not_covered(&self) -> &'static str {
+        " (outside France and Switzerland, no known rule)"
+    }
+
+    fn sy_no_network_km(&self, km: f64) -> String {
+        format!(
+            "; {} km without any mobile network, not even for 112",
+            self.num(km, 1)
+        )
+    }
+
+    fn sy_network_everywhere(&self) -> &'static str {
+        "; mobile network announced on the whole route (operator maps)"
+    }
+
+    fn sy_no_network_share(&self, pct: f64) -> String {
+        format!("; {pct} % of the trails without any mobile network, not even for 112")
+    }
+
+    fn sy_rules(&self, route: bool, rules: &str, not_covered: &str, network: &str) -> String {
+        let place = if route {
+            "On your route"
+        } else {
+            "On the trails of the site"
+        };
+        format!("{place}: {rules}{not_covered}{network}.")
+    }
+
+    fn al_wind_rising(&self, gust_kmh: f64, before_kmh: f64) -> String {
+        format!(
+            "the wind is rising: gusts of {gust_kmh:.0} km/h within the hour (before: {before_kmh:.0})"
+        )
+    }
+
+    fn al_fog(&self) -> &'static str {
+        "fog forecast within the hour"
+    }
+
+    fn al_snow(&self, cm_h: f64) -> String {
+        format!("snowfall within the hour ({cm_h:.1} cm/h)")
+    }
+
+    fn al_cold(&self, temperature: &str, chill: &str) -> String {
+        format!("the temperature is dropping: {temperature} °C, feels like {chill} °C within 3 h")
+    }
+
+    fn al_turn_now(&self, late_min: f64, pace: f64, deadline: Option<NaiveDateTime>) -> String {
+        format!(
+            "{late_min} min late (pace × {pace:.2}): turn back now to be back before {}",
+            deadline.map(|d| self.clock(d)).unwrap_or_default()
+        )
+    }
+
+    fn al_turn_advanced(
+        &self,
+        late_min: f64,
+        pace: f64,
+        deadline: Option<NaiveDateTime>,
+        turn: NaiveDateTime,
+    ) -> String {
+        format!(
+            "{late_min} min late (pace × {pace:.2}): the loop no longer ends before {}; turn back at {} at the latest",
+            deadline.map(|d| self.clock(d)).unwrap_or_default(),
+            self.clock(turn)
+        )
+    }
 }

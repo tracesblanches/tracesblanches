@@ -1009,4 +1009,239 @@ impl Texts for Fr {
                 .join(" ; ")
         )
     }
+
+    fn sy_altitude(&self, loc: &str) -> String {
+        if let Some(a) = loc.strip_prefix('>') {
+            format!("au-dessus de {a} m")
+        } else if let Some(a) = loc.strip_prefix('<') {
+            format!("en dessous de {a} m")
+        } else {
+            loc.to_owned()
+        }
+    }
+
+    fn sy_risk_other(&self, loc: &str, level: u8) -> String {
+        format!(" {} ({level} sur 5 plus bas)", self.sy_altitude(loc))
+    }
+
+    fn sy_aspects(&self, aspects: &[&str]) -> String {
+        format!(", pentes {} les plus exposées", aspects.join(", "))
+    }
+
+    fn sy_read_bulletin(&self) -> &'static str {
+        " : lisez le bulletin complet avant de partir"
+    }
+
+    fn sy_no_bera_jura(&self, no_bulletin: &str) -> String {
+        format!(
+            "{no_bulletin} (Jura) : des avalanches restent possibles sur les fortes pentes, le \
+             bulletin du SLF couvre le Jura suisse voisin"
+        )
+    }
+
+    fn sy_no_bera(&self, no_bulletin: &str) -> String {
+        format!("{no_bulletin} : des avalanches restent possibles sur les fortes pentes")
+    }
+
+    fn sy_bera_missing(&self, massif: Option<&str>, loaded: bool) -> String {
+        let massif = massif.unwrap_or("du massif");
+        if loaded {
+            format!(
+                "Le BERA {massif} de ce jour n'est pas disponible hors ligne : consultez-le \
+                 avant de partir, le risque d'avalanche n'est jamais nul en montagne"
+            )
+        } else {
+            format!(
+                "Le BERA {massif} de ce jour n'est pas chargé : consultez-le avant de partir, \
+                 le risque d'avalanche n'est jamais nul en montagne"
+            )
+        }
+    }
+
+    fn sy_clpa(&self, km: f64, paths: usize) -> String {
+        format!(
+            " ; votre itinéraire traverse {} km de {paths} zones d'avalanche connues (CLPA)",
+            self.num(km, 1)
+        )
+    }
+
+    fn sy_clpa_none(&self) -> &'static str {
+        " ; votre itinéraire ne traverse aucune zone d'avalanche connue (CLPA), ce qui \
+         n'exclut pas une avalanche ailleurs"
+    }
+
+    fn sy_clpa_no_map(&self) -> &'static str {
+        " ; pas de carte des avalanches connues (CLPA) dans ce massif"
+    }
+
+    fn sy_no_weather(&self) -> &'static str {
+        "Pas de météo hors ligne pour ce jour."
+    }
+
+    fn sy_no_forecast(&self, point: &str) -> String {
+        format!("Pas de prévision météo hors ligne pour ce jour au point {point}.")
+    }
+
+    fn sy_temperature(&self, min: &str, max: Option<&str>) -> String {
+        match max {
+            None => format!("{min} °C"),
+            Some(max) => format!("de {min} à {max} °C"),
+        }
+    }
+
+    fn sy_chill(&self, chill: &str) -> String {
+        format!("ressenti {chill} °C")
+    }
+
+    fn sy_wind_light(&self) -> &'static str {
+        "vent faible"
+    }
+
+    fn sy_fog(&self, hours: usize) -> String {
+        format!("brouillard possible ({hours} h)")
+    }
+
+    fn sy_snow(&self, cm: f64) -> String {
+        format!("{} cm de neige", self.num(cm, 0))
+    }
+
+    fn sy_freezing(&self, m: f64) -> String {
+        format!("isotherme 0 °C vers {m} m")
+    }
+
+    fn sy_clear(&self) -> &'static str {
+        "ciel dégagé"
+    }
+
+    fn sy_overcast(&self) -> &'static str {
+        "ciel couvert"
+    }
+
+    fn sy_weather(&self, point: &str, elevation: f64, parts: &[String]) -> String {
+        format!(
+            "Météo de 9 h à 16 h ({point}, {elevation} m) : {}.",
+            parts.join(", ")
+        )
+    }
+
+    fn sy_verdict(
+        &self,
+        topic: skimap_zones::rules::Topic,
+        verdict: skimap_core::zone_eval::Verdict,
+        stoves: bool,
+    ) -> Option<&'static str> {
+        use skimap_core::zone_eval::Verdict;
+        use skimap_zones::rules::Topic;
+        Some(match (topic, verdict) {
+            (Topic::Access, Verdict::Forbidden) => "accès interdit",
+            (Topic::Access, Verdict::ForbiddenInPlaces) => "accès interdit par endroits",
+            (Topic::Access, Verdict::AvoidRecommended) => "zone de quiétude de la faune à éviter",
+            (Topic::LeaveRoutes, Verdict::Forbidden) => "sortie des itinéraires balisés interdite",
+            (Topic::LeaveRoutes, Verdict::ForbiddenInPlaces) => {
+                "sortie des pistes interdite par endroits (terrains privés)"
+            }
+            (Topic::LeaveRoutes, Verdict::AvoidRecommended) => "restez sur les itinéraires",
+            (Topic::Bivouac, Verdict::Forbidden) => "bivouac interdit",
+            (Topic::Fire, Verdict::Forbidden) if stoves => "feu interdit, réchauds compris",
+            (Topic::Fire, Verdict::Forbidden) => "feu interdit",
+            _ => return None,
+        })
+    }
+
+    fn sy_night(&self, words: &str) -> String {
+        format!("la nuit, {words}")
+    }
+
+    fn sy_zones_more(&self, first: &str, second: &str, others: usize) -> String {
+        format!(" ({first}, {second} et {others} autres)")
+    }
+
+    fn sy_until(&self, day: u8, month: u8) -> String {
+        format!(
+            " jusqu'au {} {}",
+            if day == 1 {
+                "1er".to_owned()
+            } else {
+                day.to_string()
+            },
+            skimap_voice::numbers::month_name(month)
+        )
+    }
+
+    fn sy_rules_not_loaded(&self) -> &'static str {
+        "règles des zones protégées non chargées"
+    }
+
+    fn sy_no_rule(&self) -> &'static str {
+        "aucune règle d'accès connue active ce jour"
+    }
+
+    fn sy_not_covered(&self) -> &'static str {
+        " (hors de France et de Suisse, aucune règle connue)"
+    }
+
+    fn sy_no_network_km(&self, km: f64) -> String {
+        format!(
+            " ; {} km sans aucun réseau mobile, même pour le 112",
+            self.num(km, 1)
+        )
+    }
+
+    fn sy_network_everywhere(&self) -> &'static str {
+        " ; réseau mobile annoncé sur tout l'itinéraire (cartes des opérateurs)"
+    }
+
+    fn sy_no_network_share(&self, pct: f64) -> String {
+        format!(" ; {pct} % des pistes sans aucun réseau mobile, même pour le 112")
+    }
+
+    fn sy_rules(&self, route: bool, rules: &str, not_covered: &str, network: &str) -> String {
+        let place = if route {
+            "Sur votre itinéraire"
+        } else {
+            "Sur les pistes du site"
+        };
+        format!("{place} : {rules}{not_covered}{network}.")
+    }
+
+    fn al_wind_rising(&self, gust_kmh: f64, before_kmh: f64) -> String {
+        format!(
+            "le vent se lève : rafales à {gust_kmh:.0} km/h dans l'heure (avant : {before_kmh:.0})"
+        )
+    }
+
+    fn al_fog(&self) -> &'static str {
+        "brouillard prévu dans l'heure"
+    }
+
+    fn al_snow(&self, cm_h: f64) -> String {
+        format!("chute de neige dans l'heure ({cm_h:.1} cm/h)").replace('.', ",")
+    }
+
+    fn al_cold(&self, temperature: &str, chill: &str) -> String {
+        format!("la température baisse : {temperature} °C, ressenti {chill} °C d'ici 3 h")
+    }
+
+    fn al_turn_now(&self, late_min: f64, pace: f64, deadline: Option<NaiveDateTime>) -> String {
+        format!(
+            "en retard de {late_min} min (allure × {pace:.2}) : faites demi-tour maintenant pour rentrer avant {}",
+            deadline.map(|d| self.clock(d)).unwrap_or_default()
+        )
+        .replace('.', ",")
+    }
+
+    fn al_turn_advanced(
+        &self,
+        late_min: f64,
+        pace: f64,
+        deadline: Option<NaiveDateTime>,
+        turn: NaiveDateTime,
+    ) -> String {
+        format!(
+            "en retard de {late_min} min (allure × {pace:.2}) : la boucle ne finit plus avant {} ; demi-tour au plus tard à {}",
+            deadline.map(|d| self.clock(d)).unwrap_or_default(),
+            self.clock(turn)
+        )
+        .replace('.', ",")
+    }
 }

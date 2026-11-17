@@ -44,6 +44,7 @@ use skimap_voice::quantity::Clock;
 
 use crate::layers::{WeatherHour, WeatherPoint};
 use crate::suggest::Profile;
+use crate::text::Lang;
 
 /// Thresholds.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -140,10 +141,8 @@ pub struct Monitor<'a> {
     said_turn: Option<NaiveDateTime>,
     /// Lowest temperature and wind chill already announced.
     said_cold: (f64, f64),
-}
-
-fn hhmm(t: NaiveDateTime) -> String {
-    format!("{} h {:02}", t.hour(), t.minute())
+    /// Language of the texts (VO6).
+    lang: Lang,
 }
 
 fn hour_at(point: &WeatherPoint, t: NaiveDateTime) -> Option<&WeatherHour> {
@@ -238,9 +237,17 @@ impl<'a> Monitor<'a> {
             planned_turn: None,
             said_turn: None,
             said_cold: (f64::MAX, f64::MAX),
+            lang: Lang::Fr,
         };
         m.planned_turn = m.latest_turn(start, 0.0, 1.0);
         m
+    }
+
+    /// The same monitor with its texts in `lang` (French by default, VO6).
+    #[must_use]
+    pub fn in_lang(mut self, lang: Lang) -> Self {
+        self.lang = lang;
+        self
     }
 
     /// Latest turnaround at a pace from the current position, `None` when the whole route
@@ -340,9 +347,7 @@ impl<'a> Monitor<'a> {
                 push(
                     self,
                     Kind::WindRising,
-                    format!(
-                        "le vent se lève : rafales à {g_max:.0} km/h dans l'heure (avant : {before:.0})"
-                    ),
+                    crate::text::of(self.lang).al_wind_rising(g_max, before),
                     Event::ConditionChange(Change::WindRising),
                 );
             }
@@ -350,7 +355,7 @@ impl<'a> Monitor<'a> {
                 push(
                     self,
                     Kind::Fog,
-                    "brouillard prévu dans l'heure".into(),
+                    crate::text::of(self.lang).al_fog().into(),
                     Event::ConditionChange(Change::Fog),
                 );
             }
@@ -361,7 +366,7 @@ impl<'a> Monitor<'a> {
                 push(
                     self,
                     Kind::Snow,
-                    format!("chute de neige dans l'heure ({s_ahead:.1} cm/h)").replace('.', ","),
+                    crate::text::of(self.lang).al_snow(s_ahead),
                     Event::ConditionChange(Change::Snow),
                 );
             }
@@ -377,10 +382,9 @@ impl<'a> Monitor<'a> {
                 push(
                     self,
                     Kind::TemperatureDrop,
-                    format!(
-                        "la température baisse : {} °C, ressenti {} °C d'ici 3 h",
-                        crate::briefing::degrees(t_min),
-                        crate::briefing::degrees(chill_min)
+                    crate::text::of(self.lang).al_cold(
+                        &crate::briefing::degrees(t_min),
+                        &crate::briefing::degrees(chill_min),
                     ),
                     Event::ConditionChange(Change::TemperatureDrop),
                 );
@@ -405,16 +409,17 @@ impl<'a> Monitor<'a> {
                         push(
                             self,
                             Kind::TurnaroundNow,
-                            format!(
-                                "en retard de {} min (allure × {:.2}) : faites demi-tour maintenant pour rentrer avant {}",
+                            crate::text::of(self.lang).al_turn_now(
                                 (late_s / 60.0).round(),
                                 pace,
-                                self.deadline.map(hhmm).unwrap_or_default()
-                            )
-                            .replace('.', ","),
+                                self.deadline,
+                            ),
                             Event::Turnaround {
                                 seconds_left: 0.0,
-                                deadline: Clock::floor_quarter(now.hour() as u8, now.minute() as u8),
+                                deadline: Clock::floor_quarter(
+                                    now.hour() as u8,
+                                    now.minute() as u8,
+                                ),
                             },
                         );
                     }
@@ -432,14 +437,12 @@ impl<'a> Monitor<'a> {
                         push(
                             self,
                             Kind::TurnaroundAdvanced,
-                            format!(
-                                "en retard de {} min (allure × {:.2}) : la boucle ne finit plus avant {} ; demi-tour au plus tard à {}",
+                            crate::text::of(self.lang).al_turn_advanced(
                                 (late_s / 60.0).round(),
                                 pace,
-                                self.deadline.map(hhmm).unwrap_or_default(),
-                                hhmm(t)
-                            )
-                            .replace('.', ","),
+                                self.deadline,
+                                t,
+                            ),
                             Event::TurnaroundAdvanced { deadline: clock },
                         );
                     }
@@ -532,6 +535,10 @@ mod tests {
     use super::*;
     use chrono::NaiveDate;
     use skimap_common::geom::LonLat;
+
+    fn hhmm(t: NaiveDateTime) -> String {
+        crate::text::of(Lang::Fr).clock(t)
+    }
 
     fn point(f: impl Fn(u32) -> (f64, f64, bool, f64)) -> WeatherPoint {
         let d0 = NaiveDate::from_ymd_opt(2027, 1, 12)

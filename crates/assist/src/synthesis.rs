@@ -39,6 +39,7 @@ use skimap_zones::rules::{Period, Topic};
 use crate::briefing::degrees;
 use crate::inputs::SiteData;
 use crate::layers::{BeraStatus, densify};
+use crate::text::Lang;
 
 /// An active rule found on the route.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -117,62 +118,42 @@ fn clause(text: &str) -> String {
     text.trim_end_matches('.').to_owned()
 }
 
-fn fmt_num(x: f64, decimals: usize) -> String {
-    format!("{x:.decimals$}").replace('.', ",")
+/// A voice clip of the bank (French) in `lang`.
+fn clip_text(c: &clips::Clip, lang: Lang) -> String {
+    skimap_voice::phrase::localise(c, Lang::Fr, lang).text
 }
 
-fn loc_fr(loc: &str) -> String {
-    if let Some(a) = loc.strip_prefix('>') {
-        format!("au-dessus de {a} m")
-    } else if let Some(a) = loc.strip_prefix('<') {
-        format!("en dessous de {a} m")
-    } else {
-        loc.to_owned()
-    }
-}
-
-fn avalanche_sentence(data: &SiteData, date: NaiveDate, facts: &mut Facts) -> String {
+fn avalanche_sentence(data: &SiteData, date: NaiveDate, facts: &mut Facts, lang: Lang) -> String {
+    let tx = crate::text::of(lang);
     let bera = data.bera_for(date);
-    let massif = data.site.main_massif().map_or("du massif", |m| m.name);
+    let massif = data.site.main_massif().map(|m| m.name);
     let mut s = match bera {
         Some(b) if b.status == BeraStatus::Bulletin && b.level().is_some() => {
             let bl = b.bulletin.as_ref().expect("bulletin");
             let l = b.level().expect("level");
             facts.bera_level = Some(l);
-            let mut s = clause(&clips::bera(l).text);
+            let mut s = clause(&clip_text(&clips::bera(l), lang));
             let r = &bl.risk;
             if let (Some(r1), Some(r2), Some(loc2)) = (r.risk1, r.risk2, r.loc2.as_deref())
                 && r1 != r2
             {
-                s.push_str(&format!(" {} ({r1} sur 5 plus bas)", loc_fr(loc2)));
+                s.push_str(&tx.sy_risk_other(loc2, r1));
             }
-            let aspects = bl.aspects.labels();
+            let aspects = bl.aspects.labels_in(lang);
             if !aspects.is_empty() && aspects.len() < 8 {
-                s.push_str(&format!(
-                    ", pentes {} les plus exposées",
-                    aspects.join(", ")
-                ));
+                s.push_str(&tx.sy_aspects(&aspects));
             }
-            s.push_str(" : lisez le bulletin complet avant de partir");
+            s.push_str(tx.sy_read_bulletin());
             s
         }
-        Some(b) if b.status == BeraStatus::NoBera => format!(
-            "{} (Jura) : des avalanches restent possibles sur les fortes pentes, le bulletin \
-             du SLF couvre le Jura suisse voisin",
-            clause(&clips::Fixed::NoBulletin.clip().text)
-        ),
-        Some(_) => format!(
-            "Le BERA {massif} de ce jour n'est pas disponible hors ligne : consultez-le avant \
-             de partir, le risque d'avalanche n'est jamais nul en montagne"
-        ),
-        None if !data.site.has_bera => format!(
-            "{} : des avalanches restent possibles sur les fortes pentes",
-            clause(&clips::Fixed::NoBulletin.clip().text)
-        ),
-        None => format!(
-            "Le BERA {massif} de ce jour n'est pas chargé : consultez-le avant de partir, le \
-             risque d'avalanche n'est jamais nul en montagne"
-        ),
+        Some(b) if b.status == BeraStatus::NoBera => {
+            tx.sy_no_bera_jura(&clause(&clip_text(&clips::Fixed::NoBulletin.clip(), lang)))
+        }
+        Some(_) => tx.sy_bera_missing(massif, true),
+        None if !data.site.has_bera => {
+            tx.sy_no_bera(&clause(&clip_text(&clips::Fixed::NoBulletin.clip(), lang)))
+        }
+        None => tx.sy_bera_missing(massif, false),
     };
     facts.bera_status = bera.map(|b| b.status);
     if let (Some(route), Some(clpa)) = (&data.route, &data.clpa) {
@@ -191,79 +172,64 @@ fn avalanche_sentence(data: &SiteData, date: NaiveDate, facts: &mut Facts) -> St
             facts.clpa_km = Some((km * 100.0).round() / 100.0);
             facts.clpa_paths = paths.len();
             if km >= 0.05 {
-                s.push_str(&format!(
-                    " ; votre itinéraire traverse {} km de {} zones d'avalanche connues (CLPA)",
-                    fmt_num(km, 1),
-                    paths.len()
-                ));
+                s.push_str(&tx.sy_clpa(km, paths.len()));
             } else {
-                s.push_str(
-                    " ; votre itinéraire ne traverse aucune zone d'avalanche connue (CLPA), ce \
-                     qui n'exclut pas une avalanche ailleurs",
-                );
+                s.push_str(tx.sy_clpa_none());
             }
         } else {
-            s.push_str(" ; pas de carte des avalanches connues (CLPA) dans ce massif");
+            s.push_str(tx.sy_clpa_no_map());
         }
     }
     s.push('.');
     s
 }
 
-fn weather_sentence(data: &SiteData, date: NaiveDate) -> (String, Option<Event>) {
+fn weather_sentence(data: &SiteData, date: NaiveDate, lang: Lang) -> (String, Option<Event>) {
+    let tx = crate::text::of(lang);
     let start = data
         .route
         .as_ref()
         .and_then(|r| r.line.first().copied())
         .unwrap_or(data.site.bbox.center());
     let Some((p, _)) = data.weather.as_ref().and_then(|w| w.nearest(start)) else {
-        return ("Pas de météo hors ligne pour ce jour.".into(), None);
+        return (tx.sy_no_weather().into(), None);
     };
     if !p.covers(date, 9, 16) {
-        return (
-            format!(
-                "Pas de prévision météo hors ligne pour ce jour au point {}.",
-                p.name
-            ),
-            None,
-        );
+        return (tx.sy_no_forecast(&p.name), None);
     }
     let w = p.summary(date, 9, 16);
     let mut parts = Vec::new();
     if let (Some(a), Some(b)) = (w.temperature_min_c, w.temperature_max_c) {
         if a.round() == b.round() {
-            parts.push(format!("{} °C", degrees(a)));
+            parts.push(tx.sy_temperature(&degrees(a), None));
         } else {
-            parts.push(format!("de {} à {} °C", degrees(a), degrees(b)));
+            parts.push(tx.sy_temperature(&degrees(a), Some(&degrees(b))));
         }
     }
     if let Some(c) = w.wind_chill_min_c.filter(|c| *c <= -10.0) {
-        parts.push(format!("ressenti {} °C", degrees(c)));
+        parts.push(tx.sy_chill(&degrees(c)));
     }
     match w.gust_max_kmh {
-        Some(g) if g >= 40.0 => parts.push(format!("rafales jusqu'à {g:.0} km/h")),
-        Some(g) if g >= 25.0 => parts.push(format!("vent modéré (rafales {g:.0} km/h)")),
-        Some(_) => parts.push("vent faible".into()),
+        Some(g) if g >= 40.0 => parts.push(tx.gusts_up_to(g)),
+        Some(g) if g >= 25.0 => parts.push(tx.wind_moderate(g)),
+        Some(_) => parts.push(tx.sy_wind_light().into()),
         None => {}
     }
     if w.fog_hours > 0 {
-        parts.push(format!("brouillard possible ({} h)", w.fog_hours));
+        parts.push(tx.sy_fog(w.fog_hours));
     }
     if w.snowfall_cm >= 0.5 {
-        parts.push(format!("{} cm de neige", fmt_num(w.snowfall_cm, 0)));
+        parts.push(tx.sy_snow(w.snowfall_cm));
     }
     if w.rain_mm >= 0.5 {
-        parts.push(format!("pluie ({} mm)", fmt_num(w.rain_mm, 1)));
+        parts.push(tx.rain(w.rain_mm));
     }
     if let Some(f) = w.freezing_level_min_m.filter(|f| *f < 2000.0) {
-        parts.push(format!(
-            "isotherme 0 °C vers {} m",
-            (f / 100.0).round() * 100.0
-        ));
+        parts.push(tx.sy_freezing((f / 100.0).round() * 100.0));
     }
     match w.cloud_mean_pct {
-        Some(c) if c < 30.0 => parts.push("ciel dégagé".into()),
-        Some(c) if c > 80.0 => parts.push("ciel couvert".into()),
+        Some(c) if c < 30.0 => parts.push(tx.sy_clear().into()),
+        Some(c) if c > 80.0 => parts.push(tx.sy_overcast().into()),
         _ => {}
     }
     let ev = w.temperature_mean_c.map(|t| {
@@ -274,32 +240,7 @@ fn weather_sentence(data: &SiteData, date: NaiveDate) -> (String, Option<Event>)
             snowfall: w.snowfall_cm >= 1.0,
         })
     });
-    (
-        format!(
-            "Météo de 9 h à 16 h ({}, {} m) : {}.",
-            p.name,
-            p.elevation_m.round(),
-            parts.join(", ")
-        ),
-        ev,
-    )
-}
-
-fn verdict_words(topic: Topic, v: Verdict, stoves: bool) -> Option<&'static str> {
-    Some(match (topic, v) {
-        (Topic::Access, Verdict::Forbidden) => "accès interdit",
-        (Topic::Access, Verdict::ForbiddenInPlaces) => "accès interdit par endroits",
-        (Topic::Access, Verdict::AvoidRecommended) => "zone de quiétude de la faune à éviter",
-        (Topic::LeaveRoutes, Verdict::Forbidden) => "sortie des itinéraires balisés interdite",
-        (Topic::LeaveRoutes, Verdict::ForbiddenInPlaces) => {
-            "sortie des pistes interdite par endroits (terrains privés)"
-        }
-        (Topic::LeaveRoutes, Verdict::AvoidRecommended) => "restez sur les itinéraires",
-        (Topic::Bivouac, Verdict::Forbidden) => "bivouac interdit",
-        (Topic::Fire, Verdict::Forbidden) if stoves => "feu interdit, réchauds compris",
-        (Topic::Fire, Verdict::Forbidden) => "feu interdit",
-        _ => return None,
-    })
+    (tx.sy_weather(&p.name, p.elevation_m.round(), &parts), ev)
 }
 
 fn zone_rule(topic: Topic, v: Verdict) -> Option<ZoneRule> {
@@ -339,13 +280,15 @@ fn rule_points(data: &SiteData) -> Vec<LonLat> {
     }
 }
 
-fn rules_sentence(data: &SiteData, date: NaiveDate, facts: &mut Facts) -> (String, Vec<Event>) {
+fn rules_sentence(
+    data: &SiteData,
+    date: NaiveDate,
+    facts: &mut Facts,
+    lang: Lang,
+) -> (String, Vec<Event>) {
+    let tx = crate::text::of(lang);
+    let verdict_words = |t, v, stoves| tx.sy_verdict(t, v, stoves);
     let mut events = Vec::new();
-    let place = if data.route.is_some() {
-        "Sur votre itinéraire"
-    } else {
-        "Sur les pistes du site"
-    };
     let mut parts: Vec<String> = Vec::new();
     if let Some((layer, rules)) = &data.zones {
         let pts = rule_points(data);
@@ -450,45 +393,32 @@ fn rules_sentence(data: &SiteData, date: NaiveDate, facts: &mut Facts) -> (Strin
             }
         }
         for (words, zones, until, night) in &items {
-            if words.starts_with("bivouac") {
+            if Some(words.as_str()) == verdict_words(Topic::Bivouac, Verdict::Forbidden, false) {
                 continue;
             }
             let mut s = (*words).clone();
             if *night {
-                s = format!("la nuit, {s}");
+                s = tx.sy_night(&s);
             }
             match zones.len() {
                 0 => {}
                 1 | 2 => s.push_str(&format!(" ({})", zones.join(", "))),
-                n => s.push_str(&format!(
-                    " ({}, {} et {} autres)",
-                    zones[0],
-                    zones[1],
-                    n - 2
-                )),
+                n => s.push_str(&tx.sy_zones_more(&zones[0], &zones[1], n - 2)),
             }
             if let Some(u) = until {
-                s.push_str(&format!(
-                    " jusqu'au {} {}",
-                    if u.day == 1 {
-                        "1er".to_owned()
-                    } else {
-                        u.day.to_string()
-                    },
-                    skimap_voice::numbers::month_name(u.month)
-                ));
+                s.push_str(&tx.sy_until(u.day, u.month));
             }
             parts.push(s);
         }
         facts.rules = found;
     }
     let rules_text = match (&data.zones, parts.is_empty()) {
-        (None, _) => "règles des zones protégées non chargées".to_owned(),
-        (Some(_), true) => "aucune règle d'accès connue active ce jour".to_owned(),
+        (None, _) => tx.sy_rules_not_loaded().to_owned(),
+        (Some(_), true) => tx.sy_no_rule().to_owned(),
         (Some(_), false) => parts.join(", "),
     };
     let not_covered = if facts.points_not_covered > 0 {
-        " (hors de France et de Suisse, aucune règle connue)"
+        tx.sy_not_covered()
     } else {
         ""
     };
@@ -501,12 +431,9 @@ fn rules_sentence(data: &SiteData, date: NaiveDate, facts: &mut Facts) -> (Strin
                 .sum();
             facts.no_network_km = Some((km * 100.0).round() / 100.0);
             if km >= 0.05 {
-                format!(
-                    " ; {} km sans aucun réseau mobile, même pour le 112",
-                    fmt_num(km, 1)
-                )
+                tx.sy_no_network_km(km)
             } else {
-                " ; réseau mobile annoncé sur tout l'itinéraire (cartes des opérateurs)".into()
+                tx.sy_network_everywhere().into()
             }
         }
         (Some(nn), None) => {
@@ -515,22 +442,25 @@ fn rules_sentence(data: &SiteData, date: NaiveDate, facts: &mut Facts) -> (Strin
             if pts.is_empty() {
                 String::new()
             } else {
-                format!(
-                    " ; {} % des pistes sans aucun réseau mobile, même pour le 112",
-                    (100.0 * n as f64 / pts.len() as f64).round()
-                )
+                tx.sy_no_network_share((100.0 * n as f64 / pts.len() as f64).round())
             }
         }
         (None, _) => String::new(),
     };
     (
-        format!("{place} : {rules_text}{not_covered}{network}."),
+        tx.sy_rules(data.route.is_some(), &rules_text, not_covered, &network),
         events,
     )
 }
 
-/// Summary of `date` for the site (and its planned route, if loaded).
+/// Summary of `date` for the site (and its planned route, if loaded), in French
+/// ([`synthesise_in`]).
 pub fn synthesise(data: &SiteData, date: NaiveDate) -> Synthesis {
+    synthesise_in(data, date, Lang::Fr)
+}
+
+/// [`synthesise`] with the sentences in `lang` (the phone's language, VO6).
+pub fn synthesise_in(data: &SiteData, date: NaiveDate, lang: Lang) -> Synthesis {
     let mut facts = Facts {
         bera_status: None,
         bera_level: None,
@@ -546,9 +476,9 @@ pub fn synthesise(data: &SiteData, date: NaiveDate) -> Synthesis {
         points_not_covered: 0,
         rules: Vec::new(),
     };
-    let s1 = avalanche_sentence(data, date, &mut facts);
-    let (s2, weather_ev) = weather_sentence(data, date);
-    let (s3, zone_events) = rules_sentence(data, date, &mut facts);
+    let s1 = avalanche_sentence(data, date, &mut facts, lang);
+    let (s2, weather_ev) = weather_sentence(data, date, lang);
+    let (s3, zone_events) = rules_sentence(data, date, &mut facts, lang);
     let mut voice = Vec::new();
     match (facts.bera_status, facts.bera_level) {
         (_, Some(l)) => voice.push(Event::Briefing(Line::Avalanche { level: Some(l) })),
@@ -577,7 +507,11 @@ pub fn synthesise(data: &SiteData, date: NaiveDate) -> Synthesis {
         voice.extend(zone_events);
     }
     if facts.rules.iter().any(|r| {
-        r.topic == Topic::Fire && !r.protected && !r.night_only && r.verdict.contains("réchauds")
+        r.topic == Topic::Fire
+            && !r.protected
+            && !r.night_only
+            && Some(r.verdict)
+                == crate::text::of(lang).sy_verdict(Topic::Fire, Verdict::Forbidden, true)
     }) {
         voice.push(Event::Briefing(Line::FireStovesForbidden));
     }
