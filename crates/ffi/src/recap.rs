@@ -696,9 +696,7 @@ pub fn outing_delete(dir: String, plans_root: String) -> Result<(), TrackingErro
     let root = std::fs::canonicalize(&plans_root).map_err(invalid)?;
     let d = std::fs::canonicalize(&dir).map_err(invalid)?;
     if d.parent() != Some(root.as_path()) {
-        return Err(invalid(format!(
-            "{dir} n'est pas une sortie de {plans_root}"
-        )));
+        return Err(TrackingError::NotAnOuting { dir });
     }
     std::fs::remove_dir_all(&d).map_err(invalid)
 }

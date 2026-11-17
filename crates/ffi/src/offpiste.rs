@@ -60,7 +60,7 @@ pub fn inflate_offpiste(pack: &Pack, work_dir: &Path) -> Result<PathBuf, Trackin
         let name = Path::new(&l.origin)
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
-            .ok_or_else(|| invalid(format!("{} : origine sans nom", l.id)))?;
+            .ok_or_else(|| invalid(format!("{}: origin without a file name", l.id)))?;
         // Snow: one file whatever its day (the router reads one snow grid).
         let name = if name.starts_with("snow_") {
             "snow.skr".to_owned()

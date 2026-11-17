@@ -1101,7 +1101,7 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
         .get(choice)
         .ok_or_else(|| {
             Error::Missing(format!(
-                "boucle {} : {} proposées",
+                "loop {}: {} offered",
                 choice + 1,
                 m.suggestions.suggestions.len()
             ))
@@ -1122,7 +1122,7 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
     let g = data
         .graph
         .as_ref()
-        .ok_or_else(|| Error::Missing("graphe des pistes (couche routes)".into()))?;
+        .ok_or_else(|| Error::Missing("trail graph (routes layer)".into()))?;
     let legs: Vec<PlanLeg> = s.legs.iter().map(|l| PlanLeg::from(*l)).collect();
     let course = Course::new(g, &legs, &eta)?;
     let junctions = guidance::junctions(g, &course);
@@ -1711,7 +1711,7 @@ pub fn write(
     let g = data
         .graph
         .as_ref()
-        .ok_or_else(|| Error::Missing("graphe des pistes (couche routes)".into()))?;
+        .ok_or_else(|| Error::Missing("trail graph (routes layer)".into()))?;
     let k = dir.join(format!("{stem}.trk"));
     skimap_common::output::write_bytes(&k, &track(plan, g)?.to_bytes())?;
     let mut meta = LayerMeta::new(LAYER, site.id);
