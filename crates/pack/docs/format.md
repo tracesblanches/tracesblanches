@@ -23,6 +23,8 @@ layers/snow-*.pmtiles           polygones des classes de neige (MVT)
 voice/manifest.json, voice/clips/*.opus, voice/voice.meta.json
 ```
 
+À côté du pack, hors de lui : `data/out/<site>/pack.parts.json`, clés des parties lourdes du pack en place (polygones de classes, fonds de carte), lues par le build suivant pour reprendre une partie dont les entrées n'ont pas changé ([parties reprises](../README.md#parties-reprises-du-pack-précédent-164)) ; jamais publié.
+
 `manifest.json` :
 
 | Champ | Contenu |

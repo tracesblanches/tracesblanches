@@ -48,6 +48,22 @@ Le serveur `serve` (bibliothèque standard, une connexion par fil, `GET`/`HEAD`,
 - Le visualiseur charge MapLibre et PMTiles depuis le CDN (cache du navigateur ensuite) ; les données ne viennent que du pack.
 - Import sur le Pixel (Locus Map, OsmAnd) et essai du visualiseur sur le vrai téléphone : à faire (téléphone non branché le 15/11).
 
+## Parties reprises du pack précédent (#164)
+
+Un pack est refait dès qu'une de ses couches change, et chaque run AROME (quatre par jour au rattrapage) change la météo de chaque site. Les parties lourdes, qui ne dépendent pas de la météo, ne sont pas refaites quand leurs entrées n'ont pas changé (`build::parts`) : chacune a une clé, SHA-256 de tout ce dont dépendent ses octets, jamais une date :
+
+| Partie | Clé |
+|---|---|
+| `class:slope`, `class:avalanche-exposure`, `class:snow-*` (polygones de classes) | taille et SHA-256 du GeoTIFF source et de sa métadonnée, description de la couche, paramètres de vectorisation, `personal_sources` |
+| `basemap:osm` | dernier build Protomaps de la liste, build en usage (`extracts/<site>-z<zoom>-<emprise>.current.json`, X26) et présence de son extrait, emprise, zoom, style |
+| `basemap:plan-ign` | emprise, zooms, style IGN servi, date de révision de la fiche IGN (qui décide des tuiles gardées en cache, X26) |
+
+Toutes les clés portent la version de la crate et `parts::PARTS_REVISION`, à incrémenter quand le code fait d'autres octets avec les mêmes entrées. Une partie dont la clé est celle du pack en place reprend ses fichiers (lien physique, copie sinon) et son entrée du manifeste : mêmes octets, rien à télécharger pour le téléphone, et sa date reste celle de ses données. Les clés du pack en place sont dans `data/out/<site>/pack.parts.json`, à côté du pack et hors de lui (le téléphone ne le voit pas), écrit après la substitution ; une partie n'est reprise que si chacun de ses fichiers dans le pack en place a encore la taille et le SHA-256 notés avec la clé (relus). Le format du pack ne change pas. `BuildReport::reused` liste les parties reprises (ligne `build-pack` de `build-all`).
+
+L'export Locus Map / OsmAnd fait de même pour ses surcouches (`locus/*.mbtiles`, `osmand/*.sqlitedb`, la partie lente) : clé = entrée de la couche dans le manifeste, taille et SHA-256 de son fichier, nom du site, `export::OVERLAY_REVISION` ; clés dans `data/out/<site>/export.parts.json`. La description d'une surcouche donne la date de ses données (`données du …`) au lieu de la version du pack.
+
+Sans entrée changée, un nouveau build Protomaps (un par jour) refait seulement `basemap:osm` : téléchargement de l'extrait du nouveau build pour le comparer au build en usage (X26), une fois par site et par build.
+
 ## Fond de France (X20, #154)
 
 `build::france` extrait du build Protomaps quotidien l'emprise de la France métropolitaine et de la Corse (`france::BBOX`), zooms 0 à `france::MAXZOOM` (6), par requêtes partielles, et y joint les glyphes des noms (Source Sans Pro, celles du Plan IGN) ; `france.json` décrit les fichiers (taille, SHA-256), le build et la date des données. Le build en usage est gardé tant que le dernier a moins de 7 jours et le même schéma : le téléphone ne retélécharge le fond qu'une fois par semaine au plus, et la date affichée reste celle du build en usage.

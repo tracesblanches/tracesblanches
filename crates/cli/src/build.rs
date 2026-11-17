@@ -157,8 +157,17 @@ impl Ctx {
         Ok(if self.cfg.personal_sources {
             skimap_meteo::hourly::build(site, &self.layout, &self.dl, true)?
         } else {
-            skimap_meteo::arome::build(site, &self.layout, &self.dl)?
+            skimap_meteo::arome::build_run(site, &self.layout, &self.dl, self.arome_run()?)?
         })
+    }
+
+    /// The AROME run replayed instead of the latest (`SKIMAP_AROME_RUN`), if any.
+    pub fn arome_run(&self) -> Result<Option<DateTime<Utc>>> {
+        self.cfg
+            .arome_run
+            .as_deref()
+            .map(|r| parse_instant(r).context("SKIMAP_AROME_RUN"))
+            .transpose()
     }
 
     /// P13: one poll of the trail status (personal use only).
@@ -327,30 +336,24 @@ impl Ctx {
         log: &mut dyn std::io::Write,
     ) -> BuildOutcome {
         let mut run = Run::new(site, self.layout.out_dir(site), shared, log);
-        let mut own_planet = None;
-        run.step("planet", &[], || match shared.planet {
-            Some(p) => Ok(format!(
-                "extrait partagé : {} pistes dans la zone France, données OSM du {}",
-                p.set.pistes.len(),
-                p.valid_at.as_deref().unwrap_or("?")
-            )),
+        // The planet extract, the census and the SRN areas of France: read when a step
+        // that needs them runs (`pistes`, `domaines`, `srn`), once for the batch.
+        let own_france;
+        let france = match shared.france {
+            Some(f) => f,
             None => {
-                let p = skimap_osm::extract::load_planet(&self.dl)?;
-                let line = format!(
-                    "{} pistes dans la zone France, données OSM du {}",
-                    p.set.pistes.len(),
-                    p.valid_at.as_deref().unwrap_or("?")
-                );
-                own_planet = Some(p);
-                Ok(line)
+                own_france = France::new(self);
+                &own_france
             }
-        });
-        let planet_ref = || {
-            shared
-                .planet
-                .or(own_planet.as_ref())
-                .ok_or_else(|| anyhow!("extrait non lu"))
         };
+        run.step("planet", &[], || {
+            Ok(if shared.france.is_some() {
+                "extrait OSM partagé par les sites, lu à la demande".to_owned()
+            } else {
+                "extrait OSM lu à la demande".to_owned()
+            })
+        });
+        let planet_ref = || france.planet();
         let mut graph_edges = None;
         if run.resumable("pistes", &["planet"]).is_some() {
             // Taken over: the edge count of the routing test comes from the layer.
@@ -381,14 +384,7 @@ impl Ctx {
         });
         run.step("domaines", &["planet"], || {
             let p = planet_ref()?;
-            let own;
-            let census = match shared.census {
-                Some(c) => c,
-                None => {
-                    own = self.census(p)?;
-                    &own
-                }
-            };
+            let census = france.census()?;
             let dir = self.domaines_site(site, p, census)?;
             let st = &census.stats;
             let meta = LayerMeta::read(&dir.join(LayerMeta::file_name(skimap_osm::census::LAYER)))?;
@@ -420,14 +416,7 @@ impl Ctx {
             ))
         });
         run.step("srn", &["domaines"], || {
-            let out;
-            let srn = match shared.srn {
-                Some(s) => s,
-                None => {
-                    out = self.srn(planet_ref()?)?;
-                    &out
-                }
-            };
+            let srn = france.srn()?;
             let count =
                 |k: skimap_srn::areas::Kind| srn.areas.iter().filter(|a| a.kind == k).count();
             let (areas, routes) = crate::france::write_site_srn(&self.layout, site)?;
@@ -436,7 +425,7 @@ impl Ctx {
                 srn.areas.len(),
                 count(skimap_srn::areas::Kind::Domaine),
                 count(skimap_srn::areas::Kind::Traversee),
-                if shared.srn.is_some() {
+                if shared.france.is_some() {
                     ", calculées une fois pour tous les sites"
                 } else {
                     ""
@@ -751,11 +740,19 @@ impl Ctx {
             slow.sort_by(|a, b| b.1.total_cmp(&a.1));
             let slow: Vec<String> = slow.iter().map(|(k, s)| format!("{k} {s:.1} s")).collect();
             Ok(format!(
-                "pack {} : {:.2} Mo, {} couches, {} absentes ; relecture : OK ; {}",
+                "pack {} : {:.2} Mo, {} couches, {} absentes ; relecture : OK ; {}{}",
                 r.pack_version,
                 r.total_bytes as f64 / 1e6,
                 r.layers.len(),
                 r.missing.len(),
+                if r.reused.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        "repris du pack précédent (entrées inchangées) : {} ; ",
+                        r.reused.join(", ")
+                    )
+                },
                 if slow.is_empty() {
                     "toutes les parties en moins de 1 s".to_owned()
                 } else {
@@ -795,15 +792,83 @@ impl Ctx {
 /// Writes the steps done so far (journal of a site build).
 pub type Journal<'a> = dyn Fn(&[StepRecord]) + Sync + 'a;
 
+/// France-wide inputs of the `build-all` of several sites (planet extract, census, SRN
+/// areas), read once and only when a step of some site needs them (#164): a pass whose
+/// sites only need their weather refreshed never reads the extract (80 s on the
+/// workstation).
+pub struct France<'c> {
+    ctx: &'c Ctx,
+    planet: std::sync::OnceLock<std::result::Result<Planet, String>>,
+    census: std::sync::OnceLock<std::result::Result<CensusOutput, String>>,
+    srn: std::sync::OnceLock<std::result::Result<skimap_srn::SrnOutput, String>>,
+}
+
+impl<'c> France<'c> {
+    /// Nothing read yet.
+    pub fn new(ctx: &'c Ctx) -> Self {
+        Self {
+            ctx,
+            planet: std::sync::OnceLock::new(),
+            census: std::sync::OnceLock::new(),
+            srn: std::sync::OnceLock::new(),
+        }
+    }
+
+    /// The planet extract, read on first use.
+    pub fn planet(&self) -> Result<&Planet> {
+        self.planet
+            .get_or_init(|| {
+                let t = Instant::now();
+                let p =
+                    skimap_osm::extract::load_planet(&self.ctx.dl).map_err(|e| format!("{e:#}"))?;
+                println!(
+                    "extrait OSM du {} lu en {:.1} s",
+                    p.valid_at.as_deref().unwrap_or("?"),
+                    t.elapsed().as_secs_f64()
+                );
+                Ok(p)
+            })
+            .as_ref()
+            .map_err(|e| anyhow!("extrait OSM : {e}"))
+    }
+
+    /// The census of France, made on first use.
+    pub fn census(&self) -> Result<&CensusOutput> {
+        self.census
+            .get_or_init(|| {
+                let t = Instant::now();
+                let p = self.planet().map_err(|e| format!("{e:#}"))?;
+                let c = self.ctx.census(p).map_err(|e| format!("{e:#}"))?;
+                println!(
+                    "recensement ({} domaines) fait en {:.1} s",
+                    c.domains.len(),
+                    t.elapsed().as_secs_f64()
+                );
+                Ok(c)
+            })
+            .as_ref()
+            .map_err(|e| anyhow!("recensement : {e}"))
+    }
+
+    /// The SRN areas of France, made on first use.
+    pub fn srn(&self) -> Result<&skimap_srn::SrnOutput> {
+        self.srn
+            .get_or_init(|| {
+                let p = self.planet().map_err(|e| format!("{e:#}"))?;
+                let s = self.ctx.srn(p).map_err(|e| format!("{e:#}"))?;
+                println!("{} zones SRN hors stations", s.areas.len());
+                Ok(s)
+            })
+            .as_ref()
+            .map_err(|e| anyhow!("zones SRN : {e}"))
+    }
+}
+
 /// Inputs read once and shared by the `build-all` of several sites.
 #[derive(Default, Clone, Copy)]
 pub struct Shared<'a> {
-    /// OpenSnowMap planet extract.
-    pub planet: Option<&'a Planet>,
-    /// Census of France.
-    pub census: Option<&'a CensusOutput>,
-    /// SRN areas of France (G5).
-    pub srn: Option<&'a skimap_srn::SrnOutput>,
+    /// France-wide inputs, read on demand once for every site of a batch.
+    pub france: Option<&'a France<'a>>,
     /// The stations layer of France (H1, H2) is refreshed once by the batch, not by the
     /// `build-all` of each site.
     pub stations_once: bool,
@@ -918,6 +983,8 @@ pub struct StepRecord {
 pub fn step_dir(step: &str) -> Option<&'static str> {
     Some(match step {
         "pistes" => "pistes",
+        "domaines" => "domaines",
+        "srn" => "srn",
         "terrain" => "terrain",
         "snow" => "snow",
         "refuges" => "refuges",
@@ -1156,10 +1223,9 @@ impl<'a> Run<'a> {
         if deps_changed {
             return None;
         }
-        if prev.state == StepState::Ok
-            && (prev.outputs.is_none() || fingerprint(&self.out_dir.join(dir)) != prev.outputs)
-        {
-            // Outputs missing, incomplete or altered since: run again.
+        // Outputs missing, incomplete or altered since: run again. A step that wrote no
+        // directory (`srn` of a site without SRN area) is taken over while it has none.
+        if prev.state == StepState::Ok && fingerprint(&self.out_dir.join(dir)) != prev.outputs {
             return None;
         }
         Some(prev.clone())

@@ -119,12 +119,26 @@ fn stations_state(ctx: &Ctx, now: DateTime<Utc>) -> StationsState {
 
 fn refuges_state(ctx: &Ctx, site: &Site, now: DateTime<Utc>) -> RefugesState {
     match skimap_refuges::refresh(site, &ctx.layout, &ctx.dl, now, false) {
-        Ok(r) => RefugesState {
-            site: site.id.to_owned(),
-            ran: r.ran,
-            changes: r.changes,
-            error: r.error,
-        },
+        Ok(r) => {
+            // Rewritten: recorded, so that the catch-up does not fetch it again (#164).
+            if r.ran
+                && r.error.is_none()
+                && let Err(e) = crate::batch::record_standalone(
+                    &ctx.layout,
+                    site,
+                    "refuges",
+                    &format!("rafraîchi, {} changements", r.changes),
+                )
+            {
+                tracing::warn!(site = site.id, error = %e, "refuges not recorded in build-all.json");
+            }
+            RefugesState {
+                site: site.id.to_owned(),
+                ran: r.ran,
+                changes: r.changes,
+                error: r.error,
+            }
+        }
         Err(e) => RefugesState {
             site: site.id.to_owned(),
             ran: true,

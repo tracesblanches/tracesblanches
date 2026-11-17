@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 
 use geojson::{Feature, GeometryValue};
 use rayon::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::build::{create_dir, write_bytes};
@@ -808,7 +808,7 @@ fn simple_items(
 }
 
 /// One written file.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportedFile {
     /// Path relative to the export folder.
     pub path: String,
@@ -1061,11 +1061,58 @@ fn write_collection(
     Ok(())
 }
 
-/// Exports the pack to `dir` (removed and recreated).
+/// File of the overlay keys of an export, next to its folder (`data/out/<site>/`).
+pub const PARTS_FILE: &str = "export.parts.json";
+
+/// Revision of the overlay code ([`class_raster_tiles`], [`raster_tiles`], [`db`]): bump
+/// it when the same layer gives different overlay files.
+pub const OVERLAY_REVISION: u32 = 1;
+
+/// An overlay as recorded with its key: its two files and zooms.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct OverlayPart {
+    files: Vec<ExportedFile>,
+    minzoom: u8,
+    maxzoom: u8,
+}
+
+/// Exports the pack to `dir` (removed and recreated). The overlays of the previous
+/// export (`locus/*.mbtiles`, `osmand/*.sqlitedb`, the slow part) whose layer has the
+/// same file and entry in the pack are taken over ([`crate::build::parts`], keys in
+/// [`PARTS_FILE`] next to `dir`): a pack rebuilt for its weather only redraws none.
 pub fn export(pack: &Pack, dir: &Path) -> Result<ExportReport> {
-    if dir.exists() {
-        std::fs::remove_dir_all(dir).map_err(|e| Error::io(dir, e))?;
+    let parent = dir
+        .parent()
+        .ok_or_else(|| Error::Pack("export directory without parent".into()))?;
+    let record = parent.join(PARTS_FILE);
+    let previous = parent.join(format!(
+        ".export-previous-{}",
+        dir.file_name()
+            .map_or_else(String::new, |n| n.to_string_lossy().into_owned())
+    ));
+    if previous.exists() {
+        std::fs::remove_dir_all(&previous).map_err(|e| Error::io(&previous, e))?;
     }
+    if dir.exists() {
+        std::fs::rename(dir, &previous).map_err(|e| Error::io(dir, e))?;
+    }
+    let mut parts = crate::build::parts::Parts::open_at(&previous, &record);
+    let r = export_into(pack, dir, &mut parts);
+    if previous.exists() {
+        std::fs::remove_dir_all(&previous).map_err(|e| Error::io(&previous, e))?;
+    }
+    let r = r?;
+    if let Err(e) = parts.write_at(&record, &pack.manifest().pack_version) {
+        tracing::warn!(error = %e, "export overlay keys not written");
+    }
+    Ok(r)
+}
+
+fn export_into(
+    pack: &Pack,
+    dir: &Path,
+    parts: &mut crate::build::parts::Parts,
+) -> Result<ExportReport> {
     create_dir(dir)?;
     let m = pack.manifest();
     let generated = m
@@ -1506,11 +1553,6 @@ pub fn export(pack: &Pack, dir: &Path) -> Result<ExportReport> {
             ));
             continue;
         }
-        let (minz, maxz, tiles) = if l.classes.is_some() {
-            class_raster_tiles(pack, l)?
-        } else {
-            raster_tiles(pack, l)?
-        };
         let stem = match l.id.as_str() {
             "slope" => "pentes",
             "snow-depth" => "neige-hauteur",
@@ -1525,8 +1567,10 @@ pub fn export(pack: &Pack, dir: &Path) -> Result<ExportReport> {
             .map(|s| s.attribution.clone())
             .filter(|a| !a.is_empty())
             .collect();
+        // The date of the layer's data, not the pack version: an overlay whose layer did
+        // not change keeps its bytes (and its date) from one pack to the next.
         let desc = format!(
-            "{} ; légende : {} ; pack {}",
+            "{} ; légende : {} ; données du {}",
             l.title,
             legend
                 .iter()
@@ -1534,30 +1578,67 @@ pub fn export(pack: &Pack, dir: &Path) -> Result<ExportReport> {
                 .map(|e| format!("{} {}", e.label, e.color))
                 .collect::<Vec<_>>()
                 .join(", "),
-            m.pack_version
+            l.generated_at.as_deref().unwrap_or("?")
         );
-        let archive = pack.tiles(&l.id)?;
-        let o = db::Overlay {
-            name: &format!("skimap {} — {}", l.title, m.site.name),
-            description: &desc,
-            attribution: &attribution.join(" ; "),
-            bounds: archive.bounds(),
-            minzoom: minz,
-            maxzoom: maxz,
+        let id = format!("overlay:{}", l.id);
+        let mut key = crate::build::parts::Key::new(&id);
+        key.add("revision", &OVERLAY_REVISION.to_string())
+            .add(
+                "layer",
+                &serde_json::to_string(l).map_err(|e| Error::json(&l.id, e))?,
+            )
+            .add(
+                "file",
+                &m.files
+                    .iter()
+                    .find(|f| f.path == l.file)
+                    .map_or_else(String::new, |f| format!("{} {}", f.bytes, f.sha256)),
+            )
+            .add("site", &m.site.name)
+            .add("stem", stem);
+        let key = key.finish();
+        let part = match parts.reuse::<OverlayPart>(&id, &key, dir) {
+            Some(p) => p,
+            None => {
+                let (minz, maxz, tiles) = if l.classes.is_some() {
+                    class_raster_tiles(pack, l)?
+                } else {
+                    raster_tiles(pack, l)?
+                };
+                let archive = pack.tiles(&l.id)?;
+                let o = db::Overlay {
+                    name: &format!("skimap {} — {}", l.title, m.site.name),
+                    description: &desc,
+                    attribution: &attribution.join(" ; "),
+                    bounds: archive.bounds(),
+                    minzoom: minz,
+                    maxzoom: maxz,
+                };
+                let mut written = Vec::new();
+                let p = format!("locus/{stem}.mbtiles");
+                written.push(ExportedFile {
+                    bytes: db::write_mbtiles(&dir.join(&p), &o, &tiles)?,
+                    path: p,
+                    count: tiles.len() as u64,
+                });
+                let p = format!("osmand/{stem}.sqlitedb");
+                written.push(ExportedFile {
+                    bytes: db::write_sqlitedb(&dir.join(&p), &o, &tiles)?,
+                    path: p,
+                    count: tiles.len() as u64,
+                });
+                let part = OverlayPart {
+                    files: written,
+                    minzoom: minz,
+                    maxzoom: maxz,
+                };
+                let paths: Vec<&str> = part.files.iter().map(|f| f.path.as_str()).collect();
+                parts.record(&id, key, dir, &paths, &part)?;
+                part
+            }
         };
-        let p = format!("locus/{stem}.mbtiles");
-        files.push(ExportedFile {
-            bytes: db::write_mbtiles(&dir.join(&p), &o, &tiles)?,
-            path: p,
-            count: tiles.len() as u64,
-        });
-        let p = format!("osmand/{stem}.sqlitedb");
-        files.push(ExportedFile {
-            bytes: db::write_sqlitedb(&dir.join(&p), &o, &tiles)?,
-            path: p,
-            count: tiles.len() as u64,
-        });
-        overlays.push((l.clone(), stem.to_owned(), minz, maxz));
+        files.extend(part.files.iter().cloned());
+        overlays.push((l.clone(), stem.to_owned(), part.minzoom, part.maxzoom));
     }
 
     let readme = readme::lisezmoi(m, &files, &skipped, &overlays);

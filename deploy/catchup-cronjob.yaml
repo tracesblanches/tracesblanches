@@ -12,6 +12,12 @@
 # match their fingerprint (altered, removed, half written: `--stale`), or older than
 # `--max-age-hours` (a week here: the daily layers have their own CronJobs), and the steps
 # that depend on them; the rest is taken over (`build-all.json`, one journal per site).
+# A new AROME run changes the weather of every site: the pack of each is rebuilt, but
+# only its weather-dependent part is made again (#164): the slope, avalanche exposure and
+# snow polygons, the OSM and Plan IGN basemaps and the export overlays are taken from the
+# previous pack while their inputs (fingerprints, not dates) do not change, the planet
+# extract is read only when a step needs it, and the steps run by the other CronJobs
+# (snow, BERA, refuges) are recorded in `build-all.json`, so this run does not redo them.
 # Downloads go through the shared cache (ETag / If-Modified-Since): a run with nothing to
 # catch up sends no request to the sources and publishes nothing. Idempotent.
 #

@@ -302,6 +302,27 @@ fn fetch_record(dl: &Downloader) -> Result<String> {
 }
 
 /// Builds the Plan IGN basemap into `root/basemap/`.
+/// Key of the Plan IGN basemap of a box ([`crate::build::parts`]): the box, the zooms,
+/// the style as served and the revision date of the IGN catalogue record, which decides
+/// the tiles kept in the cache ([`current_since`]). Two requests through the cache (the
+/// record is kept a day).
+pub fn part_key(bbox: BBox, dl: &Downloader, maxzoom: u8) -> Result<String> {
+    let style = dl.fetch(&Request::get(SOURCE, STYLE_URL))?.bytes()?;
+    let record = fetch_record(dl)?;
+    let revision = revision_date(&record).ok_or_else(|| {
+        Error::Pack("IGN catalogue record IGNF_PLAN-IGN without citation date".into())
+    })?;
+    let mut k = crate::build::parts::Key::new(&format!("basemap:{ID}"));
+    k.add(
+        "box",
+        &format!("{} {} {} {}", bbox.west, bbox.south, bbox.east, bbox.north),
+    )
+    .add("zooms", &format!("{MINZOOM} {maxzoom}"))
+    .add("style", &crate::update::sha256_hex(&style))
+    .add("revision", &revision);
+    Ok(k.finish())
+}
+
 pub fn build(bbox: BBox, dl: &Downloader, root: &Path, maxzoom: u8) -> Result<Basemap> {
     let style_raw: Value = dl.fetch(&Request::get(SOURCE, STYLE_URL))?.json()?;
     let sprite_url = style_raw

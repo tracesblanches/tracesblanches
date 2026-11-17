@@ -327,24 +327,14 @@ pub fn build_many(
     let mut stations = None;
     let mut meteo = None;
     if n > 0 {
-        let t = Instant::now();
-        let planet = skimap_osm::extract::load_planet(&ctx.dl)?;
-        let census = ctx.census(&planet)?;
-        println!(
-            "extrait OSM du {} et recensement ({} domaines) lus en {:.1} s",
-            planet.valid_at.as_deref().unwrap_or("?"),
-            census.domains.len(),
-            t.elapsed().as_secs_f64()
-        );
-        let srn = ctx.srn(&planet)?;
-        println!("{} zones SRN hors stations", srn.areas.len());
+        // Planet extract, census and SRN areas: read by the first step that needs them
+        // (a site whose `pistes`, `domaines` and `srn` are taken over needs none).
+        let france = crate::build::France::new(ctx);
         stations = Some(stations_step(ctx, opts.force));
         let todo_sites: Vec<&Site> = todo.iter().map(|(s, _)| *s).collect();
         meteo = (!ctx.cfg.personal_sources).then(|| meteo_step(ctx, &todo_sites));
         let shared = Shared {
-            planet: Some(&planet),
-            census: Some(&census),
-            srn: Some(&srn),
+            france: Some(&france),
             stations_once: true,
             force_stations: opts.force,
             resume: None,
@@ -679,8 +669,32 @@ pub fn write_status(layout: &DataLayout, sites: &[&'static Site]) -> Result<Path
 /// decoded once for every point of every site (the `meteo` step of each site then finds
 /// its layer at the latest run). A failure is recorded; the step of each site retries.
 pub fn meteo_step(ctx: &Ctx, sites: &[&Site]) -> StepRecord {
+    meteo_step_at(ctx, sites, None)
+}
+
+/// [`meteo_step`] at a given AROME run (`None`: the run of `SKIMAP_AROME_RUN`, else the
+/// latest complete one).
+pub fn meteo_step_at(ctx: &Ctx, sites: &[&Site], run: Option<DateTime<Utc>>) -> StepRecord {
     let t = Instant::now();
-    let (state, line) = match skimap_meteo::arome::refresh(sites, &ctx.layout, &ctx.dl) {
+    let run = match run.map_or_else(|| ctx.arome_run(), |r| Ok(Some(r))) {
+        Ok(r) => r,
+        Err(e) => {
+            return StepRecord {
+                name: "meteo-arome".into(),
+                state: StepState::Failed,
+                seconds: 0.0,
+                line: format!("{e:#}"),
+                at: Some(now_rfc3339()),
+                outputs: None,
+                resumed: false,
+            };
+        }
+    };
+    let refreshed = match run {
+        Some(run) => skimap_meteo::arome::refresh_run(sites, &ctx.layout, &ctx.dl, run),
+        None => skimap_meteo::arome::refresh(sites, &ctx.layout, &ctx.dl),
+    };
+    let (state, line) = match refreshed {
         Ok(r) => {
             let written = r.sites.iter().filter(|s| s.status == "written").count();
             (
@@ -731,6 +745,62 @@ fn stations_step(ctx: &Ctx, force: bool) -> StepRecord {
         outputs: None,
         resumed: false,
     }
+}
+
+/// Steps whose outputs read those of a step run on its own (CronJobs `skimap-job snow`,
+/// `bera`, `status`, `refresh`), as declared in [`Ctx::build_all_with`]: the pack and
+/// the export take every layer.
+fn dependents(step: &str) -> &'static [&'static str] {
+    match step {
+        "snow" => &["offpiste-prepare", "build-pack", "export"],
+        "offpiste-prepare" | "bera" | "status-poll" | "meteo" | "refuges" => {
+            &["build-pack", "export"]
+        }
+        "build-pack" => &["export"],
+        _ => &[],
+    }
+}
+
+/// Records in `build-all.json` a step of a site run on its own, outside `build-all`
+/// (#164): its outputs, line and date, so that the next catch-up takes it over instead
+/// of doing it again (the snow of the morning CronJob was redone by the catch-up that
+/// followed, with the off-piste rasters and the pack). The steps that read its outputs
+/// and were not run after it are marked to be redone (state `blocked`); the next
+/// catch-up runs those only. Nothing when the site has no record (never built by
+/// `build-all`: the catch-up builds it whole).
+pub fn record_standalone(layout: &DataLayout, site: &Site, step: &str, line: &str) -> Result<()> {
+    let dir = layout.out_dir(site);
+    let Some(mut rec) = france::read_record(layout, site.id) else {
+        return Ok(());
+    };
+    let _lock = lock_site(&dir)?;
+    let at = now_rfc3339();
+    let outputs =
+        crate::build::step_dir(step).and_then(|d| crate::build::fingerprint(&dir.join(d)));
+    let Some(i) = rec.outcome.steps.iter().position(|s| s.name == step) else {
+        return Ok(());
+    };
+    rec.outcome.steps[i] = StepRecord {
+        name: step.to_owned(),
+        state: StepState::Ok,
+        seconds: 0.0,
+        line: format!("{line} (fait seul, hors build-all)"),
+        at: Some(at.clone()),
+        outputs,
+        resumed: false,
+    };
+    for d in dependents(step) {
+        if let Some(s) = rec.outcome.steps.iter_mut().find(|s| s.name == *d)
+            && s.state == StepState::Ok
+        {
+            s.state = StepState::Blocked;
+            s.line = format!("à refaire : {step} refait seul le {at}");
+            s.resumed = false;
+        }
+    }
+    rec.ok = rec.outcome.ok();
+    skimap_common::output::write_json(&france::record_path(layout, site.id), &rec)?;
+    Ok(())
 }
 
 /// Builds one site under its lock: orphan temporary files removed, steps of the previous
@@ -909,6 +979,85 @@ mod tests {
             "terrain : tile #-#: HTTP #"
         );
         assert_eq!(cause("snow", "x"), "snow : x");
+    }
+
+    #[test]
+    fn a_step_run_alone_is_recorded_and_what_reads_it_is_to_be_redone() {
+        let t = tempfile::tempdir().unwrap();
+        let layout = DataLayout::new(t.path());
+        let site = skimap_common::site::site("cervieres").unwrap();
+        let dir = layout.out_dir(site);
+        std::fs::create_dir_all(dir.join("snow")).unwrap();
+        std::fs::write(dir.join("snow/depth.tif"), b"day 1").unwrap();
+        let step = |name: &str| StepRecord {
+            name: name.into(),
+            state: StepState::Ok,
+            seconds: 1.0,
+            line: String::new(),
+            at: Some("2026-11-17T06:00:00Z".into()),
+            outputs: crate::build::step_dir(name)
+                .and_then(|d| crate::build::fingerprint(&dir.join(d))),
+            resumed: false,
+        };
+        let names = [
+            "terrain",
+            "snow",
+            "offpiste-prepare",
+            "build-pack",
+            "export",
+        ];
+        let rec = BuildRecord {
+            inputs: BuildInputs {
+                record: skimap_common::site::evaluation_records()[0].clone(),
+                version: "0.1.0".into(),
+                personal_sources: false,
+                revision: france::BUILD_REVISION,
+            },
+            started_at: "2026-11-17T06:00:00Z".into(),
+            finished_at: "2026-11-17T06:01:00Z".into(),
+            ok: true,
+            outcome: BuildOutcome {
+                site: site.id.into(),
+                steps: names.iter().map(|n| step(n)).collect(),
+                seconds: 60.0,
+                pack_bytes: None,
+                export_bytes: None,
+            },
+        };
+        skimap_common::output::write_json(&france::record_path(&layout, site.id), &rec).unwrap();
+        assert!(outputs_intact(&layout, site, &rec));
+
+        // The snow CronJob: snow, off-piste rasters, pack, each recorded after it ran.
+        std::fs::write(dir.join("snow/depth.tif"), b"day 2").unwrap();
+        record_standalone(&layout, site, "snow", "simulation du 2026-11-17").unwrap();
+        let r = france::read_record(&layout, site.id).unwrap();
+        let state =
+            |r: &BuildRecord, n: &str| r.outcome.steps.iter().find(|s| s.name == n).unwrap().state;
+        assert_eq!(state(&r, "snow"), StepState::Ok);
+        assert_eq!(
+            state(&r, "terrain"),
+            StepState::Ok,
+            "not a reader of the snow"
+        );
+        for n in ["offpiste-prepare", "build-pack", "export"] {
+            assert_eq!(state(&r, n), StepState::Blocked, "{n}");
+        }
+        assert!(outputs_intact(&layout, site, &r), "new snow recorded");
+        assert!(!r.ok);
+        record_standalone(&layout, site, "offpiste-prepare", "x").unwrap();
+        record_standalone(&layout, site, "build-pack", "x").unwrap();
+        let r = france::read_record(&layout, site.id).unwrap();
+        for n in ["snow", "offpiste-prepare", "build-pack"] {
+            assert_eq!(state(&r, n), StepState::Ok, "{n}");
+        }
+        // The export, not run by the CronJob, is the only step the catch-up redoes.
+        assert_eq!(state(&r, "export"), StepState::Blocked);
+        assert!(!r.ok);
+
+        // A site never built by build-all: nothing recorded.
+        let other = skimap_common::site::site("chapelle-des-bois").unwrap();
+        record_standalone(&layout, other, "snow", "x").unwrap();
+        assert!(france::read_record(&layout, other.id).is_none());
     }
 
     #[test]

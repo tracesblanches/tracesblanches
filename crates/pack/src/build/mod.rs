@@ -10,6 +10,7 @@ pub mod extract;
 pub mod france;
 pub mod layers;
 pub mod osm;
+pub mod parts;
 pub mod pistes;
 pub mod plan_ign;
 pub mod plan_links;
@@ -107,6 +108,8 @@ pub struct BuildReport {
     pub missing: Vec<Missing>,
     /// Seconds per step.
     pub timings: Vec<(String, f64)>,
+    /// Parts taken from the previous pack, their inputs unchanged ([`parts`]).
+    pub reused: Vec<String>,
 }
 
 /// Pack directory of a site: `data/out/<site>/pack/`.
@@ -132,7 +135,8 @@ pub fn build(
         remove_dir(&tmp)?;
     }
     create_dir(&tmp)?;
-    let result = build_into(site, layout, dl, opts, &tmp, &pack_version, now);
+    let mut parts = parts::Parts::open(&final_dir);
+    let result = build_into(site, layout, dl, opts, &tmp, &pack_version, now, &mut parts);
     match result {
         Ok(mut report) => {
             let old = parent.join(format!(".pack-old-{pack_version}"));
@@ -142,6 +146,11 @@ pub fn build(
             std::fs::rename(&tmp, &final_dir).map_err(|e| Error::io(&tmp, e))?;
             if old.exists() {
                 remove_dir(&old)?;
+            }
+            // After the swap: the keys describe the pack in place. Not written, the next
+            // build makes every part again.
+            if let Err(e) = parts.write(&final_dir, &pack_version) {
+                tracing::warn!(site = site.id, error = %e, "pack part keys not written");
             }
             report.pack_dir = final_dir;
             Ok(report)
@@ -153,6 +162,7 @@ pub fn build(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_into(
     site: &Site,
     layout: &DataLayout,
@@ -161,6 +171,7 @@ fn build_into(
     root: &Path,
     pack_version: &str,
     now: chrono::DateTime<chrono::Utc>,
+    parts: &mut parts::Parts,
 ) -> Result<BuildReport> {
     let mut timings = Vec::new();
     let mut missing = Vec::new();
@@ -169,19 +180,37 @@ fn build_into(
     let mut basemaps: Vec<Basemap> = Vec::new();
     if opts.plan_ign {
         let t = Instant::now();
-        basemaps.push(plan_ign::build(site.bbox, dl, root, opts.plan_ign_maxzoom)?);
+        let id = format!("basemap:{}", plan_ign::ID);
+        let key = plan_ign::part_key(site.bbox, dl, opts.plan_ign_maxzoom)?;
+        let b = match parts.reuse::<Basemap>(&id, &key, root) {
+            Some(b) => b,
+            None => {
+                let b = plan_ign::build(site.bbox, dl, root, opts.plan_ign_maxzoom)?;
+                let dir = format!("basemap/{}", plan_ign::ID);
+                parts.record(&id, key, root, &[&b.tiles, &dir], &b)?;
+                b
+            }
+        };
+        basemaps.push(b);
         timings.push(("basemap plan-ign".to_owned(), t.elapsed().as_secs_f64()));
     }
     if opts.osm {
         let t = Instant::now();
-        basemaps.push(osm::build(
-            site,
-            layout,
-            dl,
-            root,
-            opts.protomaps_build.as_deref(),
-            opts.osm_maxzoom,
-        )?);
+        let id = format!("basemap:{}", osm::ID);
+        let latest = osm::select_build(dl, opts.protomaps_build.as_deref())?;
+        let key = osm::part_key(site, layout, &latest, opts.osm_maxzoom)?;
+        let b = match parts.reuse::<Basemap>(&id, &key, root) {
+            Some(b) => b,
+            None => {
+                let b = osm::build_from(site, layout, dl, root, &latest, opts.osm_maxzoom)?;
+                // The key after the choice of the build in use (adopted or kept).
+                let key = osm::part_key(site, layout, &latest, opts.osm_maxzoom)?;
+                let dir = format!("basemap/{}", osm::ID);
+                parts.record(&id, key, root, &[&b.tiles, &dir], &b)?;
+                b
+            }
+        };
+        basemaps.push(b);
         timings.push(("basemap osm".to_owned(), t.elapsed().as_secs_f64()));
     }
 
@@ -225,8 +254,27 @@ fn build_into(
     timings.push(("raster layers".to_owned(), t.elapsed().as_secs_f64()));
     for spec in class_tiles::catalog() {
         let t = Instant::now();
-        let (outcome, steps) =
-            class_tiles::include(&spec, &out, root, &opts.class_params, opts.personal_sources)?;
+        let id = format!("class:{}", spec.id);
+        let key = class_tiles::part_key(&spec, &out, &opts.class_params, opts.personal_sources)?;
+        let (outcome, steps) = match parts.reuse::<Layer>(&id, &key, root) {
+            Some(l) => {
+                class_tiles::copy_meta_of(&spec, &out, root)?;
+                (layers::Outcome::Included(Box::new(l)), Vec::new())
+            }
+            None => {
+                let r = class_tiles::include(
+                    &spec,
+                    &out,
+                    root,
+                    &opts.class_params,
+                    opts.personal_sources,
+                )?;
+                if let layers::Outcome::Included(l) = &r.0 {
+                    parts.record(&id, key, root, &[&l.file], l.as_ref())?;
+                }
+                r
+            }
+        };
         match outcome {
             layers::Outcome::Included(l) => layers.push(*l),
             layers::Outcome::Missing(m) => missing.push(m),
@@ -299,6 +347,7 @@ fn build_into(
         layers: manifest.layers.iter().map(|l| l.id.clone()).collect(),
         missing,
         timings,
+        reused: parts.reused().to_vec(),
     })
 }
 
@@ -513,6 +562,7 @@ pub fn build_voice_pack(
             layers: Vec::new(),
             missing: Vec::new(),
             timings: Vec::new(),
+            reused: Vec::new(),
         })
     })();
     match built {
