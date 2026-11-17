@@ -38,7 +38,7 @@ class ThemeAndTextsTest {
             "onPrimary/primary (primary action)" to (c.onPrimary to c.primary),
             "onPrimaryContainer/primaryContainer" to (c.onPrimaryContainer to c.primaryContainer),
             "onSecondaryContainer/secondaryContainer" to (c.onSecondaryContainer to c.secondaryContainer),
-            "onErrorContainer/errorContainer (expired pack)" to (c.onErrorContainer to c.errorContainer),
+            "onErrorContainer/errorContainer (last day of a pack)" to (c.onErrorContainer to c.errorContainer),
             "error/surface (error line)" to (c.error to c.surface),
             "outline/surface (button borders)" to (c.outline to c.surface),
         )
@@ -60,10 +60,16 @@ class ThemeAndTextsTest {
         val info = Fixtures.info(validUntil = "2026-11-17")
         assertEquals(Validity.VALID, PackTexts.validity(info, TODAY))
         assertEquals(Validity.LAST_DAY, PackTexts.validity(info, TODAY.plusDays(2)))
-        assertEquals(Validity.EXPIRED, PackTexts.validity(info, TODAY.plusDays(3)))
+        assertEquals(Validity.PAST, PackTexts.validity(info, TODAY.plusDays(3)))
         assertEquals(Validity.UNKNOWN, PackTexts.validity(Fixtures.info(validUntil = null), TODAY))
         assertEquals("Valable jusqu'au 17 novembre 2026", texts().validityText(info, TODAY))
         assertEquals("Dernier jour de validité : 17 novembre 2026", texts().validityText(info, TODAY.plusDays(2)))
+        // Past its validity: the date of the last update, never « périmé »; online, a gentle invitation.
+        assertEquals("Mis à jour le 15 novembre 2026", texts().validityText(info, TODAY.plusDays(3)))
+        assertEquals(
+            "Mis à jour le 15 novembre 2026 · connecté : vous pouvez le mettre à jour",
+            texts().validityText(info, TODAY.plusDays(3), online = true),
+        )
     }
 
     @Test
@@ -81,7 +87,8 @@ class ThemeAndTextsTest {
     fun englishTexts() {
         val info = Fixtures.info(validUntil = "2026-11-17")
         assertEquals("Valid until November 17, 2026", texts().validityText(info, TODAY))
-        assertEquals("Out of date since November 17, 2026: update the pack", texts().validityText(info, TODAY.plusDays(3)))
+        assertEquals("Updated November 15, 2026", texts().validityText(info, TODAY.plusDays(3)))
+        assertEquals("Updated November 15, 2026 · online: you can update it", texts().validityText(info, TODAY.plusDays(3), online = true))
         val s = StatusSummary(2u, 1u, 0u, "2026-11-15T01:46:00Z")
         assertEquals("Pistes: 2 open, 1 closed · checked on Nov 15 at 02:46", texts().statusText(s, PARIS))
         assertEquals("No piste status in this pack", texts().statusText(null, PARIS))

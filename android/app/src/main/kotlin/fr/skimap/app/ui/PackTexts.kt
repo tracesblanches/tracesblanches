@@ -13,8 +13,11 @@ import java.time.format.DateTimeParseException
 import java.time.format.FormatStyle
 import java.util.Locale
 
-/** Validity of a pack on a given day. */
-enum class Validity { VALID, LAST_DAY, EXPIRED, UNKNOWN }
+/**
+ * Validity of a pack on a given day. Past its end, a pack is never said out of date nor
+ * blocked: its last update date is shown ([PackTexts.validityText]).
+ */
+enum class Validity { VALID, LAST_DAY, PAST, UNKNOWN }
 
 /**
  * Texts of the header and the sheet in the language of the app (resources: English by
@@ -28,10 +31,15 @@ class PackTexts(
     private val dayShort = DateTimeFormatter.ofPattern(if (locale.language == "fr") "dd/MM" else "MMM d", locale)
     private val time = DateTimeFormatter.ofPattern("HH:mm", locale)
 
-    /** `Valid until 17 November 2026`, `Périmé depuis le 17 novembre 2026`... */
+    /**
+     * `Valid until 17 November 2026`, `Last day of validity: …`; past its end, the date of
+     * the last update (`Mis à jour le 15 novembre 2026`), with a gentle invitation to update
+     * when the phone is [online]. Nothing is ever said « périmé ».
+     */
     fun validityText(
         info: PackInfo,
         today: LocalDate,
+        online: Boolean = false,
     ): String {
         val until =
             info.validUntil
@@ -41,9 +49,18 @@ class PackTexts(
         return when (validity(info, today)) {
             Validity.VALID -> res.getString(R.string.validity_valid, until)
             Validity.LAST_DAY -> res.getString(R.string.validity_last_day, until)
-            Validity.EXPIRED -> res.getString(R.string.validity_expired, until)
+            Validity.PAST -> updatedText(info, online)
             Validity.UNKNOWN -> res.getString(R.string.validity_unknown)
         }
+    }
+
+    /** `Mis à jour le 15 novembre 2026` (build date of the pack), and the invitation to update when [online]. */
+    fun updatedText(
+        info: PackInfo,
+        online: Boolean,
+    ): String {
+        val at = parseDate(info.generatedAt)?.format(day) ?: info.generatedAt
+        return res.getString(if (online) R.string.validity_updated_online else R.string.validity_updated, at)
     }
 
     /** `2 open, 40 closed` (map chip). */
@@ -88,7 +105,7 @@ class PackTexts(
         ): Validity {
             val until = info.validUntil?.let(::parseDate) ?: return Validity.UNKNOWN
             return when {
-                today.isAfter(until) -> Validity.EXPIRED
+                today.isAfter(until) -> Validity.PAST
                 today.isEqual(until) -> Validity.LAST_DAY
                 else -> Validity.VALID
             }

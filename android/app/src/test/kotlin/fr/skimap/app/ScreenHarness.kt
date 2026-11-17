@@ -62,9 +62,11 @@ fun TestMapScreen(
     actions: MapActions = MapActions(),
     initialSheetOpen: Boolean = false,
     mapMoved: Boolean = false,
+    online: Boolean = false,
     map: @Composable () -> Unit = { FakeMap() },
 ) {
     MapScreen(
+        online = online,
         state = state,
         today = TODAY,
         zone = PARIS,

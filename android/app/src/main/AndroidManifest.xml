@@ -10,6 +10,10 @@
     <!-- One coarse position, on request, for "Domaines les plus proches". No tracking. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+    <!-- Whether a network is there (no request made): a pack past its validity shows its
+         last update date and, online only, a gentle invitation to update it. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <application
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
