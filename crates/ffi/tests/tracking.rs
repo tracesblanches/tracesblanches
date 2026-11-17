@@ -801,7 +801,7 @@ fn with_site_record(pack_dir: &Path, view: &Path) -> PathBuf {
     let Ok(site) = reg.get(&m.site.id) else {
         return pack_dir.to_path_buf();
     };
-    m.site.record = Some(skimap_pack::build::starts::record(site, &layout));
+    m.site.record = Some(skimap_pack::build::starts::record(site, &layout, false));
     std::fs::create_dir_all(view).unwrap();
     for e in std::fs::read_dir(pack_dir).unwrap() {
         let e = e.unwrap();

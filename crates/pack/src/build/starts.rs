@@ -6,7 +6,10 @@
 //! its main connected part (the most nodes): the start of each of its SRN itineraries
 //! (`srn/srn_routes.geojson`, longest first) brought to the nearest node, else the node
 //! nearest to the site centre. A point farther than [`MAX_SNAP_M`] from the network is not
-//! a start (the morning looks for a trail within that distance).
+//! a start (the morning looks for a trail within that distance). A published pack takes
+//! only the itineraries that enter its graph (ODbL or attribution-only licence,
+//! [`skimap_common::licence`], as the graph, #169): the start and the name of an
+//! itinerary under CC BY-SA or without a reuse licence go into personal packs only.
 
 use std::path::Path;
 
@@ -21,12 +24,13 @@ pub const MAX_SNAP_M: f64 = 300.0;
 pub const MAX_STARTS: usize = 3;
 
 /// The record a pack carries for `site` ([`SiteRecord::of_site`]), with network starts
-/// when the pipeline found none and the site table has none.
-pub fn record(site: &Site, layout: &DataLayout) -> SiteRecord {
+/// when the pipeline found none and the site table has none; `personal_sources`: the
+/// pack is personal (every itinerary may give a start).
+pub fn record(site: &Site, layout: &DataLayout, personal_sources: bool) -> SiteRecord {
     let mut r = SiteRecord::of_site(site);
     let local = skimap_common::site::local(site.id).is_some_and(|l| !l.starts.is_empty());
     if r.starts.is_empty() && !local {
-        r.starts = network_starts(site, layout);
+        r.starts = network_starts(site, layout, personal_sources);
     }
     r
 }
@@ -84,8 +88,9 @@ fn nearest(nodes: &[LonLat], p: LonLat) -> Option<(LonLat, f64)> {
         .min_by(|a, b| a.1.total_cmp(&b.1))
 }
 
-/// Starts of the SRN itineraries of `site` (first point of each line, longest first).
-fn route_starts(site: &Site, layout: &DataLayout) -> Vec<(String, LonLat)> {
+/// Starts of the SRN itineraries of `site` (first point of each line, longest first);
+/// without `personal_sources`, of those whose licence lets them into a published pack.
+fn route_starts(site: &Site, layout: &DataLayout, personal_sources: bool) -> Vec<(String, LonLat)> {
     let Some(v) = layout
         .layer_dir(site, "srn")
         .ok()
@@ -97,6 +102,13 @@ fn route_starts(site: &Site, layout: &DataLayout) -> Vec<(String, LonLat)> {
         .as_array()
         .into_iter()
         .flatten()
+        .filter(|f| {
+            personal_sources
+                || skimap_common::licence::classify(
+                    f["properties"]["licence"].as_str().unwrap_or(""),
+                )
+                .enters_odbl()
+        })
         .filter_map(|f| {
             let g = &f["geometry"];
             let first = match g["type"].as_str()? {
@@ -124,10 +136,10 @@ fn add(out: &mut Vec<Start>, s: Start) {
 }
 
 /// Starts on the main part of the trail network of `site` (module documentation).
-pub fn network_starts(site: &Site, layout: &DataLayout) -> Vec<Start> {
+pub fn network_starts(site: &Site, layout: &DataLayout, personal_sources: bool) -> Vec<Start> {
     let nodes = main_nodes(site, layout);
     let mut out: Vec<Start> = Vec::new();
-    for (name, p) in route_starts(site, layout) {
+    for (name, p) in route_starts(site, layout, personal_sources) {
         let id = format!("itineraire-{}", out.len() + 1);
         let Some((n, d)) = nearest(&nodes, p) else {
             break;
@@ -208,7 +220,7 @@ mod tests {
                 node(0, 6.0005, 45.0),
             ]}),
         );
-        let none = network_starts(&site, &layout);
+        let none = network_starts(&site, &layout, true);
         assert_eq!(none.len(), 1);
         assert_eq!((none[0].lon, none[0].lat), (6.0005, 45.0));
         assert_eq!(none[0].id, "reseau");
@@ -216,15 +228,19 @@ mod tests {
             &out,
             "srn/srn_routes.geojson",
             &serde_json::json!({"features": [
-                {"properties": {"name": "Court", "length_km": 3.0},
+                {"properties": {"name": "Court", "length_km": 3.0, "licence": "ODbL 1.0"},
                  "geometry": {"type": "LineString", "coordinates": [[6.12, 45.1], [6.13, 45.1]]}},
-                {"properties": {"name": "Loin", "length_km": 30.0},
+                {"properties": {"name": "Loin", "length_km": 30.0, "licence": "ODbL 1.0"},
                  "geometry": {"type": "LineString", "coordinates": [[7.0, 46.0], [7.1, 46.0]]}},
-                {"properties": {"name": "Long", "length_km": 9.0},
+                {"properties": {"name": "Long", "length_km": 9.0, "licence": "aucune licence affichée"},
                  "geometry": {"type": "LineString", "coordinates": [[6.1, 45.1], [6.2, 45.1]]}}
             ]}),
         );
-        let s = network_starts(&site, &layout);
+        // A published pack: the itinerary without a reuse licence gives no start.
+        let public = network_starts(&site, &layout, false);
+        let names: Vec<&str> = public.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, ["Départ de l'itinéraire Court"]);
+        let s = network_starts(&site, &layout, true);
         let names: Vec<&str> = s.iter().map(|s| s.name.as_str()).collect();
         assert_eq!(
             names,
@@ -238,6 +254,6 @@ mod tests {
         // A site whose table has starts keeps them: no network start is added.
         let eval = &skimap_common::site::SITES[0];
         assert!(skimap_common::site::local(eval.id).is_some_and(|l| !l.starts.is_empty()));
-        assert_eq!(record(eval, &layout).starts, eval.starts.to_vec());
+        assert_eq!(record(eval, &layout, false).starts, eval.starts.to_vec());
     }
 }

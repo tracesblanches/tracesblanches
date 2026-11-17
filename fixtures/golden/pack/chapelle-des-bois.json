@@ -1,6 +1,6 @@
 {
-  "attributions": 17,
-  "files": 24,
+  "attributions": 16,
+  "files": 23,
   "format": "skimap-pack",
   "format_version": 1,
   "layer.avalanche-exposure.features": 8777,
@@ -18,8 +18,6 @@
   "layer.refuges-camptocamp.kind": "Vector",
   "layer.refuges-info.features": 69,
   "layer.refuges-info.kind": "Vector",
-  "layer.refuges-osm.features": 73,
-  "layer.refuges-osm.kind": "Vector",
   "layer.slope.features": 750,
   "layer.slope.kind": "Vector",
   "layer.snow-depth.features": 1,
@@ -31,5 +29,5 @@
   "layer.zones-rules.kind": "Data",
   "layer.zones.features": 34,
   "layer.zones.kind": "Vector",
-  "layers": 15
+  "layers": 14
 }

@@ -81,7 +81,6 @@ fn fixture_packs() -> FixturePacks {
             "zones",
             "zones-rules",
             "refuges-info",
-            "refuges-osm",
             "refuges-camptocamp",
             "no-network",
             "coverage-area",
@@ -94,6 +93,14 @@ fn fixture_packs() -> FixturePacks {
                 site.id
             );
         }
+        // L3 rule 1: the OSM huts complete refuges.info, personal packs only (#169).
+        assert!(
+            r.missing
+                .iter()
+                .any(|m| m.id == "refuges-osm" && m.reason.contains("l3-combinaison")),
+            "{}: refuges-osm in a published pack",
+            site.id
+        );
     }
     FixturePacks { _tmp: tmp, layout }
 }

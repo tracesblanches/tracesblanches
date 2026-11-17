@@ -4,8 +4,8 @@ Trois styles MapLibre natifs, chacun en clair (plein soleil, neige) et en sombre
 
 | Fichier | Pour | Couches | dont IGN | Symboles |
 |---|---|---|---|---|
-| `fond-clair.json`, `fond-sombre.json` | ski de fond sur pistes damées | 38 / 39 | 18 | 10 |
-| `srn-clair.json`, `srn-sombre.json` | ski de randonnée nordique hors piste | 65 / 68 | 29 | 17 |
+| `fond-clair.json`, `fond-sombre.json` | ski de fond sur pistes damées | 63 / 64 | 18 | 10 |
+| `srn-clair.json`, `srn-sombre.json` | ski de randonnée nordique hors piste | 104 / 107 | 29 | 17 |
 | `guidage-clair.json`, `guidage-sombre.json` | coup d'œil en mouvement | 17 | 8 | 4 |
 | Plan IGN « standard » (comparaison) | | 434 | 434 | 160 |
 
@@ -35,7 +35,7 @@ cargo run --release -p skimap-styles --example write_styles -- --france data/out
 
 ## Sources facultatives (packs publics)
 
-`metadata.skimap:optional_sources` liste les sources qu'un pack peut ne pas avoir : `avalanche-areas` (CLPA, usage personnel), `avalanche-exposure` (fusionnée avec la CLPA là où elle existe), `avalanche-segments`, `snow-groomed`, `snow-srn`, `srn-areas`, `srn-routes`, `piste-labels` (packs antérieurs), `fee-zones` (usage personnel), `stations-pois`, `pistes-estimees` (usage personnel : packs personnels des sites dont le plan en a). L'app et le visualiseur retirent alors la source et ses couches. Les fonds, `pistes`, `zones`, `no-network`, les trois couches de refuges et `slope` sont requis : leur absence est une erreur. Le validateur vérifie une source facultative sur les packs qui l'ont (ou sur le schéma déclaré de `fee-zones`, `src/declared.rs`) ; `validate_with` contrôle un pack seul contre l'instantané :
+`metadata.skimap:optional_sources` liste les sources qu'un pack peut ne pas avoir : `avalanche-areas` (CLPA, usage personnel), `avalanche-exposure` (fusionnée avec la CLPA là où elle existe), `avalanche-segments`, `snow-groomed`, `snow-srn`, `srn-areas`, `srn-routes` et leurs variantes `-cc-by-sa` et `-personnel` (une couche par famille de licences, #169), `refuges-osm` (packs personnels seulement : règle 1 de docs/licences/l3-combinaison.md), `piste-labels` (packs antérieurs), `fee-zones` (usage personnel), `stations-pois`, `pistes-estimees` (usage personnel : packs personnels des sites dont le plan en a). L'app et le visualiseur retirent alors la source et ses couches. Les fonds, `pistes`, `zones`, `no-network`, `refuges-info`, `refuges-camptocamp` et `slope` sont requis : leur absence est une erreur. Le validateur vérifie une source facultative sur les packs qui l'ont (ou sur le schéma déclaré de `fee-zones`, `src/declared.rs`) ; `validate_with` contrôle un pack seul contre l'instantané :
 
 ```sh
 cargo run --release -p skimap-styles --example check_packs -- <dossier de pack>...
@@ -48,7 +48,7 @@ Pistes du plan officiel absentes d'OSM (`pistes-estimees`, pack `layers::estimat
 ## État inconnu, SRN, redevance, secours
 
 - Pistes dont l'état est inconnu (ou packs sans état) : bande neutre grise (`pistes-unknown-casing`) et âme fine de la couleur de difficulté (`pistes-unknown`), jamais comme une piste ouverte ; la fiche dit « état inconnu ».
-- SRN hors stations : `srn-areas-fill`, `srn-areas-line`, `srn-routes-casing`, `srn-routes-line` (SRN et randonnée facile), `srn-routes-other` (raquettes, randonnée), `srn-routes-label` ; dans fond, `srn-routes-line` seul, fin et tireté. Groupe désactivable `srn`.
+- SRN hors stations : `srn-areas-fill`, `srn-areas-line`, `srn-routes-casing`, `srn-routes-line` (SRN et randonnée facile), `srn-routes-other` (raquettes, randonnée), `srn-routes-label` ; dans fond, `srn-routes-line` seul, fin et tireté. Groupe désactivable `srn` Chaque couche est répétée pour les sources `srn-*-cc-by-sa` (Camptocamp, CC BY-SA, à part des données ODbL) et `srn-*-personnel` (sans licence de réutilisation connue, packs personnels), avec le même dessin et l'identifiant suffixé (#169).
 - Zones de redevance (`fee-zones`, `promoteId: fee_id`) : contour neutre ; l'app pose l'état `valid` (`metadata.skimap:feature_states`) : `true` teinte et contour verts (« valable avec ton titre »), `false` contour ambre (« autre redevance »). Groupe désactivable `redevance`.
 - Secours (`stations-pois`, catégorie `secours`) : disque rouge à croix blanche dès z12 (`secours-post`, groupe non désactivable `secours`) ; points de vente (`sale-point`, groupe `acces`).
 - Noms des pistes sur `piste-labels` (une ligne par itinéraire) ; sommets par bande de zoom (`ign-oro-main-z11`, `-z12`, `ign-oro-main`) : jamais deux étiquettes d'un même sommet.

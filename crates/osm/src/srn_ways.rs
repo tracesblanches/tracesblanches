@@ -112,12 +112,10 @@ pub fn takes_itineraries(site: &Site) -> bool {
 /// Whether an itinerary published under `licence` may enter the routing graph of a
 /// published pack, an ODbL database (docs/licences/l3-combinaison.md): ODbL, or a licence
 /// asking for attribution only (Licence Ouverte, CC BY 4.0, CC0). Share-alike licences
-/// other than the ODbL (CC BY-SA), no licence shown, or anything else: no.
+/// other than the ODbL (CC BY-SA), no licence shown, or anything else: no. The decision
+/// of every layer ([`skimap_common::licence`], #169).
 pub fn public_licence(licence: &str) -> bool {
-    let l = licence.trim().to_lowercase();
-    ["odbl", "licence ouverte", "cc by 4.0", "cc-by-4.0", "cc0"]
-        .iter()
-        .any(|p| l.starts_with(p))
+    skimap_common::licence::classify(licence).enters_odbl()
 }
 
 fn walk(v: &Value, out: &mut Vec<LonLat>) {

@@ -111,12 +111,13 @@ fn all_sources() -> Map<String, Value> {
         "refuges-osm",
         "refuges-camptocamp",
         "piste-labels",
-        "srn-areas",
-        "srn-routes",
         "fee-zones",
         "stations-pois",
         "pistes-estimees",
     ] {
+        m.insert(id.into(), geojson(&format!("layers/{id}.geojson")));
+    }
+    for id in SRN_SOURCES {
         m.insert(id.into(), geojson(&format!("layers/{id}.geojson")));
     }
     // The app marks the zones of the pass of the user by feature state, keyed by pass.
@@ -141,20 +142,64 @@ fn all_sources() -> Map<String, Value> {
 /// mountains), layers added after older packs were built (piste name lines) and the
 /// trail-pass zones (no producer yet), the estimated traces of the pistes absent from OSM
 /// (personal packs of the sites whose plan has some). The basemaps, pistes, zones,
-/// network, huts and slope are in every pack: their absence is an error.
-pub const OPTIONAL_SOURCES: [&str; 11] = [
+/// network, refuges.info and Camptocamp huts and slope are in every pack: their absence
+/// is an error. The OSM huts are in personal packs only (L3 rule 1: they complete
+/// refuges.info), the SRN layers of each licence group only where the site has some
+/// (#169, [`SRN_GROUPS`]).
+pub const OPTIONAL_SOURCES: [&str; 16] = [
     "avalanche-areas",
     "avalanche-segments",
     "avalanche-exposure",
     "snow-groomed",
     "snow-srn",
     "srn-areas",
+    "srn-areas-cc-by-sa",
+    "srn-areas-personnel",
     "srn-routes",
+    "srn-routes-cc-by-sa",
+    "srn-routes-personnel",
+    "refuges-osm",
     "piste-labels",
     "fee-zones",
     "stations-pois",
     "pistes-estimees",
 ];
+
+/// Suffixes of the pack layers of the SRN areas and itineraries, one per licence group
+/// (`skimap_common::licence::Group::suffix`, #169): ODbL, CC BY-SA, personal. Every SRN
+/// layer of the styles is drawn the same for the three.
+pub const SRN_GROUPS: [&str; 3] = ["", "-cc-by-sa", "-personnel"];
+
+/// SRN sources of the styles: areas and itineraries of each licence group.
+pub const SRN_SOURCES: [&str; 6] = [
+    "srn-areas",
+    "srn-areas-cc-by-sa",
+    "srn-areas-personnel",
+    "srn-routes",
+    "srn-routes-cc-by-sa",
+    "srn-routes-personnel",
+];
+
+/// `layers` (drawn from `srn-areas` or `srn-routes`) repeated for each licence group
+/// ([`SRN_GROUPS`]): the copy of a group draws its source with the same paint, its id
+/// suffixed like its source.
+fn srn_groups(layers: Vec<Value>) -> Vec<Value> {
+    let mut v = Vec::with_capacity(layers.len() * SRN_GROUPS.len());
+    for suffix in SRN_GROUPS {
+        for l in &layers {
+            let mut l = l.clone();
+            if !suffix.is_empty() {
+                for key in ["id", "source"] {
+                    if let Some(s) = l[key].as_str() {
+                        l[key] = json!(format!("{s}{suffix}"));
+                    }
+                }
+            }
+            v.push(l);
+        }
+    }
+    v
+}
 
 /// Feature states the app sets (`metadata.skimap:feature_states`): source → state → what
 /// it means. Without them, the layers draw the neutral case.
@@ -1590,7 +1635,7 @@ fn fond(theme: Theme) -> Vec<Value> {
     v.push(buildings(p));
     v.push(lifts(p));
     v.extend(fee_zones(p));
-    v.extend(srn_layers(p, false));
+    v.extend(srn_groups(srn_layers(p, false)));
     v.push(exposure_segments(p, 3, true));
     v.extend(pistes(p, true));
     v.push(estimated_pistes(p, Kind::Fond));
@@ -1644,7 +1689,9 @@ fn srn(theme: Theme) -> Vec<Value> {
         Some(13.0),
         None,
     ));
-    v.extend(srn_layers(p, true).into_iter().take(2));
+    v.extend(srn_groups(
+        srn_layers(p, true).into_iter().take(2).collect(),
+    ));
     v.extend(water(p, 12.0));
     v.push(ign(
         "ign-rock-line",
@@ -1672,13 +1719,15 @@ fn srn(theme: Theme) -> Vec<Value> {
     v.extend(pistes(p, false));
     v.push(estimated_pistes(p, Kind::Srn));
     v.extend(status_closed(p, false));
-    v.extend(srn_layers(p, true).into_iter().skip(2));
+    v.extend(srn_groups(
+        srn_layers(p, true).into_iter().skip(2).collect(),
+    ));
     v.extend(access_points(p, false));
     v.extend(station_points(p));
     v.extend(hut_extras(p));
     v.extend(huts(p, theme, 10.0, 13.0, 13.0, false));
     v.push(contour_labels(p));
-    v.push(srn_labels(p));
+    v.extend(srn_groups(vec![srn_labels(p)]));
     v.push(piste_labels(p, 14.0, 12.0));
     v.push(ign(
         "ign-spot-height",
