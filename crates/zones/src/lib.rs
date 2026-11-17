@@ -7,6 +7,9 @@
 //!   core zones, parcel exceptions) and sourced rules for both sites ([`rules`],
 //!   `rules/rules.json`).
 //!
+//! - G4 (#120): national rules on every site and the status of the local rules
+//!   ([`local`]).
+//!
 //! Without features the crate only holds the layer and rule schema, used on the phone by
 //! `skimap_core::zone_eval` (C8). The `pipeline` feature adds the sources and
 //! `build(site, &DataLayout, &Downloader)`, which writes `data/out/<site>/zones/`.
@@ -15,6 +18,7 @@ pub mod error;
 pub mod fields;
 pub mod geom;
 pub mod layer;
+pub mod local;
 pub mod rules;
 
 #[cfg(feature = "pipeline")]
