@@ -29,6 +29,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use skimap_common::config::Config;
 use skimap_common::crs::{Crs, project_bbox};
 use skimap_common::download::{CachePolicy, Downloader, Request};
+use skimap_common::layout::DataLayout;
 use skimap_common::site::{MassifStatus, Registry, Site};
 
 #[derive(Parser, Debug)]
@@ -58,6 +59,21 @@ enum Command {
         /// JSON output.
         #[arg(long)]
         json: bool,
+        /// Identifiers only, one per line, of the sites that are built (no parent of
+        /// sections), filtered by the options below (`skimap-job bera`, `status`).
+        #[arg(long, conflicts_with = "json")]
+        ids: bool,
+        /// With `--ids`: only the sites whose main massif has a BERA.
+        #[arg(long, requires = "ids")]
+        bera: bool,
+        /// With `--ids`: only the groomed stations with a readable trail status source
+        /// (Nordic France widget or ENJ city).
+        #[arg(long, requires = "ids")]
+        status: bool,
+        /// With `--ids`: only the sites whose pipeline outputs are in the data directory
+        /// (`out/<site>/build-all.json`).
+        #[arg(long, requires = "ids")]
+        built: bool,
     },
     /// Download one URL through the shared cache and rate limiter (P1, #14).
     FetchUrl {
@@ -397,6 +413,33 @@ fn site_json(s: &Site) -> Result<serde_json::Value> {
     Ok(v)
 }
 
+/// Selection of `skimap sites --ids`.
+struct SiteFilter {
+    /// Main massif with a BERA (the Jura notice does not change: `build-all` writes it).
+    bera: bool,
+    /// Groomed station with a readable trail status source.
+    status: bool,
+    /// Pipeline outputs in this data directory (`build-all` record).
+    built: Option<DataLayout>,
+}
+
+impl SiteFilter {
+    /// Buildable sites of the registry that pass the filter, in registry order.
+    fn select(&self, registry: &Registry) -> Vec<&'static Site> {
+        registry
+            .buildable()
+            .into_iter()
+            .filter(|s| !self.bera || s.has_bera)
+            .filter(|s| !self.status || (s.kind.has_groomed_trails() && !s.status.is_empty()))
+            .filter(|s| {
+                self.built
+                    .as_ref()
+                    .is_none_or(|l| l.out_dir(s).join(france::BUILD_RECORD).is_file())
+            })
+            .collect()
+    }
+}
+
 fn print_sites(registry: &Registry, json: bool) -> Result<()> {
     if json {
         let all = registry
@@ -555,7 +598,26 @@ fn run(cli: Cli) -> Result<()> {
     let registry = Registry::load(&cfg.layout())?;
     let site = |id: &str| -> Result<&'static Site> { Ok(registry.get(id)?) };
     match cli.command {
-        Command::Sites { json } => print_sites(&registry, json),
+        Command::Sites {
+            json,
+            ids,
+            bera,
+            status,
+            built,
+        } => {
+            if !ids {
+                return print_sites(&registry, json);
+            }
+            let filter = SiteFilter {
+                bera,
+                status,
+                built: built.then(|| cfg.layout()),
+            };
+            for s in filter.select(&registry) {
+                println!("{}", s.id);
+            }
+            Ok(())
+        }
         Command::FetchUrl {
             url,
             source,
@@ -888,6 +950,52 @@ mod tests {
     #[test]
     fn cli_definition_is_valid() {
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn site_filter_selects_from_the_registry() {
+        let registry = Registry::evaluation();
+        let ids = |f: &SiteFilter| f.select(&registry).iter().map(|s| s.id).collect::<Vec<_>>();
+        let all = SiteFilter {
+            bera: false,
+            status: false,
+            built: None,
+        };
+        assert_eq!(ids(&all), ["cervieres", "chapelle-des-bois"]);
+        let bera = SiteFilter { bera: true, ..all };
+        assert_eq!(ids(&bera), ["cervieres"]);
+        // Nordic France widget for the first, ENJ city for the second.
+        let status = SiteFilter {
+            status: true,
+            bera: false,
+            built: None,
+        };
+        assert_eq!(ids(&status), ["cervieres", "chapelle-des-bois"]);
+        // Built: only the sites with a build record in the data directory.
+        let dir = std::env::temp_dir().join(format!("skimap-site-filter-{}", std::process::id()));
+        let layout = DataLayout::new(&dir);
+        let out = layout.out_dir(registry.get("chapelle-des-bois").unwrap());
+        std::fs::create_dir_all(&out).unwrap();
+        std::fs::write(out.join(france::BUILD_RECORD), "{}").unwrap();
+        let built = SiteFilter {
+            bera: false,
+            status: true,
+            built: Some(layout),
+        };
+        assert_eq!(ids(&built), ["chapelle-des-bois"]);
+        std::fs::remove_dir_all(&dir).unwrap();
+        let cli = Cli::try_parse_from(["skimap", "sites", "--ids", "--bera", "--built"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Command::Sites {
+                ids: true,
+                bera: true,
+                built: true,
+                status: false,
+                json: false
+            }
+        ));
+        assert!(Cli::try_parse_from(["skimap", "sites", "--bera"]).is_err());
     }
 
     #[test]
