@@ -262,7 +262,11 @@ fn estimated_pistes_are_dotted_and_optional() {
         let i = layer_index(&s, "pistes-estimees");
         let l = &s["layers"][i];
         assert_eq!(l["source"], "pistes-estimees", "{name}");
-        assert_eq!(l["filter"], json!(["==", ["get", "certainty"], "incertain"]), "{name}");
+        assert_eq!(
+            l["filter"],
+            json!(["==", ["get", "certainty"], "incertain"]),
+            "{name}"
+        );
         assert_eq!(l["paint"]["line-dasharray"], json!([0.1, 2]), "{name}");
         assert_eq!(l["layout"]["line-cap"], "round", "{name}");
         assert_eq!(l["metadata"]["skimap:group"], "pistes", "{name}");
