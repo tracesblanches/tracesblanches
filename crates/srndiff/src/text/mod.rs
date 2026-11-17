@@ -171,3 +171,180 @@ pub trait Texts: Sync {
     /// The closing sentence: the level is a computed indication, never a guarantee.
     fn disclaimer(&self) -> &'static str;
 }
+
+#[cfg(test)]
+mod cases;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::report::{assess, assess_in};
+
+    /// French words that never appear in an English sentence of the difficulty.
+    const FRENCH_WORDS: &[&str] = &[
+        "le",
+        "la",
+        "les",
+        "des",
+        "du",
+        "de",
+        "et",
+        "sur",
+        "pour",
+        "avec",
+        "sans",
+        "dans",
+        "au",
+        "aux",
+        "une",
+        "un",
+        "est",
+        "pas",
+        "ou",
+        "à",
+        "vers",
+        "entre",
+        "piste",
+        "pistes",
+        "neige",
+        "retour",
+        "heure",
+        "jour",
+        "environ",
+        "inconnu",
+        "inconnue",
+        "carte",
+        "itinéraire",
+        "itinéraires",
+        "sortie",
+        "temps",
+        "dont",
+        "interdit",
+        "départ",
+        "hors",
+        "aucun",
+        "aucune",
+        "modèle",
+        "facile",
+        "moyen",
+        "difficile",
+        "descente",
+        "descentes",
+        "montée",
+        "montées",
+        "pente",
+        "peaux",
+        "écailles",
+        "raide",
+        "raides",
+        "raisons",
+        "conseils",
+        "sens",
+        "tracé",
+        "forêt",
+        "dévers",
+        "réseau",
+        "faune",
+        "plat",
+        "glisse",
+        "exposé",
+        "très",
+        "affilée",
+        "jusqu",
+        "étapes",
+        "frontale",
+        "versant",
+    ];
+
+    /// Letters of French words that English sentences do not have.
+    const FRENCH_LETTERS: &[char] = &[
+        'é', 'è', 'ê', 'ë', 'à', 'â', 'î', 'ï', 'ô', 'ù', 'û', 'ç', 'œ', 'É', 'È', 'À', 'Ç', '«',
+        '»',
+    ];
+
+    /// Proper names of the cases.
+    const NAMES: &[&str] = &["Zone A", "Zone B", "Zone C"];
+
+    fn french_in(text: &str) -> Vec<String> {
+        let mut t = text.to_owned();
+        for n in NAMES {
+            t = t.replace(n, " ");
+        }
+        let mut found: Vec<String> = FRENCH_LETTERS
+            .iter()
+            .filter(|c| t.contains(**c))
+            .map(|c| c.to_string())
+            .collect();
+        // Hyphenated English words (« side-hill ») are one word.
+        for w in t.split(|c: char| !c.is_alphanumeric() && c != '\'' && c != '-') {
+            let w = w.to_lowercase();
+            let w = w.trim_start_matches("d'").trim_start_matches("l'");
+            if FRENCH_WORDS.contains(&w) {
+                found.push(w.to_owned());
+            }
+        }
+        found
+    }
+
+    fn never_safe(t: &str) {
+        let low = t.to_lowercase();
+        for bad in ["sans danger", "sûr", "sécurisé", "safe"] {
+            assert!(!low.contains(bad), "{bad} in « {t} »");
+        }
+    }
+
+    /// Every reason, piece of advice and text of every case in English: no French letter
+    /// or word, never « safe »; the French ones unchanged by the language parameter.
+    #[test]
+    fn the_difficulty_in_english() {
+        let mut seen = 0;
+        for (name, p, params, c) in cases::cases() {
+            let en = assess_in(&p, &params, c.as_ref(), Lang::En);
+            let fr = assess(&p, &params, c.as_ref());
+            assert_eq!(fr, assess_in(&p, &params, c.as_ref(), Lang::Fr), "{name}");
+            assert_eq!(fr.text_fr(name), fr.text(Lang::Fr, name));
+            let text = en.text(Lang::En, name);
+            eprintln!("{text}\n");
+            never_safe(&text);
+            never_safe(&fr.text_fr(name));
+            let mut all = vec![text.clone()];
+            for d in [&en.forward, &en.reverse] {
+                all.push(d.rating.level.label_in(Lang::En).to_owned());
+                all.extend(d.rating.reasons.iter().map(|x| x.text.clone()));
+                all.extend(d.advice.iter().map(|a| a.text.clone()));
+            }
+            for s in &all {
+                let left = french_in(s);
+                assert!(left.is_empty(), "{name}: French {left:?} in « {s} »");
+                seen += 1;
+            }
+            // Same reasons and advice in both languages, in the same order.
+            for (e, f) in [(&en.forward, &fr.forward), (&en.reverse, &fr.reverse)] {
+                assert_eq!(e.rating.reasons.len(), f.rating.reasons.len(), "{name}");
+                assert_eq!(e.advice.len(), f.advice.len(), "{name}");
+                assert_eq!(e.rating.level, f.rating.level, "{name}");
+            }
+            assert!(text.ends_with(of(Lang::En).disclaimer()), "{text}");
+        }
+        assert!(seen > 400, "{seen}");
+        for l in [
+            Level::Facile,
+            Level::Moyen,
+            Level::Difficile,
+            Level::TresDifficile,
+        ] {
+            assert!(french_in(l.label_in(Lang::En)).is_empty());
+        }
+    }
+
+    #[test]
+    fn english_durations_and_decimals() {
+        let en = of(Lang::En);
+        assert_eq!(en.hours(1.5), "1 h 30 min");
+        assert_eq!(en.hours(0.75), "45 min");
+        assert_eq!(en.hours(2.0 + 5.0 / 60.0), "2 h 05 min");
+        assert_eq!(of(Lang::Fr).hours(1.5), "1 h 30");
+        assert_eq!(en.finish("1.5 km".into()), "1.5 km");
+        assert_eq!(of(Lang::Fr).finish("1.5 km".into()), "1,5 km");
+    }
+}
