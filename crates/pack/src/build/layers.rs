@@ -12,14 +12,15 @@ use serde_json::{Value, json};
 use skimap_common::meta::LayerMeta;
 use skimap_zones::{Effect, RuleSet, Topic, ZoneLayer};
 
-use crate::build::{copy_file, write_bytes};
+use crate::build::{copy_data, write_bytes};
 use crate::error::{Error, Result};
 use crate::manifest::{Layer, LayerKind, Missing, Source};
 
 /// How a layer file is copied.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Transform {
-    /// Byte copy (JSON data).
+    /// Copy: JSON data rewritten compact ([`crate::build::copy_data`]), other files byte
+    /// for byte.
     Copy,
     /// Gzip copy (binary rasters of the core, `*.skr` → `*.skr.gz`).
     Gzip,
@@ -580,7 +581,7 @@ pub fn copy_meta(dir: &Path, name: &str, root: &Path) -> Result<Option<String>> 
         .unwrap_or_default();
     let rel = format!("layers/meta/{origin}/{name}");
     if !root.join(&rel).is_file() {
-        copy_file(&dir.join(name), &root.join(&rel))?;
+        copy_data(&dir.join(name), &root.join(&rel))?;
     }
     Ok(Some(rel))
 }
@@ -686,7 +687,7 @@ pub fn include(spec: &Spec, out: &Path, root: &Path, personal_sources: bool) -> 
     let mut geometry_types = Vec::new();
     let mut joined: Option<crate::build::pistes::PistesReport> = None;
     let bytes = match spec.transform {
-        Transform::Copy => copy_file(&src, &dst)?,
+        Transform::Copy => copy_data(&src, &dst)?,
         Transform::Gzip => gzip_file(&src, &dst)?,
         Transform::GeoJson | Transform::Zones | Transform::Pistes | Transform::EstimatedPistes => {
             let text = std::fs::read_to_string(&src).map_err(|e| Error::io(&src, e))?;

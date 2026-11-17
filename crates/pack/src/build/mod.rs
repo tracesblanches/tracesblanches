@@ -879,6 +879,23 @@ pub(crate) fn copy_file(from: &Path, to: &Path) -> Result<u64> {
     std::fs::copy(from, to).map_err(|e| Error::io(from, e))
 }
 
+/// Copies a pipeline file into the pack: a `.json` file is rewritten as compact JSON (the
+/// pipeline writes it indented for reading; the phone only parses it: half the bytes for
+/// the weather and the assistant, #160), any other file byte for byte. Returns the size.
+pub(crate) fn copy_data(from: &Path, to: &Path) -> Result<u64> {
+    if from.extension().and_then(|e| e.to_str()) != Some("json") {
+        return copy_file(from, to);
+    }
+    let text = std::fs::read(from).map_err(|e| Error::io(from, e))?;
+    let v: serde_json::Value =
+        serde_json::from_slice(&text).map_err(|e| Error::json(from.display().to_string(), e))?;
+    let out = serde_json::to_vec(&v).map_err(|e| Error::json(to.display().to_string(), e))?;
+    if let Some(p) = to.parent() {
+        create_dir(p)?;
+    }
+    write_bytes(to, &out)
+}
+
 /// Atomic write (`common::output`); returns the size.
 pub(crate) fn write_bytes(path: &Path, bytes: &[u8]) -> Result<u64> {
     skimap_common::output::write_bytes(path, bytes)?;
