@@ -102,9 +102,9 @@ class GuidedOutingTest {
         val said = s.stats.said.map { it.text }
         assertTrue(said.toString(), said.first().startsWith("Refuge test : 1,3 kilomètre, cap 0 degrés, nord"))
         assertTrue(said.toString(), said.any { it.startsWith("Arrivée : Refuge test") })
-        val h = outingHistory(Outings.plansRoot(target).path)
+        val h = outingHistory(Outings.plansRoot(target).path, Lang.FR)
         assertTrue(h.any { it.dir == dir.path && it.kind == "fog" })
-        val r = outingRecap(dir.path, Outings.plansRoot(target).path, Outings.workDir(target).path)
+        val r = outingRecap(dir.path, Outings.plansRoot(target).path, Outings.workDir(target).path, Lang.FR)
         assertTrue(r.text, r.text.contains("Distance : 1,"))
         assertTrue(File(dir, "trace.gpx").isFile)
         val sm = target.getSystemService(SensorManager::class.java)

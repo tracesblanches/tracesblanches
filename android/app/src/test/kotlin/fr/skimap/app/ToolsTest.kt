@@ -142,10 +142,10 @@ class ToolsTest {
     fun guidedOutingRecapHistoryAndDelete() {
         val root = tmp.newFolder("plans")
         walk(File(root, "2026-02-15-1"))
-        val h = outingHistory(root.path)
+        val h = outingHistory(root.path, Lang.FR)
         assertEquals(1, h.size)
         assertEquals("fog", h[0].kind)
-        val r = outingRecap(h[0].dir, root.path, tmp.newFolder("work").path)
+        val r = outingRecap(h[0].dir, root.path, tmp.newFolder("work").path, Lang.FR)
         assertTrue(r.text, r.text.contains("Distance : 1,4 km"))
         assertTrue(r.spoken, r.spoken.startsWith("Bilan : "))
         assertTrue(File(h[0].dir, "trace.gpx").isFile)
@@ -153,7 +153,28 @@ class ToolsTest {
         rule.onNodeWithTag(RecapTags.LISTEN).assertIsDisplayed()
         capture("tools_recap")
         assertEquals(1u, outingDeleteAll(root.path, null))
-        assertTrue(outingHistory(root.path).isEmpty())
+        assertTrue(outingHistory(root.path, Lang.FR).isEmpty())
+    }
+
+    /** The recap of the same outing on a phone in English (VO6): every text of the core in English. */
+    @Test
+    @Config(qualifiers = "en-w412dp-h915dp-hdpi")
+    fun guidedOutingRecapInEnglish() {
+        val root = tmp.newFolder("plans")
+        val dir = File(root, "2026-02-15-1")
+        guidedBearing(dir.path, refuge, null, 0.0, Lang.EN, "cervieres", null)
+        val s = openGuided(dir.path)
+        val fixes = (1..240).map { i -> Triple(T0 + i * 5000L, 6.0, 45.0 + i * 6.0 / 111_195.0) }
+        fixes.chunked(12).forEach { batch -> s.pushFixes(pack(batch)) }
+        s.close()
+        val h = outingHistory(root.path, Lang.EN)
+        val r = outingRecap(h[0].dir, root.path, tmp.newFolder("work").path, Lang.EN)
+        assertTrue(r.text, r.text.contains("Distance: 1.4 km"))
+        assertTrue(r.spoken, r.spoken.startsWith("Recap: "))
+        assertTrue(h[0].`when`, h[0].`when`.contains(" at "))
+        rule.setContent { Themed { Surface(Modifier.fillMaxSize()) { RecapScreen(RecapUi(h, r), RecapActions()) } } }
+        rule.onNodeWithTag(RecapTags.LISTEN).assertIsDisplayed()
+        capture("tools_recap_en")
     }
 
     @Test
@@ -279,6 +300,44 @@ class ToolsTest {
         assertEquals(1, car)
     }
 
+    /** The rules sheet on a phone in English (VO6): the texts as the core writes them in English. */
+    @Test
+    @Config(qualifiers = "en-w412dp-h915dp-hdpi")
+    fun placeRulesSheetInEnglish() {
+        val r =
+            PlaceRules(
+                "on 15/02 at 10:00",
+                true,
+                listOf(
+                    TopicLine("bivouac", "Bivouac", "forbidden", true),
+                    TopicLine("access", "Access", "allowed", false),
+                    TopicLine("leave_routes", "Leaving the marked routes", "forbidden", true),
+                    TopicLine("fire", "Fire", "forbidden (stoves included)", true),
+                ),
+                listOf("APPB du Haut-Doubs", "France"),
+                listOf(
+                    RuleLine(
+                        "Bivouac",
+                        "forbidden",
+                        true,
+                        null,
+                        "Bivouac interdit dans le périmètre de l'arrêté.",
+                        "toute l'année",
+                        null,
+                        null,
+                        null,
+                        "Arrêté préfectoral APPB Haut-Doubs",
+                        "https://www.doubs.gouv.fr/",
+                        "draft order (signed text not read)",
+                    ),
+                ),
+                "Rules read in the texts cited, at this date and time; the official text and the signs on the ground prevail.",
+            )
+        rule.setContent { Themed { Surface { PlaceContent(r, onFog = {}, onOffpiste = {}, onCar = {}) } } }
+        rule.onNodeWithText("Bivouac: forbidden").assertIsDisplayed()
+        capture("tools_place_rules_en")
+    }
+
     /** « Ramène-moi » going back to the car: 1 km south of the skier, the next point of the way 60 m west. */
     private fun backGuidance(offWay: Boolean): Pair<BackGuide, Guidance> {
         val back =
@@ -370,7 +429,7 @@ class ToolsTest {
                 "Jamais « sans danger ».",
             )
         val infos = listOf(InfoAge("Bulletin d'avalanche (BERA)", "cervieres", "mis à jour le 15/11 à 10 h 05", 1L))
-        val battery = batteryForecast(T0, 18.0, -12.0, 0.0, T0 + 6 * 3_600_000L, 20.0, 0.5, false, 1.0, 9.0)
+        val battery = batteryForecast(T0, 18.0, -12.0, 0.0, T0 + 6 * 3_600_000L, 20.0, 0.5, false, 1.0, 9.0, Lang.FR)
         assertFalse(battery.enough)
         rule.setContent {
             Themed {

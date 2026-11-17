@@ -22,6 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
+import fr.skimap.app.appLang
 import fr.skimap.core.BatteryView
 import fr.skimap.core.batteryForecast
 import kotlinx.coroutines.Dispatchers
@@ -73,7 +74,19 @@ object Battery {
                 measuredPct = p.getFloat(KEY_LEVEL, b.levelPct.toFloat()) - b.levelPct
             }
         }
-        return batteryForecast(nowMs, b.levelPct, b.tempC, 0.0, endMs ?: 0L, SCREEN_MIN_PER_H, 0.0, false, measuredH, measuredPct)
+        return batteryForecast(
+            nowMs,
+            b.levelPct,
+            b.tempC,
+            0.0,
+            endMs ?: 0L,
+            SCREEN_MIN_PER_H,
+            0.0,
+            false,
+            measuredH,
+            measuredPct,
+            appLang(),
+        )
     }
 
     private const val PREFS = "skimap_battery"

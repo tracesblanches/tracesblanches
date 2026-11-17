@@ -1,5 +1,6 @@
 package fr.skimap.app.data
 
+import fr.skimap.app.appLang
 import fr.skimap.core.Bounds
 import fr.skimap.core.MapStyle
 import fr.skimap.core.PackEntry
@@ -79,7 +80,7 @@ class RustPackRepository(
         withContext(io) {
             mutex.withLock {
                 // One call across the FFI: summary and style together.
-                val view = openPacks(dirs, styleJson, free)
+                val view = openPacks(dirs, styleJson, free, appLang())
                 current?.destroy()
                 current = view.set
                 OpenedPack(view.info, view.style, view.coreVersion)

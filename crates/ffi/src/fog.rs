@@ -33,12 +33,13 @@ use skimap_core::eta::EtaModel;
 use skimap_core::routing::Style;
 use skimap_pack::Pack;
 use skimap_plan::gps::{GpsInput, GpsMode, GpsParams, GpsRequest, GpsState};
-use skimap_plan::pace::{clock_fr, duration_fr};
+use skimap_plan::pace::duration_fr;
 use skimap_plan::tracker::Input;
 use skimap_voice::clips::Direction;
 
 use crate::PackError;
 use crate::card::Lang;
+use crate::text;
 use crate::tracking::{
     AlertKind, AlertView, BatchOut, GpsModeView, GpsRequestView, GuidanceView, INPUTS_FILE,
     NextTurn, PhaseView, RecapView, SpeechPriority, SpokenView, StepReport, TrackEvent,
@@ -1280,11 +1281,11 @@ impl Engine {
             remaining_m,
             next: self.next(),
             remaining_s: med,
-            remaining_text: duration_fr(med),
-            arrival: clock_fr(at(med)),
+            remaining_text: text::of(self.lang).duration(med),
+            arrival: text::of(self.lang).clock5(at(med)),
             arrival_ms: ((now + med) * 1000.0) as i64,
             arrival_range: (self.model.is_some() && hi > lo + 60.0)
-                .then(|| format!("{} à {}", clock_fr(at(lo)), clock_fr(at(hi)))),
+                .then(|| text::of(self.lang).arrival_range(at(lo), at(hi))),
             limit: None,
             off_route_m: self
                 .back

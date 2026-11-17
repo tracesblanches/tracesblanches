@@ -110,7 +110,10 @@ fun FailedScreen(
         SelectionContainer { Text(PackTexts(LocalResources.current).problem(state.problem), style = CommandTextStyle) }
         state.packs.filter { it.error == null && it.dir != state.dir }.forEach { p ->
             OutlinedButton(onClick = { onSelectPack(p.dir) }, modifier = Modifier.fillMaxWidth().heightIn(min = GloveTarget)) {
-                Text("${stringResource(R.string.choose_other)} : ${p.siteName}", style = MaterialTheme.typography.labelLarge)
+                Text(
+                    stringResource(R.string.label_value, stringResource(R.string.choose_other), p.siteName),
+                    style = MaterialTheme.typography.labelLarge,
+                )
             }
         }
         Button(onClick = onRetry, modifier = Modifier.fillMaxWidth().heightIn(min = GloveTarget)) {

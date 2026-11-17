@@ -129,4 +129,6 @@
     <string name="choose_other">Open another pack</string>
     <string name="error_no_pack">No pack in %1$s</string>
     <string name="error_invalid_pack">Invalid pack: %1$s</string>
+    <!-- A label and its value: « Bivouac: forbidden ». -->
+    <string name="label_value">%1$s: %2$s</string>
 </resources>

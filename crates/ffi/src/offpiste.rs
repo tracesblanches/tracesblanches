@@ -29,7 +29,6 @@ use skimap_core::offpiste::{
 };
 use skimap_core::routing::Style;
 use skimap_pack::Pack;
-use skimap_plan::pace::duration_fr;
 use skimap_srndiff::field::{Areas, Classes, ElevationDm, SiteZones, SlopeHalfDeg};
 use skimap_srndiff::{Layers, Params, assess, profile};
 use skimap_zones::layer::ZoneLayer;
@@ -37,10 +36,8 @@ use skimap_zones::rules::RuleSet;
 
 use crate::card::Lang;
 use crate::fog::{FogTarget, GuidedKind, GuidedSpec, personal_time};
+use crate::text;
 use crate::tracking::TrackingError;
-
-/// « Jamais une garantie », said with every off-piste route and low-exposure zone.
-pub const NEVER_GUARANTEE: &str = "Indication calculée sur le relief et les cartes, jamais une garantie : le bulletin d'avalanche (BERA) du jour et ton jugement sur place priment.";
 
 fn invalid(detail: impl std::fmt::Display) -> TrackingError {
     TrackingError::Invalid {
@@ -163,7 +160,7 @@ pub struct OffpisteRouteView {
     pub in_places: Vec<String>,
     /// Ends moved to the nearest passable cell, metres (A, B).
     pub snap_m: Vec<f64>,
-    /// [`NEVER_GUARANTEE`].
+    /// « Jamais une garantie » ([`text::Texts::never_guarantee`]).
     pub never_guarantee: String,
     /// Layers missing from the pack (« non évalué »).
     pub missing: Vec<String>,
@@ -185,6 +182,8 @@ pub struct OffpistePlanner {
     site_id: String,
     inputs: Inputs,
     missing: Vec<String>,
+    /// Language of the texts (VO6).
+    lang: Lang,
     last: Mutex<Option<Last>>,
     load_ms: u32,
 }
@@ -202,27 +201,29 @@ fn ms_since(t: Instant) -> u32 {
 }
 
 /// Opens the off-piste router of the pack in `pack_dir`; `work_dir` (private storage)
-/// receives its inflated rasters.
+/// receives its inflated rasters; texts in `lang`.
 #[uniffi::export]
 pub fn open_offpiste(
     pack_dir: String,
     work_dir: String,
+    lang: Lang,
 ) -> Result<Arc<OffpistePlanner>, TrackingError> {
     let t0 = Instant::now();
+    let tx = text::of(lang);
     let pack = Pack::open(PathBuf::from(&pack_dir)).map_err(invalid)?;
     if pack.layer("offpiste-elevation").is_err() {
-        return Err(invalid("pas de relief hors piste dans ce pack"));
+        return Err(invalid(tx.no_offpiste_relief()));
     }
     let dir = inflate_offpiste(&pack, Path::new(&work_dir))?;
     let grid = OffpisteGrid::load(&dir).map_err(invalid)?;
     let mut missing = Vec::new();
     let snow = SnowGrid::load(&dir.join("snow.skr")).ok();
     if snow.is_none() {
-        missing.push("neige du jour".to_owned());
+        missing.push(tx.missing_layer("snow").to_owned());
     }
     let exposure: Option<Grid<u8>> = offpiste::read_raster(&dir.join(offpiste::FILE_EXPOSURE)).ok();
     if exposure.is_none() {
-        missing.push("exposition aux avalanches".to_owned());
+        missing.push(tx.missing_layer("exposure").to_owned());
     }
     let overlays = exposure
         .iter()
@@ -239,7 +240,7 @@ pub fn open_offpiste(
         _ => None,
     };
     if zones.is_none() {
-        missing.push("zones et règles".to_owned());
+        missing.push(tx.missing_layer("zones").to_owned());
     }
     let network = text("no-network").and_then(|n| {
         let polys = Areas::polygons_from_geojson(&n).ok()?;
@@ -247,7 +248,7 @@ pub fn open_offpiste(
         Some(Areas::new(polys, known))
     });
     if network.is_none() {
-        missing.push("couverture réseau".to_owned());
+        missing.push(tx.missing_layer("network").to_owned());
     }
     Ok(Arc::new(OffpistePlanner {
         pack_dir: PathBuf::from(pack_dir),
@@ -261,6 +262,7 @@ pub fn open_offpiste(
             network,
         },
         missing,
+        lang,
         last: Mutex::new(None),
         load_ms: ms_since(t0),
     }))
@@ -313,6 +315,7 @@ impl OffpistePlanner {
         group_json: Option<String>,
     ) -> Result<OffpisteRouteView, TrackingError> {
         let t0 = Instant::now();
+        let tx = text::of(self.lang);
         let i = &self.inputs;
         let at: DateTime<Utc> = DateTime::from_timestamp_millis(at_ms).unwrap_or_else(Utc::now);
         let policy = match &i.zones {
@@ -331,15 +334,9 @@ impl OffpistePlanner {
         let b = LonLat::new(to.lon, to.lat);
         let r = router.route(a, b).map_err(|e| {
             invalid(match e {
-                offpiste::RouteError::OutsideGrid(_) => {
-                    "point hors du relief du pack".to_owned()
-                }
-                offpiste::RouteError::NoPassableCell { radius_m, .. } => format!(
-                    "aucun terrain praticable à moins de {radius_m:.0} m d'une extrémité (pente de 30° ou plus, zone interdite à cette date, très exposé)"
-                ),
-                offpiste::RouteError::NoRoute { .. } => {
-                    "aucun itinéraire sous 30° hors des zones interdites à cette date".to_owned()
-                }
+                offpiste::RouteError::OutsideGrid(_) => tx.outside_relief().to_owned(),
+                offpiste::RouteError::NoPassableCell { radius_m, .. } => tx.no_passable(radius_m),
+                offpiste::RouteError::NoRoute { .. } => tx.no_offpiste_route().to_owned(),
                 offpiste::RouteError::Crs(m) => m,
             })
         })?;
@@ -389,14 +386,9 @@ impl OffpistePlanner {
             .and_then(|j| serde_json::from_str::<ProfileModel>(j).ok());
         let (med, lo, hi) = personal_time(model.as_ref(), model_s);
         let time_text = if model.is_some() {
-            format!(
-                "environ {} ({} à {}) au rythme du groupe",
-                duration_fr(med),
-                duration_fr(lo),
-                duration_fr(hi)
-            )
+            tx.time_group(med, lo, hi)
         } else {
-            format!("environ {} au modèle", duration_fr(med))
+            tx.time_model(med)
         };
         let view = OffpisteRouteView {
             label: label.clone(),
@@ -420,7 +412,7 @@ impl OffpistePlanner {
             text: rep.text_fr(&label),
             in_places,
             snap_m: vec![r.from_snap_m, r.to_snap_m],
-            never_guarantee: NEVER_GUARANTEE.to_owned(),
+            never_guarantee: tx.never_guarantee().to_owned(),
             missing: self.missing.clone(),
             compute_ms: ms_since(t0),
         };
@@ -515,6 +507,7 @@ mod tests {
             let p = open_offpiste(
                 pack.display().to_string(),
                 work.path().display().to_string(),
+                Lang::Fr,
             )
             .unwrap();
             let open_ms = t.elapsed().as_millis();
@@ -599,6 +592,7 @@ mod tests {
             let _ = open_offpiste(
                 pack.display().to_string(),
                 work.path().display().to_string(),
+                Lang::Fr,
             )
             .unwrap();
             eprintln!("{site}: reopen {} ms", t.elapsed().as_millis());

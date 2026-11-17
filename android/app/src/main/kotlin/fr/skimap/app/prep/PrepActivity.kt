@@ -174,13 +174,18 @@ class PrepActivity : ComponentActivity() {
         val ctx = applicationContext
         val (state, last, battery) =
             withContext(Dispatchers.IO) {
-                val s = prepRead(PrepWork.dir(ctx).path, Outings.packDirs(ctx).map { it.path }, LocalDate.now().toString())
+                val s = prepRead(PrepWork.dir(ctx).path, Outings.packDirs(ctx).map { it.path }, LocalDate.now().toString(), appLang())
                 val l =
                     File(PrepWork.dir(ctx), PrepWork.LAST_FILE).takeIf { it.isFile }?.let {
                         runCatching {
                             val o = JSONObject(it.readText())
-                            "${fr.skimap.core.updatedFr(o.getLong("at_ms"))}, ${o.getLong("ms")} ms, " +
-                                "batterie ${o.optString("battery_pct")} %, ${o.optString("battery_c")} °C"
+                            getString(
+                                R.string.prep_last_run,
+                                fr.skimap.core.updatedText(o.getLong("at_ms"), appLang()),
+                                o.getLong("ms"),
+                                o.optString("battery_pct"),
+                                o.optString("battery_c"),
+                            )
                         }.getOrNull()
                     }
                 Triple(s, l, Battery.forecast(ctx, null, null))

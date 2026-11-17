@@ -41,9 +41,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import fr.skimap.app.R
+import fr.skimap.app.appLang
 import fr.skimap.app.fog.Outings
 import fr.skimap.app.ui.theme.GloveTarget
 import fr.skimap.app.ui.theme.SkimapTheme
+import fr.skimap.app.voiceLocale
 import fr.skimap.core.OutingRecap
 import fr.skimap.core.OutingSummary
 import fr.skimap.core.outingDelete
@@ -55,7 +57,6 @@ import fr.skimap.tracking.TrackingState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.Locale
 
 /** Test tags of the outings screen. */
 object RecapTags {
@@ -137,7 +138,7 @@ class RecapActivity : ComponentActivity() {
     }
 
     private suspend fun reload() {
-        val h = withContext(Dispatchers.IO) { outingHistory(Outings.plansRoot(applicationContext).path) }
+        val h = withContext(Dispatchers.IO) { outingHistory(Outings.plansRoot(applicationContext).path, appLang()) }
         ui = ui.copy(history = h)
     }
 
@@ -152,6 +153,7 @@ class RecapActivity : ComponentActivity() {
                         dir,
                         Outings.plansRoot(applicationContext).path,
                         Outings.workDir(applicationContext).path,
+                        appLang(),
                     )
                 }.getOrNull()
             } ?: return
@@ -169,7 +171,7 @@ class RecapActivity : ComponentActivity() {
         created =
             TextToSpeech(applicationContext) { status ->
                 if (status == TextToSpeech.SUCCESS) {
-                    created?.language = Locale.FRANCE
+                    created?.language = voiceLocale()
                     created?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "recap")
                 }
             }

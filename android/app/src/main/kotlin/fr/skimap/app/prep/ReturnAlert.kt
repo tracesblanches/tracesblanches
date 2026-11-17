@@ -367,7 +367,7 @@ fun ReturnAlertStatus(planDir: String?) {
             else -> stringResource(R.string.alert_status_returned)
         }
     Text(
-        "${stringResource(R.string.settings_alert)} : $s",
+        stringResource(R.string.label_value, stringResource(R.string.settings_alert), s),
         style = MaterialTheme.typography.bodyMedium,
         modifier = Modifier.testTag(RETURN_ALERT_CARD),
     )

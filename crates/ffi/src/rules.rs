@@ -11,14 +11,16 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use chrono::{DateTime, Datelike, Utc};
+use chrono::{DateTime, Utc};
 use skimap_common::geom::LonLat;
-use skimap_core::zone_eval::{self, Inactive, Verdict};
+use skimap_core::zone_eval::{self, Verdict};
 use skimap_pack::Pack;
 use skimap_zones::layer::ZoneLayer;
-use skimap_zones::rules::{RuleSet, SourceKind, Topic};
+use skimap_zones::rules::{RuleSet, Topic};
 
 use crate::PackError;
+use crate::card::Lang;
+use crate::text;
 
 /// The verdict of one topic at the place.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -115,47 +117,27 @@ fn load(pack_dir: &str) -> Result<Loaded, PackError> {
     Ok(l)
 }
 
-fn topic_key(t: Topic) -> (&'static str, &'static str) {
+fn topic_key(t: Topic) -> &'static str {
     match t {
-        Topic::Bivouac => ("bivouac", "Bivouac"),
-        Topic::Access => ("access", "Accès"),
-        Topic::LeaveRoutes => ("leave_routes", "Sortie des itinéraires balisés"),
-        Topic::Fire => ("fire", "Feu"),
-    }
-}
-
-fn inactive_fr(i: Inactive) -> &'static str {
-    match i {
-        Inactive::NotInForce => "texte pas en vigueur à cette date",
-        Inactive::OutOfPeriod => "hors de sa période",
-        Inactive::Daytime => "règle de nuit, il fait jour à cette heure",
-        Inactive::ZoneNotSensitive => "zone hors de ses mois sensibles",
-        Inactive::NoSunEvent => "coucher du soleil non calculable",
-    }
-}
-
-fn source_kind_fr(k: SourceKind) -> &'static str {
-    match k {
-        SourceKind::Law => "loi ou code",
-        SourceKind::SignedAct => "arrêté signé",
-        SourceKind::DraftAct => "projet d'arrêté (texte signé non lu)",
-        SourceKind::DecisionSummary => "synthèse officielle de la décision",
-        SourceKind::Leaflet => "plaquette officielle",
-        SourceKind::OfficialPage => "page officielle",
-        SourceKind::ThirdPartyPage => "page tierce",
-        SourceKind::DataService => "service de données",
+        Topic::Bivouac => "bivouac",
+        Topic::Access => "access",
+        Topic::LeaveRoutes => "leave_routes",
+        Topic::Fire => "fire",
     }
 }
 
 /// The rules at (`lon`, `lat`) at `at_ms` (epoch milliseconds) on the zones of the pack
-/// in `pack_dir`.
+/// in `pack_dir`, texts in `lang` (the summaries, periods and conditions of the rules are
+/// the sources' own words, not translated).
 #[uniffi::export]
 pub fn place_rules(
     pack_dir: String,
     lon: f64,
     lat: f64,
     at_ms: i64,
+    lang: Lang,
 ) -> Result<PlaceRules, PackError> {
+    let tx = text::of(lang);
     let l = load(&pack_dir)?;
     let (layer, rules) = (&l.0, &l.1);
     let at: DateTime<Utc> = DateTime::from_timestamp_millis(at_ms).unwrap_or_else(Utc::now);
@@ -170,16 +152,15 @@ pub fn place_rules(
         .iter()
         .map(|t| {
             let v = ev.verdict(*t);
-            let (key, title) = topic_key(*t);
             let stoves = if v.stoves_forbidden {
-                " (réchauds compris)"
+                tx.stoves_included()
             } else {
                 ""
             };
             TopicLine {
-                topic: key.into(),
-                title: title.into(),
-                verdict: format!("{}{stoves}", v.verdict.label_fr()),
+                topic: topic_key(*t).into(),
+                title: tx.rule_topic(*t).into(),
+                verdict: format!("{}{stoves}", tx.rule_verdict(v.verdict)),
                 restrictive: matches!(v.verdict, Verdict::Forbidden | Verdict::ForbiddenInPlaces),
             }
         })
@@ -191,7 +172,7 @@ pub fn place_rules(
             if z.sensitive_now {
                 z.name.clone()
             } else {
-                format!("{} (hors saison)", z.name)
+                tx.zone_off_season(&z.name)
             }
         })
         .collect();
@@ -201,10 +182,10 @@ pub fn place_rules(
         .map(|r| {
             let src = rules.get(&r.rule).map(|x| x.primary_source());
             RuleLine {
-                topic: topic_key(r.topic).1.into(),
-                verdict: r.verdict.label_fr().into(),
+                topic: tx.rule_topic(r.topic).into(),
+                verdict: tx.rule_verdict(r.verdict).into(),
                 active: r.active(),
-                inactive: r.inactive.map(|i| inactive_fr(i).to_owned()),
+                inactive: r.inactive.map(|i| tx.rule_inactive(i).to_owned()),
                 summary: r.summary.clone(),
                 period: r.period.clone(),
                 conditions: r.conditions.clone(),
@@ -212,24 +193,19 @@ pub fn place_rules(
                 stoves: r.stoves,
                 source_title: src.map(|s| s.title.clone()).unwrap_or_default(),
                 source_url: r.source_url.clone(),
-                source_kind: source_kind_fr(r.source_kind).into(),
+                source_kind: tx.source_kind(r.source_kind).into(),
             }
         })
         .collect();
     lines.sort_by_key(|r| !r.active);
     let local = ev.local_time;
     Ok(PlaceRules {
-        at_text: format!(
-            "le {:02}/{:02} à {}",
-            local.day(),
-            local.month(),
-            skimap_plan::pace::clock_fr(local)
-        ),
+        at_text: tx.rules_at(local),
         covered: ev.covered,
         topics,
         zones,
         rules: lines,
-        note: "Règles relevées dans les textes cités, à cette date et cette heure ; le texte officiel et la signalisation sur place font foi.".into(),
+        note: tx.rules_note().into(),
     })
 }
 
@@ -281,12 +257,12 @@ mod tests {
         let (lon, lat) = *points
             .iter()
             .find(|(lon, lat)| {
-                leave_of(&place_rules(p.clone(), *lon, *lat, 1_771_146_000_000).unwrap())
+                leave_of(&place_rules(p.clone(), *lon, *lat, 1_771_146_000_000, Lang::Fr).unwrap())
                     == "interdit"
             })
             .expect("an off-piste point of August forbidden in February");
-        let feb = place_rules(p.clone(), lon, lat, 1_771_146_000_000).unwrap();
-        let aug = place_rules(p, lon, lat, 1_786_870_800_000).unwrap();
+        let feb = place_rules(p.clone(), lon, lat, 1_771_146_000_000, Lang::Fr).unwrap();
+        let aug = place_rules(p, lon, lat, 1_786_870_800_000, Lang::Fr).unwrap();
         for r in [&feb, &aug] {
             eprintln!("{} {:?}\n{:#?}", r.at_text, r.zones, r.topics);
             assert!(r.covered);
@@ -302,7 +278,7 @@ mod tests {
     #[test]
     #[ignore = "needs data/out/cervieres/pack"]
     fn cervieres_bivouac_has_a_verdict_and_a_source() {
-        let r = place_rules(pack("cervieres"), 6.75, 44.85, 1_771_146_000_000).unwrap();
+        let r = place_rules(pack("cervieres"), 6.75, 44.85, 1_771_146_000_000, Lang::Fr).unwrap();
         eprintln!("{r:#?}");
         assert!(r.covered);
         assert!(!r.zones.is_empty());

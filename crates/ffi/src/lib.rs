@@ -154,12 +154,13 @@ pub struct PackSetView {
 /// Opens the packs in `dirs` together and instantiates `style_json` (a style of
 /// `styles/`) on them. `free`: free mode, named `libre` even with a single pack. Packs that
 /// do not open are skipped when at least one opens (the error of the first one is
-/// returned otherwise).
+/// returned otherwise). The texts of the merged summary are in `lang`.
 #[uniffi::export]
 pub fn open_packs(
     dirs: Vec<String>,
     style_json: String,
     free: bool,
+    lang: Lang,
 ) -> Result<PackSetView, PackError> {
     let mut handles = Vec::new();
     let mut first_error = None;
@@ -180,7 +181,7 @@ pub fn open_packs(
     let info = if infos.len() == 1 && !free {
         infos[0].clone()
     } else {
-        info::merge(&infos, FREE_MODE_ID)
+        info::merge(&infos, FREE_MODE_ID, lang)
     };
     let set = Arc::new(PackSet {
         handles,

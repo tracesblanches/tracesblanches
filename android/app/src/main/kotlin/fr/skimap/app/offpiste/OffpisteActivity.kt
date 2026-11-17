@@ -47,6 +47,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import fr.skimap.app.R
+import fr.skimap.app.appLang
 import fr.skimap.app.data.PlatformLocator
 import fr.skimap.app.fog.FogActivity
 import fr.skimap.app.fog.GuidedTrackingService
@@ -138,7 +139,7 @@ class OffpisteActivity : ComponentActivity() {
             ui = ui.copy(points = points, from = me ?: list.firstOrNull(), to = point ?: list.getOrNull(1))
             planner =
                 withContext(Dispatchers.IO) {
-                    runCatching { openOffpiste(pack.path, Outings.workDir(applicationContext).path) }
+                    runCatching { openOffpiste(pack.path, Outings.workDir(applicationContext).path, appLang()) }
                         .onFailure { ui = ui.copy(error = it.message) }
                         .getOrNull()
                 }

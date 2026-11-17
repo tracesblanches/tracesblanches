@@ -20,14 +20,14 @@
 
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, Datelike, NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use skimap_common::geom::LonLat;
-use skimap_plan::pace::duration_fr;
 use skimap_plan::plan::DayPlan;
 use skimap_plan::tracker::Input;
 
 use crate::card::Lang;
 use crate::fog::{GuidedKind, GuidedSpec, distance_words};
+use crate::text;
 use crate::tracking::{INPUTS_FILE, TrackEvent, TrackingError};
 use crate::tracking_day::{PACK_FILE, PLAN_FILE};
 
@@ -391,7 +391,7 @@ impl Loaded {
 const STRAVA: &str = "strava";
 
 /// An outing imported from the Strava export into `dir` (its `outing.json`).
-fn load_imported(dir: &Path) -> Option<Loaded> {
+fn load_imported(dir: &Path, lang: Lang) -> Option<Loaded> {
     let json = std::fs::read_to_string(dir.join(skimap_collab::track::OUTING_FILE)).ok()?;
     let o: skimap_collab::track::Outing = serde_json::from_str(&json).ok()?;
     if o.source != STRAVA || o.track.len() < 2 {
@@ -409,7 +409,7 @@ fn load_imported(dir: &Path) -> Option<Loaded> {
                 .map(|t| skimap_core::ephemeris::local_time(t).date().to_string())
                 .unwrap_or_default(),
             when: if start_ms > 0 {
-                when_fr(start_ms)
+                when(start_ms, lang)
             } else {
                 String::new()
             },
@@ -426,19 +426,13 @@ fn load_imported(dir: &Path) -> Option<Loaded> {
     })
 }
 
-fn when_fr(ms: i64) -> String {
-    let t = skimap_core::ephemeris::local_time(utc(ms));
-    format!(
-        "{:02}/{:02} à {}",
-        t.day(),
-        t.month(),
-        skimap_plan::pace::clock_fr(t)
-    )
+fn when(ms: i64, lang: Lang) -> String {
+    text::of(lang).when(skimap_core::ephemeris::local_time(utc(ms)))
 }
 
-fn load(dir: &Path) -> Option<Loaded> {
+fn load(dir: &Path, lang: Lang) -> Option<Loaded> {
     if !dir.join(INPUTS_FILE).is_file()
-        && let Some(l) = load_imported(dir)
+        && let Some(l) = load_imported(dir, lang)
     {
         return Some(l);
     }
@@ -506,7 +500,7 @@ fn load(dir: &Path) -> Option<Loaded> {
             title,
             date,
             when: if start_ms > 0 {
-                when_fr(start_ms)
+                when(start_ms, lang)
             } else {
                 String::new()
             },
@@ -524,16 +518,16 @@ fn load(dir: &Path) -> Option<Loaded> {
 }
 
 /// The outings under `plans_root` that were started (at least two fixes) or imported
-/// from Strava, the latest first.
+/// from Strava, the latest first; dates in `lang`.
 #[uniffi::export]
-pub fn outing_history(plans_root: String) -> Vec<OutingSummary> {
+pub fn outing_history(plans_root: String, lang: Lang) -> Vec<OutingSummary> {
     let Ok(rd) = std::fs::read_dir(&plans_root) else {
         return Vec::new();
     };
     let mut v: Vec<OutingSummary> = rd
         .filter_map(Result::ok)
         .filter(|e| e.path().is_dir())
-        .filter_map(|e| load(&e.path()))
+        .filter_map(|e| load(&e.path(), lang))
         .filter(Loaded::started)
         .map(|l| l.summary)
         .collect();
@@ -541,41 +535,23 @@ pub fn outing_history(plans_root: String) -> Vec<OutingSummary> {
     v
 }
 
-fn km(x: f64, lang: Lang) -> String {
-    let s = format!("{x:.1}");
-    match lang {
-        Lang::Fr => format!("{} km", s.replace('.', ",")),
-        Lang::En => format!("{s} km"),
-    }
-}
-
 fn speed_kmh(d_km: f64, s: f64) -> Option<f64> {
     (s > 60.0).then(|| d_km / (s / 3600.0))
 }
 
-/// « 10 min de plus », « 5 min de moins », « comme prévu » (within 5 min).
-fn delta_fr(actual: f64, est: f64) -> String {
-    let d = actual - est;
-    if d.abs() < 300.0 {
-        "comme prévu".into()
-    } else if d > 0.0 {
-        format!("{} de plus que prévu", duration_fr(d))
-    } else {
-        format!("{} de moins que prévu", duration_fr(-d))
-    }
-}
-
 /// The recap of the outing in `dir`, compared with the other outings under `plans_root`;
-/// `work_dir`: cache of the relief of the pack (altitude, [`crate::offpiste`]).
+/// `work_dir`: cache of the relief of the pack (altitude, [`crate::offpiste`]); texts in
+/// `lang`.
 #[uniffi::export]
 pub fn outing_recap(
     dir: String,
     plans_root: String,
     work_dir: String,
+    lang: Lang,
 ) -> Result<OutingRecap, TrackingError> {
-    let l = load(Path::new(&dir)).ok_or_else(|| invalid(format!("{dir} : pas de sortie")))?;
+    let t = text::of(lang);
+    let l = load(Path::new(&dir), lang).ok_or_else(|| invalid(t.not_an_outing(&dir)))?;
     let s = &l.summary;
-    let lang = Lang::Fr;
     // Relief of the pack for the altitude.
     let dem = l
         .pack_dir
@@ -588,51 +564,27 @@ pub fn outing_recap(
         dem_fn.as_ref().map(|f| f as &dyn Fn(LonLat) -> Option<f64>),
     );
     let mut figures = vec![
-        format!("Distance : {}", km(s.distance_km, lang)),
-        format!(
-            "Temps : {} dont {} en mouvement",
-            duration_fr(s.elapsed_s),
-            duration_fr(s.moving_s)
-        ),
+        t.recap_distance(s.distance_km),
+        t.recap_time(s.elapsed_s, s.moving_s),
     ];
     if let Some(v) = speed_kmh(s.distance_km, s.moving_s) {
-        figures.push(format!(
-            "Vitesse en mouvement : {} km/h",
-            format!("{v:.1}").replace('.', ",")
-        ));
+        figures.push(t.recap_speed(v));
     }
     let estimate_said = s.estimated_s.map(|e| {
-        let who = if l.plan.as_ref().is_some_and(|p| p.pace.is_some()) {
-            "au rythme du groupe"
-        } else {
-            "au modèle"
-        };
-        figures.push(format!(
-            "Temps estimé {who} : {}, réel : {} ({})",
-            duration_fr(e),
-            duration_fr(s.elapsed_s),
-            delta_fr(s.elapsed_s, e)
-        ));
-        delta_fr(s.elapsed_s, e)
+        let group = l.plan.as_ref().is_some_and(|p| p.pace.is_some());
+        figures.push(t.recap_estimate(group, e, s.elapsed_s));
+        t.delta(s.elapsed_s, e)
     });
     if alt.is_none()
         && let Some(g) = l.imported_gain_m
     {
-        figures.push(format!("Dénivelé : {g:.0} m en montée (export Strava)"));
+        figures.push(t.recap_gain_imported(g));
     }
     if let Some(a) = &alt {
-        let src = match a.source {
-            AltitudeSource::BarometerAndRelief => "baromètre corrigé par le relief",
-            AltitudeSource::Barometer => "baromètre",
-            AltitudeSource::Relief => "relief sous la trace",
-        };
-        figures.push(format!(
-            "Dénivelé : {:.0} m en montée, {:.0} m en descente ({src})",
-            a.ascent_m, a.descent_m
-        ));
+        figures.push(t.recap_elevation(a.ascent_m, a.descent_m, a.source));
     }
     // Comparisons with the previous outings.
-    let history: Vec<OutingSummary> = outing_history(plans_root)
+    let history: Vec<OutingSummary> = outing_history(plans_root, lang)
         .into_iter()
         .filter(|h| h.dir != s.dir && h.start_ms < s.start_ms)
         .collect();
@@ -640,18 +592,11 @@ pub fn outing_recap(
     let same: Vec<&OutingSummary> = history.iter().filter(|h| h.title == s.title).collect();
     if let Some(last) = same.first() {
         let n = same.len() + 1;
-        let d = s.elapsed_s - last.elapsed_s;
-        let how = if d.abs() < 300.0 {
-            "à peu près le même temps".to_owned()
-        } else if d < 0.0 {
-            format!("{} plus vite", duration_fr(-d))
-        } else {
-            format!("{} plus lentement", duration_fr(d))
-        };
-        comparisons.push(format!(
-            "{n}e fois sur ce parcours ; la dernière fois ({}) : {}, aujourd'hui {how}.",
-            last.when,
-            duration_fr(last.elapsed_s)
+        comparisons.push(t.recap_same_route(
+            n,
+            &last.when,
+            last.elapsed_s,
+            s.elapsed_s - last.elapsed_s,
         ));
     }
     let speeds: Vec<f64> = history
@@ -661,36 +606,26 @@ pub fn outing_recap(
         .collect();
     if let (Some(v), false) = (speed_kmh(s.distance_km, s.moving_s), speeds.is_empty()) {
         let mean = speeds.iter().sum::<f64>() / speeds.len() as f64;
-        comparisons.push(format!(
-            "Vitesse en mouvement {} km/h, contre {} km/h en moyenne sur {} sortie{} précédente{} ici.",
-            format!("{v:.1}").replace('.', ","),
-            format!("{mean:.1}").replace('.', ","),
-            speeds.len(),
-            if speeds.len() > 1 { "s" } else { "" },
-            if speeds.len() > 1 { "s" } else { "" },
-        ));
+        comparisons.push(t.recap_speed_vs(v, mean, speeds.len()));
     }
     if comparisons.is_empty() {
-        comparisons
-            .push("Première sortie enregistrée de ce genre : rien à comparer encore.".into());
+        comparisons.push(t.recap_first().into());
     }
-    let conditions = conditions(&l, alt.as_ref());
+    let conditions = conditions(&l, alt.as_ref(), t);
     let mut text = format!("{} — {}\n", s.title, s.when);
     for f in figures.iter().chain(&comparisons).chain(&conditions) {
         text.push_str("• ");
         text.push_str(f);
         text.push('\n');
     }
-    let spoken = format!(
-        "Bilan : {} en {}{}.{}",
-        distance_words(s.distance_km * 1000.0, lang),
-        duration_fr(s.elapsed_s),
-        estimate_said.map(|d| format!(", {d}")).unwrap_or_default(),
+    let spoken = t.recap_spoken(
+        &distance_words(s.distance_km * 1000.0, lang),
+        s.elapsed_s,
+        estimate_said.as_deref(),
         comparisons
             .first()
             .filter(|_| !same.is_empty())
-            .map(|c| format!(" {c}"))
-            .unwrap_or_default()
+            .map(String::as_str),
     );
     Ok(OutingRecap {
         summary: s.clone(),
@@ -704,7 +639,7 @@ pub fn outing_recap(
     })
 }
 
-fn conditions(l: &Loaded, alt: Option<&Altitude>) -> Vec<String> {
+fn conditions(l: &Loaded, alt: Option<&Altitude>, t: &dyn text::Texts) -> Vec<String> {
     let mut out = Vec::new();
     let (Some(a), Some(b)) = (l.fixes.first(), l.fixes.last()) else {
         return out;
@@ -722,40 +657,34 @@ fn conditions(l: &Loaded, alt: Option<&Altitude>) -> Vec<String> {
             temps.iter().copied().reduce(f64::min),
             temps.iter().copied().reduce(f64::max),
         ) {
-            out.push(format!("Température prévue : {lo:.0} à {hi:.0} °C"));
+            out.push(t.cond_temperature(lo, hi));
         }
         if let Some(g) = hours
             .iter()
             .filter_map(|h| h.gust_kmh.or(h.wind_kmh))
             .reduce(f64::max)
         {
-            out.push(format!("Vent prévu : rafales jusqu'à {g:.0} km/h"));
+            out.push(t.cond_gusts(g));
         }
         let fog = hours.iter().filter(|h| h.fog == Some(true)).count();
         if fog > 0 {
-            out.push(format!("Brouillard prévu sur {fog} h"));
+            out.push(t.cond_fog(fog));
         }
         let snow: f64 = hours.iter().filter_map(|h| h.snowfall_cm).sum();
         if snow >= 0.5 {
-            out.push(format!(
-                "Neige prévue : {} cm",
-                format!("{snow:.1}").replace('.', ",")
-            ));
+            out.push(t.cond_snow(snow));
         }
         if !hours.is_empty() {
-            out.push(format!(
-                "Source : prévision du pack au point « {} »",
-                w.name
-            ));
+            out.push(t.cond_source(&w.name));
         }
     }
     if let Some((lo, hi)) = alt.and_then(|a| a.range_m)
         && alt.is_some_and(|a| a.source != AltitudeSource::Barometer)
     {
-        out.push(format!("Altitude : de {lo:.0} à {hi:.0} m"));
+        out.push(t.cond_altitude(lo, hi));
     }
     if out.is_empty() {
-        out.push("Conditions : aucune prévision dans cette sortie.".into());
+        out.push(t.cond_none().into());
     }
     out
 }
@@ -889,7 +818,7 @@ mod tests {
         let second = outing(root.path(), "b", T0 + 86_400_000, 160);
         // Never started: not in the history.
         let _ = outing(root.path(), "c", T0 + 2 * 86_400_000, 1);
-        let h = outing_history(root.path().display().to_string());
+        let h = outing_history(root.path().display().to_string(), Lang::Fr);
         assert_eq!(h.len(), 2);
         assert_eq!(h[0].dir, second.display().to_string());
         assert!(
@@ -902,6 +831,7 @@ mod tests {
             second.display().to_string(),
             root.path().display().to_string(),
             work.path().display().to_string(),
+            Lang::Fr,
         )
         .unwrap();
         eprintln!("{}\n{}", r.text, r.spoken);
@@ -969,7 +899,7 @@ mod tests {
         let mut empty = summary("strava-104", "strava", T0);
         empty.track.clear();
         write(&root.path().join("strava-104"), &empty);
-        let h = outing_history(root.path().display().to_string());
+        let h = outing_history(root.path().display().to_string(), Lang::Fr);
         assert_eq!(h.len(), 2, "{h:?}");
         assert_eq!(h[0].dir, strava.display().to_string());
         assert_eq!(h[0].kind, "strava");
@@ -981,6 +911,7 @@ mod tests {
             strava.display().to_string(),
             root.path().display().to_string(),
             work.path().display().to_string(),
+            Lang::Fr,
         )
         .unwrap();
         assert!(r.text.contains("Distance : 21,4 km"), "{}", r.text);

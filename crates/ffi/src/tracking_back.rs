@@ -882,25 +882,9 @@ pub fn should_propose(home_time: bool, home_route: bool, backing: bool, pending:
     home_time && !home_route && !backing && !pending
 }
 
-/// The proposal of « ramène-moi », French (said and shown; one gesture to accept).
-pub fn proposal_text(target: Option<&Target>) -> String {
-    let to = match target {
-        Some(Target {
-            kind: TargetKind::Destination,
-            name: Some(n),
-            ..
-        }) => format!("jusqu'à {n}"),
-        Some(Target {
-            kind: TargetKind::Destination,
-            ..
-        }) => "jusqu'à l'arrivée".into(),
-        Some(Target {
-            kind: TargetKind::Car,
-            ..
-        }) => "jusqu'à la voiture".into(),
-        _ => "jusqu'au départ".into(),
-    };
-    format!("Il est temps de rentrer. Être guidé {to} ?")
+/// The written proposal of « ramène-moi » in `lang` (one gesture to accept).
+pub fn proposal_text(target: Option<&Target>, lang: skimap_common::Lang) -> String {
+    crate::text::of(lang).back_proposal(target)
 }
 
 /// The car parks of the pack in `pack_dir` (`stations-pois`, kind `parking`).
@@ -1372,7 +1356,7 @@ mod tests {
         assert!(!should_propose(false, false, false, false));
         let car = target_of(&car_at(0.0, 0.0));
         assert_eq!(
-            proposal_text(Some(&car)),
+            proposal_text(Some(&car), skimap_common::Lang::Fr),
             "Il est temps de rentrer. Être guidé jusqu'à la voiture ?"
         );
         let gite = Target {
@@ -1381,11 +1365,14 @@ mod tests {
             name: Some("Gîte du Laus".into()),
         };
         assert_eq!(
-            proposal_text(Some(&gite)),
+            proposal_text(Some(&gite), skimap_common::Lang::Fr),
             "Il est temps de rentrer. Être guidé jusqu'à Gîte du Laus ?"
         );
-        assert!(proposal_text(None).ends_with("jusqu'au départ ?"));
-        for t in [proposal_text(Some(&car)), proposal_text(Some(&gite))] {
+        assert!(proposal_text(None, skimap_common::Lang::Fr).ends_with("jusqu'au départ ?"));
+        for t in [
+            proposal_text(Some(&car), skimap_common::Lang::Fr),
+            proposal_text(Some(&gite), skimap_common::Lang::Fr),
+        ] {
             assert!(!t.contains("sûr") && !t.contains("sans danger"), "{t}");
         }
     }

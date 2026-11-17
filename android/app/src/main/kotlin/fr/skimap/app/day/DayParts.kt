@@ -48,6 +48,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import fr.skimap.app.R
+import fr.skimap.app.appLang
+import fr.skimap.app.clockText
+import fr.skimap.app.durationText
 import fr.skimap.app.ui.theme.GloveTarget
 import fr.skimap.core.DayStart
 import fr.skimap.core.GroupSpec
@@ -58,14 +61,6 @@ import java.time.format.DateTimeFormatter
 
 private val DURATIONS = listOf(60, 90, 120, 180, 240)
 private val RETURNS = listOf(null, "15:00", "16:00", "17:00")
-
-private const val MINUTES_PER_HOUR = 60
-
-private fun durationLabel(min: Int): String {
-    val h = min / MINUTES_PER_HOUR
-    val m = min % MINUTES_PER_HOUR
-    return if (m == 0) "$h h" else "$h h ${"%02d".format(m)}"
-}
 
 @Composable
 internal fun Section(text: String) {
@@ -106,6 +101,7 @@ internal fun Inputs(
     onNewGroup: () -> Unit,
 ) {
     val i = state.inputs
+    val lang = appLang(LocalConfiguration.current.locales[0])
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         ChoiceRow(stringResource(R.string.day_start)) {
             state.starts.forEach { s: DayStart ->
@@ -117,7 +113,7 @@ internal fun Inputs(
             }
         }
         ChoiceRow(stringResource(R.string.day_duration)) {
-            DURATIONS.forEach { d -> Choice(durationLabel(d), i.budgetMin == d, { actions.setInputs { it.copy(budgetMin = d) } }) }
+            DURATIONS.forEach { d -> Choice(durationText(d, lang), i.budgetMin == d, { actions.setInputs { it.copy(budgetMin = d) } }) }
         }
         ChoiceRow(stringResource(R.string.day_style)) {
             Choice(stringResource(R.string.day_classic), !i.skating, { actions.setInputs { it.copy(skating = false) } })
@@ -125,7 +121,7 @@ internal fun Inputs(
         }
         ChoiceRow(stringResource(R.string.day_return)) {
             RETURNS.forEach { r ->
-                val label = r?.replace(":00", " h") ?: stringResource(R.string.day_return_free)
+                val label = r?.let { clockText(it, lang) } ?: stringResource(R.string.day_return_free)
                 Choice(label, i.returnBefore == r, { actions.setInputs { it.copy(returnBefore = r) } })
             }
         }

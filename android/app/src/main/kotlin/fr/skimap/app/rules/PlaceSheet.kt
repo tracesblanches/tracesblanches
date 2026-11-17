@@ -31,6 +31,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import fr.skimap.app.R
+import fr.skimap.app.appLang
 import fr.skimap.app.fog.FogActivity
 import fr.skimap.app.fog.Outings
 import fr.skimap.app.guidance.SkiTrackingService
@@ -74,7 +75,7 @@ fun PlaceSheet(
         rules =
             withContext(Dispatchers.IO) {
                 Outings.packDir(context, site)?.let { p ->
-                    runCatching { placeRules(p.path, place.lon, place.lat, System.currentTimeMillis()) }.getOrNull()
+                    runCatching { placeRules(p.path, place.lon, place.lat, System.currentTimeMillis(), appLang()) }.getOrNull()
                 }
             }
     }
@@ -147,7 +148,11 @@ fun PlaceContent(
                 shape = MaterialTheme.shapes.small,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("${t.title} : ${t.verdict}", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(8.dp))
+                Text(
+                    stringResource(R.string.label_value, t.title, t.verdict),
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(8.dp),
+                )
             }
         }
         if (r.zones.isNotEmpty()) {

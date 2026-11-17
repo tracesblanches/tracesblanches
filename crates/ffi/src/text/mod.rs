@@ -73,4 +73,128 @@ pub trait Texts: Sync {
     fn default_group_name(&self) -> &'static str;
     /// Name of the group of one adult the app offers.
     fn solo_group_name(&self) -> &'static str;
+
+    // ---- The recap of an outing (S4).
+    /// When an outing started: « 15/02 à 10 h 05 ».
+    fn when(&self, t: NaiveDateTime) -> String;
+    /// Actual against estimated time: « comme prévu », « 10 min de plus que prévu ».
+    fn delta(&self, actual_s: f64, estimated_s: f64) -> String;
+    /// « Distance : 12,4 km ».
+    fn recap_distance(&self, km: f64) -> String;
+    /// « Temps : 2 h 30 dont 2 h 05 en mouvement ».
+    fn recap_time(&self, elapsed_s: f64, moving_s: f64) -> String;
+    /// « Vitesse en mouvement : 6,1 km/h ».
+    fn recap_speed(&self, kmh: f64) -> String;
+    /// Estimated against actual time, `group`: estimated at the pace of the group.
+    fn recap_estimate(&self, group: bool, estimated_s: f64, actual_s: f64) -> String;
+    /// Ascent from a Strava export.
+    fn recap_gain_imported(&self, gain_m: f64) -> String;
+    /// Ascent and descent with the source of the altitude.
+    fn recap_elevation(
+        &self,
+        ascent_m: f64,
+        descent_m: f64,
+        source: crate::recap::AltitudeSource,
+    ) -> String;
+    /// The `n`th time on the same route: last time (`when`, `last_s`), today `diff_s` more.
+    fn recap_same_route(&self, n: usize, when: &str, last_s: f64, diff_s: f64) -> String;
+    /// Moving speed against the mean of `n` previous outings here.
+    fn recap_speed_vs(&self, kmh: f64, mean_kmh: f64, n: usize) -> String;
+    /// Nothing to compare with yet.
+    fn recap_first(&self) -> &'static str;
+    /// What the voice says: distance, time, delta, comparison.
+    fn recap_spoken(
+        &self,
+        distance: &str,
+        elapsed_s: f64,
+        delta: Option<&str>,
+        comparison: Option<&str>,
+    ) -> String;
+    /// Forecast temperature range.
+    fn cond_temperature(&self, lo: f64, hi: f64) -> String;
+    /// Forecast gusts.
+    fn cond_gusts(&self, kmh: f64) -> String;
+    /// Hours of forecast fog.
+    fn cond_fog(&self, hours: usize) -> String;
+    /// Forecast snow.
+    fn cond_snow(&self, cm: f64) -> String;
+    /// Where the forecast comes from.
+    fn cond_source(&self, point: &str) -> String;
+    /// Altitude range of the outing.
+    fn cond_altitude(&self, lo: f64, hi: f64) -> String;
+    /// No forecast in the outing.
+    fn cond_none(&self) -> &'static str;
+    /// Not an outing (error).
+    fn not_an_outing(&self, dir: &str) -> String;
+
+    // ---- The rules of a place (F11).
+    /// Title of a topic.
+    fn rule_topic(&self, t: skimap_zones::rules::Topic) -> &'static str;
+    /// A verdict: « interdit », « toléré sous conditions ».
+    fn rule_verdict(&self, v: skimap_core::zone_eval::Verdict) -> &'static str;
+    /// Suffix of a fire ban that includes stoves.
+    fn stoves_included(&self) -> &'static str;
+    /// A zone out of its sensitive months.
+    fn zone_off_season(&self, name: &str) -> String;
+    /// Why a rule is not in force.
+    fn rule_inactive(&self, i: skimap_core::zone_eval::Inactive) -> &'static str;
+    /// Kind of the source of a rule.
+    fn source_kind(&self, k: skimap_zones::rules::SourceKind) -> &'static str;
+    /// The instant of the rules: « le 15/02 à 9 h 00 ».
+    fn rules_at(&self, t: NaiveDateTime) -> String;
+    /// What the rules are not.
+    fn rules_note(&self) -> &'static str;
+
+    // ---- Preparing the next days and ski mode (S3).
+    /// A day: « lundi 16/02 ».
+    fn day(&self, d: NaiveDate) -> String;
+    /// « mis à jour le 15/11 à 10 h 05 ».
+    fn updated(&self, t: NaiveDateTime) -> String;
+    /// No date known.
+    fn date_unknown(&self) -> &'static str;
+    /// A day skipped: no forecast in the pack.
+    fn skipped_no_forecast(&self, day: &str) -> String;
+    /// A day skipped: no known start.
+    fn skipped_no_start(&self, day: &str) -> String;
+    /// Time of a route at the pace of the group: median and range.
+    fn time_group(&self, median_s: f64, lo_s: f64, hi_s: f64) -> String;
+    /// Time of a route by the model.
+    fn time_model(&self, s: f64) -> String;
+    /// Label of an information of the pack by layer id (`bera`, `status`…), `pack` for
+    /// the pack itself.
+    fn info_label(&self, id: &str) -> Option<&'static str>;
+    /// Battery enough for more than 24 h.
+    fn battery_day(&self, reserve_pct: f64, cold: Option<f64>) -> String;
+    /// Battery enough until a time.
+    fn battery_until(&self, until: &str, reserve_pct: f64, cold: Option<f64>) -> String;
+    /// Battery not enough for the planned outing.
+    fn battery_short(&self, end: &str, reserve: &str) -> String;
+
+    // ---- Off-piste (SR2).
+    /// « Jamais une garantie », said with every off-piste route and low-exposure zone.
+    fn never_guarantee(&self) -> &'static str;
+    /// A layer the pack lacks: `snow`, `exposure`, `zones`, `network`.
+    fn missing_layer(&self, id: &str) -> &'static str;
+    /// No off-piste relief in the pack.
+    fn no_offpiste_relief(&self) -> &'static str;
+    /// A point outside the relief.
+    fn outside_relief(&self) -> &'static str;
+    /// No passable cell near an end.
+    fn no_passable(&self, radius_m: f64) -> String;
+    /// No route under 30°.
+    fn no_offpiste_route(&self) -> &'static str;
+
+    // ---- Guidance (J7, #54).
+    /// A range of arrival times: « 15 h 20 à 15 h 40 ».
+    fn arrival_range(&self, lo: NaiveDateTime, hi: NaiveDateTime) -> String;
+    /// Why the route changed.
+    fn cause(&self, c: &skimap_plan::tracker::Cause) -> String;
+    /// The written proposal of « ramène-moi ».
+    fn back_proposal(&self, target: Option<&crate::tracking_back::Target>) -> String;
+
+    // ---- Packs shown together (free mode).
+    /// Name of the merged packs.
+    fn all_domains(&self) -> &'static str;
+    /// « 3 packs : A, B, C. »
+    fn packs_note(&self, names: &[&str]) -> String;
 }
