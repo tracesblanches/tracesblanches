@@ -6,7 +6,12 @@
 //! - the trail network of the domain (OpenSnowMap planet extract, ways of
 //!   `domaines_ways.json`): each point is snapped to the nearest point of the network, a point
 //!   near a dead end of the network (trailhead) counts more;
-//! - points within [`CLUSTER_M`] of each other make one start (a car park beside a lodge).
+//! - points within [`CLUSTER_M`] of each other make one start (a car park beside a lodge);
+//! - the part of the network a start serves (#166): connected component of the routing
+//!   graph of the domain ways ([`Reach`], the graph of the packs), weighed by its nordic
+//!   km. A point on a piece too short for a loop of the default outing ([`LOOP_KM`])
+//!   counts less in proportion, and the largest part always gets a start
+//!   ([`Served`], said in `departs.json`).
 //!
 //! The best [`MAX_STARTS`] starts are kept, main first. A domain without any such point
 //! gets the network point nearest to its nearest lodge, desk or car park, else to its
@@ -26,6 +31,9 @@ use skimap_common::geom::LonLat;
 use skimap_common::layout::DataLayout;
 use skimap_common::output::{feature, point, round7, write_geojson, write_json};
 use skimap_common::site::Start;
+use skimap_osm::extract::CONNECTOR_MAX_M;
+use skimap_osm::graph::{EdgeKind, Graph};
+use skimap_osm::pistes::PisteSet;
 
 use crate::domains::{Domain, DomainWays, Local};
 use crate::error::{Result, StationsError};
@@ -46,6 +54,12 @@ pub const MIN_SHARE: f64 = 0.25;
 
 /// Largest distance of the point of a [`Method::Near`] start to the network, m.
 pub const NEAR_MAX_M: f64 = 1000.0;
+
+/// Nordic km of network a start must serve for a loop of the app's default outing (2 h,
+/// the presets of the planner): the planner turns at 50 to 110 % of the budget, so at an
+/// hour of round trip at least, about 5 km out at the flat classic speed (≈ 10 km/h), and
+/// comes back by other trails. A point serving fewer km weighs that share of its score.
+pub const LOOP_KM: f64 = 10.0;
 
 /// Weight of a kind of point and its largest distance to the network, m.
 pub fn kind_rule(kind: &str) -> Option<(f64, f64)> {
@@ -124,6 +138,16 @@ pub struct Way {
     pub points: Vec<(i64, LonLat)>,
 }
 
+impl Way {
+    /// The way of a piste of the planet extract.
+    pub fn of(p: &skimap_osm::pistes::Piste) -> Self {
+        Self {
+            name: p.way_name.clone(),
+            points: p.points.clone(),
+        }
+    }
+}
+
 /// How a start was found.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -155,6 +179,115 @@ pub struct Depart {
     pub score: f64,
     /// OSM pages of its points.
     pub points: Vec<String>,
+    /// Part of the trail network it serves and why it ranks there (census domains, #166).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network: Option<Served>,
+}
+
+/// Part of the trail network a start serves ([`Reach`]).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Served {
+    /// Nordic km of the part (connected component of the routing graph).
+    pub km: f64,
+    /// Nordic km of the whole domain network.
+    pub domain_km: f64,
+    /// Whether it is the largest part of the domain network.
+    pub main: bool,
+    /// Why the start is there: its score lowered by a short part, or kept on the largest
+    /// part that no better start served.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// Parts of the trail network of a domain a skier links without leaving the trails:
+/// connected components of the routing graph of its ways ([`Graph::build`] with the
+/// repairs of the packs, [`CONNECTOR_MAX_M`]), with their nordic km. Hike and snowshoe
+/// ways link parts (the planner uses them) but add no km.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Reach {
+    /// Component of each way (index into the ways of the domain), `None` without edge.
+    pub way_component: Vec<Option<usize>>,
+    /// Nordic km of each component.
+    pub component_km: Vec<f64>,
+}
+
+impl Reach {
+    /// Components of `set`, the pistes of the domain ways in the order of its ways.
+    pub fn of(set: &PisteSet) -> Self {
+        let g = Graph::build(set, CONNECTOR_MAX_M);
+        let (comp, n) = g.components();
+        let mut component_km = vec![0.0; n];
+        let mut way_component = vec![None; set.pistes.len()];
+        for e in &g.edges {
+            if let EdgeKind::Piste { piste } = e.kind {
+                let c = comp[e.from];
+                way_component[piste] = Some(c);
+                if set.pistes[piste].is_nordic() {
+                    component_km[c] += e.length_m / 1000.0;
+                }
+            }
+        }
+        Self {
+            way_component,
+            component_km,
+        }
+    }
+
+    /// Nordic km of the whole network.
+    pub fn total_km(&self) -> f64 {
+        self.component_km.iter().sum()
+    }
+
+    /// The largest component, by nordic km (none without nordic km).
+    pub fn main(&self) -> Option<usize> {
+        self.component_km
+            .iter()
+            .enumerate()
+            .filter(|(_, km)| **km > 0.0)
+            .max_by(|a, b| a.1.total_cmp(b.1).then(b.0.cmp(&a.0)))
+            .map(|(i, _)| i)
+    }
+
+    /// Component of way `w`.
+    pub fn component(&self, w: usize) -> Option<usize> {
+        self.way_component.get(w).copied().flatten()
+    }
+
+    /// Nordic km of the component of way `w`.
+    pub fn km(&self, w: usize) -> f64 {
+        self.component(w).map_or(0.0, |c| self.component_km[c])
+    }
+
+    /// Weight of a start on way `w`: the share of a default-outing loop its part holds,
+    /// at most 1 ([`LOOP_KM`]).
+    pub fn factor(&self, w: usize) -> f64 {
+        (self.km(w) / LOOP_KM).min(1.0)
+    }
+
+    /// What a start on way `w` serves, with `reason`.
+    pub fn served(&self, w: usize, reason: Option<String>) -> Served {
+        let r1 = |x: f64| (x * 10.0).round() / 10.0;
+        Served {
+            km: r1(self.km(w)),
+            domain_km: r1(self.total_km()),
+            main: self.component(w).is_some() && self.component(w) == self.main(),
+            reason,
+        }
+    }
+}
+
+/// What a start at `pos` serves: the part of the network of its nearest way (`ways` in
+/// the order of `reach`); `None` without network.
+pub fn serving(ways: &[Way], reach: &Reach, pos: LonLat) -> Option<Served> {
+    let local = Local::new(pos);
+    let net = Net::new(ways, &local);
+    net.nearest(local.xy(pos))
+        .map(|s| reach.served(s.way, None))
+}
+
+/// `x` with one decimal and a decimal comma.
+fn km_fr(x: f64) -> String {
+    format!("{x:.1}").replace('.', ",")
 }
 
 /// `departs.json`.
@@ -251,8 +384,18 @@ impl Net {
     }
 
     pub(crate) fn nearest(&self, p: (f64, f64)) -> Option<Snap> {
+        self.nearest_where(p, |_| true)
+    }
+
+    /// Nearest point of the ways `keep` accepts.
+    pub(crate) fn nearest_where(
+        &self,
+        p: (f64, f64),
+        keep: impl Fn(usize) -> bool,
+    ) -> Option<Snap> {
         self.segments
             .iter()
+            .filter(|(_, _, way)| keep(*way))
             .map(|(a, b, way)| {
                 let xy = project(p, *a, *b);
                 Snap {
@@ -274,6 +417,75 @@ struct Candidate<'a> {
     xy: (f64, f64),
     snap: Snap,
     score: f64,
+}
+
+/// Points making one start: the best one (`head`, an index of the candidates), the others.
+#[derive(Debug, Clone)]
+struct Cluster {
+    head: usize,
+    score: f64,
+    members: Vec<usize>,
+    method: Method,
+    /// Why it is kept when not for its score ([`Served::reason`]).
+    reason: Option<String>,
+    /// Its head is snapped to the largest part of the network, not to the nearest trail.
+    main_only: bool,
+}
+
+/// Score of a point `dist` metres from the network (at most `max`): the weight of its kind
+/// lowered with the distance, car park places, its bonus, +1 near a dead end.
+fn point_score(p: &Point, dist: f64, max: f64, net: &Net, xy: (f64, f64)) -> f64 {
+    let mut score = weight(p) * (1.0 - 0.5 * dist / max);
+    if p.kind == "parking" {
+        score += p.capacity.map_or(0.0, |c| (c / 50.0).min(2.0));
+    }
+    score += p.bonus;
+    if net.dead_end_within(xy, TRAILHEAD_M) {
+        score += 1.0;
+    }
+    score
+}
+
+/// The point of the largest part `main` of the network nearest to a lodge, desk or car
+/// park of the place (not private, at most [`NEAR_MAX_M`] from that part), the best scored;
+/// [`Method::Points`] when within the distance of its kind, [`Method::Near`] beyond.
+fn near_main<'a>(
+    r: &Reach,
+    main: usize,
+    net: &Net,
+    local: &Local,
+    points: &[&'a Point],
+) -> Option<(Candidate<'a>, Method)> {
+    points
+        .iter()
+        .filter(|p| !(p.kind == "parking" && private(p)))
+        .filter_map(|p| {
+            let (_, kmax) = kind_rule(&p.kind)?;
+            let xy = local.xy(p.pos);
+            let snap = net.nearest_where(xy, |w| r.component(w) == Some(main))?;
+            (snap.dist <= NEAR_MAX_M).then(|| {
+                let method = if snap.dist <= kmax {
+                    Method::Points
+                } else {
+                    Method::Near
+                };
+                let score = point_score(p, snap.dist, NEAR_MAX_M, net, xy) * r.factor(snap.way);
+                (
+                    Candidate {
+                        point: p,
+                        xy,
+                        snap,
+                        score,
+                    },
+                    method,
+                )
+            })
+        })
+        .max_by(|a, b| {
+            a.0.score
+                .total_cmp(&b.0.score)
+                .then(b.0.point.url.cmp(&a.0.point.url))
+        })
 }
 
 pub(crate) fn private(p: &Point) -> bool {
@@ -363,13 +575,22 @@ impl Place {
 
 /// Starts of one domain from its points (those of `pois.geojson` attached to it), its
 /// trail ways and, for the fallbacks, its representative point.
-pub fn domain_departs(d: &Domain, ways: &[Way], points: &[&Point]) -> Vec<Depart> {
+pub fn domain_departs(
+    d: &Domain,
+    ways: &[Way],
+    points: &[&Point],
+    reach: Option<&Reach>,
+) -> Vec<Depart> {
     let place = Place::domain(d);
-    let mut out = clustered(&place, ways, points, MAX_STARTS, MIN_SHARE);
+    let mut out = clustered(&place, ways, points, MAX_STARTS, MIN_SHARE, reach);
     if out.is_empty() {
         let local = Local::new(d.point);
         let net = Net::new(ways, &local);
-        out.push(fallback(d, &net, &local, points));
+        let mut f = fallback(d, &net, &local, points);
+        f.network = reach
+            .filter(|r| r.main().is_some())
+            .and_then(|r| serving(ways, r, f.start.position()));
+        out.push(f);
     }
     number(&mut out);
     out
@@ -385,21 +606,29 @@ pub fn number(out: &mut [Depart]) {
 /// Starts of a place from its points next to its network: clusters of points, the
 /// best `max` kept, each at least `min_share` of the best score. Empty without such
 /// points (the caller's fallbacks).
+///
+/// With the `reach` of a domain network (#166): each point weighs its [`Reach::factor`]
+/// (a point on a piece too short for a default-outing loop counts less), and when no kept
+/// start serves the largest part of the network, the best start on it is kept: the best
+/// cluster on it, else the point of that part nearest to a lodge, desk or car park of the
+/// place (at most [`NEAR_MAX_M`] away). It comes first when the first start serves fewer
+/// than [`LOOP_KM`], last otherwise (in place of the last one when `max` are kept).
 pub fn clustered(
     place: &Place,
     ways: &[Way],
     points: &[&Point],
     max: usize,
     min_share: f64,
+    reach: Option<&Reach>,
 ) -> Vec<Depart> {
     let local = Local::new(place.point);
     let net = Net::new(ways, &local);
+    let reach = reach.filter(|r| r.main().is_some());
     let mut cands: Vec<Candidate> = Vec::new();
     for p in points {
         let Some((_, max)) = kind_rule(&p.kind) else {
             continue;
         };
-        let w = weight(p);
         if p.kind == "parking" && private(p) {
             continue;
         }
@@ -407,23 +636,15 @@ pub fn clustered(
         let Some(snap) = net.nearest(xy) else {
             continue;
         };
-        let dist = snap.dist;
-        if dist > max {
+        if snap.dist > max {
             continue;
         }
-        let mut score = w * (1.0 - 0.5 * dist / max);
-        if p.kind == "parking" {
-            score += p.capacity.map_or(0.0, |c| (c / 50.0).min(2.0));
-        }
-        score += p.bonus;
-        if net.dead_end_within(xy, TRAILHEAD_M) {
-            score += 1.0;
-        }
+        let factor = reach.map_or(1.0, |r| r.factor(snap.way));
         cands.push(Candidate {
             point: p,
             xy,
             snap,
-            score,
+            score: point_score(p, snap.dist, max, &net, xy) * factor,
         });
     }
     cands.sort_by(|a, b| {
@@ -432,34 +653,118 @@ pub fn clustered(
             .then(a.point.url.cmp(&b.point.url))
     });
     // Greedy clusters around the best points.
-    let mut clusters: Vec<(usize, f64, Vec<usize>)> = Vec::new();
+    let mut clusters: Vec<Cluster> = Vec::new();
     for (i, c) in cands.iter().enumerate() {
         match clusters
             .iter_mut()
-            .find(|(h, _, _)| d2(cands[*h].xy, c.xy) <= CLUSTER_M)
+            .find(|cl| d2(cands[cl.head].xy, c.xy) <= CLUSTER_M)
         {
             Some(cl) => {
-                cl.1 += 0.5 * c.score;
-                cl.2.push(i);
+                cl.score += 0.5 * c.score;
+                cl.members.push(i);
             }
-            None => clusters.push((i, c.score, vec![i])),
+            None => clusters.push(Cluster {
+                head: i,
+                score: c.score,
+                members: vec![i],
+                method: Method::Points,
+                reason: None,
+                main_only: false,
+            }),
         }
     }
-    clusters.sort_by(|a, b| b.1.total_cmp(&a.1));
-    let best = clusters.first().map_or(0.0, |c| c.1);
-    clusters.retain(|c| c.1 >= min_share * best);
+    clusters.sort_by(|a, b| b.score.total_cmp(&a.score));
+    let ranked = clusters.clone();
+    let best = clusters.first().map_or(0.0, |c| c.score);
+    clusters.retain(|c| c.score >= min_share * best);
     clusters.truncate(max);
+    if let Some(r) = reach
+        && let Some(main) = r.main()
+        && max > 0
+    {
+        let on_main =
+            |c: &Cluster, cands: &[Candidate]| r.component(cands[c.head].snap.way) == Some(main);
+        if !clusters.iter().any(|c| on_main(c, &cands)) {
+            let lead = format!(
+                "réseau principal du domaine ({} km nordiques sur {})",
+                km_fr(r.component_km[main]),
+                km_fr(r.total_km())
+            );
+            let first_km = clusters.first().map(|c| r.km(cands[c.head].snap.way));
+            let why_first = match first_km {
+                Some(km) if km < LOOP_KM => format!(
+                    " ; placé en tête : le meilleur départ ne dessert que {} km, moins que les {LOOP_KM:.0} km d'une boucle de 2 h",
+                    km_fr(km)
+                ),
+                _ => String::new(),
+            };
+            let kept = match ranked.iter().find(|c| on_main(c, &cands)).cloned() {
+                Some(mut c) => {
+                    c.reason = Some(format!(
+                        "{lead} : aucun départ mieux noté ne le dessert{why_first}"
+                    ));
+                    Some(c)
+                }
+                None => near_main(r, main, &net, &local, points).map(|(c, method)| {
+                    let i = cands.len();
+                    cands.push(c);
+                    Cluster {
+                        head: i,
+                        score: cands[i].score,
+                        members: vec![i],
+                        method,
+                        main_only: true,
+                        reason: Some(match method {
+                            Method::Near => format!(
+                                "{lead} : aucun foyer, accueil ni parking à moins de 300 m de lui, point du réseau principal le plus proche de l'un d'eux{why_first}"
+                            ),
+                            _ => format!(
+                                "{lead} : point du réseau principal le plus proche d'un foyer, accueil ou parking à moins de 300 m, plus près encore d'une autre partie{why_first}"
+                            ),
+                        }),
+                    }
+                }),
+            };
+            if let Some(c) = kept {
+                let head = c.head;
+                if first_km.is_none_or(|km| km < LOOP_KM) {
+                    clusters.insert(0, c);
+                    clusters.truncate(max);
+                } else {
+                    clusters.truncate(max - 1);
+                    clusters.push(c);
+                }
+                // The others again at least `min_share` of the best of them all.
+                let best = clusters.iter().map(|c| c.score).fold(0.0, f64::max);
+                clusters.retain(|c| c.head == head || c.score >= min_share * best);
+            }
+        }
+        // The first start serves a default-outing loop when a kept one does.
+        let km = |c: &Cluster| r.km(cands[c.head].snap.way);
+        if let Some(first) = clusters.first().map(km)
+            && first < LOOP_KM
+            && let Some(i) = clusters.iter().position(|c| km(c) >= LOOP_KM)
+        {
+            let mut c = clusters.remove(i);
+            c.reason = Some(format!(
+                "réseau de {} km nordiques : placé en tête, le départ le mieux noté ne dessert que {} km, moins que les {LOOP_KM:.0} km d'une boucle de 2 h",
+                km_fr(km(&c)),
+                km_fr(first)
+            ));
+            clusters.insert(0, c);
+        }
+    }
 
     let mut out: Vec<Depart> = Vec::new();
-    for (head, score, members) in &clusters {
-        let ms: Vec<&Candidate> = members.iter().map(|i| &cands[*i]).collect();
+    for cl in &clusters {
+        let ms: Vec<&Candidate> = cl.members.iter().map(|i| &cands[*i]).collect();
         // Named after the best named lodge or desk, else the best named point, else the
         // kind of the head.
         let named = ms.iter().filter(|c| c.point.name.is_some()).max_by(|a, b| {
             let r = |c: &Candidate| weight(c.point);
             r(a).total_cmp(&r(b)).then(b.score.total_cmp(&a.score))
         });
-        let h = &cands[*head];
+        let h = &cands[cl.head];
         let way_name = ways[h.snap.way].name.clone();
         let (kname, kphrase, ken) = kind_fr(&h.point.kind);
         let (trail_fr, _) = place.trail();
@@ -475,6 +780,38 @@ pub fn clustered(
             ),
         };
         let pos = local.lonlat(h.snap.xy);
+        let trail = way_name
+            .map(|w| format!(", {trail_fr} « {w} »"))
+            .unwrap_or_default();
+        let provenance = if cl.main_only {
+            format!(
+                "déduit (X9) : point du réseau principal le plus proche de {} ({}, à {:.0} m du réseau){trail}",
+                h.point.kind, h.point.url, h.snap.dist
+            )
+        } else {
+            format!(
+                "déduit (X9) : point du réseau le plus proche de {} ({}){trail}",
+                ms.iter()
+                    .map(|c| c.point.kind.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                h.point.url,
+            )
+        };
+        let network = reach.map(|r| {
+            let reason = cl.reason.clone().or_else(|| {
+                let f = r.factor(h.snap.way);
+                // Said when the factor shows (1,00 is no weighting).
+                (f < 0.995).then(|| {
+                    format!(
+                        "réseau de {} km nordiques seulement (moins des {LOOP_KM:.0} km d'une boucle de 2 h) : score × {}",
+                        km_fr(r.km(h.snap.way)),
+                        format!("{f:.2}").replace('.', ",")
+                    )
+                })
+            });
+            r.served(h.snap.way, reason)
+        });
         out.push(Depart {
             start: Start {
                 id: String::new(),
@@ -483,21 +820,12 @@ pub fn clustered(
                 phrase_en,
                 lon: round7(pos.lon),
                 lat: round7(pos.lat),
-                provenance: format!(
-                    "déduit (X9) : point du réseau le plus proche de {} ({}){}",
-                    ms.iter()
-                        .map(|c| c.point.kind.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                    h.point.url,
-                    way_name
-                        .map(|w| format!(", {trail_fr} « {w} »"))
-                        .unwrap_or_default()
-                ),
+                provenance,
             },
-            method: Method::Points,
-            score: (score * 100.0).round() / 100.0,
+            method: cl.method,
+            score: (cl.score * 100.0).round() / 100.0,
             points: ms.iter().map(|c| c.point.url.clone()).collect(),
+            network,
         });
     }
     // Two starts named alike: the later ones take the name of their trail, else their
@@ -659,14 +987,16 @@ fn fallback(d: &Domain, net: &Net, local: &Local, points: &[&Point]) -> Depart {
         method,
         score,
         points: urls,
+        network: None,
     }
 }
 
-/// Starts of every domain.
+/// Starts of every domain, from the pistes of the planet extract (geometry and routing
+/// graph of the domain ways, [`Reach`]).
 pub fn all_departs(
     ds: &[Domain],
     domain_ways: &DomainWays,
-    geometry: &HashMap<i64, Way>,
+    pistes: &PisteSet,
     points: &[Point],
 ) -> BTreeMap<String, Vec<Depart>> {
     let mut by_domain: BTreeMap<&str, Vec<&Point>> = BTreeMap::new();
@@ -675,16 +1005,20 @@ pub fn all_departs(
             by_domain.entry(d.as_str()).or_default().push(p);
         }
     }
+    let by_way: HashMap<i64, &skimap_osm::pistes::Piste> =
+        pistes.pistes.iter().map(|p| (p.way_id, p)).collect();
     ds.iter()
         .map(|d| {
-            let ways: Vec<Way> = domain_ways
+            let own: Vec<skimap_osm::pistes::Piste> = domain_ways
                 .get(&d.id)
                 .into_iter()
                 .flatten()
-                .filter_map(|w| geometry.get(w).cloned())
+                .filter_map(|w| by_way.get(w).map(|p| (*p).clone()))
                 .collect();
+            let ways: Vec<Way> = own.iter().map(Way::of).collect();
+            let reach = Reach::of(&pistes.subset(own));
             let pts = by_domain.get(d.id.as_str()).cloned().unwrap_or_default();
-            (d.id.clone(), domain_departs(d, &ways, &pts))
+            (d.id.clone(), domain_departs(d, &ways, &pts, Some(&reach)))
         })
         .collect()
 }
@@ -698,6 +1032,7 @@ pub fn notes() -> Vec<String> {
         ),
         format!("Sans tel point : point du réseau le plus proche du foyer, de l'accueil ou du parking le plus proche du réseau (à moins de {NEAR_MAX_M:.0} m, method = near), sinon de l'office de tourisme ou de l'école de ski (method = village), sinon point représentatif du recensement (method = centre). Caisses des remontées mécaniques (nom) : poids {ALPINE_DESK_WEIGHT}."),
         "Réseau : ways du domaine (domaines_ways.json) lus dans l'extrait OpenSnowMap planet_pistes (ODbL).".to_owned(),
+        format!("Parties du réseau (#166) : composantes connexes du graphe de routage des ways du domaine (celui des packs : raccords de moins de {CONNECTOR_MAX_M:.0} m, croisements), pesées en km nordiques (les pistes de randonnée ou raquettes relient sans compter). Chaque point pèse son score × km de sa partie / {LOOP_KM:.0} (au plus 1) : une boucle de la sortie par défaut (2 h) demande environ {LOOP_KM:.0} km. La plus grande partie a toujours un départ : le meilleur groupe de points qui la dessert, sinon le point de cette partie le plus proche d'un foyer, accueil ou parking (à moins de {NEAR_MAX_M:.0} m) ; il passe en tête quand le premier départ dessert moins de {LOOP_KM:.0} km, sinon en dernier. Un départ dont la partie atteint {LOOP_KM:.0} km passe en tête devant un premier départ qui n'y arrive pas. network : km de la partie desservie, km du domaine, plus grande partie ou non, raison."),
     ]
 }
 
@@ -740,25 +1075,17 @@ pub fn planet_ways(planet: &skimap_osm::extract::Planet) -> HashMap<i64, Way> {
         .set
         .pistes
         .iter()
-        .map(|p| {
-            (
-                p.way_id,
-                Way {
-                    name: p.way_name.clone(),
-                    points: p.points.clone(),
-                },
-            )
-        })
+        .map(|p| (p.way_id, Way::of(p)))
         .collect()
 }
 
 /// Writes `departs.json` and `departs.geojson` in `dir` from the census, the points of
-/// `dir/pois.geojson` and the trail geometry.
+/// `dir/pois.geojson` and the pistes of the planet extract.
 pub fn write(
     dir: &Path,
     ds: &[Domain],
     domain_ways: &DomainWays,
-    geometry: &HashMap<i64, Way>,
+    pistes: &PisteSet,
     srn: SrnStarts,
     osm_valid_at: Option<String>,
 ) -> Result<DepartsOutput> {
@@ -772,7 +1099,7 @@ pub fn write(
     let v: Value = serde_json::from_slice(&b)
         .map_err(|e| StationsError::format("pois.geojson", e.to_string()))?;
     let points = read_points(&v);
-    let domains = all_departs(ds, domain_ways, geometry, &points);
+    let domains = all_departs(ds, domain_ways, pistes, &points);
     let mut by_method: BTreeMap<String, usize> = BTreeMap::new();
     let mut feats = Vec::new();
     let mut starts = 0;
@@ -838,10 +1165,9 @@ pub fn build(
     let census_dir = layout.france_layer_dir(crate::CENSUS_LAYER)?;
     let (ds, ways) = crate::domains::load(&census_dir)?;
     let planet = skimap_osm::extract::load_planet(dl)?;
-    let geometry = planet_ways(&planet);
     let srn = crate::departs_srn::build(layout, dl)?;
     let dir = layout.france_layer_dir(crate::LAYER)?;
-    write(&dir, &ds, &ways, &geometry, srn, planet.valid_at.clone())
+    write(&dir, &ds, &ways, &planet.set, srn, planet.valid_at.clone())
 }
 
 #[cfg(test)]
@@ -902,7 +1228,7 @@ mod tests {
         let park = pt("parking", None, 6.0008, 46.0098);
         let far = pt("parking", None, 6.028, 46.0102);
         let pts = vec![&lodge, &park, &far];
-        let s = domain_departs(&d, &ways(), &pts);
+        let s = domain_departs(&d, &ways(), &pts, None);
         assert_eq!(s[0].method, Method::Points);
         assert_eq!(s[0].start.name, "Foyer des Plans (Les Plans)");
         assert_eq!(s[0].start.phrase, "Foyer des Plans");
@@ -928,17 +1254,17 @@ mod tests {
         let far = pt("foyer", None, 6.01, 46.016); // ~670 m from the trails
         let office = pt("tourist_office", None, 6.0205, 46.0115);
         let pts = vec![&private, &far, &office];
-        let s = domain_departs(&d, &ways(), &pts);
+        let s = domain_departs(&d, &ways(), &pts, None);
         assert_eq!(s.len(), 1);
         // The far lodge, on the nearest point of the network.
         assert_eq!(s[0].method, Method::Near);
         assert_eq!((s[0].start.lon, s[0].start.lat), (6.01, 46.01));
         // Only the private car park and the village.
-        let s = domain_departs(&d, &ways(), &[&private, &office]);
+        let s = domain_departs(&d, &ways(), &[&private, &office], None);
         assert_eq!(s[0].method, Method::Village);
         assert_eq!((s[0].start.lon, s[0].start.lat), (6.0205, 46.01));
         // Nothing at all: the census point.
-        let s = domain_departs(&d, &ways(), &[]);
+        let s = domain_departs(&d, &ways(), &[], None);
         assert_eq!(s[0].method, Method::Centre);
         assert_eq!((s[0].start.lon, s[0].start.lat), (6.01, 46.01));
     }
@@ -948,7 +1274,7 @@ mod tests {
         let d = domain();
         let a = pt("parking", None, 6.0011, 46.0101);
         let b = pt("parking", None, 6.0279, 46.0101);
-        let s = domain_departs(&d, &ways(), &[&a, &b]);
+        let s = domain_departs(&d, &ways(), &[&a, &b], None);
         assert_eq!(s.len(), 2);
         assert_ne!(s[0].start.phrase, s[1].start.phrase);
         assert!(
@@ -977,7 +1303,7 @@ mod tests {
             46.0101,
         );
         let lodge = pt("foyer", None, 6.0279, 46.0101);
-        let s = domain_departs(&d, &ways(), &[&desk, &lodge]);
+        let s = domain_departs(&d, &ways(), &[&desk, &lodge], None);
         assert_eq!(s[0].start.phrase, "le foyer nordique du domaine Les Plans");
     }
 
@@ -990,13 +1316,100 @@ mod tests {
         }
         let a = pt("parking", None, 6.0011, 46.0101);
         let b = pt("parking", None, 6.0279, 46.0101);
-        let s = domain_departs(&d, &w, &[&a, &b]);
+        let s = domain_departs(&d, &w, &[&a, &b], None);
         assert_eq!(s.len(), 2);
         assert_eq!(s[1].start.name, "Parking (Les Plans) — 2,1 km à l'est");
         assert_eq!(
             s[1].start.phrase_en.as_deref(),
             Some("the Les Plans area car park (2.1 km east)")
         );
+    }
+
+    /// The two trails of [`ways`] as two parts of the network: 1 km and 20 km.
+    fn split_reach() -> Reach {
+        Reach {
+            way_component: vec![Some(0), Some(1)],
+            component_km: vec![1.0, 20.0],
+        }
+    }
+
+    #[test]
+    fn a_start_on_a_short_part_weighs_less() {
+        let d = domain();
+        let lodge = pt("foyer", Some("Foyer des Plans"), 6.0012, 46.0102);
+        let park = pt("parking", None, 6.028, 46.0102);
+        // Without parts: the lodge first.
+        let s = domain_departs(&d, &ways(), &[&lodge, &park], None);
+        assert_eq!(s[0].start.phrase, "Foyer des Plans");
+        assert_eq!(s[0].network, None);
+        // On a 1 km part, the lodge weighs a tenth: the car park on the 20 km part is the
+        // only start (the lodge under a quarter of its score).
+        let s = domain_departs(&d, &ways(), &[&lodge, &park], Some(&split_reach()));
+        assert_eq!(s.len(), 1);
+        assert_eq!((s[0].start.lon, s[0].start.lat), (6.028, 46.01));
+        let n = s[0].network.as_ref().unwrap();
+        assert_eq!((n.km, n.domain_km, n.main), (20.0, 21.0, true));
+        assert_eq!(n.reason, None);
+    }
+
+    #[test]
+    fn the_largest_part_always_gets_a_start() {
+        let d = domain();
+        // Both points more than 300 m from the 20 km part (the lodge is on the 1 km one).
+        let lodge = pt("foyer", Some("Foyer des Plans"), 6.0012, 46.0102);
+        let park = pt("parking", Some("Les Prés"), 6.02, 46.0155);
+        let s = domain_departs(&d, &ways(), &[&lodge, &park], Some(&split_reach()));
+        // The lodge alone serves 1 km, less than a default loop: the point of the largest
+        // part nearest to the best of them (the lodge, 690 m away) comes first; the lodge
+        // on its 1 km part, a tenth of its score, falls under a quarter of it.
+        assert_eq!(s.len(), 1, "{s:#?}");
+        assert_eq!(s[0].method, Method::Near);
+        assert_eq!(s[0].start.name, "Foyer des Plans (Les Plans)");
+        assert_eq!((s[0].start.lon, s[0].start.lat), (6.01, 46.01));
+        assert!(
+            s[0].start
+                .provenance
+                .contains("réseau principal le plus proche de foyer"),
+            "{}",
+            s[0].start.provenance
+        );
+        let n = s[0].network.as_ref().unwrap();
+        assert!(n.main);
+        let why = n.reason.as_deref().unwrap();
+        assert!(
+            why.starts_with("réseau principal du domaine (20,0 km nordiques sur 21,0)"),
+            "{why}"
+        );
+        assert!(why.contains("placé en tête"), "{why}");
+        // Without the lodge: the car park, 610 m away.
+        let s = domain_departs(&d, &ways(), &[&park], Some(&split_reach()));
+        assert_eq!(s[0].start.name, "Parking Les Prés (Les Plans)");
+        assert_eq!((s[0].start.lon, s[0].start.lat), (6.02, 46.01));
+    }
+
+    #[test]
+    fn a_start_serving_a_loop_comes_before_one_that_does_not() {
+        let d = domain();
+        let lodge = pt("foyer", Some("Foyer des Plans"), 6.0012, 46.0102);
+        let park = pt("parking", None, 6.028, 46.0102);
+        // 8 km and 12 km: the lodge still scores more, the car park comes first.
+        let r = Reach {
+            way_component: vec![Some(0), Some(1)],
+            component_km: vec![8.0, 12.0],
+        };
+        let s = domain_departs(&d, &ways(), &[&lodge, &park], Some(&r));
+        assert_eq!(s.len(), 2);
+        assert_eq!((s[0].start.lon, s[0].start.lat), (6.028, 46.01));
+        assert!(
+            s[0].network
+                .as_ref()
+                .unwrap()
+                .reason
+                .as_deref()
+                .unwrap()
+                .contains("placé en tête")
+        );
+        assert_eq!(s[1].start.phrase, "Foyer des Plans");
     }
 
     #[test]
