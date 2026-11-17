@@ -1248,6 +1248,7 @@ mod tests {
                 lon,
                 lat: 46.0,
                 provenance: String::new(),
+                access_m: None,
             },
             method: Method::Points,
             score,

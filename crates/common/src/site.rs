@@ -426,6 +426,11 @@ pub struct Start {
     pub lat: f64,
     /// Where the coordinates come from.
     pub provenance: String,
+    /// Walk off the network from the car park the start comes from to its point on the
+    /// network, metres, when said (SRN areas and traverses, #168: the car park is up to
+    /// 300 m from the itinerary, a « near » start up to 1 km); no trail is drawn for it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access_m: Option<f64>,
 }
 
 impl Start {
@@ -633,6 +638,7 @@ pub fn starts(site: &Site) -> Vec<Start> {
             lon: site.commune_center.lon,
             lat: site.commune_center.lat,
             provenance: "point représentatif du domaine (recensement P3 : point du réseau le plus proche du barycentre)".into(),
+            access_m: None,
         }],
     }
 }
@@ -1109,6 +1115,7 @@ mod tests {
             lon: r.commune_center.lon,
             lat: r.commune_center.lat,
             provenance: "déduit (X9)".into(),
+            access_m: None,
         }];
         let json = serde_json::to_string(&r).unwrap();
         let back: SiteRecord = serde_json::from_str(&json).unwrap();

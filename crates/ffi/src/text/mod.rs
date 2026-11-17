@@ -52,6 +52,9 @@ pub trait Texts: Sync {
     fn back_with_margin(&self, at: &str) -> String;
     /// Expected return after the limit of the day.
     fn after_limit(&self, limit: NaiveDateTime, for_group: bool) -> String;
+    /// The walk off the network from the car park (or lodge, desk) to the start of the
+    /// loop on the network, `metres` (#168): no trail is drawn for it.
+    fn off_network_access(&self, metres: f64) -> String;
     /// Kind of a key point of the plan.
     fn key_kind(&self, k: skimap_plan::plan::KeyKind) -> &'static str;
     /// The SMS to the contact (K10): route, return, what to do without news.

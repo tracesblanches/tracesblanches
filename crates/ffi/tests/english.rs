@@ -290,6 +290,7 @@ fn every_text_of_the_ffi_has_its_english() {
         t.back_with_margin("15:00"),
         t.after_limit(at, true),
         t.after_limit(at, false),
+        t.off_network_access(237.0),
         t.sms(
             "X",
             day,

@@ -85,6 +85,13 @@ impl Texts for Fr {
         )
     }
 
+    fn off_network_access(&self, metres: f64) -> String {
+        let m = (metres / 10.0).round() * 10.0;
+        format!(
+            "Accès hors réseau : {m} m à pied ou à ski du parking (ou de l'accueil) jusqu'à l'itinéraire, sans tracé, en plus de la boucle"
+        )
+    }
+
     fn key_kind(&self, k: skimap_plan::plan::KeyKind) -> &'static str {
         use skimap_plan::plan::KeyKind;
         match k {

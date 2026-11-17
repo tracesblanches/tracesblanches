@@ -298,6 +298,8 @@ fn fallback(place: &Place, ways: &[Way], points: &[&Point], villages: &[&Point])
             .map(|n| format!(" « {n} »"))
             .unwrap_or_default()
     };
+    // The walk from the car park, lodge or desk to the itinerary (#168).
+    let access = near.map(|(_, s)| s.dist.round());
     let (pos, method, provenance, urls) = if let Some((p, s)) = near {
         (
             local.lonlat(s.xy),
@@ -386,6 +388,7 @@ fn fallback(place: &Place, ways: &[Way], points: &[&Point], villages: &[&Point])
             lon: round7(pos.lon),
             lat: round7(pos.lat),
             provenance,
+            access_m: access,
         },
         method,
         score: 0.0,
@@ -674,6 +677,7 @@ mod tests {
                 lon,
                 lat: 46.0,
                 provenance: String::new(),
+                access_m: None,
             },
             method: Method::Points,
             score,

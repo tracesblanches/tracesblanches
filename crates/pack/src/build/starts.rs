@@ -147,6 +147,7 @@ pub fn network_starts(site: &Site, layout: &DataLayout) -> Vec<Start> {
                 provenance: format!(
                     "début de l'itinéraire SRN ramené au nœud le plus proche de la partie principale du réseau ({d:.0} m)"
                 ),
+                access_m: None,
             },
         );
     }
@@ -165,6 +166,7 @@ pub fn network_starts(site: &Site, layout: &DataLayout) -> Vec<Start> {
                 provenance: format!(
                     "nœud de la partie principale du réseau le plus proche du point représentatif du site ({d:.0} m)"
                 ),
+                access_m: None,
             },
         );
     }
