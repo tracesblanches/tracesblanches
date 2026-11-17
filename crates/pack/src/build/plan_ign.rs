@@ -47,7 +47,7 @@ pub fn tile_url(z: u8, x: u32, y: u32) -> String {
         .replace("{y}", &y.to_string())
 }
 
-/// Attempts on a 404: the TMS answered 404 once for tile 16/33983/23609 (Cervières) on
+/// Attempts on a 404: the TMS answered 404 once for tile 16/33983/23609 on
 /// 14/11/2026 and 200 to the three following identical requests (the IGN WMTS does the
 /// same, see `skimap_terrain::ign_slopes`), so a 404 is retried before failing.
 const NOT_FOUND_ATTEMPTS: u32 = 4;

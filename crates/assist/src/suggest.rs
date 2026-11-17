@@ -1320,7 +1320,11 @@ mod tests {
             "Boucle de treize kilomètres, environ deux heures, retour vers midi quinze."
         );
     }
-    use skimap_common::site::CHAPELLE_DES_BOIS;
+    /// Evaluation site of `data/sites.json`, test data.
+    static CHAPELLE_DES_BOIS: std::sync::LazyLock<skimap_common::site::Site> =
+        std::sync::LazyLock::new(|| {
+            *skimap_common::site::site("chapelle-des-bois").expect("evaluation site")
+        });
     use skimap_core::graph::{Edge, EdgeKind, GraphData, Node};
 
     fn attrs(name: &str, way: i64, difficulty: Difficulty) -> EdgeAttrs {

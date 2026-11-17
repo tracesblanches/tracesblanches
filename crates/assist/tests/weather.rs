@@ -23,7 +23,15 @@ use skimap_assist::layers::{
 use skimap_common::geom::LonLat;
 use skimap_common::grid::{GeoTransform, Grid};
 use skimap_common::layout::DataLayout;
-use skimap_common::site::{CERVIERES, CHAPELLE_DES_BOIS, Site};
+use skimap_common::site::Site;
+/// Evaluation site of `data/sites.json`, test data.
+static CERVIERES: std::sync::LazyLock<skimap_common::site::Site> =
+    std::sync::LazyLock::new(|| *skimap_common::site::site("cervieres").expect("evaluation site"));
+/// Evaluation site of `data/sites.json`, test data.
+static CHAPELLE_DES_BOIS: std::sync::LazyLock<skimap_common::site::Site> =
+    std::sync::LazyLock::new(|| {
+        *skimap_common::site::site("chapelle-des-bois").expect("evaluation site")
+    });
 use weather_sets::{SETS, set};
 
 fn site_of(name: &str) -> Site {

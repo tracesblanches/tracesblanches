@@ -595,7 +595,7 @@ mod tests {
         assert_eq!(f[1]["properties"]["osm_way_ids"], json!([1, 3]));
         assert_eq!(f[1]["properties"]["mairie"], Value::Null);
         // Town hall row without widget piste, joined to OSM by itself.
-        assert_eq!(f[2]["properties"]["itinerary"], "cervieres-mairie:gibera");
+        assert_eq!(f[2]["properties"]["itinerary"], "mairie:gibera");
         assert_eq!(f[2]["properties"]["state"], "open");
         assert_eq!(r.nordicfrance_pistes, 3);
         assert_eq!(r.nordicfrance_matched, 2);

@@ -222,9 +222,9 @@ pub fn known_sources() -> Vec<SourcePolicy> {
             .limits([RateLimit::new(1, MINUTE)])
             .max_age(3 * HOUR)
             .personal_use_only(),
-        // Cervières town hall « Info damage » page: same as Nordic France (prudence, non
-        // sourcé).
-        SourcePolicy::new("cervieres-mairie")
+        // Town hall « Info damage » pages (`status.town_hall_page` of the site table): same
+        // as Nordic France (prudence, non sourcé).
+        SourcePolicy::new("mairie")
             .limits([RateLimit::new(1, MINUTE)])
             .max_age(3 * HOUR)
             .personal_use_only(),
@@ -276,7 +276,7 @@ mod tests {
                 "geoide",
                 "open-meteo",
                 "nordicfrance",
-                "cervieres-mairie"
+                "mairie"
             ]
         );
         // Only the latency-bound sources have several requests in flight.
@@ -291,7 +291,7 @@ mod tests {
             "meteofrance-archive",
             "geoide",
             "nordicfrance",
-            "cervieres-mairie",
+            "mairie",
             "openskimap",
             "skiradar",
         ] {

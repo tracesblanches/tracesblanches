@@ -1,4 +1,4 @@
-//! Snapshot of what the two packs offer to the styles (`styles/pack-schema.json`), so
+//! Snapshot of what the proof packs offer to the styles (`styles/pack-schema.json`), so
 //! that the validator runs without the packs (CI). Values are kept only for the
 //! properties the styles compare; the rest keeps its key names, zooms and geometries.
 
@@ -17,16 +17,6 @@ use crate::{Error, Result, styles_dir};
 
 /// File name of the snapshot in `styles/`.
 pub const FILE: &str = "pack-schema.json";
-
-/// Sites of the proof packs: the two evaluation sites (built with the personal sources)
-/// and a public pack of an SRN area (Hauts-Plateaux du Vercors 1/2, with the Corrençon -
-/// Col de Rousset traverse): SRN areas and itineraries of every kind (SRN, easy and other
-/// ski touring), none of the personal-use layers.
-pub const SITES: [&str; 3] = [
-    "cervieres",
-    "chapelle-des-bois",
-    "srn-domaine-geotrek-geo-pnr-vercors-fr-29403-1",
-];
 
 /// Inventories of the packs, values pruned to the compared properties.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -96,11 +86,18 @@ pub fn prune(inv: &mut Inventory, keep: &BTreeSet<(String, String, String)>) {
 }
 
 impl Snapshot {
-    /// Reads the packs `<data_out>/<site>/pack` of [`SITES`].
-    pub fn from_packs(data_out: &Path) -> Result<Self> {
+    /// Sites of the proof packs, in snapshot order (the list lives in the snapshot itself:
+    /// packs built with the personal sources, and a public pack of an SRN area with
+    /// itineraries of every kind).
+    pub fn sites(&self) -> Vec<String> {
+        self.packs.iter().map(|p| p.site.clone()).collect()
+    }
+
+    /// Reads the packs `<data_out>/<site>/pack` of `sites`.
+    pub fn from_packs(data_out: &Path, sites: &[String]) -> Result<Self> {
         let keep = compared_keys(&generated_styles());
         let mut packs = Vec::new();
-        for site in SITES {
+        for site in sites {
             let mut inv = Inventory::from_pack(&data_out.join(site).join("pack"))?;
             prune(&mut inv, &keep);
             packs.push(inv);

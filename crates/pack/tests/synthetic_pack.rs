@@ -9,7 +9,9 @@ use skimap_common::download::Downloader;
 use skimap_common::geom::LonLat;
 use skimap_common::grid::{GeoTransform, Grid};
 use skimap_common::layout::DataLayout;
-use skimap_common::site::CERVIERES;
+/// Evaluation site of `data/sites.json`, test data.
+static CERVIERES: std::sync::LazyLock<skimap_common::site::Site> =
+    std::sync::LazyLock::new(|| *skimap_common::site::site("cervieres").expect("evaluation site"));
 use skimap_pack::Pack;
 use skimap_pack::build::{BuildOptions, build, class_tiles};
 use skimap_pack::export::{class_pixels, export};

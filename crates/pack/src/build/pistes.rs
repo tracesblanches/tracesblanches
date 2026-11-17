@@ -365,7 +365,7 @@ pub const LABELS_LAYER: &str = "piste-labels";
 
 /// Piste names along merged lines: one LineString per run of ways of the same itinerary,
 /// joined end to end where exactly two ways of that itinerary meet. The OSM ways are
-/// short (median 184 m at Cervières) and their `name` lists every itinerary of a shared
+/// short (median about 200 m on an alpine domain) and their `name` lists every itinerary of a shared
 /// section (`La Bergerie / Le Plan d'Eau / Les Pins`): too long for any way, a name along
 /// a way is rarely placed. Here each itinerary (OSM relation, else the piste plan names,
 /// else the way name) gets its own lines, as long as the network allows.

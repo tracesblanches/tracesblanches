@@ -1,0 +1,9 @@
+{
+  "about": "Stations Météo-France (BDClim horaire, NEIGETOT) de validation de l'estimation de neige, lues par skimap-snow (stations::STATIONS) : numéro de poste, nom, site validé, département du fichier horaire. Choisies par P7 (#20) : stations à mesure de neige dans le site ou à quelques kilomètres de son emprise, dans le même massif. Un site sans station n'a pas de validation (snow-validate le dit).",
+  "stations": [
+    { "id": "05027001", "name": "CERVIERES", "site": "cervieres", "department": "05" },
+    { "id": "05007003", "name": "ARVIEUX", "site": "cervieres", "department": "05" },
+    { "id": "25413001", "name": "MOUTHE", "site": "chapelle-des-bois", "department": "25" },
+    { "id": "25494001", "name": "LA BOISSAUDE ROCHEJEAN", "site": "chapelle-des-bois", "department": "25" }
+  ]
+}

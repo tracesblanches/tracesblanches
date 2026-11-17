@@ -11,7 +11,11 @@ use skimap_common::geom::LonLat;
 use skimap_common::grid::{GeoTransform, Grid};
 use skimap_common::layout::DataLayout;
 use skimap_common::meta::{LayerMeta, SourceRef};
-use skimap_common::site::CHAPELLE_DES_BOIS;
+/// Evaluation site of `data/sites.json`, test data.
+static CHAPELLE_DES_BOIS: std::sync::LazyLock<skimap_common::site::Site> =
+    std::sync::LazyLock::new(|| {
+        *skimap_common::site::site("chapelle-des-bois").expect("evaluation site")
+    });
 
 const M_LAT: f64 = 111_195.0;
 

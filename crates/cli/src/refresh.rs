@@ -3,8 +3,9 @@
 //! hut cards of each site (`skimap_refuges::refresh`). Each part only runs when it is due
 //! (daily from 1 November to 30 April, weekly otherwise; station cards weekly), so a
 //! second run the same day does nothing. A failing source keeps the previous files; the
-//! run writes `data/out/france/refresh/status.json` (state of every part) and fails when
-//! a source is broken.
+//! run writes `data/out/france/refresh/status.json` (state of every part) and
+//! `changed_sites.txt` (the sites whose pack must be rebuilt, one identifier per line:
+//! [`changed_sites`]), and fails when a source is broken.
 
 use std::path::PathBuf;
 
@@ -168,7 +169,27 @@ pub fn refresh(ctx: &Ctx, sites: &[&Site], now: DateTime<Utc>) -> Result<Summary
         path,
     };
     skimap_common::output::write_json(&summary.path, &summary)?;
+    let changed = changed_sites(&summary);
+    let mut text = changed.join("\n");
+    if !text.is_empty() {
+        text.push('\n');
+    }
+    let list = dir.join(CHANGED_FILE);
+    std::fs::write(&list, text).map_err(|e| anyhow::anyhow!("writing {}: {e}", list.display()))?;
     Ok(summary)
+}
+
+/// File of [`changed_sites`], next to `status.json` (read by `deploy/skimap-job`).
+pub const CHANGED_FILE: &str = "changed_sites.txt";
+
+/// Sites whose pack carries something the run changed: every refreshed site when the
+/// station cards or titles of France changed, otherwise the sites whose hut layer changed.
+pub fn changed_sites(s: &Summary) -> Vec<String> {
+    s.refuges
+        .iter()
+        .filter(|r| s.stations.changes > 0 || (r.ran && r.changes > 0))
+        .map(|r| r.site.clone())
+        .collect()
 }
 
 /// French lines of a summary.
@@ -255,6 +276,28 @@ mod tests {
             ]
         );
         assert!(failures(&StationsState::default(), &refuges[..1]).is_empty());
+    }
+
+    #[test]
+    fn changed_sites_follow_the_changes() {
+        let r = |site: &str, ran, changes| RefugesState {
+            site: site.into(),
+            ran,
+            changes,
+            error: None,
+        };
+        let mut s = Summary {
+            checked_at: "2026-11-15T14:00:00Z".into(),
+            ok: true,
+            personal_sources: false,
+            stations: StationsState::default(),
+            refuges: vec![r("a", true, 3), r("b", true, 0), r("c", false, 0)],
+            failures: vec![],
+            path: PathBuf::new(),
+        };
+        assert_eq!(changed_sites(&s), ["a"]);
+        s.stations.changes = 1;
+        assert_eq!(changed_sites(&s), ["a", "b", "c"]);
     }
 
     #[test]

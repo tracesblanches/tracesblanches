@@ -83,7 +83,7 @@ fun NoPackScreen(
             Text("${state.packsDir}/<site>/manifest.json", style = CommandTextStyle)
         }
         SelectionContainer {
-            Text("adb push data/out/cervieres/pack/. ${state.packsDir}/cervieres/", style = CommandTextStyle)
+            Text("adb push data/out/<site>/pack/. ${state.packsDir}/<site>/", style = CommandTextStyle)
         }
         state.unreadable.forEach { e ->
             Text(

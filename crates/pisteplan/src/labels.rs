@@ -279,7 +279,7 @@ pub fn colour_word(spec: &PlanSpec, text: &str) -> Option<usize> {
 }
 
 /// Legend of a plan whose boxes list « Name 12,3 km » lines under a « Departure - 1088 m »
-/// title (ENJ plans), or « Piste verte : le Gibera • 1,5 km » lines (Cervières).
+/// title (ENJ plans), or « Piste verte : <name> • 1,5 km » lines (town hall plans).
 pub fn legend(spec: &PlanSpec, lines: &[TextBox], img: &Rgb, pt_per_px: f64) -> Vec<LegendEntry> {
     let lines = &join_lengths(&join_baselines(lines));
     let titles: Vec<(&TextBox, String)> = lines

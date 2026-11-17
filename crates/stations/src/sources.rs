@@ -89,7 +89,7 @@ pub struct SitePage {
     pub depts: Vec<String>,
     /// Season written in the price blocks (one only, else no price is kept).
     pub season: Option<String>,
-    /// Prices (`product` is the label of the page: « Journée Adulte », « Cervières »…).
+    /// Prices (`product` is the label of the page: « Journée Adulte », a domain name…).
     pub prices: Vec<Price>,
     /// Phones of the manager and of the tourist office.
     pub phones: Vec<Phone>,
@@ -1146,7 +1146,7 @@ pub fn parse_nads_domain(
             } else {
                 ""
             };
-            // « Journée Adulte:15€ », « Cervières:75€ », « Massif (5-15ans): 85€ »
+            // « Journée Adulte:15€ », « <domaine>:75€ », « Massif (5-15ans): 85€ »
             let body = l.split_once(':').map_or(l.as_str(), |(_, r)| r);
             for part in body.split('€') {
                 let Some((label, num)) = part.rsplit_once(':') else {

@@ -54,12 +54,12 @@ pub fn history_paths(layout: &DataLayout, site: &Site, with_forecast: bool) -> R
 }
 
 /// Three requests on `date`: « 2 h skating, back before 16 h », « 3 h classic » from the
-/// main start, « 1 h 30 classic, green and blue » at 14:30 (from Les Fonts at Cervières).
+/// main start, « 1 h 30 classic, green and blue » at 14:30 (from the second start of the
+/// site table, when there is one).
 pub fn suggestion_requests(site: &Site, date: NaiveDate) -> Vec<Request> {
     let at = |h: u32, m: u32| date.and_hms_opt(h, m, 0).expect("time");
     // Starts of the site table (`skimap_common::site::starts`): the main one, and the
-    // second one for the easy request when the site has two (Les Fonts at Cervières);
-    // otherwise the site centre.
+    // second one for the easy request when the site has two; otherwise the site centre.
     let starts = skimap_common::site::starts(site);
     let (sa, sb) = (&starts[0], starts.get(1).unwrap_or(&starts[0]));
     let (a, an, b, bn) = (
@@ -176,7 +176,16 @@ pub fn proof_outings(
 mod tests {
     use super::*;
     use skimap_common::geom::LonLat;
-    use skimap_common::site::{CERVIERES, CHAPELLE_DES_BOIS};
+    /// Evaluation site of `data/sites.json`, test data.
+    static CERVIERES: std::sync::LazyLock<skimap_common::site::Site> =
+        std::sync::LazyLock::new(|| {
+            *skimap_common::site::site("cervieres").expect("evaluation site")
+        });
+    /// Evaluation site of `data/sites.json`, test data.
+    static CHAPELLE_DES_BOIS: std::sync::LazyLock<skimap_common::site::Site> =
+        std::sync::LazyLock::new(|| {
+            *skimap_common::site::site("chapelle-des-bois").expect("evaluation site")
+        });
 
     #[test]
     fn archived_days_by_kind() {

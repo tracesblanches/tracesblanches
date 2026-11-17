@@ -88,7 +88,7 @@ impl PisteName {
     }
 }
 
-/// Clip id of any other name (refuge, place, zone, site), e.g. `name.refuge-des-fonts-de-cervieres`.
+/// Clip id of any other name (refuge, place, zone, site), e.g. `name.refuge-du-col`.
 pub fn name_clip_id(name: &str) -> String {
     format!("name.{}", slug(name))
 }

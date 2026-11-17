@@ -341,7 +341,7 @@ pub const OVERRIDES: &[MemberOverride] = &[
             "net-920680329",
         ],
         "verifie",
-        "boutique ENJ : Les Fourgs, Métabief, Mouthe, Chapelle-des-Bois ; Chaux-Neuve entre Mouthe et Chapelle-des-Bois",
+        "boutique ENJ : points de vente dans les villages des domaines de l'Espace nordique jurassien (Les Fourgs, Métabief, Mouthe, Chaux-Neuve…)",
     ),
     o(
         "grand pontarlier",

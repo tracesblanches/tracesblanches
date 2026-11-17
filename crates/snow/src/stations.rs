@@ -10,6 +10,7 @@
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader};
+use std::sync::LazyLock;
 
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
@@ -31,34 +32,38 @@ pub struct StationDef {
     pub department: &'static str,
 }
 
-/// Stations named in P7 (#20): Cervières and Arvieux (Queyras); Mouthe and La Boissaude
-/// (Rochejean) in the Haut-Doubs, a few km outside the Chapelle-des-Bois box.
-pub const STATIONS: [StationDef; 4] = [
-    StationDef {
-        id: "05027001",
-        name: "CERVIERES",
-        site: "cervieres",
-        department: "05",
-    },
-    StationDef {
-        id: "05007003",
-        name: "ARVIEUX",
-        site: "cervieres",
-        department: "05",
-    },
-    StationDef {
-        id: "25413001",
-        name: "MOUTHE",
-        site: "chapelle-des-bois",
-        department: "25",
-    },
-    StationDef {
-        id: "25494001",
-        name: "LA BOISSAUDE ROCHEJEAN",
-        site: "chapelle-des-bois",
-        department: "25",
-    },
-];
+#[derive(Deserialize)]
+struct StationRecord {
+    id: String,
+    name: String,
+    site: String,
+    department: String,
+}
+
+#[derive(Deserialize)]
+struct StationTable {
+    stations: Vec<StationRecord>,
+}
+
+fn leak(s: &str) -> &'static str {
+    Box::leak(s.to_owned().into_boxed_str())
+}
+
+/// Validation stations of the sites, from the table `data/validation_stations.json`
+/// (stations named in P7, #20); a site absent from the table has no validation.
+pub static STATIONS: LazyLock<Vec<StationDef>> = LazyLock::new(|| {
+    serde_json::from_str::<StationTable>(include_str!("../data/validation_stations.json"))
+        .expect("data/validation_stations.json")
+        .stations
+        .iter()
+        .map(|r| StationDef {
+            id: leak(&r.id),
+            name: leak(&r.name),
+            site: leak(&r.site),
+            department: leak(&r.department),
+        })
+        .collect()
+});
 
 /// Hour (UTC) of the observation compared with the simulation (state at 06 UTC).
 pub const OBS_HOUR: u32 = 6;

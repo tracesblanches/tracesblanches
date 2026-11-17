@@ -3,7 +3,7 @@
 //!
 //! # Heuristic
 //!
-//! Each site has a catchment: for every population (French zone, Fédération
+//! Each site has a catchment ([`catchment`]): for every population (French zone, Fédération
 //! Wallonie-Bruxelles, canton of Vaud, canton of Neuchâtel) two weights, one for stays
 //! during its school holidays and one for day trips on its weekends and public holidays.
 //! The score of a day is
@@ -20,19 +20,15 @@
 //! covers the adjacent weekend (departure and return weekends). Levels: score < 2 calm,
 //! < 4 moderate, < 6 busy, ≥ 6 very busy.
 //!
-//! Weights (judgement, to be calibrated with attendance data, none available):
+//! Weights (judgement, to be calibrated with attendance data, none available) come from the
+//! table `data/catchments.json`: a profile per group of departments (southern Alps, French
+//! Jura…), and for a department without a profile a default built from the holiday zone of
+//! its académie (home zone: holidays 3, weekends 1.5; the two other zones: holidays 1.5;
+//! Fédération Wallonie-Bruxelles: holidays 0.5). The opening dates of a domain, when it
+//! publishes them, come from the site table (`local.season`).
 //!
-//! | Population | Cervières (académie Aix-Marseille, zone B) | Chapelle-des-Bois (académie Besançon, zone A) |
-//! |---|---|---|
-//! | Zone A (Besançon, Lyon, Grenoble, Dijon) | holidays 2, weekends 0.5 | holidays 3, weekends 1.5 |
-//! | Zone B (Aix-Marseille, Nice, Strasbourg, Nancy, Lille) | holidays 3, weekends 1.5 | holidays 1.5, weekends 0.25 |
-//! | Zone C (Paris, Montpellier, Toulouse) | holidays 1.5 | holidays 1 |
-//! | Fédération Wallonie-Bruxelles | holidays 0.5 | holidays 1.5 |
-//! | Vaud | holidays 0.25 | holidays 1, weekends 0.5 |
-//! | Neuchâtel | holidays 0.25 | holidays 0.5, weekends 0.25 |
-//!
-//! Limits: no Italian calendar for Cervières (Piedmont is close); Swiss skiers mostly stay
-//! in Switzerland; no attendance data to calibrate. The conditions come later from the
+//! Limits: no Italian or Spanish calendar (border domains); Swiss skiers mostly stay in
+//! Switzerland; no attendance data to calibrate. The conditions come later from the
 //! weather layer (`meteo-hourly`): fresh snow = sum of `snowfall_cm` of the two previous
 //! days, sunny = `daytime_cloud_cover_pct` < 30 %.
 //!
@@ -42,7 +38,13 @@
 //! French calendar says « du samedi 19 décembre 2026 au lundi 4 janvier 2027 », the Monday
 //! being the day classes resume, so the last day without school is Sunday 3 January.
 
+use std::collections::BTreeMap;
 use std::fmt;
+use std::sync::LazyLock;
+
+use chrono::{Datelike, NaiveDate};
+use serde::Deserialize;
+use skimap_common::site::Site;
 
 /// A calendar date (proleptic Gregorian), without any time zone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -343,10 +345,6 @@ pub const SOURCES: &[Source] = &[
         name: "Calendrier et vacances scolaires, année 2026-2027, canton de Neuchâtel",
         url: "https://www.ne.ch/themes/scolarite-et-formation/calendrier-et-vacances-scolaires",
     },
-    Source {
-        name: "Ouverture du domaine nordique de Cervières 2026-27 (mairie)",
-        url: "https://cervieres.fr/domaine-nordique-2/domaine-nordique/",
-    },
 ];
 
 /// Weights of one population for one site.
@@ -369,49 +367,128 @@ const fn w(population: Population, holidays: f64, weekends: f64) -> Weight {
 }
 
 /// Catchment of a site.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Catchment {
-    /// Site identifier.
-    pub site: &'static str,
     /// Weights per population.
-    pub weights: &'static [Weight],
+    pub weights: Vec<Weight>,
     /// Opening dates of the domain, if published.
     pub season: Option<(Date, Date)>,
 }
 
-/// Catchments of the two sites (weights: see the module documentation).
-pub const CATCHMENTS: &[Catchment] = &[
-    Catchment {
-        site: "cervieres",
-        weights: &[
-            w(B, 3.0, 1.5),
-            w(A, 2.0, 0.5),
-            w(C, 1.5, 0.0),
-            w(Fwb, 0.5, 0.0),
-            w(Vaud, 0.25, 0.0),
-            w(Neuchatel, 0.25, 0.0),
-        ],
-        // « A partir du 19 décembre 2026 jusqu'au 31 mars 2027 » (mairie, report 02).
-        season: Some((d(2026, 12, 19), d(2027, 3, 31))),
-    },
-    Catchment {
-        site: "chapelle-des-bois",
-        weights: &[
-            w(A, 3.0, 1.5),
-            w(B, 1.5, 0.25),
-            w(C, 1.0, 0.0),
-            w(Fwb, 1.5, 0.0),
-            w(Vaud, 1.0, 0.5),
-            w(Neuchatel, 0.5, 0.25),
-        ],
-        // Opening depends on snow; no dates published.
-        season: None,
-    },
-];
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum PopulationRecord {
+    ZoneA,
+    ZoneB,
+    ZoneC,
+    Fwb,
+    Vaud,
+    Neuchatel,
+}
 
-/// Catchment of a site.
-pub fn catchment(site: &str) -> Option<&'static Catchment> {
-    CATCHMENTS.iter().find(|c| c.site == site)
+impl From<&PopulationRecord> for Population {
+    fn from(p: &PopulationRecord) -> Self {
+        match p {
+            PopulationRecord::ZoneA => A,
+            PopulationRecord::ZoneB => B,
+            PopulationRecord::ZoneC => C,
+            PopulationRecord::Fwb => Fwb,
+            PopulationRecord::Vaud => Vaud,
+            PopulationRecord::Neuchatel => Neuchatel,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct WeightRecord {
+    population: PopulationRecord,
+    holidays: f64,
+    weekends: f64,
+}
+
+#[derive(Deserialize)]
+struct PairRecord {
+    holidays: f64,
+    weekends: f64,
+}
+
+#[derive(Deserialize)]
+struct ProfileRecord {
+    departments: Vec<String>,
+    weights: Vec<WeightRecord>,
+}
+
+#[derive(Deserialize)]
+struct DefaultRecord {
+    home: PairRecord,
+    other_zones: PairRecord,
+    fwb: PairRecord,
+}
+
+#[derive(Deserialize)]
+struct CatchmentTable {
+    zones: BTreeMap<String, Vec<String>>,
+    profiles: Vec<ProfileRecord>,
+    default: DefaultRecord,
+}
+
+static TABLE: LazyLock<CatchmentTable> = LazyLock::new(|| {
+    serde_json::from_str(include_str!("../data/catchments.json")).expect("data/catchments.json")
+});
+
+/// Holiday zone of a French department (académie of the department), `None` outside the
+/// three zones (Corsica, overseas).
+pub fn zone_of_department(department: &str) -> Option<Population> {
+    TABLE
+        .zones
+        .iter()
+        .find(|(_, deps)| deps.iter().any(|d| d == department))
+        .and_then(|(z, _)| match z.as_str() {
+            "A" => Some(A),
+            "B" => Some(B),
+            "C" => Some(C),
+            _ => None,
+        })
+}
+
+/// Catchment of a site: the profile of its department, or else the default built from the
+/// holiday zone of its department; opening dates from the site table.
+pub fn catchment(site: &Site) -> Catchment {
+    let t = &*TABLE;
+    let weights = match t
+        .profiles
+        .iter()
+        .find(|p| p.departments.iter().any(|d| d == site.department))
+    {
+        Some(p) => p
+            .weights
+            .iter()
+            .map(|r| w((&r.population).into(), r.holidays, r.weekends))
+            .collect(),
+        None => {
+            let home = zone_of_department(site.department);
+            let mut v = Vec::new();
+            if let Some(h) = home {
+                v.push(w(h, t.default.home.holidays, t.default.home.weekends));
+            }
+            for z in [A, B, C] {
+                if Some(z) != home {
+                    v.push(w(
+                        z,
+                        t.default.other_zones.holidays,
+                        t.default.other_zones.weekends,
+                    ));
+                }
+            }
+            v.push(w(Fwb, t.default.fwb.holidays, t.default.fwb.weekends));
+            v
+        }
+    };
+    let date = |n: NaiveDate| Date::new(n.year(), n.month() as u8, n.day() as u8);
+    let season = skimap_common::site::local(site.id)
+        .and_then(|l| l.season.as_ref())
+        .map(|s| (date(s.first), date(s.last)));
+    Catchment { weights, season }
 }
 
 /// Snow and weather of the day, from the weather layer.
@@ -511,13 +588,9 @@ const WEEKDAYS: [&str; 7] = [
     "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche",
 ];
 
-/// Forecast of one day; `None` for an unknown site.
-pub fn forecast_day(
-    site: &str,
-    date: Date,
-    conditions: Option<&Conditions>,
-) -> Option<DayForecast> {
-    let c = catchment(site)?;
+/// Forecast of one day.
+pub fn forecast_day(site: &Site, date: Date, conditions: Option<&Conditions>) -> DayForecast {
+    let c = catchment(site);
     let mut score = 1.0;
     let mut reasons = Vec::new();
     if date.is_weekend() {
@@ -535,7 +608,7 @@ pub fn forecast_day(
         Some(_) => {}
         None => list.push((name, vec![who])),
     };
-    for wgt in c.weights {
+    for wgt in &c.weights {
         let pop = wgt.population;
         let country = if pop.is_french() {
             "France"
@@ -574,25 +647,29 @@ pub fn forecast_day(
     if open == Some(false) {
         reasons.push("domaine fermé (dates d'ouverture publiées)".to_owned());
     }
-    Some(DayForecast {
+    DayForecast {
         date,
         score,
         level: CrowdLevel::from_score(score),
         reasons,
         open,
-    })
+    }
 }
 
 /// Forecast of every day from `first` to `last` included, without conditions.
-pub fn forecast_range(site: &str, first: Date, last: Date) -> Vec<DayForecast> {
+pub fn forecast_range(site: &Site, first: Date, last: Date) -> Vec<DayForecast> {
     (first.days()..=last.days())
-        .filter_map(|n| forecast_day(site, Date::from_days(n), None))
+        .map(|n| forecast_day(site, Date::from_days(n), None))
         .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn at(id: &str) -> &'static Site {
+        skimap_common::site::site(id).unwrap()
+    }
 
     #[test]
     fn dates() {
@@ -655,7 +732,7 @@ mod tests {
 
     #[test]
     fn levels_on_key_days() {
-        let lvl = |s, y, m, d| forecast_day(s, Date::new(y, m, d), None).unwrap().level;
+        let lvl = |s, y, m, d| forecast_day(at(s), Date::new(y, m, d), None).level;
         use CrowdLevel::*;
         // Chapelle-des-Bois: the week of 22–28 February 2027 has zones A and B and the
         // Belgian congé de détente together (report 02: probable peak).
@@ -678,8 +755,7 @@ mod tests {
         // First week of January at Cervières (report 02): busy until Sunday 3, calm after.
         assert_eq!(lvl("cervieres", 2027, 1, 2), VeryBusy);
         assert_eq!(lvl("cervieres", 2027, 1, 5), Calm);
-        assert!(forecast_day("mouthe", Date::new(2027, 1, 5), None).is_none());
-        let xmas = forecast_day("cervieres", Date::new(2026, 12, 25), None).unwrap();
+        let xmas = forecast_day(at("cervieres"), Date::new(2026, 12, 25), None);
         assert_eq!(
             xmas.reasons,
             [
@@ -688,18 +764,49 @@ mod tests {
                 "vacances d'hiver (Belgique (FWB), Vaud, Neuchâtel)"
             ]
         );
-        let sunday = forecast_day("cervieres", Date::new(2027, 2, 21), None).unwrap();
+        let sunday = forecast_day(at("cervieres"), Date::new(2027, 2, 21), None);
         assert_eq!(sunday.reasons[0], "dimanche");
     }
 
     #[test]
+    fn any_site_has_a_catchment() {
+        // A domain of a department without a profile: home zone, the two other zones,
+        // Belgium; no published opening dates.
+        let mut vosges = *at("cervieres");
+        vosges.id = "un-domaine-des-vosges";
+        vosges.department = "88";
+        let c = catchment(&vosges);
+        let pops: Vec<_> = c.weights.iter().map(|w| w.population).collect();
+        assert_eq!(pops, [B, A, C, Fwb]);
+        assert_eq!((c.weights[0].holidays, c.weights[0].weekends), (3.0, 1.5));
+        assert_eq!((c.weights[1].holidays, c.weights[1].weekends), (1.5, 0.0));
+        assert_eq!(c.season, None);
+        let f = forecast_day(&vosges, Date::new(2027, 2, 24), None);
+        assert_eq!(f.level, CrowdLevel::VeryBusy);
+        // Every department of mainland France but Corsica has a zone.
+        assert_eq!(zone_of_department("25"), Some(A));
+        assert_eq!(zone_of_department("05"), Some(B));
+        assert_eq!(zone_of_department("31"), Some(C));
+        assert_eq!(zone_of_department("2A"), None);
+        let all: usize = TABLE.zones.values().map(Vec::len).sum();
+        assert_eq!(all, 94);
+        // Same department, same catchment: the table has no site.
+        let mut other = *at("chapelle-des-bois");
+        other.id = "un-autre-domaine-du-doubs";
+        assert_eq!(
+            catchment(&other).weights,
+            catchment(at("chapelle-des-bois")).weights
+        );
+    }
+
+    #[test]
     fn condition_bonus_and_season() {
-        let base = forecast_day("chapelle-des-bois", Date::new(2027, 1, 17), None).unwrap();
+        let base = forecast_day(at("chapelle-des-bois"), Date::new(2027, 1, 17), None);
         let good = Conditions {
             fresh_snow_cm: 15.0,
             sunny: true,
         };
-        let f = forecast_day("chapelle-des-bois", Date::new(2027, 1, 17), Some(&good)).unwrap();
+        let f = forecast_day(at("chapelle-des-bois"), Date::new(2027, 1, 17), Some(&good));
         assert_eq!(f.score, base.score + 2.0);
         assert_eq!(f.level, CrowdLevel::Busy);
         assert!(f.reasons.iter().any(|r| r.starts_with("neige fraîche")));
@@ -707,14 +814,12 @@ mod tests {
             fresh_snow_cm: 5.0,
             sunny: false,
         };
-        let f = forecast_day("chapelle-des-bois", Date::new(2027, 1, 17), Some(&thin)).unwrap();
+        let f = forecast_day(at("chapelle-des-bois"), Date::new(2027, 1, 17), Some(&thin));
         assert_eq!(f.score, base.score);
-        let closed = forecast_day("cervieres", Date::new(2027, 4, 12), None).unwrap();
+        let closed = forecast_day(at("cervieres"), Date::new(2027, 4, 12), None);
         assert_eq!(closed.open, Some(false));
         assert_eq!(
-            forecast_day("cervieres", Date::new(2026, 12, 19), None)
-                .unwrap()
-                .open,
+            forecast_day(at("cervieres"), Date::new(2026, 12, 19), None).open,
             Some(true)
         );
         assert_eq!(base.open, None);
@@ -768,7 +873,7 @@ mod tests {
         assert!(public_holiday(Vaud, armistice).is_none());
         assert!(public_holiday(Neuchatel, armistice).is_none());
         // A public holiday of a population counts as its weekend: Vaud's 2 January.
-        let f = forecast_day("chapelle-des-bois", Date::new(2027, 1, 2), None).unwrap();
+        let f = forecast_day(at("chapelle-des-bois"), Date::new(2027, 1, 2), None);
         assert!(
             f.reasons.iter().any(|r| r.starts_with("2 janvier (Vaud)")),
             "{:?}",
@@ -781,7 +886,7 @@ mod tests {
     fn season_2026_27() {
         let (first, last) = (Date::new(2026, 12, 1), Date::new(2027, 4, 30));
         for site in ["cervieres", "chapelle-des-bois"] {
-            let days = forecast_range(site, first, last);
+            let days = forecast_range(at(site), first, last);
             assert_eq!(days.len(), 151);
             let mut count = [0usize; 5];
             for f in &days {

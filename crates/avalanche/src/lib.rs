@@ -2,7 +2,7 @@
 //!
 //! Owned tickets:
 //! - P16 (#29): run the AutoATES v3.0 reference implementation (Python, MIT, with
-//!   AvaFrame com4FlowPy) on Cervières as an oracle (`oracle/autoates_oracle.py`, outside
+//!   AvaFrame com4FlowPy) on a test site as an oracle (`oracle/autoates_oracle.py`, outside
 //!   the pipeline); compared cell by cell in [`exposure::oracle`].
 //! - P17 (#30): Rust reimplementation (release areas, Flow-Py runout, forest, dev8 classes,
 //!   three exposure classes, piste runs), see [`exposure`].
@@ -16,6 +16,7 @@
 pub mod error;
 pub mod exposure;
 pub mod historic;
+pub mod report07;
 
 pub use error::{Error, Result};
 

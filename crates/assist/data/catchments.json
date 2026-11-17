@@ -1,0 +1,41 @@
+{
+  "about": "Bassins de clientèle de la prévision d'affluence (A4, #91), lus par skimap-assist (crowd::catchment). Chaque domaine prend le profil de son département ; sans profil, la règle par défaut part de la zone de vacances de son académie. Poids : jugement, à calibrer avec des données de fréquentation (aucune disponible).",
+  "zones": {
+    "A": ["01", "03", "07", "15", "16", "17", "19", "21", "23", "24", "25", "26", "33", "38", "39", "40", "42", "43", "47", "58", "63", "64", "69", "70", "71", "73", "74", "79", "86", "87", "89", "90"],
+    "B": ["02", "04", "05", "06", "08", "10", "13", "14", "18", "22", "27", "28", "29", "35", "36", "37", "41", "44", "45", "49", "50", "51", "52", "53", "54", "55", "56", "57", "59", "60", "61", "62", "67", "68", "72", "76", "80", "83", "84", "85", "88"],
+    "C": ["09", "11", "12", "30", "31", "32", "34", "46", "48", "65", "66", "75", "77", "78", "81", "82", "91", "92", "93", "94", "95"]
+  },
+  "zones_source": "Académies par zone de vacances 2026-2027 (Ministère de l'Éducation nationale, jeu de données fr-en-calendrier-scolaire) : A Besançon, Bordeaux, Clermont-Ferrand, Dijon, Grenoble, Limoges, Lyon, Poitiers ; B Aix-Marseille, Amiens, Lille, Nancy-Metz, Nantes, Nice, Normandie, Orléans-Tours, Reims, Rennes, Strasbourg ; C Créteil, Montpellier, Paris, Toulouse, Versailles.",
+  "profiles": [
+    {
+      "name": "Alpes du Sud (académies d'Aix-Marseille et de Nice) : zone B chez elle, Lyon et Grenoble proches, Suisse et Belgique lointaines",
+      "departments": ["04", "05", "06"],
+      "weights": [
+        {"population": "zone_b", "holidays": 3.0, "weekends": 1.5},
+        {"population": "zone_a", "holidays": 2.0, "weekends": 0.5},
+        {"population": "zone_c", "holidays": 1.5, "weekends": 0.0},
+        {"population": "fwb", "holidays": 0.5, "weekends": 0.0},
+        {"population": "vaud", "holidays": 0.25, "weekends": 0.0},
+        {"population": "neuchatel", "holidays": 0.25, "weekends": 0.0}
+      ]
+    },
+    {
+      "name": "Massif jurassien français (Doubs, Jura, Territoire de Belfort, Ain) : zone A chez elle, Vaud et Neuchâtel à la frontière, Belgique en séjour",
+      "departments": ["01", "25", "39", "90"],
+      "weights": [
+        {"population": "zone_a", "holidays": 3.0, "weekends": 1.5},
+        {"population": "zone_b", "holidays": 1.5, "weekends": 0.25},
+        {"population": "zone_c", "holidays": 1.0, "weekends": 0.0},
+        {"population": "fwb", "holidays": 1.5, "weekends": 0.0},
+        {"population": "vaud", "holidays": 1.0, "weekends": 0.5},
+        {"population": "neuchatel", "holidays": 0.5, "weekends": 0.25}
+      ]
+    }
+  ],
+  "default": {
+    "about": "Département sans profil : zone de son académie en séjours et sorties à la journée, deux autres zones en séjours, Belgique en séjours ; aucun canton suisse.",
+    "home": {"holidays": 3.0, "weekends": 1.5},
+    "other_zones": {"holidays": 1.5, "weekends": 0.0},
+    "fwb": {"holidays": 0.5, "weekends": 0.0}
+  }
+}

@@ -7,7 +7,6 @@ import androidx.test.uiautomator.Until
 import java.util.regex.Pattern
 
 const val PACKAGE = "fr.skimap.app"
-const val SITE = "cervieres"
 private const val SOURCE = "/data/local/tmp/skimap-packs"
 private const val RENDER_TIMEOUT_MS = 120_000L
 
@@ -15,25 +14,35 @@ private const val RENDER_TIMEOUT_MS = 120_000L
 private val NO_PACK: Pattern = Pattern.compile("Aucun pack sur ce téléphone|No pack on this phone")
 private val MAP_SHOWN: Pattern = Pattern.compile(".*(affichée|shown)")
 
+/** Site of the benchmark: the first pack pushed to [SOURCE] (any domain). */
+private fun MacrobenchmarkScope.benchSite(): String =
+    device
+        .executeShellCommand("ls $SOURCE")
+        .lineSequence()
+        .map { it.trim() }
+        .firstOrNull { it.isNotEmpty() && !it.contains("No such file") }
+        ?: error("push a pack to $SOURCE/<site> first (README)")
+
 /**
- * Copies the pack of [SITE] into the app storage once: the app creates its own directory
- * at its first start (a directory made by the shell would not be readable by the app).
+ * Copies the pack of the benchmark site into the app storage once: the app creates its own
+ * directory at its first start (a directory made by the shell would not be readable by the app).
  */
 fun MacrobenchmarkScope.installPack() {
+    val site = benchSite()
     val dest = "/sdcard/Android/data/$PACKAGE/files/packs"
-    if (device.executeShellCommand("ls $dest/$SITE/manifest.json").contains("manifest.json")) return
-    check(device.executeShellCommand("ls $SOURCE/$SITE/manifest.json").contains("manifest.json")) {
-        "push a pack to $SOURCE/$SITE first (README)"
+    if (device.executeShellCommand("ls $dest/$site/manifest.json").contains("manifest.json")) return
+    check(device.executeShellCommand("ls $SOURCE/$site/manifest.json").contains("manifest.json")) {
+        "push a pack to $SOURCE/$site first (README)"
     }
     startActivityAndWait()
     // The app has created its packs directory once it says there is no pack.
     check(device.wait(Until.hasObject(By.text(NO_PACK)), RENDER_TIMEOUT_MS)) { "no empty screen" }
-    device.executeShellCommand("cp -r $SOURCE/$SITE $dest/$SITE")
+    device.executeShellCommand("cp -r $SOURCE/$site $dest/$site")
     killProcess()
 }
 
-/** Starts the app on [SITE] and waits until the map is drawn (its description says so). */
+/** Starts the app on the benchmark site and waits until the map is drawn (its description says so). */
 fun MacrobenchmarkScope.startOnPackAndWaitForMap() {
-    startActivityAndWait(Intent().setClassName(PACKAGE, "$PACKAGE.MainActivity").putExtra("pack", SITE))
+    startActivityAndWait(Intent().setClassName(PACKAGE, "$PACKAGE.MainActivity").putExtra("pack", benchSite()))
     check(device.wait(Until.hasObject(By.desc(MAP_SHOWN)), RENDER_TIMEOUT_MS)) { "map not drawn" }
 }

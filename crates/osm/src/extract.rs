@@ -264,8 +264,8 @@ pub struct KeptReentry {
 /// network needs to come back into the box.
 ///
 /// Cutting the network at the box turns a one-way trail that leaves the box and returns
-/// outside it into a dead end that nothing leaves (Chapelle-des-Bois: « Voie du tram »,
-/// « Le Gy Large » and « Le Chocolat » west of 6.02° E). The full network around the box
+/// outside it into a dead end that nothing leaves (loops of a Jura domain that cross the
+/// west edge of its box). The full network around the box
 /// (pistes within [`REENTRY_MAX_M`] of the site pistes) is built, and the outside paths
 /// of [`Graph::reentry_paths`] are added to the site.
 pub fn site_pistes(all: &PisteSet, bbox: &BBox) -> (PisteSet, Vec<KeptReentry>) {

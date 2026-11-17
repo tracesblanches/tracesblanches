@@ -12,7 +12,7 @@
 //! - `models=meteofrance_seamless` (AROME / ARPEGE blend) for temperature, apparent
 //!   temperature, wind, gusts, direction, snowfall, precipitation, cloud cover, weather code;
 //! - `models=best_match` for `visibility` and `freezing_level_height`, which the Météo-France
-//!   models of Open-Meteo leave null (checked on 14/11/2026 at Cervières, like `snow_depth`
+//!   models of Open-Meteo leave null (checked on 14/11/2026 on an alpine site, like `snow_depth`
 //!   in report 03). `snow_depth` is never used: snow depth comes from the snow layer (P6).
 //!
 //! Each hour records which model gave each variable ([`PointForecast::models`]).
@@ -726,7 +726,13 @@ mod tests {
             .offline(true)
             .build()
             .unwrap();
-        let e = build(&skimap_common::site::CERVIERES, &layout, &dl, false).unwrap_err();
+        let e = build(
+            skimap_common::site::site("cervieres").expect("evaluation site"),
+            &layout,
+            &dl,
+            false,
+        )
+        .unwrap_err();
         assert!(matches!(e, Error::PersonalSourcesDisabled("open-meteo")));
         assert!(!layout.out_root().exists());
     }

@@ -13,12 +13,12 @@
 //!   with the widest spread of slopes), for the slope and aspect operator;
 //! - `data/out/<site>/<layer>/`: the redistributable pipeline outputs read by the
 //!   phone-side crates (pistes, routing graph, zones without Biodiv'sports, coverage,
-//!   huts, snow, avalanche exposure of Chapelle-des-Bois);
+//!   huts, snow, avalanche exposure of the sites whose layer is small enough);
 //! - `manifest.json`: every file with its size, SHA-256, licence key (`LICENCES.md`) and
 //!   origin.
 //!
-//! Never extracted: the personal-use sources (Nordic France, the Cervières town hall
-//! page, ENJ, Open-Meteo), the historic avalanche paths (CLPA republished by the DDT 05,
+//! Never extracted: the personal-use sources (Nordic France, the town hall pages, ENJ,
+//! Open-Meteo), the historic avalanche paths (CLPA republished by the DDT 05,
 //! letter 3 pending; INRAE: personal use), Biodiv'sports (no licence found), the links
 //! between huts of different licences, the snowtools massif raster.
 //!
@@ -40,7 +40,7 @@ use skimap_common::download::{Downloader, Request};
 use skimap_common::geom::BBox;
 use skimap_common::grid::Grid;
 use skimap_common::layout::DataLayout;
-use skimap_common::site::{CHAPELLE_DES_BOIS, SITES, Site};
+use skimap_common::site::{SITES, Site};
 use skimap_osm::extract::{self, Planet};
 use skimap_osm::parse::{MemberKind, OsmData};
 use skimap_terrain::geotiff;
@@ -534,10 +534,25 @@ impl Gen<'_> {
             LO_METEOFRANCE,
             "massif.tif (snowtools, CeCILL-C) and the depth bounds left out",
         )?;
-        if site.id == CHAPELLE_DES_BOIS.id {
+        // The exposure raster is redistributable only when no CLPA cell (personal use) was
+        // fused into it.
+        if self.exposure_redistributable(site)? {
             self.exposure(site)?;
         }
         Ok(())
+    }
+
+    /// Whether the site has an avalanche exposure layer without CLPA cells.
+    fn exposure_redistributable(&self, site: &Site) -> Result<bool> {
+        let path = self
+            .layout
+            .layer_dir(site, "avalanche-exposure")?
+            .join("summary.json");
+        if !path.is_file() {
+            return Ok(false);
+        }
+        let summary = self.read_json(site, "avalanche-exposure", "summary.json")?;
+        Ok(summary["clpa_cells_raised"] == 0)
     }
 
     /// Zones without Biodiv'sports (no licence found, docs/licences): features, the meta

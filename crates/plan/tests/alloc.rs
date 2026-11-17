@@ -13,7 +13,15 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use skimap_common::layout::DataLayout;
-use skimap_common::site::{CERVIERES, CHAPELLE_DES_BOIS, Site};
+use skimap_common::site::Site;
+/// Evaluation site of `data/sites.json`, test data.
+static CERVIERES: std::sync::LazyLock<skimap_common::site::Site> =
+    std::sync::LazyLock::new(|| *skimap_common::site::site("cervieres").expect("evaluation site"));
+/// Evaluation site of `data/sites.json`, test data.
+static CHAPELLE_DES_BOIS: std::sync::LazyLock<skimap_common::site::Site> =
+    std::sync::LazyLock::new(|| {
+        *skimap_common::site::site("chapelle-des-bois").expect("evaluation site")
+    });
 use skimap_core::calibration::{GroupProfile, ProfileModel};
 use skimap_plan::pace;
 use skimap_plan::plan;

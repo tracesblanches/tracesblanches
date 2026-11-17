@@ -1,7 +1,7 @@
 //! P3 (#16): grouping pistes into cross-country ski areas ("domaines").
 //!
-//! OpenSkiMap grows areas by proximity of 0.5 km step by step; across the Col d'Izoard
-//! this merges Cervières into « Queyras - Arvieux » (report 07). Our grouping uses the
+//! OpenSkiMap grows areas by proximity of 0.5 km step by step; across a col this merges
+//! two domains of neighbouring valleys into one area (report 07). Our grouping uses the
 //! topology of the network, a shorter proximity threshold, the operators' own groupings
 //! and a rule against long single liaisons:
 //!
@@ -18,13 +18,12 @@
 //!    nearest seed, so a liaison between two seeds is cut near its middle.
 //! 5. **Merging.** Two neighbouring cells, not both sites, merge when the liaison between
 //!    them is shorter than [`Params::liaison_min_km`] (6 km): a domain's own sectors are
-//!    joined by short liaisons (Le Laus – Les Fonts at Cervières, ≈ 4 km), whereas a pass
-//!    between two valleys is a long single track (Cervières – Brunissard over the Izoard,
-//!    ≈ 13 km). Merges run shortest first and never put two sites together.
+//!    joined by short liaisons (≈ 4 km between two sectors of one village), whereas a pass
+//!    between two valleys is a long single track (≈ 13 km over a col). Merges run shortest first and never put two sites together.
 //! 6. **Relation coherence.** A piste relation of at most
 //!    [`Params::coherence_max_km`] split between domains is moved whole to the domain
 //!    holding most of its length, so the cut of a liaison falls between named pistes
-//!    (the « Izoard » piste of Cervières stays whole; the cut lands at the col).
+//!    (a named piste up to a col stays whole; the cut lands at the col).
 //!
 //! The length rule stands in for terrain: once the relief (P5) is available, a liaison
 //! should be cut at its highest point when it crosses a col.

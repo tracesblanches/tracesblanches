@@ -75,7 +75,7 @@ pub struct TripPlan {
     /// Delay after the deadline before alerting, minutes (default 30, at most 180).
     #[serde(default)]
     pub grace_minutes: Option<u32>,
-    /// Site identifier (`cervieres`, `chapelle-des-bois`), if any.
+    /// Site identifier (registry identifier, e.g. `les-saisies`), if any.
     #[serde(default)]
     pub site: Option<String>,
     /// The plan in words: route, start, equipment, people.

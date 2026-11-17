@@ -385,7 +385,7 @@ pub fn legend_inks(entries: &[EntryCand]) -> Vec<InkFound> {
     for (word, dashes, kinds, n) in groups {
         let colour = (!dashes.is_empty()).then(|| median_rgb(&dashes));
         // One reference per distinct dash colour (a plan may print one ink lighter in one
-        // column: two reds at Cervières).
+        // column: two reds on one plan seen).
         let mut subs: Vec<Vec<[u8; 3]>> = Vec::new();
         for &d in &dashes {
             match subs

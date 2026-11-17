@@ -10,7 +10,14 @@ use skimap_styles::generate::{Kind, file_name, style, style_text};
 use skimap_styles::inventory::Inventory;
 use skimap_styles::orphan;
 use skimap_styles::palette::Theme;
-use skimap_styles::schema::{SITES, Snapshot};
+use skimap_styles::schema::Snapshot;
+
+/// Sites of the proof packs (`styles/pack-schema.json`).
+const SITES: [&str; 3] = [
+    "cervieres",
+    "chapelle-des-bois",
+    "srn-domaine-geotrek-geo-pnr-vercors-fr-29403-1",
+];
 use skimap_styles::styles_dir;
 use skimap_styles::validate::{unchecked_sources, validate, validate_with};
 
@@ -43,7 +50,7 @@ fn committed_styles_are_the_generated_ones() {
 #[test]
 fn styles_are_valid_against_the_pack_schema() {
     let snapshot = Snapshot::load().expect("styles/pack-schema.json");
-    assert_eq!(snapshot.packs.len(), SITES.len());
+    assert_eq!(snapshot.sites(), SITES);
     for (name, s) in all() {
         let errors = validate(&s, &snapshot.packs);
         assert!(errors.is_empty(), "{name}:\n{}", errors.join("\n"));
@@ -508,9 +515,12 @@ fn styles_are_valid_against_the_real_packs() {
 #[test]
 #[ignore = "needs the real packs data/out/<site>/pack"]
 fn the_snapshot_is_the_real_packs() {
-    let fresh = Snapshot::from_packs(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/out"))
-        .expect("packs");
     let committed = Snapshot::load().expect("styles/pack-schema.json");
+    let fresh = Snapshot::from_packs(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/out"),
+        &committed.sites(),
+    )
+    .expect("packs");
     assert!(
         fresh == committed,
         "styles/pack-schema.json is stale: cargo run --release -p skimap-styles --example write_styles -- --schema"

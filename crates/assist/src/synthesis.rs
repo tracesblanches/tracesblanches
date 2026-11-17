@@ -596,7 +596,16 @@ pub fn synthesise(data: &SiteData, date: NaiveDate) -> Synthesis {
 mod tests {
     use super::*;
     use crate::layers::{Bera, BeraAspects, BeraBulletin, BeraRisk};
-    use skimap_common::site::{CERVIERES, CHAPELLE_DES_BOIS};
+    /// Evaluation site of `data/sites.json`, test data.
+    static CERVIERES: std::sync::LazyLock<skimap_common::site::Site> =
+        std::sync::LazyLock::new(|| {
+            *skimap_common::site::site("cervieres").expect("evaluation site")
+        });
+    /// Evaluation site of `data/sites.json`, test data.
+    static CHAPELLE_DES_BOIS: std::sync::LazyLock<skimap_common::site::Site> =
+        std::sync::LazyLock::new(|| {
+            *skimap_common::site::site("chapelle-des-bois").expect("evaluation site")
+        });
 
     fn empty(site: skimap_common::site::Site) -> SiteData {
         SiteData {

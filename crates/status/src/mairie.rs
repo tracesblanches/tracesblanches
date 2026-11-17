@@ -1,6 +1,5 @@
-//! « Info damage » page of the Cervières town hall
-//! (<https://cervieres.fr/domaine-nordique-2/info-damage/>): a WordPress page with one
-//! table per sector (piste, open/closed, last grooming, classic state, skating state,
+//! « Info damage » page of a town hall (`status.town_hall_page` of the site table): a
+//! WordPress page with one table per sector (piste, open/closed, last grooming, classic state, skating state,
 //! comment), edited by hand.
 //!
 //! **Personal use only** (no licence statement); polled at most every [`MIN_INTERVAL`].
@@ -15,9 +14,7 @@ use serde_json::Value;
 use crate::html::{after, attr_after, before, chunks, text};
 
 /// Downloader source.
-pub const SOURCE: &str = "cervieres-mairie";
-/// Page URL.
-pub const URL: &str = "https://cervieres.fr/domaine-nordique-2/info-damage/";
+pub const SOURCE: &str = "mairie";
 /// Shortest interval between two requests.
 pub const MIN_INTERVAL: Duration = Duration::from_secs(3 * 3600);
 

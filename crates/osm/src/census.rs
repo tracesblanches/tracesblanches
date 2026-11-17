@@ -922,8 +922,8 @@ pub fn build_france_from(
     }
     // Names: OSM site, else OpenSkiMap area not built from another site, else commune.
     // An OpenSkiMap area names a domain when it covers at least half of it and was not
-    // built from the site relation of another of our domains (« Queyras - Arvieux » does
-    // not name Cervières).
+    // built from the site relation of another of our domains (an area grown across a col
+    // from a neighbouring site does not name the domain on the other side).
     let site_domains: BTreeSet<i64> = domains.iter().filter_map(|r| r.site_relation).collect();
     for r in &mut domains {
         let total = r.km_nordic + r.km_hike_only;

@@ -121,7 +121,7 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
-        /** Name of the pack directory to open (`cervieres`), under [packsDir]; `libre`: free mode. */
+        /** Name of the pack directory to open (site identifier), under [packsDir]; `libre`: free mode. */
         const val EXTRA_PACK = "pack"
 
         /** `true`: shows the welcome of the first launch again (nothing else is reset). */

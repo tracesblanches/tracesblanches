@@ -119,7 +119,7 @@ fn all_sources() -> Map<String, Value> {
 
 /// Sources a pack may lack: the app and the viewer then leave out the source and its
 /// layers (`metadata.skimap:optional_sources`). Layers of personal-use sources (CLPA,
-/// and the exposure fused with it at Cervières), layers only some sites have (SRN areas
+/// and the exposure fused with it in the Hautes-Alpes), layers only some sites have (SRN areas
 /// and itineraries, snow outside the simulated massifs, avalanche exposure outside the
 /// mountains), layers added after older packs were built (piste name lines) and the
 /// trail-pass zones (no producer yet). The basemaps, pistes, zones, network, huts and

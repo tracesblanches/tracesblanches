@@ -4,14 +4,15 @@
 # step keeps the previous outputs of its layer, and the pack is published anyway when it
 # verifies (skimap-server publish refuses one that does not).
 #
-#   skimap-job build-all cervieres chapelle-des-bois   # weekly: everything (heavy)
-#   skimap-job snow      cervieres chapelle-des-bois   # daily: snow J-1, routing rasters
-#   skimap-job bera      cervieres                     # daily: avalanche bulletin
-#   skimap-job status    chapelle-des-bois             # trail status (personal sources)
-#   skimap-job meteo     cervieres chapelle-des-bois   # hourly weather (personal sources)
-#   skimap-job refresh   cervieres chapelle-des-bois   # station cards and titles of France
-#                                                      # (once), huts of each site; daily
-#                                                      # 1 Nov-30 Apr, weekly otherwise
+#   skimap-job build-all <site>...   # everything (heavy)
+#   skimap-job snow      <site>...   # snow J-1, routing rasters
+#   skimap-job bera      <site>...   # avalanche bulletin
+#   skimap-job status    <site>...   # trail status (personal sources)
+#   skimap-job meteo     <site>...   # hourly weather (personal sources)
+#   skimap-job refresh   [<site>...] # station cards and titles of France (once), huts of
+#                                    # the sites (default: every built site); daily
+#                                    # 1 Nov-30 Apr, weekly otherwise; then the packs of
+#                                    # the sites whose content changed
 #   skimap-job catchup                                 # every site: AROME weather of the
 #                                                      # latest run, then only what failed,
 #                                                      # is altered or old (build-all
@@ -38,6 +39,12 @@ step() {
 # rebuilt and published: the job then ends non-zero.
 if [ "$task" = refresh ]; then
   step skimap refresh "$@"
+  # Without explicit sites, rebuild the packs of the sites the refresh changed
+  # (data/out/france/refresh/changed_sites.txt, one identifier per line).
+  if [ $# -eq 0 ] && [ -f "$SKIMAP_DATA_DIR/out/france/refresh/changed_sites.txt" ]; then
+    # shellcheck disable=SC2046
+    set -- $(cat "$SKIMAP_DATA_DIR/out/france/refresh/changed_sites.txt")
+  fi
 fi
 
 # Catch-up of every site of the registry (deploy/catchup-cronjob.yaml): the failed,

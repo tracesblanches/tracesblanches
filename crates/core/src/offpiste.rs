@@ -481,8 +481,9 @@ pub fn decode_raster<T: RasterValue>(bytes: &[u8]) -> Result<Grid<T>> {
         .with_nodata(nodata))
 }
 
-/// Writes a raster file with [`Encoding::RowDelta`] cells (the pack gzips them: Cervières
-/// elevation 17.1 → 8.6 MB, slope 7.2 → 5.8 MB; the class rasters do not change);
+/// Writes a raster file with [`Encoding::RowDelta`] cells (the pack gzips them: on an
+/// alpine site, elevation 17.1 → 8.6 MB, slope 7.2 → 5.8 MB; the class rasters do not
+/// change);
 /// returns its size in bytes.
 pub fn write_raster<T: RasterValue>(path: &Path, grid: &Grid<T>, nodata: T) -> Result<u64> {
     write_raster_with(path, grid, nodata, Encoding::RowDelta)

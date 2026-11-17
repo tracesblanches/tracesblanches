@@ -57,7 +57,7 @@ pub struct BuildOptions {
     /// Off by default: those sources do not allow redistribution.
     pub personal_sources: bool,
     /// Include the IGN slope map tiles (WMTS, RGBA as served) next to our slope raster, for
-    /// comparison in the viewer. Off by default: 22.6 MB at Cervières, offline licence
+    /// comparison in the viewer. Off by default: about 20 MB for a mountain site, offline licence
     /// unconfirmed (features.md n° 5).
     pub ign_slopes: bool,
     /// Include the voice clips when the voice crate produced them.

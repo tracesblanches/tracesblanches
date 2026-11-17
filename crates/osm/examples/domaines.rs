@@ -10,7 +10,14 @@ use std::time::Instant;
 
 use skimap_common::config::Config;
 use skimap_common::download::Downloader;
-use skimap_common::site::{CERVIERES, CHAPELLE_DES_BOIS};
+/// Evaluation site of `data/sites.json`, test data.
+static CERVIERES: std::sync::LazyLock<skimap_common::site::Site> =
+    std::sync::LazyLock::new(|| *skimap_common::site::site("cervieres").expect("evaluation site"));
+/// Evaluation site of `data/sites.json`, test data.
+static CHAPELLE_DES_BOIS: std::sync::LazyLock<skimap_common::site::Site> =
+    std::sync::LazyLock::new(|| {
+        *skimap_common::site::site("chapelle-des-bois").expect("evaluation site")
+    });
 use skimap_osm::census::{CensusOptions, build_france_from, build_site_from};
 use skimap_osm::domains::{Params, cluster};
 use skimap_osm::extract::load_planet;

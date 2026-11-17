@@ -18,8 +18,8 @@
 //!    200 m around woods), tolerated, consent required, avoid recommended, allowed, no
 //!    rule.
 //!
-//! Outside every jurisdiction zone of the layer (`country`, `canton`), for instance in
-//! Italy near Cervières, nothing is known: [`Evaluation::covered`] is false.
+//! Outside every jurisdiction zone of the layer (`country`, `canton`), for instance across
+//! the Italian border, nothing is known: [`Evaluation::covered`] is false.
 //!
 //! Sun times come from [`crate::ephemeris`] (sunrise equation, refraction −0.833°), within
 //! about a minute of the NOAA algorithm.

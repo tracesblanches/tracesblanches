@@ -163,7 +163,7 @@ pub struct Config {
     pub rate_limits: BTreeMap<String, Vec<RateLimit>>,
     /// Also use the sources whose terms only allow personal, non-commercial use (Nordic
     /// France widget, Open-Meteo free API, trail status pages without a licence: ENJ, town
-    /// hall of Cervières; Biodiv'sports; the DDT 05 CLPA). Off by default: their content
+    /// hall pages; Biodiv'sports; the DDT 05 CLPA). Off by default: their content
     /// must not end up in a redistributed pack. Enforced at the root: a downloader built
     /// from this configuration refuses any request to a source whose policy is
     /// `personal_use_only` when this is off (`Error::PersonalSourceRefused`).
