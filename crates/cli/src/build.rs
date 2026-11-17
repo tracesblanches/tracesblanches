@@ -346,6 +346,30 @@ impl Ctx {
         log: &mut dyn std::io::Write,
     ) -> BuildOutcome {
         let mut run = Run::new(site, self.layout.out_dir(site), shared, log);
+        let (pack_bytes, export_bytes) = self.steps(&mut run, shared);
+        let resumed = |n: &str| run.steps.iter().any(|s| s.name == n && s.resumed);
+        let (pack_resumed, export_resumed) = (resumed("build-pack"), resumed("export"));
+        let previous = shared.resume;
+        let mut out = run.finish();
+        out.pack_bytes = if pack_resumed {
+            previous.and_then(|r| r.pack_bytes)
+        } else {
+            pack_bytes
+        };
+        out.export_bytes = if export_resumed {
+            previous.and_then(|r| r.export_bytes)
+        } else {
+            export_bytes
+        };
+        out
+    }
+
+    /// The steps of [`Ctx::build_all_with`], with the sizes of the pack and the export
+    /// they built. Nothing here names the site: each step is handed the view of it that
+    /// holds only the fields of the registry it declares ([`reads`]), the fields its
+    /// inputs fingerprint is made of ([`step_inputs`]), so that no step reads a field
+    /// whose change would not run it again (#164).
+    fn steps(&self, run: &mut Run<'_>, shared: &Shared<'_>) -> (Option<u64>, Option<u64>) {
         // The planet extract, the census and the SRN areas of France: read when a step
         // that needs them runs (`pistes`, `domaines`, `srn`), once for the batch.
         let own_france;
@@ -356,7 +380,7 @@ impl Ctx {
                 &own_france
             }
         };
-        run.step("planet", &[], || {
+        run.step("planet", &[], |_| {
             Ok(if shared.france.is_some() {
                 "extrait OSM partagé par les sites, lu à la demande".to_owned()
             } else {
@@ -364,7 +388,7 @@ impl Ctx {
             })
         });
         let planet_ref = || france.planet();
-        run.step("domaines", &["planet"], || {
+        run.step("domaines", &["planet"], |site| {
             let p = planet_ref()?;
             let census = france.census()?;
             let dir = self.domaines_site(site, p, census)?;
@@ -397,7 +421,7 @@ impl Ctx {
                 names.join(", ")
             ))
         });
-        run.step("srn", &["domaines"], || {
+        run.step("srn", &["domaines"], |site| {
             let srn = france.srn()?;
             let count =
                 |k: skimap_srn::areas::Kind| srn.areas.iter().filter(|a| a.kind == k).count();
@@ -415,26 +439,21 @@ impl Ctx {
             ))
         });
         // The graph of an SRN site takes its itineraries (#168): after the `srn` step.
-        let pistes_deps: &[&'static str] = if skimap_osm::srn_ways::takes_itineraries(site) {
-            &["planet", "srn"]
-        } else {
-            &["planet"]
-        };
+        let pistes_deps: &[&'static str] =
+            if skimap_osm::srn_ways::takes_itineraries(&run.view("pistes")) {
+                &["planet", "srn"]
+            } else {
+                &["planet"]
+            };
         let mut graph_edges = None;
         if run.resumable("pistes", pistes_deps).is_some() {
             // Taken over: the edge count of the routing test comes from the layer.
-            graph_edges = LayerMeta::read(
-                &self
-                    .layout
-                    .out_dir(site)
-                    .join("pistes")
-                    .join("pistes.meta.json"),
-            )
-            .ok()
-            .and_then(|m| m.stats["graph_edges"].as_u64())
-            .map(|n| n as usize);
+            graph_edges = LayerMeta::read(&run.out_dir.join("pistes").join("pistes.meta.json"))
+                .ok()
+                .and_then(|m| m.stats["graph_edges"].as_u64())
+                .map(|n| n as usize);
         }
-        run.step("pistes", pistes_deps, || {
+        run.step("pistes", pistes_deps, |site| {
             let s = self.pistes(site, Some(planet_ref()?))?.stats;
             graph_edges = Some(s.graph_edges);
             Ok(format!(
@@ -448,13 +467,10 @@ impl Ctx {
                 s.graph_components
             ))
         });
-        // France layer: a batch refreshes it once before its sites (`Shared::stations_once`).
-        if !shared.stations_once {
-            run.step("stations", &["domaines"], || {
-                Ok(describe_stations(&self.stations(shared.force_stations)?))
-            });
-        }
-        run.step("terrain", &[], || {
+        // The stations layer of France (H1, H2) is not a step of the site: `build-all`
+        // refreshes it before reading the inputs of its sites (it rewrites their starts,
+        // X9; #164).
+        run.step("terrain", &[], |site| {
             let t = self.terrain(site)?;
             let r07 = t.report07.as_ref().map_or_else(String::new, |r| {
                 format!(
@@ -474,7 +490,7 @@ impl Ctx {
                 t.steep30_fraction * 100.0
             ))
         });
-        run.step("snow", &["terrain"], || {
+        run.step("snow", &["terrain"], |site| {
             if site.massifs.is_empty() {
                 return not_applicable(
                     "hors des massifs de la simulation Météo-France (polygones snowtools)",
@@ -487,7 +503,7 @@ impl Ctx {
                 s.date, s.cells_estimated
             ))
         });
-        run.step("refuges", &[], || {
+        run.step("refuges", &[], |site| {
             let st = self.refuges(site)?;
             Ok(format!(
                 "refuges.info {} points, OSM {} éléments, Camptocamp {} dans l'emprise, {} lieux reliés",
@@ -497,12 +513,12 @@ impl Ctx {
                 st["links"]["places"]
             ))
         });
-        run.step("zones", &[], || {
+        run.step("zones", &[], |site| {
             let z = self.zones(site)?;
             let kinds: Vec<String> = z.by_kind.iter().map(|(k, n)| format!("{k} {n}")).collect();
             Ok(format!("{} zones ({})", z.zones, kinds.join(", ")))
         });
-        run.step("avalanche-exposure", &["terrain", "pistes"], || {
+        run.step("avalanche-exposure", &["terrain", "pistes"], |site| {
             let relief = crate::relief::steep_relief(&self.layout, site)?;
             if !relief.avalanche_terrain() {
                 return not_applicable(&format!(
@@ -524,7 +540,7 @@ impl Ctx {
                 relief.describe()
             ))
         });
-        run.step("routing", &["pistes", "terrain"], || {
+        run.step("routing", &["pistes", "terrain"], |site| {
             if graph_edges == Some(0) {
                 return not_applicable("aucune piste dans l'emprise");
             }
@@ -544,7 +560,7 @@ impl Ctx {
         run.step(
             "offpiste-prepare",
             &["terrain", "snow", "zones", "pistes"],
-            || {
+            |site| {
                 let m = self.offpiste_prepare(site, &[])?;
                 let g = &m.stats["grid"];
                 let exposure = match &m.stats["exposure"] {
@@ -575,7 +591,7 @@ impl Ctx {
                 ))
             },
         );
-        run.step("coverage", &[], || {
+        run.step("coverage", &[], |site| {
             let c = self.coverage(site, &skimap_coverage::CoverageOptions::default())?;
             Ok(format!(
                 "ARCEP {} : partie française {} km², sans aucun réseau {} km² ({} %), {} polygones",
@@ -586,7 +602,7 @@ impl Ctx {
                 c.no_network_polygons
             ))
         });
-        run.step("bera", &[], || {
+        run.step("bera", &[], |site| {
             // The BERA layer gives the bulletin of a BERA massif, or the notice and links of
             // the Jura (no BERA there); elsewhere (Vosges, Massif central…) nothing applies.
             if !site.has_bera && !is_jura(site) {
@@ -613,7 +629,7 @@ impl Ctx {
             ))
         });
         // Public mode: AROME (Licence Ouverte); the assistant then gets its weather too.
-        run.step("meteo", &[], || {
+        run.step("meteo", &[], |site| {
             let h = self.meteo(site)?;
             let hours: usize = h.points.iter().map(|p| p.hours.len()).sum();
             let first = h.points.first();
@@ -634,7 +650,7 @@ impl Ctx {
             ))
         });
         if self.cfg.personal_sources {
-            run.step("status-poll", &["pistes"], || {
+            run.step("status-poll", &["pistes"], |site| {
                 if !site.kind.has_groomed_trails() {
                     return not_applicable(&format!(
                         "{} : pas d'état des pistes ni de damage",
@@ -660,7 +676,7 @@ impl Ctx {
                 "personal_sources désactivé (SKIMAP_PERSONAL_SOURCES)",
             );
         }
-        run.step("avalanche-historic", &["pistes"], || {
+        run.step("avalanche-historic", &["pistes"], |site| {
             if site.department != skimap_avalanche::historic::DDT05_DEPARTMENT {
                 return not_applicable(&format!(
                     "emprises CLPA publiées seulement pour les Hautes-Alpes (DDT 05) ; département {}",
@@ -691,7 +707,7 @@ impl Ctx {
             ))
         });
         // The assistant reads every layer above (a missing one is said in its outputs).
-        run.step("assist", &[], || {
+        run.step("assist", &[], |site| {
             let (out, lines) = crate::assist::assist(
                 &self.layout,
                 site,
@@ -717,7 +733,7 @@ impl Ctx {
         // Day plans of the preset requests (J1, J2) on the archived day of the site: the
         // trail graph, the refuges, the voice clips and `assist/history/`. Not in the pack
         // (computed in the morning, on the phone eventually: E2).
-        run.step("plan", &["routing"], || {
+        run.step("plan", &["routing"], |site| {
             if skimap_plan::presets::archived_day(site).is_none() {
                 return not_applicable(
                     "aucun jour archivé pour ce site (table des sites ; `skimap history`, usage personnel)",
@@ -744,7 +760,7 @@ impl Ctx {
         });
         // The pack takes whatever layers exist; it does not need every step above.
         let mut pack_bytes = None;
-        run.step("build-pack", &[], || {
+        run.step("build-pack", &[], |site| {
             let r = self.build_pack(site)?;
             let problems = skimap_pack::Pack::open(&r.pack_dir)?.verify()?;
             pack_bytes = Some(r.total_bytes);
@@ -777,7 +793,7 @@ impl Ctx {
             ))
         });
         let mut export_bytes = None;
-        run.step("export", &["build-pack"], || {
+        run.step("export", &["build-pack"], |site| {
             let r = self.export(site)?;
             export_bytes = Some(r.total_bytes);
             Ok(format!(
@@ -787,21 +803,7 @@ impl Ctx {
                 r.skipped.len()
             ))
         });
-        let resumed = |n: &str| run.steps.iter().any(|s| s.name == n && s.resumed);
-        let (pack_resumed, export_resumed) = (resumed("build-pack"), resumed("export"));
-        let previous = shared.resume;
-        let mut out = run.finish();
-        out.pack_bytes = if pack_resumed {
-            previous.and_then(|r| r.pack_bytes)
-        } else {
-            pack_bytes
-        };
-        out.export_bytes = if export_resumed {
-            previous.and_then(|r| r.export_bytes)
-        } else {
-            export_bytes
-        };
-        out
+        (pack_bytes, export_bytes)
     }
 }
 
@@ -885,11 +887,6 @@ impl<'c> France<'c> {
 pub struct Shared<'a> {
     /// France-wide inputs, read on demand once for every site of a batch.
     pub france: Option<&'a France<'a>>,
-    /// The stations layer of France (H1, H2) is refreshed once by the batch, not by the
-    /// `build-all` of each site.
-    pub stations_once: bool,
-    /// Refresh every part of the stations layer, due or not (`build-all --force`).
-    pub force_stations: bool,
     /// Steps taken over from the previous run of the site.
     pub resume: Option<Resume<'a>>,
     /// Called with the steps so far after every step (journal of the site, so that an
@@ -992,6 +989,204 @@ pub struct StepRecord {
     /// Taken over from the previous run, not run again.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub resumed: bool,
+    /// Fingerprint of the fields of the site record the step read ([`step_inputs`]): a
+    /// later run takes the step over only with the same (`None`: not run, or recorded
+    /// before #164, then that of the record of the previous build).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inputs: Option<String>,
+}
+
+/// A field of the site record that a step reads ([`Site`]; the census details that
+/// `Site` does not carry — census identifier, commune name, envelope, km, sections,
+/// status source of report 08 — are read by no step).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Field {
+    /// [`Site::name`].
+    Name,
+    /// [`Site::department`].
+    Department,
+    /// [`Site::insee`].
+    Insee,
+    /// [`Site::commune_center`].
+    CommuneCenter,
+    /// [`Site::bbox`] (the working area).
+    Bbox,
+    /// [`Site::massifs`].
+    Massifs,
+    /// [`Site::massif_status`].
+    MassifStatus,
+    /// [`Site::has_bera`].
+    HasBera,
+    /// [`Site::kind`].
+    Kind,
+    /// [`Site::parent`].
+    Parent,
+    /// [`Site::status`]: trail status sources (personal use).
+    Status,
+    /// [`Site::starts`]: trail starts (X9), rewritten by the stations step.
+    Starts,
+}
+
+/// The place of the site: every field but the status sources and the starts.
+const PLACE: &[Field] = &[
+    Field::Name,
+    Field::Department,
+    Field::Insee,
+    Field::CommuneCenter,
+    Field::Bbox,
+    Field::Massifs,
+    Field::MassifStatus,
+    Field::HasBera,
+    Field::Kind,
+    Field::Parent,
+];
+/// The place and the starts.
+const PLACE_STARTS: &[Field] = &[
+    Field::Name,
+    Field::Department,
+    Field::Insee,
+    Field::CommuneCenter,
+    Field::Bbox,
+    Field::Massifs,
+    Field::MassifStatus,
+    Field::HasBera,
+    Field::Kind,
+    Field::Parent,
+    Field::Starts,
+];
+/// Every field.
+const ALL_FIELDS: &[Field] = &[
+    Field::Name,
+    Field::Department,
+    Field::Insee,
+    Field::CommuneCenter,
+    Field::Bbox,
+    Field::Massifs,
+    Field::MassifStatus,
+    Field::HasBera,
+    Field::Kind,
+    Field::Parent,
+    Field::Status,
+    Field::Starts,
+];
+
+/// Fields of the site record each step of [`Ctx::build_all_with`] reads (the view it is
+/// handed, [`view`]). The starts (X9) are read by the weather (`skimap_meteo::hourly`:
+/// one forecast point per start), the assistant (`skimap_assist::presets`), the day
+/// plans (`skimap_plan::presets`), the pack (`skimap_pack::build::starts`, the site
+/// record of the pack) and the export (from the pack); the status sources by the
+/// polling of the trail status only. The place is declared by every step that reads
+/// the site.
+pub const READS: &[(&str, &[Field])] = &[
+    ("planet", &[]),
+    ("domaines", PLACE),
+    ("srn", PLACE),
+    ("pistes", PLACE),
+    ("terrain", PLACE),
+    ("snow", PLACE),
+    ("refuges", PLACE),
+    ("zones", PLACE),
+    ("avalanche-exposure", PLACE),
+    ("routing", PLACE),
+    ("offpiste-prepare", PLACE),
+    ("coverage", PLACE),
+    ("bera", PLACE),
+    ("meteo", PLACE_STARTS),
+    (
+        "status-poll",
+        &[
+            Field::Name,
+            Field::Department,
+            Field::Insee,
+            Field::CommuneCenter,
+            Field::Bbox,
+            Field::Massifs,
+            Field::MassifStatus,
+            Field::HasBera,
+            Field::Kind,
+            Field::Parent,
+            Field::Status,
+        ],
+    ),
+    ("avalanche-historic", PLACE),
+    ("assist", PLACE_STARTS),
+    ("plan", PLACE_STARTS),
+    ("build-pack", PLACE_STARTS),
+    ("export", PLACE_STARTS),
+];
+
+/// Fields of the site record `step` reads ([`READS`]; every field for a step not listed).
+pub fn reads(step: &str) -> &'static [Field] {
+    READS
+        .iter()
+        .find(|(n, _)| *n == step)
+        .map_or(ALL_FIELDS, |(_, f)| f)
+}
+
+/// `site` with only `fields`: the others empty (the identifier is always kept: the
+/// paths of the site).
+pub fn view(site: &Site, fields: &[Field]) -> Site {
+    let has = |f: Field| fields.contains(&f);
+    Site {
+        id: site.id,
+        name: if has(Field::Name) { site.name } else { "" },
+        department: if has(Field::Department) {
+            site.department
+        } else {
+            ""
+        },
+        insee: if has(Field::Insee) { site.insee } else { "" },
+        commune_center: if has(Field::CommuneCenter) {
+            site.commune_center
+        } else {
+            skimap_common::geom::LonLat { lon: 0.0, lat: 0.0 }
+        },
+        bbox: if has(Field::Bbox) {
+            site.bbox
+        } else {
+            skimap_common::geom::BBox {
+                south: 0.0,
+                west: 0.0,
+                north: 0.0,
+                east: 0.0,
+            }
+        },
+        massifs: if has(Field::Massifs) {
+            site.massifs
+        } else {
+            &[]
+        },
+        massif_status: if has(Field::MassifStatus) {
+            site.massif_status
+        } else {
+            skimap_common::site::MassifStatus::Outside
+        },
+        has_bera: has(Field::HasBera) && site.has_bera,
+        kind: if has(Field::Kind) {
+            site.kind
+        } else {
+            skimap_common::site::SiteKind::default()
+        },
+        parent: if has(Field::Parent) {
+            site.parent
+        } else {
+            None
+        },
+        status: if has(Field::Status) {
+            site.status
+        } else {
+            skimap_common::site::StatusSources::default()
+        },
+        starts: if has(Field::Starts) { site.starts } else { &[] },
+    }
+}
+
+/// Fingerprint of the fields of `site` that `step` reads ([`reads`], [`view`]).
+pub fn step_inputs(step: &str, site: &Site) -> String {
+    use sha2::{Digest, Sha256};
+    let v = view(site, reads(step));
+    let body = serde_json::to_vec(&v).expect("a site serializes");
+    hex::encode(Sha256::digest(body))
 }
 
 /// Output directory (layer) of a step that can be taken over by a later run: its
@@ -1264,7 +1459,13 @@ impl<'a> Run<'a> {
             at: None,
             outputs: None,
             resumed: false,
+            inputs: None,
         });
+    }
+
+    /// The site as step `name` sees it ([`view`]).
+    fn view(&self, name: &str) -> Site {
+        view(self.site, reads(name))
     }
 
     fn record_full(&mut self, r: StepRecord) {
@@ -1314,6 +1515,11 @@ impl<'a> Run<'a> {
         if age >= r.max_age {
             return None;
         }
+        // The fields of the site record the step reads changed (#164): run again. A
+        // change of a field it does not read (the starts for the terrain) does not.
+        if prev.inputs.as_deref() != Some(step_inputs(name, self.site).as_str()) {
+            return None;
+        }
         // The pack and the export take every layer: rebuilt when any step changed.
         let deps_changed = if matches!(name, "build-pack" | "export") {
             !self.changed.is_empty()
@@ -1335,7 +1541,7 @@ impl<'a> Run<'a> {
         &mut self,
         name: &'static str,
         deps: &[&'static str],
-        f: impl FnOnce() -> Result<String>,
+        f: impl FnOnce(&Site) -> Result<String>,
     ) {
         if let Some(d) = deps.iter().find(|d| self.failed.contains(*d)) {
             self.failed.insert(name);
@@ -1364,16 +1570,19 @@ impl<'a> Run<'a> {
             return;
         }
         let t = Instant::now();
+        let site = self.view(name);
         // A panic in a step fails that step only: the other steps of the site and the other
         // sites of the batch go on.
-        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_or_else(|p| {
-            let msg = p
-                .downcast_ref::<&str>()
-                .map(|s| (*s).to_owned())
-                .or_else(|| p.downcast_ref::<String>().cloned())
-                .unwrap_or_else(|| "?".to_owned());
-            Err(anyhow::anyhow!("panique : {msg}"))
-        });
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&site))).unwrap_or_else(
+            |p| {
+                let msg = p
+                    .downcast_ref::<&str>()
+                    .map(|s| (*s).to_owned())
+                    .or_else(|| p.downcast_ref::<String>().cloned())
+                    .unwrap_or_else(|| "?".to_owned());
+                Err(anyhow::anyhow!("panique : {msg}"))
+            },
+        );
         let s = t.elapsed().as_secs_f64();
         let at = Some(skimap_common::meta::now_rfc3339());
         let previous = self
@@ -1410,6 +1619,7 @@ impl<'a> Run<'a> {
             at,
             outputs,
             resumed: false,
+            inputs: Some(step_inputs(name, self.site)),
         });
     }
 
@@ -1669,13 +1879,13 @@ mod resume_tests {
             c[i] += 1;
             calls.set(c);
         };
-        r.step("terrain", &[], || {
+        r.step("terrain", &[], |_| {
             bump(0);
             std::fs::create_dir_all(dir.join("terrain"))?;
             std::fs::write(dir.join("terrain/dem"), b"dem")?;
             Ok("terrain".into())
         });
-        r.step("refuges", &[], || {
+        r.step("refuges", &[], |_| {
             bump(1);
             match refuges {
                 "fail" => bail!("HTTP status 502"),
@@ -1687,7 +1897,7 @@ mod resume_tests {
                 }
             }
         });
-        r.step("build-pack", &[], || {
+        r.step("build-pack", &[], |_| {
             bump(2);
             std::fs::create_dir_all(dir.join("pack"))?;
             let t = std::fs::read(dir.join("terrain/dem"))?;
@@ -1782,6 +1992,168 @@ mod resume_tests {
             o.steps[1].line
         );
         assert_eq!(o.steps[2].state, StepState::Ok);
+    }
+
+    /// Every step of the pipeline, as stand-ins: each writes in its output directory what
+    /// it saw of the site (its outputs depend on what it read). Returns the outcome and
+    /// the steps run (not taken over).
+    fn every_step(
+        dir: &Path,
+        site: &Site,
+        resume: Option<Resume<'_>>,
+    ) -> (BuildOutcome, Vec<&'static str>) {
+        let shared = Shared {
+            resume,
+            ..Shared::default()
+        };
+        let ran = std::cell::RefCell::new(Vec::new());
+        let mut log = Vec::new();
+        let mut r = Run::new(site, dir.to_path_buf(), &shared, &mut log);
+        for (name, fields) in READS {
+            r.step(name, &[], |v| {
+                ran.borrow_mut().push(*name);
+                // The view holds the declared fields only.
+                assert_eq!(
+                    v.starts.is_empty(),
+                    !fields.contains(&Field::Starts) || site.starts.is_empty(),
+                    "{name}"
+                );
+                assert_eq!(
+                    v.status.is_empty(),
+                    !fields.contains(&Field::Status) || site.status.is_empty(),
+                    "{name}"
+                );
+                if let Some(d) = step_dir(name) {
+                    std::fs::create_dir_all(dir.join(d))?;
+                    std::fs::write(dir.join(d).join("out.json"), serde_json::to_vec(v)?)?;
+                }
+                Ok((*name).to_owned())
+            });
+        }
+        let o = r.finish();
+        (o, ran.into_inner())
+    }
+
+    fn with_starts(site: &Site, n: usize) -> Site {
+        let starts: Vec<skimap_common::site::Start> = (0..n)
+            .map(|i| skimap_common::site::Start {
+                id: format!("d{i}"),
+                name: format!("Départ {i}"),
+                phrase: format!("le départ {i}"),
+                phrase_en: None,
+                lon: site.commune_center.lon + i as f64 * 0.001,
+                lat: site.commune_center.lat,
+                provenance: "test".into(),
+                access_m: None,
+            })
+            .collect();
+        Site {
+            starts: Box::leak(starts.into_boxed_slice()),
+            ..*site
+        }
+    }
+
+    /// #164: a change of the starts of a site (X9, after new station cards) runs again
+    /// only the steps that read them (and those taken over by none: no output
+    /// directory); a change of its working area runs every step again.
+    #[test]
+    fn a_change_of_the_starts_runs_again_only_the_steps_that_read_them() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        let site = skimap_common::site::site("cervieres").expect("evaluation site");
+        let one = with_starts(site, 1);
+        let (o1, ran) = every_step(dir, &one, None);
+        assert!(o1.ok());
+        assert_eq!(ran.len(), READS.len());
+        // Same record: everything with an output directory is taken over.
+        let (o2, ran) = every_step(dir, &one, Some(resume(&o1.steps)));
+        let never_taken_over: Vec<&str> = READS
+            .iter()
+            .map(|(n, _)| *n)
+            .filter(|n| step_dir(n).is_none())
+            .collect();
+        assert_eq!(ran, never_taken_over);
+        // One more start.
+        let two = with_starts(site, 2);
+        let (o3, ran) = every_step(dir, &two, Some(resume(&o2.steps)));
+        let expected: Vec<&str> = READS
+            .iter()
+            .filter(|(n, f)| f.contains(&Field::Starts) || step_dir(n).is_none())
+            .map(|(n, _)| *n)
+            .collect();
+        assert_eq!(ran, expected);
+        assert_eq!(
+            ran.iter()
+                .filter(|n| step_dir(n).is_some())
+                .copied()
+                .collect::<Vec<_>>(),
+            ["meteo", "build-pack", "export"]
+        );
+        for s in &o3.steps {
+            assert_eq!(
+                s.inputs.as_deref(),
+                Some(step_inputs(&s.name, &two).as_str())
+            );
+        }
+        // Another working area.
+        let mut moved = two;
+        moved.bbox.north += 0.01;
+        let (_, ran) = every_step(dir, &moved, Some(resume(&o3.steps)));
+        assert_eq!(ran.len(), READS.len(), "{ran:?}");
+    }
+
+    /// A record of a step made before #164 has no fingerprint of what it read: not taken
+    /// over (the batch fills it from the site record of that build, `with_step_inputs`).
+    #[test]
+    fn a_step_without_inputs_fingerprint_is_run_again() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        let site = skimap_common::site::site("cervieres").expect("evaluation site");
+        let (o1, _) = every_step(dir, site, None);
+        let mut old = o1.steps.clone();
+        for s in &mut old {
+            s.inputs = None;
+        }
+        let (_, ran) = every_step(dir, site, Some(resume(&old)));
+        assert_eq!(ran.len(), READS.len());
+    }
+
+    /// Every step of [`Ctx::build_all_with`] declares the fields of the site record it
+    /// reads, and none can read another one: the steps get the site only as the view of
+    /// their declared fields (closure argument; `Ctx::steps` never names `run.site`, and
+    /// the `Run` is borrowed by the step while it runs).
+    #[test]
+    fn every_step_declares_what_it_reads_and_sees_nothing_else() {
+        let src = include_str!("build.rs");
+        let start = src
+            .find("    fn steps(&self, run: &mut Run<'_>")
+            .expect("Ctx::steps");
+        let body = &src[start..];
+        let body = &body[..body.find("\n    }\n").expect("end of Ctx::steps")];
+        assert!(!body.contains("run.site"), "a step reads the whole site");
+        let mut names = Vec::new();
+        for (i, _) in body.match_indices("run.step(") {
+            let rest = body[i + "run.step(".len()..].trim_start();
+            let name = rest[1..].split('"').next().unwrap();
+            names.push(name.to_owned());
+        }
+        assert!(names.len() >= 20, "{names:?}");
+        for n in &names {
+            assert!(
+                READS.iter().any(|(r, _)| r == n),
+                "step {n} does not declare the fields it reads (READS)"
+            );
+        }
+        for (r, _) in READS {
+            assert!(names.iter().any(|n| n == r), "READS lists {r}, not a step");
+        }
+        // The view of a step holds its fields only.
+        let site = with_starts(skimap_common::site::site("cervieres").unwrap(), 1);
+        let terrain = view(&site, reads("terrain"));
+        assert!(terrain.starts.is_empty() && terrain.status.is_empty());
+        assert_eq!(terrain.bbox, site.bbox);
+        assert_eq!(view(&site, reads("meteo")).starts.len(), 1);
+        assert_eq!(view(&site, reads("planet")).bbox.north, 0.0);
     }
 
     /// Chaos: a run killed after k steps (journal of the k first steps, outputs of a
@@ -1936,19 +2308,19 @@ mod outage_tests {
                 .max_age(std::time::Duration::ZERO);
             Ok(dl.fetch(&req)?.bytes()?)
         };
-        r.step("terrain", &[], || {
+        r.step("terrain", &[], |_| {
             let b = get("/terrain")?;
             std::fs::create_dir_all(dir.join("terrain"))?;
             std::fs::write(dir.join("terrain/dem"), b)?;
             Ok("terrain".into())
         });
-        r.step("refuges", &[], || {
+        r.step("refuges", &[], |_| {
             let b = get("/refuges")?;
             std::fs::create_dir_all(dir.join("refuges"))?;
             std::fs::write(dir.join("refuges/r"), b)?;
             Ok("refuges".into())
         });
-        r.step("build-pack", &[], || {
+        r.step("build-pack", &[], |_| {
             std::fs::create_dir_all(dir.join("pack"))?;
             let t = std::fs::read(dir.join("terrain/dem"))?;
             let f = std::fs::read(dir.join("refuges/r")).unwrap_or_default();

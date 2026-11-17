@@ -878,10 +878,12 @@ pub const BUILD_REVISION: u32 = 2;
 
 impl BuildInputs {
     /// Whether the steps of a build with `self` can be taken over by a build with `other`:
-    /// same site record and same `personal_sources` (the pipeline version and revision
-    /// may differ: the fingerprints of the outputs decide).
+    /// same site and same `personal_sources` (the pipeline version and revision may
+    /// differ: the fingerprints of the outputs decide; the site record may differ: each
+    /// step is taken over only with the same fields of it, those it reads,
+    /// [`crate::build::step_inputs`], #164).
     pub fn resumable_by(&self, other: &BuildInputs) -> bool {
-        self.record == other.record && self.personal_sources == other.personal_sources
+        self.record.id == other.record.id && self.personal_sources == other.personal_sources
     }
 }
 

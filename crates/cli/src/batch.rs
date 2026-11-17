@@ -23,7 +23,7 @@ use skimap_common::layout::DataLayout;
 use skimap_common::meta::now_rfc3339;
 use skimap_common::site::{Registry, Site};
 
-use crate::build::{BuildOutcome, Ctx, Shared, StepRecord, StepState};
+use crate::build::{BuildOutcome, Ctx, France, Shared, StepRecord, StepState};
 use crate::france::{self, BuildInputs, BuildRecord};
 
 /// Options of a batch.
@@ -279,8 +279,9 @@ fn site_result(site: &str, o: &BuildOutcome) -> SiteResult {
 /// weather of the sites to build and the build of one site ([`Pipeline`]; replaced in
 /// tests).
 pub trait Steps: Sync {
-    /// Refreshes the stations layer of France (and the starts of the registry, X9).
-    fn stations(&self, ctx: &Ctx, force: bool) -> StepRecord;
+    /// Refreshes the stations layer of France (and the starts of the registry, X9); the
+    /// census comes from `france` when there is none on disk yet.
+    fn stations(&self, ctx: &Ctx, france: &France<'_>, force: bool) -> StepRecord;
     /// AROME weather of `sites`.
     fn meteo(&self, ctx: &Ctx, sites: &[&Site]) -> StepRecord;
     /// Builds one site and writes its record.
@@ -292,14 +293,25 @@ pub trait Steps: Sync {
         shared: Shared<'_>,
         opts: &BatchOptions,
     ) -> Result<BuildOutcome>;
+    /// Builds one site on its own (`build-all <site>`: steps on stdout) and writes its
+    /// record.
+    fn single(
+        &self,
+        ctx: &Ctx,
+        site: &'static Site,
+        inp: BuildInputs,
+        shared: Shared<'_>,
+        force: bool,
+        max_age: Duration,
+    ) -> Result<BuildOutcome>;
 }
 
 /// The steps of the pipeline.
 pub struct Pipeline;
 
 impl Steps for Pipeline {
-    fn stations(&self, ctx: &Ctx, force: bool) -> StepRecord {
-        stations_step(ctx, force)
+    fn stations(&self, ctx: &Ctx, france: &France<'_>, force: bool) -> StepRecord {
+        stations_step(ctx, france, force)
     }
 
     fn meteo(&self, ctx: &Ctx, sites: &[&Site]) -> StepRecord {
@@ -315,6 +327,26 @@ impl Steps for Pipeline {
         opts: &BatchOptions,
     ) -> Result<BuildOutcome> {
         build_one(ctx, site, inp, shared, opts)
+    }
+
+    fn single(
+        &self,
+        ctx: &Ctx,
+        site: &'static Site,
+        inp: BuildInputs,
+        shared: Shared<'_>,
+        force: bool,
+        max_age: Duration,
+    ) -> Result<BuildOutcome> {
+        build_site(
+            ctx,
+            site,
+            inp,
+            shared,
+            force,
+            max_age,
+            &mut std::io::stdout(),
+        )
     }
 }
 
@@ -343,19 +375,16 @@ pub fn build_many_with(
     // registry (X9), part of the inputs of each site. Read before it (#164), the inputs
     // of a pass were the old record while its sites were built and the next pass read
     // the new one: no record to take over, every step of the site redone.
-    let stations = steps.stations(ctx, opts.force);
-    let reread;
-    let (registry, sites): (&Registry, Vec<&'static Site>) = match registry.source() {
-        Some(p) => {
-            reread = Registry::read(p)?;
-            let sites = sites
-                .iter()
-                .map(|s| Ok(reread.get(s.id)?))
-                .collect::<Result<_>>()?;
-            (&reread, sites)
-        }
-        None => (registry, sites.to_vec()),
-    };
+    // Planet extract, census and SRN areas: read by the first step that needs them (a
+    // site whose `pistes`, `domaines` and `srn` are taken over needs none).
+    let france = France::new(ctx);
+    let stations = steps.stations(ctx, &france, opts.force);
+    let reread = reread(registry)?;
+    let registry = reread.as_ref().unwrap_or(registry);
+    let sites = sites
+        .iter()
+        .map(|s| Ok(registry.get(s.id)?))
+        .collect::<Result<Vec<&'static Site>>>()?;
     let sites = &sites[..];
     let now = Utc::now();
     let mut results = Vec::new();
@@ -393,15 +422,10 @@ pub fn build_many_with(
     let mut built: Vec<(String, BuildOutcome)> = Vec::new();
     let mut meteo = None;
     if n > 0 {
-        // Planet extract, census and SRN areas: read by the first step that needs them
-        // (a site whose `pistes`, `domaines` and `srn` are taken over needs none).
-        let france = crate::build::France::new(ctx);
         let todo_sites: Vec<&Site> = todo.iter().map(|(s, _)| *s).collect();
         meteo = (!ctx.cfg.personal_sources).then(|| steps.meteo(ctx, &todo_sites));
         let shared = Shared {
             france: Some(&france),
-            stations_once: true,
-            force_stations: opts.force,
             resume: None,
             journal: None,
         };
@@ -789,6 +813,7 @@ pub fn meteo_step_at(ctx: &Ctx, sites: &[&Site], run: Option<DateTime<Utc>>) -> 
                 at: Some(now_rfc3339()),
                 outputs: None,
                 resumed: false,
+                inputs: None,
             };
         }
     };
@@ -823,13 +848,37 @@ pub fn meteo_step_at(ctx: &Ctx, sites: &[&Site], run: Option<DateTime<Utc>>) -> 
         at: Some(now_rfc3339()),
         outputs: None,
         resumed: false,
+        inputs: None,
     }
 }
 
 /// Refreshes the stations layer of France once, printed and recorded like a step.
-fn stations_step(ctx: &Ctx, force: bool) -> StepRecord {
+/// The registry as the stations step left it (starts, X9), read again from its file
+/// (`None`: the evaluation sites, never rewritten).
+fn reread(registry: &Registry) -> Result<Option<Registry>> {
+    Ok(registry.source().map(Registry::read).transpose()?)
+}
+
+/// Whether the census of France is on disk (`domaines.geojson`, `domaines_ways.json`),
+/// the input of the stations layer.
+fn census_on_disk(layout: &DataLayout) -> bool {
+    layout
+        .france_layer_dir(skimap_osm::census::LAYER)
+        .is_ok_and(|d| {
+            d.join("domaines.geojson").is_file() && d.join("domaines_ways.json").is_file()
+        })
+}
+
+fn stations_step(ctx: &Ctx, france: &France<'_>, force: bool) -> StepRecord {
     let t = Instant::now();
-    let (state, line) = match ctx.stations(force) {
+    // The stations layer reads the census on disk: made first in a new data directory
+    // (the `domaines` step of a site would make it after the stations step).
+    let census = if census_on_disk(&ctx.layout) {
+        Ok(())
+    } else {
+        france.census().map(|_| ())
+    };
+    let (state, line) = match census.and_then(|()| ctx.stations(force)) {
         Ok(r) => (StepState::Ok, crate::build::describe_stations(&r)),
         Err(e) => (StepState::Failed, format!("{e:#}")),
     };
@@ -846,6 +895,7 @@ fn stations_step(ctx: &Ctx, force: bool) -> StepRecord {
         at: Some(now_rfc3339()),
         outputs: None,
         resumed: false,
+        inputs: None,
     }
 }
 
@@ -890,6 +940,7 @@ pub fn record_standalone(layout: &DataLayout, site: &Site, step: &str, line: &st
         at: Some(at.clone()),
         outputs,
         resumed: false,
+        inputs: Some(crate::build::step_inputs(step, site)),
     };
     for d in dependents(step) {
         if let Some(s) = rec.outcome.steps.iter_mut().find(|s| s.name == *d)
@@ -903,6 +954,20 @@ pub fn record_standalone(layout: &DataLayout, site: &Site, step: &str, line: &st
     rec.ok = rec.outcome.ok();
     skimap_common::output::write_json(&france::record_path(layout, site.id), &rec)?;
     Ok(())
+}
+
+/// `rec` with the fingerprint of the fields each step read ([`crate::build::step_inputs`])
+/// where it lacks: a record written before the steps recorded it (#164) was built with
+/// its site record whole.
+fn with_step_inputs(mut rec: BuildRecord) -> BuildRecord {
+    if rec.outcome.steps.iter().any(|s| s.inputs.is_none())
+        && let Ok(site) = skimap_common::site::interned(&rec.inputs.record)
+    {
+        for s in rec.outcome.steps.iter_mut().filter(|s| s.inputs.is_none()) {
+            s.inputs = Some(crate::build::step_inputs(&s.name, site));
+        }
+    }
+    rec
 }
 
 /// Builds one site under its lock: orphan temporary files removed, steps of the previous
@@ -924,8 +989,9 @@ fn build_site(
     if removed > 0 {
         tracing::warn!(site = site.id, removed, "orphan temporary files removed");
     }
-    let previous =
-        france::read_record(&ctx.layout, site.id).filter(|r| !force && r.inputs.resumable_by(&inp));
+    let previous = france::read_record(&ctx.layout, site.id)
+        .filter(|r| !force && r.inputs.resumable_by(&inp))
+        .map(with_step_inputs);
     let resume = previous.as_ref().map(|r| crate::build::Resume {
         previous: &r.outcome.steps,
         max_age,
@@ -999,21 +1065,40 @@ pub fn build_single(
     force: bool,
     max_age: Duration,
 ) -> Result<()> {
+    let (stations, o) = build_single_with(ctx, registry, site, force, max_age, &Pipeline)?;
+    o.into_result()?;
+    if stations.state == StepState::Failed {
+        anyhow::bail!("build-all : stations en échec : {}", stations.line);
+    }
+    Ok(())
+}
+
+/// [`build_single`] with the given steps: the stations step, then the site built with
+/// its record as the stations step left the registry.
+pub fn build_single_with(
+    ctx: &Ctx,
+    registry: &Registry,
+    site: &'static Site,
+    force: bool,
+    max_age: Duration,
+    steps: &dyn Steps,
+) -> Result<(StepRecord, BuildOutcome)> {
+    // As in a batch (#164): the stations step rewrites the starts of the registry (X9)
+    // after new station cards. Run inside the build of the site, after its inputs were
+    // read, it left the record of the site built with the old starts, and the next run,
+    // reading the new ones, took nothing over.
+    let france = France::new(ctx);
+    let stations = steps.stations(ctx, &france, force);
+    let reread = reread(registry)?;
+    let registry = reread.as_ref().unwrap_or(registry);
+    let site = registry.get(site.id)?;
     let inp = inputs(ctx, registry, site)?;
     let shared = Shared {
-        force_stations: force,
+        france: Some(&france),
         ..Shared::default()
     };
-    let o = build_site(
-        ctx,
-        site,
-        inp,
-        shared,
-        force,
-        max_age,
-        &mut std::io::stdout(),
-    )?;
-    o.into_result()
+    let o = steps.single(ctx, site, inp, shared, force, max_age)?;
+    Ok((stations, o))
 }
 
 /// French text of `status.json` ([`write_status`]): counts, then every failed step and
@@ -1144,7 +1229,7 @@ mod tests {
     /// Steps of a batch without the pipeline: the stations step adds a start to the site
     /// in the registry file when asked (as `france::refresh_registry_starts` does after
     /// new station cards); a site build records its inputs and whether the previous
-    /// record could be taken over (as `build_site`).
+    /// record was written with the same site record (every step can then be taken over).
     struct Fake {
         new_start: std::sync::atomic::AtomicBool,
         /// Per site build: site, starts of the site built, previous record taken over.
@@ -1152,7 +1237,7 @@ mod tests {
     }
 
     impl Steps for Fake {
-        fn stations(&self, ctx: &Ctx, _force: bool) -> StepRecord {
+        fn stations(&self, ctx: &Ctx, _france: &France<'_>, _force: bool) -> StepRecord {
             if self
                 .new_start
                 .swap(false, std::sync::atomic::Ordering::SeqCst)
@@ -1181,6 +1266,7 @@ mod tests {
                 at: Some(now_rfc3339()),
                 outputs: None,
                 resumed: false,
+                inputs: None,
             }
         }
 
@@ -1193,6 +1279,7 @@ mod tests {
                 at: Some(now_rfc3339()),
                 outputs: None,
                 resumed: false,
+                inputs: None,
             }
         }
 
@@ -1204,8 +1291,34 @@ mod tests {
             _shared: Shared<'_>,
             _opts: &BatchOptions,
         ) -> Result<BuildOutcome> {
+            self.build(ctx, site, inp)
+        }
+
+        fn single(
+            &self,
+            ctx: &Ctx,
+            site: &'static Site,
+            inp: BuildInputs,
+            _shared: Shared<'_>,
+            _force: bool,
+            _max_age: Duration,
+        ) -> Result<BuildOutcome> {
+            self.build(ctx, site, inp)
+        }
+    }
+
+    impl Fake {
+        fn new() -> Self {
+            Self {
+                new_start: false.into(),
+                builds: Mutex::new(Vec::new()),
+            }
+        }
+
+        /// A site build: its record.
+        fn build(&self, ctx: &Ctx, site: &'static Site, inp: BuildInputs) -> Result<BuildOutcome> {
             let taken_over = france::read_record(&ctx.layout, site.id)
-                .is_some_and(|r| r.inputs.resumable_by(&inp));
+                .is_some_and(|r| r.inputs.resumable_by(&inp) && r.inputs.record == inp.record);
             self.builds
                 .lock()
                 .unwrap()
@@ -1218,6 +1331,7 @@ mod tests {
                 at: Some(now_rfc3339()),
                 outputs: None,
                 resumed: taken_over,
+                inputs: None,
             };
             let outcome = BuildOutcome {
                 site: site.id.to_owned(),
@@ -1238,12 +1352,8 @@ mod tests {
         }
     }
 
-    /// #164, catch-up of 17/11/2026: the inputs of each site (its registry record) were
-    /// read before the stations step rewrote the starts of the registry, so the pass
-    /// built and recorded the old record, and the next pass, reading the new one, found
-    /// no record to take over and rebuilt the site whole, without any weather reason.
-    #[test]
-    fn inputs_are_read_after_the_stations_step_refreshed_the_registry() {
+    /// A data directory whose registry holds one evaluation site.
+    fn one_site_registry() -> (tempfile::TempDir, Ctx) {
         let t = tempfile::tempdir().unwrap();
         let cfg = skimap_common::config::Config::from_vars([(
             "SKIMAP_DATA_DIR".to_owned(),
@@ -1262,19 +1372,16 @@ mod tests {
             },
         )
         .unwrap();
-        let opts = BatchOptions {
-            jobs: 1,
-            force: false,
-            max_age: Duration::from_secs(86_400),
-            stop_after: None,
-            verify: false,
-        };
-        let steps = Fake {
-            new_start: false.into(),
-            builds: Mutex::new(Vec::new()),
-        };
-        // A pass of the catch-up: a new process reads the registry, a new AROME run
-        // marks the pack of the site to be redone.
+        (t, ctx)
+    }
+
+    /// Three passes of the catch-up, `build` building the site of the registry it is
+    /// given: the stations step finds a new start during the second; the third must take
+    /// over the record of the second, written with the registry as the stations step left
+    /// it.
+    fn catch_up(ctx: &Ctx, steps: &Fake, build: &dyn Fn(&Registry, &'static Site)) {
+        // A pass: a new process reads the registry, a new AROME run marks the pack of the
+        // site to be redone.
         let pass = |new_start: bool| {
             let registry = Registry::load(&ctx.layout).unwrap();
             let site = registry.buildable()[0];
@@ -1285,7 +1392,7 @@ mod tests {
             steps
                 .new_start
                 .store(new_start, std::sync::atomic::Ordering::SeqCst);
-            build_many_with(&ctx, &registry, &[site], &opts, &steps).unwrap();
+            build(&registry, site);
             steps.builds.lock().unwrap().pop().unwrap()
         };
         let (id, starts0, _) = pass(false);
@@ -1311,6 +1418,45 @@ mod tests {
         assert_eq!(starts1, starts0 + 1, "built with the new starts");
     }
 
+    /// #164, catch-up of 17/11/2026: the inputs of each site (its registry record) were
+    /// read before the stations step rewrote the starts of the registry, so the pass
+    /// built and recorded the old record, and the next pass, reading the new one, found
+    /// no record to take over and rebuilt the site whole, without any weather reason.
+    #[test]
+    fn inputs_are_read_after_the_stations_step_refreshed_the_registry() {
+        let (_t, ctx) = one_site_registry();
+        let opts = BatchOptions {
+            jobs: 1,
+            force: false,
+            max_age: Duration::from_secs(86_400),
+            stop_after: None,
+            verify: false,
+        };
+        let steps = Fake::new();
+        catch_up(&ctx, &steps, &|registry, site| {
+            build_many_with(&ctx, registry, &[site], &opts, &steps).unwrap();
+        });
+    }
+
+    /// #164: the same for `build-all <site>`, whose stations step ran inside the build of
+    /// the site, after its inputs were read.
+    #[test]
+    fn single_site_inputs_are_read_after_the_stations_step_refreshed_the_registry() {
+        let (_t, ctx) = one_site_registry();
+        let steps = Fake::new();
+        catch_up(&ctx, &steps, &|registry, site| {
+            build_single_with(
+                &ctx,
+                registry,
+                site,
+                false,
+                Duration::from_secs(86_400),
+                &steps,
+            )
+            .unwrap();
+        });
+    }
+
     #[test]
     fn a_step_run_alone_is_recorded_and_what_reads_it_is_to_be_redone() {
         let t = tempfile::tempdir().unwrap();
@@ -1328,6 +1474,7 @@ mod tests {
             outputs: crate::build::step_dir(name)
                 .and_then(|d| crate::build::fingerprint(&dir.join(d))),
             resumed: false,
+            inputs: None,
         };
         let names = [
             "terrain",
@@ -1443,7 +1590,14 @@ mod tests {
             now
         ));
         assert!(older.resumable_by(&rec.inputs));
-        assert!(!other.resumable_by(&rec.inputs), "another site record");
+        // Another record of the site: each step decides on the fields it reads (#164).
+        assert!(other.resumable_by(&rec.inputs));
+        let mut another_site = rec.inputs.clone();
+        another_site.record.id = "autre".into();
+        assert!(!another_site.resumable_by(&rec.inputs), "another site");
+        let mut public = rec.inputs.clone();
+        public.personal_sources = !public.personal_sources;
+        assert!(!public.resumable_by(&rec.inputs), "personal_sources");
     }
 
     /// B167: a step that ends `ok` without producing anything is listed in `status.json`
@@ -1483,6 +1637,7 @@ mod tests {
             at: Some("2026-11-17T10:00:00Z".into()),
             outputs: None,
             resumed: false,
+            inputs: None,
         };
         let rec = BuildRecord {
             inputs: BuildInputs {
