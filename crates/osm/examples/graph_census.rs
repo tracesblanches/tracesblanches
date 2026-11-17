@@ -1,6 +1,7 @@
 //! Census of the piste graphs of every buildable site of the registry (B166, #166): number
 //! of connected components, size of the largest one, connectors and their lengths, and the
-//! gaps left between components (dead end to another component), so that a change of the
+//! gaps left between components (dead end to another component), and the edges of zero
+//! length (two nodes at one place: an invalid elevation profile), so that a change of the
 //! graph construction is measured on the whole of France, before and after.
 //!
 //! Reads the planet extract from a file and the registry of the data directory; writes
@@ -74,9 +75,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         t.elapsed().as_secs_f64()
     );
     println!(
-        "site\tnodes\tedges\tcomponents\tlargest\tconnectors\tconnector_max_m\tgaps_le_25m\tcrossings"
+        "site\tnodes\tedges\tcomponents\tlargest\tconnectors\tconnector_max_m\tgaps_le_25m\tcrossings\tzero_length_edges"
     );
     let (mut tot_comp, mut tot_nodes, mut tot_largest, mut tot_conn) = (0, 0, 0, 0);
+    let mut tot_zero = 0;
     let sites = registry.buildable();
     for site in &sites {
         let (set, _) = site_pistes(&all, &site.bbox);
@@ -191,8 +193,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
+        let zero = g.edges.iter().filter(|e| e.length_m == 0.0).count();
         println!(
-            "{}\t{}\t{}\t{}\t{}\t{}\t{:.1}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{:.1}\t{}\t{}\t{}",
             site.id,
             g.nodes.len(),
             g.edges.len(),
@@ -201,15 +204,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             conns,
             conn_max,
             gaps,
-            crossings
+            crossings,
+            zero
         );
+        tot_zero += zero;
         tot_comp += n;
         tot_nodes += g.nodes.len();
         tot_largest += largest;
         tot_conn += conns;
     }
     println!(
-        "TOTAL {} sites\t{tot_nodes}\t-\t{tot_comp}\t{tot_largest}\t{tot_conn}\t-\t-",
+        "TOTAL {} sites\t{tot_nodes}\t-\t{tot_comp}\t{tot_largest}\t{tot_conn}\t-\t-\t-\t{tot_zero}",
         sites.len()
     );
     Ok(())

@@ -9,7 +9,7 @@
 //!   closer than a threshold but not joined in OSM (a frequent mapping slip). Connectors are
 //!   flagged so that a router can trust or ignore them.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use rstar::primitives::{GeomWithData, Rectangle};
 use rstar::{AABB, RTree};
@@ -249,6 +249,9 @@ fn dead_end_connectors(
     let mut connectors = Vec::new();
     for (pi, pts) in points.iter().enumerate() {
         let n = pts.len();
+        if n < 2 {
+            continue;
+        }
         for end in [0, n - 1] {
             let (id, pos) = pts[end];
             if uses[&id] != 1 {
@@ -345,6 +348,7 @@ fn dead_end_pairs(
     let uses = node_uses(points);
     let ends: Vec<(i64, LonLat)> = points
         .iter()
+        .filter(|pts| pts.len() >= 2)
         .flat_map(|pts| [pts[0], pts[pts.len() - 1]])
         .filter(|(id, _)| uses[id] == 1 && !connected.contains_key(id))
         .collect();
@@ -375,6 +379,60 @@ fn dead_end_pairs(
         .collect()
 }
 
+/// Makes one node of the nodes that are at the very same place (same coordinates), unless
+/// one of them is on a piste on another level ([`crate::pistes::Piste::layered`]): two
+/// OSM nodes duplicated by the mapper, or two crossing nodes put on one way where it
+/// crosses two ways drawn on top of each other. Kept apart, they would give an edge of
+/// zero length, which no elevation profile can describe (`skimap-core` rejects the
+/// graph). The kept id is the smallest OSM id, or the added node made first. Returns the
+/// replaced ids and their replacement.
+fn merge_coincident(set: &PisteSet, points: &mut [Vec<(i64, LonLat)>]) -> HashMap<i64, i64> {
+    let layered: HashSet<i64> = points
+        .iter()
+        .enumerate()
+        .filter(|(pi, _)| set.pistes[*pi].layered)
+        .flat_map(|(_, pts)| pts.iter().map(|(id, _)| *id))
+        .collect();
+    let mut keep: HashMap<(u64, u64), i64> = HashMap::new();
+    for (id, pos) in points.iter().flatten() {
+        if layered.contains(id) {
+            continue;
+        }
+        let k = keep
+            .entry((pos.lon.to_bits(), pos.lat.to_bits()))
+            .or_insert(*id);
+        if (*id < 0, id.unsigned_abs()) < (*k < 0, k.unsigned_abs()) {
+            *k = *id;
+        }
+    }
+    let mut remap = HashMap::new();
+    for (id, pos) in points.iter().flatten() {
+        if let Some(&k) = keep.get(&(pos.lon.to_bits(), pos.lat.to_bits()))
+            && k != *id
+            && !layered.contains(id)
+        {
+            remap.insert(*id, k);
+        }
+    }
+    if remap.is_empty() {
+        return remap;
+    }
+    for pts in points.iter_mut() {
+        for p in pts.iter_mut() {
+            if let Some(&k) = remap.get(&p.0) {
+                p.0 = k;
+            }
+        }
+        // The two nodes were consecutive on this way: one vertex is left.
+        pts.dedup_by_key(|p| p.0);
+        // A way that was all at one place is no way: no edge, no node, no dead end.
+        if pts.len() < 2 {
+            pts.clear();
+        }
+    }
+    remap
+}
+
 /// Degree box around `p` covering `radius_m` (with margin).
 pub fn search_box(p: LonLat, radius_m: f64) -> AABB<[f64; 2]> {
     let dlat = radius_m / M_PER_DEG_LAT * 1.01;
@@ -403,9 +461,21 @@ impl Graph {
         if repair {
             let cuts = crossings(set, &points, &mut next_id);
             insert_cuts(&mut points, cuts);
+            // Duplicated nodes are one before looking for dead ends: a dead end on the
+            // very node of another way is a junction, not a connector of zero length.
+            merge_coincident(set, &mut points);
             let (cuts, found) = dead_end_connectors(&points, connector_max_m, &mut next_id);
             insert_cuts(&mut points, cuts);
-            connectors = found;
+            // Two dead ends facing one point of a segment put two nodes there.
+            let remap = merge_coincident(set, &mut points);
+            connectors = found
+                .into_iter()
+                .map(|(a, b)| {
+                    let m = |x: i64| remap.get(&x).copied().unwrap_or(x);
+                    (m(a), m(b))
+                })
+                .filter(|(a, b)| a != b)
+                .collect();
             let pairs = dead_end_pairs(&points, &connectors, DEAD_END_PAIR_MAX_M);
             connectors.extend(pairs);
             // Two dead ends pointing at each other give the same connector twice.
@@ -956,6 +1026,61 @@ mod tests {
         bridge.tags.0.push(("bridge".to_owned(), "yes".to_owned()));
         let d = data_m(&nodes, vec![way(1, &[1, 2], None), bridge]);
         assert_eq!(Graph::build(&classify(&d), 10.0).components().1, 2);
+    }
+
+    #[test]
+    fn a_way_crossing_two_ways_drawn_on_top_of_each_other_crosses_them_at_one_node() {
+        // B166 (Autrans): ways 1 and 2 are the same trail drawn twice, with nodes of their
+        // own at the same places; way 3 crosses both. One crossing node, not two nodes at
+        // one place joined by an edge of zero length.
+        let nodes = [
+            (1, 0.0, 0.0),
+            (2, 100.0, 0.0),
+            (3, 300.0, 0.0),
+            (12, 100.0, 0.0),
+            (5, 200.0, -100.0),
+            (6, 200.0, 100.0),
+        ];
+        let d = data_m(
+            &nodes,
+            vec![
+                way(1, &[1, 2, 3], None),
+                way(2, &[1, 12, 3], None),
+                way(3, &[5, 6], None),
+            ],
+        );
+        let g = Graph::build(&classify(&d), 10.0);
+        assert!(g.edges.iter().all(|e| e.length_m > 0.0), "{:?}", g.edges);
+        let adj = g.adjacency();
+        let cross: Vec<usize> = (0..g.nodes.len()).filter(|&i| adj[i].len() == 6).collect();
+        assert_eq!(cross.len(), 1, "{:?}", g.nodes);
+        assert!(g.nodes[cross[0]].osm_id < 0);
+        // The duplicated node 12 is node 2.
+        assert!(g.nodes.iter().all(|n| n.osm_id != 12), "{:?}", g.nodes);
+        assert_eq!(g.components().1, 1);
+    }
+
+    #[test]
+    fn a_dead_end_on_a_duplicated_node_is_a_junction_not_a_connector() {
+        // Way 2 starts on a node of its own at the very place of node 2 of way 1.
+        let nodes = [
+            (1, 0.0, 0.0),
+            (2, 100.0, 0.0),
+            (3, 200.0, 0.0),
+            (4, 100.0, 0.0),
+            (5, 100.0, 300.0),
+        ];
+        let d = data_m(
+            &nodes,
+            vec![way(1, &[1, 2, 3], None), way(2, &[4, 5], None)],
+        );
+        let g = Graph::build(&classify(&d), 10.0);
+        assert_eq!(connectors(&g), vec![]);
+        assert!(g.edges.iter().all(|e| e.length_m > 0.0), "{:?}", g.edges);
+        assert_eq!(g.edges.len(), 3);
+        assert_eq!(g.components().1, 1);
+        // Repairs off: the raw OSM topology, two networks.
+        assert_eq!(Graph::build(&classify(&d), 0.0).components().1, 2);
     }
 
     fn way_ids(set: &PisteSet, ids: &[usize]) -> Vec<i64> {

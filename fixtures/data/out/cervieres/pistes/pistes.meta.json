@@ -4,8 +4,8 @@
   "tickets": [
     "P2 (#15)"
   ],
-  "generated_at": "2026-11-15T09:00:25Z",
-  "valid_from": "2026-11-13T23:00:00Z",
+  "generated_at": "2026-11-17T14:51:17Z",
+  "valid_from": "2026-11-16T23:00:00Z",
   "valid_until": null,
   "validity": null,
   "crs": "EPSG:4326 (WGS84, longitude, latitude)",
@@ -16,10 +16,10 @@
       "licence": "ODbL 1.0",
       "attribution": "© les contributeurs d'OpenStreetMap (ODbL), extrait quotidien OpenSnowMap.org",
       "personal_use_only": false,
-      "fetched_at": "2026-11-14T21:40:58Z",
-      "last_modified": "Sat, 14 Nov 2026 03:29:40 GMT",
-      "etag": "\"c29a951-6603427b2307e\"",
-      "sha256": "4a68841cff09076f1d361b5c8abcae3404a29e273b992a30ccf26927dc61a00b"
+      "fetched_at": "2026-11-17T07:36:24Z",
+      "last_modified": "Tue, 17 Nov 2026 03:51:20 GMT",
+      "etag": "\"c2aa52c-66070cea9d2a4\"",
+      "sha256": "b16e62ece15cce13d066f8231b0b8f2202fcde69487fe119f032948088951d67"
     }
   ],
   "files": [
@@ -54,9 +54,9 @@
     },
     {
       "name": "graph_edges.geojson",
-      "description": "graphe de routage : ways coupés aux jonctions, plus des connecteurs fermant les trous de moins de 10 m entre un cul-de-sac et une autre piste",
+      "description": "graphe de routage : ways coupés aux jonctions, un nœud au croisement de deux pistes sans nœud commun (hors pont, tunnel ou niveau), plus des connecteurs fermant les trous de moins de 10 m entre un cul-de-sac et une autre piste et de moins de 25 m entre deux culs-de-sac de parties disjointes du réseau (largeur d'une route)",
       "licence": "ODbL 1.0",
-      "count": 224,
+      "count": 230,
       "properties": {
         "backcountry": "non damé (traces faites par les skieurs)",
         "classic": "traces classiques",
@@ -66,7 +66,7 @@
         "difficulty_source": "relation_colour, relation_difficulty ou way",
         "edge": "index de l'arête",
         "from": "index du nœud de départ (graph_nodes.geojson)",
-        "from_osm_node": "identifiant OSM du nœud de départ",
+        "from_osm_node": "identifiant OSM du nœud de départ (null : nœud ajouté)",
         "grooming": "piste:grooming brut (way, sinon relation)",
         "in_box": "au moins un sommet dans l'emprise du site ; false : way hors de l'emprise gardé pour que le réseau y revienne (sens uniques qui sortent de l'emprise)",
         "kind": "piste (morceau de way) ou connector (jonction ajoutée)",
@@ -81,7 +81,7 @@
         "skating": "piste de skating",
         "tagged": "le way porte lui-même piste:type (sinon il n'est piste que par une relation)",
         "to": "index du nœud d'arrivée",
-        "to_osm_node": "identifiant OSM du nœud d'arrivée",
+        "to_osm_node": "identifiant OSM du nœud d'arrivée (null : nœud ajouté)",
         "uses": "usages : nordic, hike (raquettes / piéton), snowshoe ; union du way et de ses relations",
         "way_difficulty": "piste:difficulty du way (incohérent, gardé pour comparaison)",
         "way_name": "nom porté par le way lui-même"
@@ -91,12 +91,12 @@
       "name": "graph_nodes.geojson",
       "description": "nœuds du graphe : jonctions, extrémités, cibles des connecteurs",
       "licence": "ODbL 1.0",
-      "count": 189,
+      "count": 192,
       "properties": {
         "component": "composante connexe du graphe",
         "degree": "nombre d'arêtes incidentes",
         "node": "index du nœud",
-        "osm_node_id": "identifiant OSM"
+        "osm_node_id": "identifiant OSM (null : nœud ajouté au croisement de deux pistes ou au pied d'un connecteur)"
       }
     }
   ],
@@ -256,9 +256,9 @@
     },
     "summary": {
       "graph_components": 4,
-      "graph_connectors": 1,
-      "graph_edges": 224,
-      "graph_nodes": 189,
+      "graph_connectors": 2,
+      "graph_edges": 230,
+      "graph_nodes": 192,
       "km_hike_only": 5.16,
       "km_nordic": 61.56,
       "km_nordic_tagged": 33.58,
