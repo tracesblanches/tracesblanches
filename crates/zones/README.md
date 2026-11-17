@@ -52,7 +52,7 @@ Fichier `rules/rules.json`, validé à la compilation des tests (`RuleSet::valid
 - `verification` : ce qui a été lu et ce qui ne l'a pas été ;
 - `sources` : la première est la source principale ; `kind` dit si c'est une loi, un acte signé, un projet, une synthèse, une plaquette, une page officielle, une page tierce ou un service de données.
 
-Textes non lus et donc marqués comme tels : arrêtés signés des APPB Haut-Jura (27/05/2019) et Haut-Doubs (31/12/2025) — règles lues dans les projets, la synthèse et la plaquette ; arrêté de Cervières sur le feu (08/07/2022) — connu par la page du PNR du Queyras.
+Textes non lus et donc marqués comme tels : arrêtés signés des APPB Haut-Jura (27/05/2019) et Haut-Doubs (31/12/2025) — règles lues dans les projets, la synthèse et la plaquette ; arrêté municipal de la commune du jeu de test alpin sur le feu (08/07/2022) — connu par la page du PNR du Queyras.
 
 ## Champs simples (`fields`)
 
@@ -60,7 +60,7 @@ Textes non lus et donc marqués comme tels : arrêtés signés des APPB Haut-Jur
 
 ## Biodiv'sports : usage personnel
 
-Biodiv'sports n'affiche aucune licence (docs/licences-donnees.md, « Usage personnel seulement, tant qu'il n'y a pas d'accord écrit : […] Biodiv'sports (aucune licence trouvée) ») : `build_with(…, personal_sources)` ne lit ses zones qu'avec l'option et marque alors sa source `personal_use_only` ; `build` lit l'option dans l'environnement (`SKIMAP_PERSONAL_SOURCES`, comme la ligne de commande). Sans l'option : 28 zones à Cervières (10 de moins), 34 à Chapelle-des-Bois (6 de moins).
+Biodiv'sports n'affiche aucune licence (docs/licences-donnees.md, « Usage personnel seulement, tant qu'il n'y a pas d'accord écrit : […] Biodiv'sports (aucune licence trouvée) ») : `build_with(…, personal_sources)` ne lit ses zones qu'avec l'option et marque alors sa source `personal_use_only` ; `build` lit l'option dans l'environnement (`SKIMAP_PERSONAL_SOURCES`, comme la ligne de commande). Sans l'option : 28 zones sur le jeu de test alpin (10 de moins), 34 sur le jeu de test jurassien (6 de moins).
 
 ## Limites
 

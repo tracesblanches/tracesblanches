@@ -8,8 +8,8 @@ Regroupement maison (`domains::cluster`), lancé sur toutes les pistes de la zon
 2. **Relations `site=piste`** : chaque relation site avec du nordique est une graine ; un way sert la relation la plus précise qui le contient (« Le Risoux » dans « Les Rousses » : une relation dont les ways sont un sous-ensemble strict d'une autre, ou qui en est membre, est un sous-site). Deux relations site ne fusionnent jamais.
 3. **Cœurs de réseau** : un pont (arête dont le retrait coupe le réseau) est une liaison quand chaque côté pèse au moins 5 km ; sans ces ponts, les morceaux d'au moins 5 km sont des cœurs. Un cœur sans relation site devient une graine.
 4. **Partage** : Dijkstra multi-sources sur le réseau, chaque nœud va à la graine la plus proche.
-5. **Fusion** : deux cellules voisines (pas deux relations site) fusionnent si la liaison qui les relie fait moins de 6 km (Le Laus – Les Fonts à Cervières) ; une liaison plus longue est un passage entre vallées (Cervières – Brunissard par l'Izoard : 13,2 km).
-6. **Cohérence des relations** : une relation de piste de 25 km au plus coupée entre deux domaines va entière au domaine qui en a le plus ; la coupure de l'Izoard tombe ainsi au col, entre la piste « Izoard » de Cervières et la route du versant d'Arvieux.
+5. **Fusion** : deux cellules voisines (pas deux relations site) fusionnent si la liaison qui les relie fait moins de 6 km (Le Laus – Les Fonts sur le jeu de test alpin) ; une liaison plus longue est un passage entre vallées (du jeu de test alpin à Brunissard par l'Izoard : 13,2 km).
+6. **Cohérence des relations** : une relation de piste de 25 km au plus coupée entre deux domaines va entière au domaine qui en a le plus ; la coupure de l'Izoard tombe ainsi au col, entre la piste « Izoard » du jeu de test alpin et la route du versant d'Arvieux.
 
 Le seuil de longueur des liaisons remplace pour l'instant le relief : avec P5, une liaison devra être coupée à son point haut quand elle franchit un col.
 
@@ -42,13 +42,13 @@ Résultats au 13/11/2026 :
 | OpenSkiMap → nos domaines | 220/241 (91,3 %) ont au moins la moitié de leurs pistes dans un seul de nos domaines ; 17 n'ont aucune piste OSM (fiches Skimap.org seules) ; 44 sont partagés entre plusieurs de nos domaines (dont « Queyras - Arvieux ») | — |
 | SkiRadar | 135/171 stations nordiques à moins de 3 km d'un domaine (78,9 %) ; les autres sont des stations alpines | 167/171 à moins de 10 km |
 | Nordic France (usage personnel) | 90/111 (81,1 %) ; non retrouvées : Monts Jura, Plateau du Russey, Val de Vennes, Val de Morteau, Casterino, Valgaudemar, Agy, Haut Giffre… | 99/111 vers OpenSkiMap (rapprochement approché) ; mêmes absents |
-| Cervières | domaine « Cervières » à part : 34,7 km nordiques + 3,2 km raquettes (Le Laus et Les Fonts réunis, liaison < 6 km) | OpenSkiMap le fond dans « Queyras - Arvieux » (nos 37,9 km sont tous dans ce domaine OpenSkiMap) |
+| Jeu de test alpin | domaine à part : 34,7 km nordiques + 3,2 km raquettes (Le Laus et Les Fonts réunis, liaison < 6 km) | OpenSkiMap le fond dans « Queyras - Arvieux » (nos 37,9 km sont tous dans ce domaine OpenSkiMap) |
 | Arvieux | « Queyras - Arvieux » : 27,3 km nordiques | — |
-| Chapelle-des-Bois | relation 13681086 : 71,0 km nordiques + 8,7 km raquettes ; voisins : Le Risoux, Bellefontaine, Morbier, Foncine / Chaux-Neuve, Lac des Rouges Truites, Mouthe, Les Rousses | OpenSkiMap : 84 km, dont 71,0 km dans notre domaine et le reste chez Mouthe, Lac des Rouges Truites et Morbier ; OpenSnowMap : 70,6 km |
+| Jeu de test jurassien | relation 13681086 : 71,0 km nordiques + 8,7 km raquettes ; voisins : Le Risoux, Bellefontaine, Morbier, Foncine / Chaux-Neuve, Lac des Rouges Truites, Mouthe, Les Rousses | OpenSkiMap : 84 km, dont 71,0 km dans notre domaine et le reste chez Mouthe, Lac des Rouges Truites et Morbier ; OpenSnowMap : 70,6 km |
 
-Sensibilité (amas avec du nordique dans la zone France, dont ≥ 5 km ; Cervières fusionné avec Arvieux ?) :
+Sensibilité (amas avec du nordique dans la zone France, dont ≥ 5 km ; Jeu de test alpin fusionné avec Arvieux ?) :
 
-| Paramètres | Amas | Cervières + Arvieux |
+| Paramètres | Amas | Jeu de test alpin + Arvieux |
 |---|---|---|
 | défaut (150 m, cœur 5 km, liaison 6 km) | 688 / 510 | non |
 | écart 50 m | 755 / 538 | non |

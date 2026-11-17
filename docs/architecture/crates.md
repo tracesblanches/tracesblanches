@@ -35,7 +35,7 @@ Toutes les crates sont dans `crates/`, nommées `skimap-<dossier>` (bibliothèqu
 
 Les crates « téléphone » (`core`, `assist`, `voice`, `plan`, lecteur de `pack`) dépendent de `skimap-common` **sans** la fonction `download` : elles n'embarquent aucune pile HTTP (`cargo tree -p skimap-core` le montre). Les crates du pipeline l'activent : `skimap-common = { workspace = true, features = ["download"] }` (plus `"geotiff"` pour terrain et snow).
 
-Dépendances entre crates du pipeline : `snow` → `terrain` (dalles et pente) ; `status` lit la couche `pistes` (géométrie des pistes de Cervières) ; `avalanche` → `meteo` (BERA du jour) ; `refuges` → `osm` (comparaison de noms) ; `stations` → `osm`, `refuges` (journal des changements, saison) et le recensement P3 sur disque ; `srn` → `osm` ; `coverage` → `zones` (partie française de l'emprise) ; `core` → `zones` (schéma). Les métadonnées et l'écriture des couches passent par `common`, pas par une autre crate.
+Dépendances entre crates du pipeline : `snow` → `terrain` (dalles et pente) ; `status` lit la couche `pistes` (géométrie des pistes du jeu de test alpin) ; `avalanche` → `meteo` (BERA du jour) ; `refuges` → `osm` (comparaison de noms) ; `stations` → `osm`, `refuges` (journal des changements, saison) et le recensement P3 sur disque ; `srn` → `osm` ; `coverage` → `zones` (partie française de l'emprise) ; `core` → `zones` (schéma). Les métadonnées et l'écriture des couches passent par `common`, pas par une autre crate.
 
 ## Règle de propriété
 

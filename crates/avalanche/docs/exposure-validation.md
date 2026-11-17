@@ -4,7 +4,7 @@
 
 ## Validation (P18) contre la CLPA (DDT 05), modèle seul
 
-Cervières, 173 emprises CLPA (171 de la commune + 2 qui touchent l'emprise du site), 27,9 km² :
+Jeu de test alpin, 173 emprises CLPA (171 de la commune + 2 qui touchent l'emprise du site), 27,9 km² :
 
 | | Modèle seul | Après fusion CLPA (couche) |
 |---|---|---|
@@ -24,9 +24,9 @@ Cervières, 173 emprises CLPA (171 de la commune + 2 qui touchent l'emprise du s
 | Écoulement rare sans forêt, marge 10 / 25 / 50 m | 0,30 / 0,12 / 0,03 % | 0,076 / 0,006 / 0,000 km | 0,89 / 0,27 / 0,04 km |
 | α rare 15°, forêt, marge 10 / 25 / 50 m | 1,47 / 0,68 / 0,27 % | 1,27 / 0,87 / 0,30 km | 4,52 / 2,69 / 0,89 km |
 
-Atteindre zéro sur la CLPA par le seul modèle ne laisse presque rien « peu exposé » à Cervières. D'où la fusion CLPA dans la couche ; elle ne protège pas des avalanches hors CLPA.
+Atteindre zéro sur la CLPA par le seul modèle ne laisse presque rien « peu exposé » sur le jeu de test alpin. D'où la fusion CLPA dans la couche ; elle ne protège pas des avalanches hors CLPA.
 
-**EPA** (INRAE) : accessible sans clé par le WFS public `carto-service.inrae.fr/geoserver/siavalanches` (`epa_site_geom`, 376 objets dans l'emprise de Cervières le 15/11/2026 ; la carte `map.avalanches.fr` et les listes PDF par département) ; conditions du site : reproduction réservée à un « usage personnel excluant tout usage … d'information ». Exemple `epa_validation`, seulement avec `SKIMAP_PERSONAL_SOURCES=1`, rien n'est écrit dans la couche ; la géométrie `epa_site_geom` (axe ou contour du site) n'est pas documentée. Sur 244 sites avec données, 198 km de lignes : modèle seul 1,96 % de la longueur en « peu exposé » (68 sites touchés, 2 entièrement) ; couche après fusion CLPA 1,73 % (60 sites).
+**EPA** (INRAE) : accessible sans clé par le WFS public `carto-service.inrae.fr/geoserver/siavalanches` (`epa_site_geom`, 376 objets dans l'emprise du jeu de test alpin le 15/11/2026 ; la carte `map.avalanches.fr` et les listes PDF par département) ; conditions du site : reproduction réservée à un « usage personnel excluant tout usage … d'information ». Exemple `epa_validation`, seulement avec `SKIMAP_PERSONAL_SOURCES=1`, rien n'est écrit dans la couche ; la géométrie `epa_site_geom` (axe ou contour du site) n'est pas documentée. Sur 244 sites avec données, 198 km de lignes : modèle seul 1,96 % de la longueur en « peu exposé » (68 sites touchés, 2 entièrement) ; couche après fusion CLPA 1,73 % (60 sites).
 
 ## Limites
 
@@ -36,7 +36,7 @@ Atteindre zéro sur la CLPA par le seul modèle ne laisse presque rien « peu ex
 - Les paramètres sont ceux de l'ouest canadien (ISSW) ; aucun recalage sur la CLPA n'a été fait.
 
 ```sh
-cargo run --release -p skimap-avalanche --example exposure_build -- cervieres chapelle-des-bois
-cargo run --release -p skimap-avalanche --example exposure_sensitivity -- cervieres
-SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-avalanche --example epa_validation -- cervieres [--product]
+cargo run --release -p skimap-avalanche --example exposure_build -- <site>...
+cargo run --release -p skimap-avalanche --example exposure_sensitivity -- <site>
+SKIMAP_PERSONAL_SOURCES=1 cargo run --release -p skimap-avalanche --example epa_validation -- <site> [--product]
 ```

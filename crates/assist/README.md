@@ -46,22 +46,22 @@ Chaque JSON commence par `inputs` (fichiers lus) et `missing` (couches absentes)
 
 ```sh
 # entrées des jours passés (poste ; Open-Meteo est réservé à l'usage non commercial)
-SKIMAP_PERSONAL_SOURCES=1 skimap history cervieres 2026-01-04 2026-01-10
-SKIMAP_PERSONAL_SOURCES=1 skimap history cervieres 2023-04-15 2023-04-15
-SKIMAP_PERSONAL_SOURCES=1 skimap history chapelle-des-bois 2026-02-22 2026-02-28
-SKIMAP_PERSONAL_SOURCES=1 skimap history cervieres 2026-11-15 2026-11-15 --no-snow
+SKIMAP_PERSONAL_SOURCES=1 skimap history <site> 2026-01-04 2026-01-10
+SKIMAP_PERSONAL_SOURCES=1 skimap history <site> 2023-04-15 2023-04-15
+SKIMAP_PERSONAL_SOURCES=1 skimap history <site> 2026-02-22 2026-02-28
+SKIMAP_PERSONAL_SOURCES=1 skimap history <site> 2026-11-15 2026-11-15 --no-snow
 # l'assistant (aucun réseau)
-skimap assist cervieres --date 2026-01-05 --days 5 --history past \
-    --home 6.6426,44.8986 --route data/out/cervieres/routes/routes.geojson --suggest --outings
-skimap assist chapelle-des-bois --date 2026-11-15 --history with-forecast \
-    --home 6.3554,46.9035 --route data/out/chapelle-des-bois/routes/offpiste_risoux_fevrier.geojson
+skimap assist <site> --date 2026-01-05 --days 5 --history past \
+    --home 6.6426,44.8986 --route data/out/<site>/routes/routes.geojson --suggest --outings
+skimap assist <site> --date 2026-11-15 --history with-forecast \
+    --home 6.3554,46.9035 --route data/out/<site>/routes/offpiste_risoux_fevrier.geojson
 cargo test -p skimap-assist --test real_sites -- --ignored   # contrôles sur les données réelles
 cargo test -p skimap-assist --test weather   # A1–A9 sur 7 jeux de météo synthétiques versionnés (tests/data/weather, X15)
 ```
 
-`--history past` lit les fichiers de `history/` (chaque jour prend sa carte d'enneigement et son BERA) ; `with-forecast` ajoute la prévision courante (`meteo-hourly`) et la carte d'enneigement courante. Le point de départ « maison » des commandes est Briançon (Cervières) et Pontarlier (Chapelle-des-Bois), choisis comme villes d'accès, pas comme domicile de quelqu'un.
+`--history past` lit les fichiers de `history/` (chaque jour prend sa carte d'enneigement et son BERA) ; `with-forecast` ajoute la prévision courante (`meteo-hourly`) et la carte d'enneigement courante. Le point de départ « maison » des commandes est Briançon (jeu de test alpin) et Pontarlier (jeu de test jurassien), choisis comme villes d'accès, pas comme domicile de quelqu'un.
 
-Temps de calcul (`build`, release, 20 cœurs) : 0,15 à 0,23 s pour Cervières, 0,29 à 0,46 s pour Chapelle-des-Bois (7 jours) ; la lecture des couches (trois GeoTIFF par jour, zones, 2 740 polygones sans réseau) domine.
+Temps de calcul (`build`, release, 20 cœurs) : 0,15 à 0,23 s pour le jeu de test alpin, 0,29 à 0,46 s pour le jeu de test jurassien (7 jours) ; la lecture des couches (trois GeoTIFF par jour, zones, 2 740 polygones sans réseau) domine.
 
 ## Détail par ticket
 

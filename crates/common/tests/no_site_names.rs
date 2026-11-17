@@ -3,11 +3,17 @@
 //! registry, the catalogue); the evaluation sites only appear in test data (tests,
 //! fixtures, goldens, benches, examples, the `#[cfg(test)]` modules).
 //!
-//! Scanned: `crates/`, `android/*/src/main`, `deploy/`, `styles/`. Not scanned: test data
-//! (directories `tests`, `fixtures`, `goldens`, `benches`, `examples`, `oracle`, `demo`, the
-//! Android benchmark module, the trailing `#[cfg(test)] mod … {` of a Rust file), data
-//! tables (directories `data`, the zone rules, the Android catalogue, the style schema
-//! snapshot) and documentation (`.md`, `.html`).
+//! Scanned: `crates/`, `android/*/src/main`, `deploy/`, `styles/`, code and documentation
+//! (`.md`, `.html`: a document measures on « le jeu de test alpin / jurassien », defined
+//! once in `docs/architecture/donnees.md`, and writes `<site>` in its commands). URLs are
+//! not read (a source is cited by its address, which may contain a commune name). Not
+//! scanned: test data (directories `tests`, `fixtures`, `goldens`, `benches`, `oracle`,
+//! `demo`, the Android benchmark module, the trailing `#[cfg(test)] mod … {` of a Rust
+//! file, the evaluation reports of [`REPORTS`]), data tables (directories `data`, the zone
+//! rules, the Android catalogue, the style schema snapshot). Outside the scanned roots:
+//! `docs/tickets.yaml` (ticket history, written when the two evaluation sites were the
+//! scope), `research/` (dated research reports) and the rest of `docs/` (the test sets are
+//! defined there).
 
 use std::path::{Path, PathBuf};
 
@@ -27,21 +33,49 @@ const DATA_FILES: [&str; 4] = [
     "android/benchmark",
 ];
 
+/// Evaluation reports: generated text pasted as is, on published itineraries whose title
+/// names their commune (« … – Capanna Mautino ») and on the off-piste routes of the test
+/// sets.
+const REPORTS: [&str; 1] = ["crates/srndiff/docs/relecture.md"];
+
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
+/// The line without its URLs (`http://…`, `https://…` up to a space, a closing bracket or
+/// a quote).
+fn without_urls(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut rest = line;
+    while let Some(i) = [rest.find("http://"), rest.find("https://")]
+        .into_iter()
+        .flatten()
+        .min()
+    {
+        out.push_str(&rest[..i]);
+        let tail = &rest[i..];
+        let end = tail
+            .find(|c: char| c.is_whitespace() || matches!(c, ')' | '>' | '"' | '\'' | '`'))
+            .unwrap_or(tail.len());
+        rest = &tail[end..];
+    }
+    out.push_str(rest);
+    out
+}
+
 fn fold(line: &str) -> String {
-    line.to_lowercase()
+    without_urls(line)
+        .to_lowercase()
         .replace(['è', 'é', 'ê'], "e")
         .replace(' ', "-")
 }
 
 fn scanned(rel: &Path) -> bool {
     let s = rel.to_string_lossy().replace('\\', "/");
-    if DATA_FILES
-        .iter()
-        .any(|d| s == *d || s.starts_with(&format!("{d}/")))
+    if REPORTS.contains(&s.as_str())
+        || DATA_FILES
+            .iter()
+            .any(|d| s == *d || s.starts_with(&format!("{d}/")))
     {
         return false;
     }
@@ -53,7 +87,7 @@ fn scanned(rel: &Path) -> bool {
     let ext = rel.extension().and_then(|e| e.to_str()).unwrap_or("");
     !matches!(
         ext,
-        "md" | "html" | "png" | "jpg" | "webp" | "pmtiles" | "tif" | "gz" | "zip"
+        "png" | "jpg" | "webp" | "pmtiles" | "tif" | "gz" | "zip"
     )
 }
 
@@ -135,4 +169,12 @@ fn the_guard_sees_a_site_name() {
     assert!(!scanned(Path::new("crates/common/data/sites.json")));
     assert!(scanned(Path::new("crates/x/src/a.rs")));
     assert!(scanned(Path::new("deploy/skimap-job")));
+    // Documentation is scanned; a cited URL is not read.
+    assert!(scanned(Path::new("crates/x/README.md")));
+    assert!(scanned(Path::new("crates/x/docs/a.html")));
+    assert!(!scanned(Path::new("crates/srndiff/docs/relecture.md")));
+    let doc =
+        "| Cervières | [PDF](https://x.fr/Cervieres.pdf) |\n[PDF](https://x.fr/Cervieres.pdf)\n";
+    let found = offending(Path::new("a.md"), doc);
+    assert_eq!(found.iter().map(|f| f.0).collect::<Vec<_>>(), [1]);
 }

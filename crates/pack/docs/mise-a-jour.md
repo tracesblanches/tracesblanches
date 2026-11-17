@@ -33,7 +33,7 @@ blobs de fetch[]            tels quels, dans l'ordre, longueurs de fetch[].bytes
 
 `Update` (`update::Update`, format `skimap-pack-update` version 1) : `site`, `from_version` (nul : depuis rien), `to_version`, `manifest` (empreinte et taille du `manifest.json` décompressé), `fetch` (contenus absents de la version de départ, chacun une fois, avec les chemins qui les utilisent), `fetch_bytes`, `reused_files`, `removed`, `files`, `total_bytes`, `valid_for`, `changes`, `manifest_gzip_bytes`.
 
-Seul le manifeste est compressé (≈ 60 ko au lieu de 280 ko à Cervières) : les gros fichiers le sont déjà (PMTiles, SKR gzip, Opus). Le téléphone n'a rien à décompresser d'autre et lit chaque blob directement dans le paquet, sans le déballer d'abord.
+Seul le manifeste est compressé (≈ 60 ko au lieu de 280 ko sur le jeu de test alpin) : les gros fichiers le sont déjà (PMTiles, SKR gzip, Opus). Le téléphone n'a rien à décompresser d'autre et lit chaque blob directement dans le paquet, sans le déballer d'abord.
 
 ## Synchronisation (ce que fait l'app)
 
@@ -50,7 +50,7 @@ Hors ligne, rien ne change : le pack installé reste complet et lisible, chaque 
 
 Publication de deux jours de neige consécutifs (simulation du 13/11 puis du 14/11), synchronisation par `crates/server/examples/phone_sync.rs` (mêmes appels que l'app) :
 
-| | Cervières | Chapelle-des-Bois |
+| | Jeu de test alpin | Jeu de test jurassien |
 |---|---|---|
 | Premier téléchargement | 2 requêtes, 43,50 Mo (index 13,8 ko + base 43,49 Mo) | 2 requêtes, 39,98 Mo |
 | Synchro sans changement | 1 requête, 304, 0 octet de corps | idem |

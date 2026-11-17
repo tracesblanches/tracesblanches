@@ -14,7 +14,7 @@
 
 `assistant/assistant.txt` : textes du briefing, du fartage et de la qualité de neige du jour (avec `personal_sources`).
 
-Surcouches : pentes (classes de la carte des pentes IGN, moins de 30° transparent), neige (hauteur, classes piste damée et hors piste) et exposition aux avalanches (`exposition-avalanches`, « terrain peu exposé (modèle) », « exposé », « très exposé » ; jamais « sûr »). OsmAnd n'affiche une surcouche que jusqu'à deux zooms au-dessus de son zoom maximal (`MapTileLayer.OVERZOOM_IN = 2`) : l'export ajoute un ou deux zooms agrandis (plus proche voisin, exact) au-dessus du zoom calculé du pack, 15 pour la neige. La pente et l'exposition sont des polygones vectoriels dans le pack (K15) : l'export dessine ses propres tuiles PNG à palette depuis ces polygones à chaque zoom jusqu'au 16 (`export::class_raster_tiles`, remplissage aux centres des pixels, chaque tuile vectorielle dessinée une fois à la taille de ses descendants puis découpée, en parallèle) : 1 950 tuiles de pente et 1 966 d'exposition à Cervières, 1 017 et 1 664 à Chapelle-des-Bois ; export complet en 3,5 s et 2,7 s (70 s avant ce découpage). Les tuiles IGN de comparaison ne sont pas exportées (usage hors ligne à confirmer). Abribus OSM écartés.
+Surcouches : pentes (classes de la carte des pentes IGN, moins de 30° transparent), neige (hauteur, classes piste damée et hors piste) et exposition aux avalanches (`exposition-avalanches`, « terrain peu exposé (modèle) », « exposé », « très exposé » ; jamais « sûr »). OsmAnd n'affiche une surcouche que jusqu'à deux zooms au-dessus de son zoom maximal (`MapTileLayer.OVERZOOM_IN = 2`) : l'export ajoute un ou deux zooms agrandis (plus proche voisin, exact) au-dessus du zoom calculé du pack, 15 pour la neige. La pente et l'exposition sont des polygones vectoriels dans le pack (K15) : l'export dessine ses propres tuiles PNG à palette depuis ces polygones à chaque zoom jusqu'au 16 (`export::class_raster_tiles`, remplissage aux centres des pixels, chaque tuile vectorielle dessinée une fois à la taille de ses descendants puis découpée, en parallèle) : 1 950 tuiles de pente et 1 966 d'exposition sur le jeu de test alpin, 1 017 et 1 664 sur le jeu de test jurassien ; export complet en 3,5 s et 2,7 s (70 s avant ce découpage). Les tuiles IGN de comparaison ne sont pas exportées (usage hors ligne à confirmer). Abribus OSM écartés.
 
 ```sh
 cargo run --release -p skimap-pack --features pipeline --example export_pack
@@ -22,14 +22,14 @@ cargo run --release -p skimap-pack --features pipeline --example export_pack
 
 ## Validation (15/11/2026)
 
-- **XML** : les 26 fichiers de Cervières et les 22 de Chapelle-des-Bois (15/11/2026, exposition aux avalanches et boucles suggérées comprises) passent `xmllint --noout --schema` contre `gpx.xsd` (GPX 1.1, topografix.com) et `ogckml22.xsd` (OGC KML 2.2, avec `atom-author-link.xsd` et `xAL.xsd` en local).
-- **SQLite** : `PRAGMA integrity_check` = `ok` ; `pentes.mbtiles` de Cervières : zooms 10 à 16, 4 / 6 / 15 / 33 / 106 / 376 / 1 504 tuiles, `tile_row = 2^z − 1 − y` ; `pentes.sqlitedb` : mêmes colonnes et lignes XYZ ; une tuile tirée de la base est un « PNG image data, 256 x 256, 8-bit colormap ».
+- **XML** : les 26 fichiers du jeu de test alpin et les 22 du jeu de test jurassien (15/11/2026, exposition aux avalanches et boucles suggérées comprises) passent `xmllint --noout --schema` contre `gpx.xsd` (GPX 1.1, topografix.com) et `ogckml22.xsd` (OGC KML 2.2, avec `atom-author-link.xsd` et `xAL.xsd` en local).
+- **SQLite** : `PRAGMA integrity_check` = `ok` ; `pentes.mbtiles` du jeu de test alpin : zooms 10 à 16, 4 / 6 / 15 / 33 / 106 / 376 / 1 504 tuiles, `tile_row = 2^z − 1 − y` ; `pentes.sqlitedb` : mêmes colonnes et lignes XYZ ; une tuile tirée de la base est un « PNG image data, 256 x 256, 8-bit colormap ».
 - **Tests** : `export::tests` (GPX, KML, agrandissement des tuiles), `db::tests` (deux formats), `tests/synthetic_pack.rs` (pack synthétique → export, tuiles OsmAnd zooms 10 à 16, échappement des descriptions).
 - gpsbabel n'est pas installé sur le poste : non utilisé.
 
 ## Tailles
 
-| | Cervières | Chapelle-des-Bois |
+| | Jeu de test alpin | Jeu de test jurassien |
 |---|---|---|
 | Total (15/11/2026 ; 14/11 : 21,1 et 8,6 Mo) | 31,7 Mo | 32,4 Mo |
 | Pentes (MBTiles / SQLiteDB) | 6,8 / 6,8 Mo, 2 044 tuiles | 1,3 / 1,3 Mo, 1 746 tuiles |
@@ -37,7 +37,7 @@ cargo run --release -p skimap-pack --features pipeline --example export_pack
 | Neige, trois surcouches (chaque format) | 1,2 Mo | 0,8 Mo |
 | GPX + KML (24 et 20 fichiers) | 9,0 Mo (14/11 : 5,0) | 23,9 Mo (14/11 : 4,2), dont 20,3 Mo de `avalanches-exposition` (géométrie échantillonnée au mètre par la crate avalanche) |
 
-Temps de l'export complet : 3,0 s (Cervières) et 1,4 s (Chapelle-des-Bois).
+Temps de l'export complet : 3,0 s (jeu de test alpin) et 1,4 s (jeu de test jurassien).
 
 ## Reste à faire
 

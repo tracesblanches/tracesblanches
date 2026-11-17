@@ -25,7 +25,7 @@ cargo run -p skimap-ffi --example catalog                 # régénère assets/c
 ./gradlew :app:testStore :app:cargoServer
 SKIMAP_STORE=app/build/generated/testStore SKIMAP_SERVER_DB=/tmp/skimap-test.sqlite SKIMAP_CONTACT_EMAIL=test@example.org \
   setsid app/build/rust/server/skimap-server serve --addr 127.0.0.1:8787 > /tmp/skimap-server.log 2>&1 &
-adb push ../data/out/cervieres/pack/. /data/local/tmp/skimap-packs/cervieres/   # vrais packs (facultatif)
+adb push ../data/out/<site>/pack/. /data/local/tmp/skimap-packs/<site>/   # vrais packs (facultatif)
 ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.skimapServer=http://10.0.2.2:8787
 kill %1
 ```

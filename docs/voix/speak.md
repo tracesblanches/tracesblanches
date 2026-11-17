@@ -37,7 +37,7 @@ Source : fiche de `kyutai/pocket-tts-without-voice-cloning@08ffc58` et README de
 crates/voice/scripts/build-pockettts.sh      # clone fab79722, applique les patchs de speak, build CUDA (~2 min)
 # -> ~/.cache/skimap/pockettts/build-cuda/pocket-tts (hors dépôt)
 SKIMAP_DATA_DIR=~/projects/skimap/data cargo run --release -p skimap-voice --example voice_pack -- \
-    [--names] [cervieres|chapelle-des-bois]   # noms des couches construites ; --names : noms seuls
+    [--names] [<site>]   # noms des couches construites ; --names : noms seuls
 cargo test -p skimap-voice --test pocket -- --ignored   # contre le vrai modèle
 ```
 

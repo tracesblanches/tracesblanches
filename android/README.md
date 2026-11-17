@@ -35,9 +35,9 @@ Premier lancement : « Aucun pack sur ce téléphone » → « Domaines de Franc
 
 ```sh
 D=/sdcard/Android/data/fr.skimap.app/files/packs
-adb push data/out/cervieres/pack/. $D/cervieres/
+adb push data/out/<site>/pack/. $D/<site>/
 adb shell am start -S -W -n fr.skimap.app/.MainActivity -e pack libre       # mode libre : tous les packs
-adb shell am start -S -W -n fr.skimap.app/.MainActivity -e pack cervieres   # un domaine
+adb shell am start -S -W -n fr.skimap.app/.MainActivity -e pack <site>   # un domaine
 adb logcat -s skimap        # « packs … opened in N ms », « map … fully rendered in N ms », « sync … »
 ```
 

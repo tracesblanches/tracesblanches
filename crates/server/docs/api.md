@@ -34,7 +34,7 @@ Complément de l'alerte par SMS du téléphone (K10) pour le seul cas où le té
   "contacts": ["contact1@example.org", "contact2@example.org"],
   "deadline": "2027-01-10T16:00:00Z",
   "grace_minutes": 30,
-  "site": "cervieres",
+  "site": "<site>",
   "plan": "Boucle par le Bourget et le col des Thures, retour par la piste des Fonts.",
   "route": [[6.725, 44.8589], [6.76, 44.855], [6.8157, 44.8447]],
   "position": {"lon": 6.7251, "lat": 44.859, "accuracy_m": 8}

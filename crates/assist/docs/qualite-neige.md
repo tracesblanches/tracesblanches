@@ -8,9 +8,9 @@ Validation qualitative (la vraie validation est T5, #47) :
 
 | Jour | Données | Ce que dit A3 | Référence |
 |---|---|---|---|
-| Cervières 05–07/01/2026 | froid sec, ciel clair, −15 à −3 °C | plat : neige ancienne froide et sèche ; seules les pentes sud à 40° ramollissent vers 12–13 h | station de Cervières (1 614 m) : 19–20 cm, pas de chute |
-| Cervières 09/01/2026 | 4 cm dans la journée | neige fraîche partout | station : 19 cm le 08, 40 cm le 09, 47 cm le 10 |
-| Cervières 15/04/2023 | +1 à +2 °C au Laus | regelée le matin partout ; ramollit E et SE vers 9 h, S vers 10 h, O vers 11 h, N vers 10 h (20°) ; lourde au sud dès 12–13 h ; Les Fonts (2 044 m) reste dure au plat jusqu'à 13 h | BERA du Queyras : « généralement sur fond dur ou crouté » |
-| Chapelle-des-Bois 22–28/02/2026 | +4 à +15 °C, pluie le 23 | transformée humide puis mouillée chaque jour, regel la nuit du 24 au 25 | La Boissaude (1 222 m) : 33 cm le 22, 9 cm le 28 |
+| Jeu de test alpin 05–07/01/2026 | froid sec, ciel clair, −15 à −3 °C | plat : neige ancienne froide et sèche ; seules les pentes sud à 40° ramollissent vers 12–13 h | station du jeu de test alpin (1 614 m) : 19–20 cm, pas de chute |
+| Jeu de test alpin 09/01/2026 | 4 cm dans la journée | neige fraîche partout | station : 19 cm le 08, 40 cm le 09, 47 cm le 10 |
+| Jeu de test alpin 15/04/2023 | +1 à +2 °C au Laus | regelée le matin partout ; ramollit E et SE vers 9 h, S vers 10 h, O vers 11 h, N vers 10 h (20°) ; lourde au sud dès 12–13 h ; Les Fonts (2 044 m) reste dure au plat jusqu'à 13 h | BERA du Queyras : « généralement sur fond dur ou crouté » |
+| Jeu de test jurassien 22–28/02/2026 | +4 à +15 °C, pluie le 23 | transformée humide puis mouillée chaque jour, regel la nuit du 24 au 25 | La Boissaude (1 222 m) : 33 cm le 22, 9 cm le 28 |
 
 Voix : `Briefing::Snow` ; la neige ancienne froide et sèche se dit « Neige froide et sèche. ».

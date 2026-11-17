@@ -7,7 +7,7 @@ Mesures du 15/11/2026 (`srndiff refs`, `profiles`, `roads`, `evaluate`, `review`
 ## Données
 
 - **124 tracés profilés** (`references.json`) : 87 itinéraires de la couche G5 (SRN et ski de randonnée facile d'au moins 1 km, tous les itinéraires cotés), 49 topos français de skirandonneenordique.com avec GPX, 4 itinéraires hors piste calculés par C3 ; profil tous les 10 m.
-- **Relief et canopée** : dalles LiDAR HD à moins de 1,5 km du tracé seulement (GTJ : 315 dalles de 1 km² au lieu des quelque 1 770 de son emprise de 33 × 53 km) ; **exposition aux avalanches** : modèle de la crate avalanche sur ce couloir, ou couche du site (CLPA comprises) à Cervières et Chapelle-des-Bois ; **réseau et zones** : couches des deux sites (ailleurs « non évalué ») ; **sorties** : routes ouvertes l'hiver de la BD TOPO (les tronçons à `periode_de_fermeture` « Hiver », comme la route de l'Izoard au-dessus du Laus, sont écartés). Overpass, premier choix, n'a plus répondu ce jour-là.
+- **Relief et canopée** : dalles LiDAR HD à moins de 1,5 km du tracé seulement (GTJ : 315 dalles de 1 km² au lieu des quelque 1 770 de son emprise de 33 × 53 km) ; **exposition aux avalanches** : modèle de la crate avalanche sur ce couloir, ou couche du site (CLPA comprises) sur les deux jeux de test (alpin et jurassien) ; **réseau et zones** : couches des deux sites (ailleurs « non évalué ») ; **sorties** : routes ouvertes l'hiver de la BD TOPO (les tronçons à `periode_de_fermeture` « Hiver », comme la route de l'Izoard au-dessus du Laus, sont écartés). Overpass, premier choix, n'a plus répondu ce jour-là.
 - **Contrôle des profils** : longueur calculée contre longueur publiée, écart médian −0,1 % (absolu 1,6 %) ; dénivelé positif, +2,9 % (absolu 8,5 %) sur les tracés qui publient ces chiffres.
 - **Cotations** : 62 cotations ramenées aux niveaux SRN sur 44 itinéraires distincts (groupes : deux tracés dont l'un suit l'autre sur au moins la moitié de sa longueur, toutes sources confondues) : skirandonneenordique.com 49 (Facile 13, Moyenne 31, Difficile 5), PNR du Vercors 9 (niveau 1 : 3, 2 : 4, 4 : 2), OSM `piste:difficulty` 4 ; Camptocamp 27 (ski 1.1 à 1.3), échelle de ski de randonnée, traitée à part.
 
@@ -56,10 +56,10 @@ Répartition des 124 tracés (paramètres calibrés, sens du tracé) : 4 faciles
 
 | Étape | Temps | Mesure |
 |---|---|---|
-| téléphone : échantillonnage sur les rasters SKR1 en mémoire (altitude, pente, exposition, pistes, 25 lectures de canopée) | 1,3 à 4,7 µs par échantillon, soit 13 à 47 ms pour la GTJ | `bench` : 2 839 échantillons de la GTJ dans la grille de Chapelle-des-Bois, médiane de 20 passages, charge 60 à 143 |
+| téléphone : échantillonnage sur les rasters SKR1 en mémoire (altitude, pente, exposition, pistes, 25 lectures de canopée) | 1,3 à 4,7 µs par échantillon, soit 13 à 47 ms pour la GTJ | `bench` : 2 839 échantillons de la GTJ dans la grille du jeu de test jurassien, médiane de 20 passages, charge 60 à 143 |
 | téléphone : mesures des deux sens (niveau et conseils), règles, conseils, texte | 12 à 43 ms (médiane), 32 à 129 ms au pire | `bench`, profil complet |
 | **téléphone, tracé entier** | **25 à 73 ms** | somme ; Pixel 8 non mesuré (téléphone non branché) |
-| pipeline, dalles déjà en cache | 186,6 s, dont 177,4 s de modèle d'avalanche (26,2 M cellules, 15 tronçons sur 20 ; les 5 autres lisent la couche de Chapelle-des-Bois), 7,3 s de lecture de 315 + 315 dalles | `bench --pipeline` |
+| pipeline, dalles déjà en cache | 186,6 s, dont 177,4 s de modèle d'avalanche (26,2 M cellules, 15 tronçons sur 20 ; les 5 autres lisent la couche du jeu de test jurassien), 7,3 s de lecture de 315 + 315 dalles | `bench --pipeline` |
 | pipeline, premier passage (téléchargement compris) | 788 s, dont 635 s de modèle et 153 s de dalles | `profiles` |
 
 Le cas qui domine est le modèle d'exposition du couloir, côté pipeline ; sur le téléphone le calcul complet d'un tracé de 100 km reste sous 0,1 s sur le poste.

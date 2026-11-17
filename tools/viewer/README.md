@@ -9,7 +9,7 @@ Les PMTiles se lisent par requêtes partielles (`Range`) : `python3 -m http.serv
 ```sh
 # depuis la racine du dépôt (data/ doit y être, ou un lien symbolique vers lui)
 cargo run --release -p skimap-pack --features pipeline --example serve -- . 127.0.0.1:8765
-google-chrome "http://127.0.0.1:8765/tools/viewer/index.html?pack=../../data/out/cervieres/pack/"
+google-chrome "http://127.0.0.1:8765/tools/viewer/index.html?pack=../../data/out/<site>/pack/"
 ```
 
 Sans paramètre, la page ouvre la **vue France** : tous les domaines nordiques sur la carte (catalogue du pipeline `data/out/france/catalog.json` s'il existe, sinon le recensement `data/out/france/domaines/domaines.geojson`, aucune liste en dur), recherche par nom (ou commune), domaine le plus proche (GPS, sinon centre de la carte). Toucher un domaine ouvre sa fiche : « Ouvrir le pack » s'il est construit (catalogue ; avec le recensement, le pack est cherché dans `data/out/<identifiant du domaine>/pack/` puis `data/out/<nom de la commune>/pack/`), sinon « Pack pas encore construit ». `?pack=<chemin>` ouvre directement un pack servi par le même serveur. Autres paramètres : `style=fond|srn|guidage|plan-ign|osm|none`, `theme=clair|sombre`, `layers=none` (fond d'origine sans couche), `panel=0` (panneau replié), `focus=decision` (cadre la position et la prochaine décision) ; la page met `window.__skimapIdle` à `true` quand la carte est chargée (captures).
@@ -22,7 +22,7 @@ Téléphone branché en USB, débogage autorisé, serveur lancé comme ci-dessus
 adb reverse tcp:8765 tcp:8765
 ```
 
-puis, dans Chrome sur le téléphone : `http://localhost:8765/tools/viewer/index.html?pack=../../data/out/cervieres/pack/`. Rien n'est exposé sur le Wi-Fi. Le panneau est replié sur petit écran (bouton ☰) ; les cases, boutons radio et curseurs ont une taille tactile ; la géolocalisation (bouton ◎) marche sur `localhost`.
+puis, dans Chrome sur le téléphone : `http://localhost:8765/tools/viewer/index.html?pack=../../data/out/<site>/pack/`. Rien n'est exposé sur le Wi-Fi. Le panneau est replié sur petit écran (bouton ☰) ; les cases, boutons radio et curseurs ont une taille tactile ; la géolocalisation (bouton ◎) marche sur `localhost`.
 
 ## Interface
 

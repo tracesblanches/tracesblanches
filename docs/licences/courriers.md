@@ -10,7 +10,7 @@ Objet : Demande d'autorisation de réutiliser les données de Snowmap (API Geotr
 
 > Madame, Monsieur,
 >
-> Je développe, à titre personnel, une application Android de ski de fond et de ski de randonnée nordique qui fonctionne sans réseau. Pour le domaine de Chapelle-des-Bois, elle lit l'API Geotrek de Snowmap (admin.snowmap.espacenordiquejurassien.com/api/v2/trek/) : tracés, noms et difficulté des itinéraires, état ouvert ou fermé et date du dernier damage.
+> Je développe, à titre personnel, une application Android de ski de fond et de ski de randonnée nordique qui fonctionne sans réseau. Elle couvre tous les domaines nordiques de France ; pour ceux de l'Espace Nordique Jurassien, elle lit l'API Geotrek de Snowmap (admin.snowmap.espacenordiquejurassien.com/api/v2/trek/) : tracés, noms et difficulté des itinéraires, état ouvert ou fermé et date du dernier damage.
 >
 > Aujourd'hui, l'usage est strictement personnel : l'état des pistes est relu au plus toutes les 15 minutes pendant la saison, les tracés une fois par jour, et rien n'est diffusé. Je n'ai trouvé aucune licence de réutilisation sur le site ni dans l'API, et vos mentions légales réservent vos droits sur les données ; je préfère donc vous demander votre accord avant d'aller plus loin.
 >
@@ -31,16 +31,16 @@ Objet : Demande d'autorisation de réutiliser les données de Snowmap (API Geotr
 
 Destinataire : Association Nordic France (contact du site nordicfrance.fr).
 
-Objet : Accès aux données du bulletin d'état des pistes (Cervières et autres sites)
+Objet : Accès aux données du bulletin d'état des pistes des stations adhérentes
 
 > Madame, Monsieur,
 >
-> Je développe, à titre personnel, une application Android de ski de fond et de ski de randonnée nordique utilisable sans réseau. Le bulletin que vos sites publient (secteurs, état de chaque piste, date du dernier damage) est la source la plus juste que j'aie trouvée, notamment pour Cervières – Izoard.
+> Je développe, à titre personnel, une application Android de ski de fond et de ski de randonnée nordique utilisable sans réseau. Elle couvre tous les domaines nordiques de France. Le bulletin que vos stations publient (secteurs, état de chaque piste, date du dernier damage) est la source la plus juste que j'aie trouvée.
 >
-> Pour l'instant, je consulte pour mon seul usage la page du widget de cette station (widget « marque blanche », station 3167), au plus une fois toutes les trois heures, sans rien rediffuser. Vos mentions légales interdisent toute reproduction sans autorisation écrite ; je vous écris donc avant d'aller plus loin.
+> Pour l'instant, je consulte pour mon seul usage la page du widget « marque blanche » des stations dont je connais l'identifiant, au plus une fois toutes les trois heures par station, sans rien rediffuser. Vos mentions légales interdisent toute reproduction sans autorisation écrite ; je vous écris donc avant d'aller plus loin.
 >
 > L'application pourrait devenir publique plus tard, gratuite ou vendue une seule fois à petit prix. Je voudrais savoir :
-> 1. s'il existe un accès prévu pour ces données (flux, API, export) ou une convention possible, d'abord pour Cervières, puis pour d'autres sites adhérents ;
+> 1. s'il existe un accès prévu pour ces données (flux, API, export) ou une convention possible pour l'ensemble des stations adhérentes ;
 > 2. à quelles conditions (fréquence, usage, données concernées) ;
 > 3. quelle mention et quel lien vous souhaitez voir affichés.
 >
@@ -60,7 +60,7 @@ Objet : Licence de la couche « aléa avalanche » (L_ALEA_AVALANCHE_005) publi�
 
 > Madame, Monsieur,
 >
-> Je réutilise, pour une application personnelle de ski de fond et de ski de randonnée nordique, le jeu « DDT05 - Risque naturel : aléa Avalanche dans les Hautes-Alpes (shp) » publié sur data.gouv.fr sous Licence Ouverte 2.0 (couche L_ALEA_AVALANCHE_005, mise à jour du 16/02/2026). Il me sert à signaler les tronçons de pistes nordiques de Cervières qui traversent des emprises d'avalanches connues.
+> Je réutilise, pour une application personnelle de ski de fond et de ski de randonnée nordique, le jeu « DDT05 - Risque naturel : aléa Avalanche dans les Hautes-Alpes (shp) » publié sur data.gouv.fr sous Licence Ouverte 2.0 (couche L_ALEA_AVALANCHE_005, mise à jour du 16/02/2026). Il me sert à signaler les tronçons de pistes nordiques des Hautes-Alpes qui traversent des emprises d'avalanches connues.
 >
 > Une partie des objets porte la source « CLPA » ou « PPR-CLPA ». Or le site d'INRAE (avalanches.fr) réserve la reproduction de la CLPA à un usage personnel, hors usage d'information, sauf autorisation. L'application pourrait devenir publique ; avant de diffuser ces emprises, je souhaite m'assurer que je lis correctement la situation. Pourriez-vous me confirmer :
 > 1. que la Licence Ouverte 2.0 s'applique bien à toute la couche, y compris aux objets issus de la CLPA ;

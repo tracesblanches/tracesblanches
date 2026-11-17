@@ -1,6 +1,6 @@
 # Architecture du workspace Rust
 
-La v1 est une preuve de concept entièrement en Rust : le pipeline de données et les algorithmes du noyau, évalués sur deux sites réels, Cervières (Hautes-Alpes) et Chapelle-des-Bois (Doubs). Le client Kotlin viendra ensuite (K0, #49). Python n'est jamais dans le chemin critique : il ne sert que d'oracle de référence ou d'outil (par exemple auto-ATES pour P16).
+Le pipeline de données et les algorithmes du noyau sont en Rust ; ils traitent tous les sites du registre (268 en France, [france.md](architecture/france.md)) de la même façon : tout ce qui est propre à un site vient d'une table de données, jamais du code (garde `crates/common/tests/no_site_names.rs`). Deux sites servent de jeux de test, mesures comprises ([donnees.md](architecture/donnees.md#jeux-de-test)). Le client est Kotlin (`android/`). Python n'est jamais dans le chemin critique : il ne sert que d'oracle de référence ou d'outil (par exemple auto-ATES pour P16).
 
 En bref :
 

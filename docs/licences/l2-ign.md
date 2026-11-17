@@ -27,5 +27,5 @@ Ticket #7. Retour au [sommaire](../licences-donnees.md). Lu le 15/11/2026.
 
 La Licence Ouverte demande la source et « la date de dernière mise à jour », sans suggérer de caution. Proposition :
 - coin de la carte : « © IGN – Plan IGN v2 » ;
-- écran « Licences des données » : « Fond de carte : IGN, Plan IGN v2, Licence Ouverte Etalab 2.0, tuiles téléchargées le AAAA-MM-JJ. Relief : IGN, LiDAR HD MNT et MNH (éditions du 15/03/2025 pour Cervières, du 21/07/2025 pour Chapelle-des-Bois), Licence Ouverte 2.0. Pentes calculées par skimap à partir du LiDAR HD. »
+- écran « Licences des données » : « Fond de carte : IGN, Plan IGN v2, Licence Ouverte Etalab 2.0, tuiles téléchargées le AAAA-MM-JJ. Relief : IGN, LiDAR HD MNT et MNH (éditions du 15/03/2025 pour le jeu de test alpin, du 21/07/2025 pour le jeu de test jurassien), Licence Ouverte 2.0. Pentes calculées par skimap à partir du LiDAR HD. »
 - Corrigé le 15/11/2026 (commit 2013a5b) : le pack écrit « © IGN – Plan IGN v2, mise à jour du AAAA-MM-JJ (fiche IGNF_PLAN-IGN), tuiles téléchargées le AAAA-MM-JJ, Licence Ouverte Etalab 2.0 » dans le manifeste, le visualiseur et l'export.

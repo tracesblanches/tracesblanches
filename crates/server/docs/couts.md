@@ -6,7 +6,7 @@ Contrainte produit : gratuit ou paiement unique, donc aucun coût récurrent par
 
 ## Mesures de base (sorties réelles, sans sources à usage personnel)
 
-| | Cervières | Chapelle-des-Bois |
+| | Jeu de test alpin | Jeu de test jurassien |
 |---|---|---|
 | Paquet de base (premier téléchargement) | 43,49 Mo | 39,97 Mo |
 | Paquet quotidien (neige J-1) | 330 ko | 123 ko |

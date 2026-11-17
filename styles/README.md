@@ -26,7 +26,7 @@ Neige (`snow-groomed-0..2` dans fond, `snow-srn-0..2` dans SRN) : polygones vect
 
 ## Sources facultatives (packs publics)
 
-`metadata.skimap:optional_sources` liste les sources qu'un pack peut ne pas avoir : `avalanche-areas` (CLPA, usage personnel), `avalanche-exposure` (fusionnée avec la CLPA à Cervières), `avalanche-segments`, `snow-groomed`, `snow-srn`, `srn-areas`, `srn-routes`, `piste-labels` (packs antérieurs), `fee-zones` (usage personnel), `stations-pois`, `pistes-estimees` (usage personnel : packs personnels des sites dont le plan en a). L'app et le visualiseur retirent alors la source et ses couches. Les fonds, `pistes`, `zones`, `no-network`, les trois couches de refuges et `slope` sont requis : leur absence est une erreur. Le validateur vérifie une source facultative sur les packs qui l'ont (ou sur le schéma déclaré de `fee-zones`, `src/declared.rs`) ; `validate_with` contrôle un pack seul contre l'instantané :
+`metadata.skimap:optional_sources` liste les sources qu'un pack peut ne pas avoir : `avalanche-areas` (CLPA, usage personnel), `avalanche-exposure` (fusionnée avec la CLPA là où elle existe), `avalanche-segments`, `snow-groomed`, `snow-srn`, `srn-areas`, `srn-routes`, `piste-labels` (packs antérieurs), `fee-zones` (usage personnel), `stations-pois`, `pistes-estimees` (usage personnel : packs personnels des sites dont le plan en a). L'app et le visualiseur retirent alors la source et ses couches. Les fonds, `pistes`, `zones`, `no-network`, les trois couches de refuges et `slope` sont requis : leur absence est une erreur. Le validateur vérifie une source facultative sur les packs qui l'ont (ou sur le schéma déclaré de `fee-zones`, `src/declared.rs`) ; `validate_with` contrôle un pack seul contre l'instantané :
 
 ```sh
 cargo run --release -p skimap-styles --example check_packs -- <dossier de pack>...
@@ -57,7 +57,7 @@ Polygones de classes (pack, `build::class_tiles`), une couche `fill` par classe,
 | `slope-1` à `slope-4` | 30-35, 35-40, 40-45, 45° et plus | `#f2e500`, `#f39419`, `#f00000`, `#c889bb` (teintes de la carte des pentes IGN), opacité 0,55 | `#e6d200`, `#ff8c1a`, `#ff3b3b`, `#c98bff`, opacité 0,78 (une teinte translucide sur fond noir devient boueuse : plus opaque, plus claire) |
 | `exposure-2`, `exposure-3` | exposé, très exposé (« peu exposé » n'est pas dessiné : jamais « sûr ») | `#f59628`, `#c81e1e`, opacité 0,3 | `#ff9f1c`, `#ff2d44`, opacité 0,38 |
 
-Pente de z13 (fondu) à z14 et au-delà (tuiles z13 agrandies), exposition de z11 à z14 (fondus) : à l'échelle du domaine, plus de 90 % de Cervières est « exposé » ou « très exposé », un voile léger suffit.
+Pente de z13 (fondu) à z14 et au-delà (tuiles z13 agrandies), exposition de z11 à z14 (fondus) : à l'échelle du domaine, plus de 90 % du jeu de test alpin est « exposé » ou « très exposé », un voile léger suffit.
 
 ## Groupes de couches (désactivables)
 

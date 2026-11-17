@@ -23,8 +23,8 @@ Données :
 Jamais « sûr » : les zones CLPA sont des avalanches connues, une avalanche peut se produire ailleurs.
 
 ```sh
-skimap pistes cervieres && skimap avalanche-historic cervieres                    # couche pistes (P2)
-cargo run --release -p skimap-avalanche --example historic -- cervieres          # idem
-cargo run --release -p skimap-avalanche --example historic -- cervieres research/raw/osm/cerv2.json
+skimap pistes <site> && skimap avalanche-historic <site>                    # couche pistes (P2)
+cargo run --release -p skimap-avalanche --example historic -- <site>          # idem
+cargo run --release -p skimap-avalanche --example historic -- <site> research/raw/osm/cerv2.json
 SKIMAP_RESEARCH_RAW=…/research/raw cargo test -p skimap-avalanche -- --ignored   # chiffres du rapport 07
 ```

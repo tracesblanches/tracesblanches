@@ -20,7 +20,7 @@ Relief IGN par zone, pente et orientation (pipeline). Ticket : P5 (#18).
 | `terrain.meta.json` | sources, licences, dates, fichiers, notes |
 
 ```sh
-cargo run --release -p skimap-terrain --example terrain_build [cervieres|chapelle-des-bois]
+cargo run --release -p skimap-terrain --example terrain_build [<site>]
 cargo run --release -p skimap-terrain --example research_tiles_check -- <research/raw/census_ava/ign/dem5>
 ```
 
@@ -29,13 +29,13 @@ cargo run --release -p skimap-terrain --example research_tiles_check -- <researc
 - Les dalles sont demandées exactement comme dans le rapport 07 (`BBOX` décalée de 0,25 m, `WIDTH=200`) : les 143 dalles de `research/raw/census_ava/ign/dem5/` sont identiques octet pour octet à celles du pipeline (exemple `research_tiles_check` : « 143 identical, 0 different »). La grille 5 m garde ce décalage de 0,25 m.
 - Le WMS décrit la projection comme une conique conforme « définie par l'utilisateur » avec les paramètres de Lambert-93 et la citation `EPSG:2154` ; le lecteur l'accepte seulement si les six paramètres et la citation correspondent.
 - Le WMS rééchantillonne les dalles de 50 cm : écart moyen de 0,11 m à la moyenne par blocs de 10 × 10 sur la dalle 0998-6426 (0,82 m au plus proche voisin).
-- Au bord de la couverture LiDAR HD (Italie, Suisse), le WMS mélange la valeur de remplissage -9999 aux cellules voisines : jusqu'à 2 650 m d'écart à Cervières (317 m au lieu de 2 252 m). Les deux anneaux de cellules voisines du vide sont mis à NaN (`erode_valid`) ; après correction, l'altitude de Cervières va de 1 266 à 3 317 m (au lieu de -615 m avant).
+- Au bord de la couverture LiDAR HD (Italie, Suisse), le WMS mélange la valeur de remplissage -9999 aux cellules voisines : jusqu'à 2 650 m d'écart sur le jeu de test alpin (317 m au lieu de 2 252 m). Les deux anneaux de cellules voisines du vide sont mis à NaN (`erode_valid`) ; après correction, l'altitude du jeu de test alpin va de 1 266 à 3 317 m (au lieu de -615 m avant).
 - Le WMTS a répondu une fois 404 pour une dalle, puis 200 aux cinq requêtes suivantes : un 404 est réessayé avant d'échouer.
 - Le WMS-R ne répond pas toujours la même chose (15/11/2026, construction de toute la France, 10 sites en échec) : 400 pour une dalle valide (6 sites : les 6 mêmes URL répondaient 200 une heure plus tard), GeoTIFF dont les geokeys n'ont pas `ProjStdParallel1` (projection indéfinie : « unsupported CRS 32767 », 4 sites ; dalle 0947-6674 : pixels identiques à ceux de la réponse complète, seules les geokeys diffèrent), et pour le MNH (exposition aux avalanches) GeoTIFF sans aucun géoréférencement. Le téléchargeur gardait ces réponses en cache un an : le site échouait à chaque construction. Désormais une réponse refusée par le décodeur ou par le contrôle du géoréférencement n'est jamais gardée : la dalle est redemandée sans le cache (`Downloader::fetch_checked`, 6 essais, 1, 2, 4… s d'écart, 400 et 404 compris), et la réponse valide remplace la mauvaise dans le cache. Ce n'était ni une emprise hors couverture LiDAR HD (hors couverture, le WMS répond une dalle de -9999, devenue NaN) ni la taille des requêtes (1 km, 200 × 200).
 
 ## Résultats (14/11/2026)
 
-| | Cervières | Chapelle-des-Bois |
+| | Jeu de test alpin | Jeu de test jurassien |
 |---|---|---|
 | Dalles LiDAR HD | 324 | 272 |
 | Grille 5 m | 3 317 × 3 480 | 2 877 × 3 217 |
@@ -46,7 +46,7 @@ cargo run --release -p skimap-terrain --example research_tiles_check -- <researc
 
 **Comparaison avec la carte des pentes IGN** (zoom 15, pixel ≈ 3,4 m, chaque pixel IGN classé par sa couleur de légende et comparé à la classe de notre pente dans la cellule de 5 m qui le contient) :
 
-| | Cervières | Chapelle-des-Bois |
+| | Jeu de test alpin | Jeu de test jurassien |
 |---|---|---|
 | Tuiles WMTS / pixels comparés | 399 / 19,9 M | 360 / 16,6 M |
 | Même classe (< 30, 30-35, 35-40, 40-45, ≥ 45°) | 76,9 % | 97,8 % |
@@ -55,11 +55,11 @@ cargo run --release -p skimap-terrain --example research_tiles_check -- <researc
 | ≥ 30° : précision / rappel / F1 / IoU | 0,785 / 0,921 / 0,847 / 0,735 | 0,850 / 0,775 / 0,811 / 0,682 |
 | Notre pente moyenne dans les classes IGN 30-35 / 35-40 / 40-45 / ≥ 45° | 33,4 / 37,9 / 43,2 / 51,9° | 31,1 / 34,1 / 38,6 / 47,6° |
 
-Lecture : à Cervières notre pente est un peu plus forte que celle de l'IGN (≈ +1° au milieu des classes, 5,7 points de plus au-dessus de 30°) ; dans le Jura elle est un peu plus faible sur les ressauts raides. Les deux cartes ne partent pas du même MNT : RGE ALTI 5 m pour l'IGN, LiDAR HD rééchantillonné pour nous. 2 % des pixels IGN (bords anti-crénelés) n'ont pas une couleur de légende et ne sont pas comptés.
+Lecture : sur le jeu de test alpin notre pente est un peu plus forte que celle de l'IGN (≈ +1° au milieu des classes, 5,7 points de plus au-dessus de 30°) ; dans le Jura elle est un peu plus faible sur les ressauts raides. Les deux cartes ne partent pas du même MNT : RGE ALTI 5 m pour l'IGN, LiDAR HD rééchantillonné pour nous. 2 % des pixels IGN (bords anti-crénelés) n'ont pas une couleur de légende et ne sont pas comptés.
 
 **Contrôle croisé avec le rapport 07** (même mosaïque de dalles) : la méthode du rapport (`numpy.gradient`) refaite sur ses dalles redonne 38,17 % et 2,35 % (publiés : 38,1 % et 2,3 %). L'altitude du pipeline est identique à celle des dalles du rapport (écart maximal 0 m sur 3,1 M et 2,6 M cellules). Notre pente de Horn en Rust est égale à une implémentation numpy indépendante à 4·10⁻⁶ ° près (orientation : 1,5·10⁻⁵ °). Avec Horn sur l'emprise complète de la mosaïque, la part ≥ 30° vaut 39,0 % et 3,0 % : l'écart au rapport vient de l'opérateur et du rapport qui compte les cellules sans pente comme non raides.
 
-**Temps** : téléchargement initial du MNT 166 s (Cervières) et 149 s (Chapelle), puis 0,1 s depuis le cache ; écriture des trois GeoTIFF 5 m 3,4 à 4,2 s ; comparaison IGN 71 s la première fois, 0,1 à 0,9 s ensuite.
+**Temps** : téléchargement initial du MNT 166 s (jeu de test alpin) et 149 s (jeu de test jurassien), puis 0,1 s depuis le cache ; écriture des trois GeoTIFF 5 m 3,4 à 4,2 s ; comparaison IGN 71 s la première fois, 0,1 à 0,9 s ensuite.
 
 ## Limites
 
