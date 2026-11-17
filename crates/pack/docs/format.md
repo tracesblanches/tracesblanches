@@ -14,14 +14,16 @@ basemap/plan-ign/fonts/<pile>/<plage>.pbf
 basemap/osm.pmtiles             extrait Protomaps (MVT gzip)
 basemap/osm/style.json, sprites/, fonts/
 layers/<id>.geojson             couches vectorielles (WGS84, coordonnées arrondies à 1e-6°)
-layers/<id>.json                données (règles, BERA, synthèses, graphe de pistes, météo)
+layers/<id>.json                données (règles, BERA, synthèses, graphe de pistes, météo), JSON compact
 layers/offpiste-*.skr.gz        rasters du routeur hors piste de core (SKR1, gzip)
 layers/slope.pmtiles            polygones des classes de pente (tuiles vectorielles MVT, gzip)
 layers/avalanche-exposure.pmtiles  polygones des classes d'exposition aux avalanches (MVT)
-layers/meta/<couche>/<couche>.meta.json   copies des métadonnées des couches
+layers/meta/<couche>/<couche>.meta.json   copies des métadonnées des couches, JSON compact
 layers/snow-*.pmtiles           polygones des classes de neige (MVT)
 voice/manifest.json, voice/clips/*.opus, voice/voice.meta.json
 ```
+
+Les JSON du pipeline (données et métadonnées des couches) sont écrits indentés pour la lecture ; le pack les recopie en JSON compact, mêmes valeurs (`build::copy_data`, #160) : le téléphone ne fait que les analyser. Sur un site alpin (Bessans, run AROME du 17/11/2026 09 h UTC, trois points de prévision) : briefing de l'assistant 614 → 265 ko, qualité de neige 499 → 254 ko, météo heure par heure 143 → 90 ko. Les GeoJSON sont déjà compacts, coordonnées arrondies. Dans un paquet de mise à jour, ces fichiers texte voyagent en plus compressés gzip ([mise-a-jour.md](mise-a-jour.md#paquet-skb)).
 
 À côté du pack, hors de lui : `data/out/<site>/pack.parts.json`, clés des parties lourdes du pack en place (polygones de classes, fonds de carte), lues par le build suivant pour reprendre une partie dont les entrées n'ont pas changé ([parties reprises](../README.md#parties-reprises-du-pack-précédent-164)) ; jamais publié.
 

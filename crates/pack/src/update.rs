@@ -28,7 +28,9 @@ use crate::reader::{Pack, check_relative, sha256_file};
 /// Value of [`Update::format`].
 pub const UPDATE_FORMAT: &str = "skimap-pack-update";
 /// Update format version written by this crate; readers accept versions up to it.
-pub const UPDATE_FORMAT_VERSION: u32 = 1;
+/// Version 2 (#160): in a bundle, a blob may be stored gzip-compressed
+/// ([`Blob::gzip_bytes`]).
+pub const UPDATE_FORMAT_VERSION: u32 = 2;
 
 /// What it takes to go from one pack version (or from nothing) to another.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -77,6 +79,11 @@ pub struct Blob {
     pub bytes: u64,
     /// Paths of the new version with these contents.
     pub paths: Vec<String>,
+    /// In a bundle only: the blob is stored gzip-compressed, this many bytes (text
+    /// contents, [`compressible`]); [`Blob::bytes`] and [`Blob::sha256`] are those of the
+    /// inflated contents.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gzip_bytes: Option<u64>,
 }
 
 /// How an item changed between the two versions.
@@ -207,6 +214,7 @@ impl Update {
                         sha256: f.sha256.clone(),
                         bytes: f.bytes,
                         paths: vec![f.path.clone()],
+                        gzip_bytes: None,
                     });
                 }
             }
@@ -226,6 +234,7 @@ impl Update {
             sha256: sha256_hex(new_manifest),
             bytes: new_manifest.len() as u64,
             paths: vec![MANIFEST_FILE.to_owned()],
+            gzip_bytes: None,
         };
         let fetch_bytes = fetch.iter().map(|b| b.bytes).sum::<u64>()
             + if up_to_date { 0 } else { manifest.bytes };
@@ -398,9 +407,9 @@ fn link_or_copy(src: &Path, dst: &Path) -> Result<()> {
 enum Source<'a> {
     /// One file per blob, named by its SHA-256.
     Dir(&'a Path),
-    /// A bundle file, the offset and length of each blob in it, and the manifest's SHA-256
-    /// when it is stored gzip-compressed.
-    Bundle(&'a Path, HashMap<String, (u64, u64)>, Option<String>),
+    /// A bundle file, the offset and stored length of each blob in it, and the SHA-256 of
+    /// the blobs stored gzip-compressed (the manifest, text contents).
+    Bundle(&'a Path, HashMap<String, (u64, u64)>, HashSet<String>),
 }
 
 impl Source<'_> {
@@ -411,11 +420,15 @@ impl Source<'_> {
         }
     }
 
-    fn slice(
+    /// The contents of blob `sha` in the bundle at `path`, inflated when stored
+    /// gzip-compressed; never more than `limit` bytes are read out of it.
+    fn open(
         path: &Path,
         offsets: &HashMap<String, (u64, u64)>,
+        gzipped: &HashSet<String>,
         sha: &str,
-    ) -> Result<(fs::File, u64)> {
+        limit: u64,
+    ) -> Result<Box<dyn Read>> {
         use std::io::{Seek, SeekFrom};
         let &(off, len) = offsets
             .get(sha)
@@ -423,28 +436,25 @@ impl Source<'_> {
         let mut f = fs::File::open(path).map_err(|e| Error::io(path, e))?;
         f.seek(SeekFrom::Start(off))
             .map_err(|e| Error::io(path, e))?;
-        Ok((f, len))
+        let stored = f.take(len);
+        Ok(if gzipped.contains(sha) {
+            Box::new(flate2::read::GzDecoder::new(stored).take(limit))
+        } else {
+            Box::new(stored.take(limit))
+        })
     }
 
     fn read(&self, sha: &str) -> Result<Vec<u8>> {
-        use std::io::Read;
         match self {
             Source::Dir(d) => {
                 let p = d.join(sha);
                 fs::read(&p).map_err(|e| Error::io(&p, e))
             }
-            Source::Bundle(path, offsets, gzip_manifest) => {
-                let (f, len) = Self::slice(path, offsets, sha)?;
+            Source::Bundle(path, offsets, gzipped) => {
                 let mut out = Vec::new();
-                if gzip_manifest.as_deref() == Some(sha) {
-                    flate2::read::GzDecoder::new(f.take(len))
-                        .read_to_end(&mut out)
-                        .map_err(|e| Error::io(*path, e))?;
-                } else {
-                    f.take(len)
-                        .read_to_end(&mut out)
-                        .map_err(|e| Error::io(*path, e))?;
-                }
+                Self::open(path, offsets, gzipped, sha, 64 << 20)?
+                    .read_to_end(&mut out)
+                    .map_err(|e| Error::io(*path, e))?;
                 Ok(out)
             }
         }
@@ -452,7 +462,6 @@ impl Source<'_> {
 
     /// Writes the blob `sha` (`bytes` long) to `dst`, checking size and SHA-256.
     fn install(&self, sha: &str, bytes: u64, dst: &Path) -> Result<()> {
-        use std::io::{Read, Write};
         let bad = |got: u64, h: String| {
             Error::Pack(format!(
                 "blob {sha}: {got} bytes, SHA-256 {h}; manifest says {bytes} bytes"
@@ -467,9 +476,9 @@ impl Source<'_> {
                 }
                 link_or_copy(&src, dst)
             }
-            Source::Bundle(path, offsets, _) => {
-                let (f, len) = Self::slice(path, offsets, sha)?;
-                let mut input = f.take(len);
+            Source::Bundle(path, offsets, gzipped) => {
+                // One byte more than announced: a longer blob is refused, not cut.
+                let mut input = Self::open(path, offsets, gzipped, sha, bytes + 1)?;
                 let mut out = fs::File::create(dst).map_err(|e| Error::io(dst, e))?;
                 let mut h = Sha256::new();
                 let mut buf = vec![0u8; 1 << 16];
@@ -658,12 +667,16 @@ fn apply_from(pack_dir: &Path, update: &Update, source: &Source<'_>) -> Result<A
 /// the update was made for a pack the phone no longer has; install the base bundle.
 pub const MISSING_CONTENTS: &str = "missing contents";
 
-/// First bytes of a bundle.
-pub const BUNDLE_MAGIC: &[u8; 8] = b"SKMPBND1";
+/// First bytes of a bundle written by this crate: the header is gzip-compressed JSON
+/// (update format version 2, #160).
+pub const BUNDLE_MAGIC: &[u8; 8] = b"SKMPBND2";
+/// First bytes of a bundle of update format version 1 (header as plain JSON), still read.
+pub const BUNDLE_MAGIC_V1: &[u8; 8] = b"SKMPBND1";
 
 /// Blobs of a bundle in order, after the header, with their stored length: the manifest
 /// (unless the update says "up to date"; gzip-compressed when
-/// [`Update::manifest_gzip_bytes`] is set), then [`Update::fetch`] as is.
+/// [`Update::manifest_gzip_bytes`] is set), then [`Update::fetch`] (gzip-compressed when
+/// [`Blob::gzip_bytes`] is set).
 pub fn bundle_blobs(update: &Update) -> Vec<(&str, u64)> {
     let mut out = Vec::with_capacity(update.fetch.len() + 1);
     if !update.is_up_to_date() {
@@ -672,15 +685,46 @@ pub fn bundle_blobs(update: &Update) -> Vec<(&str, u64)> {
             update.manifest_gzip_bytes.unwrap_or(update.manifest.bytes),
         ));
     }
-    out.extend(update.fetch.iter().map(|b| (b.sha256.as_str(), b.bytes)));
+    out.extend(
+        update
+            .fetch
+            .iter()
+            .map(|b| (b.sha256.as_str(), b.gzip_bytes.unwrap_or(b.bytes))),
+    );
     out
 }
 
+/// Extensions of the pack files stored gzip-compressed in a bundle: text (JSON, GeoJSON,
+/// TSV) and the font glyphs (protobuf), which the transport does not compress (a bundle is
+/// served as binary). PMTiles, gzip rasters, PNG and Opus are compressed already.
+pub const COMPRESSIBLE_EXTENSIONS: &[&str] = &["json", "geojson", "tsv", "txt", "csv", "pbf"];
+
+/// Whether a blob is stored gzip-compressed in a bundle (when that makes it smaller):
+/// every path it has ends with one of [`COMPRESSIBLE_EXTENSIONS`].
+pub fn compressible(blob: &Blob) -> bool {
+    !blob.paths.is_empty()
+        && blob.paths.iter().all(|p| {
+            Path::new(p)
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| COMPRESSIBLE_EXTENSIONS.contains(&e))
+        })
+}
+
+/// Gzip at the best level, without name nor time: the same input gives the same bytes.
+fn gzip(raw: &[u8]) -> std::io::Result<Vec<u8>> {
+    let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
+    gz.write_all(raw)?;
+    gz.finish()
+}
+
 /// Writes a bundle: [`BUNDLE_MAGIC`], the header length (u64 little-endian), the update
-/// as compact JSON, then each blob of [`bundle_blobs`]: the manifest gzip-compressed (a
-/// few tens of kilobytes instead of a few hundred; the phone inflates it once), every
-/// other blob as is (the heavy ones are compressed already: PMTiles, SKR gzip, Opus).
-/// `open(sha)` gives the contents of a blob. Returns the bundle length.
+/// as gzip-compressed compact JSON, then each blob of [`bundle_blobs`]: the manifest gzip-compressed (a
+/// few tens of kilobytes instead of a few hundred; the phone inflates it once), the text
+/// blobs ([`compressible`]: weather, assistant, vector layers) gzip-compressed when that
+/// makes them smaller, every other blob as is (the heavy ones are compressed already:
+/// PMTiles, SKR gzip, Opus). `open(sha)` gives the contents of a blob. Returns the bundle
+/// length.
 pub fn write_bundle<W: std::io::Write, R: std::io::Read>(
     w: &mut W,
     update: &Update,
@@ -688,6 +732,7 @@ pub fn write_bundle<W: std::io::Write, R: std::io::Read>(
 ) -> Result<u64> {
     let io = |e| Error::io("bundle", e);
     let mut update = update.clone();
+    update.format_version = UPDATE_FORMAT_VERSION;
     let mut manifest_gz = Vec::new();
     if !update.is_up_to_date() {
         let mut raw = Vec::new();
@@ -697,12 +742,35 @@ pub fn write_bundle<W: std::io::Write, R: std::io::Read>(
         if raw.len() as u64 != update.manifest.bytes || sha256_hex(&raw) != update.manifest.sha256 {
             return Err(Error::Pack("manifest blob differs from the update".into()));
         }
-        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
-        gz.write_all(&raw).map_err(io)?;
-        manifest_gz = gz.finish().map_err(io)?;
+        manifest_gz = gzip(&raw).map_err(io)?;
         update.manifest_gzip_bytes = Some(manifest_gz.len() as u64);
     }
+    // Text blobs compressed first: their stored length goes in the header.
+    let mut packed: HashMap<String, Vec<u8>> = HashMap::new();
+    for b in &mut update.fetch {
+        b.gzip_bytes = None;
+        if !compressible(b) {
+            continue;
+        }
+        let mut raw = Vec::new();
+        open(&b.sha256)?
+            .take(b.bytes + 1)
+            .read_to_end(&mut raw)
+            .map_err(io)?;
+        if raw.len() as u64 != b.bytes || sha256_hex(&raw) != b.sha256 {
+            return Err(Error::Pack(format!(
+                "blob {}: contents differ from the update",
+                b.sha256
+            )));
+        }
+        let gz = gzip(&raw).map_err(io)?;
+        if gz.len() < raw.len() {
+            b.gzip_bytes = Some(gz.len() as u64);
+            packed.insert(b.sha256.clone(), gz);
+        }
+    }
     let header = serde_json::to_vec(&update).map_err(|e| Error::json("bundle header", e))?;
+    let header = gzip(&header).map_err(io)?;
     w.write_all(BUNDLE_MAGIC).map_err(io)?;
     w.write_all(&(header.len() as u64).to_le_bytes())
         .map_err(io)?;
@@ -710,6 +778,11 @@ pub fn write_bundle<W: std::io::Write, R: std::io::Read>(
     w.write_all(&manifest_gz).map_err(io)?;
     let mut total = 16 + header.len() as u64 + manifest_gz.len() as u64;
     for b in &update.fetch {
+        if let Some(gz) = packed.get(&b.sha256) {
+            w.write_all(gz).map_err(io)?;
+            total += gz.len() as u64;
+            continue;
+        }
         let mut r = open(&b.sha256)?.take(b.bytes);
         let n = std::io::copy(&mut r, w).map_err(io)?;
         if n != b.bytes {
@@ -733,12 +806,16 @@ pub fn read_bundle(path: &Path) -> Result<(Update, BundleIndex)> {
     let len = f.metadata().map_err(|e| Error::io(path, e))?.len();
     let mut head = [0u8; 16];
     f.read_exact(&mut head).map_err(|e| Error::io(path, e))?;
-    if &head[..8] != BUNDLE_MAGIC {
-        return Err(Error::Pack(format!(
-            "{}: not a skimap bundle",
-            path.display()
-        )));
-    }
+    let gzipped_header = match &head[..8] {
+        m if m == BUNDLE_MAGIC => true,
+        m if m == BUNDLE_MAGIC_V1 => false,
+        _ => {
+            return Err(Error::Pack(format!(
+                "{}: not a skimap bundle",
+                path.display()
+            )));
+        }
+    };
     let hlen = u64::from_le_bytes(head[8..].try_into().expect("8 bytes"));
     if hlen > 64 << 20 || 16 + hlen > len {
         return Err(Error::Pack(format!(
@@ -748,6 +825,14 @@ pub fn read_bundle(path: &Path) -> Result<(Update, BundleIndex)> {
     }
     let mut header = vec![0u8; hlen as usize];
     f.read_exact(&mut header).map_err(|e| Error::io(path, e))?;
+    if gzipped_header {
+        let mut raw = Vec::new();
+        flate2::read::GzDecoder::new(header.as_slice())
+            .take(64 << 20)
+            .read_to_end(&mut raw)
+            .map_err(|e| Error::io(path, e))?;
+        header = raw;
+    }
     let update: Update =
         serde_json::from_slice(&header).map_err(|e| Error::json(path.display().to_string(), e))?;
     let mut offsets = HashMap::new();
@@ -766,14 +851,20 @@ pub fn read_bundle(path: &Path) -> Result<(Update, BundleIndex)> {
 }
 
 /// Installs a downloaded bundle into `pack_dir`, reading each blob straight from the
-/// bundle file (only the manifest is inflated; nothing is unpacked first).
+/// bundle file (the manifest and the text blobs stored gzip-compressed are inflated on the
+/// way; nothing is unpacked first).
 pub fn apply_bundle(pack_dir: &Path, bundle: &Path) -> Result<Applied> {
     let (update, offsets) = read_bundle(bundle)?;
-    let gz = update
-        .manifest_gzip_bytes
-        .is_some()
-        .then(|| update.manifest.sha256.clone());
-    apply_from(pack_dir, &update, &Source::Bundle(bundle, offsets, gz))
+    let mut gzipped: HashSet<String> = update
+        .fetch
+        .iter()
+        .filter(|b| b.gzip_bytes.is_some())
+        .map(|b| b.sha256.clone())
+        .collect();
+    if update.manifest_gzip_bytes.is_some() {
+        gzipped.insert(update.manifest.sha256.clone());
+    }
+    apply_from(pack_dir, &update, &Source::Bundle(bundle, offsets, gzipped))
 }
 
 #[cfg(test)]
