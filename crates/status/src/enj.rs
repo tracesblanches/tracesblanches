@@ -1,9 +1,12 @@
 //! ENJ (Espace Nordique Jurassien) Snowmap, a Geotrek-admin API: trail status of the
-//! Jura domains whose site table gives an ENJ city (`status.enj_city`, P13, #26).
+//! Jura domains (P13, #26; X12b, #146). The itineraries of a site are those of its ENJ city
+//! when the site table gives one (`status.enj_city`), otherwise those crossing the box of
+//! the domain (`status.enj_bbox`), which the registry sets for every census domain crossed
+//! by ENJ ski itineraries ([`fetch_ski_coverage`], [`crosses`]): no site is listed by hand.
 //!
 //! `GET https://admin.snowmap.espacenordiquejurassien.com/api/v2/trek/?cities=<city>&language=fr`
-//! answers without authentication: the cross-country, snowshoe and multi-activity
-//! itineraries of the city. Fields used: `route` (1 = Fermé,
+//! (or `?in_bbox=<west>,<south>,<east>,<north>`) answers without authentication: the
+//! cross-country, snowshoe and multi-activity itineraries of the city (or crossing the box). Fields used: `route` (1 = Fermé,
 //! 2 = Ouvert, from `/api/v2/trek_route/`), `labels` (status notes such as « Marquée
 //! partiellement ouverte le 13/01/2025 à 15h15 », names from `/api/v2/label/`),
 //! `update_datetime`, `practice`, `difficulty`, `length_2d`, `networks` (1 = GTJ).
@@ -20,6 +23,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use skimap_common::download::{CachePolicy, Downloader, Request};
+use skimap_common::geom::BBox;
 use skimap_common::site::Site;
 
 use crate::error::{Error, Result};
@@ -32,20 +36,52 @@ pub const SOURCE: &str = "enj";
 pub const STATUS_FIELDS: &str =
     "id,name,route,labels,update_datetime,practice,difficulty,length_2d,networks,departure_city";
 
-/// ENJ city identifier of a site (`cities=` filter), if the site is in the ENJ: the
-/// `status.enj_city` of the site table (`skimap_common::site`).
+/// The ENJ itineraries of a site: those of an ENJ city or those crossing a box.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum EnjArea {
+    /// ENJ city identifier (`cities=` filter).
+    City(u32),
+    /// Box of the domain, WGS84 (`in_bbox=` filter).
+    BBox(BBox),
+}
+
+impl EnjArea {
+    /// Filter of the trek list.
+    pub fn query(&self) -> String {
+        match self {
+            Self::City(c) => format!("cities={c}"),
+            Self::BBox(b) => format!("in_bbox={},{},{},{}", b.west, b.south, b.east, b.north),
+        }
+    }
+}
+
+/// ENJ city identifier of a site (`cities=` filter), if the site table gives one.
 pub fn city_id(site: &Site) -> Option<u32> {
     site.status.enj_city
 }
 
-/// URL of the status list of a city.
-pub fn status_url(city: u32) -> String {
-    format!("{API}/trek/?cities={city}&language=fr&fields={STATUS_FIELDS}")
+/// ENJ itineraries of a site, if the site is in the ENJ: its city when the site table gives
+/// one, otherwise the box detected from the ENJ data (`status.enj_bbox` of the registry).
+pub fn area(site: &Site) -> Option<EnjArea> {
+    city_id(site)
+        .map(EnjArea::City)
+        .or(site.status.enj_bbox.map(EnjArea::BBox))
 }
 
-/// URL of the geometries of a city.
-pub fn geometry_url(city: u32) -> String {
-    format!("{API}/trek/?cities={city}&language=fr&fields=id,geometry,gpx")
+/// URL of the status list of an area.
+pub fn status_url(area: EnjArea) -> String {
+    format!(
+        "{API}/trek/?{}&language=fr&fields={STATUS_FIELDS}",
+        area.query()
+    )
+}
+
+/// URL of the geometries of an area.
+pub fn geometry_url(area: EnjArea) -> String {
+    format!(
+        "{API}/trek/?{}&language=fr&fields=id,geometry,gpx",
+        area.query()
+    )
 }
 
 /// URL of the labels.
@@ -206,8 +242,12 @@ pub struct TrekStatus {
 /// Normalised content of one status poll (what a snapshot stores).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EnjSnapshot {
-    /// ENJ city identifier.
-    pub city: u32,
+    /// ENJ city identifier, when the itineraries are those of a city.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub city: Option<u32>,
+    /// Box crossed by the itineraries, when they are not those of a city.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bbox: Option<BBox>,
     /// Itineraries, sorted by identifier.
     pub treks: Vec<TrekStatus>,
     /// Status notes of the whole ENJ (`/label/`), sorted: when the managers' changes
@@ -259,15 +299,19 @@ fn parse_pages<T: for<'de> Deserialize<'de>>(
 }
 
 /// Builds the normalised snapshot from the raw API answers (testable without network).
-pub fn snapshot_from_json(city: u32, treks_json: &[u8], labels_json: &[u8]) -> Result<EnjSnapshot> {
+pub fn snapshot_from_json(
+    area: EnjArea,
+    treks_json: &[u8],
+    labels_json: &[u8],
+) -> Result<EnjSnapshot> {
     let treks: Page<RawTrek> = serde_json::from_slice(treks_json)
         .map_err(|e| Error::format(SOURCE, format!("treks: {e}")))?;
     let labels: Page<RawLabel> = serde_json::from_slice(labels_json)
         .map_err(|e| Error::format(SOURCE, format!("labels: {e}")))?;
-    Ok(normalise(city, treks.results, labels.results))
+    Ok(normalise(area, treks.results, labels.results))
 }
 
-fn normalise(city: u32, treks: Vec<RawTrek>, labels: Vec<RawLabel>) -> EnjSnapshot {
+fn normalise(area: EnjArea, treks: Vec<RawTrek>, labels: Vec<RawLabel>) -> EnjSnapshot {
     let mut enj_notes: Vec<StatusNote> =
         labels.iter().filter_map(|l| parse_note(&l.name)).collect();
     enj_notes.sort_by(|a, b| a.at.cmp(&b.at));
@@ -302,32 +346,37 @@ fn normalise(city: u32, treks: Vec<RawTrek>, labels: Vec<RawLabel>) -> EnjSnapsh
         })
         .collect();
     treks.sort_by_key(|t| t.id);
+    let (city, bbox) = match area {
+        EnjArea::City(c) => (Some(c), None),
+        EnjArea::BBox(b) => (None, Some(b)),
+    };
     EnjSnapshot {
         city,
+        bbox,
         treks,
         enj_notes,
     }
 }
 
-/// Polls the status of a city: always asks the server (the cache only absorbs errors).
+/// Polls the status of an area: always asks the server (the cache only absorbs errors).
 pub fn fetch_status(
     dl: &Downloader,
-    city: u32,
+    area: EnjArea,
 ) -> Result<(EnjSnapshot, skimap_common::download::Origin)> {
     let (treks, origin) =
-        parse_pages::<RawTrek>(dl, &status_url(city), CachePolicy::Revalidate, None)?;
+        parse_pages::<RawTrek>(dl, &status_url(area), CachePolicy::Revalidate, None)?;
     let (labels, _) = parse_pages::<RawLabel>(dl, &labels_url(), CachePolicy::Revalidate, None)?;
-    Ok((normalise(city, treks, labels), origin))
+    Ok((normalise(area, treks, labels), origin))
 }
 
 /// Geometry and GPX link per itinerary, cached one day.
 pub fn fetch_geometry(
     dl: &Downloader,
-    city: u32,
+    area: EnjArea,
 ) -> Result<BTreeMap<i64, (Value, Option<String>)>> {
     let (geoms, _) = parse_pages::<RawGeom>(
         dl,
-        &geometry_url(city),
+        &geometry_url(area),
         CachePolicy::Normal,
         Some(Duration::from_secs(86_400)),
     )?;
@@ -390,6 +439,93 @@ pub fn fetch_in_bbox(dl: &Downloader, b: skimap_common::geom::BBox) -> Result<Ve
         .collect();
     out.sort_by_key(|t| t.id);
     Ok(out)
+}
+
+/// Practices of the ENJ ski itineraries (`/api/v2/trek_practice/`): cross-country ski and
+/// multi-activity trails; snowshoe and sled-dog trails do not make a ski domain.
+pub const SKI_PRACTICES: &str = "2,3";
+
+/// URL of every ENJ ski itinerary with its geometry.
+pub fn ski_coverage_url() -> String {
+    format!("{API}/trek/?practices={SKI_PRACTICES}&language=fr&fields=id,name,practice,geometry")
+}
+
+/// Every ENJ ski itinerary with its geometry, cached one day: the coverage from which the
+/// registry detects the ENJ domains ([`crosses`]).
+pub fn fetch_ski_coverage(dl: &Downloader) -> Result<Vec<TrekGeometry>> {
+    let (treks, _) = parse_pages::<RawTrekGeometry>(
+        dl,
+        &ski_coverage_url(),
+        CachePolicy::Normal,
+        Some(Duration::from_secs(86_400)),
+    )?;
+    let mut out: Vec<TrekGeometry> = treks
+        .into_iter()
+        .filter_map(|t| {
+            Some(TrekGeometry {
+                id: t.id,
+                name: t.name,
+                practice: t.practice.and_then(practice_name).map(str::to_owned),
+                geometry: t.geometry?,
+            })
+        })
+        .collect();
+    out.sort_by_key(|t| t.id);
+    Ok(out)
+}
+
+/// Whether a segment crosses a box (Liang-Barsky clipping), WGS84 degrees.
+fn segment_crosses(a: (f64, f64), b: (f64, f64), bx: &BBox) -> bool {
+    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+    let (mut t0, mut t1) = (0.0_f64, 1.0_f64);
+    for (p, q) in [
+        (-dx, a.0 - bx.west),
+        (dx, bx.east - a.0),
+        (-dy, a.1 - bx.south),
+        (dy, bx.north - a.1),
+    ] {
+        if p == 0.0 {
+            if q < 0.0 {
+                return false;
+            }
+        } else {
+            let r = q / p;
+            if p < 0.0 {
+                t0 = t0.max(r);
+            } else {
+                t1 = t1.min(r);
+            }
+            if t0 > t1 {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+/// Whether a GeoJSON LineString / MultiLineString crosses a box (what the `in_bbox=` filter
+/// of the API selects).
+pub fn crosses(geometry: &Value, bx: &BBox) -> bool {
+    let lines: Vec<&Value> = match geometry["type"].as_str() {
+        Some("LineString") => vec![&geometry["coordinates"]],
+        Some("MultiLineString") => geometry["coordinates"]
+            .as_array()
+            .map(|a| a.iter().collect())
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    };
+    lines.into_iter().any(|l| {
+        let pts: Vec<(f64, f64)> = l
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|p| Some((p.get(0)?.as_f64()?, p.get(1)?.as_f64()?)))
+            .collect();
+        match pts.as_slice() {
+            [p] => segment_crosses(*p, *p, bx),
+            _ => pts.windows(2).any(|s| segment_crosses(s[0], s[1], bx)),
+        }
+    })
 }
 
 /// Published stamps of a snapshot: the distinct `update_datetime` values, truncated to the
@@ -503,7 +639,7 @@ mod tests {
 
     #[test]
     fn snapshot_and_transitions() {
-        let s = snapshot_from_json(14, TREKS.as_bytes(), LABELS.as_bytes()).unwrap();
+        let s = snapshot_from_json(EnjArea::City(14), TREKS.as_bytes(), LABELS.as_bytes()).unwrap();
         assert_eq!(s.treks.len(), 3);
         assert_eq!(s.treks[0].id, 244785, "sorted by id");
         assert!(s.treks[0].gtj);
@@ -534,6 +670,53 @@ mod tests {
             city_id(skimap_common::site::site("cervieres").expect("evaluation site")),
             None
         );
-        assert!(status_url(14).contains("cities=14") && status_url(14).contains("fields="));
+        assert_eq!(s.city, Some(14));
+        let u = status_url(EnjArea::City(14));
+        assert!(u.contains("cities=14") && u.contains("fields="));
+        let b = BBox::new(46.5, 6.0, 46.7, 6.2);
+        let u = status_url(EnjArea::BBox(b));
+        assert!(
+            u.contains("in_bbox=6,46.5,6.2,46.7") && u.contains("fields="),
+            "{u}"
+        );
+        let s = snapshot_from_json(EnjArea::BBox(b), TREKS.as_bytes(), LABELS.as_bytes()).unwrap();
+        assert_eq!((s.city, s.bbox), (None, Some(b)));
+        // Old snapshots (city as a number) still read.
+        let old: EnjSnapshot =
+            serde_json::from_value(serde_json::json!({"city": 14, "treks": [], "enj_notes": []}))
+                .unwrap();
+        assert_eq!(old.city, Some(14));
+    }
+
+    #[test]
+    fn crossing() {
+        let b = BBox::new(46.5, 6.0, 46.7, 6.2);
+        let line =
+            |c: serde_json::Value| serde_json::json!({"type": "LineString", "coordinates": c});
+        // A vertex inside (with altitude).
+        assert!(crosses(
+            &line(serde_json::json!([
+                [5.9, 46.6, 1000.0],
+                [6.1, 46.6, 1010.0]
+            ])),
+            &b
+        ));
+        // A segment crossing the box with both ends outside.
+        assert!(crosses(
+            &line(serde_json::json!([[5.9, 46.6], [6.3, 46.6]])),
+            &b
+        ));
+        // Outside.
+        assert!(!crosses(
+            &line(serde_json::json!([[5.9, 46.4], [6.3, 46.45]])),
+            &b
+        ));
+        let multi = serde_json::json!({"type": "MultiLineString",
+            "coordinates": [[[5.0, 46.0], [5.1, 46.0]], [[6.05, 46.55], [6.06, 46.56]]]});
+        assert!(crosses(&multi, &b));
+        assert!(!crosses(
+            &serde_json::json!({"type": "Point", "coordinates": [6.1, 46.6]}),
+            &b
+        ));
     }
 }

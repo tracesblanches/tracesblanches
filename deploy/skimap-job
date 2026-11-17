@@ -10,7 +10,8 @@
 #                                    # the registry whose massif has a BERA)
 #   skimap-job status    [<site>...] # trail status, personal sources (default: every
 #                                    # built groomed station of the registry with a
-#                                    # readable status source)
+#                                    # readable status source; ENJ domains detected
+#                                    # first by `skimap enj-domaines`)
 #   skimap-job meteo     <site>...   # hourly weather (personal sources)
 #   skimap-job refresh   [<site>...] # station cards and titles of France (once), huts of
 #                                    # the sites (default: every built site); daily
@@ -69,6 +70,11 @@ fi
 # (`skimap sites --ids`: BERA massif / readable status source, pipeline outputs on the
 # volume; the other sites get these layers from build-all and the catch-up).
 if [ $# -eq 0 ] && { [ "$task" = bera ] || [ "$task" = status ]; }; then
+  # Status: first the ENJ domains, detected from the ENJ itineraries (cached one day,
+  # registry rewritten only when it changed); on failure the previous registry is kept.
+  if [ "$task" = status ]; then
+    step skimap enj-domaines
+  fi
   if ! sites=$(skimap sites --ids --built "--$task"); then
     echo "FAILED: skimap sites --ids --built --$task" >&2
     exit 1
