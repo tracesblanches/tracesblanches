@@ -13,10 +13,9 @@ import fr.skimap.core.GroupView
 import fr.skimap.core.Lang
 import fr.skimap.core.MorningView
 import fr.skimap.core.TrackingException
-import fr.skimap.core.daySites
+import fr.skimap.core.dayPacks
 import fr.skimap.core.dayStarts
 import fr.skimap.core.groupNew
-import fr.skimap.core.listPacks
 import fr.skimap.core.openDayPlanner
 import fr.skimap.core.readDayPlan
 import kotlinx.coroutines.CoroutineDispatcher
@@ -152,8 +151,8 @@ interface DayBackend {
 /** [DayBackend] on the Rust core. */
 object RustDayBackend : DayBackend {
     override fun packs(root: File): List<Triple<String, String, String>> {
-        val sites = daySites().toSet()
-        return listPacks(root.absolutePath).filter { it.error == null && it.siteId in sites }.map { Triple(it.dir, it.siteId, it.siteName) }
+        // Every installed pack that carries its site and the trail graph (P163), any site of France.
+        return dayPacks(root.absolutePath).map { Triple(it.dir, it.siteId, it.siteName) }
     }
 
     override fun open(

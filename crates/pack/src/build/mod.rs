@@ -14,6 +14,7 @@ pub mod pistes;
 pub mod plan_ign;
 pub mod plan_links;
 pub mod raster;
+pub mod starts;
 pub mod stations;
 
 use std::collections::BTreeSet;
@@ -24,7 +25,7 @@ use serde::Serialize;
 use serde_json::Value;
 use skimap_common::download::Downloader;
 use skimap_common::layout::DataLayout;
-use skimap_common::site::{Site, SiteRecord};
+use skimap_common::site::Site;
 
 use crate::error::{Error, Result};
 use crate::manifest::{
@@ -278,7 +279,7 @@ fn build_into(
         pack_version: pack_version.to_owned(),
         generator: format!("{} {}", crate::CRATE, env!("CARGO_PKG_VERSION")),
         generated_at: now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-        site: site_info(site),
+        site: site_info(site, layout),
         valid_for,
         personal_sources: opts.personal_sources,
         basemaps,
@@ -488,7 +489,7 @@ pub fn build_voice_pack(
             pack_version: pack_version.clone(),
             generator: format!("{} {}", crate::CRATE, env!("CARGO_PKG_VERSION")),
             generated_at: now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-            site: site_info(site),
+            site: site_info(site, layout),
             valid_for: PackValidity {
                 until: None,
                 until_layer: None,
@@ -529,7 +530,7 @@ pub fn build_voice_pack(
     }
 }
 
-fn site_info(site: &Site) -> SiteInfo {
+fn site_info(site: &Site, layout: &DataLayout) -> SiteInfo {
     SiteInfo {
         id: site.id.to_owned(),
         name: site.name.to_owned(),
@@ -541,7 +542,7 @@ fn site_info(site: &Site) -> SiteInfo {
             site.bbox.north,
         ],
         center: [site.commune_center.lon, site.commune_center.lat],
-        record: Some(SiteRecord::of_site(site)),
+        record: Some(starts::record(site, layout)),
     }
 }
 
