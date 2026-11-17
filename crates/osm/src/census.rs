@@ -1511,6 +1511,7 @@ mod tests {
             lit: None,
             length_m: 0.0,
             points: pts,
+            layered: false,
         };
         let fp = footprint(&[&p], 150.0).unwrap();
         assert_eq!(fp.0.len(), 1);

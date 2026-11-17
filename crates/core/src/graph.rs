@@ -30,7 +30,8 @@ pub const M_PER_DEG_LAT: f64 = 111_195.0;
 pub enum EdgeKind {
     /// Part of an OSM way.
     Piste,
-    /// Junction of at most 10 m added by `skimap-osm` between a dead end and a trail.
+    /// Junction added by `skimap-osm` across a mapping gap: at most 10 m from a dead end to
+    /// a trail, at most 25 m between two dead ends of disjoint parts of the network.
     Connector,
 }
 

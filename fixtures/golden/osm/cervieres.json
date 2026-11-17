@@ -1,8 +1,8 @@
 {
   "graph.components": 4,
-  "graph.connectors": 1,
-  "graph.edges": 224,
-  "graph.nodes": 189,
+  "graph.connectors": 2,
+  "graph.edges": 230,
+  "graph.nodes": 192,
   "graph.oneway_sinks": "[]",
   "graph.oneway_sources": "[]",
   "km_by_difficulty.Advanced": 16.046568905741683,

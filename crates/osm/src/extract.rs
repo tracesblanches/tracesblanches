@@ -4,8 +4,10 @@
 //! Output, in `data/out/<site>/pistes/`:
 //! - `pistes.geojson`: one LineString per OSM way (nordic, hike, snowshoe) with at least
 //!   one vertex in the site box;
-//! - `graph_edges.geojson`: the same ways split at junctions, plus connectors closing gaps
-//!   of at most [`CONNECTOR_MAX_M`] between a dead end and another piste;
+//! - `graph_edges.geojson`: the same ways split at junctions and at crossings without a
+//!   shared node, plus connectors closing gaps of at most [`CONNECTOR_MAX_M`] between a
+//!   dead end and another piste, and of at most [`DEAD_END_PAIR_MAX_M`] between two dead
+//!   ends of disjoint parts of the network ([`Graph::build`], B166 #166);
 //! - `graph_nodes.geojson`: junctions and ends;
 //! - `pistes.meta.json`: sources, licence, dates, documented properties, key figures.
 //!
@@ -23,7 +25,7 @@ use skimap_common::layout::DataLayout;
 use skimap_common::site::Site;
 
 use crate::error::Result;
-use crate::graph::{EdgeKind, Graph, M_PER_DEG_LAT};
+use crate::graph::{DEAD_END_PAIR_MAX_M, EdgeKind, Graph, M_PER_DEG_LAT};
 use crate::parse::{Aoi, OsmData, read_file};
 use crate::pistes::{Oneway, Piste, PisteSet, Use, classify};
 use skimap_common::meta::{FileMeta, LayerMeta, SourceRef};
@@ -329,6 +331,12 @@ pub fn site_pistes(all: &PisteSet, bbox: &BBox) -> (PisteSet, Vec<KeptReentry>) 
     )
 }
 
+/// OSM id of a graph node as written, `null` for a node added by [`Graph::build`] (at a
+/// crossing or at the foot of a connector; negative id).
+fn osm_node(id: i64) -> Value {
+    if id > 0 { json!(id) } else { Value::Null }
+}
+
 /// Builds the pistes layer of `site` from an already loaded extract.
 pub fn build_from(site: &Site, layout: &DataLayout, planet: &Planet) -> Result<PistesOutput> {
     let dir = layout.layer_dir(site, LAYER)?;
@@ -371,8 +379,8 @@ pub fn build_from(site: &Site, layout: &DataLayout, planet: &Planet) -> Result<P
         props.insert("edge".into(), json!(i));
         props.insert("from".into(), json!(e.from));
         props.insert("to".into(), json!(e.to));
-        props.insert("from_osm_node".into(), json!(graph.nodes[e.from].osm_id));
-        props.insert("to_osm_node".into(), json!(graph.nodes[e.to].osm_id));
+        props.insert("from_osm_node".into(), osm_node(graph.nodes[e.from].osm_id));
+        props.insert("to_osm_node".into(), osm_node(graph.nodes[e.to].osm_id));
         props.insert("oneway".into(), json!(e.oneway));
         props.insert("length_m".into(), json!((e.length_m * 10.0).round() / 10.0));
         edge_features.push(feature(
@@ -392,7 +400,7 @@ pub fn build_from(site: &Site, layout: &DataLayout, planet: &Planet) -> Result<P
                 point(n.pos),
                 json!({
                     "node": i,
-                    "osm_node_id": n.osm_id,
+                    "osm_node_id": osm_node(n.osm_id),
                     "degree": adj[i].len(),
                     "component": comp[i],
                 }),
@@ -481,11 +489,11 @@ pub fn build_from(site: &Site, layout: &DataLayout, planet: &Planet) -> Result<P
         m.insert("to".into(), json!("index du nœud d'arrivée"));
         m.insert(
             "from_osm_node".into(),
-            json!("identifiant OSM du nœud de départ"),
+            json!("identifiant OSM du nœud de départ (null : nœud ajouté)"),
         );
         m.insert(
             "to_osm_node".into(),
-            json!("identifiant OSM du nœud d'arrivée"),
+            json!("identifiant OSM du nœud d'arrivée (null : nœud ajouté)"),
         );
         m.insert(
             "oneway".into(),
@@ -503,7 +511,7 @@ pub fn build_from(site: &Site, layout: &DataLayout, planet: &Planet) -> Result<P
                 .licence(LICENCE)
                 .count(features.len())
                 .properties_json(&piste_properties_doc()),
-            FileMeta::new("graph_edges.geojson", format!("graphe de routage : ways coupés aux jonctions, plus des connecteurs fermant les trous de moins de {CONNECTOR_MAX_M} m entre un cul-de-sac et une autre piste"))
+            FileMeta::new("graph_edges.geojson", format!("graphe de routage : ways coupés aux jonctions, un nœud au croisement de deux pistes sans nœud commun (hors pont, tunnel ou niveau), plus des connecteurs fermant les trous de moins de {CONNECTOR_MAX_M} m entre un cul-de-sac et une autre piste et de moins de {DEAD_END_PAIR_MAX_M} m entre deux culs-de-sac de parties disjointes du réseau (largeur d'une route)"))
                 .licence(LICENCE)
                 .count(edge_features.len())
                 .properties_json(&edge_doc),
@@ -512,7 +520,7 @@ pub fn build_from(site: &Site, layout: &DataLayout, planet: &Planet) -> Result<P
                 .count(node_features.len())
                 .properties_json(&json!({
                     "node": "index du nœud",
-                    "osm_node_id": "identifiant OSM",
+                    "osm_node_id": "identifiant OSM (null : nœud ajouté au croisement de deux pistes ou au pied d'un connecteur)",
                     "degree": "nombre d'arêtes incidentes",
                     "component": "composante connexe du graphe",
                 })),
