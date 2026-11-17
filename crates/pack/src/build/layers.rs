@@ -129,7 +129,7 @@ pub fn catalog() -> Vec<Spec> {
         Spec {
             notes: &[
                 "Propriétés dérivées par le pack : `rules` (règles de rules.json qui s'appliquent à la zone : id, sujet, effet, période, résumé, conditions, source) et `rules_text` (texte français).",
-                "Champs simples dérivés des règles de la zone et de celles des territoires qui la contiennent (skimap_zones::fields) : `bivouac` (forbidden, forbidden_in_places, tolerated, consent_required, allowed, unknown), `access` (forbidden, forbidden_in_places, routes_only, routes_only_in_places, avoid_recommended, allowed, unknown), leurs périodes (`bivouac_period`, `access_period`, null = toute l'année) et les règles qui décident (`bivouac_rules`, `access_rules`).",
+                "Champs simples dérivés des règles de la zone et de celles des territoires qui la contiennent (skimap_zones::fields) : `bivouac` (forbidden, forbidden_in_places, tolerated, consent_required, allowed, unknown), `access` (forbidden, forbidden_in_places, routes_only, routes_only_in_places, avoid_recommended, allowed, unknown), leurs périodes (`bivouac_period`, `access_period`, null = toute l'année) et les règles qui décident (`bivouac_rules`, `access_rules`). Acte propre de la zone (`local_act` : arrêté de biotope, décret de réserve, réglementation du cœur de parc, arrêtés municipaux…) et son statut (`local_rules` : read, partial, unverified = règles locales non vérifiées ; null sans acte propre) (skimap_zones::local, G4).",
             ],
             transform: Transform::Zones,
             ..vector(
@@ -982,7 +982,9 @@ pub fn effect_fr(e: Effect) -> &'static str {
 /// Adds to every zone feature `rules` and `rules_text`, and the simple fields derived
 /// from the rules ([`skimap_zones::fields`], rules in force on `date` or later):
 /// `bivouac`, `bivouac_period`, `bivouac_rules`, `access`, `access_period`,
-/// `access_rules`.
+/// `access_rules`; and the act of the zone with how far it was read
+/// ([`skimap_zones::local`]): `local_act`, `local_rules` (`read`, `partial`,
+/// `unverified`, null without act of its own).
 pub fn annotate_zones(
     v: &mut Value,
     zones_text: &str,
@@ -1043,6 +1045,15 @@ pub fn annotate_zones(
             props.insert("access".to_owned(), json!(fields.access.as_str()));
             props.insert("access_period".to_owned(), json!(fields.access_period));
             props.insert("access_rules".to_owned(), json!(fields.access_rules));
+            let local = skimap_zones::local::local_status(&rules, zone);
+            props.insert(
+                "local_act".to_owned(),
+                json!(local.map(|(a, _)| a.as_str())),
+            );
+            props.insert(
+                "local_rules".to_owned(),
+                json!(local.map(|(_, s)| s.as_str())),
+            );
             props.insert("rules".to_owned(), Value::Array(list));
             props.insert(
                 "rules_text".to_owned(),
@@ -1164,6 +1175,38 @@ mod tests {
     }
 
     #[test]
+    fn zones_get_local_rule_status() {
+        let feature = |id: &str, kind: &str, name: &str| {
+            json!({"type": "Feature",
+                "properties": {"id": id, "kind": kind, "name": name, "source": "inpn",
+                    "url": null, "months": null, "practices": [], "designated": null,
+                    "area_ha": 1.0, "clipped": false, "note": null},
+                "geometry": {"type": "Polygon", "coordinates": [[[6.0, 44.0], [6.1, 44.0], [6.1, 44.1], [6.0, 44.0]]]}})
+        };
+        let zones = json!({"type": "FeatureCollection", "features": [
+            feature("inpn:FR3800001", "appb", "APPB jamais lu"),
+            feature("inpn:FR3800988", "appb", "APPB lu"),
+            feature("inpn:FR3300001", "parc_national", "Cœur"),
+            feature("natura", "natura2000_sic", "Natura 2000"),
+        ]});
+        let text = zones.to_string();
+        let mut v = zones.clone();
+        let date = chrono::NaiveDate::from_ymd_opt(2026, 11, 15).unwrap();
+        annotate_zones(&mut v, &text, skimap_zones::rules::RULES_JSON, date).unwrap();
+        let p = |i: usize, k: &str| {
+            v.pointer(&format!("/features/{i}/properties/{k}"))
+                .unwrap()
+                .clone()
+        };
+        assert_eq!(p(0, "local_rules"), "unverified");
+        assert_eq!(p(0, "local_act"), "arrete_prefectoral_biotope");
+        assert_eq!(p(1, "local_rules"), "read");
+        assert_eq!(p(2, "local_rules"), "unverified");
+        assert_eq!(p(2, "local_act"), "reglementation_coeur_parc");
+        assert!(p(3, "local_rules").is_null());
+    }
+
+    #[test]
     fn zones_get_embedded_rules() {
         let zones = json!({"type": "FeatureCollection", "features": [{
             "type": "Feature",
@@ -1197,6 +1240,12 @@ mod tests {
             rules
                 .iter()
                 .any(|r| r["id"] == "fr-r111-32-bivouac-consent")
+        );
+        // The country has no act of its own (national rules only).
+        assert!(
+            v.pointer("/features/0/properties/local_rules")
+                .unwrap()
+                .is_null()
         );
         let t = v
             .pointer("/features/0/properties/rules_text")

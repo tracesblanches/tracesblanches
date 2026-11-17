@@ -329,6 +329,44 @@ impl Texts for Fr {
         "Règles relevées dans les textes cités, à cette date et cette heure ; le texte officiel et la signalisation sur place font foi."
     }
 
+    fn local_act(&self, a: skimap_zones::local::OwnAct) -> &'static str {
+        use skimap_zones::local::OwnAct;
+        match a {
+            OwnAct::ArretePrefectoralBiotope => "arrêté de protection de biotope",
+            OwnAct::DecretReserveNationale => "décret de la réserve naturelle",
+            OwnAct::DeliberationReserveRegionale => "délibération régionale de la réserve",
+            OwnAct::ReglementationCoeurParc => "réglementation du cœur de parc national",
+            OwnAct::ArreteReserveBiologique => "arrêté de la réserve biologique",
+            OwnAct::ArreteCaptage => "arrêté de protection du captage",
+            OwnAct::ArretesMunicipaux => "arrêtés municipaux",
+            OwnAct::ArretesPrefectoraux => "arrêtés préfectoraux",
+            OwnAct::DroitCantonal => "droit cantonal",
+        }
+    }
+
+    fn local_unverified(&self, name: &str, act: &str) -> String {
+        format!("{name} ({act}) : texte non lu")
+    }
+
+    fn local_partial(&self, name: &str, act: &str) -> String {
+        format!("{name} ({act}) : lu en partie seulement")
+    }
+
+    fn local_municipal_fr(&self) -> &'static str {
+        "arrêtés municipaux et préfectoraux : non recensés"
+    }
+
+    fn local_municipal_ch(&self) -> &'static str {
+        "règlements communaux : non recensés"
+    }
+
+    fn local_rules(&self, items: &[String]) -> String {
+        if items.is_empty() {
+            return String::new();
+        }
+        format!("Règles locales non vérifiées : {}.", items.join(" ; "))
+    }
+
     fn day(&self, d: NaiveDate) -> String {
         const DAYS: [&str; 7] = [
             "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche",

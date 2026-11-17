@@ -172,6 +172,7 @@ fun PlaceContent(
                 Text(x.sourceUrl, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             }
         }
+        if (r.localRules.isNotEmpty()) Text(r.localRules, style = MaterialTheme.typography.bodyMedium)
         Text(r.note, style = MaterialTheme.typography.bodySmall)
     }
 }

@@ -1,6 +1,6 @@
 # skimap-zones
 
-Zones protégées et leurs périodes, règles de bivouac et d'accès. Tickets : P9 (#22), P10 (#23).
+Zones protégées et leurs périodes, règles de bivouac et d'accès. Tickets : P9 (#22), P10 (#23), G4 (#120).
 
 ## Deux usages
 
@@ -57,6 +57,22 @@ Textes non lus et donc marqués comme tels : arrêtés signés des APPB Haut-Jur
 ## Champs simples (`fields`)
 
 `skimap_zones::fields::zone_fields(layer, rules, zone, date)` donne ce qu'une carte peut montrer d'une zone : `bivouac` (`forbidden`, `forbidden_in_places`, `tolerated`, `consent_required`, `allowed`, `unknown`) et `access` (`forbidden`, `forbidden_in_places`, `routes_only`, `routes_only_in_places`, `avoid_recommended`, `allowed`, `unknown`), avec la période et les règles qui décident. Une zone est gouvernée par ses règles et par celles des territoires de la couche qui contiennent un de ses points intérieurs (un territoire, par les plus grands seulement) ; verdict le plus restrictif dans l'ordre de `skimap_core::zone_eval`, règles en vigueur à la date ou plus tard. Le pack ajoute ces champs à chaque zone ; tests sur les règles réelles (`fields::tests`) et sur les deux packs (`crates/pack/tests/real_packs.rs`).
+
+## Règles nationales et règles locales (G4)
+
+`skimap_zones::local` s'applique à chaque site, sans rien de propre à un site :
+
+- **Règles nationales** (`Rule::is_national`) : une règle qui ne choisit ses zones que par type ou par pays (`country:*`) : R111-32 et R111-33 du code de l'urbanisme, L131-1 et R163-11 du code forestier, ordonnances fédérales suisses. Elles s'appliquent dès que la couche a ces zones.
+- **Acte propre** (`own_act`) : APPB (arrêté préfectoral), réserve naturelle nationale (décret) ou régionale (délibération), cœur de parc national (réglementation du cœur ; l'aire d'adhésion, que l'INPN nomme « [Aire D'Adhésion] », n'en a pas), réserve biologique, captage (arrêté de DUP), commune, département, canton. Natura 2000, PNR, sites, monuments, Biodiv'sports et districts francs n'ont que des règles nationales.
+- **Statut** (`local_status`) : `read` quand une règle nomme la zone (son acte a été lu, ses sources disent si c'est le texte signé ou un projet), `partial` pour un territoire dont une partie des arrêtés a été lue, `unverified` sinon : « règles locales non vérifiées ». Les arrêtés municipaux et préfectoraux ne sont jamais recensés : tout site français a donc un statut global `unverified`.
+
+Sorties : `stats.local_rules` et une note dans `zones.meta.json`, `local_rules` dans `build_report.json` ; champs `local_act` et `local_rules` de chaque zone du pack ; ligne `local_rules` de la fiche d'un lieu (`skimap_ffi::rules::place_rules`, textes fr/en).
+
+```sh
+SKIMAP_DATA_DIR=data/public cargo run --release -p skimap-zones --example local_rules
+```
+
+Mesure du 17/11/2026 sur les couches publiques (`data/public`) : 268 sites du registre sur 272 ont une couche de zones (4 n'en ont pas) ; 0 site sans règle nationale ; R111-32 et L131-1 sur 268 sites, R111-33 sur 227, R163-11 sur 17, ordonnance sur la chasse (districts francs) sur 6, accès aux forêts suisse (CC 699) sur 26. Zones à acte propre : APPB 26 lues et 212 non vérifiées, réserves naturelles nationales 66 et régionales 11 non vérifiées, cœurs de parc 24 non vérifiés, réserves biologiques 81 non vérifiées, départements 60 en partie et 285 non vérifiés, communes 14 en partie, cantons 17 en partie et 15 non vérifiés. Fiche d'un lieu au point intérieur de chacune des 394 zones à acte non lu des 268 packs : la ligne nomme la zone (`every_pack_names_the_unread_acts`, 0,17 s). Construction réelle des zones (`skimap zones <site>`, caches de `data/public`, copie de travail) sur cinq sites de cinq massifs (Vanoise, Pyrénées, Vosges, Cantal, Jura franco-suisse) : 2,4 à 5,5 s par site, `stats.local_rules` écrit dans chaque `zones.meta.json` et `build_report.json`, zones identiques aux couches publiques.
 
 ## Biodiv'sports : usage personnel
 

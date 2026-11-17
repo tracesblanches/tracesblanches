@@ -144,6 +144,19 @@ pub trait Texts: Sync {
     fn rules_at(&self, t: NaiveDateTime) -> String;
     /// What the rules are not.
     fn rules_note(&self) -> &'static str;
+    /// The act governing a zone besides the national rules (G4).
+    fn local_act(&self, a: skimap_zones::local::OwnAct) -> &'static str;
+    /// A zone whose own act was not read: « APPB X (arrêté de protection de biotope) :
+    /// texte non lu ».
+    fn local_unverified(&self, name: &str, act: &str) -> String;
+    /// A territory some of whose acts were read.
+    fn local_partial(&self, name: &str, act: &str) -> String;
+    /// French municipal and prefectoral decrees, never listed.
+    fn local_municipal_fr(&self) -> &'static str;
+    /// Swiss communal regulations, never listed.
+    fn local_municipal_ch(&self) -> &'static str;
+    /// The line of the local rules not verified, from its items; empty without item.
+    fn local_rules(&self, items: &[String]) -> String;
 
     // ---- Preparing the next days and ski mode (S3).
     /// A day: « lundi 16/02 ».

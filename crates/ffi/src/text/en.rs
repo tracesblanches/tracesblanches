@@ -344,6 +344,44 @@ impl Texts for En {
         "Rules read in the texts cited, at this date and time; the official text and the signs on the ground prevail."
     }
 
+    fn local_act(&self, a: skimap_zones::local::OwnAct) -> &'static str {
+        use skimap_zones::local::OwnAct;
+        match a {
+            OwnAct::ArretePrefectoralBiotope => "biotope protection order",
+            OwnAct::DecretReserveNationale => "nature reserve decree",
+            OwnAct::DeliberationReserveRegionale => "regional nature reserve decision",
+            OwnAct::ReglementationCoeurParc => "national park core regulation",
+            OwnAct::ArreteReserveBiologique => "biological reserve order",
+            OwnAct::ArreteCaptage => "water catchment protection order",
+            OwnAct::ArretesMunicipaux => "municipal orders",
+            OwnAct::ArretesPrefectoraux => "prefectoral orders",
+            OwnAct::DroitCantonal => "cantonal law",
+        }
+    }
+
+    fn local_unverified(&self, name: &str, act: &str) -> String {
+        format!("{name} ({act}): text not read")
+    }
+
+    fn local_partial(&self, name: &str, act: &str) -> String {
+        format!("{name} ({act}): read in part only")
+    }
+
+    fn local_municipal_fr(&self) -> &'static str {
+        "municipal and prefectoral orders: not listed"
+    }
+
+    fn local_municipal_ch(&self) -> &'static str {
+        "communal regulations: not listed"
+    }
+
+    fn local_rules(&self, items: &[String]) -> String {
+        if items.is_empty() {
+            return String::new();
+        }
+        format!("Local rules not verified: {}.", items.join("; "))
+    }
+
     fn day(&self, d: NaiveDate) -> String {
         format!(
             "{} {:02}/{:02}",

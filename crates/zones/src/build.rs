@@ -20,6 +20,7 @@ use skimap_common::site::Site;
 use crate::error::{Error, Result};
 use crate::geom::{area_ha, clip_to_bbox, geodesic_area_m2, union_all};
 use crate::layer::{Zone, ZoneKind, ZoneLayer};
+use crate::local::{SiteLocalRules, site_local_rules};
 use crate::rules::{RULES_JSON, RuleSet};
 use crate::sources::gpu::{Ac2Class, GpuZone};
 use crate::sources::{RawZone, biodiv, gpu, inpn, jurisdiction, swiss};
@@ -51,6 +52,8 @@ pub struct ZonesReport {
     pub by_kind: BTreeMap<String, usize>,
     /// Rules and the zones they apply to.
     pub rules: Vec<RuleResolution>,
+    /// National rules of the site and status of its local rules (G4).
+    pub local_rules: SiteLocalRules,
     /// Wall-clock time of the build.
     pub elapsed: Duration,
 }
@@ -259,10 +262,19 @@ pub fn build_with(
             .or_insert(0usize) += 1;
     }
 
+    let local_rules = site_local_rules(&layer, &rules);
+
     let dir = layout.layer_dir(site, LAYER)?;
     write_text(&dir.join("zones.geojson"), &layer.to_geojson_string()?)?;
     write_text(&dir.join("rules.json"), RULES_JSON)?;
-    let meta = layer_meta(site, &layer, &by_kind, &resolution, personal_sources);
+    let meta = layer_meta(
+        site,
+        &layer,
+        &by_kind,
+        &resolution,
+        &local_rules,
+        personal_sources,
+    );
     meta.write(&dir)?;
 
     let report = ZonesReport {
@@ -271,6 +283,7 @@ pub fn build_with(
         zones: layer.zones.len(),
         by_kind,
         rules: resolution,
+        local_rules,
         elapsed: t0.elapsed(),
     };
     write_json(&report.dir.join("build_report.json"), &report)?;
@@ -282,6 +295,7 @@ fn layer_meta(
     layer: &ZoneLayer,
     by_kind: &BTreeMap<String, usize>,
     resolution: &[RuleResolution],
+    local_rules: &SiteLocalRules,
     personal_sources: bool,
 ) -> LayerMeta {
     let b = site.bbox;
@@ -312,7 +326,7 @@ fn layer_meta(
         ("note", "remarque du pipeline"),
     ];
     let mut meta = LayerMeta {
-        tickets: vec!["P9 (#22)".into(), "P10 (#23)".into()],
+        tickets: vec!["P9 (#22)".into(), "P10 (#23)".into(), "G4 (#120)".into()],
         valid_until: Some((today + chrono::Days::new(30)).to_string()),
         validity: Some("Régénérer au moins chaque mois : Biodiv'sports évolue sans calendrier, INPN est mis à jour chaque semestre, le GPU en continu. Les règles (rules.json) sont relues à la main (date `reviewed`).".into()),
         crs: Some("EPSG:4326 (longitude, latitude), coordonnées arrondies à 1e-6°".into()),
@@ -341,11 +355,19 @@ fn layer_meta(
             "Les sites inscrits viennent des servitudes AC2 du GPU qui ne recoupent aucun site classé INPN.".into(),
             "Contours des zones cœur de l'APPB Haut-Doubs : zone Biodiv'sports 686 (hors des deux emprises actuelles).".into(),
             "Italie : aucune donnée de zone ni règle.".into(),
+            format!(
+                "Règles nationales appliquées partout (stats.local_rules.national) : {}. Règles locales (stats.local_rules) : {} zone(s) dont l'acte propre a été lu, {} lue(s) en partie, {} non vérifiée(s) ; arrêtés municipaux et préfectoraux non recensés hors des règles citées.",
+                local_rules.national.join(", "),
+                local_rules.count(crate::local::LocalStatus::Read),
+                local_rules.count(crate::local::LocalStatus::Partial),
+                local_rules.count(crate::local::LocalStatus::Unverified),
+            ),
             format!("{} zones ; aucune règle n'est inventée : chaque règle de rules.json cite ses sources et dit ce qui a été lu.", layer.zones.len()),
         ],
         stats: serde_json::json!({
             "zones_by_kind": by_kind,
             "rules": resolution,
+            "local_rules": local_rules,
             "areas_ha": layer.zones.iter().map(|z| (z.id().to_owned(), z.props.area_ha)).collect::<BTreeMap<_, _>>(),
         }),
         ..LayerMeta::new(LAYER, site.id)

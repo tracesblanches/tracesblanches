@@ -122,6 +122,8 @@ Mesures (packs du 15/11/2026) : Jeu de test alpin 100 voies fermées, 96 inconnu
 
 - `bivouac` : `forbidden`, `forbidden_in_places` (la règle ne vise qu'une partie sans contour, terrains privés traversés par les pistes), `tolerated`, `consent_required` (R111-32 partout ailleurs en France, Vaud), `allowed`, `unknown` (hors des territoires de la couche) ; `bivouac_period`, `bivouac_rules` ;
 - `access` : `forbidden`, `forbidden_in_places`, `routes_only` (sortie des itinéraires interdite), `routes_only_in_places`, `avoid_recommended` (Biodiv'sports, mois sensibles), `allowed`, `unknown` ; `access_period`, `access_rules`.
+- `local_act` : acte propre de la zone en plus des règles nationales (`skimap_zones::local`, G4) : `arrete_prefectoral_biotope`, `decret_reserve_nationale`, `deliberation_reserve_regionale`, `reglementation_coeur_parc` (cœur seulement, pas l'aire d'adhésion), `arrete_reserve_biologique`, `arrete_captage`, `arretes_municipaux`, `arretes_prefectoraux`, `droit_cantonal` ; null pour les zones régies par les seules règles nationales (Natura 2000, PNR, sites, monuments, Biodiv'sports, districts francs) ;
+- `local_rules` : `read` (une règle nomme la zone : son acte a été lu, ses sources disent si c'est le texte signé), `partial` (territoire dont une partie des arrêtés a été lue), `unverified` (règles locales non vérifiées) ; null sans acte propre.
 
 Exemples réels : APPB Haut-Jura (`inpn:FR3800988`) bivouac interdit et itinéraires seulement du 15 décembre au 30 juin ; APPB Forêt du Paradis bivouac interdit toute l'année ; Doubs bivouac interdit par endroits ; France bivouac avec l'accord du propriétaire ; Arvieux bivouac toléré.
 
