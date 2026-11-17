@@ -214,7 +214,12 @@ class FakeRepository(
         styles += "$family-$theme"
         if (free) {
             site = "libre"
-            return Fixtures.opened("", "Tous les domaines installés", family, theme)
+            // The core names the France basemap alone; it opened no pack.
+            return if (overFrance) {
+                Fixtures.opened("", "France, aucun domaine installé", family, theme).copy(packCount = 0)
+            } else {
+                Fixtures.opened("", "Tous les domaines installés", family, theme)
+            }
         }
         site = dir.substringAfterLast('/')
         val name = entries.first { it.dir == dir }.siteName

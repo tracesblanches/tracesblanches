@@ -63,7 +63,8 @@ pub fn zone_kinds() -> Vec<&'static str> {
 
 /// Declared values (JSON text, as in the inventory) of `key` in the pack file `path`:
 /// zone kinds and the fields derived from the rules (`skimap-zones`), piste states
-/// (`skimap-pack`), SRN itinerary activities and area kinds (`skimap-srn`).
+/// (`skimap-pack`), SRN itinerary activities and area kinds (`skimap-srn`), and the
+/// enumerated properties of the layers of [`declared_layer`].
 pub fn declared_values(path: &str, key: &str) -> BTreeSet<String> {
     let text = |v: Vec<&str>| {
         v.into_iter()
@@ -99,7 +100,13 @@ pub fn declared_values(path: &str, key: &str) -> BTreeSet<String> {
             "region",
             "national",
         ]),
-        _ => BTreeSet::new(),
+        // Any other enumerated property of a layer whose schema a producer declares
+        // ([`declared_layer`]): a pack holds only some of the values (four estimated
+        // traces may all be blue), the style draws all of them.
+        _ => declared_layer(path)
+            .and_then(|l| l["properties"][key].as_array().cloned())
+            .map(|vs| vs.iter().map(serde_json::Value::to_string).collect())
+            .unwrap_or_default(),
     }
 }
 

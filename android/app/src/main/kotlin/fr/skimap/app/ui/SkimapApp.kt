@@ -244,7 +244,8 @@ fun MapScreen(
     var creditsOpen by rememberSaveable { mutableStateOf(false) }
     val texts = PackTexts(LocalResources.current)
     val info = state.opened.info
-    val siteName = texts.siteName(info, state.free)
+    val packCount = state.opened.packCount
+    val siteName = texts.siteName(info, state.free, packCount)
     Box(modifier.fillMaxSize()) {
         val mapDescription =
             stringResource(
@@ -273,7 +274,8 @@ fun MapScreen(
                 .windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(8.dp),
         ) {
-            StatusChip(info, siteName, texts, today, state.error, online, Modifier.align(Alignment.TopStart))
+            val header = texts.headerText(info, siteName, packCount)
+            StatusChip(info, header, texts, today, state.error, online, Modifier.align(Alignment.TopStart))
             GuidanceOverlay(info.siteId)
             // One hint at a time, only when it matters: the bearing in the fog (K7), the less exposed terrain (V7).
             fr.skimap.app.fog
@@ -401,7 +403,7 @@ private fun Chip(
 @Composable
 private fun StatusChip(
     info: PackInfo,
-    siteName: String,
+    header: String,
     texts: PackTexts,
     today: LocalDate,
     error: PackProblem?,
@@ -413,7 +415,7 @@ private fun StatusChip(
     Column(modifier.testTag(Tags.HEADER), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Chip {
             Text(
-                "$siteName · ${texts.statusShort(info.status)}",
+                header,
                 style = MaterialTheme.typography.bodySmall,
                 // Two lines at large fonts: the piste status is never cut off.
                 maxLines = 2,

@@ -30,6 +30,7 @@ use serde::{Deserialize, Serialize};
 use skimap_common::geom::LonLat;
 use skimap_core::calibration::{ProfileModel, TERRAINS};
 use skimap_core::eta::EtaModel;
+use skimap_core::huts;
 use skimap_core::routing::Style;
 use skimap_pack::Pack;
 use skimap_plan::gps::{GpsInput, GpsMode, GpsParams, GpsRequest, GpsState};
@@ -293,6 +294,61 @@ pub(crate) fn prop<'a>(f: &'a geojson::Feature, k: &str) -> Option<&'a str> {
     f.properties.as_ref()?.get(k)?.as_str()
 }
 
+/// Refuges of a pack, with their name: those of the day plan, flagged in the
+/// `refuges-info` and `refuges-osm` layers every pack holds ([`huts::PLAN_FLAG`], X21
+/// #155: the same hut in both sources once), read as they are; layers of a pack built
+/// before the flag are flagged here ([`huts::mark`]). A pack with neither layer falls back
+/// to the merged sheets (`refuges`) when it has them.
+fn plan_refuges(pack: &Pack) -> Result<Vec<(LonLat, Option<String>)>, PackError> {
+    let read = |id: &str| -> Result<serde_json::Value, PackError> {
+        if pack.layer(id).is_ok() {
+            Ok(pack.read_json(id)?)
+        } else {
+            Ok(serde_json::Value::Null)
+        }
+    };
+    let (mut info, mut osm) = (read("refuges-info")?, read("refuges-osm")?);
+    let name = |v: &serde_json::Value| {
+        v.as_str()
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+            .map(str::to_owned)
+    };
+    let mut out = Vec::new();
+    if info.is_null() && osm.is_null() {
+        if pack.layer("refuges").is_ok() {
+            for f in pack.read_geojson("refuges")?.features {
+                let Some(p) = point_of(&f) else { continue };
+                let n = prop(&f, "name").or_else(|| prop(&f, "kind_label"));
+                out.push((p, n.map(str::to_owned)));
+            }
+        }
+        return Ok(out);
+    }
+    if !(huts::marked(&info) && huts::marked(&osm)) {
+        huts::mark(&mut info, &mut osm);
+    }
+    let flagged = |v: &serde_json::Value| -> Vec<(LonLat, serde_json::Value)> {
+        v["features"]
+            .as_array()
+            .map_or(&[][..], Vec::as_slice)
+            .iter()
+            .filter(|f| huts::flagged(f))
+            .filter_map(|f| Some((huts::point(f)?, f["properties"].clone())))
+            .collect()
+    };
+    for (p, props) in flagged(&info) {
+        out.push((p, name(&props["name"])));
+    }
+    for (p, props) in flagged(&osm) {
+        out.push((
+            p,
+            name(&props["tags"]["name"]).or_else(|| name(&props["name"])),
+        ));
+    }
+    Ok(out)
+}
+
 /// Points of the pack in `pack_dir` to go to: its refuges and shelters, its parkings, the
 /// starts of its loops; nearest first when a position is given, at most `limit` (0: all).
 #[uniffi::export]
@@ -319,15 +375,9 @@ pub fn fog_targets(
             });
         }
     };
-    if pack.layer("refuges").is_ok() {
-        for f in pack.read_geojson("refuges")?.features {
-            let Some(p) = point_of(&f) else { continue };
-            let name = prop(&f, "name")
-                .map(str::to_owned)
-                .or_else(|| prop(&f, "kind_label").map(str::to_owned))
-                .unwrap_or_else(|| card_word(lang, "Refuge"));
-            add("refuge", name, p);
-        }
+    for (p, name) in plan_refuges(&pack)? {
+        let name = name.unwrap_or_else(|| card_word(lang, "Refuge"));
+        add("refuge", name, p);
     }
     if pack.layer("stations-pois").is_ok() {
         for f in pack.read_geojson("stations-pois")?.features {

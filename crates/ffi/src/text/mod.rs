@@ -210,6 +210,9 @@ pub trait Texts: Sync {
     fn all_domains(&self) -> &'static str;
     /// « 3 packs : A, B, C. »
     fn packs_note(&self, names: &[&str]) -> String;
+    /// No pack installed: name of the map (the France basemap alone), never « all the
+    /// installed areas » (#162).
+    fn france_only_name(&self) -> &'static str;
     /// No pack installed: the France basemap alone, with its date.
     fn france_only_note(&self, date: &str) -> String;
 }

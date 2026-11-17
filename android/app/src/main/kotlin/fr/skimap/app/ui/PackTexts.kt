@@ -85,11 +85,33 @@ class PackTexts(
         return res.getString(R.string.status_text, counts)
     }
 
-    /** Site name shown: the pack's, or "all installed areas" in free mode. */
+    /**
+     * Site name shown: the pack's, "all installed areas" in free mode, "France" in free
+     * mode over the France basemap alone ([packCount] 0: no pack installed).
+     */
     fun siteName(
         info: PackInfo,
         free: Boolean,
-    ): String = if (free) res.getString(R.string.free_mode_name) else info.siteName
+        packCount: Int = 1,
+    ): String =
+        when {
+            free && packCount == 0 -> res.getString(R.string.no_pack_site)
+            free -> res.getString(R.string.free_mode_name)
+            else -> info.siteName
+        }
+
+    /**
+     * The line at the top of the map: `<area> · 2 open, 40 closed`; with no pack
+     * installed ([packCount] 0), `France · no area installed`: no piste status to miss.
+     */
+    fun headerText(
+        info: PackInfo,
+        siteName: String,
+        packCount: Int = 1,
+    ): String {
+        val status = if (packCount == 0) res.getString(R.string.no_pack_status) else statusShort(info.status)
+        return "$siteName · $status"
+    }
 
     /** An error of the core. */
     fun problem(p: PackProblem): String =
