@@ -3,7 +3,8 @@
 # the other pipeline CronJobs). `skimap-job refresh` runs `skimap refresh` once (station
 # cards and titles of France, `data/out/france/stations/`; hut cards of each site), then
 # rebuilds and publishes the pack of each site (skimap-server publish: an unchanged pack
-# is not republished, a changed one goes out as a delta bundle).
+# is not republished, a changed one goes out as a delta bundle). The sites are every site
+# whose outputs are on the volume (`data/out/<site>/build-all.json`), none named here.
 #
 # Daily from 1 November to 30 April, weekly (Wednesday) otherwise. `skimap refresh` is
 # idempotent and keeps its own schedule (huts daily in season and weekly otherwise,
@@ -54,7 +55,21 @@ spec:
             - name: pipeline
               image: skimap-pipeline
               imagePullPolicy: IfNotPresent
-              args: ["refresh", "cervieres", "chapelle-des-bois"]
+              # Every site whose pipeline outputs are on the volume (build-all.json: built
+              # by build-all here or copied by script de déploiement data); a site that
+              # only has its published pack cannot be rebuilt here. No site is named.
+              command: ["sh", "-c"]
+              args:
+                - |
+                  set --
+                  for r in "$SKIMAP_DATA_DIR"/out/*/build-all.json; do
+                    [ -f "$r" ] || continue
+                    d=${r%/build-all.json}
+                    set -- "$@" "${d##*/}"
+                  done
+                  [ $# -gt 0 ] || { echo "no built site in $SKIMAP_DATA_DIR/out" >&2; exit 1; }
+                  echo "refresh: $# sites"
+                  exec skimap-job refresh "$@"
               env:
                 - { name: SKIMAP_DATA_DIR, value: /data/pipeline }
                 - { name: SKIMAP_STORE, value: /data/store }
@@ -125,7 +140,21 @@ spec:
             - name: pipeline
               image: skimap-pipeline
               imagePullPolicy: IfNotPresent
-              args: ["refresh", "cervieres", "chapelle-des-bois"]
+              # Every site whose pipeline outputs are on the volume (build-all.json: built
+              # by build-all here or copied by script de déploiement data); a site that
+              # only has its published pack cannot be rebuilt here. No site is named.
+              command: ["sh", "-c"]
+              args:
+                - |
+                  set --
+                  for r in "$SKIMAP_DATA_DIR"/out/*/build-all.json; do
+                    [ -f "$r" ] || continue
+                    d=${r%/build-all.json}
+                    set -- "$@" "${d##*/}"
+                  done
+                  [ $# -gt 0 ] || { echo "no built site in $SKIMAP_DATA_DIR/out" >&2; exit 1; }
+                  echo "refresh: $# sites"
+                  exec skimap-job refresh "$@"
               env:
                 - { name: SKIMAP_DATA_DIR, value: /data/pipeline }
                 - { name: SKIMAP_STORE, value: /data/store }
