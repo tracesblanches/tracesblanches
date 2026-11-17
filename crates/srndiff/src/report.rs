@@ -1,4 +1,4 @@
-//! Advice and French text for both directions of travel.
+//! Advice and text for both directions of travel, in the language asked ([`assess_in`]).
 
 use std::fmt::Write as _;
 
@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::analysis::{self, Direction, Measure, Metrics, Passage};
 use crate::profile::Profile;
-use crate::rules::{self, Conditions, Factor, Level, Params, Rating, hours};
+use crate::rules::{self, Conditions, Factor, Level, Params, Rating};
+use crate::text::{self, Lang, Texts};
 
 /// Topic of an advice.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -33,7 +34,7 @@ pub enum Topic {
 pub struct Advice {
     /// Topic.
     pub topic: Topic,
-    /// French text.
+    /// Text, in the language asked ([`advise_in`]).
     pub text: String,
 }
 
@@ -60,48 +61,58 @@ pub struct Report {
 /// Fixed sentence closing every text: the level is a computed indication.
 pub const DISCLAIMER: &str = "Indication calculée sur le relief et les cartes, jamais une garantie : la neige, la météo et le bulletin d'avalanche décident sur place.";
 
-fn km(v: f64) -> String {
-    format!("km {v:.1}")
+/// The direction a slope faces, from its aspect: north, east, south or west.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Facing {
+    East,
+    North,
+    South,
+    West,
 }
 
-fn facing(aspect: f32) -> Option<&'static str> {
+fn facing(aspect: f32) -> Option<Facing> {
     let a = aspect.rem_euclid(360.0);
     if !(0.0..360.0).contains(&a) {
         return None;
     }
     Some(if !(45.0..315.0).contains(&a) {
-        "nord"
+        Facing::North
     } else if a < 135.0 {
-        "est"
+        Facing::East
     } else if a < 225.0 {
-        "sud"
+        Facing::South
     } else {
-        "ouest"
+        Facing::West
     })
 }
 
-fn list_passages(ps: &[&Passage]) -> String {
+fn list_passages(tx: &dyn Texts, ps: &[&Passage]) -> String {
     ps.iter()
         .take(4)
-        .map(|p| {
-            format!(
-                "{} ({:.0}° sur {:.0} m)",
-                km(p.start_km),
-                p.max_deg,
-                p.length_m
-            )
-        })
+        .map(|p| tx.passage(p.start_km, p.max_deg, p.length_m))
         .collect::<Vec<_>>()
         .join(", ")
 }
 
-/// Advice for one direction.
+/// Advice for one direction, in French.
 pub fn advise(m: &Metrics, r: &Rating, other: &Rating, c: Option<&Conditions>) -> Vec<Advice> {
+    advise_in(m, r, other, c, Lang::Fr)
+}
+
+/// Advice for one direction, in `lang`.
+pub fn advise_in(
+    m: &Metrics,
+    r: &Rating,
+    other: &Rating,
+    c: Option<&Conditions>,
+    lang: Lang,
+) -> Vec<Advice> {
+    let tx = text::of(lang);
     let mut out = Vec::new();
     let mut add = |topic: Topic, text: String| {
         out.push(Advice {
             topic,
-            text: rules::decimal_comma(&text),
+            text: tx.finish(text),
         })
     };
     let slippery = c.is_some_and(|c| c.icy || c.fresh_snow_cm.is_some_and(|s| s >= 20.0));
@@ -123,61 +134,32 @@ pub fn advise(m: &Metrics, r: &Rating, other: &Rating, c: Option<&Conditions>) -
         let total: f64 = steep_climbs.iter().map(|p| p.length_m).sum();
         add(
             Topic::Grip,
-            format!(
-                "Peaux courtes (ou demi-peaux) pour {} montée{} de {:.0}° ou plus ({} en tout) ; la plus longue : {:.0} m à {:.0}° au {}. Ailleurs, les écailles suffisent.",
+            tx.grip_skins(
                 steep_climbs.len(),
-                if steep_climbs.len() > 1 { "s" } else { "" },
-                skin_from,
-                rules::length(total),
+                f64::from(skin_from),
+                &tx.length(total),
                 longest.length_m,
                 longest.max_deg,
-                km(longest.start_km)
+                longest.start_km,
             ),
         );
     } else if m.climbs.is_empty() {
-        add(
-            Topic::Grip,
-            "Montées douces (moins de 8°) : les écailles suffisent.".to_owned(),
-        );
+        add(Topic::Grip, tx.grip_gentle());
     } else {
-        add(
-            Topic::Grip,
-            format!(
-                "Montées de moins de {skin_from:.0}° ou courtes : écailles, appuis francs et bâtons, pas de canard sur les ressauts ; peaux utiles sur neige dure, poudreuse ou avec un sac lourd ou une pulka."
-            ),
-        );
+        add(Topic::Grip, tx.grip_scales(f64::from(skin_from)));
     }
     if slippery {
-        add(
-            Topic::Grip,
-            "Neige du jour glissante (regel ou poudreuse) : les écailles tiennent mal, collez les peaux dès 8°.".to_owned(),
-        );
+        add(Topic::Grip, tx.grip_slippery());
     }
-    add(
-        Topic::Grip,
-        "Gardez toujours une paire de peaux dans le sac.".to_owned(),
-    );
+    add(Topic::Grip, tx.grip_keep_skins());
 
     // Technique downhill.
-    let d = m.max_descent_deg;
-    let t = if d < 8.0 {
-        "Descentes douces : le chasse-neige suffit.".to_owned()
-    } else if d < 15.0 {
-        "Descentes jusqu'à 15° : chasse-neige et arrêt maîtrisés.".to_owned()
-    } else if d < 20.0 {
-        "Descentes de 15 à 20° : virages (stem ou télémark) ou traversées et conversions."
-            .to_owned()
-    } else if d < 25.0 {
-        "Descentes de 20 à 25° : dérapage latéral sur les carres maîtrisé.".to_owned()
-    } else {
-        "Descentes de plus de 25° : très bon contrôle en dérapage, sinon déchausser et descendre à pied.".to_owned()
-    };
-    add(Topic::Technique, t);
+    add(Topic::Technique, tx.technique(m.max_descent_deg));
     let hard_desc: Vec<&Passage> = m.descents.iter().filter(|p| p.max_deg >= 15.0).collect();
     if !hard_desc.is_empty() {
         add(
             Topic::Technique,
-            format!("Descentes raides : {}.", list_passages(&hard_desc)),
+            tx.steep_descents(&list_passages(tx, &hard_desc)),
         );
     }
     let forest: Vec<&Passage> = m
@@ -188,51 +170,30 @@ pub fn advise(m: &Metrics, r: &Rating, other: &Rating, c: Option<&Conditions>) -
     if !forest.is_empty() {
         add(
             Topic::Technique,
-            format!(
-                "Descente en forêt dense : {}. Vitesse réduite ; gardez les peaux pour freiner si la neige est dure.",
-                list_passages(&forest)
-            ),
+            tx.forest_descents(&list_passages(tx, &forest)),
         );
     }
     let conv: Vec<&Passage> = m.climbs.iter().filter(|p| p.max_deg >= 15.0).collect();
     if !conv.is_empty() {
-        add(
-            Topic::Technique,
-            format!(
-                "Conversions ou montée en escalier : {}.",
-                list_passages(&conv)
-            ),
-        );
+        add(Topic::Technique, tx.kick_turns(&list_passages(tx, &conv)));
     }
     if !m.sidehills.is_empty() {
-        let s: Vec<&Passage> = m.sidehills.iter().collect();
         add(
             Topic::Technique,
-            format!(
-                "Versant raide traversé : {} ; sans difficulté sur un chemin creusé dans la pente, mais en dévers hors chemin ou si la neige le comble : carres plantées côté amont, à pied si la neige est dure.",
-                s.iter()
+            tx.sidehills(
+                &m.sidehills
+                    .iter()
                     .take(4)
-                    .map(|p| format!(
-                        "{} (pente de {:.0}° sur {:.0} m)",
-                        km(p.start_km),
-                        p.terrain_max_deg,
-                        p.length_m
-                    ))
+                    .map(|p| tx.sidehill_passage(p.start_km, p.terrain_max_deg, p.length_m))
                     .collect::<Vec<_>>()
-                    .join(", ")
+                    .join(", "),
             ),
         );
     }
 
     // Glide.
     if m.flat_km >= 3.0 && m.flat_km / m.length_km.max(0.1) >= 0.4 {
-        add(
-            Topic::Glide,
-            format!(
-                "Beaucoup de plat ({:.1} km, dont {:.1} km d'affilée) : skis fartés en glisse, écailles plutôt que peaux, pas alternatif et poussée simultanée.",
-                m.flat_km, m.longest_flat_km
-            ),
-        );
+        add(Topic::Glide, tx.glide(m.flat_km, m.longest_flat_km));
     }
 
     // Passages to avoid.
@@ -245,14 +206,13 @@ pub fn advise(m: &Metrics, r: &Rating, other: &Rating, c: Option<&Conditions>) -
     if !beyond.is_empty() {
         add(
             Topic::Avoid,
-            format!(
-                "Montée ou descente de 30° ou plus, hors terrain SRN : {} ; contournez-la ou déchaussez.",
-                beyond
+            tx.avoid_beyond(
+                &beyond
                     .iter()
                     .take(4)
-                    .map(|p| km(p.start_km))
+                    .map(|p| tx.km(p.start_km))
                     .collect::<Vec<_>>()
-                    .join(", ")
+                    .join(", "),
             ),
         );
     }
@@ -263,47 +223,33 @@ pub fn advise(m: &Metrics, r: &Rating, other: &Rating, c: Option<&Conditions>) -
     longest.sort_by(|a, b| a.start_km.total_cmp(&b.start_km));
     let high: Vec<String> = longest
         .iter()
-        .map(|s| format!("{} ({})", km(s.start_km), rules::length(s.length_m)))
+        .map(|s| tx.stretch(s.start_km, &tx.length(s.length_m)))
         .collect();
     if !high.is_empty() {
-        add(
-            Topic::Avoid,
-            format!(
-                "Terrain « très exposé » aux avalanches (modèle) : {} ; à éviter dès que le risque n'est pas faible.",
-                high.join(", ")
-            ),
-        );
+        add(Topic::Avoid, tx.avoid_high_exposed(&high.join(", ")));
     }
     if m.forbidden_km > 0.0 {
         add(
             Topic::Avoid,
-            format!(
-                "Zone interdite d'accès à cette date sur {} : changez d'itinéraire.",
-                rules::length(m.forbidden_km * 1000.0)
-            ),
+            tx.avoid_forbidden(&tx.length(m.forbidden_km * 1000.0)),
         );
     }
     if m.leave_routes_forbidden_km > 0.0 {
         add(
             Topic::Avoid,
-            format!(
-                "Sortie des itinéraires balisés interdite sur {}{} : restez sur le balisage.",
-                rules::length(m.leave_routes_forbidden_km * 1000.0),
+            tx.avoid_leave_routes(
+                &tx.length(m.leave_routes_forbidden_km * 1000.0),
                 m.zones
                     .iter()
                     .find(|z| !z.label.is_empty())
-                    .map(|z| format!(" ({})", z.label))
-                    .unwrap_or_default()
+                    .map(|z| z.label.as_str()),
             ),
         );
     }
     if m.avoid_km > 0.0 {
         add(
             Topic::Avoid,
-            format!(
-                "Zone de quiétude de la faune sur {} : à éviter en saison.",
-                rules::length(m.avoid_km * 1000.0)
-            ),
+            tx.avoid_quiet(&tx.length(m.avoid_km * 1000.0)),
         );
     }
 
@@ -324,89 +270,50 @@ pub fn advise(m: &Metrics, r: &Rating, other: &Rating, c: Option<&Conditions>) -
         && r.level > Level::Facile
         && at > 0.5 * m.length_km
     {
-        add(
-            Topic::TurnBack,
-            format!(
-                "Le passage le plus difficile est loin du départ ({}) : si vous peinez avant, faites demi-tour.",
-                km(at)
-            ),
-        );
+        add(Topic::TurnBack, tx.turn_back_hardest(at));
     }
     if m.max_exit_km >= 3.0 {
         add(
             Topic::TurnBack,
-            format!(
-                "Point le plus éloigné d'une route : {} ({:.1} km). Fixez une heure de demi-tour et tenez-la.",
-                km(m.max_exit_at_km),
-                m.max_exit_km
-            ),
+            tx.turn_back_far(m.max_exit_at_km, m.max_exit_km),
         );
     }
     if other.level != r.level {
         add(
             Topic::TurnBack,
-            format!(
-                "Dans l'autre sens, le tracé est {} ({}).",
-                if other.level < r.level {
-                    "plus facile"
-                } else {
-                    "plus difficile"
-                },
-                other.level.label()
-            ),
+            tx.other_direction(other.level < r.level, other.level),
         );
     }
 
     // Equipment.
     if m.exposed_km + m.high_exposed_km > 0.0 {
-        add(
-            Topic::Equipment,
-            "Terrain exposé aux avalanches traversé : DVA, pelle, sonde et lecture du bulletin d'avalanche (BERA) quand il existe ; le modèle ne le remplace pas.".to_owned(),
-        );
+        add(Topic::Equipment, tx.equip_avalanche());
     }
     if let Some(s) = m.no_network.first()
         && s.length_m >= 500.0
     {
         add(
             Topic::Equipment,
-            format!(
-                "Pas de réseau sur {} (même le 112) : prévenez un proche de l'itinéraire et de l'heure de retour.",
-                rules::length(m.no_network_km.unwrap_or(0.0) * 1000.0)
-            ),
+            tx.equip_no_network(&tx.length(m.no_network_km.unwrap_or(0.0) * 1000.0)),
         );
     }
     if r.raid {
         add(
             Topic::Equipment,
-            format!(
-                "Sortie de plusieurs jours : environ {} de marche effective, soit {} étapes d'au plus 6 h ; prévoir hébergement, réchaud, réparation (fixation, peaux) et frontale.",
-                hours(m.munter_h),
-                (m.munter_h / 6.0).ceil().max(2.0)
-            ),
+            tx.equip_raid(&tx.hours(m.munter_h), (m.munter_h / 6.0).ceil().max(2.0)),
         );
     } else if m.munter_h >= 5.0 {
-        add(
-            Topic::Equipment,
-            format!(
-                "Longue journée (environ {}) : frontale, vivres et vêtement chaud de rechange.",
-                hours(m.munter_h)
-            ),
-        );
+        add(Topic::Equipment, tx.equip_long_day(&tx.hours(m.munter_h)));
     }
     if let Some(o) = m.longest_open_km
         && o >= 2.0
     {
-        add(
-            Topic::Equipment,
-            format!(
-                "Terrain découvert sur {o:.1} km d'affilée : vent et jour blanc possibles ; trace hors ligne et boussole."
-            ),
-        );
+        add(Topic::Equipment, tx.equip_open(o));
     }
 
     // Snow by aspect.
     let steep_desc: Vec<&Passage> = m.descents.iter().filter(|p| p.max_deg >= 12.0).collect();
-    let mut aspects: Vec<&str> = steep_desc
+    let mut aspects: Vec<Facing> = steep_desc
         .iter()
         .filter_map(|p| p.aspect_deg.and_then(facing))
         .collect();
@@ -414,15 +321,9 @@ pub fn advise(m: &Metrics, r: &Rating, other: &Rating, c: Option<&Conditions>) -
     aspects.dedup();
     for a in aspects {
         match a {
-            "nord" => add(
-                Topic::Snow,
-                "Descentes raides face nord : neige souvent froide, dure ou poudreuse.".to_owned(),
-            ),
-            "sud" => add(
-                Topic::Snow,
-                "Descentes raides face sud : regel le matin, neige lourde l'après-midi ; partez tôt.".to_owned(),
-            ),
-            _ => {}
+            Facing::North => add(Topic::Snow, tx.snow_north()),
+            Facing::South => add(Topic::Snow, tx.snow_south()),
+            Facing::East | Facing::West => {}
         }
     }
     out
@@ -441,16 +342,21 @@ pub fn detail(p: &Params) -> Measure {
     }
 }
 
-/// Measures, rates and advises both directions: the level comes from the calibrated
-/// measurement ([`Params::measure`]), the advice and the metrics of the report from
-/// [`detail`].
+/// Measures, rates and advises both directions in French: the level comes from the
+/// calibrated measurement ([`Params::measure`]), the advice and the metrics of the report
+/// from [`detail`].
 pub fn assess(profile: &Profile, p: &Params, c: Option<&Conditions>) -> Report {
-    let [(_, rf), (_, rr)] = rules::rate_profile(profile, p, c);
+    assess_in(profile, p, c, Lang::Fr)
+}
+
+/// [`assess`] with the reasons and the advice in `lang`.
+pub fn assess_in(profile: &Profile, p: &Params, c: Option<&Conditions>, lang: Lang) -> Report {
+    let [(_, rf), (_, rr)] = rules::rate_profile_in(profile, p, c, lang);
     let d = detail(p);
     let mf = analysis::measure(profile, Direction::Forward, &d);
     let mr = analysis::measure(profile, Direction::Reverse, &d);
-    let af = advise(&mf, &rf, &rr, c);
-    let ar = advise(&mr, &rr, &rf, c);
+    let af = advise_in(&mf, &rf, &rr, c, lang);
+    let ar = advise_in(&mr, &rr, &rf, c, lang);
     Report {
         forward: DirectionReport {
             metrics: mf,
@@ -471,35 +377,32 @@ impl Report {
         self.forward.rating.level.max(self.reverse.rating.level)
     }
 
-    /// French text of both directions; the other direction lists only the reasons and
-    /// advice that differ from the direction of the track.
+    /// French text of both directions ([`Report::text`]).
     pub fn text_fr(&self, name: &str) -> String {
+        self.text(Lang::Fr, name)
+    }
+
+    /// Text of both directions in `lang` (that of [`assess_in`]); the other direction
+    /// lists only the reasons and advice that differ from the direction of the track.
+    pub fn text(&self, lang: Lang, name: &str) -> String {
+        let tx = text::of(lang);
         let mut s = String::new();
         let _ = writeln!(s, "{name}");
         for (i, d) in [&self.forward, &self.reverse].into_iter().enumerate() {
             let m = &d.metrics;
             let r = &d.rating;
-            let dir = if i == 0 {
-                "Dans le sens du tracé"
-            } else {
-                "Dans l'autre sens"
-            };
-            let line = format!(
-                "{dir} : {}{} — technique {}, effort {} sur l'échelle 2025 ; {:.1} km, +{:.0} m / −{:.0} m, environ {}.",
-                r.level.label().to_uppercase(),
-                if r.beyond_srn {
-                    " (hors SRN par endroits)"
-                } else {
-                    ""
-                },
-                r.technical.label(),
-                r.effort.label(),
+            let line = tx.direction(
+                i == 0,
+                r.level,
+                r.beyond_srn,
+                r.technical,
+                r.effort,
                 m.length_km,
                 m.ascent_m,
                 m.descent_m,
-                hours(m.munter_h)
+                &tx.hours(m.munter_h),
             );
-            let _ = writeln!(s, "{}", rules::decimal_comma(&line));
+            let _ = writeln!(s, "{}", tx.finish(line));
             let fwd = &self.forward;
             let reasons: Vec<_> = r
                 .reasons
@@ -513,27 +416,19 @@ impl Report {
                 .filter(|a| i == 0 || !fwd.advice.iter().any(|b| b.text == a.text))
                 .collect();
             if !reasons.is_empty() {
-                let _ = writeln!(
-                    s,
-                    "Raisons{} :",
-                    if i == 0 { "" } else { " propres à ce sens" }
-                );
+                let _ = writeln!(s, "{}", tx.reasons_title(i == 0));
                 for x in reasons {
-                    let _ = writeln!(s, "  - [{}] {}", x.level.label(), x.text);
+                    let _ = writeln!(s, "  - [{}] {}", tx.level(x.level), x.text);
                 }
             }
             if !advice.is_empty() {
-                let _ = writeln!(
-                    s,
-                    "Conseils{} :",
-                    if i == 0 { "" } else { " propres à ce sens" }
-                );
+                let _ = writeln!(s, "{}", tx.advice_title(i == 0));
                 for a in advice {
                     let _ = writeln!(s, "  - {}", a.text);
                 }
             }
         }
-        let _ = write!(s, "{DISCLAIMER}");
+        let _ = write!(s, "{}", tx.disclaimer());
         s
     }
 }

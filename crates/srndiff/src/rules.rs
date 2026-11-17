@@ -21,6 +21,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::analysis::{self, Direction, Measure, Metrics, Passage, PassageKind};
 use crate::profile::Profile;
+use crate::text::{self, Lang};
 
 /// Difficulty level.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -54,12 +55,12 @@ impl Level {
 
     /// French label.
     pub fn label(self) -> &'static str {
-        match self {
-            Level::Facile => "facile",
-            Level::Moyen => "moyen",
-            Level::Difficile => "difficile",
-            Level::TresDifficile => "très difficile",
-        }
+        self.label_in(Lang::Fr)
+    }
+
+    /// Label in `lang`: « facile », « easy »…
+    pub fn label_in(self, lang: Lang) -> &'static str {
+        text::of(lang).level(self)
     }
 
     /// One level more (capped).
@@ -234,7 +235,7 @@ pub struct Reason {
     pub level: Level,
     /// Group.
     pub factor: Factor,
-    /// French text.
+    /// Text, in the language asked ([`rate_in`]).
     pub text: String,
     /// Where, km from the start of the direction.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -304,31 +305,30 @@ pub fn decimal_comma(s: &str) -> String {
         .collect()
 }
 
-/// A length in words: metres below 1 km.
+/// A length in words: metres below 1 km (French).
 pub fn length(m: f64) -> String {
-    if m < 995.0 {
-        format!("{:.0} m", (m / 10.0).round() * 10.0)
-    } else {
-        format!("{:.1} km", m / 1000.0)
-    }
-}
-
-fn where_(at: f64) -> String {
-    format!("au km {at:.1}")
+    text::of(Lang::Fr).length(m)
 }
 
 fn steepest(ps: &[Passage]) -> Option<&Passage> {
     ps.iter().max_by(|a, b| a.max_deg.total_cmp(&b.max_deg))
 }
 
-/// Level and reasons of one direction.
+/// Level and reasons of one direction, reasons in French (calibration and evaluation
+/// reports of the pipeline).
 pub fn rate(m: &Metrics, p: &Params, c: Option<&Conditions>) -> Rating {
+    rate_in(m, p, c, Lang::Fr)
+}
+
+/// Level and reasons of one direction, reasons in `lang`.
+pub fn rate_in(m: &Metrics, p: &Params, c: Option<&Conditions>, lang: Lang) -> Rating {
+    let tx = text::of(lang);
     let mut reasons: Vec<Reason> = Vec::new();
     let mut push = |level: Level, factor: Factor, text: String, at_km: Option<f64>| {
         reasons.push(Reason {
             level,
             factor,
-            text: decimal_comma(&text),
+            text: tx.finish(text),
             at_km,
         })
     };
@@ -346,13 +346,7 @@ pub fn rate(m: &Metrics, p: &Params, c: Option<&Conditions>) -> Rating {
         push(
             l,
             Factor::Descent,
-            format!(
-                "descente la plus raide : {:.0}° en moyenne sur {:.0} m {} (passage de {:.0} m à plus de 8°)",
-                d.max_deg,
-                p.sustain_m,
-                where_(d.start_km),
-                d.length_m
-            ),
+            tx.steepest_descent(d.max_deg, p.sustain_m, d.start_km, d.length_m),
             Some(d.start_km),
         );
         if d.max_deg >= p.beyond_deg {
@@ -362,16 +356,11 @@ pub fn rate(m: &Metrics, p: &Params, c: Option<&Conditions>) -> Rating {
         push(
             Level::Facile,
             Factor::Descent,
-            format!("descentes douces (au plus {:.0}°)", m.max_descent_deg),
+            tx.gentle_descents(m.max_descent_deg),
             None,
         );
     } else {
-        push(
-            Level::Facile,
-            Factor::Descent,
-            "aucune descente notable".to_owned(),
-            None,
-        );
+        push(Level::Facile, Factor::Descent, tx.no_descent(), None);
     }
     if let Some(cl) = steepest(&m.climbs) {
         let l = open_level(p, cl.max_deg);
@@ -379,13 +368,7 @@ pub fn rate(m: &Metrics, p: &Params, c: Option<&Conditions>) -> Rating {
         push(
             l,
             Factor::Climb,
-            format!(
-                "montée la plus raide : {:.0}° en moyenne sur {:.0} m {} (passage de {:.0} m à plus de 8°)",
-                cl.max_deg,
-                p.sustain_m,
-                where_(cl.start_km),
-                cl.length_m
-            ),
+            tx.steepest_climb(cl.max_deg, p.sustain_m, cl.start_km, cl.length_m),
             Some(cl.start_km),
         );
         if cl.max_deg >= p.beyond_deg {
@@ -407,12 +390,7 @@ pub fn rate(m: &Metrics, p: &Params, c: Option<&Conditions>) -> Rating {
             push(
                 l,
                 Factor::Forest,
-                format!(
-                    "descente en forêt dense sans trouée : {:.0}° sur {:.0} m {}",
-                    d.max_deg,
-                    d.dense_forest_m,
-                    where_(d.start_km)
-                ),
+                tx.forest_descent(d.max_deg, d.dense_forest_m, d.start_km),
                 Some(d.start_km),
             );
         }
@@ -432,12 +410,7 @@ pub fn rate(m: &Metrics, p: &Params, c: Option<&Conditions>) -> Rating {
             push(
                 l,
                 Factor::Sidehill,
-                format!(
-                    "traversée en dévers sur pente de {:.0}° ({:.0} m) {}",
-                    s.terrain_max_deg,
-                    s.length_m,
-                    where_(s.start_km)
-                ),
+                tx.sidehill(s.terrain_max_deg, s.length_m, s.start_km),
                 Some(s.start_km),
             );
             if s.terrain_max_deg >= p.beyond_deg {
@@ -450,10 +423,7 @@ pub fn rate(m: &Metrics, p: &Params, c: Option<&Conditions>) -> Rating {
         push(
             Level::TresDifficile,
             Factor::Beyond,
-            format!(
-                "passage à {:.0}° ou plus : hors du terrain du ski de randonnée nordique",
-                p.beyond_deg
-            ),
+            tx.beyond(p.beyond_deg),
             None,
         );
     }
@@ -484,17 +454,7 @@ pub fn rate(m: &Metrics, p: &Params, c: Option<&Conditions>) -> Rating {
     push(
         effort_counted,
         Factor::Effort,
-        format!(
-            "{:.1} km, {:.0} m de montée, environ {} de marche effective (Munter){}",
-            m.length_km,
-            m.ascent_m,
-            hours(time_h),
-            if raid {
-                " : sortie de plusieurs jours (raid)"
-            } else {
-                ""
-            }
-        ),
+        tx.effort(m.length_km, m.ascent_m, &tx.hours(time_h), raid),
         None,
     );
 
@@ -508,12 +468,7 @@ pub fn rate(m: &Metrics, p: &Params, c: Option<&Conditions>) -> Rating {
         push(
             l,
             Factor::Avalanche,
-            format!(
-                "traverse {} de terrain « très exposé » aux avalanches (modèle){}",
-                length(m.high_exposed_km * 1000.0),
-                at.map(|a| format!(", d'abord {}", where_(a)))
-                    .unwrap_or_default()
-            ),
+            tx.high_exposed(&tx.length(m.high_exposed_km * 1000.0), at),
             at,
         );
     }
@@ -523,12 +478,7 @@ pub fn rate(m: &Metrics, p: &Params, c: Option<&Conditions>) -> Rating {
         push(
             Level::Moyen,
             Factor::Avalanche,
-            format!(
-                "traverse {} de terrain « exposé » aux avalanches (modèle), en {} passage{}",
-                length(m.exposed_km * 1000.0),
-                m.exposed.len(),
-                if m.exposed.len() > 1 { "s" } else { "" }
-            ),
+            tx.exposed(&tx.length(m.exposed_km * 1000.0), m.exposed.len()),
             at,
         );
     }
@@ -543,15 +493,11 @@ pub fn rate(m: &Metrics, p: &Params, c: Option<&Conditions>) -> Rating {
             Level::Moyen,
             Factor::Data,
             if no_relief {
-                format!(
-                    "relief et exposition aux avalanches inconnus sur {:.0} % du tracé (hors du relief LiDAR HD de l'IGN) : le niveau peut être sous-estimé",
-                    100.0 * m.unknown_elevation_share
-                )
+                tx.relief_and_exposure_unknown(100.0 * m.unknown_elevation_share)
             } else {
-                format!(
-                    "exposition aux avalanches non évaluée sur {}, avec des pentes jusqu'à {:.0}°",
-                    length(m.exposure_unknown_km * 1000.0),
-                    m.exposure_unknown_max_terrain_deg
+                tx.exposure_unknown(
+                    &tx.length(m.exposure_unknown_km * 1000.0),
+                    m.exposure_unknown_max_terrain_deg,
                 )
             },
             None,
@@ -562,11 +508,7 @@ pub fn rate(m: &Metrics, p: &Params, c: Option<&Conditions>) -> Rating {
         push(
             Level::Moyen,
             Factor::Remote,
-            format!(
-                "jusqu'à {:.1} km d'une route ou d'une extrémité du tracé ({})",
-                m.max_exit_km,
-                where_(m.max_exit_at_km)
-            ),
+            tx.remote(m.max_exit_km, m.max_exit_at_km),
             Some(m.max_exit_at_km),
         );
     }
@@ -577,11 +519,7 @@ pub fn rate(m: &Metrics, p: &Params, c: Option<&Conditions>) -> Rating {
         push(
             Level::Moyen,
             Factor::Network,
-            format!(
-                "{} d'affilée sans aucun réseau mobile, même pour le 112 ({})",
-                length(s.length_m),
-                where_(s.start_km)
-            ),
+            tx.no_network(&tx.length(s.length_m), s.start_km),
             Some(s.start_km),
         );
     }
@@ -589,10 +527,7 @@ pub fn rate(m: &Metrics, p: &Params, c: Option<&Conditions>) -> Rating {
         push(
             Level::Facile,
             Factor::Zones,
-            format!(
-                "traverse {} d'une zone dont l'accès est interdit à cette date",
-                length(m.forbidden_km * 1000.0)
-            ),
+            tx.forbidden(&tx.length(m.forbidden_km * 1000.0)),
             m.zones.first().map(|z| z.start_km),
         );
     }
@@ -601,35 +536,19 @@ pub fn rate(m: &Metrics, p: &Params, c: Option<&Conditions>) -> Rating {
             push(
                 effort_counted,
                 Factor::Conditions,
-                format!(
-                    "{snow:.0} cm de neige fraîche à tracer : effort et temps accrus (≈ +30 %)"
-                ),
+                tx.fresh_snow(snow),
                 None,
             );
         }
         if c.icy || c.crust {
-            push(
-                technical,
-                Factor::Conditions,
-                (if c.icy {
-                    "neige dure ou regelée : descentes plus délicates d'un niveau"
-                } else {
-                    "croûte : descentes plus délicates d'un niveau"
-                })
-                .to_owned(),
-                None,
-            );
+            push(technical, Factor::Conditions, tx.icy(c.icy), None);
         }
     }
     if m.coarse_share > 0.3 {
         push(
             Level::Facile,
             Factor::Data,
-            format!(
-                "tracé approximatif : {:.0} % de sa longueur en lignes droites de plus de {:.0} m entre deux points ; pentes moyennées entre les points, ressauts courts possibles non vus",
-                100.0 * m.coarse_share,
-                p.coarse_m
-            ),
+            tx.coarse(100.0 * m.coarse_share, p.coarse_m),
             None,
         );
     }
@@ -637,10 +556,7 @@ pub fn rate(m: &Metrics, p: &Params, c: Option<&Conditions>) -> Rating {
         push(
             Level::Facile,
             Factor::Data,
-            format!(
-                "relief inconnu sur {:.0} % du tracé (hors du relief LiDAR HD de l'IGN) : niveau sous-estimé possible",
-                100.0 * m.unknown_elevation_share
-            ),
+            tx.relief_unknown(100.0 * m.unknown_elevation_share),
             None,
         );
     }
@@ -685,22 +601,31 @@ fn factor_rank(f: Factor) -> u8 {
     }
 }
 
-/// `2 h 05`.
+/// `2 h 05` (French).
 pub fn hours(h: f64) -> String {
-    let m = (h * 60.0).round() as i64;
-    format!("{} h {:02}", m / 60, m % 60)
+    text::of(Lang::Fr).hours(h)
 }
 
-/// Measures and rates both directions.
+/// Measures and rates both directions, reasons in French.
 pub fn rate_profile(
     profile: &Profile,
     p: &Params,
     c: Option<&Conditions>,
 ) -> [(Metrics, Rating); 2] {
+    rate_profile_in(profile, p, c, Lang::Fr)
+}
+
+/// Measures and rates both directions, reasons in `lang`.
+pub fn rate_profile_in(
+    profile: &Profile,
+    p: &Params,
+    c: Option<&Conditions>,
+    lang: Lang,
+) -> [(Metrics, Rating); 2] {
     let ms = p.measure();
     [Direction::Forward, Direction::Reverse].map(|d| {
         let m = analysis::measure(profile, d, &ms);
-        let r = rate(&m, p, c);
+        let r = rate_in(&m, p, c, lang);
         (m, r)
     })
 }
