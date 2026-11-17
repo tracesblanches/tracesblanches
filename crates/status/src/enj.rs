@@ -354,7 +354,7 @@ pub struct TrekGeometry {
     pub name: String,
     /// Practice name.
     pub practice: Option<String>,
-    /// GeoJSON geometry, without altitude.
+    /// GeoJSON geometry as published (with altitude).
     pub geometry: Value,
 }
 

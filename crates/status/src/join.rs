@@ -11,9 +11,13 @@
 //!   ([`skimap_common::names::name_score`]); a row that designates no widget piste is
 //!   joined to OSM itself, any practice.
 //! - Names joined to no way are reported ([`JoinReport`]), never guessed.
-//! - The ENJ itineraries have their own geometry: [`ways_along`] gives the OSM ways that
-//!   run along it (at least [`ALONG_SHARE`] of the way within [`ALONG_DISTANCE_M`]), so
-//!   that every source names the OSM ways it gives a state to (`osm_way_ids`).
+//! - The ENJ itineraries have their own geometry, drawn by hand: [`ItineraryGraphs`]
+//!   map matches it on the trail graph of its practice with the HMM of the GPS matching
+//!   (C2) and gives the OSM ways of the Viterbi path, so that every source names the OSM
+//!   ways it gives a state to (`osm_way_ids`). The former rule, [`ways_along`] (ways with
+//!   [`ALONG_SHARE`] of their points within [`ALONG_DISTANCE_M`]), attached only half of
+//!   the itineraries' length (a way longer than the stretch it shares with the itinerary
+//!   was refused); it stays as the reference of the measure (example `enj_join`).
 //! - Every feature carries `state_at`, the date of the state as the source publishes it
 //!   ([`day_month_date`] for the widget's « Mise à jour »), and `osm_practice`
 //!   (`nordic`, `foot`, `any`).
@@ -209,7 +213,8 @@ fn samples(line: &[(f64, f64)]) -> Vec<(f64, f64)> {
 }
 
 /// OSM ways suiting `practice` that run along the line geometry `geometry` (GeoJSON
-/// `LineString` or `MultiLineString`, WGS84), sorted by identifier.
+/// `LineString` or `MultiLineString`, WGS84), sorted by identifier: the former rule of the
+/// ENJ itineraries, kept as the reference of [`ItineraryGraphs::match_itinerary`].
 pub fn ways_along<'a>(geometry: &Value, practice: Practice, ways: &'a [OsmWay]) -> Vec<&'a OsmWay> {
     let lines = lines_of(geometry);
     let Some(lat0) = lines.iter().flatten().map(|p| p.1).next() else {

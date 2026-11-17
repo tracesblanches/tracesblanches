@@ -26,7 +26,20 @@ Le 15/11/2026 : 8 pistes du widget sur 12 rattachées (sans voie OSM : « Liaiso
 
 ## Voies OSM des itinéraires ENJ
 
-L'ENJ publie sa propre géométrie, dessinée à la main : `join::ways_along` rattache à un itinéraire les voies OSM de sa pratique dont au moins 80 % des points (un tous les 10 m) sont à moins de 20 m de son tracé. Le pack joint ainsi l'état à chaque voie de la couche `pistes`, comme sur le jeu de test alpin. Le 15/11/2026 (9 h 18) : 534 couples (itinéraire, voie) sur le jeu de test jurassien ; longueurs OSM rattachées / ENJ par itinéraire dans `status.meta.json` (`stats.enj_join`), par exemple Greffier 14,37 / 14,49 km, Chalet Pin 10,82 / 10,97 km, La Morberande 16,02 / 21,33 km (sortie de l'emprise) ; 9 itinéraires sans voie (raquettes hors des voies OSM, sentiers à thème). Sans la couche `pistes`, `osm_way_ids` vaut `null`.
+L'ENJ publie sa propre géométrie, dessinée à la main. `join::ItineraryGraphs` l'échantillonne tous les 10 m et l'apparie au graphe de la couche `pistes` (`graph_edges.geojson`) restreint à sa pratique (ski : voies `nordic` ; raquettes : voies `hike` ; multi-activités : toutes ; liaisons comprises, toutes les arêtes à double sens), avec le HMM du rattachement C2 (`skimap_core::matching`, Viterbi). Les voies du chemin appariées sur au moins 30 m (ou la moitié de la voie) à moins de 50 m appartiennent à l'itinéraire (`osm_way_ids`) : le pack joint ainsi l'état à chaque voie de la couche `pistes`. `stats.enj_join` de `status.meta.json` donne par itinéraire les points dans l'emprise, le taux de rattachement, les points atteignables (une voie de la pratique à moins de 50 m) et les écarts d'au moins 50 m avec leur cause (`no_way` : pas de voie OSM, `other_practice` : seulement des voies d'une autre pratique, `unmatched` : voie de la pratique proche mais non retenue). Sans la couche `pistes`, `osm_way_ids` vaut `null`.
+
+La règle précédente (`join::ways_along` : voies dont 80 % des points sont à moins de 20 m de l'itinéraire) refusait toute voie plus longue que le tronçon partagé avec l'itinéraire. Mesure du 17/11/2026 (X12, #146), `cargo run --release -p skimap-status --example enj_join -- <sites>` sur le jeu de test jurassien et quatre autres domaines ENJ du Doubs et du Haut-Jura (Les Fourgs, La Vattay, Les Rousses, Mouthe) (itinéraires traversant l'emprise de chaque site, `trek/?in_bbox=`, points dans l'emprise ; un itinéraire commun à deux emprises compte deux fois) :
+
+| Pratique | Itinéraires | Longueur dans l'emprise | Voie de la pratique à ≤ 50 m | Rattaché (HMM) | dont à ≤ 20 m | Rattaché / atteignable | Règle 80 % / 20 m |
+|---|---|---|---|---|---|---|---|
+| Ski de fond | 268 | 1 940 km | 93,6 % | 92,7 % | 84,1 % | 99,1 % | 70,7 % |
+| Multi-activités | 23 | 113 km | 66,3 % | 64,9 % | 51,5 % | 98,0 % | 30,2 % |
+| Raquettes | 155 | 1 003 km | 21,1 % | 20,5 % | 15,8 % | 96,9 % | 8,6 % |
+| Toutes | 446 | 3 056 km | 68,8 % | 68,0 % | 60,5 % | 98,8 % | 48,8 % |
+
+Par site, ski de fond (HMM / règle 80 %) : jeu de test jurassien 94,8 / 72,3 %, Les Fourgs 87,1 / 59,4 %, La Vattay 91,2 / 72,7 %, Les Rousses 90,1 / 55,9 %, Mouthe 96,2 / 81,9 %. Sur le vrai pipeline (`poll`, jeu de test jurassien, 42 itinéraires de la commune) : 709 couples (itinéraire, voie) au lieu de 534, ski 94,3 % des points rattachés.
+
+Écarts relus : ce qui reste non rattaché est presque entièrement hors des voies OSM. Ski : 89,6 km d'écarts `no_way` (par exemple Chez Michel, 2,8 km entre 65 et 250 m de toute voie, piste absente d'OSM ; La Bois de Ban 2,9 km ; liaisons vers Oye-et-Pallet et Le Village), 4,1 km `other_practice`, 0,5 km `unmatched`. Multi-activités : 28,9 km `no_way` (pistes Trappeur du jeu de test jurassien, Inter Villages des Fourgs). Raquettes : 432 km `no_way` et 175 km `other_practice` : les itinéraires de raquettes suivent surtout des sentiers que la couche `pistes` ne contient pas ou longent des pistes de ski, que leur fermeture ne doit pas fermer. Les voies rattachées à plus de 20 m en médiane (67 km sur 1 872 km rattachés en ski et multi-activités) ont été relues sur des exemples : tracé ENJ décalé de 35 à 48 m le long de la seule voie de ski proche (La Combe à la Chèvre, voie 204900141), boucle dessinée à main levée autour de la voie (La Chaux Mourant, voie 899475240).
 
 ## Sources
 

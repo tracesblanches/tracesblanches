@@ -137,7 +137,7 @@ fn poll_enj(
 
     let geoms = enj::fetch_geometry(dl, city)?;
     let mut along = Vec::new();
-    let (mut points, mut attached) = (0_usize, 0_usize);
+    let (mut points, mut attached, mut reachable) = (0_usize, 0_usize, 0_usize);
     let features: Vec<Value> = snap
         .treks
         .iter()
@@ -160,6 +160,7 @@ fn poll_enj(
             if let Some(m) = &matched {
                 points += m.points;
                 attached += m.attached;
+                reachable += m.reachable;
             }
             along.push(json!({
                 "itinerary": format!("{}:{}", enj::SOURCE, t.id),
@@ -170,6 +171,7 @@ fn poll_enj(
                 "length_m": t.length_m,
                 "points": matched.as_ref().map(|m| m.points),
                 "attached_rate": matched.as_ref().map(|m| (m.rate() * 1000.0).round() / 1000.0),
+                "reachable": matched.as_ref().map(|m| m.reachable),
                 "gaps": matched.as_ref().map(|m| &m.gaps),
             }));
             json!({
@@ -209,6 +211,8 @@ fn poll_enj(
             "pistes_layer": pistes.is_some(),
             "points_in_box": points,
             "attached_rate": (points > 0).then(|| (attached as f64 / points as f64 * 1000.0).round() / 1000.0),
+            "points_reachable": reachable,
+            "attached_rate_reachable": (reachable > 0).then(|| (attached as f64 / reachable as f64 * 1000.0).round() / 1000.0),
             "itineraries": along,
         }),
     );
