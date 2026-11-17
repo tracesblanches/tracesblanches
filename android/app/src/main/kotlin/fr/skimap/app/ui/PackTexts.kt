@@ -101,7 +101,7 @@ class PackTexts(
         }
 
     /**
-     * The line at the top of the map: `Cervières · 2 open, 40 closed`; with no pack
+     * The line at the top of the map: `<area> · 2 open, 40 closed`; with no pack
      * installed ([packCount] 0), `France · no area installed`: no piste status to miss.
      */
     fun headerText(
