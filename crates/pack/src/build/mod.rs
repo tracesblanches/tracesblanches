@@ -955,6 +955,51 @@ mod tests {
     }
 
     #[test]
+    fn plan_refuges_flag_both_layers_in_the_pack() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("layers")).unwrap();
+        let pt = |lon: f64, props: Value| {
+            serde_json::json!({"type": "Feature", "properties": props,
+                               "geometry": {"type": "Point", "coordinates": [lon, 45.0]}})
+        };
+        let info = serde_json::json!({"type": "FeatureCollection", "features": [
+            pt(6.0, serde_json::json!({"type_label": "refuge gardé"})),
+            pt(6.1, serde_json::json!({"type_label": "point d'eau"}))]});
+        let osm = serde_json::json!({"type": "FeatureCollection", "features": [
+            pt(6.0003, serde_json::json!({"kind": "alpine_hut"})),
+            pt(6.01, serde_json::json!({"kind": "shelter"}))]});
+        let layer = |id: &str, fc: &Value| -> Layer {
+            let file = format!("layers/{id}.geojson");
+            std::fs::write(root.path().join(&file), fc.to_string()).unwrap();
+            serde_json::from_value(serde_json::json!({
+                "id": id, "title": id, "kind": "vector", "format": "geojson", "file": file,
+                "origin": "refuges/x.geojson", "sources": [], "personal_use_only": false,
+                "bytes": 0, "visible": true}))
+            .unwrap()
+        };
+        let mut layers = vec![layer("refuges-info", &info), layer("refuges-osm", &osm)];
+        plan_refuges(root.path(), &mut layers).unwrap();
+        let flags = |l: &Layer| {
+            let v: Value =
+                serde_json::from_slice(&std::fs::read(root.path().join(&l.file)).unwrap()).unwrap();
+            assert_eq!(
+                l.bytes,
+                std::fs::metadata(root.path().join(&l.file)).unwrap().len()
+            );
+            v["features"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|f| f["properties"][skimap_core::huts::PLAN_FLAG].as_bool())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(flags(&layers[0]), [Some(true), Some(false)]);
+        // The OSM hut 24 m from the refuges.info one is the same place.
+        assert_eq!(flags(&layers[1]), [Some(false), Some(true)]);
+        assert!(layers.iter().all(|l| l.notes.len() == 1));
+    }
+
+    #[test]
     fn groups() {
         let f = |p: &str, n| FileEntry {
             path: p.to_owned(),
