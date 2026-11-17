@@ -20,8 +20,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cfg = Config::from_env()?;
     let layout = cfg.layout();
     let dl = Downloader::from_config(&cfg)?;
+    let registry = site::Registry::load(&layout)?;
     for id in std::env::args().skip(1) {
-        let s = site::site(&id)?;
+        let s = registry.get(&id)?;
         let t = Instant::now();
         let sum = exposure::build(s, &layout, &dl)?;
         println!("{}", serde_json::to_string_pretty(&sum)?);
