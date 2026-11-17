@@ -24,6 +24,7 @@ pub mod catalog;
 pub mod community;
 pub mod fees;
 pub mod fog;
+pub mod france_sync;
 pub mod group;
 pub mod info;
 pub mod offpiste;
@@ -209,6 +210,11 @@ pub fn open_map(
         }
         (1, _) if !free => infos[0].clone(),
         _ => info::merge(&infos, FREE_MODE_ID, lang),
+    };
+    // Free mode over the France basemap: the camera may go anywhere in France.
+    let info = match &france {
+        Some(f) if free => info::over_france(info, &f.basemap),
+        _ => info,
     };
     let set = Arc::new(PackSet {
         handles,

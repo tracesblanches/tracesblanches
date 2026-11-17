@@ -260,6 +260,27 @@ pub fn france_only(
     }
 }
 
+/// `info` (free mode) with its bounds extended to the France basemap: the camera may go
+/// anywhere in France; the centre stays that of the packs.
+pub fn over_france(mut info: PackInfo, f: &skimap_pack::france::FranceBasemap) -> PackInfo {
+    let [west, south, east, north] = f.bbox;
+    info.bounds = Bounds {
+        west: info.bounds.west.min(west),
+        south: info.bounds.south.min(south),
+        east: info.bounds.east.max(east),
+        north: info.bounds.north.max(north),
+    };
+    if !info.basemaps.iter().any(|b| b.id == FRANCE_BASEMAP_ID) {
+        info.basemaps.push(BasemapInfo {
+            id: FRANCE_BASEMAP_ID.to_owned(),
+            title: "OpenStreetMap (Protomaps)".to_owned(),
+            minzoom: f.minzoom,
+            maxzoom: f.maxzoom,
+        });
+    }
+    info
+}
+
 /// Identifier of the France basemap in [`PackInfo::basemaps`].
 pub const FRANCE_BASEMAP_ID: &str = "france";
 

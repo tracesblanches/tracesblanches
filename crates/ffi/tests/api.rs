@@ -878,6 +878,9 @@ fn france_basemap_under_the_packs() {
     assert!(pos("france-place") < pos("ign-place-commune-low"));
     // The glyphs stay those of the packs.
     assert!(v["glyphs"].as_str().unwrap().contains("/packs/a/"));
+    // Free mode: the camera may go anywhere in France.
+    assert!(view.info.bounds.west <= -5.5 && view.info.bounds.north >= 51.3);
+    assert!(view.info.basemaps.iter().any(|b| b.id == "france"));
     assert!(view.style.missing.iter().all(|m| !m.contains("france")));
     assert!(
         view.style
