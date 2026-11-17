@@ -216,138 +216,240 @@ pub struct ExtractStats {
 
 /// Extracts the tiles of `bbox` up to `maxzoom` from `src` into `out`.
 pub fn extract(src: &dyn RangeSource, bbox: BBox, maxzoom: u8, out: &Path) -> Result<ExtractStats> {
-    let first = src.read(0, FIRST_READ)?;
-    let h = parse_header(&first)?;
-    let read_section = |(off, len): (u64, u64)| -> Result<Vec<u8>> {
-        if off + len <= first.len() as u64 {
-            Ok(first[off as usize..(off + len) as usize].to_vec())
-        } else {
-            src.read(off, len)
-        }
-    };
-    let root = parse_directory(&decompress(read_section(h.root)?, h.internal_compression)?)?;
-    let metadata = if h.metadata.1 > 0 {
-        String::from_utf8(decompress(
-            read_section(h.metadata)?,
-            h.internal_compression,
-        )?)
-        .map_err(|e| Error::Pack(format!("metadata: {e}")))?
-    } else {
-        "{}".to_owned()
-    };
+    Archive::open(src)?.extract(bbox, maxzoom, out)
+}
 
-    let mut stats = ExtractStats::default();
-    let maxzoom = maxzoom.min(h.zooms.1);
-    let mut ids: Vec<u64> = tiles_covering(bbox, h.zooms.0, maxzoom)
-        .into_iter()
-        .map(|(z, x, y)| {
-            TileCoord::new(z, x, y)
-                .map(|c| TileId::from(c).value())
-                .map_err(|e| Error::Pack(format!("tile {z}/{x}/{y}: {e}")))
-        })
-        .collect::<Result<_>>()?;
-    ids.sort_unstable();
-    // Tile id -> (data offset, length), walking leaf directories (cached by offset).
-    let mut leaves: HashMap<u64, Vec<Entry>> = HashMap::new();
-    let mut found: Vec<(u64, u64, u64)> = Vec::new();
-    for &id in &ids {
-        let mut dir_entry = find(&root, id);
-        let mut depth = 0;
-        while let Some(e) = dir_entry.filter(|e| e.run_length == 0) {
-            depth += 1;
-            if depth > 8 {
-                return Err(Error::Pack("leaf directories nested too deep".into()));
+/// Decompresses a tile stored with the tile compression `compression` of a header (1:
+/// none, 2: gzip); other compressions are not read.
+pub fn decompress_tile(b: &[u8], compression: u8) -> Result<Vec<u8>> {
+    match compression {
+        0 | 1 => Ok(b.to_vec()),
+        2 => {
+            let mut out = Vec::new();
+            flate2::read::GzDecoder::new(b)
+                .read_to_end(&mut out)
+                .map_err(|e| Error::Pack(format!("gzip tile: {e}")))?;
+            Ok(out)
+        }
+        c => Err(Error::Pack(format!(
+            "tile compression {c} not supported (gzip or none)"
+        ))),
+    }
+}
+
+/// Tile address `(z, x, y)` -> tile id.
+fn tile_id(z: u8, x: u32, y: u32) -> Result<u64> {
+    TileCoord::new(z, x, y)
+        .map(|c| TileId::from(c).value())
+        .map_err(|e| Error::Pack(format!("tile {z}/{x}/{y}: {e}")))
+}
+
+/// An archive read by ranges: header, root directory and metadata read at
+/// [`open`](Self::open); leaf directories and tile data read when first needed and kept,
+/// so that the tiles of one zoom read for a comparison ([`tiles_at`](Self::tiles_at)) are
+/// not read again by the [`extract`](Self::extract) that follows.
+pub struct Archive<'a> {
+    src: &'a dyn RangeSource,
+    header: Header,
+    root: Vec<Entry>,
+    metadata: String,
+    /// Leaf directories by absolute offset.
+    leaves: HashMap<u64, Vec<Entry>>,
+    /// Tile contents by (data offset, length).
+    data: HashMap<(u64, u64), Vec<u8>>,
+    /// Reads so far: leaf directories, data ranges and bytes.
+    reads: ExtractStats,
+}
+
+impl<'a> Archive<'a> {
+    /// Reads the header, the root directory and the metadata (first [`FIRST_READ`] bytes).
+    pub fn open(src: &'a dyn RangeSource) -> Result<Self> {
+        let first = src.read(0, FIRST_READ)?;
+        let h = parse_header(&first)?;
+        let read_section = |(off, len): (u64, u64)| -> Result<Vec<u8>> {
+            if off + len <= first.len() as u64 {
+                Ok(first[off as usize..(off + len) as usize].to_vec())
+            } else {
+                src.read(off, len)
             }
-            let key = h.leaves.0 + e.offset;
-            let leaf = match leaves.entry(key) {
-                std::collections::hash_map::Entry::Occupied(o) => o.into_mut(),
-                std::collections::hash_map::Entry::Vacant(v) => {
-                    stats.leaf_directories += 1;
-                    v.insert(parse_directory(&decompress(
-                        src.read(key, e.length)?,
-                        h.internal_compression,
-                    )?)?)
+        };
+        let root = parse_directory(&decompress(read_section(h.root)?, h.internal_compression)?)?;
+        let metadata = if h.metadata.1 > 0 {
+            String::from_utf8(decompress(
+                read_section(h.metadata)?,
+                h.internal_compression,
+            )?)
+            .map_err(|e| Error::Pack(format!("metadata: {e}")))?
+        } else {
+            "{}".to_owned()
+        };
+        Ok(Self {
+            src,
+            header: h,
+            root,
+            metadata,
+            leaves: HashMap::new(),
+            data: HashMap::new(),
+            reads: ExtractStats::default(),
+        })
+    }
+
+    /// The header.
+    pub fn header(&self) -> &Header {
+        &self.header
+    }
+
+    /// Reads so far: leaf directories, data ranges and bytes of tile data.
+    pub fn reads(&self) -> &ExtractStats {
+        &self.reads
+    }
+
+    /// Tiles of `bbox` at zooms `minzoom..=maxzoom` present in the archive, sorted by
+    /// tile id: `(tile id, data offset, length)`. Walks (and keeps) the leaf directories.
+    fn locate(&mut self, bbox: BBox, minzoom: u8, maxzoom: u8) -> Result<Vec<(u64, u64, u64)>> {
+        let mut ids: Vec<u64> = tiles_covering(bbox, minzoom, maxzoom)
+            .into_iter()
+            .map(|(z, x, y)| tile_id(z, x, y))
+            .collect::<Result<_>>()?;
+        ids.sort_unstable();
+        let mut found = Vec::new();
+        for &id in &ids {
+            let mut dir_entry = find(&self.root, id);
+            let mut depth = 0;
+            while let Some(e) = dir_entry.filter(|e| e.run_length == 0) {
+                depth += 1;
+                if depth > 8 {
+                    return Err(Error::Pack("leaf directories nested too deep".into()));
                 }
-            };
-            dir_entry = find(leaf, id);
+                let key = self.header.leaves.0 + e.offset;
+                let leaf = match self.leaves.entry(key) {
+                    std::collections::hash_map::Entry::Occupied(o) => o.into_mut(),
+                    std::collections::hash_map::Entry::Vacant(v) => {
+                        self.reads.leaf_directories += 1;
+                        v.insert(parse_directory(&decompress(
+                            self.src.read(key, e.length)?,
+                            self.header.internal_compression,
+                        )?)?)
+                    }
+                };
+                dir_entry = find(leaf, id);
+            }
+            if let Some(e) = dir_entry {
+                found.push((id, e.offset, e.length));
+            }
         }
-        if let Some(e) = dir_entry {
-            found.push((id, e.offset, e.length));
-        }
-    }
-    stats.tiles = found.len();
-
-    // Distinct contents sorted by offset, read in merged ranges.
-    let mut spans: Vec<(u64, u64)> = found.iter().map(|&(_, o, l)| (o, l)).collect();
-    spans.sort_unstable();
-    spans.dedup();
-    stats.contents = spans.len();
-    let mut data: HashMap<(u64, u64), Vec<u8>> = HashMap::new();
-    let mut i = 0;
-    while i < spans.len() {
-        let start = spans[i].0;
-        let mut end = spans[i].0 + spans[i].1;
-        let mut j = i + 1;
-        while j < spans.len() && spans[j].0 <= end + MAX_GAP {
-            end = end.max(spans[j].0 + spans[j].1);
-            j += 1;
-        }
-        let block = src.read(h.data.0 + start, end - start)?;
-        if block.len() as u64 != end - start {
-            return Err(Error::Pack(format!(
-                "short read at {}: {} of {} bytes",
-                h.data.0 + start,
-                block.len(),
-                end - start
-            )));
-        }
-        stats.data_reads += 1;
-        stats.data_bytes_read += end - start;
-        for &(o, l) in &spans[i..j] {
-            let a = (o - start) as usize;
-            data.insert((o, l), block[a..a + l as usize].to_vec());
-        }
-        i = j;
+        Ok(found)
     }
 
-    let tile_type = match h.tile_type {
-        1 => TileType::Mvt,
-        2 => TileType::Png,
-        3 => TileType::Jpeg,
-        4 => TileType::Webp,
-        5 => TileType::Avif,
-        t => return Err(Error::Pack(format!("tile type {t} not supported"))),
-    };
-    let compression = match h.tile_compression {
-        1 => Compression::None,
-        2 => Compression::Gzip,
-        3 => Compression::Brotli,
-        4 => Compression::Zstd,
-        c => return Err(Error::Pack(format!("tile compression {c} not supported"))),
-    };
-    if let Some(p) = out.parent() {
-        crate::build::create_dir(p)?;
+    /// Reads the contents of `found` not read yet, sorted by offset, in merged ranges.
+    fn fetch(&mut self, found: &[(u64, u64, u64)]) -> Result<()> {
+        let mut spans: Vec<(u64, u64)> = found
+            .iter()
+            .map(|&(_, o, l)| (o, l))
+            .filter(|s| !self.data.contains_key(s))
+            .collect();
+        spans.sort_unstable();
+        spans.dedup();
+        let base = self.header.data.0;
+        let mut i = 0;
+        while i < spans.len() {
+            let start = spans[i].0;
+            let mut end = spans[i].0 + spans[i].1;
+            let mut j = i + 1;
+            while j < spans.len() && spans[j].0 <= end + MAX_GAP {
+                end = end.max(spans[j].0 + spans[j].1);
+                j += 1;
+            }
+            let block = self.src.read(base + start, end - start)?;
+            if block.len() as u64 != end - start {
+                return Err(Error::Pack(format!(
+                    "short read at {}: {} of {} bytes",
+                    base + start,
+                    block.len(),
+                    end - start
+                )));
+            }
+            self.reads.data_reads += 1;
+            self.reads.data_bytes_read += end - start;
+            for &(o, l) in &spans[i..j] {
+                let a = (o - start) as usize;
+                self.data.insert((o, l), block[a..a + l as usize].to_vec());
+            }
+            i = j;
+        }
+        Ok(())
     }
-    let mut f = skimap_common::output::AtomicFile::create(out)?;
-    let c = bbox.center();
-    let mut w = PmTilesWriter::new(tile_type)
-        .precompressed(compression)
-        .min_zoom(h.zooms.0)
-        .max_zoom(maxzoom)
-        .bounds(bbox.west, bbox.south, bbox.east, bbox.north)
-        .center(c.lon, c.lat)
-        .center_zoom(maxzoom.min(12).max(h.zooms.0))
-        .metadata(metadata)
-        .create(&mut f)
-        .map_err(|e| Error::pmtiles(out, e))?;
-    for (id, o, l) in &found {
-        let coord: TileCoord = TileId::new(*id).map_err(|e| Error::pmtiles(out, e))?.into();
-        w.add_tile(coord, &data[&(*o, *l)])
+
+    /// The tiles of `bbox` at `zoom` present in the archive, as stored (tile compression
+    /// of the header), by address. Reads only their leaf directories and data.
+    pub fn tiles_at(&mut self, bbox: BBox, zoom: u8) -> Result<HashMap<(u8, u32, u32), Vec<u8>>> {
+        let found = self.locate(bbox, zoom, zoom)?;
+        self.fetch(&found)?;
+        let by_id: HashMap<u64, (u64, u64)> =
+            found.iter().map(|&(id, o, l)| (id, (o, l))).collect();
+        let mut out = HashMap::new();
+        for (z, x, y) in tiles_covering(bbox, zoom, zoom) {
+            if let Some(span) = by_id.get(&tile_id(z, x, y)?) {
+                out.insert((z, x, y), self.data[span].clone());
+            }
+        }
+        Ok(out)
+    }
+
+    /// Writes the tiles of `bbox` up to `maxzoom` into `out` (tiles as they are, metadata
+    /// of the source); reads only what was not read before. The read figures are those
+    /// of the whole archive session (comparison included).
+    pub fn extract(&mut self, bbox: BBox, maxzoom: u8, out: &Path) -> Result<ExtractStats> {
+        let h = self.header;
+        let maxzoom = maxzoom.min(h.zooms.1);
+        let found = self.locate(bbox, h.zooms.0, maxzoom)?;
+        self.fetch(&found)?;
+        let mut stats = self.reads.clone();
+        stats.tiles = found.len();
+        let mut contents: Vec<(u64, u64)> = found.iter().map(|&(_, o, l)| (o, l)).collect();
+        contents.sort_unstable();
+        contents.dedup();
+        stats.contents = contents.len();
+
+        let tile_type = match h.tile_type {
+            1 => TileType::Mvt,
+            2 => TileType::Png,
+            3 => TileType::Jpeg,
+            4 => TileType::Webp,
+            5 => TileType::Avif,
+            t => return Err(Error::Pack(format!("tile type {t} not supported"))),
+        };
+        let compression = match h.tile_compression {
+            1 => Compression::None,
+            2 => Compression::Gzip,
+            3 => Compression::Brotli,
+            4 => Compression::Zstd,
+            c => return Err(Error::Pack(format!("tile compression {c} not supported"))),
+        };
+        if let Some(p) = out.parent() {
+            crate::build::create_dir(p)?;
+        }
+        let mut f = skimap_common::output::AtomicFile::create(out)?;
+        let c = bbox.center();
+        let mut w = PmTilesWriter::new(tile_type)
+            .precompressed(compression)
+            .min_zoom(h.zooms.0)
+            .max_zoom(maxzoom)
+            .bounds(bbox.west, bbox.south, bbox.east, bbox.north)
+            .center(c.lon, c.lat)
+            .center_zoom(maxzoom.min(12).max(h.zooms.0))
+            .metadata(self.metadata.clone())
+            .create(&mut f)
             .map_err(|e| Error::pmtiles(out, e))?;
+        for (id, o, l) in &found {
+            let coord: TileCoord = TileId::new(*id).map_err(|e| Error::pmtiles(out, e))?.into();
+            w.add_tile(coord, &self.data[&(*o, *l)])
+                .map_err(|e| Error::pmtiles(out, e))?;
+        }
+        w.finalize().map_err(|e| Error::pmtiles(out, e))?;
+        stats.bytes = f.commit()?;
+        Ok(stats)
     }
-    w.finalize().map_err(|e| Error::pmtiles(out, e))?;
-    stats.bytes = f.commit()?;
-    Ok(stats)
 }
 
 #[cfg(test)]

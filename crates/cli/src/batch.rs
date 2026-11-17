@@ -275,6 +275,49 @@ fn site_result(site: &str, o: &BuildOutcome) -> SiteResult {
     }
 }
 
+/// What a batch runs besides its bookkeeping: the stations layer of France, the AROME
+/// weather of the sites to build and the build of one site ([`Pipeline`]; replaced in
+/// tests).
+pub trait Steps: Sync {
+    /// Refreshes the stations layer of France (and the starts of the registry, X9).
+    fn stations(&self, ctx: &Ctx, force: bool) -> StepRecord;
+    /// AROME weather of `sites`.
+    fn meteo(&self, ctx: &Ctx, sites: &[&Site]) -> StepRecord;
+    /// Builds one site and writes its record.
+    fn site(
+        &self,
+        ctx: &Ctx,
+        site: &'static Site,
+        inp: BuildInputs,
+        shared: Shared<'_>,
+        opts: &BatchOptions,
+    ) -> Result<BuildOutcome>;
+}
+
+/// The steps of the pipeline.
+pub struct Pipeline;
+
+impl Steps for Pipeline {
+    fn stations(&self, ctx: &Ctx, force: bool) -> StepRecord {
+        stations_step(ctx, force)
+    }
+
+    fn meteo(&self, ctx: &Ctx, sites: &[&Site]) -> StepRecord {
+        meteo_step(ctx, sites)
+    }
+
+    fn site(
+        &self,
+        ctx: &Ctx,
+        site: &'static Site,
+        inp: BuildInputs,
+        shared: Shared<'_>,
+        opts: &BatchOptions,
+    ) -> Result<BuildOutcome> {
+        build_one(ctx, site, inp, shared, opts)
+    }
+}
+
 /// Builds `sites`.
 pub fn build_many(
     ctx: &Ctx,
@@ -282,9 +325,38 @@ pub fn build_many(
     sites: &[&'static Site],
     opts: &BatchOptions,
 ) -> Result<BatchSummary> {
+    build_many_with(ctx, registry, sites, opts, &Pipeline)
+}
+
+/// [`build_many`] with the given steps.
+pub fn build_many_with(
+    ctx: &Ctx,
+    registry: &Registry,
+    sites: &[&'static Site],
+    opts: &BatchOptions,
+    steps: &dyn Steps,
+) -> Result<BatchSummary> {
     let t0 = Instant::now();
     let started_at = now_rfc3339();
     let cache_before = cache_inventory(&ctx.layout.cache_root());
+    // The stations layer first: after new station cards it rewrites the starts of the
+    // registry (X9), part of the inputs of each site. Read before it (#164), the inputs
+    // of a pass were the old record while its sites were built and the next pass read
+    // the new one: no record to take over, every step of the site redone.
+    let stations = steps.stations(ctx, opts.force);
+    let reread;
+    let (registry, sites): (&Registry, Vec<&'static Site>) = match registry.source() {
+        Some(p) => {
+            reread = Registry::read(p)?;
+            let sites = sites
+                .iter()
+                .map(|s| Ok(reread.get(s.id)?))
+                .collect::<Result<_>>()?;
+            (&reread, sites)
+        }
+        None => (registry, sites.to_vec()),
+    };
+    let sites = &sites[..];
     let now = Utc::now();
     let mut results = Vec::new();
     let mut todo = VecDeque::new();
@@ -319,15 +391,13 @@ pub fn build_many(
         opts.jobs
     );
     let mut built: Vec<(String, BuildOutcome)> = Vec::new();
-    let mut stations = None;
     let mut meteo = None;
     if n > 0 {
         // Planet extract, census and SRN areas: read by the first step that needs them
         // (a site whose `pistes`, `domaines` and `srn` are taken over needs none).
         let france = crate::build::France::new(ctx);
-        stations = Some(stations_step(ctx, opts.force));
         let todo_sites: Vec<&Site> = todo.iter().map(|(s, _)| *s).collect();
-        meteo = (!ctx.cfg.personal_sources).then(|| meteo_step(ctx, &todo_sites));
+        meteo = (!ctx.cfg.personal_sources).then(|| steps.meteo(ctx, &todo_sites));
         let shared = Shared {
             france: Some(&france),
             stations_once: true,
@@ -354,7 +424,7 @@ pub fn build_many(
                         };
                         let _heavy = (site_area_km2(site) >= HEAVY_SITE_KM2)
                             .then(|| heavy.lock().unwrap_or_else(|p| p.into_inner()));
-                        let r = build_one(ctx, site, inp, shared, opts);
+                        let r = steps.site(ctx, site, inp, shared, opts);
                         let k = {
                             let mut c = counter.lock().expect("counter");
                             *c += 1;
@@ -409,8 +479,6 @@ pub fn build_many(
             }
         }
     }
-    // Every site up to date: the census on disk is the input of the stations layer.
-    let stations = stations.unwrap_or_else(|| stations_step(ctx, opts.force));
     let started: std::collections::BTreeSet<&str> = results
         .iter()
         .map(|r| r.site.as_str())
@@ -1071,6 +1139,175 @@ mod tests {
             "terrain : tile #-#: HTTP #"
         );
         assert_eq!(cause("snow", "x"), "snow : x");
+    }
+
+    /// Steps of a batch without the pipeline: the stations step adds a start to the site
+    /// in the registry file when asked (as `france::refresh_registry_starts` does after
+    /// new station cards); a site build records its inputs and whether the previous
+    /// record could be taken over (as `build_site`).
+    struct Fake {
+        new_start: std::sync::atomic::AtomicBool,
+        /// Per site build: site, starts of the site built, previous record taken over.
+        builds: Mutex<Vec<(String, usize, bool)>>,
+    }
+
+    impl Steps for Fake {
+        fn stations(&self, ctx: &Ctx, _force: bool) -> StepRecord {
+            if self
+                .new_start
+                .swap(false, std::sync::atomic::Ordering::SeqCst)
+            {
+                let path = Registry::path(&ctx.layout).unwrap();
+                let mut file: skimap_common::site::RegistryFile =
+                    serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+                let at = file.sites[0].commune_center;
+                file.sites[0].starts.push(skimap_common::site::Start {
+                    id: "nouveau".into(),
+                    name: "Nouveau départ".into(),
+                    phrase: "le nouveau départ".into(),
+                    phrase_en: None,
+                    lon: at.lon,
+                    lat: at.lat,
+                    provenance: "test".into(),
+                });
+                Registry::write(&path, &file).unwrap();
+            }
+            StepRecord {
+                name: "stations".into(),
+                state: StepState::Ok,
+                seconds: 0.0,
+                line: String::new(),
+                at: Some(now_rfc3339()),
+                outputs: None,
+                resumed: false,
+            }
+        }
+
+        fn meteo(&self, _ctx: &Ctx, _sites: &[&Site]) -> StepRecord {
+            StepRecord {
+                name: "meteo-arome".into(),
+                state: StepState::Ok,
+                seconds: 0.0,
+                line: String::new(),
+                at: Some(now_rfc3339()),
+                outputs: None,
+                resumed: false,
+            }
+        }
+
+        fn site(
+            &self,
+            ctx: &Ctx,
+            site: &'static Site,
+            inp: BuildInputs,
+            _shared: Shared<'_>,
+            _opts: &BatchOptions,
+        ) -> Result<BuildOutcome> {
+            let taken_over = france::read_record(&ctx.layout, site.id)
+                .is_some_and(|r| r.inputs.resumable_by(&inp));
+            self.builds
+                .lock()
+                .unwrap()
+                .push((site.id.to_owned(), site.starts.len(), taken_over));
+            let step = |name: &str| StepRecord {
+                name: name.into(),
+                state: StepState::Ok,
+                seconds: 0.0,
+                line: String::new(),
+                at: Some(now_rfc3339()),
+                outputs: None,
+                resumed: taken_over,
+            };
+            let outcome = BuildOutcome {
+                site: site.id.to_owned(),
+                steps: vec![step("meteo"), step("build-pack"), step("export")],
+                seconds: 0.0,
+                pack_bytes: None,
+                export_bytes: None,
+            };
+            let rec = BuildRecord {
+                inputs: inp,
+                started_at: now_rfc3339(),
+                finished_at: now_rfc3339(),
+                ok: true,
+                outcome: outcome.clone(),
+            };
+            skimap_common::output::write_json(&france::record_path(&ctx.layout, site.id), &rec)?;
+            Ok(outcome)
+        }
+    }
+
+    /// #164, catch-up of 17/11/2026: the inputs of each site (its registry record) were
+    /// read before the stations step rewrote the starts of the registry, so the pass
+    /// built and recorded the old record, and the next pass, reading the new one, found
+    /// no record to take over and rebuilt the site whole, without any weather reason.
+    #[test]
+    fn inputs_are_read_after_the_stations_step_refreshed_the_registry() {
+        let t = tempfile::tempdir().unwrap();
+        let cfg = skimap_common::config::Config::from_vars([(
+            "SKIMAP_DATA_DIR".to_owned(),
+            t.path().display().to_string(),
+        )])
+        .unwrap();
+        let ctx = Ctx::new(&cfg).unwrap();
+        let path = Registry::path(&ctx.layout).unwrap();
+        let record = skimap_common::site::evaluation_records()[0].clone();
+        Registry::write(
+            &path,
+            &skimap_common::site::RegistryFile {
+                generated_at: now_rfc3339(),
+                notes: Vec::new(),
+                sites: vec![record],
+            },
+        )
+        .unwrap();
+        let opts = BatchOptions {
+            jobs: 1,
+            force: false,
+            max_age: Duration::from_secs(86_400),
+            stop_after: None,
+            verify: false,
+        };
+        let steps = Fake {
+            new_start: false.into(),
+            builds: Mutex::new(Vec::new()),
+        };
+        // A pass of the catch-up: a new process reads the registry, a new AROME run
+        // marks the pack of the site to be redone.
+        let pass = |new_start: bool| {
+            let registry = Registry::load(&ctx.layout).unwrap();
+            let site = registry.buildable()[0];
+            if let Some(r) = france::read_record(&ctx.layout, site.id) {
+                assert!(r.ok);
+                record_standalone(&ctx.layout, site, "meteo", "run AROME suivant").unwrap();
+            }
+            steps
+                .new_start
+                .store(new_start, std::sync::atomic::Ordering::SeqCst);
+            build_many_with(&ctx, &registry, &[site], &opts, &steps).unwrap();
+            steps.builds.lock().unwrap().pop().unwrap()
+        };
+        let (id, starts0, _) = pass(false);
+        // The stations step finds new starts for the site.
+        let (_, starts1, _) = pass(true);
+        let recorded = france::read_record(&ctx.layout, &id).unwrap().inputs.record;
+        let on_disk = Registry::load(&ctx.layout)
+            .unwrap()
+            .record(&id)
+            .unwrap()
+            .clone();
+        let (_, _, taken_over) = pass(false);
+        assert!(
+            taken_over,
+            "the next pass rebuilt the site whole: recorded starts {:?}, registry starts {:?}",
+            recorded.starts.len(),
+            on_disk.starts.len()
+        );
+        assert_eq!(
+            recorded, on_disk,
+            "the pass records the registry as the stations step left it"
+        );
+        assert_eq!(starts1, starts0 + 1, "built with the new starts");
     }
 
     #[test]
