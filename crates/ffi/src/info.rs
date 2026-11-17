@@ -224,11 +224,12 @@ fn status_summary(pack: &Pack) -> Result<StatusSummary, PackError> {
 
 /// Summary of several packs shown together (free mode): bounds and status added up, the
 /// earliest validity, basemaps common to all, attributions of any.
-pub fn merge(infos: &[PackInfo], id: &str) -> PackInfo {
+pub fn merge(infos: &[PackInfo], id: &str, lang: crate::card::Lang) -> PackInfo {
+    let tx = crate::text::of(lang);
     let mut out = infos[0].clone();
     out.dir = String::new();
     out.site_id = id.to_owned();
-    out.site_name = "Tous les domaines installés".to_owned();
+    out.site_name = tx.all_domains().to_owned();
     out.department = String::new();
     for i in &infos[1..] {
         out.pack_version = out.pack_version.clone().max(i.pack_version.clone());
@@ -263,14 +264,11 @@ pub fn merge(infos: &[PackInfo], id: &str) -> PackInfo {
     }
     out.center_lon = (out.bounds.west + out.bounds.east) / 2.0;
     out.center_lat = (out.bounds.south + out.bounds.north) / 2.0;
-    out.validity_note = format!(
-        "{} packs : {}.",
-        infos.len(),
-        infos
+    out.validity_note = tx.packs_note(
+        &infos
             .iter()
             .map(|i| i.site_name.as_str())
-            .collect::<Vec<_>>()
-            .join(", ")
+            .collect::<Vec<_>>(),
     );
     out
 }

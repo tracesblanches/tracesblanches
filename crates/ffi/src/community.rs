@@ -265,7 +265,8 @@ pub struct OsmNote {
 }
 
 /// The OSM note of a correction (`missing_piste`, `piste_gone`, `wrong_name`,
-/// `wrong_difficulty`, `wrong_grooming`, `wrong_oneway`, `other`) at a position.
+/// `wrong_difficulty`, `wrong_grooming`, `wrong_oneway`, `other`) at a position, written
+/// in `lang`.
 #[uniffi::export]
 pub fn osm_note_draft(
     correction: String,
@@ -274,7 +275,7 @@ pub fn osm_note_draft(
     comment: String,
     lon: f64,
     lat: f64,
-    french: bool,
+    lang: crate::card::Lang,
 ) -> Result<OsmNote, CommunityError> {
     let c = Correction::parse(&correction)
         .ok_or_else(|| invalid(format!("correction {correction:?}")))?;
@@ -287,7 +288,7 @@ pub fn osm_note_draft(
         &comment,
         lon,
         lat,
-        french,
+        lang == crate::card::Lang::Fr,
     )
     .map_err(invalid)?;
     Ok(OsmNote {
@@ -384,7 +385,7 @@ mod tests {
             String::new(),
             6.77,
             44.85,
-            true,
+            crate::card::Lang::Fr,
         )
         .unwrap();
         assert!(
@@ -393,7 +394,16 @@ mod tests {
         );
         assert!(n.form_body.starts_with("lat=44.85&lon=6.77&text="));
         assert!(
-            osm_note_draft("nope".into(), None, None, String::new(), 6.77, 44.85, true).is_err()
+            osm_note_draft(
+                "nope".into(),
+                None,
+                None,
+                String::new(),
+                6.77,
+                44.85,
+                crate::card::Lang::Fr
+            )
+            .is_err()
         );
         assert!(strava_import("/nonexistent.zip".into(), "/tmp".into(), false).is_err());
     }

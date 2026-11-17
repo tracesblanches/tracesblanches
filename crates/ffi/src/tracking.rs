@@ -30,7 +30,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 
-use chrono::{DateTime, NaiveDateTime, Timelike, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use skimap_assist::inputs::{Paths, SiteData};
 use skimap_common::geom::LonLat;
 use skimap_core::graph::PisteGraph;
@@ -38,7 +38,7 @@ use skimap_pack::Pack;
 use skimap_plan::course::Course;
 use skimap_plan::gps::{GpsInput, GpsMode, GpsParams, GpsRequest, GpsState};
 use skimap_plan::guidance::{self, Junction};
-use skimap_plan::pace::{ProposalKind, clock_fr, duration_fr};
+use skimap_plan::pace::ProposalKind;
 use skimap_plan::phrases::Voice;
 use skimap_plan::plan::{DayPlan, KeyKind};
 use skimap_plan::session::{Activity, End, Phase, SessionEvent};
@@ -112,10 +112,6 @@ fn utc(ms: i64) -> DateTime<Utc> {
 
 fn ms(t: DateTime<Utc>) -> i64 {
     t.timestamp_millis()
-}
-
-fn hhmm(t: NaiveDateTime) -> String {
-    format!("{} h {:02}", t.hour(), t.minute())
 }
 
 /// The trail graph of a pack (`piste-graph` layer).
@@ -421,20 +417,6 @@ fn route_name(r: RouteRef) -> String {
         RouteRef::Plan => "plan".into(),
         RouteRef::PlanB(_) => "plan_b".into(),
         RouteRef::Live(_) => "live".into(),
-    }
-}
-
-fn cause_fr(c: &Cause) -> String {
-    match c {
-        Cause::Closure { .. } => "piste fermée sur l'itinéraire".into(),
-        Cause::Late { limit } => format!("retard sur la limite de {}", hhmm(*limit)),
-        Cause::Conditions(Condition::Fog) => "brouillard".into(),
-        Cause::Conditions(Condition::WindRising) => "vent qui se lève".into(),
-        Cause::Conditions(Condition::Snow) => "neige".into(),
-        Cause::Conditions(Condition::TemperatureDrop) => "froid".into(),
-        Cause::Deviation => "écart de l'itinéraire".into(),
-        Cause::NoTime => "plus le temps de finir la boucle avant la nuit".into(),
-        Cause::Pace => "proposition acceptée".into(),
     }
 }
 
@@ -773,6 +755,8 @@ struct Owned {
     log: PathBuf,
     /// Car parks of the pack.
     parkings: Vec<Parking>,
+    /// Language of the written texts: the phone's (VO6), whatever the voice speaks.
+    text_lang: skimap_voice::Lang,
     /// Where the car set by the skier is kept.
     car_file: PathBuf,
 }
@@ -1103,6 +1087,7 @@ impl TrackingSession {
             layers: layers.ok(),
             log,
             parkings,
+            text_lang: phone_lang,
             car_file: plan_dir.join(CAR_FILE),
         };
         let (tx, rx) = channel::<Cmd>();
@@ -1608,7 +1593,7 @@ impl<'a> Engine<'a> {
                         t_ms: ms(t),
                         route: route_name(to),
                         refusable: !matches!(cause, Cause::NoTime | Cause::Deviation),
-                        cause: cause_fr(&cause),
+                        cause: crate::text::of(self.o.text_lang).cause(&cause),
                         reverted: false,
                     };
                     self.switch = s.refusable.then(|| s.clone());
@@ -1619,7 +1604,7 @@ impl<'a> Engine<'a> {
                     b.switches.push(SwitchView {
                         t_ms: ms(t),
                         route: route_name(to),
-                        cause: cause_fr(&cause),
+                        cause: crate::text::of(self.o.text_lang).cause(&cause),
                         reverted: true,
                         refusable: false,
                     });
@@ -1810,7 +1795,8 @@ impl<'a> Engine<'a> {
 
     fn guidance(&self) -> GuidanceView {
         let p = &self.o.plan;
-        let limit = p.turnaround.limit.map(hhmm);
+        let tx = crate::text::of(self.o.text_lang);
+        let limit = p.turnaround.limit.map(|l| tx.assist().clock(l));
         let planned_back = p.pace.as_ref().map_or(p.turnaround.arrival, |x| x.planned);
         let s = self.tracker.progress();
         let mut remaining_m = (self.cache.length_m - s).max(0.0);
@@ -1819,11 +1805,7 @@ impl<'a> Engine<'a> {
             Some(e) => (
                 e.remaining.median_s,
                 e.arrival,
-                Some(format!(
-                    "{} à {}",
-                    clock_fr(e.arrival_lo),
-                    clock_fr(e.arrival_hi)
-                )),
+                Some(tx.arrival_range(e.arrival_lo, e.arrival_hi)),
             ),
             None => {
                 let rest = match &self.cache.course {
@@ -1852,8 +1834,8 @@ impl<'a> Engine<'a> {
             remaining_m,
             next: self.next_turn(),
             remaining_s,
-            remaining_text: duration_fr(remaining_s),
-            arrival: clock_fr(arrival),
+            remaining_text: tx.duration(remaining_s),
+            arrival: tx.clock5(arrival),
             arrival_ms: epoch_ms(arrival),
             arrival_range: if self.back.is_some() {
                 None
@@ -1956,7 +1938,7 @@ impl<'a> Engine<'a> {
             id: BACK_PROPOSAL_ID,
             t_ms,
             kind: "back".into(),
-            text: crate::tracking_back::proposal_text(self.target().as_ref()),
+            text: crate::tracking_back::proposal_text(self.target().as_ref(), self.o.text_lang),
         };
         // Said with the clips of the bank, in the language of the voice (VO6).
         let a = back_announcement(self.target().as_ref());

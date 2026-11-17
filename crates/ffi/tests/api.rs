@@ -12,7 +12,7 @@ use skimap_ffi::sync::{
     SyncError, install_bundle, record_sync, remove_pack, sync_plan, sync_plan_full, sync_state,
     verify_bundle,
 };
-use skimap_ffi::{LegendKind, PackError, list_packs, open_packs};
+use skimap_ffi::{Lang, LegendKind, PackError, list_packs, open_packs};
 use skimap_pack::Pack;
 use skimap_pack::update::{Update, write_bundle};
 
@@ -130,7 +130,13 @@ fn test_pack_with_every_validated_style() {
 
     for name in STYLES {
         let original: Value = serde_json::from_str(&style_json(name)).unwrap();
-        let view = open_packs(vec![dir.display().to_string()], style_json(name), false).unwrap();
+        let view = open_packs(
+            vec![dir.display().to_string()],
+            style_json(name),
+            false,
+            Lang::Fr,
+        )
+        .unwrap();
         let st = &view.style;
         let v: Value = serde_json::from_str(&st.json).unwrap();
         let (kind, theme) = name.split_once('-').unwrap();
@@ -241,6 +247,7 @@ fn test_pack_with_every_validated_style() {
         vec![dir.display().to_string()],
         style_json("fond-clair"),
         false,
+        Lang::Fr,
     )
     .unwrap();
     let s = view.info.status.unwrap();
@@ -249,7 +256,13 @@ fn test_pack_with_every_validated_style() {
     let st = view.set.map_style(style_json("srn-sombre")).unwrap();
     assert_eq!(st.name, "skimap test srn-sombre");
     assert!(
-        open_packs(vec![dir.display().to_string()], "{}".into(), false).is_err(),
+        open_packs(
+            vec![dir.display().to_string()],
+            "{}".into(),
+            false,
+            Lang::Fr
+        )
+        .is_err(),
         "a style without sources is refused"
     );
 }
@@ -262,7 +275,13 @@ fn paths_outside_the_pack_are_refused() {
     test_pack(&dir, 1);
     let style = json!({"version": 8, "metadata": {}, "layers": [],
         "sources": {"x": {"type": "geojson", "data": "../../etc/passwd"}}});
-    let e = open_packs(vec![dir.display().to_string()], style.to_string(), false).unwrap_err();
+    let e = open_packs(
+        vec![dir.display().to_string()],
+        style.to_string(),
+        false,
+        Lang::Fr,
+    )
+    .unwrap_err();
     assert!(matches!(e, PackError::Invalid { .. }), "{e:?}");
 }
 
@@ -275,7 +294,7 @@ fn two_packs_together_without_seam() {
     test_pack(&a, 1);
     test_pack(&b, 2);
     let dirs = vec![a.display().to_string(), b.display().to_string()];
-    let view = open_packs(dirs, style_json("fond-clair"), true).unwrap();
+    let view = open_packs(dirs, style_json("fond-clair"), true, Lang::Fr).unwrap();
     assert_eq!(view.set.len(), 2);
     assert_eq!(view.info.site_id, "libre");
     assert_eq!(view.style.name, "skimap libre fond-clair");
@@ -323,6 +342,7 @@ fn two_packs_together_without_seam() {
         vec![a.display().to_string()],
         style_json("fond-clair"),
         true,
+        Lang::Fr,
     )
     .unwrap();
     assert_eq!(one.style.name, "skimap libre fond-clair");
@@ -340,6 +360,7 @@ fn fee_zones_over_the_packs() {
         vec![a.display().to_string(), b.display().to_string()],
         style_json("fond-clair"),
         true,
+        Lang::Fr,
     )
     .unwrap();
     let zones = view.set.fee_zones().unwrap();
@@ -620,8 +641,13 @@ fn real_packs_with_every_style() {
         let dir = real_pack(site);
         for name in STYLES {
             let t = Instant::now();
-            let view =
-                open_packs(vec![dir.display().to_string()], style_json(name), false).unwrap();
+            let view = open_packs(
+                vec![dir.display().to_string()],
+                style_json(name),
+                false,
+                Lang::Fr,
+            )
+            .unwrap();
             let ms = t.elapsed().as_secs_f64() * 1e3;
             let v: Value = serde_json::from_str(&view.style.json).unwrap();
             let n = check_urls(&v, &[&dir]);
@@ -678,6 +704,7 @@ fn real_packs_with_every_style() {
             dirs.iter().map(|d| d.display().to_string()).collect(),
             style_json(name),
             true,
+            Lang::Fr,
         )
         .unwrap();
         let ms = t.elapsed().as_secs_f64() * 1e3;

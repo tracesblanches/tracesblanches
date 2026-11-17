@@ -20,15 +20,17 @@
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use chrono::{DateTime, Datelike, NaiveDate, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use skimap_assist::inputs::{Paths, SiteData};
 use skimap_core::battery::{self, Device, Measured, Usage};
 use skimap_core::calibration::ProfileModel;
 use skimap_pack::Pack;
-use skimap_plan::pace::{self, clock_fr, duration_fr};
+use skimap_plan::pace;
 use skimap_plan::plan::{self, Context};
 
+use crate::card::Lang;
+use crate::text;
 use crate::tracking::{TrackingError, epoch_ms};
 use crate::tracking_day::{PACK_FILE, PLAN_FILE, PackView, TRACK_FILE};
 
@@ -41,31 +43,16 @@ fn invalid(detail: impl std::fmt::Display) -> TrackingError {
     }
 }
 
-const DAYS_FR: [&str; 7] = [
-    "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche",
-];
-
-fn day_fr(d: NaiveDate) -> String {
-    format!(
-        "{} {:02}/{:02}",
-        DAYS_FR[d.weekday().num_days_from_monday() as usize],
-        d.day(),
-        d.month()
+fn local(ms: i64) -> NaiveDateTime {
+    skimap_core::ephemeris::local_time(
+        DateTime::<Utc>::from_timestamp_millis(ms).unwrap_or_default(),
     )
 }
 
-/// « mis à jour le 15/11 à 10 h 05 » (local time) of an epoch millisecond.
+/// « mis à jour le 15/11 à 10 h 05 » (local time) of an epoch millisecond, in `lang`.
 #[uniffi::export]
-pub fn updated_fr(ms: i64) -> String {
-    let t = skimap_core::ephemeris::local_time(
-        DateTime::<Utc>::from_timestamp_millis(ms).unwrap_or_default(),
-    );
-    format!(
-        "mis à jour le {:02}/{:02} à {}",
-        t.day(),
-        t.month(),
-        clock_fr(t)
-    )
+pub fn updated_text(ms: i64, lang: Lang) -> String {
+    text::of(lang).updated(local(ms))
 }
 
 /// A loop of a prepared day.
@@ -151,15 +138,10 @@ pub fn forecast_days(pack: &Pack) -> Vec<NaiveDate> {
         .collect()
 }
 
-fn time_text(s: &skimap_assist::suggest::Suggestion) -> String {
+fn time_text(s: &skimap_assist::suggest::Suggestion, t: &dyn text::Texts) -> String {
     match &s.group {
-        Some(g) => format!(
-            "environ {} ({} à {}) au rythme du groupe",
-            duration_fr(g.median_min * 60.0),
-            duration_fr(g.lo_min * 60.0),
-            duration_fr(g.hi_min * 60.0)
-        ),
-        None => format!("environ {} au modèle", duration_fr(s.eta_min * 60.0)),
+        Some(g) => t.time_group(g.median_min * 60.0, g.lo_min * 60.0, g.hi_min * 60.0),
+        None => t.time_model(s.eta_min * 60.0),
     }
 }
 
@@ -173,7 +155,8 @@ fn copy_plan(from: &Path, to: &Path) -> Result<(), TrackingError> {
 
 /// Prepares the next `days` days after `today` (`YYYY-MM-DD`) on the pack in `pack_dir`:
 /// mornings and plans written under `<out_dir>/<site>/<date>/`; `work_dir` receives the
-/// pipeline view of the pack; `group_json`: the group (C11) the times are for.
+/// pipeline view of the pack; `group_json`: the group (C11) the times are for; texts in
+/// `lang`.
 #[uniffi::export]
 pub fn prep_run(
     pack_dir: String,
@@ -182,8 +165,10 @@ pub fn prep_run(
     group_json: Option<String>,
     today: String,
     days: u32,
+    lang: Lang,
 ) -> Result<PrepReport, TrackingError> {
     let t0 = Instant::now();
+    let tx = text::of(lang);
     let today = NaiveDate::parse_from_str(&today, "%Y-%m-%d").map_err(invalid)?;
     let pack = Pack::open(PathBuf::from(&pack_dir)).map_err(invalid)?;
     let site = skimap_common::site::site(&pack.manifest().site.id).map_err(|_| {
@@ -205,27 +190,24 @@ pub fn prep_run(
     for k in 1..=days {
         let date = today + chrono::Duration::days(i64::from(k));
         if !covered.contains(&date) {
-            skipped.push(format!("{} : aucune prévision dans le pack", day_fr(date)));
+            skipped.push(tx.skipped_no_forecast(&tx.day(date)));
             continue;
         }
         let Some(mut req) = skimap_plan::presets::requests(site, date)
             .into_iter()
             .next()
         else {
-            skipped.push(format!(
-                "{} : aucun départ connu pour ce domaine",
-                day_fr(date)
-            ));
+            skipped.push(tx.skipped_no_start(&tx.day(date)));
             continue;
         };
         req.date = date;
-        let m = plan::morning_for(&data, &req, model.as_ref());
+        let m = plan::morning_in(&data, &req, model.as_ref(), lang);
         let dir = Path::new(&out_dir).join(site.id).join(date.to_string());
         std::fs::create_dir_all(&dir).map_err(invalid)?;
         let mut day = PreparedDay {
             site_id: site.id.to_owned(),
             date: date.to_string(),
-            day_text: day_fr(date),
+            day_text: tx.day(date),
             start_name: req.start_name.clone(),
             briefing: m.briefing.text.clone(),
             best_time: m.best_time.as_ref().map(|b| b.text.clone()),
@@ -237,19 +219,21 @@ pub fn prep_run(
                 .map(|s| PreparedLoop {
                     label: s.label.clone(),
                     length_km: s.length_km,
-                    time_text: time_text(s),
+                    time_text: time_text(s, tx),
                 })
                 .collect(),
             plan_dir: None,
             expected_back: None,
             plans_b: Vec::new(),
             missing_clips: Vec::new(),
-            group: model.as_ref().map(|md| md.profile.label_fr()),
+            group: model
+                .as_ref()
+                .map(|md| tx.assist().group_label(&md.profile)),
             prepared_ms: Utc::now().timestamp_millis(),
             prepared_text: String::new(),
-            never_safe: plan::NEVER_SAFE.into(),
+            never_safe: skimap_plan::text::of(lang).never_safe().into(),
         };
-        day.prepared_text = updated_fr(day.prepared_ms);
+        day.prepared_text = tx.updated(local(day.prepared_ms));
         if !m.suggestions.suggestions.is_empty() {
             let mut p = plan::build(&mut data, &m, 0, &ctx)?;
             let g = data.graph.as_ref().ok_or_else(|| invalid("graphe"))?;
@@ -267,7 +251,7 @@ pub fn prep_run(
                 .as_ref()
                 .map_or(p.turnaround.arrival_with_margin, |x| x.planned);
             day.plan_dir = Some(pdir.display().to_string());
-            day.expected_back = Some(clock_fr(back));
+            day.expected_back = Some(tx.clock5(back));
             day.plans_b = p
                 .plans_b
                 .iter()
@@ -313,16 +297,17 @@ pub struct PrepState {
     pub infos: Vec<InfoAge>,
 }
 
-const INFOS: [(&str, &str); 9] = [
-    ("bera", "Bulletin d'avalanche (BERA)"),
-    ("meteo-hourly", "Prévisions météo heure par heure"),
-    ("status", "État des pistes"),
-    ("snow-depth", "Enneigement estimé"),
-    ("offpiste-snow", "Neige hors piste"),
-    ("avalanche-exposure", "Exposition aux avalanches (modèle)"),
-    ("zones", "Zones et règles"),
-    ("refuges", "Refuges"),
-    ("pistes", "Pistes"),
+/// Informations of a pack whose age ski mode shows, by layer id.
+const INFOS: [&str; 9] = [
+    "bera",
+    "meteo-hourly",
+    "status",
+    "snow-depth",
+    "offpiste-snow",
+    "avalanche-exposure",
+    "zones",
+    "refuges",
+    "pistes",
 ];
 
 fn rfc3339_ms(s: &str) -> Option<i64> {
@@ -331,29 +316,32 @@ fn rfc3339_ms(s: &str) -> Option<i64> {
         .map(|d| d.timestamp_millis())
 }
 
-/// Ages of the informations of the packs in `pack_dirs`.
-pub fn info_ages(pack_dirs: &[String]) -> Vec<InfoAge> {
+/// Ages of the informations of the packs in `pack_dirs`, labels in `lang`.
+pub fn info_ages(pack_dirs: &[String], lang: Lang) -> Vec<InfoAge> {
+    let tx = text::of(lang);
+    let updated =
+        |ms: Option<i64>| ms.map_or_else(|| tx.date_unknown().to_owned(), |m| tx.updated(local(m)));
     let mut out = Vec::new();
     for d in pack_dirs {
         let Ok(pack) = Pack::open(PathBuf::from(d)) else {
             continue;
         };
         let site = pack.manifest().site.id.clone();
-        for (id, label) in INFOS {
+        for id in INFOS {
             let Ok(l) = pack.layer(id) else { continue };
             let ms = l.generated_at.as_deref().and_then(rfc3339_ms);
             out.push(InfoAge {
-                label: label.to_owned(),
+                label: tx.info_label(id).unwrap_or(id).to_owned(),
                 site_id: site.clone(),
-                updated_text: ms.map_or_else(|| "date inconnue".to_owned(), updated_fr),
+                updated_text: updated(ms),
                 updated_ms: ms.unwrap_or(0),
             });
         }
         let ms = rfc3339_ms(&pack.manifest().generated_at);
         out.push(InfoAge {
-            label: "Pack du domaine".to_owned(),
+            label: tx.info_label("pack").unwrap_or("pack").to_owned(),
             site_id: site,
-            updated_text: ms.map_or_else(|| "date inconnue".to_owned(), updated_fr),
+            updated_text: updated(ms),
             updated_ms: ms.unwrap_or(0),
         });
     }
@@ -363,7 +351,7 @@ pub fn info_ages(pack_dirs: &[String]) -> Vec<InfoAge> {
 /// Ski mode: the prepared days under `out_dir` from `today` on, and the age of every
 /// information of the packs in `pack_dirs`. Reads files only.
 #[uniffi::export]
-pub fn prep_read(out_dir: String, pack_dirs: Vec<String>, today: String) -> PrepState {
+pub fn prep_read(out_dir: String, pack_dirs: Vec<String>, today: String, lang: Lang) -> PrepState {
     let mut days: Vec<PreparedDay> = Vec::new();
     if let Ok(sites) = std::fs::read_dir(&out_dir) {
         for s in sites.filter_map(Result::ok) {
@@ -385,7 +373,7 @@ pub fn prep_read(out_dir: String, pack_dirs: Vec<String>, today: String) -> Prep
     days.sort_by(|a, b| a.date.cmp(&b.date).then(a.site_id.cmp(&b.site_id)));
     PrepState {
         days,
-        infos: info_ages(&pack_dirs),
+        infos: info_ages(&pack_dirs, lang),
     }
 }
 
@@ -431,7 +419,9 @@ pub fn battery_forecast(
     airplane: bool,
     measured_h: f64,
     measured_pct: f64,
+    lang: Lang,
 ) -> BatteryView {
+    let tx = text::of(lang);
     let d = Device::with_capacity(capacity_mah);
     let u = Usage {
         screen_min_per_h,
@@ -450,35 +440,15 @@ pub fn battery_forecast(
     });
     let f = battery::forecast(&d, &u, level_pct, temp_c, planned_h, measured);
     let until = now_ms + (f.hours_to_reserve.min(72.0) * 3_600_000.0) as i64;
-    let clock = |ms: i64| {
-        clock_fr(skimap_core::ephemeris::local_time(
-            DateTime::<Utc>::from_timestamp_millis(ms).unwrap_or_default(),
-        ))
-    };
-    let cold = if temp_c < 0.0 {
-        format!(", batterie à {temp_c:.0} °C : garde le téléphone au chaud")
-    } else {
-        String::new()
-    };
+    let clock = |ms: i64| tx.clock5(local(ms));
+    let cold = (temp_c < 0.0).then_some(temp_c);
     let text = if f.hours_to_reserve >= 24.0 {
-        format!(
-            "Batterie suffisante pour plus de 24 h, {:.0} % gardés pour un appel d'urgence{cold}",
-            f.reserve_pct
-        )
+        tx.battery_day(f.reserve_pct, cold)
     } else {
-        format!(
-            "Batterie suffisante jusqu'à {}, {:.0} % gardés pour un appel d'urgence{cold}",
-            clock(until),
-            f.reserve_pct
-        )
+        tx.battery_until(&clock(until), f.reserve_pct, cold)
     };
-    let warning = (planned_h > 0.0 && !f.enough).then(|| {
-        format!(
-            "Batterie insuffisante pour la sortie prévue (fin vers {}) : elle atteindra la réserve d'urgence vers {}. Raccourcis la sortie, emporte une batterie externe ou passe en mode avion.",
-            clock(planned_end_ms),
-            clock(until)
-        )
-    });
+    let warning = (planned_h > 0.0 && !f.enough)
+        .then(|| tx.battery_short(&clock(planned_end_ms), &clock(until)));
     BatteryView {
         pct_per_h: f.pct_per_h,
         reserve_pct: f.reserve_pct,
@@ -514,6 +484,7 @@ mod tests {
             false,
             0.0,
             0.0,
+            Lang::Fr,
         );
         assert!(ok.enough && ok.warning.is_none());
         assert!(ok.text.starts_with("Batterie suffisante"), "{}", ok.text);
@@ -529,6 +500,7 @@ mod tests {
             false,
             1.0,
             9.0,
+            Lang::Fr,
         );
         eprintln!("{} / {:?}", low.text, low.warning);
         assert!(!low.enough);
@@ -560,6 +532,7 @@ mod tests {
             Some(fam.model_json),
             today.clone(),
             3,
+            Lang::Fr,
         )
         .unwrap();
         eprintln!("{} ms, skipped {:?}", r.compute_ms, r.skipped);
@@ -592,6 +565,7 @@ mod tests {
             out.path().display().to_string(),
             vec![pack.display().to_string()],
             today,
+            Lang::Fr,
         );
         assert_eq!(st.days.len(), r.days.len());
         assert!(st.infos.iter().any(
