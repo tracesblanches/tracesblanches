@@ -105,6 +105,7 @@ pub struct Request {
     secret_query: Vec<(String, Secret)>,
     cache: CachePolicy,
     max_age: Option<Duration>,
+    current_since: Option<u64>,
 }
 
 impl Request {
@@ -119,6 +120,7 @@ impl Request {
             secret_query: Vec::new(),
             cache: CachePolicy::Normal,
             max_age: None,
+            current_since: None,
         }
     }
 
@@ -196,6 +198,16 @@ impl Request {
     /// Overrides the cache lifetime of the source for this request.
     pub fn max_age(mut self, d: Duration) -> Self {
         self.max_age = Some(d);
+        self
+    }
+
+    /// Freshness by data version instead of age: a cached body validated at or after
+    /// `unix` (seconds) is current whatever its age, an older one is asked again
+    /// (conditionally when possible). For data published by version, e.g. tiles that only
+    /// change with a new edition of their catalogue record; overrides
+    /// [`Request::max_age`].
+    pub fn current_since(mut self, unix: u64) -> Self {
+        self.current_since = Some(unix);
         self
     }
 
@@ -601,9 +613,13 @@ impl Downloader {
     ) -> Result<Fetched> {
         let cached = entry.load()?;
         let max_age = req.max_age.unwrap_or(policy.max_age);
+        let fresh = |meta: &CacheMeta| match req.current_since {
+            Some(since) => meta.validated_at_unix >= since,
+            None => self.now_unix().saturating_sub(meta.validated_at_unix) < max_age.as_secs(),
+        };
         if mode == CachePolicy::Normal
             && let Some(meta) = &cached
-            && self.now_unix().saturating_sub(meta.validated_at_unix) < max_age.as_secs()
+            && fresh(meta)
         {
             let meta = meta.clone();
             return Ok(self.done(req, entry, meta, Origin::Cache));
