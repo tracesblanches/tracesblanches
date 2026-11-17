@@ -1009,6 +1009,33 @@ mod tests {
         LazyLock::new(|| *site("chapelle-des-bois").unwrap());
 
     #[test]
+    fn registry_sites_take_the_pipeline_starts() {
+        // A census site of the registry: its starts (X9) are those of its record.
+        let mut r = evaluation_records()[0].clone();
+        r.id = "domaine-test".into();
+        r.local = None;
+        let centre = starts(&r.to_site());
+        assert_eq!(centre.len(), 1);
+        assert_eq!(centre[0].id, "centre");
+        r.starts = vec![Start {
+            id: "depart-1".into(),
+            name: "Foyer (Test)".into(),
+            phrase: "le foyer nordique du domaine Test".into(),
+            phrase_en: Some("the Test area nordic lodge".into()),
+            lon: r.commune_center.lon,
+            lat: r.commune_center.lat,
+            provenance: "déduit (X9)".into(),
+        }];
+        let json = serde_json::to_string(&r).unwrap();
+        let back: SiteRecord = serde_json::from_str(&json).unwrap();
+        let reg = Registry::from_records(vec![back]).unwrap();
+        let s = starts(reg.get("domaine-test").unwrap());
+        assert_eq!(s, r.starts);
+        // The evaluation table keeps its own starts.
+        assert_eq!(starts(&CERVIERES)[0].id, "le-laus");
+    }
+
+    #[test]
     fn lookup() {
         assert_eq!(site("cervieres").unwrap().insee, "05027");
         assert_eq!(site("chapelle-des-bois").unwrap().primary_massif().code, 55);
