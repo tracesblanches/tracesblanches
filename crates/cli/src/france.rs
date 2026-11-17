@@ -1252,6 +1252,7 @@ mod tests {
             method: Method::Points,
             score,
             points: Vec::new(),
+            network: None,
         };
         let file = DepartsFile {
             generated_at: String::new(),

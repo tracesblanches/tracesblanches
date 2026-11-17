@@ -271,7 +271,7 @@ pub fn area_departs(
         })
         .collect();
     let refs: Vec<&Point> = boosted.iter().collect();
-    let mut out = crate::departs::clustered(&area.place, ways, &refs, MAX_AREA_STARTS, 0.0);
+    let mut out = crate::departs::clustered(&area.place, ways, &refs, MAX_AREA_STARTS, 0.0, None);
     if out.is_empty() {
         out.push(fallback(&area.place, ways, &refs, villages));
     }
@@ -390,6 +390,7 @@ fn fallback(place: &Place, ways: &[Way], points: &[&Point], villages: &[&Point])
         method,
         score: 0.0,
         points: urls,
+        network: None,
     }
 }
 
@@ -677,6 +678,7 @@ mod tests {
             method: Method::Points,
             score,
             points: Vec::new(),
+            network: None,
         };
         let list = vec![mk(6.0, 10.0), mk(6.5, 4.0), mk(6.6, 2.0), mk(6.7, 1.0)];
         let all = pick(&list, None);
