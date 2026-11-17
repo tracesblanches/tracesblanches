@@ -289,11 +289,14 @@ class ToolsTest {
                         "projet d'arrêté (texte signé non lu)",
                     ),
                 ),
+                "Règles locales non vérifiées : Tourbière du Cerneux (arrêté de protection de biotope) : texte non lu ; " +
+                    "arrêtés municipaux et préfectoraux : non recensés.",
                 "Règles relevées dans les textes cités ; le texte officiel et la signalisation font foi.",
             )
         var car = 0
         rule.setContent { Themed { Surface { PlaceContent(r, onFog = {}, onOffpiste = {}, onCar = { car++ }) } } }
         rule.onNodeWithText("Bivouac : interdit").assertIsDisplayed()
+        rule.onNodeWithText("Règles locales non vérifiées", substring = true).assertExists()
         capture("tools_place_rules")
         // « La voiture est ici » (K4): one touch, optional.
         rule.onNodeWithTag(PlaceTags.CAR).assertIsDisplayed().performClick()
@@ -331,10 +334,13 @@ class ToolsTest {
                         "draft order (signed text not read)",
                     ),
                 ),
+                "Local rules not verified: Tourbière du Cerneux (biotope protection order): text not read; " +
+                    "municipal and prefectoral orders: not listed.",
                 "Rules read in the texts cited, at this date and time; the official text and the signs on the ground prevail.",
             )
         rule.setContent { Themed { Surface { PlaceContent(r, onFog = {}, onOffpiste = {}, onCar = {}) } } }
         rule.onNodeWithText("Bivouac: forbidden").assertIsDisplayed()
+        rule.onNodeWithText("Local rules not verified", substring = true).assertExists()
         capture("tools_place_rules_en")
     }
 
