@@ -39,10 +39,20 @@ impl Ctx {
 
     /// P2: pistes layer (reads the planet extract unless given).
     pub fn pistes(&self, site: &Site, planet: Option<&Planet>) -> Result<PistesOutput> {
-        Ok(match planet {
-            Some(p) => skimap_osm::extract::build_from(site, &self.layout, p)?,
-            None => skimap_osm::extract::build(site, &self.layout, &self.dl)?,
-        })
+        let loaded;
+        let p = match planet {
+            Some(p) => p,
+            None => {
+                loaded = skimap_osm::extract::load_planet(&self.dl)?;
+                &loaded
+            }
+        };
+        Ok(skimap_osm::extract::build_from_with(
+            site,
+            &self.layout,
+            p,
+            self.cfg.personal_sources,
+        )?)
     }
 
     /// P3: census of France, `data/out/france/domaines/`.
@@ -354,34 +364,6 @@ impl Ctx {
             })
         });
         let planet_ref = || france.planet();
-        let mut graph_edges = None;
-        if run.resumable("pistes", &["planet"]).is_some() {
-            // Taken over: the edge count of the routing test comes from the layer.
-            graph_edges = LayerMeta::read(
-                &self
-                    .layout
-                    .out_dir(site)
-                    .join("pistes")
-                    .join("pistes.meta.json"),
-            )
-            .ok()
-            .and_then(|m| m.stats["graph_edges"].as_u64())
-            .map(|n| n as usize);
-        }
-        run.step("pistes", &["planet"], || {
-            let s = self.pistes(site, Some(planet_ref()?))?.stats;
-            graph_edges = Some(s.graph_edges);
-            Ok(format!(
-                "{} ways, {} km dont {} km nordiques ; graphe {} nœuds, {} arêtes ({} connecteurs), {} composantes",
-                s.ways,
-                s.km_total,
-                s.km_nordic,
-                s.graph_nodes,
-                s.graph_edges,
-                s.graph_connectors,
-                s.graph_components
-            ))
-        });
         run.step("domaines", &["planet"], || {
             let p = planet_ref()?;
             let census = france.census()?;
@@ -430,6 +412,40 @@ impl Ctx {
                 } else {
                     ""
                 }
+            ))
+        });
+        // The graph of an SRN site takes its itineraries (#168): after the `srn` step.
+        let pistes_deps: &[&'static str] = if skimap_osm::srn_ways::takes_itineraries(site) {
+            &["planet", "srn"]
+        } else {
+            &["planet"]
+        };
+        let mut graph_edges = None;
+        if run.resumable("pistes", pistes_deps).is_some() {
+            // Taken over: the edge count of the routing test comes from the layer.
+            graph_edges = LayerMeta::read(
+                &self
+                    .layout
+                    .out_dir(site)
+                    .join("pistes")
+                    .join("pistes.meta.json"),
+            )
+            .ok()
+            .and_then(|m| m.stats["graph_edges"].as_u64())
+            .map(|n| n as usize);
+        }
+        run.step("pistes", pistes_deps, || {
+            let s = self.pistes(site, Some(planet_ref()?))?.stats;
+            graph_edges = Some(s.graph_edges);
+            Ok(format!(
+                "{} ways, {} km dont {} km nordiques ; graphe {} nœuds, {} arêtes ({} connecteurs), {} composantes",
+                s.ways,
+                s.km_total,
+                s.km_nordic,
+                s.graph_nodes,
+                s.graph_edges,
+                s.graph_connectors,
+                s.graph_components
             ))
         });
         // France layer: a batch refreshes it once before its sites (`Shared::stations_once`).

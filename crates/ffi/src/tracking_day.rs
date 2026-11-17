@@ -85,6 +85,10 @@ pub struct DayStart {
     pub lat: f64,
 }
 
+/// Shortest walk from the car park to the network said with the loops, metres (#168):
+/// below, the size of a car park.
+pub const ACCESS_SAID_M: f64 = 30.0;
+
 /// What the skier asks in the morning.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct DayRequest {
@@ -656,6 +660,13 @@ impl DayPlanner {
         let t0 = Instant::now();
         let tx = text::of(self.lang);
         let req = request.to_plan()?;
+        // The walk from the car park to the network, when the start says it (#168).
+        let access = skimap_common::site::starts(self.site)
+            .iter()
+            .find(|s| s.lon == request.start.lon && s.lat == request.start.lat)
+            .and_then(|s| s.access_m)
+            .filter(|m| *m >= ACCESS_SAID_M)
+            .map(|m| tx.off_network_access(m));
         let model = group_json.as_deref().map(model_of).transpose()?;
         let mut l = self
             .loaded
@@ -696,7 +707,11 @@ impl DayPlanner {
                     warning,
                     if_all_goes_well: s.if_all_goes_well,
                     status_km: vec![s.status_km.0, s.status_km.1, s.status_km.2],
-                    reasons: s.reasons.iter().map(|r| r.text.clone()).collect(),
+                    reasons: access
+                        .iter()
+                        .cloned()
+                        .chain(s.reasons.iter().map(|r| r.text.clone()))
+                        .collect(),
                     equipment: m
                         .equipment
                         .get(i)

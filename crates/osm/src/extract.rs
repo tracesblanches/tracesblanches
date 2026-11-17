@@ -337,14 +337,34 @@ fn osm_node(id: i64) -> Value {
     if id > 0 { json!(id) } else { Value::Null }
 }
 
-/// Builds the pistes layer of `site` from an already loaded extract.
+/// Builds the pistes layer of `site` from an already loaded extract, for a published pack
+/// ([`build_from_with`] without personal sources).
 pub fn build_from(site: &Site, layout: &DataLayout, planet: &Planet) -> Result<PistesOutput> {
+    build_from_with(site, layout, planet, false)
+}
+
+/// Builds the pistes layer of `site` from an already loaded extract; the graph of an SRN
+/// site takes its itineraries of personal-use sources only with `personal_sources`
+/// ([`crate::srn_ways`]).
+pub fn build_from_with(
+    site: &Site,
+    layout: &DataLayout,
+    planet: &Planet,
+    personal_sources: bool,
+) -> Result<PistesOutput> {
     let dir = layout.layer_dir(site, LAYER)?;
     let (set, reentries) = site_pistes(&planet.set, &site.bbox);
     for r in &reentries {
         tracing::info!(site = site.id, ?r, "outside path kept");
     }
-    let graph = Graph::build(&set, CONNECTOR_MAX_M);
+    // An SRN site is skied on its itineraries (#168): they are ways of its graph, after
+    // the OSM ways (`pistes.geojson` keeps the OSM ways only).
+    let srn = crate::srn_ways::site_srn(site, layout, &set, personal_sources)?;
+    let mut graph_set = set.clone();
+    graph_set
+        .pistes
+        .extend(srn.ways.iter().map(|w| w.piste.clone()));
+    let graph = Graph::build(&graph_set, CONNECTOR_MAX_M);
 
     let mut features = Vec::with_capacity(set.pistes.len());
     for p in &set.pistes {
@@ -364,9 +384,18 @@ pub fn build_from(site: &Site, layout: &DataLayout, planet: &Planet) -> Result<P
     for (i, e) in graph.edges.iter().enumerate() {
         let mut props = match e.kind {
             EdgeKind::Piste { piste } => {
-                let mut m = piste_properties(&set, &set.pistes[piste], &site.bbox);
+                let mut m = piste_properties(&graph_set, &graph_set.pistes[piste], &site.bbox);
                 m.remove("length_m");
                 m.insert("kind".into(), json!("piste"));
+                if let Some(w) = piste
+                    .checked_sub(set.pistes.len())
+                    .and_then(|i| srn.ways.get(i))
+                {
+                    m.insert("osm_way_id".into(), Value::Null);
+                    m.insert("srn_route".into(), json!(w.route_id));
+                    m.insert("srn_provider".into(), json!(w.provider));
+                    m.insert("srn_licence".into(), json!(w.licence));
+                }
                 m
             }
             EdgeKind::Connector => {
@@ -500,19 +529,61 @@ pub fn build_from(site: &Site, layout: &DataLayout, planet: &Planet) -> Result<P
             json!("circulation seulement de from vers to"),
         );
         m.insert("length_m".into(), json!("longueur de l'arête, m"));
+        if crate::srn_ways::takes_itineraries(site) {
+            m.insert(
+            "srn_route".into(),
+            json!("zones SRN et traversées seulement : identifiant de l'itinéraire SRN (srn/srn_routes.geojson) dont l'arête est un morceau, osm_way_id null"),
+        );
+            m.insert(
+            "srn_provider, srn_licence".into(),
+            json!("source de l'itinéraire SRN (osm, geotrek, camptocamp, datatourisme) et sa licence telle que publiée"),
+        );
+        }
     }
-    let meta = LayerMeta {
+    let takes = crate::srn_ways::takes_itineraries(site);
+    let mut edges_desc = format!(
+        "graphe de routage : ways coupés aux jonctions, un nœud au croisement de deux pistes sans nœud commun (hors pont, tunnel ou niveau), plus des connecteurs fermant les trous de moins de {CONNECTOR_MAX_M} m entre un cul-de-sac et une autre piste et de moins de {DEAD_END_PAIR_MAX_M} m entre deux culs-de-sac de parties disjointes du réseau (largeur d'une route)"
+    );
+    let mut edges_licence = LICENCE.to_owned();
+    if takes {
+        edges_desc.push_str(&format!(" ; zone SRN ou traversée : plus les itinéraires SRN de la couche srn du site (propriétés srn_route, srn_provider, srn_licence, osm_way_id null), gardés dans l'emprise, sans les tronçons à moins de {} m d'une piste déjà prise sur {} m au moins (la piste les porte), coupés tous les {} m au plus, joints aux pistes de la même façon", crate::srn_ways::FOLLOW_M, crate::srn_ways::FOLLOW_MIN_M, crate::srn_ways::SPLIT_M));
+        if !srn.sources.is_empty() {
+            // L3 (docs/licences/l3-combinaison.md): the graph is an ODbL database; the
+            // itineraries of other sources keep their licence and attribution.
+            edges_licence = format!(
+                "{LICENCE} ; itinéraires SRN : {}",
+                srn.sources
+                    .iter()
+                    .map(|s| format!(
+                        "{} ({}{}, attribution : {})",
+                        s.name,
+                        s.licence,
+                        if s.personal_use_only {
+                            ", usage personnel seulement"
+                        } else {
+                            ""
+                        },
+                        s.attribution
+                    ))
+                    .collect::<Vec<_>>()
+                    .join(" ; ")
+            );
+        }
+    }
+    let mut sources = vec![planet.source.clone()];
+    sources.extend(srn.sources.iter().cloned());
+    let mut meta = LayerMeta {
         tickets: vec!["P2 (#15)".to_owned()],
         valid_from: planet.valid_at.clone(),
         crs: Some("EPSG:4326 (WGS84, longitude, latitude)".to_owned()),
-        sources: vec![planet.source.clone()],
+        sources,
         files: vec![
             FileMeta::new("pistes.geojson", format!("ways OSM de ski nordique, raquettes et randonnée hivernale ayant au moins un sommet dans l'emprise du site, plus les ways hors de l'emprise qui ramènent le réseau dans l'emprise (chemin hors emprise le plus court, {} km au plus, propriété in_box = false)", REENTRY_MAX_M / 1000.0))
                 .licence(LICENCE)
                 .count(features.len())
                 .properties_json(&piste_properties_doc()),
-            FileMeta::new("graph_edges.geojson", format!("graphe de routage : ways coupés aux jonctions, un nœud au croisement de deux pistes sans nœud commun (hors pont, tunnel ou niveau), plus des connecteurs fermant les trous de moins de {CONNECTOR_MAX_M} m entre un cul-de-sac et une autre piste et de moins de {DEAD_END_PAIR_MAX_M} m entre deux culs-de-sac de parties disjointes du réseau (largeur d'une route)"))
-                .licence(LICENCE)
+            FileMeta::new("graph_edges.geojson", edges_desc)
+                .licence(edges_licence)
                 .count(edge_features.len())
                 .properties_json(&edge_doc),
             FileMeta::new("graph_nodes.geojson", "nœuds du graphe : jonctions, extrémités, cibles des connecteurs")
@@ -535,6 +606,19 @@ pub fn build_from(site: &Site, layout: &DataLayout, planet: &Planet) -> Result<P
         stats: json!({ "summary": stats, "relations": relations, "reentries": reentries }),
         ..LayerMeta::new(LAYER, site.id)
     };
+    if takes {
+        let st = &srn.stats;
+        let km = |x: f64| (x * 100.0).round() / 100.0;
+        meta.parameters["srn_itineraries"] = json!({
+            "personal_sources": personal_sources,
+            "routes": st.routes,
+            "left_out_for_licence": st.left_out,
+            "km_in_box": km(st.km_in_box),
+            "km_on_trails": km(st.km_on_trails),
+            "km_ways": km(st.km_ways),
+            "ways": srn.ways.len(),
+        });
+    }
     write_json(&dir.join(format!("{LAYER}.meta.json")), &meta)?;
     Ok(PistesOutput {
         dir,

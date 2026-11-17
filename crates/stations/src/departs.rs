@@ -828,6 +828,9 @@ pub fn clustered(
                 lon: round7(pos.lon),
                 lat: round7(pos.lat),
                 provenance,
+                // The walk from the car park to the itinerary (SRN, #168).
+                access_m: matches!(place.kind, PlaceKind::SrnArea | PlaceKind::Traverse)
+                    .then(|| h.snap.dist.round()),
             },
             method: cl.method,
             score: (cl.score * 100.0).round() / 100.0,
@@ -990,6 +993,7 @@ fn fallback(d: &Domain, net: &Net, local: &Local, points: &[&Point]) -> Depart {
             lon: round7(pos.lon),
             lat: round7(pos.lat),
             provenance,
+            access_m: None,
         },
         method,
         score,

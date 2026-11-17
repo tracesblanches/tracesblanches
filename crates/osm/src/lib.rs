@@ -18,6 +18,7 @@ pub mod graph;
 pub mod local;
 pub mod parse;
 pub mod pistes;
+pub mod srn_ways;
 
 pub use error::{OsmError, Result};
 

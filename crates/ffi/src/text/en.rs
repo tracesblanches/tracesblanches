@@ -85,6 +85,13 @@ impl Texts for En {
         )
     }
 
+    fn off_network_access(&self, metres: f64) -> String {
+        let m = (metres / 10.0).round() * 10.0;
+        format!(
+            "Off-network access: {m} m on foot or on skis from the car park (or lodge) to the route, no trail, on top of the loop"
+        )
+    }
+
     fn key_kind(&self, k: skimap_plan::plan::KeyKind) -> &'static str {
         use skimap_plan::plan::KeyKind;
         match k {
