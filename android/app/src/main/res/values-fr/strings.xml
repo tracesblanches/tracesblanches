@@ -136,7 +136,7 @@
     <string name="error_no_loop">Aucune boucle calculée</string>
     <string name="error_tracking_closed">Suivi arrêté</string>
     <string name="error_not_an_outing">Ce dossier n\'est pas une sortie</string>
-    <string name="error_bad_fixes">Positions illisibles (%1$d octets)</string>
+    <string name="error_bad_fixes">Positions illisibles (taille %1$d)</string>
     <string name="error_bad_car_position">Position de la voiture invalide</string>
     <string name="error_no_trail_graph">Ce pack n\'a pas de réseau de pistes</string>
     <string name="label_value">%1$s : %2$s</string>

@@ -160,7 +160,10 @@ class LogicTest {
             "Retour : ↗ 250 m légèrement à droite · Greffier",
             GuidanceText.headline(guidance(turn = Turn.SLIGHT_RIGHT, route = "back"), l = fr),
         )
-        assertEquals("Pause · 1 h 05 restantes · arrivée 15 h 20 (15 h 05 à 15 h 40)", GuidanceText.detail(guidance(phase = Phase.PAUSED), fr))
+        assertEquals(
+            "Pause · 1 h 05 restantes · arrivée 15 h 20 (15 h 05 à 15 h 40)",
+            GuidanceText.detail(guidance(phase = Phase.PAUSED), fr),
+        )
         assertEquals("1 h 05", GuidanceText.chip(guidance(phase = Phase.PAUSED), fr))
         assertEquals("1 h 05 · arrivée 15 h 20", GuidanceText.short(g, fr))
         assertEquals("Au refuge · 1 h 05 · arrivée 15 h 20", GuidanceText.short(guidance(phase = Phase.REFUGE), fr))

@@ -134,7 +134,7 @@
     <string name="error_no_loop">No loop computed yet</string>
     <string name="error_tracking_closed">Tracking has stopped</string>
     <string name="error_not_an_outing">This folder is not an outing</string>
-    <string name="error_bad_fixes">Unreadable positions (%1$d bytes)</string>
+    <string name="error_bad_fixes">Unreadable positions (size %1$d)</string>
     <string name="error_bad_car_position">Invalid car position</string>
     <string name="error_no_trail_graph">This pack has no trail network</string>
     <!-- A label and its value: « Bivouac: forbidden ». -->

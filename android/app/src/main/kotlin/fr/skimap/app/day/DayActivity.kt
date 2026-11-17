@@ -158,6 +158,7 @@ class DayActivity : ComponentActivity() {
 @Composable
 private fun DayRoot(vm: DayViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val resources = androidx.compose.ui.platform.LocalResources.current
     val state by vm.state.collectAsStateWithLifecycle()
     val plan by vm.validated.collectAsStateWithLifecycle()
     val tracking by Tracking.state.collectAsStateWithLifecycle()
@@ -174,7 +175,7 @@ private fun DayRoot(vm: DayViewModel) {
                     DayActivity.startOuting(context, p, contact)
                     morning = false
                     DayActivity.sendPlan(context, p, contact)
-                }.onFailure { Toast.makeText(context, CoreErrors.text(it, context.resources), Toast.LENGTH_LONG).show() }
+                }.onFailure { Toast.makeText(context, CoreErrors.text(it, resources), Toast.LENGTH_LONG).show() }
             validating = false
         }
     }
