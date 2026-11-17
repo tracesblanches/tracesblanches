@@ -168,6 +168,10 @@ pub struct Config {
     /// from this configuration refuses any request to a source whose policy is
     /// `personal_use_only` when this is off (`Error::PersonalSourceRefused`).
     pub personal_sources: bool,
+    /// AROME run used by every hourly weather refresh of the process instead of the
+    /// latest complete one (`SKIMAP_AROME_RUN`, RFC 3339): replay of a run still published
+    /// (measurements of successive runs, tests). Unset in production.
+    pub arome_run: Option<String>,
 }
 
 impl Config {
@@ -190,6 +194,7 @@ impl Config {
             skitour_api_key: None,
             rate_limits: BTreeMap::new(),
             personal_sources: false,
+            arome_run: None,
         };
         for (k, v) in vars {
             let (k, v) = (k.as_ref(), v.into());
@@ -202,6 +207,7 @@ impl Config {
                 "DATATOURISME_API_KEY" => cfg.datatourisme_api_key = Some(Secret::new(v)),
                 "SKITOUR_API_KEY" => cfg.skitour_api_key = Some(Secret::new(v)),
                 "SKIMAP_PERSONAL_SOURCES" => cfg.personal_sources = parse_flag(k, &v)?,
+                "SKIMAP_AROME_RUN" => cfg.arome_run = Some(v),
                 _ => {
                     if let Some(src) = k.strip_prefix("SKIMAP_RATE_LIMIT_") {
                         let source = src.to_ascii_lowercase().replace('_', "-");

@@ -682,9 +682,24 @@ pub fn meteo_step(ctx: &Ctx, sites: &[&Site]) -> StepRecord {
     meteo_step_at(ctx, sites, None)
 }
 
-/// [`meteo_step`] at a given AROME run (`None`: the latest complete one).
+/// [`meteo_step`] at a given AROME run (`None`: the run of `SKIMAP_AROME_RUN`, else the
+/// latest complete one).
 pub fn meteo_step_at(ctx: &Ctx, sites: &[&Site], run: Option<DateTime<Utc>>) -> StepRecord {
     let t = Instant::now();
+    let run = match run.map_or_else(|| ctx.arome_run(), |r| Ok(Some(r))) {
+        Ok(r) => r,
+        Err(e) => {
+            return StepRecord {
+                name: "meteo-arome".into(),
+                state: StepState::Failed,
+                seconds: 0.0,
+                line: format!("{e:#}"),
+                at: Some(now_rfc3339()),
+                outputs: None,
+                resumed: false,
+            };
+        }
+    };
     let refreshed = match run {
         Some(run) => skimap_meteo::arome::refresh_run(sites, &ctx.layout, &ctx.dl, run),
         None => skimap_meteo::arome::refresh(sites, &ctx.layout, &ctx.dl),

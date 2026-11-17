@@ -157,8 +157,17 @@ impl Ctx {
         Ok(if self.cfg.personal_sources {
             skimap_meteo::hourly::build(site, &self.layout, &self.dl, true)?
         } else {
-            skimap_meteo::arome::build(site, &self.layout, &self.dl)?
+            skimap_meteo::arome::build_run(site, &self.layout, &self.dl, self.arome_run()?)?
         })
+    }
+
+    /// The AROME run replayed instead of the latest (`SKIMAP_AROME_RUN`), if any.
+    pub fn arome_run(&self) -> Result<Option<DateTime<Utc>>> {
+        self.cfg
+            .arome_run
+            .as_deref()
+            .map(|r| parse_instant(r).context("SKIMAP_AROME_RUN"))
+            .transpose()
     }
 
     /// P13: one poll of the trail status (personal use only).

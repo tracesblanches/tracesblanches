@@ -825,7 +825,20 @@ pub fn refresh_run(
 
 /// Publishable hourly weather of one site ([`refresh`] for one site); returns the layer.
 pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<HourlyFile> {
-    refresh(&[site], layout, dl)?;
+    build_run(site, layout, dl, None)
+}
+
+/// [`build`] at a given run (`None`: the latest complete one).
+pub fn build_run(
+    site: &Site,
+    layout: &DataLayout,
+    dl: &Downloader,
+    run: Option<DateTime<Utc>>,
+) -> Result<HourlyFile> {
+    match run {
+        Some(run) => refresh_run(&[site], layout, dl, run)?,
+        None => refresh(&[site], layout, dl)?,
+    };
     let path = layout.layer_dir(site, LAYER)?.join("hourly.json");
     let bytes = std::fs::read(&path).map_err(|e| skimap_common::Error::io(&path, e))?;
     serde_json::from_slice(&bytes)
