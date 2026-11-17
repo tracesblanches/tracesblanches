@@ -485,21 +485,24 @@ pub fn group_solo(lang: Lang) -> Result<GroupView, TrackingError> {
     )
 }
 
-/// Starts of a site: the start points of its ready-made requests (`skimap_plan::presets`),
-/// names in `lang`.
+/// Starts of a site, main first (`skimap_common::site::starts`: the evaluation table, else
+/// the starts the pipeline found for every domain, X9), names in `lang`.
 #[uniffi::export]
 pub fn day_starts(site_id: String, lang: Lang) -> Vec<DayStart> {
     let Ok(site) = skimap_common::site::site(&site_id) else {
         return Vec::new();
     };
-    let date = skimap_plan::presets::past_day(site);
+    let tx = skimap_plan::text::of(lang);
     let mut out: Vec<DayStart> = Vec::new();
-    for r in skimap_plan::presets::requests_in(site, date, lang) {
-        if !out.iter().any(|s| s.name == r.start_name) {
+    for s in skimap_common::site::starts(site) {
+        let name = tx
+            .start_phrase(&s.phrase, s.phrase_en.as_deref())
+            .to_owned();
+        if !out.iter().any(|o| o.name == name) {
             out.push(DayStart {
-                name: r.start_name,
-                lon: r.start.lon,
-                lat: r.start.lat,
+                name,
+                lon: s.lon,
+                lat: s.lat,
             });
         }
     }

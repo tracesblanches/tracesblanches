@@ -171,11 +171,14 @@ impl DepartsFile {
     }
 }
 
+/// A segment of the network: ends (local metres) and way index.
+type Segment = ((f64, f64), (f64, f64), usize);
+
 struct Net {
     /// Vertices: position (local metres) and whether a dead end of the network.
     vertices: Vec<((f64, f64), bool)>,
-    /// Segments: ends (local metres) and way index.
-    segments: Vec<((f64, f64), (f64, f64), usize)>,
+    /// Segments.
+    segments: Vec<Segment>,
 }
 
 /// A point snapped to the network.
@@ -353,7 +356,7 @@ pub fn domain_departs(d: &Domain, ways: &[Way], points: &[&Point]) -> Vec<Depart
         let (kname, kphrase, ken) = kind_fr(&h.point.kind);
         let (name, phrase, phrase_en) = match named.and_then(|c| c.point.name.clone()) {
             Some(n) => {
-                let n = named_as(&named.map_or("", |c| c.point.kind.as_str()), &n);
+                let n = named_as(named.map_or("", |c| c.point.kind.as_str()), &n);
                 (format!("{n} ({})", d.name), n.clone(), None)
             }
             None => (
