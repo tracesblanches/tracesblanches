@@ -29,9 +29,11 @@ fn main() -> Res<()> {
     let packs: Vec<PathBuf> = args.map(PathBuf::from).collect();
     let registry =
         skimap_common::site::Registry::load(&skimap_common::config::Config::from_env()?.layout())?;
-    let style = std::fs::read_to_string(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../styles/fond-clair.json"),
-    )?;
+    // `OPEN_BENCH_STYLE`: the style file elsewhere than in the source tree (a phone).
+    let style = std::fs::read_to_string(std::env::var_os("OPEN_BENCH_STYLE").map_or_else(
+        || Path::new(env!("CARGO_MANIFEST_DIR")).join("../../styles/fond-clair.json"),
+        PathBuf::from,
+    ))?;
     println!(
         "{:<70} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>5}",
         "pack", "map", "map~", "morning", "morning~", "ctx", "ctx~", "ref"
