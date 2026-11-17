@@ -8,7 +8,7 @@ import fr.skimap.core.PackException
 import fr.skimap.core.PackInfo
 import fr.skimap.core.PackSet
 import fr.skimap.core.listPacks
-import fr.skimap.core.openPacks
+import fr.skimap.core.openMap
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -37,8 +37,8 @@ interface PackRepository {
     suspend fun list(): List<PackEntry>
 
     /**
-     * Opens the packs in [dirs] together (free mode: all of them; area mode: one) and
-     * instantiates [styleJson] (a style of `styles/`) on them.
+     * Opens the packs in [dirs] together (free mode: all of them, or none over the France
+     * basemap; area mode: one) and instantiates [styleJson] (a style of `styles/`) on them.
      */
     suspend fun open(
         dirs: List<String>,
@@ -48,6 +48,9 @@ interface PackRepository {
 
     /** [styleJson] instantiated on the packs opened last. */
     suspend fun style(styleJson: String): MapStyle
+
+    /** Whether the phone has the France basemap (X20): the free mode opens without any pack. */
+    suspend fun hasFrance(): Boolean = false
 }
 
 /**
@@ -58,9 +61,18 @@ interface PackRepository {
 class RustPackRepository(
     packsDir: () -> File,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    /** The France basemap (X20), drawn under the packs when the phone has it. */
+    franceDir: () -> File? = { null },
 ) : PackRepository {
     /** Resolved on first use, on [io] (`getExternalFilesDir` touches the disk). */
     override val packsDir: File by lazy(packsDir)
+
+    private val franceDir: File? by lazy(franceDir)
+
+    /** The France basemap directory, when its description is there (installed last). */
+    private fun france(): File? = franceDir?.takeIf { File(it, "france.json").isFile }
+
+    override suspend fun hasFrance(): Boolean = withContext(io) { france() != null }
 
     private val mutex = Mutex()
     private var current: PackSet? = null
@@ -80,7 +92,7 @@ class RustPackRepository(
         withContext(io) {
             mutex.withLock {
                 // One call across the FFI: summary and style together.
-                val view = openPacks(dirs, styleJson, free, appLang())
+                val view = openMap(dirs, france()?.absolutePath, styleJson, free, appLang())
                 current?.destroy()
                 current = view.set
                 OpenedPack(view.info, view.style, view.coreVersion)

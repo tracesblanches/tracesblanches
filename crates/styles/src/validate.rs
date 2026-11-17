@@ -197,6 +197,25 @@ impl Validator<'_> {
             }
             _ => self.err("metadata skimap:optional_sources must be an array".into()),
         }
+        // Shared sources (the France basemap, X20): not in the packs; their schema is the
+        // France snapshot, the app leaves them out when the phone has none.
+        let mut shared = BTreeSet::new();
+        match &s["metadata"]["skimap:shared_sources"] {
+            Value::Null => {}
+            Value::Array(a) => {
+                for o in a {
+                    match o.as_str() {
+                        Some(id) if m.contains_key(id) => {
+                            shared.insert(id.to_string());
+                        }
+                        _ => self.err(format!(
+                            "metadata skimap:shared_sources: {o} is not a source of the style"
+                        )),
+                    }
+                }
+            }
+            _ => self.err("metadata skimap:shared_sources must be an array".into()),
+        }
         for (id, src) in m {
             let url = src["url"]
                 .as_str()
@@ -229,6 +248,17 @@ impl Validator<'_> {
                     continue;
                 }
             };
+            if shared.contains(id) {
+                let known = matches!(&source, Source::Vector(path)
+                    if crate::schema::france().vector.contains_key(path));
+                if !known {
+                    self.err(format!(
+                        "source {id}: shared source absent from the France basemap"
+                    ));
+                }
+                out.insert(id.clone(), source);
+                continue;
+            }
             let mut found = 0;
             for p in self.packs {
                 let present = match &source {
@@ -261,7 +291,8 @@ impl Validator<'_> {
     ) -> Option<(Layer, Option<(u8, u8)>)> {
         let mut found: Option<Layer> = None;
         let mut archive_zoom = None;
-        for p in self.packs.iter().chain(self.reference) {
+        let france = std::iter::once(crate::schema::france());
+        for p in self.packs.iter().chain(self.reference).chain(france) {
             let l = match src {
                 Source::Vector(path) => {
                     // An optional archive a pack lacks: the others give the schema.

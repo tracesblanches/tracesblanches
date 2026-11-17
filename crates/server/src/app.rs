@@ -302,6 +302,22 @@ impl Handler for App {
                 self.mutable(req, self.store.voice_index_path(site, lang))
             }
             ["v1", "bundles", name] if read => self.bundle(req, name),
+            // France basemap (X20): its description, then its files by SHA-256.
+            ["v1", "basemap", "france.json"] if read => {
+                self.mutable(req, Some(crate::france::description_path(&self.store)))
+            }
+            ["v1", "basemap", "files", sha] if read => {
+                match crate::france::file_path(&self.store, sha) {
+                    Some(p) if p.is_file() => file_reply(
+                        req,
+                        &p,
+                        &format!("\"{sha}\""),
+                        "application/octet-stream",
+                        IMMUTABLE,
+                    ),
+                    _ => Reply::error(404, "not_found", "no such basemap file"),
+                }
+            }
             ["v1", "trips", rest @ ..] => self.trips(req, rest),
             ["v1", "strava", rest @ ..] => self.strava(req, rest),
             ["v1", "collab", rest @ ..] => {

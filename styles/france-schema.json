@@ -1,0 +1,168 @@
+{
+  "site": "france",
+  "vector": {
+    "france/france.pmtiles": {
+      "zooms": {
+        "minzoom": 0,
+        "maxzoom": 6
+      },
+      "tiles": 22,
+      "layers": {
+        "boundaries": {
+          "minzoom": 0,
+          "maxzoom": 6,
+          "features": 183,
+          "geometry": [
+            "LineString"
+          ],
+          "keys": {
+            "brk_a3": null,
+            "disputed": null,
+            "kind": {
+              "\"country\"": 0,
+              "\"macroregion\"": 5,
+              "\"map_unit\"": 3,
+              "\"overlay_limit\"": 0,
+              "\"region\"": 1,
+              "\"unrecognized_country\"": 0
+            },
+            "kind_detail": null,
+            "sort_rank": null
+          }
+        },
+        "earth": {
+          "minzoom": 0,
+          "maxzoom": 6,
+          "features": 25,
+          "geometry": [
+            "Point",
+            "Polygon"
+          ],
+          "keys": {
+            "kind": null,
+            "name": null
+          }
+        },
+        "landcover": {
+          "minzoom": 0,
+          "maxzoom": 6,
+          "features": 125,
+          "geometry": [
+            "Polygon"
+          ],
+          "keys": {
+            "kind": {
+              "\"barren\"": 0,
+              "\"farmland\"": 0,
+              "\"forest\"": 0,
+              "\"glacier\"": 0,
+              "\"grassland\"": 0,
+              "\"scrub\"": 0,
+              "\"urban_area\"": 1
+            }
+          }
+        },
+        "landuse": {
+          "minzoom": 2,
+          "maxzoom": 6,
+          "features": 218,
+          "geometry": [
+            "Polygon"
+          ],
+          "keys": {
+            "kind": null,
+            "sort_rank": null
+          }
+        },
+        "places": {
+          "minzoom": 1,
+          "maxzoom": 6,
+          "features": 934,
+          "geometry": [
+            "Point"
+          ],
+          "keys": {
+            "capital": null,
+            "kind": {
+              "\"country\"": 1,
+              "\"locality\"": 1
+            },
+            "kind_detail": null,
+            "min_zoom": null,
+            "name": null,
+            "name2": null,
+            "name3": null,
+            "name:fr": null,
+            "population": null,
+            "population_rank": null,
+            "ref": null,
+            "ref:catasto": null,
+            "script": null,
+            "script2": null,
+            "script3": null,
+            "sort_key": null,
+            "wikidata": null
+          }
+        },
+        "pois": {
+          "minzoom": 6,
+          "maxzoom": 6,
+          "features": 5,
+          "geometry": [
+            "Point"
+          ],
+          "keys": {
+            "kind": null,
+            "min_zoom": null,
+            "name": null,
+            "name:fr": null
+          }
+        },
+        "roads": {
+          "minzoom": 3,
+          "maxzoom": 6,
+          "features": 54,
+          "geometry": [
+            "LineString"
+          ],
+          "keys": {
+            "is_link": null,
+            "kind": {
+              "\"highway\"": 3,
+              "\"major_road\"": 6
+            },
+            "kind_detail": null,
+            "min_zoom": null,
+            "sort_rank": null
+          }
+        },
+        "water": {
+          "minzoom": 0,
+          "maxzoom": 6,
+          "features": 94,
+          "geometry": [
+            "Point",
+            "Polygon"
+          ],
+          "keys": {
+            "kind": null,
+            "kind_detail": null,
+            "min_zoom": null,
+            "name": null,
+            "name:fr": null,
+            "sort_rank": null
+          }
+        }
+      }
+    }
+  },
+  "geojson": {},
+  "raster": {},
+  "fonts": {
+    "france/fonts": [
+      "Source Sans Pro Regular",
+      "Source Sans Pro Semibold"
+    ]
+  },
+  "sprites": {}
+}

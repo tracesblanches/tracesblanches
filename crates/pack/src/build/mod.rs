@@ -7,6 +7,7 @@
 pub mod assets;
 pub mod class_tiles;
 pub mod extract;
+pub mod france;
 pub mod layers;
 pub mod osm;
 pub mod pistes;

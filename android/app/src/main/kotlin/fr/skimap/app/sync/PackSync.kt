@@ -185,7 +185,11 @@ class PackSyncWorker(
         val meteredOk = inputData.getBoolean(METERED_OK, false)
         val maxBytes = if (metered && !meteredOk) PackSync.BIG_BYTES else Long.MAX_VALUE
         return try {
-            if (inputData.getBoolean(ALL, false)) updateAll(syncer, maxBytes) else one(syncer, maxBytes)
+            when {
+                inputData.getBoolean(FRANCE, false) -> france(http)
+                inputData.getBoolean(ALL, false) -> updateAll(syncer, maxBytes)
+                else -> one(syncer, maxBytes)
+            }
         } catch (e: IOException) {
             // Network lost, server unreachable, cut download: kept for a later attempt.
             Log.w(TAG, "sync interrupted, retried later: $e")
@@ -230,11 +234,27 @@ class PackSyncWorker(
         return Result.success(output(r))
     }
 
+    /** The France basemap (X20): fetched, or revalidated (one request when unchanged). */
+    private fun france(http: HttpSource): Result {
+        val r = FranceSyncer(http).sync(FranceBasemap.dir(applicationContext))
+        Log.i(TAG, "France basemap: build ${r.build ?: "unchanged"}, ${r.files} files, ${r.bytes} bytes, ${r.millis} ms")
+        return Result.success(workDataOf(CHANGED to !r.upToDate))
+    }
+
     private fun updateAll(
         syncer: PackSyncer,
         maxBytes: Long,
     ): Result {
         val ctx = applicationContext
+        // The France basemap is revalidated with the packs; its failure leaves them be (its
+        // own work retries it at the next start).
+        try {
+            FranceSyncer(PackSync.http(ctx)).sync(FranceBasemap.dir(ctx))
+        } catch (e: IOException) {
+            Log.w(TAG, "France basemap not revalidated: $e")
+        } catch (e: SyncException) {
+            Log.w(TAG, "France basemap not installed: $e")
+        }
         val catalog = PackSync.catalog(ctx)
         val sites = (catalog.refresh() ?: catalog.cached()).associateBy { it.siteId }
         var changed = false
@@ -286,6 +306,7 @@ class PackSyncWorker(
         const val METERED_OK = "metered_ok"
         const val BYTES = "bytes"
         const val ALL = "all"
+        const val FRANCE = "france"
         const val DONE = "done"
         const val TOTAL = "total"
         const val FROM = "from"

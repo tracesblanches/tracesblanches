@@ -15,6 +15,12 @@
 //! label), so adjacent areas join without a seam. Sources filled by the app at run time
 //! (`metadata.skimap:runtime_sources`: position, route, decision) and the background are
 //! kept once.
+//!
+//! The France basemap (X20, #154) is a shared source (`metadata.skimap:shared_sources`,
+//! URL `pmtiles://france/france.pmtiles`): resolved once against the France basemap of the
+//! phone cache ([`France`]), drawn under every pack, and left out with its layers when the
+//! phone has none. With no pack at all (free mode before any download) the style shows it
+//! alone, with its own glyphs.
 
 use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
@@ -107,6 +113,37 @@ pub struct LegendEntry {
     pub kind: LegendKind,
 }
 
+/// The France basemap of the phone cache (`france.json` and its files).
+#[derive(Debug, Clone)]
+pub struct France {
+    /// Its directory (absolute).
+    pub dir: std::path::PathBuf,
+    /// Its description.
+    pub basemap: skimap_pack::france::FranceBasemap,
+}
+
+impl France {
+    /// Reads the description of the France basemap in `dir` (made absolute).
+    pub fn open(dir: &Path) -> Result<Self, PackError> {
+        let dir = std::path::absolute(dir).map_err(|e| PackError::Invalid {
+            detail: format!("{}: {e}", dir.display()),
+        })?;
+        let basemap = skimap_pack::france::FranceBasemap::read(&dir)?;
+        if !dir.join(skimap_pack::france::TILES_FILE).is_file() {
+            return Err(PackError::NotFound {
+                path: dir
+                    .join(skimap_pack::france::TILES_FILE)
+                    .display()
+                    .to_string(),
+            });
+        }
+        Ok(Self { dir, basemap })
+    }
+}
+
+/// Prefix of the URLs of the France basemap in the styles.
+const FRANCE_PREFIX: &str = "france/";
+
 /// One pack of the style and the suffix of its sources and layers.
 struct Part<'a> {
     pack: &'a Pack,
@@ -126,7 +163,18 @@ pub fn instantiate(
     packs: &[&Pack],
     name_id: &str,
 ) -> Result<MapStyle, PackError> {
-    if packs.is_empty() {
+    instantiate_over(style_json, packs, None, name_id)
+}
+
+/// [`instantiate`] over the France basemap `france`, when the phone has it: its shared
+/// sources are drawn under the packs. `packs` may then be empty.
+pub fn instantiate_over(
+    style_json: &str,
+    packs: &[&Pack],
+    france: Option<&France>,
+    name_id: &str,
+) -> Result<MapStyle, PackError> {
+    if packs.is_empty() && france.is_none() {
         return Err(invalid("no pack to show"));
     }
     let mut style: Value =
@@ -139,6 +187,16 @@ pub fn instantiate(
         .get("skimap:runtime_sources")
         .and_then(Value::as_object)
         .map(|m| m.keys().cloned().collect())
+        .unwrap_or_default();
+    let shared: BTreeSet<String> = meta
+        .get("skimap:shared_sources")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect()
+        })
         .unwrap_or_default();
     let style_id = meta["skimap:style"].as_str().unwrap_or("").to_owned();
     let theme = meta["skimap:theme"].as_str().unwrap_or("").to_owned();
@@ -168,6 +226,22 @@ pub fn instantiate(
     let mut attributions: Vec<String> = Vec::new();
     let mut missing = Vec::new();
     for (id, src) in &sources {
+        // Shared sources (France basemap): once, from the phone cache, or left out.
+        if shared.contains(id) {
+            match france.map(|f| resolve_france(f, src)).transpose()? {
+                Some(Some(s)) => {
+                    for a in france.map(|f| f.basemap.attributions()).unwrap_or_default() {
+                        if !attributions.contains(&a) {
+                            attributions.push(a);
+                        }
+                    }
+                    out_sources.insert(id.clone(), s);
+                    present.insert(id.clone(), vec![String::new()]);
+                }
+                _ => missing.push(format!("{FRANCE_PREFIX}: {id}")),
+            }
+            continue;
+        }
         // Runtime sources and inline data: once, as they are.
         let file_backed = src.get("url").is_some_and(Value::is_string)
             || src.get("data").is_some_and(Value::is_string)
@@ -244,10 +318,16 @@ pub fn instantiate(
             Some(url) => {
                 obj.insert("glyphs".to_owned(), Value::String(url?));
             }
-            None => {
-                obj.remove("glyphs");
-                missing.push(format!("glyphs: {g}"));
-            }
+            // No pack: the glyphs of the France basemap (same font stacks).
+            None => match france.and_then(|f| france_glyphs(f, &g)) {
+                Some(url) => {
+                    obj.insert("glyphs".to_owned(), Value::String(url));
+                }
+                None => {
+                    obj.remove("glyphs");
+                    missing.push(format!("glyphs: {g}"));
+                }
+            },
         }
     }
     if let Some(Value::String(s)) = obj.get("sprite").cloned() {
@@ -282,6 +362,40 @@ pub fn instantiate(
         legend,
         missing,
     })
+}
+
+/// A shared source resolved in the France basemap: `pmtiles://france/<file>` becomes the
+/// absolute URL of that file of the France basemap; `None` when it lacks it.
+fn resolve_france(france: &France, src: &Value) -> Result<Option<Value>, PackError> {
+    let mut s = src
+        .as_object()
+        .cloned()
+        .ok_or_else(|| invalid("shared source is not an object"))?;
+    let Some(Value::String(u)) = s.get_mut("url") else {
+        return Ok(None);
+    };
+    let Some(rel) = u
+        .strip_prefix("pmtiles://")
+        .and_then(|r| r.strip_prefix(FRANCE_PREFIX))
+        .map(str::to_owned)
+    else {
+        return Ok(None);
+    };
+    check_relative(&rel)?;
+    let path = france.dir.join(&rel);
+    if !path.is_file() {
+        return Ok(None);
+    }
+    *u = format!("pmtiles://{}", file_url(&path));
+    Ok(Some(Value::Object(s)))
+}
+
+/// The glyphs of the France basemap for a glyphs template of the packs (the font stacks
+/// are the same): `<france>/fonts/{fontstack}/{range}.pbf`.
+fn france_glyphs(france: &France, template: &str) -> Option<String> {
+    let fonts = france.dir.join(skimap_pack::france::FONTS_DIR);
+    (template.contains("{fontstack}") && fonts.is_dir())
+        .then(|| file_url(&fonts.join("{fontstack}/{range}.pbf")))
 }
 
 /// Rewrites the URLs of a source to absolute ones in `pack`; returns the pack-relative

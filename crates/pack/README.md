@@ -47,3 +47,15 @@ Le serveur `serve` (bibliothèque standard, une connexion par fil, `GET`/`HEAD`,
 - `pmtiles` 0.28.1 laissait `leaf_offset = 0` sans répertoire de feuilles, refusé par `pmtiles verify` : copie corrigée dans `vendor/pmtiles` (`[patch.crates-io]`) ; les 14 archives des deux packs passent `pmtiles verify` (15/11/2026).
 - Le visualiseur charge MapLibre et PMTiles depuis le CDN (cache du navigateur ensuite) ; les données ne viennent que du pack.
 - Import sur le Pixel (Locus Map, OsmAnd) et essai du visualiseur sur le vrai téléphone : à faire (téléphone non branché le 15/11).
+
+## Fond de France (X20, #154)
+
+`build::france` extrait du build Protomaps quotidien l'emprise de la France métropolitaine et de la Corse (`france::BBOX`), zooms 0 à `france::MAXZOOM` (6), par requêtes partielles, et y joint les glyphes des noms (Source Sans Pro, celles du Plan IGN) ; `france.json` décrit les fichiers (taille, SHA-256), le build et la date des données. Le build en usage est gardé tant que le dernier a moins de 7 jours et le même schéma : le téléphone ne retélécharge le fond qu'une fois par semaine au plus, et la date affichée reste celle du build en usage.
+
+```sh
+cargo run --release -p skimap-pack --features pipeline --example france_basemap -- data/out/france-basemap        # le fond
+cargo run --release -p skimap-pack --features pipeline --example france_basemap -- /tmp/fr 5 6 7 8                # tailles par zoom
+skimap-server publish-france data/out/france-basemap
+```
+
+Mesuré le 17/11/2026 (build 20261117, 22 tuiles au zoom 6) : zooms 0 à 5 : 1,00 Mo (1,32 Mo avec glyphes) ; 0 à 6 : 1,78 Mo (2,10 Mo) ; 0 à 7 : 8,56 Mo (8,88 Mo) ; 0 à 8 : 27,95 Mo (28,27 Mo). Retenu : 0 à 6, 2,10 Mo en 7 fichiers ; extraction 3,7 s depuis le réseau.

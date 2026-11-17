@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -75,6 +76,36 @@ class RustPackRepositoryTest {
                 val st = repo.style(style(choice))
                 assertEquals("skimap test ${choice.family}-${if (choice.dark) "sombre" else "clair"}", st.name)
             }
+        }
+
+    /** Free mode without any pack, over the France basemap alone (X20); then under the test pack. */
+    @Test
+    fun opensTheFranceBasemapWithoutPack() =
+        runTest {
+            val packs = packsWithTestPack()
+            val france = FranceFixture.write(tmp.newFolder("france"))
+            val none = RustPackRepository({ packs }, Dispatchers.Unconfined)
+            assertFalse(none.hasFrance())
+            val repo = RustPackRepository({ packs }, Dispatchers.Unconfined, franceDir = { france })
+            assertTrue(repo.hasFrance())
+
+            val alone = repo.open(emptyList(), style(StyleChoice()), free = true)
+            assertEquals("libre", alone.info.siteId)
+            assertEquals("skimap libre fond-clair", alone.style.name)
+            // In the language of the app (the JVM locale here): the date of the data, never "stale".
+            assertTrue(alone.info.validityNote, alone.info.validityNote.endsWith("2026-11-17."))
+            val json = JSONObject(alone.style.json)
+            val url = json.getJSONObject("sources").getJSONObject("france").getString("url")
+            assertEquals("pmtiles://file://${File(france, "france.pmtiles").absolutePath}", url)
+            assertFalse(json.getJSONObject("sources").has("ign"))
+            assertTrue(json.getString("glyphs").startsWith("file://${File(france, "fonts").absolutePath}"))
+
+            val test = repo.list().first { it.error == null }
+            val over = repo.open(listOf(test.dir), style(StyleChoice()), free = true)
+            val sources = JSONObject(over.style.json).getJSONObject("sources")
+            assertTrue(sources.has("france") && sources.has("ign"))
+            // Free mode over the France basemap: the camera may go anywhere in France.
+            assertTrue(over.info.bounds.west <= -5.5 && over.info.bounds.north >= 51.3)
         }
 
     @Test

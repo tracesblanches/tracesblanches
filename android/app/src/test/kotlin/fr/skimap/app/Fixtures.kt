@@ -183,6 +183,8 @@ class FakeRepository(
             Fixtures.entry(Fixtures.CHAPELLE, "Chapelle-des-Bois"),
         ),
     private val broken: Set<String> = emptySet(),
+    /** Whether the phone has the France basemap (X20). */
+    var france: Boolean = false,
 ) : PackRepository {
     override val packsDir = File("/packs")
     val opened = mutableListOf<String>()
@@ -203,8 +205,10 @@ class FakeRepository(
     ): OpenedPack {
         // As the core: packs that do not open are skipped when another one opens.
         val ok = dirs.filterNot { it in broken }
-        if (ok.isEmpty()) throw PackException.Invalid("manifest.json: EOF")
-        val dir = ok.first()
+        // As the core: the free mode opens without any pack over the France basemap.
+        val overFrance = free && france && dirs.isEmpty()
+        if (ok.isEmpty() && !overFrance) throw PackException.Invalid("manifest.json: EOF")
+        val dir = ok.firstOrNull().orEmpty()
         opened += dirs.joinToString("+")
         val (family, theme) = meta(styleJson)
         styles += "$family-$theme"
@@ -216,6 +220,8 @@ class FakeRepository(
         val name = entries.first { it.dir == dir }.siteName
         return Fixtures.opened(dir, name, family, theme)
     }
+
+    override suspend fun hasFrance(): Boolean = france
 
     override suspend fun style(styleJson: String): MapStyle {
         val (family, theme) = meta(styleJson)

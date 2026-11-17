@@ -12,9 +12,13 @@
 //!   bundles ([`update`], [`update::apply_bundle`]), synchronisation plan with the server
 //!   ([`sync`]); phone side, no network.
 //!
+//! - X20 (#154): France basemap, light and shared by every site ([`france`],
+//!   [`build::france`]).
+//!
 //! Without the `pipeline` feature the crate is the reader only: no HTTP stack, no SQLite.
 
 pub mod error;
+pub mod france;
 pub mod manifest;
 pub mod mvt;
 pub mod png;

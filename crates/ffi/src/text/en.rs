@@ -543,6 +543,10 @@ impl Texts for En {
         let s = if names.len() == 1 { "" } else { "s" };
         format!("{} pack{s}: {}.", names.len(), names.join(", "))
     }
+
+    fn france_only_note(&self, date: &str) -> String {
+        format!("No pack installed: France basemap only, data of {date}.")
+    }
 }
 
 fn battery_cold(cold: Option<f64>) -> String {

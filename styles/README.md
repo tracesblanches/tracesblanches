@@ -24,6 +24,15 @@ cargo run --release -p skimap-styles --example write_styles -- --schema   # + pa
 
 Neige (`snow-groomed-0..2` dans fond, `snow-srn-0..2` dans SRN) : polygones vectoriels (pack, `build::class_tiles`, cellules de 25 m sans lissage) aux couleurs du thème (insuffisant, limite, suffisant), masqués (`metadata.skimap:optional_layers`), à afficher sur demande.
 
+## Fond de France (X20, #154)
+
+Source partagée `france` (`pmtiles://france/france.pmtiles`, déclarée dans `metadata.skimap:shared_sources`) : un seul fond pour toute la France, hors des packs, téléchargé une fois par le téléphone (`skimap_pack::france`, servi par `/v1/basemap/france.json`). L'app la résout vers son cache, une fois, sous tous les packs ; sans pack, elle est seule et prend ses propres glyphes (mêmes polices que le Plan IGN) ; absente du téléphone, la source et ses couches sont retirées. Couches `france-water` (mer et lacs, à tout zoom), `france-forest`, `france-glacier`, `france-urban`, `france-boundary` (frontières), `france-road` (autoroutes et grands axes) jusqu'à z10 (tuiles du zoom 6 agrandies seize fois : au-delà, forêts en blocs et routes doublées sous le Plan IGN), puis le Plan IGN des packs prend le relais ; `france-place` (villes, groupe `noms`) jusqu'à z10, où commencent les communes IGN. Le validateur vérifie ces couches contre l'instantané `france-schema.json` :
+
+```sh
+cargo run --release -p skimap-pack --features pipeline --example france_basemap -- data/out/france-basemap
+cargo run --release -p skimap-styles --example write_styles -- --france data/out/france-basemap
+```
+
 ## Sources facultatives (packs publics)
 
 `metadata.skimap:optional_sources` liste les sources qu'un pack peut ne pas avoir : `avalanche-areas` (CLPA, usage personnel), `avalanche-exposure` (fusionnée avec la CLPA là où elle existe), `avalanche-segments`, `snow-groomed`, `snow-srn`, `srn-areas`, `srn-routes`, `piste-labels` (packs antérieurs), `fee-zones` (usage personnel), `stations-pois`, `pistes-estimees` (usage personnel : packs personnels des sites dont le plan en a). L'app et le visualiseur retirent alors la source et ses couches. Les fonds, `pistes`, `zones`, `no-network`, les trois couches de refuges et `slope` sont requis : leur absence est une erreur. Le validateur vérifie une source facultative sur les packs qui l'ont (ou sur le schéma déclaré de `fee-zones`, `src/declared.rs`) ; `validate_with` contrôle un pack seul contre l'instantané :

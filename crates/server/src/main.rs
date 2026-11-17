@@ -49,6 +49,15 @@ enum Command {
         #[arg(long)]
         store: Option<PathBuf>,
     },
+    /// Publishes the France basemap (X20) built by the pipeline
+    /// (`data/out/france-basemap/`, `france.json`); prints a JSON report.
+    PublishFrance {
+        /// Directory of `france.json`.
+        dir: PathBuf,
+        /// Store directory (overrides SKIMAP_STORE).
+        #[arg(long)]
+        store: Option<PathBuf>,
+    },
     /// Sends one test e-mail through the configured SMTP relay.
     SendTestEmail {
         /// Recipient.
@@ -192,6 +201,12 @@ fn run(cli: Cli) -> Result<()> {
             if failed > 0 {
                 anyhow::bail!("{failed} of {} packs not published", packs.len());
             }
+            Ok(())
+        }
+        Command::PublishFrance { dir, store } => {
+            let store = Store::open(store.unwrap_or(cfg.store.clone()))?;
+            let r = skimap_server::france::publish(&store, &dir)?;
+            println!("{}", serde_json::to_string(&r)?);
             Ok(())
         }
         Command::SendTestEmail { to } => {

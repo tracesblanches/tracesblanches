@@ -222,6 +222,68 @@ fn status_summary(pack: &Pack) -> Result<StatusSummary, PackError> {
     Ok(s)
 }
 
+/// Summary of the free mode with no pack, over the France basemap alone (X20, #154):
+/// its bounds, its date, its attributions.
+pub fn france_only(
+    f: &skimap_pack::france::FranceBasemap,
+    id: &str,
+    lang: crate::card::Lang,
+) -> PackInfo {
+    let tx = crate::text::of(lang);
+    let [west, south, east, north] = f.bbox;
+    PackInfo {
+        dir: String::new(),
+        site_id: id.to_owned(),
+        site_name: tx.all_domains().to_owned(),
+        department: String::new(),
+        pack_version: f.build.trim_end_matches(".pmtiles").to_owned(),
+        generated_at: f.data_date.clone(),
+        valid_until: None,
+        validity_note: tx.france_only_note(&f.data_date),
+        bounds: Bounds {
+            west,
+            south,
+            east,
+            north,
+        },
+        center_lon: (west + east) / 2.0,
+        center_lat: (south + north) / 2.0,
+        basemaps: vec![BasemapInfo {
+            id: FRANCE_BASEMAP_ID.to_owned(),
+            title: "OpenStreetMap (Protomaps)".to_owned(),
+            minzoom: f.minzoom,
+            maxzoom: f.maxzoom,
+        }],
+        status: None,
+        personal_sources: false,
+        attributions: f.attributions(),
+    }
+}
+
+/// `info` (free mode) with its bounds extended to the France basemap: the camera may go
+/// anywhere in France; the centre stays that of the packs.
+pub fn over_france(mut info: PackInfo, f: &skimap_pack::france::FranceBasemap) -> PackInfo {
+    let [west, south, east, north] = f.bbox;
+    info.bounds = Bounds {
+        west: info.bounds.west.min(west),
+        south: info.bounds.south.min(south),
+        east: info.bounds.east.max(east),
+        north: info.bounds.north.max(north),
+    };
+    if !info.basemaps.iter().any(|b| b.id == FRANCE_BASEMAP_ID) {
+        info.basemaps.push(BasemapInfo {
+            id: FRANCE_BASEMAP_ID.to_owned(),
+            title: "OpenStreetMap (Protomaps)".to_owned(),
+            minzoom: f.minzoom,
+            maxzoom: f.maxzoom,
+        });
+    }
+    info
+}
+
+/// Identifier of the France basemap in [`PackInfo::basemaps`].
+pub const FRANCE_BASEMAP_ID: &str = "france";
+
 /// Summary of several packs shown together (free mode): bounds and status added up, the
 /// earliest validity, basemaps common to all, attributions of any.
 pub fn merge(infos: &[PackInfo], id: &str, lang: crate::card::Lang) -> PackInfo {

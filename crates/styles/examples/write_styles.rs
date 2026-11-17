@@ -5,6 +5,7 @@
 //! ```sh
 //! cargo run -p skimap-styles --example write_styles             # styles only
 //! cargo run --release -p skimap-styles --example write_styles -- --schema
+//! cargo run --release -p skimap-styles --example write_styles -- --france data/out/france-basemap
 //! ```
 
 use std::path::Path;
@@ -30,6 +31,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let path = dir.join(schema::FILE);
         std::fs::write(&path, snapshot.to_text())?;
         println!("{} ({} sites)", path.display(), snapshot.packs.len());
+    }
+    // `--france <dir>`: snapshot of the France basemap (X20), `styles/france-schema.json`.
+    let args: Vec<String> = std::env::args().collect();
+    if let Some(i) = args.iter().position(|a| a == "--france") {
+        let src = args.get(i + 1).ok_or("--france <dir of france.json>")?;
+        let inv = schema::france_from_dir(Path::new(src))?;
+        let path = dir.join(schema::FRANCE_FILE);
+        std::fs::write(&path, schema::inventory_text(&inv))?;
+        println!("{}", path.display());
     }
     Ok(())
 }

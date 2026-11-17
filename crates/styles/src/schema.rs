@@ -18,6 +18,34 @@ use crate::{Error, Result, styles_dir};
 /// File name of the snapshot in `styles/`.
 pub const FILE: &str = "pack-schema.json";
 
+/// File name of the France basemap snapshot in `styles/` (X20, #154).
+pub const FRANCE_FILE: &str = "france-schema.json";
+
+/// Inventory of the France basemap (`data/out/france-basemap`), values pruned to the
+/// compared properties.
+pub fn france_from_dir(dir: &Path) -> Result<Inventory> {
+    let mut inv = Inventory::from_france(dir)?;
+    prune(&mut inv, &compared_keys(&generated_styles()));
+    Ok(inv)
+}
+
+/// The committed France basemap snapshot (`styles/france-schema.json`), against which
+/// the validator checks the layers of the shared source.
+pub fn france() -> &'static Inventory {
+    static FRANCE: std::sync::OnceLock<Inventory> = std::sync::OnceLock::new();
+    FRANCE.get_or_init(|| {
+        serde_json::from_str(include_str!("../../../styles/france-schema.json"))
+            .expect("styles/france-schema.json")
+    })
+}
+
+/// Pretty JSON of an inventory with a final newline.
+pub fn inventory_text(inv: &Inventory) -> String {
+    let mut s = serde_json::to_string_pretty(inv).expect("serialisable inventory");
+    s.push('\n');
+    s
+}
+
 /// Inventories of the packs, values pruned to the compared properties.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Snapshot {

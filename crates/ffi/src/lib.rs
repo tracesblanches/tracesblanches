@@ -24,6 +24,7 @@ pub mod catalog;
 pub mod community;
 pub mod fees;
 pub mod fog;
+pub mod france_sync;
 pub mod group;
 pub mod info;
 pub mod offpiste;
@@ -135,6 +136,8 @@ pub struct PackSet {
     handles: Vec<PackHandle>,
     info: PackInfo,
     free: bool,
+    /// The France basemap under the packs (X20), when the phone has it.
+    france: Option<style::France>,
 }
 
 /// What [`open_packs`] returns.
@@ -162,6 +165,31 @@ pub fn open_packs(
     free: bool,
     lang: Lang,
 ) -> Result<PackSetView, PackError> {
+    open_map(dirs, None, style_json, free, lang)
+}
+
+/// [`open_packs`] over the France basemap of the phone cache (X20, #154), in
+/// `france_dir` (`france.json`): drawn under the packs, and alone in free mode when no
+/// pack is installed (`dirs` empty). A France basemap that does not open is left out
+/// when a pack opens.
+#[uniffi::export]
+pub fn open_map(
+    dirs: Vec<String>,
+    france_dir: Option<String>,
+    style_json: String,
+    free: bool,
+    lang: Lang,
+) -> Result<PackSetView, PackError> {
+    let france = match france_dir.map(|d| style::France::open(Path::new(&d))) {
+        Some(Ok(f)) => Some(f),
+        Some(Err(e)) => {
+            if dirs.is_empty() {
+                return Err(e);
+            }
+            None
+        }
+        None => None,
+    };
     let mut handles = Vec::new();
     let mut first_error = None;
     for d in dirs {
@@ -172,21 +200,27 @@ pub fn open_packs(
             }
         }
     }
-    if handles.is_empty() {
-        return Err(first_error.unwrap_or(PackError::Invalid {
-            detail: "no pack to open".to_owned(),
-        }));
-    }
     let infos: Vec<PackInfo> = handles.iter().map(|h| h.info.clone()).collect();
-    let info = if infos.len() == 1 && !free {
-        infos[0].clone()
-    } else {
-        info::merge(&infos, FREE_MODE_ID, lang)
+    let info = match (infos.len(), &france) {
+        (0, Some(f)) if free => info::france_only(&f.basemap, FREE_MODE_ID, lang),
+        (0, _) => {
+            return Err(first_error.unwrap_or(PackError::Invalid {
+                detail: "no pack to open".to_owned(),
+            }));
+        }
+        (1, _) if !free => infos[0].clone(),
+        _ => info::merge(&infos, FREE_MODE_ID, lang),
+    };
+    // Free mode over the France basemap: the camera may go anywhere in France.
+    let info = match &france {
+        Some(f) if free => info::over_france(info, &f.basemap),
+        _ => info,
     };
     let set = Arc::new(PackSet {
         handles,
         info,
         free,
+        france,
     });
     let style = set.map_style(style_json)?;
     Ok(PackSetView {
@@ -207,7 +241,7 @@ impl PackSet {
         } else {
             &self.info.site_id
         };
-        style::instantiate(&style_json, &packs, name)
+        style::instantiate_over(&style_json, &packs, self.france.as_ref(), name)
     }
 
     /// Trail-pass zones of the packs of the set (H2), one per pass.

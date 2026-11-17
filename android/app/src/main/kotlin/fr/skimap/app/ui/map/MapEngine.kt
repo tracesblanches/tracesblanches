@@ -32,7 +32,8 @@ object MapEngine {
     /** Options of every map view: north up, no rotation or tilt, no tiny logo buttons. */
     fun mapOptions(): MapLibreMapOptions = checkNotNull(options) { "MapEngine not ready" }
 
-    private const val MIN_ZOOM = 8.0
+    /** The whole of France fits on a phone at zoom 5 (France basemap, X20). */
+    private const val MIN_ZOOM = 5.0
     private const val MAX_ZOOM = 18.0
 
     /** Starts MapLibre once per process; [scope] runs on the main thread. */

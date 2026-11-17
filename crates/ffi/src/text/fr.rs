@@ -529,6 +529,10 @@ impl Texts for Fr {
     fn packs_note(&self, names: &[&str]) -> String {
         format!("{} packs : {}.", names.len(), names.join(", "))
     }
+
+    fn france_only_note(&self, date: &str) -> String {
+        format!("Aucun pack installé : fond de France seul, données du {date}.")
+    }
 }
 
 fn battery_cold(cold: Option<f64>) -> String {

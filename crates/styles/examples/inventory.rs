@@ -2,6 +2,7 @@
 //!
 //! ```sh
 //! cargo run --release -p skimap-styles --example inventory -- data/out/<site>/pack
+//! cargo run --release -p skimap-styles --example inventory -- data/out/france-basemap
 //! ```
 
 use std::path::PathBuf;
@@ -11,7 +12,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nth(1)
         .ok_or("usage: inventory <pack dir>")?
         .into();
-    let inv = skimap_styles::inventory::Inventory::from_pack(&dir)?;
+    let inv = if dir.join(skimap_pack::france::DESCRIPTION_FILE).is_file() {
+        skimap_styles::inventory::Inventory::from_france(&dir)?
+    } else {
+        skimap_styles::inventory::Inventory::from_pack(&dir)?
+    };
     println!("{}", serde_json::to_string_pretty(&inv)?);
     Ok(())
 }

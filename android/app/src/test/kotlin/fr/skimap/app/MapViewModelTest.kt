@@ -255,6 +255,21 @@ class MapViewModelTest {
             assertTrue(vm.state.value is MapUiState.Ready)
         }
 
+    /** No pack but the France basemap (X20): the free mode opens over it, no empty screen. */
+    @Test
+    fun franceBasemapWithoutPack() =
+        runTest(dispatcher) {
+            val repo = FakeRepository(entries = emptyList(), france = true)
+            val vm = vm(repo)
+            val s = vm.state.value as MapUiState.Ready
+            assertTrue(s.free)
+            assertEquals("", repo.opened.last())
+
+            // Without it, the empty screen as before.
+            val none = vm(FakeRepository(entries = emptyList()))
+            assertTrue(none.state.value is MapUiState.NoPack)
+        }
+
     @Test
     fun firstPackBrokenGivesFailedWithTheOthers() =
         runTest(dispatcher) {

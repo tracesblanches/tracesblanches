@@ -15,6 +15,173 @@
       "filter": [
         "==",
         [
+          "geometry-type"
+        ],
+        "Polygon"
+      ],
+      "id": "france-water",
+      "metadata": {
+        "skimap:group": "fond"
+      },
+      "paint": {
+        "fill-color": "#1d4a73"
+      },
+      "source": "france",
+      "source-layer": "water",
+      "type": "fill"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "kind"
+        ],
+        "forest"
+      ],
+      "id": "france-forest",
+      "maxzoom": 10.0,
+      "metadata": {
+        "skimap:group": "fond"
+      },
+      "paint": {
+        "fill-color": "#17221b"
+      },
+      "source": "france",
+      "source-layer": "landcover",
+      "type": "fill"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "kind"
+        ],
+        "glacier"
+      ],
+      "id": "france-glacier",
+      "maxzoom": 10.0,
+      "metadata": {
+        "skimap:group": "fond"
+      },
+      "paint": {
+        "fill-color": "#1a2a38"
+      },
+      "source": "france",
+      "source-layer": "landcover",
+      "type": "fill"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "kind"
+        ],
+        "urban_area"
+      ],
+      "id": "france-urban",
+      "maxzoom": 10.0,
+      "metadata": {
+        "skimap:group": "fond"
+      },
+      "paint": {
+        "fill-color": "#1b2027"
+      },
+      "source": "france",
+      "source-layer": "landcover",
+      "type": "fill"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "kind"
+        ],
+        "country"
+      ],
+      "id": "france-boundary",
+      "layout": {
+        "line-join": "round"
+      },
+      "maxzoom": 10.0,
+      "metadata": {
+        "skimap:group": "fond"
+      },
+      "paint": {
+        "line-color": "#d2c3ae",
+        "line-dasharray": [
+          3,
+          2
+        ],
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          4.0,
+          0.8,
+          10.0,
+          1.6
+        ]
+      },
+      "source": "france",
+      "source-layer": "boundaries",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "match",
+        [
+          "get",
+          "kind"
+        ],
+        [
+          "highway",
+          "major_road"
+        ],
+        true,
+        false
+      ],
+      "id": "france-road",
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "maxzoom": 10.0,
+      "metadata": {
+        "skimap:group": "fond"
+      },
+      "minzoom": 5,
+      "paint": {
+        "line-color": "#59616c",
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          5.0,
+          0.5,
+          10.0,
+          1.4
+        ]
+      },
+      "source": "france",
+      "source-layer": "roads",
+      "type": "line"
+    },
+    {
+      "filter": [
+        "==",
+        [
           "get",
           "symbo"
         ],
@@ -342,6 +509,72 @@
       },
       "source": "route",
       "type": "line"
+    },
+    {
+      "filter": [
+        "==",
+        [
+          "get",
+          "kind"
+        ],
+        "locality"
+      ],
+      "id": "france-place",
+      "layout": {
+        "symbol-sort-key": [
+          "-",
+          0,
+          [
+            "coalesce",
+            [
+              "get",
+              "population_rank"
+            ],
+            0
+          ]
+        ],
+        "text-field": [
+          "coalesce",
+          [
+            "get",
+            "name:fr"
+          ],
+          [
+            "get",
+            "name"
+          ]
+        ],
+        "text-font": [
+          "Source Sans Pro Regular"
+        ],
+        "text-max-width": 8,
+        "text-padding": 4,
+        "text-size": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          5.0,
+          11.0,
+          9.0,
+          14.0
+        ]
+      },
+      "maxzoom": 10.0,
+      "metadata": {
+        "skimap:group": "noms"
+      },
+      "paint": {
+        "text-color": "#eef2f6",
+        "text-halo-color": "#0b0e12",
+        "text-halo-width": 2.0
+      },
+      "source": "france",
+      "source-layer": "places",
+      "type": "symbol"
     },
     {
       "filter": [
@@ -711,6 +944,9 @@
         "properties": {}
       }
     },
+    "skimap:shared_sources": [
+      "france"
+    ],
     "skimap:style": "guidage",
     "skimap:theme": "sombre"
   },
@@ -722,6 +958,11 @@
         "type": "FeatureCollection"
       },
       "type": "geojson"
+    },
+    "france": {
+      "attribution": "Protomaps © OpenStreetMap",
+      "type": "vector",
+      "url": "pmtiles://france/france.pmtiles"
     },
     "ign": {
       "attribution": "© IGN Plan IGN v2",

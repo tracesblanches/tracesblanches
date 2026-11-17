@@ -18,6 +18,18 @@ Détail des formats, du plan et des mesures : [`crates/pack/docs/mise-a-jour.md`
 |---|---|---|
 | `catalog.json`, `index.json` | `public, max-age=60, must-revalidate` | taille et date du fichier |
 | `bundles/<sha256>.skb` | `public, max-age=31536000, immutable` | `"<sha256>"` |
+| `basemap/france.json` | `public, max-age=60, must-revalidate` | taille et date du fichier |
+| `basemap/files/<sha256>` | `public, max-age=31536000, immutable` | `"<sha256>"` |
+
+## Fond de France (X20)
+
+Un seul fond pour tous les sites, sans pack : la navigation en mode libre sur toute la France (`skimap_pack::france`).
+
+1. `GET /v1/basemap/france.json` avec `If-None-Match` : description (`format` `skimap-france-basemap`, build Protomaps, `data_date`, emprise, zooms, `files` : chemin, taille, SHA-256 de chaque fichier). Renouvelée au plus une fois par semaine (même règle que les extraits OSM des packs).
+2. Chaque fichier absent ou différent du cache du téléphone : `GET /v1/basemap/files/<sha256>` (reprise par `Range`), vérifié par son empreinte, rangé sous son `path` ; la description en dernier.
+3. Le cœur le dessine sous les packs (`skimap_ffi::open_map`, source partagée `france` des styles) et seul quand aucun pack n'est installé.
+
+Mesuré le 17/11/2026 (build 20261117) : zooms 0 à 6, 22 tuiles, archive 1,78 Mo, 2,10 Mo avec les glyphes (7 fichiers) ; zooms 0 à 7 : 8,9 Mo ; 0 à 8 : 28,3 Mo.
 
 Requêtes partielles : une seule plage par requête (206, `Content-Range`) ; plage hors du fichier : 416 ; plusieurs plages : fichier entier (200). Sur un défaut de cache, Cloudflare peut répondre 200 avec le fichier entier à une requête partielle : l'app doit accepter un 200 et repartir de zéro.
 
