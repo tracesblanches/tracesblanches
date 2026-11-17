@@ -693,4 +693,12 @@ impl Texts for Fr {
     fn s_limits(&self, notes: &[String]) -> String {
         format!("Limites : {}.", notes.join(" ; "))
     }
+
+    fn s_unreachable(&self, nodes: usize, of: usize, km: f64, start: &str) -> String {
+        format!(
+            "{nodes} nœuds sur {of} ({} km de pistes) ne sont pas atteignables depuis {start} : réseau \
+             séparé ou sens uniques dans le graphe des pistes (C1)",
+            self.num(km, 1)
+        )
+    }
 }

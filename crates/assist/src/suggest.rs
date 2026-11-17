@@ -566,14 +566,7 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
             })
             .map(|e| g.length_m(e) / 1000.0)
             .sum();
-        notes.push(format!(
-            "{} nœuds sur {} ({} km de pistes) ne sont pas atteignables depuis {} : réseau \
-             séparé ou sens uniques dans le graphe des pistes (C1)",
-            unreachable.len(),
-            n,
-            fmt(km, 1),
-            req.start_name
-        ));
+        notes.push(t.s_unreachable(unreachable.len(), n, km, &req.start_name));
     }
     // Round trip of every node: out and fastest way back. With a group: the model time of
     // that round trip at the group's time on the flat (the costs of the routers carry
@@ -1155,10 +1148,6 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
     }
 }
 
-fn fmt(x: f64, d: usize) -> String {
-    format!("{x:.d$}").replace('.', ",")
-}
-
 /// « 1 h 50 ».
 pub fn hm(seconds: f64) -> String {
     crate::text::of(crate::text::Lang::Fr).hm(seconds)
@@ -1605,9 +1594,10 @@ mod tests {
         assert_eq!(eight.points, 0.0);
         let first = if east >= west { east } else { west };
         assert!(
-            eight
-                .text
-                .ends_with(&format!("on y repasse après {} km", fmt(first, 1))),
+            eight.text.ends_with(&format!(
+                "on y repasse après {} km",
+                crate::text::of(crate::text::Lang::Fr).num(first, 1)
+            )),
             "{}",
             eight.text
         );

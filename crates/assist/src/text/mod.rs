@@ -302,4 +302,6 @@ pub trait Texts: Sync {
     -> String;
     /// Limits of the loops.
     fn s_limits(&self, notes: &[String]) -> String;
+    /// Nodes out of reach from the start.
+    fn s_unreachable(&self, nodes: usize, of: usize, km: f64, start: &str) -> String;
 }

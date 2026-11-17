@@ -717,4 +717,12 @@ impl Texts for En {
     fn s_limits(&self, notes: &[String]) -> String {
         format!("Limits: {}.", notes.join("; "))
     }
+
+    fn s_unreachable(&self, nodes: usize, of: usize, km: f64, start: &str) -> String {
+        format!(
+            "{nodes} nodes out of {of} ({} km of trails) cannot be reached from {start}: separate \
+             network or one-way trails in the trail graph (C1)",
+            self.num(km, 1)
+        )
+    }
 }

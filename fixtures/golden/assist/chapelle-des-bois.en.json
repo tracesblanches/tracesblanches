@@ -1,0 +1,16 @@
+{
+  "briefing.text": [
+    "Chapelle-des-Bois — Saturday 20 February 2027",
+    "Areas:",
+    "Sunset 18:06.",
+    "Data: météo horaire : <data>/out/chapelle-des-bois/meteo-hourly/hourly.json: No such file or directory (os error 2); BERA : <data>/out/chapelle-des-bois/bera/bera.json: No such file or directory (os error 2); état des pistes : <data>/out/chapelle-des-bois/status/status.json: No such file or directory (os error 2); domaines : <data>/out/chapelle-des-bois/domaines/domaines.geojson: No such file or directory (os error 2); avalanches historiques : <data>/out/chapelle-des-bois/avalanche-historic/summary.json: No such file or directory (os error 2); trail status unknown for this day."
+  ],
+  "suggest.suggestions": 3,
+  "suggest.text": [
+    "120 min from village on Saturday 20 February 2027 at 10:00 (C7 return limit: 18:07)",
+    "1. Chalet Pin – Les Prés d'Haut – GTJ à ski de fond (score -2.69): 14.7 km, 339 m climb, about 2 h 01 (C5 model, classic), back around 12:25 [-0.02]; trail status unknown; estimated snow unknown here (outside the site's map or no line): to be checked [-1.50]; 1.8 km in avalanche terrain (model), no BERA for this range [-0.50]; 8.6 km on trails harder than asked [-1.17]; trails: Route des Pâturages, Chalet Pin, Combe Verte, Greffier, Jobez, La Beurrière, La Loge, Les Prés d'Haut, Nondance, Sylvain Guillaume, La Sauge, Le Paradis, GTJ à ski de fond, La Passerelle, Combe des Cives [+0.50].",
+    "2. Chaumoz – La Norbiére – Les Mortes (score -3.11): 14.0 km, 303 m climb, about 1 h 57 (C5 model, classic), back around 12:20 [-0.05]; trail status unknown; estimated snow unknown here (outside the site's map or no line): to be checked [-1.50]; 0.8 km in avalanche terrain (model), no BERA for this range [-0.50]; 10.9 km on trails harder than asked [-1.56]; trails: Route des Pâturages, Beauregard, Chaumoz, La Norbiére, Les Mortes, GTJ à ski de fond, La Chapelande, Le glacier, Le Petit Glacier, Combe David, Sylvain Guillaume, Combe Verte, Jobez, La Loge [+0.50].",
+    "3. Chalet Pin – Greffier – Les Prés d'Haut (score -3.11): 14.3 km, 349 m climb, about 2 h 01 (C5 model, classic), back around 12:25 [-0.02]; trail status unknown; estimated snow unknown here (outside the site's map or no line): to be checked [-1.50]; 0.6 km in avalanche terrain (model), no BERA for this range [-0.50]; 11.4 km on trails harder than asked [-1.59]; trails: Route des Pâturages, Chalet Pin, Combe Verte, Greffier, Jobez, La Beurrière, La Loge, Les Prés d'Haut, Nondance, Sylvain Guillaume [+0.50].",
+    "Limits: 33 nodes out of 649 (14.5 km of trails) cannot be reached from village: separate network or one-way trails in the trail graph (C1); 46 loops evaluated, 12 too short and 12 too long (outside 75 to 110 % of the time asked)."
+  ]
+}
