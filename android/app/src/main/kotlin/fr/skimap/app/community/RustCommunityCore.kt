@@ -1,6 +1,7 @@
 package fr.skimap.app.community
 
 import android.content.Context
+import fr.skimap.app.appLang
 import fr.skimap.community.AreaContext
 import fr.skimap.community.Challenge
 import fr.skimap.community.ChallengeKind
@@ -9,6 +10,7 @@ import fr.skimap.community.Correction
 import fr.skimap.community.ImportSummary
 import fr.skimap.community.OsmNote
 import fr.skimap.core.DomainRef
+import fr.skimap.core.Lang
 import fr.skimap.core.challengesCompute
 import fr.skimap.core.listPacks
 import fr.skimap.core.openPacks
@@ -92,7 +94,7 @@ class RustCommunityCore(
         lat: Double,
         french: Boolean,
     ): OsmNote {
-        val n = osmNoteDraft(correction.id, pisteName, osmWayId, comment, lon, lat, french)
+        val n = osmNoteDraft(correction.id, pisteName, osmWayId, comment, lon, lat, if (french) Lang.FR else Lang.EN)
         return OsmNote(n.lat, n.lon, n.text, n.formBody)
     }
 
@@ -102,7 +104,7 @@ class RustCommunityCore(
         val b = checkNotNull(e.bounds)
         val style =
             runCatching {
-                val view = openPacks(listOf(e.dir), styleJson(), false)
+                val view = openPacks(listOf(e.dir), styleJson(), false, appLang())
                 try {
                     view.style.json
                 } finally {

@@ -3,6 +3,7 @@ package fr.skimap.app
 import fr.skimap.app.sync.PackSyncer
 import fr.skimap.app.sync.ServerCatalog
 import fr.skimap.app.sync.SyncTarget
+import fr.skimap.core.Lang
 import fr.skimap.core.listPacks
 import fr.skimap.core.openPacks
 import fr.skimap.core.syncState
@@ -139,7 +140,7 @@ class PackSyncTest {
         assertEquals(tree(testPack(2)), tree(pack("test")))
         // And the map opens it with the validated style.
         val style = File(checkNotNull(System.getProperty("skimap.styles")), "fond-clair.json").readText()
-        val view = openPacks(listOf(pack("test").absolutePath), style, false)
+        val view = openPacks(listOf(pack("test").absolutePath), style, false, Lang.FR)
         assertEquals(2u, view.info.status!!.open)
     }
 
@@ -192,7 +193,7 @@ class PackSyncTest {
         }
         assertEquals(before, tree(pack("test")))
         val style = File(checkNotNull(System.getProperty("skimap.styles")), "srn-sombre.json").readText()
-        assertEquals("skimap test srn-sombre", openPacks(listOf(pack("test").absolutePath), style, false).style.name)
+        assertEquals("skimap test srn-sombre", openPacks(listOf(pack("test").absolutePath), style, false, Lang.FR).style.name)
         startServer()
     }
 

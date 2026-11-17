@@ -82,6 +82,7 @@
     <string name="prep_ski_mode_on">Mode ski : les plans préparés servent tels quels ; la date de chaque information est affichée.</string>
     <string name="prep_days">Jours préparés</string>
     <string name="prep_no_days">Aucun jour préparé pour l\'instant.</string>
+    <string name="prep_last_run">%1$s, %2$d ms, batterie %3$s %%, %4$s °C</string>
     <string name="prep_take">Partir avec ce plan</string>
     <string name="prep_back">Retour vers %1$s</string>
     <string name="prep_voice_missing">Dites par la voix du téléphone (clip absent du pack) : %1$d</string>

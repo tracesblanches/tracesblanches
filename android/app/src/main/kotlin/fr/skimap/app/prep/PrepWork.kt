@@ -13,6 +13,8 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import fr.skimap.app.R
+import fr.skimap.app.appLang
 import fr.skimap.app.day.DayStore
 import fr.skimap.app.fog.Outings
 import fr.skimap.core.prepRun
@@ -106,12 +108,12 @@ object PrepWork {
         val days = mutableListOf<String>()
         val skipped = mutableListOf<String>()
         for (p in Outings.packDirs(context)) {
-            runCatching { prepRun(p.path, Outings.workDir(context).path, out.path, group, today, DAYS) }
+            runCatching { prepRun(p.path, Outings.workDir(context).path, out.path, group, today, DAYS, appLang()) }
                 .onSuccess { r ->
                     days += r.days.map { "${it.siteId} ${it.date}" }
-                    skipped += r.skipped.map { "${p.name} : $it" }
+                    skipped += r.skipped.map { context.getString(R.string.label_value, p.name, it) }
                 }.onFailure {
-                    skipped += "${p.name} : ${it.message}"
+                    skipped += context.getString(R.string.label_value, p.name, it.message.orEmpty())
                     Log.w("skimap", "prep ${p.name}", it)
                 }
         }

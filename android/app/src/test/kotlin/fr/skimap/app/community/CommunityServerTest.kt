@@ -5,6 +5,7 @@ import fr.skimap.community.CommunityApi
 import fr.skimap.community.ReportKind
 import fr.skimap.community.ReportOutbox
 import fr.skimap.community.ReportUploader
+import fr.skimap.core.Lang
 import fr.skimap.core.challengesCompute
 import fr.skimap.core.osmNoteDraft
 import fr.skimap.core.outingHistory
@@ -112,7 +113,7 @@ class CommunityServerTest {
         assertEquals("r", c[0].id)
         assertEquals(1.0, c[0].share, 0.01)
         assertEquals("2026-01-10", c[0].doneOn)
-        val n = osmNoteDraft("wrong_name", "Les Fonts", 42L, "Panneau : Fonts", 6.77, 44.85, true)
+        val n = osmNoteDraft("wrong_name", "Les Fonts", 42L, "Panneau : Fonts", 6.77, 44.85, Lang.FR)
         assertTrue(n.text.startsWith("Le nom de cette piste est faux.\nPiste : « Les Fonts »"))
         assertTrue(n.formBody.startsWith("lat=44.85&lon=6.77&text="))
     }
@@ -138,7 +139,7 @@ class CommunityServerTest {
         assertEquals(File(files, "plans"), root)
         assertTrue(File(root, "strava-103/outing.json").isFile)
         assertTrue(!File(files, "outings").exists())
-        val h = outingHistory(root.absolutePath)
+        val h = outingHistory(root.absolutePath, Lang.FR)
         assertEquals(1, h.size)
         assertEquals("strava", h[0].kind)
         assertEquals("Risoux", h[0].title)

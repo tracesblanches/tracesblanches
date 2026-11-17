@@ -3,6 +3,7 @@ package fr.skimap.app.day
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import fr.skimap.app.appLang
+import fr.skimap.app.durationText
 import fr.skimap.core.DayPlanView
 import fr.skimap.core.DayPlanner
 import fr.skimap.core.DayRequest
@@ -99,12 +100,10 @@ fun dayRequest(
     lang: Lang = appLang(),
 ): DayRequest? {
     val s = i.start ?: return null
-    val h = i.budgetMin / MINUTES_PER_HOUR
-    val m = i.budgetMin % MINUTES_PER_HOUR
     val label =
         buildString {
             val w = RequestWords.of(lang)
-            append(if (m == 0) "$h h" else "$h h ${"%02d".format(m)}")
+            append(durationText(i.budgetMin, lang))
             append(if (i.skating) ", skating" else ", ${w.classic}")
             if (i.easyOnly) append(", ${w.easy}")
             i.returnBefore?.let { append(", ${w.backBefore} ${it.replace(":", w.clockSeparator)}") }
@@ -187,10 +186,12 @@ private data class RequestWords(
     val easy: String,
     val backBefore: String,
     val clockSeparator: String,
+    /** Error of « Valider la journée » without a loop. */
+    val noLoop: String,
 ) {
     companion object {
-        private val FR = RequestWords("classique", "vertes et bleues", "retour avant", " h ")
-        private val EN = RequestWords("classic", "green and blue", "back before", ":")
+        private val FR = RequestWords("classique", "vertes et bleues", "retour avant", " h ", "aucune boucle à valider")
+        private val EN = RequestWords("classic", "green and blue", "back before", ":", "no loop to validate")
 
         fun of(lang: Lang): RequestWords = if (lang == Lang.FR) FR else EN
     }
@@ -330,7 +331,7 @@ class DayViewModel(
         val p = planner
         val s = state.value as? DayUi.Ready
         if (p == null || s == null || s.morning?.loops.isNullOrEmpty()) {
-            return Result.failure(IllegalStateException("aucune boucle à valider"))
+            return Result.failure(IllegalStateException(RequestWords.of(appLang()).noLoop))
         }
         return withContext(io) {
             try {

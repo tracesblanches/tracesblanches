@@ -7,6 +7,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import fr.skimap.app.R
+import fr.skimap.app.appLang
 import fr.skimap.app.fog.Outings
 import fr.skimap.core.outingRecap
 import fr.skimap.tracking.GuidanceNotifier
@@ -21,7 +22,7 @@ object RecapNotifier {
         dir: String,
     ) {
         val r =
-            runCatching { outingRecap(dir, Outings.plansRoot(context).path, Outings.workDir(context).path) }
+            runCatching { outingRecap(dir, Outings.plansRoot(context).path, Outings.workDir(context).path, appLang()) }
                 .onFailure { Log.w("skimap", "recap", it) }
                 .getOrNull() ?: return
         val open =
