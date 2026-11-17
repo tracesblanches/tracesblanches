@@ -6,14 +6,30 @@
 //! while the build key, the box and the zoom do not change. The build list, the sprite
 //! and the glyphs go through the downloader too.
 //!
+//! Stable from day to day (X26, #160): two extracts of the same build are identical byte
+//! for byte, but every daily build changed the whole archive. Its metadata carries the
+//! OSM replication time, and the tiles of zooms 2 to 9, each covering hundreds of
+//! kilometres, take in edits made anywhere in that region (5 to 9 tiles, 0.6 to 1.9 MB
+//! of each extract, every day of 12-16/11/2026 for three sites of the Alps, the Jura
+//! and the Pyrenees). Inside the site box (the tiles of the highest zoom) the same
+//! builds changed 0 to 9 tiles of 399, none of 360, and 0, 1 or 16 of 120. Since the
+//! phone downloads every file whose SHA-256 changed, each new build sent the whole
+//! archive (3.6 MB on 17/11/2026). So the build in use is kept
+//! ([`current_extract`]) until the box really changed ([`CHANGED_SHARE`] of the tiles of
+//! the highest zoom differ from it) or it is [`MAX_AGE_DAYS`] older than the latest one:
+//! the basemap then changes at most once a week, and the date shown is the date of the
+//! build in use.
+//!
 //! Licence: ODbL, « Produced Work » of OpenStreetMap; attribution Protomaps and
 //! OpenStreetMap contributors (report 03).
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use skimap_common::download::{Downloader, Request};
+use skimap_common::geom::BBox;
 use skimap_common::layout::DataLayout;
 use skimap_common::site::Site;
 
@@ -22,6 +38,7 @@ use crate::build::{assets, copy_file, create_dir, dir_size, source, write_bytes}
 use crate::error::{Error, Result};
 use crate::manifest::Basemap;
 use crate::reader::TileArchive;
+use crate::tiles::tiles_covering;
 
 /// Downloader source of the build list.
 pub const SOURCE: &str = "protomaps";
@@ -37,9 +54,19 @@ pub const ASSETS_BASE: &str = "https://protomaps.github.io/basemaps-assets/";
 pub const STYLE: &str = include_str!("../../assets/protomaps/style-light-fr.json");
 /// Identifier of the basemap in the pack.
 pub const ID: &str = "osm";
+/// A newer build replaces the one in use at the latest this many days after it, even
+/// when the site box did not change: the basemap is at most a week behind OSM.
+pub const MAX_AGE_DAYS: i64 = 7;
+/// A newer build replaces the one in use as soon as this share of the tiles of the
+/// highest zoom (those cover the site box) differ from it. One edit (a track, a few
+/// buildings) touched 1 to 9 of the 120 to 400 tiles of a site, under 2.5 %; 16 tiles
+/// of 120 (13 %) between builds 20261115 and 20261116 for one site are a mapping
+/// session in its box. Smaller edits add up against the build in use, and wait at most
+/// [`MAX_AGE_DAYS`]; the trails of the pack come from their own daily OSM layers.
+pub const CHANGED_SHARE: f64 = 0.05;
 
 /// A daily build of the list.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BuildInfo {
     /// File name, `AAAAMMJJ.pmtiles`.
     pub key: String,
@@ -102,7 +129,29 @@ pub fn select_build(dl: &Downloader, wanted: Option<&str>) -> Result<BuildInfo> 
     }
 }
 
-/// Cached extract of a site (`data/cache/protomaps/extracts/<site>-<build>-z<zoom>.pmtiles`),
+/// Directory of the cached extracts.
+fn extracts_dir(layout: &DataLayout) -> Result<PathBuf> {
+    let dir = layout.cache_dir(SOURCE)?.join("extracts");
+    create_dir(&dir)?;
+    Ok(dir)
+}
+
+/// Box of a site in the extract names, `<west>_<south>_<east>_<north>`.
+fn box_name(b: BBox) -> String {
+    format!("{}_{}_{}_{}", b.west, b.south, b.east, b.north)
+}
+
+/// Path of the cached extract of a build, `<site>-<build>-z<zoom>-<box>.pmtiles`.
+fn extract_path(dir: &Path, site: &Site, key: &str, maxzoom: u8) -> PathBuf {
+    let stem = key.trim_end_matches(".pmtiles");
+    dir.join(format!(
+        "{}-{stem}-z{maxzoom}-{}.pmtiles",
+        site.id,
+        box_name(site.bbox)
+    ))
+}
+
+/// Cached extract of a site (`data/cache/protomaps/extracts/<site>-<build>-z<zoom>-<box>.pmtiles`),
 /// made if absent.
 pub fn cached_extract(
     site: &Site,
@@ -111,14 +160,7 @@ pub fn cached_extract(
     build: &BuildInfo,
     maxzoom: u8,
 ) -> Result<PathBuf> {
-    let dir = layout.cache_dir(SOURCE)?.join("extracts");
-    create_dir(&dir)?;
-    let stem = build.key.trim_end_matches(".pmtiles");
-    let b = site.bbox;
-    let path = dir.join(format!(
-        "{}-{stem}-z{maxzoom}-{}_{}_{}_{}.pmtiles",
-        site.id, b.west, b.south, b.east, b.north
-    ));
+    let path = extract_path(&extracts_dir(layout)?, site, &build.key, maxzoom);
     if !path.is_file() {
         let tmp = path.with_extension("pmtiles.part");
         let url = format!("{BUILD_BASE}{}", build.key);
@@ -145,6 +187,209 @@ pub fn cached_extract(
     Ok(path)
 }
 
+/// Tiles of the highest zoom of the box that differ between two extracts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct BoxChange {
+    /// Zoom compared: the highest of the newer extract.
+    pub zoom: u8,
+    /// Tiles of the box at that zoom.
+    pub tiles: u64,
+    /// Tiles whose contents differ, tiles present in one extract only included.
+    pub changed: u64,
+}
+
+impl BoxChange {
+    /// Share of the tiles that changed.
+    pub fn share(&self) -> f64 {
+        if self.tiles == 0 {
+            0.0
+        } else {
+            self.changed as f64 / self.tiles as f64
+        }
+    }
+}
+
+/// Compares the tiles of the highest zoom of `newer` (they cover `bbox`) with `older`,
+/// after decompression.
+pub fn box_change(older: &TileArchive, newer: &TileArchive, bbox: BBox) -> Result<BoxChange> {
+    let zoom = newer.zoom_range().1;
+    let mut out = BoxChange {
+        zoom,
+        tiles: 0,
+        changed: 0,
+    };
+    for (z, x, y) in tiles_covering(bbox, zoom, zoom) {
+        out.tiles += 1;
+        let (a, b) = (older.raw_tile(z, x, y)?, newer.raw_tile(z, x, y)?);
+        let differ = match (&a, &b) {
+            (Some(a), Some(b)) => a != b && older.tile(z, x, y)? != newer.tile(z, x, y)?,
+            (None, None) => false,
+            _ => true,
+        };
+        out.changed += u64::from(differ);
+    }
+    Ok(out)
+}
+
+/// Why the extract of the latest build was adopted, or the one in use kept.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Decision {
+    /// No build in use (first build, or its extract left the cache): adopted.
+    First,
+    /// The latest build is the one in use.
+    Same,
+    /// The tile schema changed: adopted.
+    Schema,
+    /// The build asked for is older than the one in use: adopted.
+    Older,
+    /// The build in use is [`MAX_AGE_DAYS`] older than the latest one, or more: adopted.
+    Age,
+    /// [`CHANGED_SHARE`] of the box tiles changed, or more: adopted.
+    Changed,
+    /// The box barely changed and the build in use is recent: kept.
+    Kept,
+}
+
+impl Decision {
+    /// Whether the extract of the latest build is used.
+    pub fn adopts(self) -> bool {
+        self != Decision::Kept
+    }
+}
+
+/// Date of a build key `AAAAMMJJ.pmtiles`.
+fn build_date(key: &str) -> Option<chrono::NaiveDate> {
+    chrono::NaiveDate::parse_from_str(key.trim_end_matches(".pmtiles"), "%Y%m%d").ok()
+}
+
+/// Whether the latest build `latest` replaces the build in use `current`. `change`: the
+/// box tiles of `latest` against the extract in use, read only when the other rules do
+/// not decide ([`needs_comparison`]); `None` there adopts.
+pub fn decide(
+    current: Option<&BuildInfo>,
+    latest: &BuildInfo,
+    change: Option<BoxChange>,
+) -> Decision {
+    let Some(cur) = current else {
+        return Decision::First;
+    };
+    if cur.key == latest.key {
+        return Decision::Same;
+    }
+    if cur.version != latest.version {
+        return Decision::Schema;
+    }
+    match (build_date(&cur.key), build_date(&latest.key)) {
+        (Some(a), Some(b)) if b < a => return Decision::Older,
+        (Some(a), Some(b)) if (b - a).num_days() < MAX_AGE_DAYS => {}
+        // Older than the limit, or keys that are not dates (no age known).
+        _ => return Decision::Age,
+    }
+    match change {
+        Some(c) if c.share() < CHANGED_SHARE => Decision::Kept,
+        _ => Decision::Changed,
+    }
+}
+
+/// Whether [`decide`] reads the box comparison.
+pub fn needs_comparison(current: Option<&BuildInfo>, latest: &BuildInfo) -> bool {
+    let unchanged = BoxChange {
+        zoom: 0,
+        tiles: 0,
+        changed: 0,
+    };
+    decide(current, latest, Some(unchanged)) == Decision::Kept
+}
+
+/// The extract used by the pack.
+#[derive(Debug, Clone)]
+pub struct Chosen {
+    /// Build of the extract: its date is the date shown.
+    pub build: BuildInfo,
+    /// The extract.
+    pub path: PathBuf,
+    /// The latest build, compared with the one in use.
+    pub latest: BuildInfo,
+    /// Box tiles of the latest build against the one in use, when compared.
+    pub change: Option<BoxChange>,
+    /// Decision.
+    pub decision: Decision,
+}
+
+/// Chooses between the extract in use (`current`, with its build) and the extract of
+/// the latest build, by [`decide`].
+pub fn choose(
+    current: Option<(BuildInfo, PathBuf)>,
+    latest: (BuildInfo, PathBuf),
+    bbox: BBox,
+) -> Result<Chosen> {
+    let change = match &current {
+        Some((cur, cur_path)) if needs_comparison(Some(cur), &latest.0) => Some(box_change(
+            &TileArchive::open(cur_path)?,
+            &TileArchive::open(&latest.1)?,
+            bbox,
+        )?),
+        _ => None,
+    };
+    let decision = decide(current.as_ref().map(|c| &c.0), &latest.0, change);
+    let (build, path) = match current {
+        Some(c) if !decision.adopts() => c,
+        _ => latest.clone(),
+    };
+    Ok(Chosen {
+        build,
+        path,
+        latest: latest.0,
+        change,
+        decision,
+    })
+}
+
+/// The extract the pack uses: the one of the build in use, recorded in
+/// `extracts/<site>-z<zoom>-<box>.current.json`, or the one of `latest` when [`decide`]
+/// adopts it (then recorded in its place).
+pub fn current_extract(
+    site: &Site,
+    layout: &DataLayout,
+    dl: &Downloader,
+    latest: &BuildInfo,
+    maxzoom: u8,
+) -> Result<Chosen> {
+    let dir = extracts_dir(layout)?;
+    let state = dir.join(format!(
+        "{}-z{maxzoom}-{}.current.json",
+        site.id,
+        box_name(site.bbox)
+    ));
+    let current: Option<(BuildInfo, PathBuf)> = match std::fs::read(&state) {
+        Ok(b) => {
+            let build: BuildInfo = serde_json::from_slice(&b)
+                .map_err(|e| Error::json(state.display().to_string(), e))?;
+            let path = extract_path(&dir, site, &build.key, maxzoom);
+            path.is_file().then_some((build, path))
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(Error::io(&state, e)),
+    };
+    let latest_path = cached_extract(site, layout, dl, latest, maxzoom)?;
+    let chosen = choose(current, (latest.clone(), latest_path), site.bbox)?;
+    if chosen.decision.adopts() && chosen.decision != Decision::Same {
+        let body = serde_json::to_vec_pretty(&chosen.build)
+            .map_err(|e| Error::json("Protomaps build in use", e))?;
+        write_bytes(&state, &body)?;
+    }
+    tracing::info!(
+        site = site.id,
+        in_use = chosen.build.key,
+        latest = latest.key,
+        change = ?chosen.change,
+        decision = ?chosen.decision,
+        "Protomaps build"
+    );
+    Ok(chosen)
+}
+
 /// Builds the OSM basemap into `root/basemap/`.
 pub fn build(
     site: &Site,
@@ -154,10 +399,10 @@ pub fn build(
     wanted_build: Option<&str>,
     maxzoom: u8,
 ) -> Result<Basemap> {
-    let build = select_build(dl, wanted_build)?;
-    let extract = cached_extract(site, layout, dl, &build, maxzoom)?;
+    let chosen = current_extract(site, layout, dl, &select_build(dl, wanted_build)?, maxzoom)?;
+    let build = &chosen.build;
     let archive_rel = format!("basemap/{ID}.pmtiles");
-    let archive_bytes = copy_file(&extract, &root.join(&archive_rel))?;
+    let archive_bytes = copy_file(&chosen.path, &root.join(&archive_rel))?;
     let tiles = TileArchive::open(root.join(&archive_rel))?;
     let (minzoom, maxz) = tiles.zoom_range();
 
@@ -223,12 +468,46 @@ pub fn build(
                 "Extrait par requêtes partielles (skimap_pack::build::extract) de {BUILD_BASE}{} : emprise du site, zooms {minzoom} à {maxz}.",
                 build.key
             ),
+            renewal_note(&chosen),
             format!(
                 "Glyphes : plages {} seulement.",
                 assets::GLYPH_RANGES.join(", ")
             ),
         ],
     })
+}
+
+/// Manifest note: which build is in use and why.
+fn renewal_note(c: &Chosen) -> String {
+    let rule = format!(
+        "le fond n'est renouvelé que quand {} % des tuiles de l'emprise au zoom maximal ont changé, ou {MAX_AGE_DAYS} jours après le build en usage",
+        CHANGED_SHARE * 100.0
+    );
+    let compared = c.change.map(|ch| {
+        let s = if ch.changed > 1 { "s" } else { "" };
+        format!(
+            "{} tuile{s} sur {} différente{s} au zoom {}",
+            ch.changed, ch.tiles, ch.zoom
+        )
+    });
+    let why = match c.decision {
+        Decision::Kept => format!(
+            "build {} conservé : dernier build {} comparé, {}",
+            c.build.key,
+            c.latest.key,
+            compared.unwrap_or_default()
+        ),
+        Decision::Changed => format!(
+            "build {} adopté : {}",
+            c.build.key,
+            compared.unwrap_or_default()
+        ),
+        Decision::Age => format!("build {} adopté : build précédent trop ancien", c.build.key),
+        Decision::Schema => format!("build {} adopté : schéma des tuiles changé", c.build.key),
+        Decision::Older => format!("build {} demandé explicitement", c.build.key),
+        Decision::First | Decision::Same => format!("build {} en usage", c.build.key),
+    };
+    format!("Mises à jour : {why} ; {rule}.")
 }
 
 #[cfg(test)]
@@ -259,5 +538,223 @@ mod tests {
         assert_eq!(s["glyphs"], "basemap/osm/fonts/{fontstack}/{range}.pbf");
         let stacks = assets::fontstacks(&s);
         assert!(stacks.contains("Noto Sans Regular"));
+    }
+
+    fn info(key: &str, version: &str) -> BuildInfo {
+        BuildInfo {
+            key: format!("{key}.pmtiles"),
+            size: 1,
+            uploaded: String::new(),
+            version: version.to_owned(),
+        }
+    }
+
+    fn changed(n: u64) -> Option<BoxChange> {
+        Some(BoxChange {
+            zoom: 15,
+            tiles: 400,
+            changed: n,
+        })
+    }
+
+    #[test]
+    fn decision_rules() {
+        let cur = info("20261112", "4.15.2");
+        assert_eq!(decide(None, &cur, None), Decision::First);
+        assert_eq!(decide(Some(&cur), &cur, None), Decision::Same);
+        let next = info("20261113", "4.15.2");
+        assert!(needs_comparison(Some(&cur), &next));
+        assert_eq!(decide(Some(&cur), &next, changed(0)), Decision::Kept);
+        assert_eq!(decide(Some(&cur), &next, changed(19)), Decision::Kept);
+        assert_eq!(decide(Some(&cur), &next, changed(20)), Decision::Changed);
+        assert_eq!(decide(Some(&cur), &next, None), Decision::Changed);
+        let week = info("20261119", "4.15.2");
+        assert!(!needs_comparison(Some(&cur), &week));
+        assert_eq!(decide(Some(&cur), &week, changed(0)), Decision::Age);
+        assert_eq!(
+            decide(Some(&cur), &info("20261118", "4.15.2"), changed(0)),
+            Decision::Kept
+        );
+        assert_eq!(
+            decide(Some(&cur), &info("20261113", "4.16.0"), changed(0)),
+            Decision::Schema
+        );
+        assert_eq!(
+            decide(Some(&next), &cur, changed(0)),
+            Decision::Older,
+            "a build asked for explicitly, older than the one in use"
+        );
+        assert_eq!(
+            decide(Some(&info("latest", "4.15.2")), &next, changed(0)),
+            Decision::Age,
+            "no date: adopt"
+        );
+    }
+
+    /// A synthetic daily build extract: every tile of the box at zooms 0 to 15, contents
+    /// `z/x/y@rev` with `rev(z, x, y)`, and the replication time of the build in the
+    /// metadata, as in the Protomaps builds.
+    fn write_day(
+        path: &Path,
+        bbox: BBox,
+        key: &str,
+        rev: impl Fn(u8, u32, u32) -> u32,
+    ) -> Vec<crate::tiles::TileData> {
+        let tiles: Vec<crate::tiles::TileData> = tiles_covering(bbox, 0, 15)
+            .into_iter()
+            .map(|(z, x, y)| {
+                (
+                    (z, x, y),
+                    format!("{z}/{x}/{y}@{}", rev(z, x, y)).into_bytes(),
+                )
+            })
+            .collect();
+        crate::build::raster::write_archive(
+            path,
+            pmtiles::TileType::Mvt,
+            None,
+            &tiles,
+            &json!({"planetiler:osm:osmosisreplicationtime": key}),
+            bbox,
+            0,
+            15,
+        )
+        .unwrap();
+        tiles
+    }
+
+    /// X26 (#160), regression of 17/11/2026: each daily Protomaps build changed the
+    /// metadata and the tiles of zooms 2 to 9, and the whole OSM archive went into every
+    /// daily update. With a few edits in the box the archive stays the same byte for byte;
+    /// edits add up against the build in use until 5 % of the box tiles changed; a week
+    /// after the build in use, the latest is adopted anyway.
+    #[test]
+    fn daily_builds_keep_the_archive_until_the_box_changes() {
+        let site = &skimap_common::site::SITES[0];
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = DataLayout::new(tmp.path());
+        let dl = Downloader::builder(layout.cache_root())
+            .offline(true)
+            .build()
+            .unwrap();
+        let dir = extracts_dir(&layout).unwrap();
+        let box_tiles = tiles_covering(site.bbox, 15, 15);
+        let n = box_tiles.len();
+        assert!(n >= 100, "{n} tiles at zoom 15");
+        // Box tiles edited in the first `k` days: `edits[i]` tiles from day `i`.
+        let five_percent = (n as f64 * CHANGED_SHARE).ceil() as usize;
+        let edits = [0, 3, five_percent - 3, 4];
+        let day_of_edit = |i: usize| {
+            let mut acc = 0;
+            edits.iter().position(|&e| {
+                acc += e;
+                i < acc
+            })
+        };
+        let mut published: Vec<(String, Decision, String)> = Vec::new();
+        for day in 0..12u32 {
+            let key = format!("202611{:02}", 12 + day);
+            let path = extract_path(&dir, site, &key, 15);
+            write_day(&path, site.bbox, &key, |z, x, y| {
+                if (2..=9).contains(&z) {
+                    // Wide tiles: every build changes them.
+                    return day;
+                }
+                if z == 15 {
+                    let i = box_tiles.iter().position(|t| *t == (z, x, y)).unwrap();
+                    if let Some(d) = day_of_edit(i) {
+                        return u32::from(d as u32 <= day) * (d as u32 + 100);
+                    }
+                }
+                0
+            });
+            let chosen = current_extract(site, &layout, &dl, &info(&key, "4.15.2"), 15).unwrap();
+            let root = tmp.path().join(format!("pack-{day}"));
+            let rel = format!("basemap/{ID}.pmtiles");
+            copy_file(&chosen.path, &root.join(&rel)).unwrap();
+            let (_, sha) = crate::reader::sha256_file(&root.join(&rel)).unwrap();
+            published.push((chosen.build.key.clone(), chosen.decision, sha));
+        }
+        let decisions: Vec<Decision> = published.iter().map(|p| p.1).collect();
+        assert_eq!(
+            decisions,
+            [
+                Decision::First,   // 12th: first build
+                Decision::Kept,    // 13th: 3 box tiles edited
+                Decision::Changed, // 14th: 5 % of the box tiles edited since the 12th
+                Decision::Kept,    // 15th: 4 tiles edited
+                Decision::Kept,
+                Decision::Kept,
+                Decision::Kept,
+                Decision::Kept,
+                Decision::Kept, // 20th
+                Decision::Age,  // 21st: a week after the 14th
+                Decision::Kept,
+                Decision::Kept,
+            ]
+        );
+        let used: Vec<&str> = published.iter().map(|p| p.0.as_str()).collect();
+        assert_eq!(&used[..2], ["20261112.pmtiles"; 2]);
+        assert_eq!(&used[2..9], ["20261114.pmtiles"; 7]);
+        assert_eq!(&used[9..], ["20261121.pmtiles"; 3]);
+        // The published archive changes only when a build is adopted.
+        for w in published.windows(2) {
+            assert_eq!(w[0].2 == w[1].2, !w[1].1.adopts(), "{w:?}");
+        }
+        // The kept archive is the extract of the build in use, byte for byte.
+        let kept = std::fs::read(extract_path(&dir, site, "20261114", 15)).unwrap();
+        let pack = std::fs::read(tmp.path().join(format!("pack-8/basemap/{ID}.pmtiles"))).unwrap();
+        assert_eq!(kept, pack);
+        let a = TileArchive::open(tmp.path().join(format!("pack-8/basemap/{ID}.pmtiles"))).unwrap();
+        assert!(a.metadata().unwrap().contains("20261114"));
+    }
+
+    /// A build in use whose extract left the cache: the latest is adopted.
+    #[test]
+    fn missing_extract_in_use_adopts_the_latest() {
+        let site = &skimap_common::site::SITES[0];
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = DataLayout::new(tmp.path());
+        let dl = Downloader::builder(layout.cache_root())
+            .offline(true)
+            .build()
+            .unwrap();
+        let dir = extracts_dir(&layout).unwrap();
+        for key in ["20261112", "20261113"] {
+            write_day(
+                &extract_path(&dir, site, key, 15),
+                site.bbox,
+                key,
+                |_, _, _| 0,
+            );
+        }
+        let first = current_extract(site, &layout, &dl, &info("20261112", "4.15.2"), 15).unwrap();
+        assert_eq!(first.decision, Decision::First);
+        std::fs::remove_file(extract_path(&dir, site, "20261112", 15)).unwrap();
+        let next = current_extract(site, &layout, &dl, &info("20261113", "4.15.2"), 15).unwrap();
+        assert_eq!(next.decision, Decision::First);
+        assert_eq!(next.build.key, "20261113.pmtiles");
+    }
+
+    #[test]
+    fn box_change_counts_the_highest_zoom_only() {
+        let site = &skimap_common::site::SITES[0];
+        let tmp = tempfile::tempdir().unwrap();
+        let a = tmp.path().join("a.pmtiles");
+        let b = tmp.path().join("b.pmtiles");
+        write_day(&a, site.bbox, "a", |_, _, _| 0);
+        let first = tiles_covering(site.bbox, 15, 15)[0];
+        write_day(&b, site.bbox, "b", |z, x, y| {
+            u32::from(z < 15 || (z, x, y) == first)
+        });
+        let c = box_change(
+            &TileArchive::open(&a).unwrap(),
+            &TileArchive::open(&b).unwrap(),
+            site.bbox,
+        )
+        .unwrap();
+        assert_eq!(c.zoom, 15);
+        assert_eq!(c.tiles, tiles_covering(site.bbox, 15, 15).len() as u64);
+        assert_eq!(c.changed, 1);
     }
 }
