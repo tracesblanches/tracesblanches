@@ -1,14 +1,15 @@
-//! Languages of the voice (VO6): French and English.
+//! Languages of the app (VO6): French and English, the one language type of the core.
 //!
-//! The clip ids do not depend on the language (`turn.left.200`, `fix.arrive`,
-//! `piste.greffier.bleue`); each language has its own texts and its own clips, generated
-//! by the Pocket TTS model of that language and shipped in a voice pack per site and
-//! language. The phrase bank builds announcements in French; [`crate::phrase`] gives the
-//! same announcement in another language, clip by clip.
+//! The texts of the core (briefing, recap, cards, rules...) and the voice follow the
+//! phone's language: French on a French phone, English for every other language
+//! ([`Lang::of_phone`]). The clip ids of the voice do not depend on the language
+//! (`turn.left.200`, `fix.arrive`); each language has its own clips, shipped in a voice
+//! pack per site and language (`skimap_voice::phrase` gives an announcement in another
+//! language, clip by clip).
 
 use serde::{Deserialize, Serialize};
 
-/// A language of the voice.
+/// A language of the app and of the voice.
 #[derive(
     Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
@@ -22,7 +23,7 @@ pub enum Lang {
 }
 
 impl Lang {
-    /// Every language with a voice.
+    /// Every language of the app.
     pub const ALL: [Lang; 2] = [Lang::Fr, Lang::En];
 
     /// ISO 639-1 code: `fr`, `en`.

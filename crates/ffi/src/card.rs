@@ -60,13 +60,24 @@ pub struct Card {
     pub updated: Option<String>,
 }
 
-/// Language of the card labels.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub use skimap_common::Lang;
+
+/// The language of the app (VO6), the one language type of the interface: every text of
+/// the core comes in the language given (cards, morning, plan, recap, rules, alerts…).
+/// French on a French phone, English for every other language ([`phone_lang`]).
+#[uniffi::remote(Enum)]
 pub enum Lang {
     /// French.
     Fr,
     /// English (the default of the app outside French-speaking phones).
     En,
+}
+
+/// The language of the app for a phone language (`fr`, `fr-CA`, `en-GB`, `de`…): French
+/// on a French phone, English for every other language.
+#[uniffi::export]
+pub fn phone_lang(code: String) -> Lang {
+    Lang::of_phone(&code)
 }
 
 /// English of every French label of the cards (labels and the app's own words; values
@@ -126,6 +137,14 @@ const EN: &[(&str, &str)] = &[
     ("Tarif", "Price"),
     ("Station", "Ski area"),
     ("Voir le plan officiel", "See the official trail map"),
+    (
+        "© les contributeurs d'OpenStreetMap (ODbL)",
+        "© OpenStreetMap contributors (ODbL)",
+    ),
+    (
+        "© les contributeurs de Camptocamp.org (CC BY-SA 3.0)",
+        "© Camptocamp.org contributors (CC BY-SA 3.0)",
+    ),
 ];
 
 /// `fr` in `lang`.
@@ -367,7 +386,7 @@ fn refuges_osm(p: &Map<String, Value>, l: Lang) -> Card {
         facts,
         phones,
         links,
-        source: "© les contributeurs d'OpenStreetMap (ODbL)".to_owned(),
+        source: t(l, "© les contributeurs d'OpenStreetMap (ODbL)").to_owned(),
         updated: None,
     }
 }
@@ -439,7 +458,7 @@ fn camptocamp(p: &Map<String, Value>, l: Lang) -> Card {
         facts,
         phones: Vec::new(),
         links,
-        source: "© les contributeurs de Camptocamp.org (CC BY-SA 3.0)".to_owned(),
+        source: t(l, "© les contributeurs de Camptocamp.org (CC BY-SA 3.0)").to_owned(),
         updated: None,
     }
 }

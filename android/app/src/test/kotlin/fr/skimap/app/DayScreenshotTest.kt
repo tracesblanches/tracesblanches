@@ -45,6 +45,25 @@ class DayScreenshotTest {
         capture("day_morning_light")
     }
 
+    /** The morning on a phone in English: the texts of the core follow the phone (VO6). */
+    @Test
+    @Config(qualifiers = "en-w412dp-h915dp-hdpi")
+    fun morningEnglish() {
+        rule.setContent {
+            Themed {
+                Surface(Modifier.fillMaxSize()) {
+                    DayScreen(
+                        DayFixtures.ready(morning = DayFixtures.morningEn).let {
+                            it.copy(groups = DayFixtures.groupsEn, group = DayFixtures.groupsEn[0])
+                        },
+                        DayActions(),
+                    )
+                }
+            }
+        }
+        capture("day_morning_en")
+    }
+
     @Test
     fun morningDark() {
         rule.setContent {

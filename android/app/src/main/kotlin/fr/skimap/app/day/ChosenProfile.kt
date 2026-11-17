@@ -1,5 +1,6 @@
 package fr.skimap.app.day
 
+import fr.skimap.app.appLang
 import fr.skimap.core.GroupSpec
 import fr.skimap.core.GroupView
 import fr.skimap.core.groupNew
@@ -31,7 +32,7 @@ object ChosenProfile {
         val all = store.groups()
         return all.firstOrNull { it.spec.name == spec.name }
             ?: all.firstOrNull { sameMakeUp(it.spec, spec) }
-            ?: runCatching { groupNew(spec) }.getOrNull()?.also(store::putGroup)
+            ?: runCatching { groupNew(spec, appLang()) }.getOrNull()?.also(store::putGroup)
     }
 
     /** A `GroupProfile` of the core (`{name, adults, children, style, level}`) as the app edits it. */

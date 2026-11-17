@@ -96,6 +96,8 @@ pub struct Request {
     pub max_difficulty: Option<Difficulty>,
     /// Number of suggestions.
     pub max_results: usize,
+    /// Language of the texts.
+    pub lang: crate::text::Lang,
 }
 
 /// A suggested loop.
@@ -487,7 +489,8 @@ pub fn suggest(data: &SiteData, req: &Request) -> Suggestions {
 /// (C11, see the module), else on the C5 model time ([`suggest`]).
 pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>) -> Suggestions {
     let mut notes = Vec::new();
-    let group_label = group.map(|g| g.profile.label_fr());
+    let t = crate::text::of(req.lang);
+    let group_label = group.map(|g| t.group_label(&g.profile));
     let empty = |notes: Vec<String>| Suggestions {
         request: req.clone(),
         group: group_label.clone(),
@@ -498,7 +501,7 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
         notes,
     };
     let Some(g) = data.graph.as_ref() else {
-        notes.push("pas de graphe des pistes (couche routes)".into());
+        notes.push(t.s_no_graph().into());
         return empty(notes);
     };
     let date = req.start_time.date();
@@ -536,10 +539,7 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
         },
     );
     let Some(start) = g.snap(req.start, 300.0) else {
-        notes.push(format!(
-            "pas de piste à moins de 300 m de {}",
-            req.start_name
-        ));
+        notes.push(t.s_no_trail_near(&req.start_name));
         return empty(notes);
     };
     // Outbound routes to every node.
@@ -566,14 +566,7 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
             })
             .map(|e| g.length_m(e) / 1000.0)
             .sum();
-        notes.push(format!(
-            "{} nœuds sur {} ({} km de pistes) ne sont pas atteignables depuis {} : réseau \
-             séparé ou sens uniques dans le graphe des pistes (C1)",
-            unreachable.len(),
-            n,
-            fmt(km, 1),
-            req.start_name
-        ));
+        notes.push(t.s_unreachable(unreachable.len(), n, km, &req.start_name));
     }
     // Round trip of every node: out and fastest way back. With a group: the model time of
     // that round trip at the group's time on the flat (the costs of the routers carry
@@ -870,7 +863,7 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
         top.truncate(3);
         top.sort();
         let label = if top.is_empty() {
-            "boucle sans nom".to_owned()
+            t.s_unnamed_loop().to_owned()
         } else {
             top.iter()
                 .map(|i| names[*i].clone())
@@ -898,77 +891,46 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
         let weather: Option<DayWeather> = wp.map(|p| p.summary_between(req.start_time, arrival));
         let mut reasons = Vec::new();
         let gap = time_s / budget_s - 1.0;
-        let style = match req.style {
-            Style::Classic => "classique",
-            Style::Skating => "skating",
-        };
+        let style = t.style(req.style);
         let time_text = match (group, gp) {
-            (Some(g), Some(p)) if plan_q > 0.5 => format!(
-                "environ {} pour {} ({} à {}, {} ; prévu sur {}, le côté lent : 8 chances sur 10 \
-                 d'avoir fini ; modèle C5, {} : {})",
-                hm(p.median_s),
-                g.profile.label_fr(),
-                hm(p.lo_s),
-                hm(p.hi_s),
-                match g.outings {
-                    0 => "a priori".to_owned(),
-                    1 => "une sortie apprise".to_owned(),
-                    n => format!("{n} sorties apprises"),
-                },
-                hm(time_s),
+            (Some(g), Some(p)) if plan_q > 0.5 => t.s_time_group_slow(
+                &t.hm(p.median_s),
+                &t.group_label(&g.profile),
+                &t.hm(p.lo_s),
+                &t.hm(p.hi_s),
+                &t.learned(g.outings),
+                &t.hm(time_s),
                 style,
-                hm(b.total_s)
+                &t.hm(b.total_s),
             ),
-            (Some(g), Some(p)) => format!(
-                "environ {} pour {} ({} à {}, {} ; modèle C5, {} : {})",
-                hm(p.median_s),
-                g.profile.label_fr(),
-                hm(p.lo_s),
-                hm(p.hi_s),
-                match g.outings {
-                    0 => "a priori".to_owned(),
-                    1 => "une sortie apprise".to_owned(),
-                    n => format!("{n} sorties apprises"),
-                },
+            (Some(g), Some(p)) => t.s_time_group(
+                &t.hm(p.median_s),
+                &t.group_label(&g.profile),
+                &t.hm(p.lo_s),
+                &t.hm(p.hi_s),
+                &t.learned(g.outings),
                 style,
-                hm(b.total_s)
+                &t.hm(b.total_s),
             ),
-            _ => format!("environ {} (modèle C5, {style})", hm(b.total_s)),
+            _ => t.s_time_model(&t.hm(b.total_s), style),
         };
         briefing::reason(
             &mut reasons,
             Factor::Data,
             -2.0 * gap.abs(),
-            format!(
-                "{} km, D+ {} m, {time_text}, retour prévu vers {} h {:02}",
-                fmt(total / 1000.0, 1),
-                b.gain_m.round(),
-                arrival.hour(),
-                arrival.minute()
-            ),
+            t.s_loop(total / 1000.0, b.gain_m.round(), &time_text, arrival),
         );
         if share_twice >= 0.05 {
             briefing::reason(
                 &mut reasons,
                 Factor::Data,
                 OUT_AND_BACK_POINTS * share_twice,
-                format!(
-                    "{} % du parcours en aller-retour sur le même chemin",
-                    (share_twice * 100.0).round()
-                ),
+                t.s_out_and_back((share_twice * 100.0).round()),
             );
         }
         if c.eight {
             let first: f64 = c.parts[..2].iter().map(Route::length_m).sum();
-            briefing::reason(
-                &mut reasons,
-                Factor::Data,
-                0.0,
-                format!(
-                    "en huit : deux boucles depuis le départ, on y repasse après {} km",
-                    fmt(first / 1000.0, 1)
-                ),
-            );
+            briefing::reason(&mut reasons, Factor::Data, 0.0, t.s_eight(first / 1000.0));
         }
         let len_km = total / 1000.0;
         if closed_km > 0.05 {
@@ -976,7 +938,7 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
                 &mut reasons,
                 Factor::Status,
                 -10.0 * closed_km / len_km,
-                format!("{} km sur des pistes fermées", fmt(closed_km, 1)),
+                t.s_closed_km(closed_km),
             );
         }
         if open_km > 0.05 {
@@ -984,7 +946,7 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
                 &mut reasons,
                 Factor::Status,
                 open_km / len_km,
-                format!("{} km sur des pistes ouvertes", fmt(open_km, 1)),
+                t.s_open_km(open_km),
             );
         }
         if unknown_km > 0.05 && closed_km + open_km > 0.0 {
@@ -992,7 +954,7 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
                 &mut reasons,
                 Factor::Status,
                 0.0,
-                format!("{} km sans état connu", fmt(unknown_km, 1)),
+                t.s_unknown_km(unknown_km),
             );
         }
         if closed_km + open_km == 0.0 {
@@ -1000,29 +962,23 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
                 &mut reasons,
                 Factor::Status,
                 0.0,
-                "état des pistes inconnu".into(),
+                t.s_status_unknown().into(),
             );
         }
-        briefing::snow_reasons(&mut reasons, &snow, None);
+        briefing::snow_reasons(&mut reasons, &snow, None, t);
         if exp.0 >= 0.05 {
-            let km = fmt(exp.0, 1);
             let (p, why) = match bera {
-                Some(l) if l >= 3 => (-2.0, format!("BERA {l} sur 5")),
-                Some(l) => (0.0, format!("BERA {l} sur 5")),
-                None if data.no_bera() => (-0.5, "pas de BERA dans ce massif".into()),
-                None => (-0.5, "BERA non disponible".into()),
+                Some(l) if l >= 3 => (-2.0, t.s_bera(l)),
+                Some(l) => (0.0, t.s_bera(l)),
+                None if data.no_bera() => (-0.5, t.s_no_bera_range().into()),
+                None => (-0.5, t.s_bera_unavailable().into()),
             };
-            briefing::reason(
-                &mut reasons,
-                Factor::Avalanche,
-                p,
-                format!("{km} km en terrain exposé aux avalanches (modèle), {why}"),
-            );
+            briefing::reason(&mut reasons, Factor::Avalanche, p, t.s_exposed(exp.0, &why));
         }
         if let Some(w) = &weather
             && w.hours > 0
         {
-            briefing::weather_reasons(&mut reasons, w);
+            briefing::weather_reasons(&mut reasons, w, t);
         }
         if let Some(max) = req.max_difficulty {
             let hard: f64 = legs
@@ -1035,32 +991,22 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
                     &mut reasons,
                     Factor::Data,
                     -2.0 * hard / len_km,
-                    format!(
-                        "{} km sur des pistes plus difficiles que demandé",
-                        fmt(hard, 1)
-                    ),
+                    t.s_harder(hard),
                 );
             }
         }
         let named = names.len().min(5) as f64 * 0.1;
         if named > 0.0 {
-            briefing::reason(
-                &mut reasons,
-                Factor::Data,
-                named,
-                format!("pistes : {}", names.join(", ")),
-            );
+            briefing::reason(&mut reasons, Factor::Data, named, t.s_trails(&names));
         }
         if if_all_goes_well {
             briefing::reason(
                 &mut reasons,
                 Factor::Data,
                 0.0,
-                format!(
-                    "si tout va bien : {} au rythme médian du groupe, mais {} sur le côté lent \
-                     (au-delà du temps demandé)",
-                    gp.map(|p| hm(p.median_s)).unwrap_or_default(),
-                    hm(time_s)
+                t.s_if_all_goes_well(
+                    &gp.map(|p| t.hm(p.median_s)).unwrap_or_default(),
+                    &t.hm(time_s),
                 ),
             );
         }
@@ -1068,7 +1014,7 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
         let voice = loop_voice(len_km, time_s, arrival);
         let group_time = match (group, gp) {
             (Some(g), Some(p)) => Some(GroupTime {
-                label: g.profile.label_fr(),
+                label: t.group_label(&g.profile),
                 outings: g.outings,
                 median_min: (p.median_s / 60.0).round(),
                 lo_min: (p.lo_s / 60.0).round(),
@@ -1116,28 +1062,13 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
     }
     let evaluated = cands.len();
     if no_way_back > 0 {
-        notes.push(format!(
-            "{no_way_back} points de demi-tour sans retour possible vers le départ (sens uniques \
-             du graphe C1)"
-        ));
+        notes.push(t.s_no_way_back(no_way_back));
     }
     if too_short + too_long > 0 {
-        notes.push(format!(
-            "{evaluated} boucles évaluées, {too_short} trop courtes et {too_long} trop longues \
-             (hors de 75 à 110 % du temps demandé{})",
-            group_label
-                .as_ref()
-                .map(|l| format!(", au rythme du groupe : {l}"))
-                .unwrap_or_default()
-        ));
+        notes.push(t.s_evaluated(evaluated, too_short, too_long, group_label.as_deref()));
     }
     if too_late > 0 {
-        notes.push(format!(
-            "{too_late} boucles écartées : retour après {}",
-            limit
-                .map(|l| format!("{} h {:02}", l.hour(), l.minute()))
-                .unwrap_or_default()
-        ));
+        notes.push(t.s_too_late(too_late, limit));
     }
     // Simple real loops, best score first; figures of eight only when no simple loop fits,
     // out-and-backs only when no real loop does.
@@ -1159,60 +1090,35 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
         kept.push(h);
     }
     if kept.is_empty() {
-        notes.push("aucune boucle ne tient dans le temps et l'heure de retour demandés".into());
+        notes.push(t.s_none_fits().into());
     } else {
         if kept.iter().all(|k| !k.real_loop) {
-            notes.push(format!(
-                "aucune vraie boucle trouvée de {} à {} depuis {} : {} en partie en aller-retour \
-                 sur le même chemin, seule option du réseau ici{}",
-                hm(0.75 * budget_s),
-                hm(1.1 * budget_s),
-                req.start_name,
-                if kept.len() == 1 {
-                    "la boucle proposée est"
-                } else {
-                    "les boucles proposées sont"
-                },
-                longest_real
-                    .map(|(t, km)| format!(
-                        " ; la plus longue vraie boucle trouvée fait {} km, environ {}",
-                        fmt(km, 1),
-                        hm(t)
-                    ))
-                    .unwrap_or_default()
+            let longest = longest_real.map(|(time, km)| (km, t.hm(time)));
+            notes.push(t.s_no_real_loop(
+                &t.hm(0.75 * budget_s),
+                &t.hm(1.1 * budget_s),
+                &req.start_name,
+                kept.len() == 1,
+                longest.as_ref().map(|(km, h)| (*km, h.as_str())),
             ));
         }
         if kept
             .iter()
             .all(|k| k.snow.is_some_and(|s| s.depth_cm() < 20.0))
         {
-            notes.push(
-                "neige estimée insuffisante sur toutes les boucles : rien n'est skiable ce jour"
-                    .into(),
-            );
+            notes.push(t.s_no_snow_all().into());
         }
         if kept.iter().all(|k| k.status_km.1 > 0.5 * k.length_km) {
-            notes.push("pistes fermées sur la plus grande partie de chaque boucle".into());
+            notes.push(t.s_closed_most().into());
         }
     }
-    let mut text = vec![format!(
-        "{} depuis {} le {} à {} h {:02}{}{}",
-        req.label,
-        req.start_name,
-        briefing::date_fr(date),
-        req.start_time.hour(),
-        req.start_time.minute(),
-        deadline
-            .map(|d| format!(
-                " (heure limite de retour C7 : {} h {:02})",
-                d.hour(),
-                d.minute()
-            ))
-            .unwrap_or_default(),
-        group_label
-            .as_ref()
-            .map(|l| format!(", temps du groupe : {l}"))
-            .unwrap_or_default()
+    let mut text = vec![t.s_title(
+        &req.label,
+        &req.start_name,
+        date,
+        req.start_time,
+        deadline,
+        group_label.as_deref(),
     )];
     for (i, s) in kept.iter().enumerate() {
         let why: Vec<String> = s
@@ -1222,25 +1128,14 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
                 if r.points == 0.0 {
                     r.text.clone()
                 } else {
-                    format!("{} [{:+.2}]", r.text, r.points).replace('.', ",")
+                    t.reason_points(&r.text, r.points)
                 }
             })
             .collect();
-        text.push(format!(
-            "{}. {}{} (score {}) : {}.",
-            i + 1,
-            if s.if_all_goes_well {
-                "si tout va bien : "
-            } else {
-                ""
-            },
-            s.label,
-            fmt(s.score, 2),
-            why.join(" ; ")
-        ));
+        text.push(t.s_line(i + 1, s.if_all_goes_well, &s.label, s.score, &why));
     }
     if !notes.is_empty() {
-        text.push(format!("Limites : {}.", notes.join(" ; ")));
+        text.push(t.s_limits(&notes));
     }
     Suggestions {
         request: req.clone(),
@@ -1253,18 +1148,9 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
     }
 }
 
-fn fmt(x: f64, d: usize) -> String {
-    format!("{x:.d$}").replace('.', ",")
-}
-
 /// « 1 h 50 ».
 pub fn hm(seconds: f64) -> String {
-    let m = (seconds / 60.0).round() as i64;
-    if m < 60 {
-        format!("{m} min")
-    } else {
-        format!("{} h {:02}", m / 60, m % 60)
-    }
+    crate::text::of(crate::text::Lang::Fr).hm(seconds)
 }
 
 /// GeoJSON features of the suggestions (for the viewer).
@@ -1424,6 +1310,7 @@ mod tests {
             return_before: NaiveTime::from_hms_opt(16, 0, 0),
             max_difficulty: max,
             max_results: 3,
+            lang: crate::text::Lang::Fr,
         }
     }
 
@@ -1707,9 +1594,10 @@ mod tests {
         assert_eq!(eight.points, 0.0);
         let first = if east >= west { east } else { west };
         assert!(
-            eight
-                .text
-                .ends_with(&format!("on y repasse après {} km", fmt(first, 1))),
+            eight.text.ends_with(&format!(
+                "on y repasse après {} km",
+                crate::text::of(crate::text::Lang::Fr).num(first, 1)
+            )),
             "{}",
             eight.text
         );

@@ -98,19 +98,22 @@ impl SlopeClass {
 
     /// French label (« plat », « sud, pente de 20° »).
     pub fn label_fr(&self) -> String {
-        match self.aspect_deg {
-            None => "plat".into(),
-            Some(a) => format!(
-                "{}, pente de {}°",
-                ASPECTS[octant(a)].1,
-                self.slope_deg.round()
-            ),
-        }
+        crate::text::of(crate::text::Lang::Fr).slope_class(self)
+    }
+
+    /// Octant of the aspect (0 north, 1 north-east…), `None` for flat.
+    pub fn octant(&self) -> Option<usize> {
+        self.aspect_deg.map(octant)
     }
 
     /// French aspect name, `None` for flat.
     pub fn aspect_fr(&self) -> Option<&'static str> {
-        self.aspect_deg.map(|a| ASPECTS[octant(a)].1)
+        self.aspect_in(crate::text::Lang::Fr)
+    }
+
+    /// Aspect name in `lang`, `None` for flat.
+    pub fn aspect_in(&self, lang: crate::text::Lang) -> Option<&'static str> {
+        self.octant().map(|o| crate::text::of(lang).aspect(o))
     }
 }
 
@@ -160,16 +163,12 @@ pub enum Quality {
 impl Quality {
     /// French label.
     pub fn label_fr(self) -> &'static str {
-        match self {
-            Quality::Fresh => "neige fraîche",
-            Quality::Windblown => "neige fraîche soufflée par le vent",
-            Quality::OldDry => "neige ancienne froide et sèche",
-            Quality::Transformed => "neige transformée qui ramollit (décaille)",
-            Quality::Wet => "neige humide et lourde",
-            Quality::Slush => "neige soupe",
-            Quality::Hard => "neige dure, regelée",
-            Quality::Icy => "croûte de regel épaisse, plaques de glace",
-        }
+        self.label(crate::text::Lang::Fr)
+    }
+
+    /// Label in `lang`.
+    pub fn label(self, lang: crate::text::Lang) -> &'static str {
+        crate::text::of(lang).quality(self)
     }
 
     /// Score for nordic skiing and touring (0 bad to 3 good).
@@ -465,7 +464,7 @@ impl Slot {
 
     /// « de 10 h à 13 h ».
     pub fn label_fr(&self) -> String {
-        format!("de {} h à {} h", self.start.hour(), self.end.hour())
+        crate::text::of(crate::text::Lang::Fr).slot(self)
     }
 }
 
@@ -659,33 +658,21 @@ fn best_slot(hours: &[&HourState]) -> Option<Slot> {
     })
 }
 
-fn hour_fr(t: NaiveDateTime) -> String {
-    format!("{} h", t.hour())
+fn summarise(q: &DayQuality) -> Vec<String> {
+    summary(q, crate::text::Lang::Fr)
 }
 
-fn summarise(q: &DayQuality) -> Vec<String> {
+/// The summary of a day at a point (sentences), in `lang`.
+pub fn summary(q: &DayQuality, lang: crate::text::Lang) -> Vec<String> {
+    let t = crate::text::of(lang);
     if !q.enough_snow {
-        return vec![format!(
-            "Pas ou trop peu de neige estimée au point ({} cm, {} m) : qualité de neige non \
-             évaluée.",
-            q.snow_cm.unwrap_or(0.0).round(),
-            q.elevation_m.round()
-        )];
+        return vec![t.sq_no_snow(q.snow_cm.unwrap_or(0.0).round(), q.elevation_m.round())];
     }
-    let mut out = vec![format!(
-        "Au plat ({} m) : {} entre 10 h et 15 h.",
-        q.elevation_m.round(),
-        q.flat.label_fr()
-    )];
+    let mut out = vec![t.sq_flat(q.elevation_m.round(), q.flat)];
     if let Some((code, slot)) = &q.best
         && let Some(c) = q.classes.iter().find(|c| &c.code == code)
     {
-        out.push(format!(
-            "Meilleur créneau : {} {} ({}).",
-            c.class.label_fr(),
-            slot.label_fr(),
-            slot.quality.label_fr()
-        ));
+        out.push(t.sq_best(&t.slope_class(&c.class), &t.slot(slot), slot.quality));
     }
     // 20° slopes: when each aspect softens and turns wet.
     let at20: Vec<&ClassDay> = q
@@ -696,49 +683,31 @@ fn summarise(q: &DayQuality) -> Vec<String> {
     let soft: Vec<String> = at20
         .iter()
         .filter(|c| c.morning != Quality::Transformed && !c.morning.is_wet())
-        .filter_map(|c| {
-            Some(format!(
-                "{} {}",
-                c.class.aspect_fr()?,
-                hour_fr(c.softens_at?)
-            ))
-        })
+        .filter_map(|c| Some(t.sq_aspect_at(c.class.aspect_in(lang)?, c.softens_at?)))
         .collect();
     let never: Vec<&str> = at20
         .iter()
         .filter(|c| c.softens_at.is_none())
-        .filter_map(|c| c.class.aspect_fr())
+        .filter_map(|c| c.class.aspect_in(lang))
         .collect();
     if !soft.is_empty() {
-        out.push(format!(
-            "Pentes de 20° : ramollissement vers {}.",
-            soft.join(", ")
-        ));
+        out.push(t.sq_softens(&soft));
     }
     let wet: Vec<String> = q
         .classes
         .iter()
         .filter(|c| c.class.slope_deg > 0.0)
         .filter_map(|c| {
-            Some(format!(
-                "{} {}° dès {}",
-                c.class.aspect_fr()?,
-                c.class.slope_deg,
-                hour_fr(c.wet_at?)
-            ))
+            Some(t.sq_aspect_slope_from(c.class.aspect_in(lang)?, c.class.slope_deg, c.wet_at?))
         })
         .collect();
     if !wet.is_empty() {
-        out.push(format!("Neige lourde : {}.", wet.join(", ")));
+        out.push(t.sq_heavy(&wet));
     }
     if !never.is_empty() && never.len() < 8 && !soft.is_empty() {
-        out.push(format!("Ne ramollit pas (20°) : {}.", never.join(", ")));
+        out.push(t.sq_never_softens(&never));
     }
-    out.push(
-        "Modèle simple (température, soleil, nuages, vent) : ni ombre du relief ni damage ; \
-         à confirmer sur le terrain."
-            .into(),
-    );
+    out.push(t.sq_model().into());
     out
 }
 

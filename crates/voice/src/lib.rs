@@ -27,7 +27,10 @@ pub mod clips;
 pub mod en;
 pub mod error;
 pub mod gguf;
-pub mod lang;
+/// Languages of the voice and of the app's texts (VO6): [`skimap_common::lang`].
+pub mod lang {
+    pub use skimap_common::lang::Lang;
+}
 pub mod manifest;
 pub mod names;
 pub mod numbers;

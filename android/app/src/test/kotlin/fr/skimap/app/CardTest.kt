@@ -35,14 +35,14 @@ class CardTest {
     val rule = createComposeRule()
 
     /** Properties as MapLibre gives them for an OSM refuge (nested tags). */
-    private fun card(): Card =
+    private fun card(lang: Lang = Lang.FR): Card =
         checkNotNull(
             featureCard(
                 "refuges-osm",
                 """{"kind":"alpine_hut","osm_type":"way","osm_id":171614493,
                    "tags":{"name":"Refuge de la Blanche","phone":"+33 4 00 00 72 52","website":"https://example.org/blanche",
                            "beds":"30","ele":"2499","fireplace":"yes"}}""",
-                Lang.FR,
+                lang,
             ),
         )
 
@@ -69,6 +69,17 @@ class CardTest {
         val c = card()
         rule.setContent { Themed { Surface(Modifier.fillMaxSize()) { CardContent(c, {}, {}) } } }
         rule.onRoot().captureRoboImage("src/test/screenshots/card_refuge.png")
+    }
+
+    /** The same card on a phone in English: labels of the core in English (VO6). */
+    @Test
+    @Config(qualifiers = "en-w412dp-h915dp-hdpi")
+    fun captureEnglish() {
+        val c = card(Lang.EN)
+        assertEquals("Hut", c.kind)
+        rule.setContent { Themed { Surface(Modifier.fillMaxSize()) { CardContent(c, {}, {}) } } }
+        rule.onNodeWithText("OpenStreetMap page").performScrollTo().assertIsDisplayed()
+        rule.onRoot().captureRoboImage("src/test/screenshots/card_refuge_en.png")
     }
 
     /** A piste of the official plan absent from OSM (pack layer `pistes-estimees`). */

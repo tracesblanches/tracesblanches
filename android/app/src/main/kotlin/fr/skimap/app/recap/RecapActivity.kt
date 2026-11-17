@@ -33,6 +33,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
@@ -299,7 +300,10 @@ private fun OutingRow(
         Column(Modifier.padding(12.dp)) {
             Text(s.title, style = MaterialTheme.typography.titleMedium)
             val source = if (s.kind == "strava") " · Strava" else ""
-            Text("${s.`when`} · " + "%.1f km".format(Locale.FRANCE, s.distanceKm) + source, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                "${s.`when`} · " + "%.1f km".format(LocalConfiguration.current.locales[0], s.distanceKm) + source,
+                style = MaterialTheme.typography.bodyMedium,
+            )
         }
     }
 }

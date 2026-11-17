@@ -16,7 +16,9 @@
 use std::path::{Path, PathBuf};
 
 use chrono::{NaiveDateTime, Timelike};
-use skimap_intent::{Intent, Lang};
+use skimap_intent::{Intent, Lang as IntentLang};
+
+use crate::card::Lang;
 use skimap_plan::plan::DayPlan;
 use skimap_plan::tracker::TrackerParams;
 use skimap_voice::Event;
@@ -69,30 +71,19 @@ impl From<Intent> for VoiceCommand {
     }
 }
 
-/// Language of a question and of the replies of the command.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
-pub enum CommandLang {
-    /// French.
-    Fr,
-    /// English.
-    En,
-}
-
-impl From<CommandLang> for Lang {
-    fn from(l: CommandLang) -> Self {
-        match l {
-            CommandLang::Fr => Lang::Fr,
-            CommandLang::En => Lang::En,
-        }
+/// The language of the app as the intent classifier names it.
+fn intent_lang(l: Lang) -> IntentLang {
+    match l {
+        Lang::Fr => IntentLang::Fr,
+        Lang::En => IntentLang::En,
     }
 }
 
-impl From<Lang> for CommandLang {
-    fn from(l: Lang) -> Self {
-        match l {
-            Lang::Fr => CommandLang::Fr,
-            Lang::En => CommandLang::En,
-        }
+/// The language of a question in the app's language type.
+fn app_lang(l: IntentLang) -> Lang {
+    match l {
+        IntentLang::Fr => Lang::Fr,
+        IntentLang::En => Lang::En,
     }
 }
 
@@ -104,7 +95,7 @@ pub struct CommandHeard {
     /// The command, `None`: not understood.
     pub command: Option<VoiceCommand>,
     /// Language of the question.
-    pub lang: CommandLang,
+    pub lang: Lang,
     /// Score of the best command (`skimap_intent::MIN_SCORE` to be chosen).
     pub score: f32,
 }
@@ -112,12 +103,12 @@ pub struct CommandHeard {
 /// The command asked by a transcription, `default_lang` (the phone's) when its words do
 /// not tell the language.
 #[uniffi::export]
-pub fn classify_command(text: String, default_lang: CommandLang) -> CommandHeard {
-    let c = skimap_intent::classify(&text, default_lang.into());
+pub fn classify_command(text: String, default_lang: Lang) -> CommandHeard {
+    let c = skimap_intent::classify(&text, intent_lang(default_lang));
     CommandHeard {
         text,
         command: c.intent.map(Into::into),
-        lang: c.lang.into(),
+        lang: app_lang(c.lang),
         score: c.score,
     }
 }
@@ -125,8 +116,8 @@ pub fn classify_command(text: String, default_lang: CommandLang) -> CommandHeard
 /// The questions understood, in `lang` (shown on the screen, said after « je n'ai pas
 /// compris »).
 #[uniffi::export]
-pub fn command_questions(lang: CommandLang) -> Vec<String> {
-    skimap_intent::questions(lang.into())
+pub fn command_questions(lang: Lang) -> Vec<String> {
+    skimap_intent::questions(intent_lang(lang))
         .into_iter()
         .map(String::from)
         .collect()
@@ -278,7 +269,7 @@ impl VoiceAnswers {
     /// « Heure de demi-tour ? »: the countdown to the latest turnaround of `plan`
     /// (« Demi-tour dans vingt minutes. », « Faites demi-tour maintenant… », or the time
     /// itself), at `t_ms`.
-    pub fn turnaround_at(&self, plan: &DayPlan, t_ms: i64, lang: Lang) -> SpokenView {
+    pub fn turnaround_at(&self, plan: &DayPlan, t_ms: i64, lang: IntentLang) -> SpokenView {
         match plan.turnaround.latest_turnaround {
             Some(at) => {
                 let deadline = floor_quarter(at);
@@ -291,8 +282,10 @@ impl VoiceAnswers {
             }
             None => {
                 let text = match lang {
-                    Lang::Fr => "Pas d'heure de demi-tour : la boucle finit avant l'heure limite.",
-                    Lang::En => "No turnaround time: the loop ends before the limit.",
+                    IntentLang::Fr => {
+                        "Pas d'heure de demi-tour : la boucle finit avant l'heure limite."
+                    }
+                    IntentLang::En => "No turnaround time: the loop ends before the limit.",
                 };
                 self.spoken(
                     t_ms,
@@ -310,10 +303,10 @@ fn floor_quarter(t: NaiveDateTime) -> Clock {
     Clock::floor_quarter(t.hour() as u8, t.minute() as u8)
 }
 
-fn code(lang: Lang) -> &'static str {
+fn code(lang: IntentLang) -> &'static str {
     match lang {
-        Lang::Fr => "fr",
-        Lang::En => "en",
+        IntentLang::Fr => "fr",
+        IntentLang::En => "en",
     }
 }
 
@@ -340,7 +333,7 @@ impl VoiceAnswers {
         &self,
         plan_dir: String,
         t_ms: i64,
-        lang: CommandLang,
+        lang: Lang,
     ) -> Result<SpokenView, TrackingError> {
         let p = Path::new(&plan_dir).join(PLAN_FILE);
         let text = std::fs::read_to_string(&p).map_err(|e| TrackingError::Invalid {
@@ -349,7 +342,7 @@ impl VoiceAnswers {
         let plan = DayPlan::from_json(&text).map_err(|e| TrackingError::Invalid {
             detail: e.to_string(),
         })?;
-        Ok(self.turnaround_at(&plan, t_ms, lang.into()))
+        Ok(self.turnaround_at(&plan, t_ms, intent_lang(lang)))
     }
 
     /// « Combien de batterie ? »: the level rounded down to ten percent, and the autonomy
@@ -370,11 +363,11 @@ impl VoiceAnswers {
     }
 
     /// « Je n'ai pas compris. » and the questions understood.
-    pub fn not_understood(&self, lang: CommandLang, t_ms: i64) -> SpokenView {
-        let l: Lang = lang.into();
+    pub fn not_understood(&self, lang: Lang, t_ms: i64) -> SpokenView {
+        let l = intent_lang(lang);
         let (head, intro) = match l {
-            Lang::Fr => ("Je n'ai pas compris.", "Vous pouvez demander :"),
-            Lang::En => ("I did not understand.", "You can ask:"),
+            IntentLang::Fr => ("Je n'ai pas compris.", "Vous pouvez demander :"),
+            IntentLang::En => ("I did not understand.", "You can ask:"),
         };
         let c = code(l);
         let mut segments = vec![
@@ -409,28 +402,28 @@ impl VoiceAnswers {
         &self,
         kind: ReportKind,
         outcome: ReportOutcome,
-        lang: CommandLang,
+        lang: Lang,
         t_ms: i64,
     ) -> SpokenView {
-        let l: Lang = lang.into();
+        let l = intent_lang(lang);
         let (id, text) = match (outcome, kind, l) {
-            (ReportOutcome::Recorded, ReportKind::TracksSet, Lang::Fr) => {
+            (ReportOutcome::Recorded, ReportKind::TracksSet, IntentLang::Fr) => {
                 ("report-tracks", "Signalement enregistré : trace faite.")
             }
-            (ReportOutcome::Recorded, ReportKind::Groomed, Lang::Fr) => {
+            (ReportOutcome::Recorded, ReportKind::Groomed, IntentLang::Fr) => {
                 ("report-groomed", "Signalement enregistré : piste damée.")
             }
-            (ReportOutcome::Recorded, ReportKind::TracksSet, Lang::En) => {
+            (ReportOutcome::Recorded, ReportKind::TracksSet, IntentLang::En) => {
                 ("report-tracks", "Report recorded: tracks set.")
             }
-            (ReportOutcome::Recorded, ReportKind::Groomed, Lang::En) => {
+            (ReportOutcome::Recorded, ReportKind::Groomed, IntentLang::En) => {
                 ("report-groomed", "Report recorded: trail groomed.")
             }
-            (ReportOutcome::Unavailable, _, Lang::Fr) => (
+            (ReportOutcome::Unavailable, _, IntentLang::Fr) => (
                 "report-unavailable",
                 "Les signalements ne sont pas encore disponibles sur ce téléphone.",
             ),
-            (ReportOutcome::Unavailable, _, Lang::En) => (
+            (ReportOutcome::Unavailable, _, IntentLang::En) => (
                 "report-unavailable",
                 "Reports are not available on this phone yet.",
             ),
@@ -444,11 +437,11 @@ impl VoiceAnswers {
     }
 
     /// « Répète » with nothing said yet.
-    pub fn nothing_to_repeat(&self, lang: CommandLang, t_ms: i64) -> SpokenView {
-        let l: Lang = lang.into();
+    pub fn nothing_to_repeat(&self, lang: Lang, t_ms: i64) -> SpokenView {
+        let l = intent_lang(lang);
         let text = match l {
-            Lang::Fr => "Rien à répéter.",
-            Lang::En => "Nothing to repeat.",
+            IntentLang::Fr => "Rien à répéter.",
+            IntentLang::En => "Nothing to repeat.",
         };
         self.spoken(
             t_ms,
@@ -459,11 +452,11 @@ impl VoiceAnswers {
     }
 
     /// A command about the outing with no outing followed.
-    pub fn no_outing(&self, lang: CommandLang, t_ms: i64) -> SpokenView {
-        let l: Lang = lang.into();
+    pub fn no_outing(&self, lang: Lang, t_ms: i64) -> SpokenView {
+        let l = intent_lang(lang);
         let text = match l {
-            Lang::Fr => "Aucune sortie en cours.",
-            Lang::En => "No outing in progress.",
+            IntentLang::Fr => "Aucune sortie en cours.",
+            IntentLang::En => "No outing in progress.",
         };
         self.spoken(
             t_ms,
@@ -509,13 +502,13 @@ mod tests {
 
     #[test]
     fn classifies_through_the_ffi() {
-        let h = classify_command("Où suis-je ?".into(), CommandLang::En);
+        let h = classify_command("Où suis-je ?".into(), Lang::En);
         assert_eq!(h.command, Some(VoiceCommand::WhereAmI));
-        assert_eq!(h.lang, CommandLang::Fr);
-        let h = classify_command("Play some music".into(), CommandLang::En);
+        assert_eq!(h.lang, Lang::Fr);
+        let h = classify_command("Play some music".into(), Lang::En);
         assert_eq!(h.command, None);
-        assert_eq!(command_questions(CommandLang::Fr).len(), 9);
-        assert_eq!(command_questions(CommandLang::En)[3], "Take me back.");
+        assert_eq!(command_questions(Lang::Fr).len(), 9);
+        assert_eq!(command_questions(Lang::En)[3], "Take me back.");
     }
 
     #[test]
@@ -574,15 +567,15 @@ mod tests {
     #[test]
     fn not_understood_lists_every_question() {
         let v = VoiceAnswers::open(None);
-        let s = v.not_understood(CommandLang::Fr, 0);
+        let s = v.not_understood(Lang::Fr, 0);
         assert!(
             s.text
                 .starts_with("Je n'ai pas compris. Vous pouvez demander :")
         );
-        for q in command_questions(CommandLang::Fr) {
+        for q in command_questions(Lang::Fr) {
             assert!(s.text.contains(&q), "{q}");
         }
-        let e = v.not_understood(CommandLang::En, 0);
+        let e = v.not_understood(Lang::En, 0);
         assert!(e.text.contains("Where am I?"));
         // Clip ids are valid file names.
         for seg in s.segments.iter().chain(&e.segments) {
@@ -601,33 +594,22 @@ mod tests {
     fn replies_of_reports_repeat_and_no_outing() {
         let v = VoiceAnswers::open(None);
         assert_eq!(
-            v.report(
-                ReportKind::Groomed,
-                ReportOutcome::Recorded,
-                CommandLang::Fr,
-                0
-            )
-            .text,
+            v.report(ReportKind::Groomed, ReportOutcome::Recorded, Lang::Fr, 0)
+                .text,
             "Signalement enregistré : piste damée."
         );
         assert!(
             v.report(
                 ReportKind::TracksSet,
                 ReportOutcome::Unavailable,
-                CommandLang::En,
+                Lang::En,
                 0
             )
             .text
             .starts_with("Reports are not available")
         );
-        assert_eq!(
-            v.nothing_to_repeat(CommandLang::Fr, 0).text,
-            "Rien à répéter."
-        );
-        assert_eq!(
-            v.no_outing(CommandLang::En, 0).text,
-            "No outing in progress."
-        );
+        assert_eq!(v.nothing_to_repeat(Lang::Fr, 0).text, "Rien à répéter.");
+        assert_eq!(v.no_outing(Lang::En, 0).text, "No outing in progress.");
     }
 
     #[test]

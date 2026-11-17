@@ -54,6 +54,7 @@ fn request(
         return_before: back.map(|h| chrono::NaiveTime::from_hms_opt(h, 0, 0).unwrap()),
         max_difficulty: None,
         max_results: 3,
+        lang: skimap_assist::text::Lang::Fr,
     }
 }
 

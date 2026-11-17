@@ -31,6 +31,7 @@ import androidx.test.uiautomator.UiDevice
 import fr.skimap.app.day.DayActivity
 import fr.skimap.app.day.DayTags
 import fr.skimap.app.guidance.SkiTrackingService
+import fr.skimap.core.Lang
 import fr.skimap.core.readDayPlan
 import fr.skimap.tracking.GpsMode
 import fr.skimap.tracking.GuidanceNotifier
@@ -176,7 +177,7 @@ class DayFlowTest {
         device.pressBack()
         device.pressBack()
         val s = bind()
-        val plan = readDayPlan(planDir)
+        val plan = readDayPlan(planDir, Lang.FR)
         assertTrue(plan.sms, plan.sms.contains("112"))
 
         // Simulated positions through the platform: a test provider in place of `fused`.

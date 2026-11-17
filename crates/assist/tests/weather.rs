@@ -298,6 +298,7 @@ fn outputs(name: &str, d: &SiteData) -> Vec<(String, String)> {
     let mut out = Vec::new();
     let opts = briefing::Options {
         home: Some(home(name)),
+        lang: skimap_assist::text::Lang::Fr,
     };
     let b = briefing::brief(d, date, 1, &opts);
     for (i, day) in b.days.iter().enumerate() {
@@ -713,6 +714,7 @@ fn brief(name: &str, offset: i64) -> briefing::DayBriefing {
     let d = data(name);
     let opts = briefing::Options {
         home: Some(home(name)),
+        lang: skimap_assist::text::Lang::Fr,
     };
     briefing::day(&d, set(name).date() + Duration::days(offset), &opts)
 }

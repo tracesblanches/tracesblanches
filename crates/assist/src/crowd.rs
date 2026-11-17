@@ -142,14 +142,7 @@ pub enum Population {
 impl Population {
     /// Short French label.
     pub fn label(self) -> &'static str {
-        match self {
-            Population::FranceZoneA => "zone A",
-            Population::FranceZoneB => "zone B",
-            Population::FranceZoneC => "zone C",
-            Population::Fwb => "Belgique (FWB)",
-            Population::Vaud => "Vaud",
-            Population::Neuchatel => "Neuchâtel",
-        }
+        crate::text::of(crate::text::Lang::Fr).population(self)
     }
 
     fn is_french(self) -> bool {
@@ -532,12 +525,12 @@ impl CrowdLevel {
 
     /// French label.
     pub fn label(self) -> &'static str {
-        match self {
-            CrowdLevel::Calm => "calme",
-            CrowdLevel::Moderate => "modéré",
-            CrowdLevel::Busy => "chargé",
-            CrowdLevel::VeryBusy => "très chargé",
-        }
+        self.label_in(crate::text::Lang::Fr)
+    }
+
+    /// Label in `lang`.
+    pub fn label_in(self, lang: crate::text::Lang) -> &'static str {
+        crate::text::of(lang).crowd_level(self)
     }
 }
 
@@ -584,17 +577,24 @@ pub fn public_holiday(population: Population, date: Date) -> Option<&'static Pub
     })
 }
 
-const WEEKDAYS: [&str; 7] = [
-    "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche",
-];
-
-/// Forecast of one day.
+/// Forecast of one day, reasons in French.
 pub fn forecast_day(site: &Site, date: Date, conditions: Option<&Conditions>) -> DayForecast {
+    forecast_day_in(site, date, conditions, crate::text::Lang::Fr)
+}
+
+/// Forecast of one day, reasons in `lang`.
+pub fn forecast_day_in(
+    site: &Site,
+    date: Date,
+    conditions: Option<&Conditions>,
+    lang: crate::text::Lang,
+) -> DayForecast {
+    let t = crate::text::of(lang);
     let c = catchment(site);
     let mut score = 1.0;
     let mut reasons = Vec::new();
     if date.is_weekend() {
-        reasons.push(WEEKDAYS[usize::from(date.weekday())].to_owned());
+        reasons.push(t.weekday(usize::from(date.weekday())).to_owned());
     }
     // Reasons grouped by name: « vacances d'hiver (zone A, zone B) », « Noël (France,
     // Vaud) ».
@@ -611,33 +611,33 @@ pub fn forecast_day(site: &Site, date: Date, conditions: Option<&Conditions>) ->
     for wgt in &c.weights {
         let pop = wgt.population;
         let country = if pop.is_french() {
-            "France"
+            t.france()
         } else {
-            pop.label()
+            t.population(pop)
         };
         let public = public_holiday(pop, date);
         if let Some(h) = public {
-            push(&mut publics, h.name, country);
+            push(&mut publics, t.holiday(h.name), country);
         }
         if let Some(p) = school_holiday(pop, date) {
             score += wgt.holidays;
-            push(&mut schools, p.name, pop.label());
+            push(&mut schools, t.holiday(p.name), t.population(pop));
         } else if public.is_some() || date.is_weekend() {
             score += wgt.weekends;
         }
     }
     for (name, who) in publics.into_iter().chain(schools) {
-        reasons.push(format!("{name} ({})", who.join(", ")));
+        reasons.push(t.holiday_for(name, &who));
     }
     if let Some(cond) = conditions {
         let fresh = cond.fresh_snow_cm >= FRESH_SNOW_CM;
         if fresh {
             score += 1.0;
-            reasons.push(format!("neige fraîche ({:.0} cm)", cond.fresh_snow_cm));
+            reasons.push(t.crowd_fresh_snow(cond.fresh_snow_cm));
         }
         if cond.sunny {
             score += 0.5;
-            reasons.push("soleil".to_owned());
+            reasons.push(t.crowd_sun().to_owned());
         }
         if fresh && cond.sunny {
             score += 0.5;
@@ -645,7 +645,7 @@ pub fn forecast_day(site: &Site, date: Date, conditions: Option<&Conditions>) ->
     }
     let open = c.season.map(|(a, b)| a <= date && date <= b);
     if open == Some(false) {
-        reasons.push("domaine fermé (dates d'ouverture publiées)".to_owned());
+        reasons.push(t.crowd_area_closed().to_owned());
     }
     DayForecast {
         date,
@@ -894,7 +894,7 @@ mod tests {
                 println!(
                     "{site:<17} {} {:<8} {:>4.2} {:<11} {}{}",
                     f.date,
-                    WEEKDAYS[usize::from(f.date.weekday())],
+                    crate::text::of(crate::text::Lang::Fr).weekday(usize::from(f.date.weekday())),
                     f.score,
                     f.level.label(),
                     f.reasons.join(", "),

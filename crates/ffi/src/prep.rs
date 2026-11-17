@@ -552,7 +552,7 @@ mod tests {
         let days = forecast_days(&p);
         eprintln!("forecast days {days:?}");
         let today = days[0].to_string();
-        let fam = crate::tracking_day::group_default().unwrap();
+        let fam = crate::tracking_day::group_default(crate::card::Lang::Fr).unwrap();
         let r = prep_run(
             pack.display().to_string(),
             work.path().display().to_string(),
@@ -581,7 +581,9 @@ mod tests {
         let plans = tempfile::tempdir().unwrap();
         let taken = plans.path().join("p1");
         prep_take(d.plan_dir.clone().unwrap(), taken.display().to_string()).unwrap();
-        let v = crate::tracking_day::read_day_plan(taken.display().to_string()).unwrap();
+        let v =
+            crate::tracking_day::read_day_plan(taken.display().to_string(), crate::card::Lang::Fr)
+                .unwrap();
         assert!(v.pace_text.is_some());
         let s =
             crate::tracking::open_tracking(taken.display().to_string(), None, "fr".into()).unwrap();

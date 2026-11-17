@@ -64,10 +64,19 @@ class OutingTest {
     }
 
     @Test
+    fun englishPhoneSignsInEnglish() {
+        val d = Description.of("Outing finished. 6.2 km in 1 h 10.", listOf("Fresh snow."), french = false)
+        assertEquals(
+            "Outing finished. 6.2 km in 1 h 10.\n\nConditions: Fresh snow.\n\n" + Description.SIGNATURE_EN,
+            d,
+        )
+    }
+
+    @Test
     fun outingWithoutPlanOrRecap() {
         val gpx = SportFixtures.outingDir(tmp.root)
         java.io.File(gpx.parent, "plan.json").delete()
-        val o = Outing.of(gpx.parent, gpx.path, null, 0.0, SportType.NORDIC_SKI)
+        val o = Outing.of(gpx.parent, gpx.path, null, 0.0, SportType.NORDIC_SKI, french = true)
         assertEquals(Description.SIGNATURE, o.description)
         assertEquals("NordicSki", o.sport.strava)
     }
@@ -75,7 +84,9 @@ class OutingTest {
     @Test
     fun aTraceOfOnePointIsNotAnOuting() {
         val gpx = SportFixtures.outingDir(tmp.root, points = 1)
-        assertThrows(IllegalArgumentException::class.java) { Outing.of(gpx.parent, gpx.path, null, 0.0, SportType.NORDIC_SKI) }
+        assertThrows(
+            IllegalArgumentException::class.java,
+        ) { Outing.of(gpx.parent, gpx.path, null, 0.0, SportType.NORDIC_SKI, french = true) }
     }
 
     @Test

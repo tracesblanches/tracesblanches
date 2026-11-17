@@ -25,6 +25,7 @@ pub mod geom;
 #[cfg(feature = "geotiff")]
 pub mod geotiff;
 pub mod grid;
+pub mod lang;
 pub mod layout;
 pub mod meta;
 pub mod names;
@@ -32,3 +33,4 @@ pub mod output;
 pub mod site;
 
 pub use error::{Error, Result};
+pub use lang::Lang;

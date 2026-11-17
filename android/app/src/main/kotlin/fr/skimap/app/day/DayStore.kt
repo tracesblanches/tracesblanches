@@ -3,12 +3,13 @@ package fr.skimap.app.day
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
-import fr.skimap.core.GroupSpec
+import fr.skimap.app.appLang
 import fr.skimap.core.GroupView
 import fr.skimap.core.groupDefault
 import fr.skimap.core.groupLearn
 import fr.skimap.core.groupNew
 import fr.skimap.core.groupRead
+import fr.skimap.core.groupSolo
 import org.json.JSONArray
 import java.io.File
 
@@ -52,14 +53,14 @@ class DayStore(
             // The family the app offers first (C11), then a lone skier.
             val defaults =
                 listOf(
-                    groupDefault(),
-                    groupNew(GroupSpec("Seul", 1u, byteArrayOf(), false, "intermediate")),
+                    groupDefault(appLang()),
+                    groupSolo(appLang()),
                 )
             saveGroups(defaults)
             return defaults
         }
         val a = JSONArray(raw)
-        return (0 until a.length()).mapNotNull { runCatching { groupRead(a.getString(it)) }.getOrNull() }
+        return (0 until a.length()).mapNotNull { runCatching { groupRead(a.getString(it), appLang()) }.getOrNull() }
     }
 
     fun saveGroups(groups: List<GroupView>) {
@@ -114,7 +115,7 @@ class DayStore(
                 } ?: File(dir, GROUP_FILE).takeIf { it.isFile }?.readText().let { name -> groups().firstOrNull { it.spec.name == name } }
             }
         if (obs == null || g == null) return null
-        val learned = groupLearn(g.modelJson, obs)
+        val learned = groupLearn(g.modelJson, obs, appLang())
         putGroup(learned)
         done.writeText(learned.outings.toString())
         return learned

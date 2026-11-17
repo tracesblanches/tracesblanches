@@ -14,6 +14,7 @@ import fr.skimap.core.DayPlanView
 import fr.skimap.core.DayRequest
 import fr.skimap.core.DayStart
 import fr.skimap.core.GroupSpec
+import fr.skimap.core.Lang
 import fr.skimap.core.MorningView
 import fr.skimap.core.groupNew
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +32,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
 import java.io.File
 import java.time.LocalDate
 import java.time.LocalTime
@@ -72,7 +74,9 @@ class FakeDayBackend(
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
+// French phone: the groups and the request labels in French (the core follows the phone).
 @RunWith(AndroidJUnit4::class)
+@Config(qualifiers = "fr")
 class DayViewModelTest {
     @get:Rule
     val tmp = TemporaryFolder()
@@ -189,7 +193,7 @@ class DayViewModelTest {
             .clear()
             .commit()
         val st = store()
-        val g = groupNew(GroupSpec("Famille test", 2u, byteArrayOf(6, 9), false, "intermediate"))
+        val g = groupNew(GroupSpec("Famille test", 2u, byteArrayOf(6, 9), false, "intermediate"), Lang.FR)
         st.putGroup(g)
         val dir = tmp.newFolder("plan")
         st.setPlanGroup(dir.absolutePath, "Famille test")

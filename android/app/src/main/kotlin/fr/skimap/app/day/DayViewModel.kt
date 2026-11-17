@@ -2,12 +2,14 @@ package fr.skimap.app.day
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import fr.skimap.app.appLang
 import fr.skimap.core.DayPlanView
 import fr.skimap.core.DayPlanner
 import fr.skimap.core.DayRequest
 import fr.skimap.core.DayStart
 import fr.skimap.core.GroupSpec
 import fr.skimap.core.GroupView
+import fr.skimap.core.Lang
 import fr.skimap.core.MorningView
 import fr.skimap.core.TrackingException
 import fr.skimap.core.daySites
@@ -46,9 +48,7 @@ sealed interface DayUi {
     data object Loading : DayUi
 
     /** No pack of a site the phone can plan on. */
-    data class Unavailable(
-        val message: String,
-    ) : DayUi
+    data object Unavailable : DayUi
 
     data class Ready(
         val siteId: String,
@@ -96,16 +96,18 @@ fun earliestStart(
 fun dayRequest(
     i: DayInputs,
     earliest: String = DAY_START,
+    lang: Lang = appLang(),
 ): DayRequest? {
     val s = i.start ?: return null
     val h = i.budgetMin / MINUTES_PER_HOUR
     val m = i.budgetMin % MINUTES_PER_HOUR
     val label =
         buildString {
+            val w = RequestWords.of(lang)
             append(if (m == 0) "$h h" else "$h h ${"%02d".format(m)}")
-            append(if (i.skating) ", skating" else ", classique")
-            if (i.easyOnly) append(", vertes et bleues")
-            i.returnBefore?.let { append(", retour avant ${it.replace(":", " h ")}") }
+            append(if (i.skating) ", skating" else ", ${w.classic}")
+            if (i.easyOnly) append(", ${w.easy}")
+            i.returnBefore?.let { append(", ${w.backBefore} ${it.replace(":", w.clockSeparator)}") }
         }
     return DayRequest(
         label = label,
@@ -159,7 +161,7 @@ object RustDayBackend : DayBackend {
         packDir: String,
         workDir: String,
     ): DayBackend.Planner {
-        val p: DayPlanner = openDayPlanner(packDir, workDir)
+        val p: DayPlanner = openDayPlanner(packDir, workDir, appLang())
         return object : DayBackend.Planner {
             override fun morning(
                 request: DayRequest,
@@ -176,7 +178,22 @@ object RustDayBackend : DayBackend {
 
     override fun starts(siteId: String): List<DayStart> = dayStarts(siteId)
 
-    override fun readPlan(planDir: String): DayPlanView? = runCatching { readDayPlan(planDir) }.getOrNull()
+    override fun readPlan(planDir: String): DayPlanView? = runCatching { readDayPlan(planDir, appLang()) }.getOrNull()
+}
+
+/** Words of the label of a request (the core keeps it with the plan), in the app's language. */
+private data class RequestWords(
+    val classic: String,
+    val easy: String,
+    val backBefore: String,
+    val clockSeparator: String,
+) {
+    companion object {
+        private val FR = RequestWords("classique", "vertes et bleues", "retour avant", " h ")
+        private val EN = RequestWords("classic", "green and blue", "back before", ":")
+
+        fun of(lang: Lang): RequestWords = if (lang == Lang.FR) FR else EN
+    }
 }
 
 /**
@@ -227,7 +244,7 @@ class DayViewModel(
                 }
             }
         if (loaded == null) {
-            mutable.value = DayUi.Unavailable("Aucun pack de domaine sur ce téléphone.")
+            mutable.value = DayUi.Unavailable
             return
         }
         val (pick, p, starts) = loaded
@@ -272,7 +289,7 @@ class DayViewModel(
 
     fun addGroup(spec: GroupSpec) {
         viewModelScope.launch {
-            val g = withContext(io) { groupNew(spec).also { store.putGroup(it) } }
+            val g = withContext(io) { groupNew(spec, appLang()).also { store.putGroup(it) } }
             update { it.copy(groups = store.groups()) }
             selectGroup(g)
         }

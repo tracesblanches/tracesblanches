@@ -46,6 +46,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import fr.skimap.app.R
+import fr.skimap.app.appLang
 import fr.skimap.app.day.DayActivity
 import fr.skimap.app.day.DayStore
 import fr.skimap.app.fog.Outings
@@ -204,7 +205,7 @@ class PrepActivity : ComponentActivity() {
                     val dir = Outings.newOutingDir(applicationContext)
                     runCatching {
                         prepTake(from, dir.path)
-                        readDayPlan(dir.path)
+                        readDayPlan(dir.path, appLang())
                     }.getOrNull()
                 } ?: return@launch
             DayActivity.startOuting(this@PrepActivity, plan, DayStore(this@PrepActivity).contact())
