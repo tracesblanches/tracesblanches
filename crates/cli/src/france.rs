@@ -459,6 +459,11 @@ pub fn apply_departs(layout: &DataLayout, records: &mut [SiteRecord]) -> Result<
     let file = skimap_stations::departs::DepartsFile::read(&path)?;
     let mut n = 0;
     for r in records.iter_mut() {
+        if matches!(r.kind, SiteKind::SrnArea | SiteKind::Traverse) {
+            r.starts = srn_starts(&file, r);
+            n += usize::from(!r.starts.is_empty());
+            continue;
+        }
         let Some(list) = r.census_id.as_ref().and_then(|c| file.domains.get(c)) else {
             continue;
         };
@@ -481,6 +486,28 @@ pub fn apply_departs(layout: &DataLayout, records: &mut [SiteRecord]) -> Result<
     Ok(n)
 }
 
+/// Starts of an SRN site or section (X9b) from the starts of its area in `departs.json`:
+/// the best of the area, or of those inside the box of the section (the best of the area
+/// when none is inside).
+fn srn_starts(file: &skimap_stations::departs::DepartsFile, r: &SiteRecord) -> Vec<site::Start> {
+    use skimap_stations::departs_srn::pick;
+    let Some(list) = file.srn.get(r.parent.as_deref().unwrap_or(&r.id)) else {
+        return Vec::new();
+    };
+    let mut picked = if r.parent.is_some() {
+        pick(list, Some(&r.bbox))
+    } else {
+        Vec::new()
+    };
+    if picked.is_empty() {
+        picked = pick(list, None);
+        if r.parent.is_some() {
+            picked.truncate(1);
+        }
+    }
+    picked.into_iter().map(|d| d.start).collect()
+}
+
 /// Trail starts (X9) after a run of the stations layer: rebuilt when the station cards
 /// ran (new OSM points) or when `departs.json` is missing, then written into the registry.
 pub fn departs_after_stations(
@@ -491,12 +518,27 @@ pub fn departs_after_stations(
         .layout
         .france_layer_dir(skimap_stations::LAYER)?
         .join(skimap_stations::departs::FILE);
-    if !ran.iter().any(|r| r == "fiches") && path.is_file() {
+    if !ran.iter().any(|r| r == "fiches") && path.is_file() && !srn_newer(&ctx.layout, &path)? {
         return Ok(None);
     }
     let out = skimap_stations::departs::build(&ctx.layout, &ctx.dl)?;
     refresh_registry_starts(&ctx.layout)?;
     Ok(Some(out))
+}
+
+/// Whether the SRN areas or routes (`srn/`) were written after `departs` (X9b: their
+/// starts are then out of date).
+fn srn_newer(layout: &DataLayout, departs: &Path) -> Result<bool> {
+    use skimap_stations::departs_srn::{AREAS_FILE, ROUTES_FILE, SRN_LAYER};
+    let modified = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    let Some(at) = modified(departs) else {
+        return Ok(true);
+    };
+    let dir = layout.france_layer_dir(SRN_LAYER)?;
+    Ok([AREAS_FILE, ROUTES_FILE]
+        .iter()
+        .filter_map(|f| modified(&dir.join(f)))
+        .any(|m| m > at))
 }
 
 /// Rewrites the registry file with the starts of `stations/departs.json` (X9), after the
