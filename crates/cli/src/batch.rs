@@ -679,8 +679,17 @@ pub fn write_status(layout: &DataLayout, sites: &[&'static Site]) -> Result<Path
 /// decoded once for every point of every site (the `meteo` step of each site then finds
 /// its layer at the latest run). A failure is recorded; the step of each site retries.
 pub fn meteo_step(ctx: &Ctx, sites: &[&Site]) -> StepRecord {
+    meteo_step_at(ctx, sites, None)
+}
+
+/// [`meteo_step`] at a given AROME run (`None`: the latest complete one).
+pub fn meteo_step_at(ctx: &Ctx, sites: &[&Site], run: Option<DateTime<Utc>>) -> StepRecord {
     let t = Instant::now();
-    let (state, line) = match skimap_meteo::arome::refresh(sites, &ctx.layout, &ctx.dl) {
+    let refreshed = match run {
+        Some(run) => skimap_meteo::arome::refresh_run(sites, &ctx.layout, &ctx.dl, run),
+        None => skimap_meteo::arome::refresh(sites, &ctx.layout, &ctx.dl),
+    };
+    let (state, line) = match refreshed {
         Ok(r) => {
             let written = r.sites.iter().filter(|s| s.status == "written").count();
             (

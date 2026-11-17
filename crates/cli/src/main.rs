@@ -126,6 +126,10 @@ enum Command {
     MeteoRefresh {
         /// Sites (default: every buildable site of the registry).
         sites: Vec<String>,
+        /// AROME run to use (RFC 3339, e.g. `2026-11-17T06:00:00Z`; default: the latest
+        /// complete run): replay of a run still published, measurements.
+        #[arg(long)]
+        run: Option<String>,
     },
     /// Catalogue of France, `data/out/france/catalog.json` and `catalog.geojson`: every
     /// site with its box, centre, km and the state of its pack (G2).
@@ -719,14 +723,15 @@ fn run(cli: Cli) -> Result<()> {
             }
             Ok(())
         }
-        Command::MeteoRefresh { sites } => {
+        Command::MeteoRefresh { sites, run } => {
             let c = ctx()?;
             let sites: Vec<&Site> = if sites.is_empty() {
                 registry.buildable()
             } else {
                 sites.iter().map(|s| site(s)).collect::<Result<_>>()?
             };
-            let r = batch::meteo_step(&c, &sites);
+            let run = run.as_deref().map(build::parse_instant).transpose()?;
+            let r = batch::meteo_step_at(&c, &sites, run);
             if r.state == build::StepState::Failed {
                 anyhow::bail!("meteo-refresh : {}", r.line);
             }
