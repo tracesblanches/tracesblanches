@@ -229,10 +229,14 @@ pub fn model_with(
     t.pra = t0.elapsed().as_secs_f64();
     let fsi = forest_index(&inputs.canopy);
     let t0 = Instant::now();
-    let rf = flowpy::run(&inputs.dem, &pf.release, &fsi, flow_frequent);
+    // One weight table for both scenarios when they spread alike (the defaults do).
+    let wf = flowpy::Weights::new(&inputs.dem, &fsi, flow_frequent.exp);
+    let we = (flow_extreme.exp.to_bits() != flow_frequent.exp.to_bits())
+        .then(|| flowpy::Weights::new(&inputs.dem, &fsi, flow_extreme.exp));
+    let rf = flowpy::run_with(&wf, &pf.release, flow_frequent);
     t.runout_frequent = t0.elapsed().as_secs_f64();
     let t0 = Instant::now();
-    let re = flowpy::run(&inputs.dem, &pe.release, &fsi, flow_extreme);
+    let re = flowpy::run_with(we.as_ref().unwrap_or(&wf), &pe.release, flow_extreme);
     t.runout_extreme = t0.elapsed().as_secs_f64();
     let t0 = Instant::now();
     let a = ates::classify(&inputs.dem, &inputs.canopy, (&pf, &rf), (&pe, &re));

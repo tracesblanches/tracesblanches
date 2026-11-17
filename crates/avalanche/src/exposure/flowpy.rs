@@ -18,7 +18,10 @@
 //! routed flux `routFluxSum`, maximum flow-path travel angle `fpTravelAngleMax`, number
 //! of paths `cellCounts`. The per-path arithmetic follows the Numba kernel operation for
 //! operation in Float64, so maxima are bit-identical; sums differ only by the order of
-//! the additions (Float64 here, Float32 in the reference). Paths run in parallel (rayon).
+//! the additions (Float64 here, Float32 in the reference). Paths run in parallel (rayon):
+//! each path aggregates its outputs per cell, then merges them once into the shared
+//! accumulators, the flux as a fixed-point integer sum, so the result does not depend on
+//! the scheduling of the threads.
 
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
@@ -126,6 +129,25 @@ impl Runout {
 /// Side of the square tiles of [`Cells::tb_exp`], cells.
 const TILE: usize = 64;
 
+/// Routing weights of a grid, shared by the scenarios that route over the same DEM and
+/// forest index with the same spreading exponent (the two AutoATES scenarios differ only
+/// by α): the `tan β^exp` tables are then computed once per tile for both runs.
+pub struct Weights<'a> {
+    cells: Cells<'a>,
+}
+
+impl<'a> Weights<'a> {
+    /// Weights of `dem` (m, `NaN` no-data) with the forest index `fsi` for the
+    /// spreading exponent `exp`. Nothing is computed until a run reaches a tile.
+    pub fn new(dem: &'a Raster<f32>, fsi: &'a Raster<f32>, exp: f64) -> Self {
+        assert!(dem.same_grid(fsi), "runout grids");
+        let dt0 = [SQRT2, 1.0, SQRT2, 1.0, 1.0, 1.0, SQRT2, 1.0, SQRT2];
+        Self {
+            cells: Cells::new(dem, fsi, dt0.map(|d| d * dem.cell), exp),
+        }
+    }
+}
+
 /// Read-only cell data of one run, shared by all paths.
 ///
 /// What a visit needs that does not depend on the path is computed once per cell here
@@ -138,6 +160,7 @@ const TILE: usize = 64;
 /// are those the kernel computed, by the same operations: the routing is unchanged bit
 /// for bit.
 struct Cells<'a> {
+    dem: &'a Raster<f32>,
     w: usize,
     h: usize,
     /// Elevation as read (Float32; widened exactly to Float64 on use).
@@ -181,6 +204,7 @@ impl<'a> Cells<'a> {
         let tiles_w = w.div_ceil(TILE);
         let tiles = tiles_w * h.div_ceil(TILE);
         Self {
+            dem,
             w,
             h,
             z,
@@ -243,9 +267,27 @@ struct Work {
     /// start, so the allocation is lazily zeroed: the pages of the cells no path of the
     /// thread reaches are never written.
     slots: Vec<u64>,
+    /// Per cell: index in [`Work::touched`] for the path stamped in [`Work::slots`]
+    /// (meaningful only while the stamp is the current path's). Lazily zeroed too.
+    touch: Vec<u32>,
     stamp: u32,
     queue: Vec<Entry>,
     modified: Vec<u32>,
+    /// Outputs of the current path, one per distinct cell it reached, in order of first
+    /// visit; merged into the shared accumulators once per path.
+    touched: Vec<Touch>,
+}
+
+/// Outputs of one path on one cell, aggregated over the visits of the path.
+#[derive(Clone, Copy)]
+struct Touch {
+    cell: u32,
+    /// Maximum of the bits of the Float32 energy-line heights (as the shared maximum).
+    zdelta: u32,
+    /// Maximum of `Δh / d` (key of [`f64_key`]).
+    gamma: u64,
+    /// Sum of the routed flux over the visits, in visit order (Float64).
+    flux: f64,
 }
 
 /// One queued cell. Its parents are earlier queue entries: their `zdelta` and, once they
@@ -273,9 +315,11 @@ impl Work {
     fn new(n: usize) -> Self {
         Self {
             slots: vec![0; n],
+            touch: vec![0; n],
             stamp: 0,
             queue: Vec::with_capacity(1 << 14),
             modified: Vec::with_capacity(1 << 14),
+            touched: Vec::with_capacity(1 << 14),
         }
     }
 
@@ -298,19 +342,28 @@ impl Work {
         self.slots[i] &= !LOW;
     }
 
-    /// Marks the cell visited by the current path; whether it was not yet.
+    /// Index in [`Work::touched`] of the cell for the current path, adding it on the
+    /// path's first visit of the cell.
     #[inline]
-    fn first_visit(&mut self, i: usize) -> bool {
+    fn touch(&mut self, i: usize) -> usize {
         let s = self.slots[i];
         if (s >> 32) as u32 == self.stamp {
-            return false;
+            return self.touch[i] as usize;
         }
         self.slots[i] = (s & LOW) | (u64::from(self.stamp) << 32);
-        true
+        let t = self.touched.len();
+        self.touch[i] = t as u32;
+        self.touched.push(Touch {
+            cell: i as u32,
+            zdelta: 0f32.to_bits(),
+            gamma: 0,
+            flux: 0.0,
+        });
+        t
     }
 }
 
-/// Shared outputs of one cell, updated with atomics (one cache line access per visit).
+/// Shared outputs of one cell, merged once per path that reaches it.
 struct CellAcc {
     zdelta: AtomicU32,
     count: AtomicU32,
@@ -318,7 +371,24 @@ struct CellAcc {
     /// `atan`, taken once per cell at the end (`atan` is monotonic, so the angle of the
     /// maximum is the maximum of the angles the kernel computed at every visit).
     gamma: AtomicU64,
+    /// Sum of the routed flux, fixed point (units of [`FLUX_UNIT`]): integer additions
+    /// commute, so the sum does not depend on the order in which the threads finish
+    /// their paths (a Float64 atomic sum did).
     flux: AtomicU64,
+}
+
+/// Resolution of the fixed-point flux sum: 2⁻⁴⁰ (about 9 × 10⁻¹³). The per-path sum of a
+/// cell (Float64, at least the minimum flux 0.0003 when positive) is rounded to it once,
+/// far below the Float32 precision of the output; the largest sum it holds is 2²⁴ (a
+/// cell would need sixteen million full-flux visits), checked on every addition.
+const FLUX_SCALE: f64 = (1u64 << 40) as f64;
+/// One unit of the fixed-point flux sum.
+const FLUX_UNIT: f64 = 1.0 / FLUX_SCALE;
+
+/// Fixed-point value of a non-negative per-path flux sum (round to nearest).
+#[inline]
+fn flux_fixed(v: f64) -> u64 {
+    (v * FLUX_SCALE).round() as u64
 }
 
 /// Order-preserving map of an `f64` to a `u64` (total order: `-0 < +0`), for an atomic
@@ -353,16 +423,12 @@ fn travel_angle(x: f64) -> f32 {
     (x.atan() * DEG_PER_RAD) as f32
 }
 
+/// Adds a per-path flux to the fixed-point sum of a cell.
 #[inline]
-fn atomic_add_f64(a: &AtomicU64, v: f64) {
-    let mut cur = a.load(Ordering::Relaxed);
-    loop {
-        let new = (f64::from_bits(cur) + v).to_bits();
-        match a.compare_exchange_weak(cur, new, Ordering::Relaxed, Ordering::Relaxed) {
-            Ok(_) => return,
-            Err(x) => cur = x,
-        }
-    }
+fn add_flux(a: &AtomicU64, v: f64) {
+    let q = flux_fixed(v);
+    let old = a.fetch_add(q, Ordering::Relaxed);
+    assert!(old.checked_add(q).is_some(), "flux sum overflow");
 }
 
 /// Atomic maximum that skips the read-modify-write when the stored value is already at
@@ -384,7 +450,17 @@ fn total_key(v: f64) -> i64 {
 /// Routes every release cell of `release` over `dem` (m, `NaN` no-data) with the
 /// forest structure index `fsi` (0–1, the canopy cover / 100 of the reference).
 pub fn run(dem: &Raster<f32>, release: &Raster<u8>, fsi: &Raster<f32>, p: &FlowParams) -> Runout {
-    assert!(dem.same_grid(release) && dem.same_grid(fsi), "runout grids");
+    run_with(&Weights::new(dem, fsi, p.exp), release, p)
+}
+
+/// [`run`] over precomputed [`Weights`] (same DEM, forest index and exponent as `p`).
+pub fn run_with(weights: &Weights<'_>, release: &Raster<u8>, p: &FlowParams) -> Runout {
+    let dem = weights.cells.dem;
+    assert!(dem.same_grid(release), "runout grids");
+    assert!(
+        weights.cells.exp.to_bits() == p.exp.to_bits(),
+        "weights computed for another exponent"
+    );
     let n = dem.w * dem.h;
     let starts: Vec<u32> = release
         .data
@@ -399,11 +475,11 @@ pub fn run(dem: &Raster<f32>, release: &Raster<u8>, fsi: &Raster<f32>, p: &FlowP
             zdelta: AtomicU32::new(0f32.to_bits()),
             count: AtomicU32::new(0),
             gamma: AtomicU64::new(0),
-            flux: AtomicU64::new(0f64.to_bits()),
+            flux: AtomicU64::new(0),
         })
         .collect();
     let t0 = std::time::Instant::now();
-    let k = Kernel::new(dem, fsi, p);
+    let k = Kernel::new(&weights.cells, p);
     let t_cells = t0.elapsed().as_secs_f64();
     let t0 = std::time::Instant::now();
     let pool: Mutex<Vec<Work>> = Mutex::new(Vec::new());
@@ -445,7 +521,7 @@ pub fn run(dem: &Raster<f32>, release: &Raster<u8>, fsi: &Raster<f32>, p: &FlowP
         .collect();
     let flux: Vec<f32> = acc
         .par_iter()
-        .map(|a| f64::from_bits(a.flux.load(Ordering::Relaxed)) as f32)
+        .map(|a| (a.flux.load(Ordering::Relaxed) as f64 * FLUX_UNIT) as f32)
         .collect();
     let fp: Vec<f32> = acc
         .par_iter()
@@ -469,7 +545,7 @@ pub fn run(dem: &Raster<f32>, release: &Raster<u8>, fsi: &Raster<f32>, p: &FlowP
 }
 
 struct Kernel<'a> {
-    cells: Cells<'a>,
+    cells: &'a Cells<'a>,
     w: usize,
     p: FlowParams,
     ds: [f64; 9],
@@ -486,10 +562,9 @@ struct Kernel<'a> {
 }
 
 impl<'a> Kernel<'a> {
-    fn new(dem: &'a Raster<f32>, fsi: &'a Raster<f32>, p: &FlowParams) -> Self {
-        let (w, cell) = (dem.w, dem.cell);
+    fn new(cells: &'a Cells<'a>, p: &FlowParams) -> Self {
+        let (w, cell) = (cells.dem.w, cells.dem.cell);
         let ds0 = [SQRT2, 1.0, SQRT2, 1.0, 0.0, 1.0, SQRT2, 1.0, SQRT2];
-        let dt0 = [SQRT2, 1.0, SQRT2, 1.0, 1.0, 1.0, SQRT2, 1.0, SQRT2];
         let (no_fr_z, no_de_z, detrain) = match p.forest {
             Some(f) => {
                 let nfz = if f.vel_th_friction != 0.0 {
@@ -509,7 +584,6 @@ impl<'a> Kernel<'a> {
             }
             None => (0.0, 0.0, false),
         };
-        let distance = dt0.map(|d| d * cell);
         // Same operations as the reference's calcDistMin, per neighbour direction.
         let mut dist2d = [0f64; 9];
         let mut h2 = [0f64; 9];
@@ -523,7 +597,7 @@ impl<'a> Kernel<'a> {
             h2[k] = adx * adx + ady * ady;
         }
         Self {
-            cells: Cells::new(dem, fsi, distance, p.exp),
+            cells,
             w,
             p: *p,
             ds: ds0.map(|d| d * cell),
@@ -562,6 +636,7 @@ impl<'a> Kernel<'a> {
         }
         work.queue.clear();
         work.modified.clear();
+        work.touched.clear();
         work.queue.push(Entry {
             r: rs as u32,
             c: cs as u32,
@@ -586,10 +661,7 @@ impl<'a> Kernel<'a> {
             // Index of the north-west cell of the 3 × 3 window.
             let base = idx - w - 1;
             work.clear_pending(idx);
-            let a = &acc[idx];
-            if work.first_visit(idx) {
-                a.count.fetch_add(1, Ordering::Relaxed);
-            }
+            let ti = work.touch(idx);
             let z_delta = e.zdelta;
             let mut flux = e.flux;
             let row = |o: usize| {
@@ -699,15 +771,9 @@ impl<'a> Kernel<'a> {
             let mut tb_sum = 0.0;
             for i in 0..9 {
                 let v = z_delta + (altitude - dem_ng[i]) - self.ds[i] * tan_alpha;
-                zdn[i] = if v < 0.0 {
-                    0.0
-                } else if v > max_z {
-                    max_z
-                } else {
-                    v
-                };
+                zdn[i] = select(v < 0.0, 0.0, select(v > max_z, max_z, v));
                 let open = (zdn[i] > 0.0) & (persistence[i] > 0.0);
-                tb_open[i] = if open { tb[i] } else { 0.0 };
+                tb_open[i] = select(open, tb[i], 0.0);
                 tb_sum += tb_open[i];
             }
             let mut r_t = [0f64; 9];
@@ -756,16 +822,15 @@ impl<'a> Kernel<'a> {
             let mut count = 0usize;
             let mut mass_below = 0.0;
             for d in &dist {
-                if *d >= thr {
-                    count += 1;
-                } else {
-                    mass_below += *d;
-                }
+                // Adding +0 for the kept terms leaves the (non-negative) sum unchanged.
+                let keep = *d >= thr;
+                count += usize::from(keep);
+                mass_below += select(keep, 0.0, *d);
             }
             if mass_below > 0.0 && count > 0 {
                 let add = mass_below / count as f64;
                 for d in dist.iter_mut() {
-                    *d = if *d >= thr { *d + add } else { 0.0 };
+                    *d = select(*d >= thr, *d + add, 0.0);
                 }
             }
             let mut dist_sum = 0.0;
@@ -775,9 +840,7 @@ impl<'a> Kernel<'a> {
             if dist_sum != flux && count > 0 {
                 let corr = (flux - dist_sum) / count as f64;
                 for d in dist.iter_mut() {
-                    if *d >= thr {
-                        *d += corr;
-                    }
+                    *d = select(*d >= thr, *d + corr, *d);
                 }
             }
             // With count == 0 the reference deposits the flux (depFluxSum, not used here):
@@ -838,17 +901,35 @@ impl<'a> Kernel<'a> {
                 }
             }
 
-            // Accumulate the outputs of the processed cell.
-            atomic_max_u32(&a.zdelta, (z_delta as f32).to_bits());
-            atomic_add_f64(&a.flux, flux);
-            atomic_max_u64(&a.gamma, f64_key(gamma_ratio));
+            // Accumulate the outputs of the processed cell for this path.
+            let t = &mut work.touched[ti];
+            t.zdelta = t.zdelta.max((z_delta as f32).to_bits());
+            t.gamma = t.gamma.max(f64_key(gamma_ratio));
+            t.flux += flux;
         }
         for i in 0..work.modified.len() {
             let m = work.modified[i] as usize;
             work.clear_pending(m);
         }
+        // Merge the path into the shared outputs: one count, two maxima (independent of
+        // the order) and one integer sum per reached cell.
+        for t in &work.touched {
+            let a = &acc[t.cell as usize];
+            a.count.fetch_add(1, Ordering::Relaxed);
+            atomic_max_u32(&a.zdelta, t.zdelta);
+            atomic_max_u64(&a.gamma, t.gamma);
+            add_flux(&a.flux, t.flux);
+        }
         head as u64
     }
+}
+
+/// `if c { a } else { b }` without a branch (the routing tests are data-dependent and
+/// mispredicted); bit for bit the selected value, signed zeros included.
+#[inline(always)]
+fn select(c: bool, a: f64, b: f64) -> f64 {
+    let m = u64::from(c).wrapping_neg();
+    f64::from_bits((a.to_bits() & m) | (b.to_bits() & !m))
 }
 
 /// Persistence targets of a parent in the direction `d` of the 3 × 3 window
@@ -970,6 +1051,74 @@ mod tests {
         // The start cell itself has travel angle 0 and flux 1.
         assert_eq!(out.fp_travel_angle.data[2 * w + 10], 0.0);
         assert!((out.rout_flux_sum.data[2 * w + 10] - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn select_keeps_the_bits() {
+        for (a, b) in [
+            (1.5, -0.0),
+            (-0.0, 0.0),
+            (0.0, 270.0),
+            (f64::MIN_POSITIVE, 3.0),
+        ] {
+            assert_eq!(select(true, a, b).to_bits(), a.to_bits());
+            assert_eq!(select(false, a, b).to_bits(), b.to_bits());
+        }
+    }
+
+    #[test]
+    fn shared_weights_and_any_scheduling_give_the_same_bits() {
+        // Many overlapping paths on a forested slope: the flux sums of a cell come from
+        // many threads. Every output must be identical between runs, whatever order the
+        // threads finish in, and with weights shared between the two scenarios.
+        let (w, h, cell) = (41usize, 160usize, 5.0f64);
+        let mut dem = plane(w, h, cell, 38.0);
+        for (i, z) in dem.data.iter_mut().enumerate() {
+            *z += ((i * 7919) % 13) as f32 * 0.37;
+        }
+        let mut rel = Raster::filled_like(&dem, 0u8);
+        for r in 2..30 {
+            for c in 2..w - 2 {
+                rel.data[r * w + c] = 1;
+            }
+        }
+        let mut fsi = Raster::filled_like(&dem, 0f32);
+        for (i, v) in fsi.data.iter_mut().enumerate() {
+            *v = ((i % 11) as f32) / 20.0;
+        }
+        let bits = |o: &Runout| {
+            (
+                o.rout_flux_sum
+                    .data
+                    .iter()
+                    .map(|v| v.to_bits())
+                    .collect::<Vec<_>>(),
+                o.zdelta
+                    .data
+                    .iter()
+                    .map(|v| v.to_bits())
+                    .collect::<Vec<_>>(),
+                o.fp_travel_angle
+                    .data
+                    .iter()
+                    .map(|v| v.to_bits())
+                    .collect::<Vec<_>>(),
+                o.cell_counts.data.clone(),
+                o.visits,
+            )
+        };
+        let shared = Weights::new(&dem, &fsi, EXTREME.exp);
+        let reference = bits(&run(&dem, &rel, &fsi, &EXTREME));
+        for threads in [1, 3, 8] {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap();
+            let again = pool.install(|| bits(&run_with(&shared, &rel, &EXTREME)));
+            assert!(again == reference, "{threads} threads");
+        }
+        let _ = run_with(&shared, &rel, &FREQUENT);
+        assert!(bits(&run_with(&shared, &rel, &EXTREME)) == reference);
     }
 
     #[test]
