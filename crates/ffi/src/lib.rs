@@ -32,6 +32,7 @@ pub mod recap;
 pub mod rules;
 pub mod style;
 pub mod sync;
+pub mod text;
 pub mod tracking;
 pub mod tracking_back;
 pub mod tracking_day;

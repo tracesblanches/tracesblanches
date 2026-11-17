@@ -41,6 +41,7 @@ pub mod presets;
 pub mod scenario;
 pub mod session;
 pub mod speech;
+pub mod text;
 pub mod track;
 pub mod tracker;
 

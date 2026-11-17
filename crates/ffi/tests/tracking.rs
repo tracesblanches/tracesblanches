@@ -197,13 +197,16 @@ fn follow(
 }
 
 fn group(children: &[u8]) -> String {
-    group_new(GroupSpec {
-        name: "test".into(),
-        adults: 2,
-        children: children.to_vec(),
-        skating: false,
-        level: "intermediate".into(),
-    })
+    group_new(
+        GroupSpec {
+            name: "test".into(),
+            adults: 2,
+            children: children.to_vec(),
+            skating: false,
+            level: "intermediate".into(),
+        },
+        skimap_ffi::card::Lang::Fr,
+    )
     .unwrap()
     .model_json
 }
@@ -217,6 +220,7 @@ fn morning_to_recap(site: &'static Site, date: &str, budget_min: f64, return_bef
     let planner = open_day_planner(
         pack(site).display().to_string(),
         work.path().join("view").display().to_string(),
+        skimap_ffi::card::Lang::Fr,
     )
     .unwrap();
     let start = day_starts(site.id.into()).remove(0);
@@ -277,7 +281,10 @@ fn morning_to_recap(site: &'static Site, date: &str, budget_min: f64, return_bef
         assert_eq!(v.limit.as_deref(), Some(r.replace(':', " h ").as_str()));
     }
     assert!(v.line.len() > 20);
-    assert_eq!(read_day_plan(v.plan_dir.clone()).unwrap(), v);
+    assert_eq!(
+        read_day_plan(v.plan_dir.clone(), skimap_ffi::card::Lang::Fr).unwrap(),
+        v
+    );
 
     // A family outing on the plan (C11 behaviour), simulated by the core's bench.
     let plan =
@@ -359,7 +366,7 @@ fn morning_to_recap(site: &'static Site, date: &str, budget_min: f64, return_bef
     let text = std::fs::read_to_string(&gpx).unwrap();
     let pts = text.matches("<trkpt").count();
     assert_eq!(pts, run.fixes, "every fix in the GPX");
-    let learned = group_learn(fam, s2.observation().unwrap()).unwrap();
+    let learned = group_learn(fam, s2.observation().unwrap(), skimap_ffi::card::Lang::Fr).unwrap();
     assert_eq!(learned.outings, 1);
     println!("  GPX {pts} points; group: {}", learned.learned);
 }
@@ -651,6 +658,7 @@ fn full_data_bring_me_back() {
     let planner = open_day_planner(
         pack(&CERVIERES).display().to_string(),
         work.path().join("view").display().to_string(),
+        skimap_ffi::card::Lang::Fr,
     )
     .unwrap();
     let req = DayRequest {

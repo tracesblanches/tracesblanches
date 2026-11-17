@@ -38,19 +38,26 @@ fn session_follows_the_core_on_the_fixtures() {
     assert!(!m.suggestions.suggestions.is_empty(), "{:?}", m.notes);
     let mut p = plan::build(&mut data, &m, 0, &ctx).unwrap();
     let g = data.graph.take().unwrap();
-    let model = group_new(GroupSpec {
-        name: "famille".into(),
-        adults: 2,
-        children: vec![6, 9],
-        skating: false,
-        level: "intermediate".into(),
-    })
+    let model = group_new(
+        GroupSpec {
+            name: "famille".into(),
+            adults: 2,
+            children: vec![6, 9],
+            skating: false,
+            level: "intermediate".into(),
+        },
+        skimap_ffi::card::Lang::Fr,
+    )
     .unwrap();
     let pm: skimap_core::calibration::ProfileModel =
         serde_json::from_str(&model.model_json).unwrap();
     skimap_plan::pace::with_pace(&mut p, &g, &pm).unwrap();
     let trk = plan::track(&p, &g).unwrap().to_bytes();
-    let sms = sms_text(&p, p.pace.as_ref().unwrap().arrival);
+    let sms = sms_text(
+        &p,
+        p.pace.as_ref().unwrap().arrival,
+        skimap_ffi::card::Lang::Fr,
+    );
     assert!(sms.contains("112") && sms.contains("Le Laus"), "{sms}");
 
     let sc = Scenario {
@@ -218,7 +225,12 @@ fn session_follows_the_core_on_the_fixtures() {
     assert_eq!(g_end.gps_mode, GpsModeView::Idle);
     let gpx = std::fs::read_to_string(session.write_gpx().unwrap()).unwrap();
     assert_eq!(gpx.matches("<trkpt").count(), run.fixes);
-    let learned = group_learn(model.model_json, session.observation().unwrap()).unwrap();
+    let learned = group_learn(
+        model.model_json,
+        session.observation().unwrap(),
+        skimap_ffi::card::Lang::Fr,
+    )
+    .unwrap();
     assert_eq!(learned.outings, 1);
     assert_eq!(learned.learned, "une sortie apprise");
     println!(

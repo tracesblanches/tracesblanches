@@ -80,6 +80,7 @@ pub fn suggestion_requests(site: &Site, date: NaiveDate) -> Vec<Request> {
             return_before: back,
             max_difficulty: max,
             max_results: 3,
+            lang: crate::text::Lang::Fr,
         };
     vec![
         req(

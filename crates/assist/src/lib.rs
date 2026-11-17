@@ -13,6 +13,8 @@
 //! - [`recap`]: A10 (#97) outing recap.
 //! - [`questions`]: A11 (#98) offline free-form questions, bounded intent classification.
 //!
+//! Texts in the language of the app: [`text`] (one module per language, VO6).
+//!
 //! Shared by the modules: [`layers`] (typed readers of the layer outputs), [`inputs`] (all
 //! layers of a site), [`sun`] (sun position and irradiance), [`error`]. [`layer::build`]
 //! writes the `assist` layer (`data/out/<site>/assist/`).
@@ -35,6 +37,7 @@ pub mod snow_quality;
 pub mod suggest;
 pub mod sun;
 pub mod synthesis;
+pub mod text;
 pub mod wax;
 
 pub use layer::{Options, Output, build};

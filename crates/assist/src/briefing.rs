@@ -47,8 +47,9 @@ use skimap_voice::quantity::Clock;
 
 use crate::crowd::{self, CrowdLevel};
 use crate::inputs::SiteData;
-use crate::layers::{BeraStatus, DayWeather, Itinerary, OpenState, Practice, WeatherPoint};
+use crate::layers::{DayWeather, Itinerary, OpenState, Practice, WeatherPoint};
 use crate::snow_quality::{self, DayQuality, Quality};
+use crate::text::{self, Lang, Texts};
 
 /// Factor of a reason.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -93,7 +94,7 @@ pub struct Reason {
     pub factor: Factor,
     /// Points (positive helps).
     pub points: f64,
-    /// French sentence.
+    /// Sentence, in the language of the briefing.
     pub text: String,
 }
 
@@ -165,10 +166,22 @@ pub struct Candidate {
 }
 
 /// Options.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Options {
     /// Home point, for the distance.
     pub home: Option<LonLat>,
+    /// Language of the texts.
+    pub lang: Lang,
+}
+
+impl Default for Options {
+    /// No home, texts in French (the pipeline's language; the phone gives its own).
+    fn default() -> Self {
+        Self {
+            home: None,
+            lang: Lang::Fr,
+        }
+    }
 }
 
 /// Crowd forecast of the day (A4, `crowd::forecast_day`).
@@ -237,43 +250,15 @@ pub struct SiteBriefing {
     pub days: Vec<DayBriefing>,
 }
 
-const WEEKDAYS: [&str; 7] = [
-    "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche",
-];
-const MONTHS: [&str; 12] = [
-    "janvier",
-    "février",
-    "mars",
-    "avril",
-    "mai",
-    "juin",
-    "juillet",
-    "août",
-    "septembre",
-    "octobre",
-    "novembre",
-    "décembre",
-];
-
 /// « mardi 5 janvier 2026 ».
 pub fn date_fr(d: NaiveDate) -> String {
-    format!(
-        "{} {} {} {}",
-        WEEKDAYS[d.weekday().num_days_from_monday() as usize],
-        d.day(),
-        MONTHS[d.month0() as usize],
-        d.year()
-    )
+    text::of(Lang::Fr).date(d)
 }
 
 /// A temperature in whole degrees: « 0 » and not « -0 » between −0.5 and 0.
 pub(crate) fn degrees(x: f64) -> String {
     let s = format!("{x:.0}");
     if s == "-0" { "0".to_owned() } else { s }
-}
-
-pub(crate) fn fmt_num(x: f64, decimals: usize) -> String {
-    format!("{x:.decimals$}").replace('.', ",")
 }
 
 pub(crate) fn reason(out: &mut Vec<Reason>, factor: Factor, points: f64, text: String) {
@@ -335,153 +320,78 @@ pub(crate) fn crowd_points(level: CrowdLevel) -> f64 {
 }
 
 /// Weather reasons of a candidate.
-pub(crate) fn weather_reasons(out: &mut Vec<Reason>, w: &DayWeather) {
+pub(crate) fn weather_reasons(out: &mut Vec<Reason>, w: &DayWeather, t: &dyn Texts) {
     if let Some(g) = w.gust_max_kmh {
         if g >= 60.0 {
-            reason(
-                out,
-                Factor::Wind,
-                -2.0,
-                format!("rafales jusqu'à {g:.0} km/h"),
-            );
+            reason(out, Factor::Wind, -2.0, t.gusts_up_to(g));
         } else if g >= 40.0 {
-            reason(
-                out,
-                Factor::Wind,
-                -1.0,
-                format!("rafales jusqu'à {g:.0} km/h"),
-            );
+            reason(out, Factor::Wind, -1.0, t.gusts_up_to(g));
+        } else if g < 25.0 {
+            reason(out, Factor::Wind, 0.0, t.wind_light(g));
         } else {
-            let w = if g < 25.0 {
-                "vent faible"
-            } else {
-                "vent modéré"
-            };
-            reason(out, Factor::Wind, 0.0, format!("{w} (rafales {g:.0} km/h)"));
+            reason(out, Factor::Wind, 0.0, t.wind_moderate(g));
         }
     }
     if let Some(c) = w.wind_chill_min_c {
         if c <= -20.0 {
-            reason(
-                out,
-                Factor::Cold,
-                -1.5,
-                format!("très froid, ressenti {} °C", degrees(c)),
-            );
+            reason(out, Factor::Cold, -1.5, t.very_cold(&degrees(c)));
         } else if c <= -12.0 {
-            reason(
-                out,
-                Factor::Cold,
-                -0.5,
-                format!("froid, ressenti {} °C", degrees(c)),
-            );
-        } else if let Some(t) = w.temperature_mean_c {
+            reason(out, Factor::Cold, -0.5, t.cold(&degrees(c)));
+        } else if let Some(m) = w.temperature_mean_c {
             reason(
                 out,
                 Factor::Cold,
                 0.0,
-                format!("{} °C en moyenne, ressenti {} °C", degrees(t), degrees(c)),
+                t.temperature(&degrees(m), &degrees(c)),
             );
         }
     }
     if w.fog_hours >= 4 {
-        reason(
-            out,
-            Factor::Fog,
-            -1.0,
-            format!("brouillard {} h sur 7", w.fog_hours),
-        );
+        reason(out, Factor::Fog, -1.0, t.fog_hours(w.fog_hours));
     } else if w.fog_hours >= 2 {
-        reason(
-            out,
-            Factor::Fog,
-            -0.5,
-            format!("brouillard {} h sur 7", w.fog_hours),
-        );
+        reason(out, Factor::Fog, -0.5, t.fog_hours(w.fog_hours));
     }
     if w.snowfall_cm >= 5.0 {
-        reason(
-            out,
-            Factor::Snowfall,
-            -0.5,
-            format!(
-                "{} cm de neige pendant la journée",
-                fmt_num(w.snowfall_cm, 0)
-            ),
-        );
+        reason(out, Factor::Snowfall, -0.5, t.day_snowfall(w.snowfall_cm));
     } else if w.snowfall_cm >= 1.0 {
-        reason(
-            out,
-            Factor::Snowfall,
-            0.0,
-            format!(
-                "{} cm de neige pendant la journée",
-                fmt_num(w.snowfall_cm, 0)
-            ),
-        );
+        reason(out, Factor::Snowfall, 0.0, t.day_snowfall(w.snowfall_cm));
     }
     if w.rain_mm >= 1.0 {
-        reason(
-            out,
-            Factor::Rain,
-            -1.5,
-            format!("pluie ({} mm)", fmt_num(w.rain_mm, 1)),
-        );
+        reason(out, Factor::Rain, -1.5, t.rain(w.rain_mm));
     }
     if w.cloud_mean_pct.is_some_and(|c| c < 30.0) {
-        reason(out, Factor::Sun, 0.5, "ensoleillé".into());
+        reason(out, Factor::Sun, 0.5, t.sunny().into());
     }
 }
 
-pub(crate) fn snow_reasons(out: &mut Vec<Reason>, s: &Option<SnowStats>, fresh24: Option<f64>) {
+pub(crate) fn snow_reasons(
+    out: &mut Vec<Reason>,
+    s: &Option<SnowStats>,
+    fresh24: Option<f64>,
+    t: &dyn Texts,
+) {
     match s {
         Some(s) => {
             let d = s.depth_cm();
-            let added = if s.added_cm >= 0.5 {
-                format!(" dont {} cm tombés depuis", fmt_num(s.added_cm, 0))
-            } else {
-                String::new()
-            };
-            let base = format!(
-                "{} cm de neige estimée (médiane, carte du {}{added}, {} % des points ≥ 20 cm)",
-                fmt_num(d, 0),
-                s.map_date.format("%d/%m"),
-                (s.share_20cm * 100.0).round()
-            );
+            let base = t.snow_estimate(d, s.map_date, s.added_cm, (s.share_20cm * 100.0).round());
             if d < 20.0 {
-                reason(
-                    out,
-                    Factor::Snow,
-                    -3.0,
-                    format!("{base} : insuffisante pour damer"),
-                );
+                reason(out, Factor::Snow, -3.0, t.snow_verdict(&base, 0));
             } else if d < 40.0 {
-                reason(out, Factor::Snow, 0.5, format!("{base} : limite"));
+                reason(out, Factor::Snow, 0.5, t.snow_verdict(&base, 1));
             } else {
-                reason(out, Factor::Snow, 2.0, format!("{base} : suffisante"));
+                reason(out, Factor::Snow, 2.0, t.snow_verdict(&base, 2));
             }
         }
-        None => reason(
-            out,
-            Factor::Snow,
-            -1.5,
-            "neige estimée inconnue ici (hors de la carte du site ou sans tracé) : à vérifier"
-                .into(),
-        ),
+        None => reason(out, Factor::Snow, -1.5, t.snow_unknown().into()),
     }
     if let Some(f) = fresh24
         && f >= 5.0
     {
-        reason(
-            out,
-            Factor::FreshSnow,
-            0.5,
-            format!("{} cm de neige fraîche en 24 h", fmt_num(f, 0)),
-        );
+        reason(out, Factor::FreshSnow, 0.5, t.fresh_snow_24h(f));
     }
 }
 
-pub(crate) fn surface_reason(out: &mut Vec<Reason>, q: Option<Quality>) {
+pub(crate) fn surface_reason(out: &mut Vec<Reason>, q: Option<Quality>, t: &dyn Texts) {
     let Some(q) = q else { return };
     let p = match q {
         Quality::Fresh | Quality::Transformed => 0.5,
@@ -489,21 +399,16 @@ pub(crate) fn surface_reason(out: &mut Vec<Reason>, q: Option<Quality>) {
         Quality::Windblown | Quality::Hard | Quality::Wet => -0.5,
         Quality::Icy | Quality::Slush => -1.0,
     };
-    reason(
-        out,
-        Factor::SnowSurface,
-        p,
-        format!("surface : {}", q.label_fr()),
-    );
+    reason(out, Factor::SnowSurface, p, t.surface(q));
 }
 
 struct DayContext<'a> {
     date: NaiveDate,
     crowd: Option<CrowdInfo>,
     bera_level: Option<u8>,
-    bera_status: Option<BeraStatus>,
     quality: Vec<DayQuality>,
     opts: &'a Options,
+    t: &'static dyn Texts,
 }
 
 /// Reasons shared by domains and itineraries, and what they were computed from.
@@ -523,6 +428,7 @@ fn common_reasons(
     clpa_km: f64,
 ) -> Common {
     let mut out = Vec::new();
+    let t = ctx.t;
     let nine = ctx.date.and_hms_opt(9, 0, 0).expect("09 h");
     let wp: Option<(&WeatherPoint, f64)> = data.weather.as_ref().and_then(|w| w.nearest(at));
     // Snow: map plus snowfall since the map (06 h UTC = 07 h local) until 09 h.
@@ -536,32 +442,23 @@ fn common_reasons(
     };
     let snow = map.and_then(|m| snow_stats(m, pts, added));
     if map.is_none() && !data.snows.is_empty() {
-        reason(
-            &mut out,
-            Factor::Data,
-            0.0,
-            "aucune carte d'enneigement de ce jour ou des 4 jours avant".into(),
-        );
+        reason(&mut out, Factor::Data, 0.0, t.no_snow_map().into());
     }
     let fresh24 = wp.map(|(p, _)| p.snowfall_between(nine - Duration::hours(24), nine));
-    snow_reasons(&mut out, &snow, fresh24);
+    snow_reasons(&mut out, &snow, fresh24, t);
     let mut weather = None;
     let mut wp_id = None;
     if let Some((p, dist)) = wp {
         wp_id = Some(p.id.clone());
         if p.covers(ctx.date, 9, 16) {
             let w = p.summary(ctx.date, 9, 16);
-            weather_reasons(&mut out, &w);
+            weather_reasons(&mut out, &w, t);
             if dist > 5_000.0 {
                 reason(
                     &mut out,
                     Factor::Data,
                     0.0,
-                    format!(
-                        "météo du point {} à {} km",
-                        p.name,
-                        fmt_num(dist / 1000.0, 0)
-                    ),
+                    t.weather_from(&p.name, dist / 1000.0),
                 );
             }
             weather = Some(w);
@@ -570,27 +467,17 @@ fn common_reasons(
                 .iter()
                 .find(|q| q.point == p.id && q.enough_snow)
                 .map(|q| q.flat);
-            surface_reason(&mut out, q);
+            surface_reason(&mut out, q, t);
         } else {
-            reason(
-                &mut out,
-                Factor::Data,
-                0.0,
-                "pas de prévision météo pour ce jour".into(),
-            );
+            reason(&mut out, Factor::Data, 0.0, t.no_forecast().into());
         }
     }
     if let Some(c) = &ctx.crowd {
-        let why = if c.reasons.is_empty() {
-            String::new()
-        } else {
-            format!(" ({})", c.reasons.join(", "))
-        };
         reason(
             &mut out,
             Factor::Crowd,
             crowd_points(c.level),
-            format!("niveau d'affluence {}{why}", c.level.label()),
+            t.crowd(c.level, &c.reasons),
         );
     }
     let distance = ctx.opts.home.map(|h| h.haversine_m(at) / 1000.0);
@@ -599,31 +486,21 @@ fn common_reasons(
             &mut out,
             Factor::Distance,
             -0.02 * d,
-            format!("à {} km à vol d'oiseau", fmt_num(d, 0)),
+            t.as_the_crow_flies(d),
         );
     }
     if clpa_km >= 0.05 {
-        let km = fmt_num(clpa_km, 1);
-        match (ctx.bera_level, ctx.bera_status) {
-            (Some(l), _) if l >= 3 => reason(
-                &mut out,
-                Factor::Avalanche,
-                -2.0,
-                format!("{km} km dans des zones d'avalanche connues, BERA {l} sur 5"),
-            ),
-            (Some(l), _) => reason(
-                &mut out,
-                Factor::Avalanche,
-                0.0,
-                format!("{km} km dans des zones d'avalanche connues (BERA {l} sur 5)"),
-            ),
-            _ => reason(
-                &mut out,
-                Factor::Avalanche,
-                -0.5,
-                format!("{km} km dans des zones d'avalanche connues, BERA non disponible"),
-            ),
-        }
+        let points = match ctx.bera_level {
+            Some(l) if l >= 3 => -2.0,
+            Some(_) => 0.0,
+            None => -0.5,
+        };
+        reason(
+            &mut out,
+            Factor::Avalanche,
+            points,
+            t.avalanche_km(clpa_km, ctx.bera_level),
+        );
     }
     Common {
         reasons: out,
@@ -660,6 +537,7 @@ fn state_for(it: &Itinerary, status: &str) -> OpenState {
 
 /// Briefing of one day.
 pub fn day(data: &SiteData, date: NaiveDate, opts: &Options) -> DayBriefing {
+    let t = text::of(opts.lang);
     let status = status_for(data, date);
     let crowd_date = crowd::Date::new(date.year(), date.month() as u8, date.day() as u8);
     // Crowd conditions from the weather: fresh snow of the two previous days, sun.
@@ -674,10 +552,11 @@ pub fn day(data: &SiteData, date: NaiveDate, opts: &Options) -> DayBriefing {
                 .is_some_and(|c| c < 30.0),
         })
     });
-    let mut crowd = Some(CrowdInfo::from(crowd::forecast_day(
+    let mut crowd = Some(CrowdInfo::from(crowd::forecast_day_in(
         &data.site,
         crowd_date,
         conditions.as_ref(),
+        opts.lang,
     )));
     // The calendars and the opening dates of A4 are those of 2026-27: outside, only the
     // weekends and the conditions count, and the opening dates say nothing.
@@ -685,7 +564,7 @@ pub fn day(data: &SiteData, date: NaiveDate, opts: &Options) -> DayBriefing {
         ..=NaiveDate::from_ymd_opt(2027, 8, 31).expect("date"))
         .contains(&date);
     if let Some(c) = crowd.as_mut() {
-        c.reasons.retain(|r| !r.starts_with("domaine fermé"));
+        c.reasons.retain(|r| r != t.crowd_area_closed());
         if !calendar_known {
             c.open = None;
         }
@@ -702,44 +581,45 @@ pub fn day(data: &SiteData, date: NaiveDate, opts: &Options) -> DayBriefing {
                 let from = m.valid_at.naive_utc() + Duration::hours(1);
                 Some(m.sample(p.position)?.depth_cm + p.snowfall_between(from, nine))
             });
-            snow_quality::day_quality(p, date, &snow_quality::Params::default(), snow_cm)
+            let mut q =
+                snow_quality::day_quality(p, date, &snow_quality::Params::default(), snow_cm)?;
+            if opts.lang != Lang::Fr {
+                q.summary = snow_quality::summary(&q, opts.lang);
+            }
+            Some(q)
         })
         .collect();
     let ctx = DayContext {
         date,
         crowd,
         bera_level,
-        bera_status: bera_for_day.map(|b| b.status),
         quality,
         opts,
+        t,
     };
     let mut notes = data.missing.clone();
     if !calendar_known {
-        notes.push(
-            "calendriers scolaires connus seulement pour 2026-27 : l'affluence de ce jour ne \
-             compte que les week-ends"
-                .into(),
-        );
+        notes.push(t.calendars_2026_27().into());
     }
     match status {
-        "none" => notes.push("état des pistes inconnu pour ce jour".into()),
-        "last_known" => notes.push(format!(
-            "état des pistes : dernier connu ({})",
-            data.status
-                .as_ref()
-                .map(|s| skimap_core::ephemeris::local_time(s.polled_at)
-                    .format("%d/%m %H:%M")
-                    .to_string())
-                .unwrap_or_default()
-        )),
+        "none" => notes.push(t.status_unknown_day().into()),
+        "last_known" => notes.push(
+            t.status_last_known(
+                &data
+                    .status
+                    .as_ref()
+                    .map(|s| {
+                        skimap_core::ephemeris::local_time(s.polled_at)
+                            .format("%d/%m %H:%M")
+                            .to_string()
+                    })
+                    .unwrap_or_default(),
+            ),
+        ),
         _ => {}
     }
     if let Some(st) = &data.status {
-        notes.extend(
-            st.conflicts
-                .iter()
-                .map(|c| format!("sources en désaccord : {c}")),
-        );
+        notes.extend(st.conflicts.iter().map(|c| t.sources_disagree(c)));
         if status != "none" {
             notes.extend(st.messages.iter().cloned());
         }
@@ -778,20 +658,15 @@ pub fn day(data: &SiteData, date: NaiveDate, opts: &Options) -> DayBriefing {
         let mut st = Vec::new();
         let no_snow = snow.is_some_and(|s| s.depth_cm() < 20.0);
         match state {
-            OpenState::Open if no_snow => reason(
-                &mut st,
-                Factor::Status,
-                0.0,
-                "ouvert selon la source, mais neige estimée insuffisante : état sans doute hors \
-                 saison, à vérifier"
-                    .into(),
-            ),
-            OpenState::Open => reason(&mut st, Factor::Status, 3.0, "ouvert".into()),
-            OpenState::Closed => reason(&mut st, Factor::Status, -10.0, "fermé".into()),
-            OpenState::Unknown => reason(&mut st, Factor::Status, 0.0, "état inconnu".into()),
+            OpenState::Open if no_snow => {
+                reason(&mut st, Factor::Status, 0.0, t.open_without_snow().into());
+            }
+            OpenState::Open => reason(&mut st, Factor::Status, 3.0, t.open().into()),
+            OpenState::Closed => reason(&mut st, Factor::Status, -10.0, t.closed().into()),
+            OpenState::Unknown => reason(&mut st, Factor::Status, 0.0, t.status_unknown().into()),
         }
         if status == "last_known" && state != OpenState::Unknown {
-            st[0].text.push_str(" (dernier état connu)");
+            st[0].text.push_str(t.last_known_suffix());
         }
         st.append(&mut reasons);
         let score = st.iter().map(|r| r.points).sum();
@@ -856,9 +731,9 @@ pub fn day(data: &SiteData, date: NaiveDate, opts: &Options) -> DayBriefing {
             .collect();
         let mut state = if known.is_empty() {
             let why = if mine.is_empty() {
-                "pas de source d'état des pistes pour ce domaine"
+                t.no_status_source()
             } else {
-                "état des pistes inconnu pour ce jour"
+                t.status_unknown_day()
             };
             reason(&mut st, Factor::Status, 0.0, why.into());
             OpenState::Unknown
@@ -878,7 +753,7 @@ pub fn day(data: &SiteData, date: NaiveDate, opts: &Options) -> DayBriefing {
             let n_open = known.iter().filter(|c| c.state == OpenState::Open).count();
             open_km = Some((open, total));
             let suffix = if status == "last_known" {
-                " (dernier état connu)"
+                t.last_known_suffix()
             } else {
                 ""
             };
@@ -888,38 +763,21 @@ pub fn day(data: &SiteData, date: NaiveDate, opts: &Options) -> DayBriefing {
                     Factor::Status,
                     -10.0,
                     if known.len() == 1 {
-                        format!("le seul itinéraire connu est fermé{suffix}")
+                        t.only_itinerary_closed(suffix)
                     } else {
-                        format!(
-                            "aucun des {} itinéraires connus n'est ouvert{suffix}",
-                            known.len()
-                        )
+                        t.none_open(known.len(), suffix)
                     },
                 );
                 OpenState::Closed
             } else {
                 let share = if total > 0.0 { open / total } else { 0.0 };
                 let no_snow = snow.is_some_and(|s| s.depth_cm() < 20.0);
-                let (points, caveat) = if no_snow {
-                    (0.0, " mais neige estimée insuffisante : à vérifier")
-                } else {
-                    (3.0 * share, "")
-                };
+                let points = if no_snow { 0.0 } else { 3.0 * share };
                 reason(
                     &mut st,
                     Factor::Status,
                     points,
-                    format!(
-                        "{n_open} {} sur {} ({} km sur {}){suffix}{caveat}",
-                        if n_open == 1 {
-                            "itinéraire ouvert"
-                        } else {
-                            "itinéraires ouverts"
-                        },
-                        known.len(),
-                        fmt_num(open, 0),
-                        fmt_num(total, 0)
-                    ),
+                    t.itineraries_open(n_open, known.len(), open, total, suffix, no_snow),
                 );
                 OpenState::Open
             }
@@ -927,12 +785,7 @@ pub fn day(data: &SiteData, date: NaiveDate, opts: &Options) -> DayBriefing {
         if ctx.crowd.as_ref().and_then(|c| c.open) == Some(false)
             && crate::layers::same_name(&d.name, data.site.name)
         {
-            reason(
-                &mut st,
-                Factor::Status,
-                -10.0,
-                "domaine fermé à cette date (dates d'ouverture publiées par la commune)".into(),
-            );
+            reason(&mut st, Factor::Status, -10.0, t.area_closed_dates().into());
             state = OpenState::Closed;
         }
         st.append(&mut reasons);
@@ -940,7 +793,7 @@ pub fn day(data: &SiteData, date: NaiveDate, opts: &Options) -> DayBriefing {
             &mut st,
             Factor::Size,
             (d.km_nordic / 50.0).min(1.0),
-            format!("{} km de pistes nordiques (OSM)", fmt_num(d.km_nordic, 0)),
+            t.nordic_km(d.km_nordic),
         );
         let score = st.iter().map(|r| r.points).sum();
         domains.push(Candidate {
@@ -986,12 +839,12 @@ pub fn day(data: &SiteData, date: NaiveDate, opts: &Options) -> DayBriefing {
         text: Vec::new(),
         voice: Vec::new(),
     };
-    b.text = text(data, &b);
+    b.text = briefing_text(data, &b, t);
     b.voice = voice(data, &b);
     b
 }
 
-fn candidate_line(i: usize, c: &Candidate) -> String {
+fn candidate_line(i: usize, c: &Candidate, t: &dyn Texts) -> String {
     let why: Vec<String> = c
         .reasons
         .iter()
@@ -999,32 +852,24 @@ fn candidate_line(i: usize, c: &Candidate) -> String {
             if r.points == 0.0 {
                 r.text.clone()
             } else {
-                format!("{} [{:+.2}]", r.text, r.points).replace('.', ",")
+                t.reason_points(&r.text, r.points)
             }
         })
         .collect();
-    format!(
-        "{}. {} (score {}) : {}.",
-        i + 1,
-        c.name,
-        fmt_num(c.score, 2),
-        why.join(" ; ")
-    )
+    t.candidate(i + 1, &c.name, c.score, &why)
 }
 
-fn text(data: &SiteData, b: &DayBriefing) -> Vec<String> {
-    let mut out = vec![format!("{} — {}", data.site.name, date_fr(b.date))];
+fn briefing_text(data: &SiteData, b: &DayBriefing, t: &dyn Texts) -> Vec<String> {
+    let mut out = vec![t.briefing_title(data.site.name, b.date)];
     if let Some(l) = b.bera_level {
-        out.push(format!(
-            "BERA : risque {l} sur 5 (lisez le bulletin complet)."
-        ));
+        out.push(t.briefing_bera(l));
     }
-    out.push("Domaines :".into());
+    out.push(t.briefing_domains().into());
     out.extend(
         b.domains
             .iter()
             .enumerate()
-            .map(|(i, c)| candidate_line(i, c)),
+            .map(|(i, c)| candidate_line(i, c, t)),
     );
     let open: Vec<&Candidate> = b
         .itineraries
@@ -1034,31 +879,24 @@ fn text(data: &SiteData, b: &DayBriefing) -> Vec<String> {
         .collect();
     if !b.itineraries.is_empty() {
         if open.is_empty() {
-            out.push(format!(
-                "Itinéraires : les {} itinéraires connus sont fermés.",
-                b.itineraries.len()
-            ));
+            out.push(t.briefing_all_closed(b.itineraries.len()));
         } else {
-            out.push("Itinéraires (les 5 premiers non fermés) :".into());
-            out.extend(open.iter().enumerate().map(|(i, c)| candidate_line(i, c)));
+            out.push(t.briefing_itineraries().into());
+            out.extend(
+                open.iter()
+                    .enumerate()
+                    .map(|(i, c)| candidate_line(i, c, t)),
+            );
         }
     }
     for q in &b.snow_quality {
-        out.push(format!(
-            "Qualité de neige ({}) : {}",
-            q.point,
-            q.summary.join(" ")
-        ));
+        out.push(t.briefing_snow_quality(&q.point, &q.summary));
     }
     if let Some(s) = b.sunset {
-        out.push(format!(
-            "Coucher du soleil {} h {:02}.",
-            s.hour(),
-            s.minute()
-        ));
+        out.push(t.briefing_sunset(s));
     }
     if !b.notes.is_empty() {
-        out.push(format!("Données : {}.", b.notes.join(" ; ")));
+        out.push(t.briefing_data(&b.notes));
     }
     out
 }
@@ -1160,6 +998,7 @@ pub fn spoken(b: &DayBriefing) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::layers::BeraStatus;
     use crate::layers::{Area, Domain, Status, Weather, WeatherHour};
     use crate::snow_quality::Quality;
     /// Evaluation site of `data/sites.json`, test data.
@@ -1305,6 +1144,7 @@ mod tests {
         // Home near B: distance reason appears and reduces A.
         let opts = Options {
             home: Some(LonLat::new(6.25, 46.60)),
+            lang: Lang::Fr,
         };
         let b2 = day(&d, date, &opts);
         let dist = b2.domains.iter().find(|c| c.id == "da").unwrap();
@@ -1366,7 +1206,7 @@ mod tests {
 
     fn reasons_of(d: &DayWeather) -> Vec<(Factor, f64, String)> {
         let mut out = Vec::new();
-        weather_reasons(&mut out, d);
+        weather_reasons(&mut out, d, text::of(Lang::Fr));
         out.into_iter()
             .map(|r| (r.factor, r.points, r.text))
             .collect()
@@ -1456,7 +1296,7 @@ mod tests {
         };
         let first = |s: Option<SnowStats>, fresh: Option<f64>| {
             let mut out = Vec::new();
-            snow_reasons(&mut out, &s, fresh);
+            snow_reasons(&mut out, &s, fresh, text::of(Lang::Fr));
             out
         };
         assert_eq!(first(Some(stats(19.9, 0.0)), None)[0].points, -3.0);
@@ -1482,7 +1322,7 @@ mod tests {
         assert_eq!(first(None, Some(4.9)).len(), 1);
         let s = |q: Quality| {
             let mut out = Vec::new();
-            surface_reason(&mut out, Some(q));
+            surface_reason(&mut out, Some(q), text::of(Lang::Fr));
             out[0].points
         };
         assert_eq!(s(Quality::Fresh), 0.5);
@@ -1494,7 +1334,7 @@ mod tests {
         assert_eq!(s(Quality::Icy), -1.0);
         assert_eq!(s(Quality::Slush), -1.0);
         let mut out = Vec::new();
-        surface_reason(&mut out, None);
+        surface_reason(&mut out, None, text::of(Lang::Fr));
         assert!(out.is_empty());
         assert_eq!(crowd_points(CrowdLevel::Calm), 0.0);
         assert_eq!(crowd_points(CrowdLevel::Moderate), -0.25);

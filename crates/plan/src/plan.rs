@@ -44,6 +44,7 @@ use skimap_assist::layers::{Route as AssistRoute, WeatherPoint, densify};
 use skimap_assist::suggest::{self, Suggestions};
 use skimap_assist::synthesis;
 use skimap_assist::wax::{self, DayWax};
+use skimap_common::Lang;
 use skimap_common::geom::LonLat;
 use skimap_common::layout::DataLayout;
 use skimap_common::meta::{FileMeta, LayerMeta, now_rfc3339};
@@ -147,6 +148,9 @@ pub struct Morning {
     /// time to the plan ([`crate::pace::with_pace`]).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub group: Option<ProfileModel>,
+    /// Language of the texts.
+    #[serde(skip)]
+    pub lang: Lang,
 }
 
 /// The morning choices of a request, on the model time (no group): [`morning_for`] with
@@ -159,13 +163,23 @@ pub fn morning(data: &SiteData, req: &PlanRequest) -> Morning {
 /// loops chosen on its time (`suggest::suggest_for`), equipment for that time; `None`:
 /// on the model time, as [`morning`].
 pub fn morning_for(data: &SiteData, req: &PlanRequest, group: Option<&ProfileModel>) -> Morning {
+    morning_in(data, req, group, Lang::Fr)
+}
+
+/// [`morning_for`] with the texts in `lang` (the phone's language, VO6).
+pub fn morning_in(
+    data: &SiteData,
+    req: &PlanRequest,
+    group: Option<&ProfileModel>,
+    lang: Lang,
+) -> Morning {
     let date = req.date;
     let point = data
         .weather
         .as_ref()
         .and_then(|w| w.nearest(req.start))
         .map(|(p, _)| p);
-    let day = briefing::day(data, date, &briefing::Options { home: None });
+    let day = briefing::day(data, date, &briefing::Options { home: None, lang });
     let quality = point.and_then(|p| day.snow_quality.iter().find(|q| q.point == p.id));
     let wax = match (point, quality) {
         (Some(p), Some(q)) => wax::day_wax(p, q),
@@ -201,6 +215,7 @@ pub fn morning_for(data: &SiteData, req: &PlanRequest, group: Option<&ProfileMod
             return_before: req.return_before,
             max_difficulty: req.max_difficulty,
             max_results: req.max_results,
+            lang,
         },
         group,
     );
@@ -226,17 +241,12 @@ pub fn morning_for(data: &SiteData, req: &PlanRequest, group: Option<&ProfileMod
         })
         .collect();
     let mut notes: Vec<String> = data.missing.clone();
+    let t = crate::text::of(lang);
     if point.is_none() {
-        notes.push(
-            "pas de météo horaire : ni meilleur moment, ni fartage, ni alertes de conditions"
-                .into(),
-        );
+        notes.push(t.no_hourly_weather().into());
     }
     if req.start_time.is_none() && best.as_ref().is_none_or(|b| b.best.is_none()) {
-        notes.push(format!(
-            "pas de meilleur moment calculé : départ à {}",
-            hhmm(start_time)
-        ));
+        notes.push(t.no_best_time(start_time));
     }
     notes.extend(suggestions.notes.iter().cloned());
     Morning {
@@ -250,6 +260,7 @@ pub fn morning_for(data: &SiteData, req: &PlanRequest, group: Option<&ProfileMod
         equipment,
         notes,
         group: group.cloned(),
+        lang,
     }
 }
 

@@ -60,13 +60,24 @@ pub struct Card {
     pub updated: Option<String>,
 }
 
-/// Language of the card labels.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub use skimap_common::Lang;
+
+/// The language of the app (VO6), the one language type of the interface: every text of
+/// the core comes in the language given (cards, morning, plan, recap, rules, alerts…).
+/// French on a French phone, English for every other language ([`phone_lang`]).
+#[uniffi::remote(Enum)]
 pub enum Lang {
     /// French.
     Fr,
     /// English (the default of the app outside French-speaking phones).
     En,
+}
+
+/// The language of the app for a phone language (`fr`, `fr-CA`, `en-GB`, `de`…): French
+/// on a French phone, English for every other language.
+#[uniffi::export]
+pub fn phone_lang(code: String) -> Lang {
+    Lang::of_phone(&code)
 }
 
 /// English of every French label of the cards (labels and the app's own words; values

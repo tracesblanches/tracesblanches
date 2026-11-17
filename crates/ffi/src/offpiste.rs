@@ -533,7 +533,7 @@ mod tests {
             let c = f["geometry"]["coordinates"].as_array().unwrap();
             let pt = |x: &serde_json::Value| (x[0].as_f64().unwrap(), x[1].as_f64().unwrap());
             let (a, b) = (pt(&c[0]), pt(&c[c.len() - 1]));
-            let fam = crate::tracking_day::group_default().unwrap();
+            let fam = crate::tracking_day::group_default(crate::card::Lang::Fr).unwrap();
             let r = p
                 .route(
                     target("A", a.0, a.1),

@@ -162,6 +162,7 @@ fn the_testimony_falls_in_the_prior_range() {
                 return_before: None,
                 max_difficulty: None,
                 max_results: 10,
+                lang: skimap_common::Lang::Fr,
             };
             for x in suggest::suggest(&data, &r).suggestions {
                 let red = x

@@ -20,11 +20,11 @@ static CHAPELLE_DES_BOIS: std::sync::LazyLock<skimap_common::site::Site> =
     std::sync::LazyLock::new(|| {
         *skimap_common::site::site("chapelle-des-bois").expect("evaluation site")
     });
+use skimap_ffi::card::Lang;
 use skimap_ffi::tracking::{PhaseView, SpokenView, load_graph, open_tracking, pack_fixes};
 use skimap_ffi::tracking_day::{DayRequest, day_starts, open_day_planner};
 use skimap_ffi::voicecmd::{
-    CommandLang, ReportKind, ReportOutcome, VoiceAnswers, VoiceCommand, classify_command,
-    command_questions,
+    ReportKind, ReportOutcome, VoiceAnswers, VoiceCommand, classify_command, command_questions,
 };
 use skimap_plan::plan::DayPlan;
 use skimap_plan::scenario::{self, Scenario, Step};
@@ -66,6 +66,7 @@ fn commands_on(site: &'static Site, budget_min: f64, return_before: Option<&str>
     let planner = open_day_planner(
         pack(site).display().to_string(),
         work.path().join("view").display().to_string(),
+        skimap_ffi::card::Lang::Fr,
     )
     .unwrap();
     let req = DayRequest {
@@ -133,7 +134,7 @@ fn commands_on(site: &'static Site, budget_min: f64, return_before: Option<&str>
 
     let answers = VoiceAnswers::new(Some(pack(site).join("voice").display().to_string()));
     assert!(answers.has_clips());
-    for lang in [CommandLang::Fr, CommandLang::En] {
+    for lang in [Lang::Fr, Lang::En] {
         for (q, want) in command_questions(lang).iter().zip([
             VoiceCommand::WhereAmI,
             VoiceCommand::TimeLeft,
@@ -166,7 +167,7 @@ fn commands_on(site: &'static Site, budget_min: f64, return_before: Option<&str>
         show("Prochaine direction ?", &n);
     }
     let ta = answers
-        .turnaround(v.plan_dir.clone(), t_ms, CommandLang::Fr)
+        .turnaround(v.plan_dir.clone(), t_ms, Lang::Fr)
         .unwrap();
     show("Heure de demi-tour ?", &ta);
     if plan.turnaround.latest_turnaround.is_some() {
@@ -211,14 +212,11 @@ fn commands_on(site: &'static Site, budget_min: f64, return_before: Option<&str>
         &answers.report(
             ReportKind::TracksSet,
             ReportOutcome::Unavailable,
-            CommandLang::Fr,
+            Lang::Fr,
             t_ms,
         ),
     );
-    show(
-        "(pas compris)",
-        &answers.not_understood(CommandLang::Fr, t_ms),
-    );
+    show("(pas compris)", &answers.not_understood(Lang::Fr, t_ms));
 
     // 600 m off the route, for long enough: « Où suis-je ? » says so.
     let off: Vec<(i64, f64, f64)> = (1..=40)

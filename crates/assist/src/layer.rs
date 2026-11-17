@@ -177,7 +177,10 @@ pub fn build(site: &Site, layout: &DataLayout, opts: &Options) -> Result<Output>
     let date = opts
         .date
         .unwrap_or_else(|| skimap_core::ephemeris::local_time(chrono::Utc::now()).date());
-    let bopts = briefing::Options { home: opts.home };
+    let bopts = briefing::Options {
+        home: opts.home,
+        lang: crate::text::Lang::Fr,
+    };
     let mut brief = briefing::brief(&data, date, opts.extra_days, &bopts);
     let mut waxes = Vec::new();
     for day in &brief.days {

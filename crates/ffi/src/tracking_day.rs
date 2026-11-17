@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime, Timelike};
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use skimap_assist::inputs::{Paths, SiteData};
 use skimap_assist::suggest::GroupTime;
 use skimap_common::geom::LonLat;
@@ -27,9 +27,11 @@ use skimap_core::graph::{Difficulty, PisteGraph};
 use skimap_core::routing::Style;
 use skimap_pack::Pack;
 use skimap_plan::course::Course;
-use skimap_plan::pace::{self, clock_fr, duration_fr};
+use skimap_plan::pace;
 use skimap_plan::plan::{self, Context, DayPlan, KeyKind, Morning, PlanRequest};
 
+use crate::card::Lang;
+use crate::text::{self, Texts};
 use crate::tracking::{TrackingError, epoch_ms};
 
 /// Plan file written by [`DayPlanner::validate`].
@@ -246,6 +248,9 @@ pub struct MorningView {
     pub start_time: String,
     /// Briefing lines (A1).
     pub briefing: Vec<String>,
+    /// The briefing lines shown before « more »: the snow quality at each forecast point,
+    /// then the sunset.
+    pub briefing_short: Vec<String>,
     /// Best time to leave (A9).
     pub best_time: Option<String>,
     /// Wax (A2).
@@ -406,28 +411,11 @@ impl GroupSpec {
     }
 }
 
-fn group_view(m: &ProfileModel) -> Result<GroupView, TrackingError> {
-    let learned = match m.outings {
-        0 => "a priori, aucune sortie apprise".to_owned(),
-        1 => "une sortie apprise".to_owned(),
-        n => format!("{n} sorties apprises"),
-    };
+fn group_view(m: &ProfileModel, lang: Lang) -> Result<GroupView, TrackingError> {
+    let t = text::of(lang);
+    let learned = t.group_learned(m.outings);
     let p = &m.profile;
-    let adults = match p.adults {
-        1 => "1 adulte".to_owned(),
-        n => format!("{n} adultes"),
-    };
-    let label = if p.children.is_empty() {
-        adults
-    } else {
-        let ages: Vec<String> = p.children.iter().map(u8::to_string).collect();
-        let ages = match ages.split_last() {
-            Some((last, [])) => format!("{last} ans"),
-            Some((last, rest)) => format!("{} et {last} ans", rest.join(", ")),
-            None => String::new(),
-        };
-        format!("{adults}, enfants de {ages}")
-    };
+    let label = t.group_who(p.adults, &p.children);
     Ok(GroupView {
         spec: GroupSpec::of(p),
         outings: m.outings,
@@ -447,14 +435,14 @@ fn model_of(json: &str) -> Result<ProfileModel, TrackingError> {
 
 /// A new group: its prior (C11).
 #[uniffi::export]
-pub fn group_new(spec: GroupSpec) -> Result<GroupView, TrackingError> {
-    group_view(&ProfileModel::new(spec.to_profile()?))
+pub fn group_new(spec: GroupSpec, lang: Lang) -> Result<GroupView, TrackingError> {
+    group_view(&ProfileModel::new(spec.to_profile()?), lang)
 }
 
 /// A saved group read back.
 #[uniffi::export]
-pub fn group_read(model_json: String) -> Result<GroupView, TrackingError> {
-    group_view(&model_of(&model_json)?)
+pub fn group_read(model_json: String, lang: Lang) -> Result<GroupView, TrackingError> {
+    group_view(&model_of(&model_json)?, lang)
 }
 
 /// The group with one more outing learned (`observation_json`: what the tracking session
@@ -463,6 +451,7 @@ pub fn group_read(model_json: String) -> Result<GroupView, TrackingError> {
 pub fn group_learn(
     model_json: String,
     observation_json: String,
+    lang: Lang,
 ) -> Result<GroupView, TrackingError> {
     let mut m = model_of(&model_json)?;
     let o: OutingObs =
@@ -470,13 +459,30 @@ pub fn group_learn(
             detail: format!("sortie : {e}"),
         })?;
     m.learn(&o);
-    group_view(&m)
+    group_view(&m, lang)
 }
 
 /// The group the app offers first (C11): « Famille avec enfants débutants ».
 #[uniffi::export]
-pub fn group_default() -> Result<GroupView, TrackingError> {
-    group_view(&ProfileModel::new(GroupProfile::app_default()))
+pub fn group_default(lang: Lang) -> Result<GroupView, TrackingError> {
+    let mut p = GroupProfile::app_default();
+    text::of(lang).default_group_name().clone_into(&mut p.name);
+    group_view(&ProfileModel::new(p), lang)
+}
+
+/// The group of one adult the app offers (intermediate, classic), named in `lang`.
+#[uniffi::export]
+pub fn group_solo(lang: Lang) -> Result<GroupView, TrackingError> {
+    group_new(
+        GroupSpec {
+            name: text::of(lang).solo_group_name().to_owned(),
+            adults: 1,
+            children: Vec::new(),
+            skating: false,
+            level: "intermediate".into(),
+        },
+        lang,
+    )
 }
 
 /// Starts of a site: the start points of its ready-made requests (`skimap_plan::presets`).
@@ -523,6 +529,7 @@ pub struct DayPlanner {
     site: &'static Site,
     loaded: Mutex<Loaded>,
     load_ms: u32,
+    lang: Lang,
 }
 
 impl std::fmt::Debug for DayPlanner {
@@ -539,11 +546,12 @@ fn ms_since(t: Instant) -> u32 {
 }
 
 /// Opens the morning of the pack in `pack_dir`; `work_dir` (private storage) receives the
-/// pipeline view of the pack ([`PackView`]).
+/// pipeline view of the pack ([`PackView`]); texts in `lang` (the phone's).
 #[uniffi::export]
 pub fn open_day_planner(
     pack_dir: String,
     work_dir: String,
+    lang: Lang,
 ) -> Result<Arc<DayPlanner>, TrackingError> {
     let t0 = Instant::now();
     let pack = Pack::open(PathBuf::from(&pack_dir))?;
@@ -573,30 +581,22 @@ pub fn open_day_planner(
             morning: None,
         }),
         load_ms: ms_since(t0),
+        lang,
     }))
-}
-
-fn hhmm(t: NaiveDateTime) -> String {
-    format!("{} h {:02}", t.hour(), t.minute())
 }
 
 fn flat(line: &[LonLat]) -> Vec<f64> {
     line.iter().flat_map(|p| [p.lon, p.lat]).collect()
 }
 
-/// « 15 h 20 », « 1 h 10 le lendemain ».
-fn clock_day(t: NaiveDateTime, day: NaiveDate) -> String {
-    if t.date() > day {
-        format!("{} le lendemain", clock_fr(t))
-    } else {
-        clock_fr(t)
-    }
-}
-
 /// The group's time on a loop of the morning (`Suggestion::group`, C11): (duration text,
 /// return text, range, planned arrival). With children the loop is planned on the slow
 /// side of the range: the median is said too.
-fn group_time(t: &GroupTime, departure: NaiveDateTime) -> (String, String, bool, NaiveDateTime) {
+fn group_time(
+    t: &GroupTime,
+    departure: NaiveDateTime,
+    tx: &dyn Texts,
+) -> (String, String, bool, NaiveDateTime) {
     let m = |min: f64| min * 60.0;
     let at = |min: f64| departure + chrono::Duration::milliseconds((min * 60_000.0) as i64);
     let day = departure.date();
@@ -607,34 +607,27 @@ fn group_time(t: &GroupTime, departure: NaiveDateTime) -> (String, String, bool,
     };
     let range = t.outings < pace::FIGURE_AFTER_OUTINGS || spread > pace::FIGURE_SPREAD;
     let duration = if range {
-        format!(
-            "{} à {}",
-            duration_fr(m(t.lo_min)),
-            duration_fr(m(t.hi_min))
-        )
+        tx.duration_range(&tx.duration(m(t.lo_min)), &tx.duration(m(t.hi_min)))
     } else {
-        format!(
-            "environ {} ({} à {})",
-            duration_fr(m(t.median_min)),
-            duration_fr(m(t.lo_min)),
-            duration_fr(m(t.hi_min))
+        tx.duration_about(
+            &tx.duration(m(t.median_min)),
+            &tx.duration(m(t.lo_min)),
+            &tx.duration(m(t.hi_min)),
         )
     };
     let back = if t.plan_min > t.median_min + 1.0 {
-        format!(
-            "médiane {}, prévu sur {} (côté lent), retour prévu vers {}",
-            duration_fr(m(t.median_min)),
-            duration_fr(m(t.plan_min)),
-            clock_day(at(t.plan_min), day)
+        tx.back_slow_side(
+            &tx.duration(m(t.median_min)),
+            &tx.duration(m(t.plan_min)),
+            &tx.clock_day(at(t.plan_min), day),
         )
     } else if range {
-        format!(
-            "retour entre {} et {}",
-            clock_day(at(t.lo_min), day),
-            clock_day(at(t.hi_min), day)
+        tx.back_between(
+            &tx.clock_day(at(t.lo_min), day),
+            &tx.clock_day(at(t.hi_min), day),
         )
     } else {
-        format!("retour vers {}", clock_day(at(t.median_min), day))
+        tx.back_around(&tx.clock_day(at(t.median_min), day))
     };
     (duration, back, range, at(t.plan_min))
 }
@@ -682,13 +675,14 @@ impl DayPlanner {
         group_json: Option<String>,
     ) -> Result<MorningView, TrackingError> {
         let t0 = Instant::now();
+        let tx = text::of(self.lang);
         let req = request.to_plan()?;
         let model = group_json.as_deref().map(model_of).transpose()?;
         let mut l = self
             .loaded
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let m = plan::morning_for(&l.data, &req, model.as_ref());
+        let m = plan::morning_in(&l.data, &req, model.as_ref(), self.lang);
         let limit = day_limit(&req);
         let loops = m
             .suggestions
@@ -699,26 +693,18 @@ impl DayPlanner {
                 let (time_text, back_text, range, back) = s
                     .group
                     .as_ref()
-                    .map(|t| group_time(t, m.start_time))
+                    .map(|t| group_time(t, m.start_time, tx))
                     .unwrap_or_else(|| {
                         (
-                            format!("environ {} (modèle)", duration_fr(s.eta_min * 60.0)),
-                            format!("retour vers {} avec la marge", clock_fr(s.arrival)),
+                            tx.model_time(&tx.duration(s.eta_min * 60.0)),
+                            tx.back_with_margin(&tx.clock5(s.arrival)),
                             false,
                             s.arrival,
                         )
                     });
-                let warning = limit.filter(|l| back > *l).map(|l| {
-                    format!(
-                        "Retour prévu après la limite de {} : boucle longue pour {}",
-                        hhmm(l),
-                        if model.is_some() {
-                            "ce groupe"
-                        } else {
-                            "ce jour"
-                        }
-                    )
-                });
+                let warning = limit
+                    .filter(|l| back > *l)
+                    .map(|l| tx.after_limit(l, model.is_some()));
                 LoopView {
                     rank: u32::try_from(i + 1).unwrap_or(u32::MAX),
                     label: s.label.clone(),
@@ -746,16 +732,18 @@ impl DayPlanner {
                 }
             })
             .collect();
+        let briefing_short = briefing_short(&m, tx);
         let view = MorningView {
             date: req.date.format("%Y-%m-%d").to_string(),
-            start_time: hhmm(m.start_time),
+            start_time: tx.assist().clock(m.start_time),
             briefing: m.briefing.text.clone(),
+            briefing_short,
             best_time: m.best_time.as_ref().map(|b| b.text.clone()),
             wax: m.wax.as_ref().map(|w| w.text.clone()),
             loops,
             notes: m.notes.clone(),
-            group: model.map(|md| md.profile.label_fr()),
-            never_safe: plan::NEVER_SAFE.into(),
+            group: model.map(|md| tx.assist().group_label(&md.profile)),
+            never_safe: skimap_plan::text::of(self.lang).never_safe().into(),
             compute_ms: ms_since(t0),
         };
         l.morning = Some(m);
@@ -803,59 +791,57 @@ impl DayPlanner {
         write(PLAN_FILE, p.to_json()?.as_bytes())?;
         write(TRACK_FILE, &track.to_bytes())?;
         write(PACK_FILE, self.pack_dir.display().to_string().as_bytes())?;
-        Ok(plan_view(&p, &plan_dir, g))
+        Ok(plan_view(&p, &plan_dir, g, self.lang))
     }
 }
 
-/// The view of a plan already written (the app reopened during the outing).
+/// The briefing lines shown first: the snow quality at each forecast point, then the
+/// sunset (the same lines as in `briefing`).
+fn briefing_short(m: &Morning, tx: &dyn Texts) -> Vec<String> {
+    let a = tx.assist();
+    let b = &m.briefing;
+    b.snow_quality
+        .iter()
+        .map(|q| a.briefing_snow_quality(&q.point, &q.summary))
+        .chain(b.sunset.map(|s| a.briefing_sunset(s)))
+        .collect()
+}
+
+/// The view of a plan already written (the app reopened during the outing), texts in
+/// `lang`.
 #[uniffi::export]
-pub fn read_day_plan(plan_dir: String) -> Result<DayPlanView, TrackingError> {
+pub fn read_day_plan(plan_dir: String, lang: Lang) -> Result<DayPlanView, TrackingError> {
     let dir = PathBuf::from(&plan_dir);
     let json = std::fs::read_to_string(dir.join(PLAN_FILE)).map_err(|e| io(&dir, e))?;
     let p = DayPlan::from_json(&json)?;
     let pack = std::fs::read_to_string(dir.join(PACK_FILE)).map_err(|e| io(&dir, e))?;
     let g = crate::tracking::load_graph(Path::new(pack.trim()))?;
-    Ok(plan_view(&p, &plan_dir, &g))
-}
-
-fn kind_fr(k: KeyKind) -> &'static str {
-    match k {
-        KeyKind::Start => "départ",
-        KeyKind::Turn => "carrefour",
-        KeyKind::Junction => "carrefour évident",
-        KeyKind::Refuge => "refuge",
-        KeyKind::NoNetworkStart => "début de zone sans réseau",
-        KeyKind::NoNetworkEnd => "fin de zone sans réseau",
-        KeyKind::AvalancheStart => "début de zone d'avalanche connue",
-        KeyKind::AvalancheEnd => "fin de zone d'avalanche connue",
-        KeyKind::Finish => "arrivée",
-    }
+    Ok(plan_view(&p, &plan_dir, &g, lang))
 }
 
 /// The SMS of the plan (K10): the contact is the timer, nothing is sent by the app.
-pub fn sms_text(p: &DayPlan, back: NaiveDateTime) -> String {
-    let limit = p.turnaround.limit.map(hhmm);
-    let alert = limit
-        .clone()
-        .unwrap_or_else(|| hhmm(back + chrono::Duration::hours(1)));
-    format!(
-        "Sortie ski de fond {} le {} : départ {} à {}, boucle {} ({} km, pistes {}). Retour prévu vers {}{}. Sans nouvelles de moi à {}, appelle le 112 et donne ce plan.",
-        p.site,
-        p.date.format("%d/%m"),
-        p.request.start_name,
-        hhmm(p.departure),
-        p.route.label,
-        format!("{:.1}", p.route.length_km).replace('.', ","),
-        p.route.names.join(", "),
-        hhmm(back),
-        limit
-            .map(|l| format!(", au plus tard {l}"))
-            .unwrap_or_default(),
-        alert
+pub fn sms_text(p: &DayPlan, back: NaiveDateTime, lang: Lang) -> String {
+    let alert = p
+        .turnaround
+        .limit
+        .unwrap_or(back + chrono::Duration::hours(1));
+    text::of(lang).sms(
+        &p.site,
+        p.date,
+        &p.request.start_name,
+        p.departure,
+        &p.route.label,
+        p.route.length_km,
+        &p.route.names,
+        back,
+        p.turnaround.limit,
+        alert,
     )
 }
 
-fn plan_view(p: &DayPlan, plan_dir: &str, g: &PisteGraph) -> DayPlanView {
+fn plan_view(p: &DayPlan, plan_dir: &str, g: &PisteGraph, lang: Lang) -> DayPlanView {
+    let tx = text::of(lang);
+    let hhmm = |t: NaiveDateTime| tx.assist().clock(t);
     let back = p
         .pace
         .as_ref()
@@ -882,7 +868,7 @@ fn plan_view(p: &DayPlan, plan_dir: &str, g: &PisteGraph) -> DayPlanView {
             .iter()
             .filter(|k| k.kind != KeyKind::Junction)
             .map(|k| KeyPointView {
-                kind: kind_fr(k.kind).into(),
+                kind: tx.key_kind(k.kind).into(),
                 name: k.name.clone(),
                 km: (k.s / 100.0).round() / 10.0,
                 at: hhmm(k.at),
@@ -900,7 +886,7 @@ fn plan_view(p: &DayPlan, plan_dir: &str, g: &PisteGraph) -> DayPlanView {
             .map(|i| format!("{} — {}", i.label, i.reason))
             .collect(),
         text: p.text_fr(),
-        sms: sms_text(p, back),
+        sms: sms_text(p, back, lang),
         line,
     }
 }
