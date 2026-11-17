@@ -555,6 +555,14 @@ fn not_implemented(name: &str, tickets: &str) -> Result<()> {
     anyhow::bail!("`{name}` n'est pas encore implémenté (ticket(s) {tickets})")
 }
 
+/// Records a step run on its own in the site's `build-all.json` ([`batch::record_standalone`]);
+/// a failure to record is only logged (the outputs are written).
+fn record(c: &build::Ctx, s: &Site, step: &str, line: &str) {
+    if let Err(e) = batch::record_standalone(&c.layout, s, step, line) {
+        tracing::warn!(site = s.id, step, error = %e, "step not recorded in build-all.json");
+    }
+}
+
 fn build_all(cfg: &Config, registry: &Registry, a: BuildAllArgs) -> Result<()> {
     let c = build::Ctx::new(cfg)?;
     if let Some(id) = &a.site {
@@ -750,7 +758,12 @@ fn run(cli: Cli) -> Result<()> {
                 site(&s)?,
                 date.as_deref().map(build::parse_date).transpose()?,
             );
-            print_json(&ctx()?.snow(s, date)?)
+            let c = ctx()?;
+            let r = c.snow(s, date)?;
+            if date.is_none() {
+                record(&c, s, "snow", &format!("simulation du {}", r.date));
+            }
+            print_json(&r)
         }
         Command::SnowValidate { site: s, seasons } => {
             let s = site(&s)?;
@@ -791,11 +804,19 @@ fn run(cli: Cli) -> Result<()> {
                 site(&s)?,
                 date.as_deref().map(build::parse_date).transpose()?,
             );
-            print_json(&ctx()?.bera(s, date)?)
+            let c = ctx()?;
+            let r = c.bera(s, date)?;
+            if date.is_none() {
+                record(&c, s, "bera", &format!("{:?}", r.status));
+            }
+            print_json(&r)
         }
         Command::Meteo(a) => {
             let s = site(&a.site)?;
-            print_json(&ctx()?.meteo(s)?)
+            let c = ctx()?;
+            let r = c.meteo(s)?;
+            record(&c, s, "meteo", &format!("{} points", r.points.len()));
+            print_json(&r)
         }
         Command::History {
             site: s,
@@ -813,7 +834,15 @@ fn run(cli: Cli) -> Result<()> {
         }
         Command::StatusPoll(a) => {
             let s = site(&a.site)?;
-            print_json(&ctx()?.status_poll(s)?)
+            let c = ctx()?;
+            let r = c.status_poll(s)?;
+            record(
+                &c,
+                s,
+                "status-poll",
+                &format!("{} sources", r.sources.len()),
+            );
+            print_json(&r)
         }
         Command::AvalancheHistoric { site: s, dump } => {
             let s = site(&s)?;
@@ -840,7 +869,17 @@ fn run(cli: Cli) -> Result<()> {
         }
         Command::OffpistePrepare { site: s, snow_dirs } => {
             let s = site(&s)?;
-            print_json(&ctx()?.offpiste_prepare(s, &snow_dirs)?.stats)
+            let c = ctx()?;
+            let m = c.offpiste_prepare(s, &snow_dirs)?;
+            if snow_dirs.is_empty() {
+                record(
+                    &c,
+                    s,
+                    "offpiste-prepare",
+                    &format!("{} fichiers", m.files.len()),
+                );
+            }
+            print_json(&m.stats)
         }
         Command::Route {
             site: s,
@@ -944,6 +983,16 @@ fn run(cli: Cli) -> Result<()> {
             if !problems.is_empty() {
                 anyhow::bail!("relecture du pack : {}", problems.join(" ; "));
             }
+            record(
+                &c,
+                s,
+                "build-pack",
+                &format!(
+                    "pack {} : {:.2} Mo",
+                    r.pack_version,
+                    r.total_bytes as f64 / 1e6
+                ),
+            );
             // VO6: the voice packs apart, one per built language.
             for v in c.build_voice_packs(s)? {
                 print_json(&v)?;
