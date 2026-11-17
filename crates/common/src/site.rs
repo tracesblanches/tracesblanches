@@ -300,6 +300,46 @@ impl SiteRecord {
         }
     }
 
+    /// The record of a [`Site`]: what a pack carries of its site so that the phone plans
+    /// on it offline ([`interned`]). Census details that the phone does not use (census
+    /// identifier, commune name, envelope, km, sections, status sources, local data) are
+    /// left out: status sources serve the polling of personal-use sources, never a pack.
+    pub fn of_site(site: &Site) -> Self {
+        Self {
+            id: site.id.to_owned(),
+            name: site.name.to_owned(),
+            kind: site.kind,
+            parent: site.parent.map(str::to_owned),
+            census_id: None,
+            department: site.department.to_owned(),
+            insee: site.insee.to_owned(),
+            commune: String::new(),
+            commune_center: site.commune_center,
+            bbox: site.bbox,
+            envelope_bbox: None,
+            massifs: site
+                .massifs
+                .iter()
+                .map(|m| MassifRecord {
+                    code: m.code,
+                    name: m.name.to_owned(),
+                    share: None,
+                })
+                .collect(),
+            massif_status: site.massif_status,
+            massif_note: None,
+            has_bera: site.has_bera,
+            status: StatusRecord::default(),
+            status_source: None,
+            km_nordic: None,
+            km_hike_only: None,
+            km_routes: None,
+            sections: Vec::new(),
+            local: None,
+            starts: site.starts.to_vec(),
+        }
+    }
+
     /// Whether the record is built (a site split in sections is built through them).
     pub fn buildable(&self) -> bool {
         self.sections.is_empty()
@@ -541,6 +581,41 @@ pub fn local(site_id: &str) -> Option<&'static LocalData> {
         .iter()
         .find(|r| r.id == site_id)
         .and_then(|r| r.local.as_ref())
+}
+
+/// Sites made from records read at run time (a pack's site, [`interned`]).
+static INTERNED: LazyLock<std::sync::Mutex<Vec<(SiteRecord, &'static Site)>>> =
+    LazyLock::new(|| std::sync::Mutex::new(Vec::new()));
+
+/// The [`Site`] of a record read at run time (the site a pack carries, so that the phone
+/// plans on any site of France offline, not only on the evaluation sites). The record is
+/// checked; its strings are leaked once per distinct record and process: opening the same
+/// pack again returns the same site.
+pub fn interned(record: &SiteRecord) -> Result<&'static Site> {
+    record.check()?;
+    let mut table = INTERNED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some((_, s)) = table.iter().find(|(r, _)| r == record) {
+        return Ok(s);
+    }
+    let site: &'static Site = Box::leak(Box::new(record.to_site()));
+    table.push((record.clone(), site));
+    Ok(site)
+}
+
+/// A site known to this process by identifier: the last one [`interned`] from a pack,
+/// else an evaluation site.
+pub fn known(id: &str) -> Option<&'static Site> {
+    let table = INTERNED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    table
+        .iter()
+        .rev()
+        .find(|(r, _)| r.id == id)
+        .map(|(_, s)| *s)
+        .or_else(|| site(id).ok())
 }
 
 /// Start points of a site: those of the evaluation table, else those the pipeline found
@@ -1295,5 +1370,28 @@ mod tests {
         assert_eq!(ring.len(), 6);
         let xs: Vec<f64> = ring.iter().map(|p| p.0).collect();
         assert!(xs.iter().cloned().fold(f64::INFINITY, f64::min) <= -100.0 + 1e-9);
+    }
+
+    #[test]
+    fn a_pack_record_gives_back_the_site_once() {
+        for site in SITES {
+            let r = SiteRecord::of_site(site);
+            let a = interned(&r).unwrap();
+            // Everything but the status sources (personal use, never in a pack).
+            let want = Site {
+                status: StatusSources::default(),
+                ..*site
+            };
+            assert_eq!(*a, want, "{}", site.id);
+            assert!(r.status_source.is_none() && r.local.is_none());
+            let b = interned(&r).unwrap();
+            assert!(std::ptr::eq(a, b), "{}: interned once", site.id);
+            let back: SiteRecord =
+                serde_json::from_str(&serde_json::to_string(&r).unwrap()).unwrap();
+            assert_eq!(back, r);
+        }
+        let mut bad = SiteRecord::of_site(&SITES[0]);
+        bad.bbox.north = bad.bbox.south;
+        assert!(interned(&bad).is_err());
     }
 }

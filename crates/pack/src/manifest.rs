@@ -5,6 +5,7 @@
 //! than [`FORMAT_VERSION`].
 
 use serde::{Deserialize, Serialize};
+use skimap_common::site::SiteRecord;
 
 /// Value of [`Manifest::format`].
 pub const FORMAT: &str = "skimap-pack";
@@ -62,6 +63,12 @@ pub struct SiteInfo {
     pub bbox: [f64; 4],
     /// Commune centre `[lon, lat]`.
     pub center: [f64; 2],
+    /// What the phone needs of the site to plan a day on it offline (P163, #163): kind,
+    /// working box, massifs, the trail starts the pipeline found (X9) — the registry
+    /// record of the site, without its status sources. `None` in packs written before it:
+    /// the phone then knows only the evaluation sites.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub record: Option<SiteRecord>,
 }
 
 /// Validity of the whole pack.

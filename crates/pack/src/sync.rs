@@ -200,6 +200,7 @@ mod tests {
                 department: "05".into(),
                 bbox: [0.0; 4],
                 center: [0.0; 2],
+                record: None,
             },
             latest: LatestVersion {
                 version: latest.into(),

@@ -14,6 +14,7 @@ pub mod pistes;
 pub mod plan_ign;
 pub mod plan_links;
 pub mod raster;
+pub mod starts;
 pub mod stations;
 
 use std::collections::BTreeSet;
@@ -278,18 +279,7 @@ fn build_into(
         pack_version: pack_version.to_owned(),
         generator: format!("{} {}", crate::CRATE, env!("CARGO_PKG_VERSION")),
         generated_at: now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-        site: SiteInfo {
-            id: site.id.to_owned(),
-            name: site.name.to_owned(),
-            department: site.department.to_owned(),
-            bbox: [
-                site.bbox.west,
-                site.bbox.south,
-                site.bbox.east,
-                site.bbox.north,
-            ],
-            center: [site.commune_center.lon, site.commune_center.lat],
-        },
+        site: site_info(site, layout),
         valid_for,
         personal_sources: opts.personal_sources,
         basemaps,
@@ -499,7 +489,7 @@ pub fn build_voice_pack(
             pack_version: pack_version.clone(),
             generator: format!("{} {}", crate::CRATE, env!("CARGO_PKG_VERSION")),
             generated_at: now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-            site: site_info(site),
+            site: site_info(site, layout),
             valid_for: PackValidity {
                 until: None,
                 until_layer: None,
@@ -540,7 +530,7 @@ pub fn build_voice_pack(
     }
 }
 
-fn site_info(site: &Site) -> SiteInfo {
+fn site_info(site: &Site, layout: &DataLayout) -> SiteInfo {
     SiteInfo {
         id: site.id.to_owned(),
         name: site.name.to_owned(),
@@ -552,6 +542,7 @@ fn site_info(site: &Site) -> SiteInfo {
             site.bbox.north,
         ],
         center: [site.commune_center.lon, site.commune_center.lat],
+        record: Some(starts::record(site, layout)),
     }
 }
 
