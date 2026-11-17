@@ -612,6 +612,9 @@ fn build_all(cfg: &Config, registry: &Registry, a: BuildAllArgs) -> Result<()> {
     for l in batch::describe_status(&c.layout.france_dir().join("status.json"))? {
         println!("{l}");
     }
+    // The registry as the stations step of the batch left it (starts, X9): the records
+    // the sites were built with.
+    let registry = &Registry::load(&c.layout)?;
     let cat = france::write_catalog(&c.layout, registry)?;
     println!(
         "catalogue : {} ({} sites, {:?})",
