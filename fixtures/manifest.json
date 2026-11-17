@@ -3,10 +3,10 @@
   "bytes_by_licence": {
     "cc-by-sa-refuges": 110373,
     "lo-arcep": 293519,
-    "lo-ign": 891009,
+    "lo-ign": 890946,
     "lo-meteofrance": 765556,
     "lo-skimap": 326355,
-    "odbl-osm": 3711216,
+    "odbl-osm": 3731561,
     "zones-mixed": 490275
   },
   "files": [
@@ -46,11 +46,11 @@
       "sha256": "e3e3741d8c19fea97081eabe62737e6cf95f4711d5a4d542dfe5098d371d33d2"
     },
     {
-      "bytes": 9994,
+      "bytes": 10304,
       "licence": "odbl-osm",
       "origin": "data/out/cervieres/pistes/pistes.meta.json",
       "path": "data/out/cervieres/pistes/pistes.meta.json",
-      "sha256": "d80614f2d45ae9ab7338318984529db1cbffa5be9f69f373d1ecde490d317b36"
+      "sha256": "b87f06929efffe22d3d34497a61335ea7f27e79b20aa042549ca632280f45d63"
     },
     {
       "bytes": 4354,
@@ -81,18 +81,18 @@
       "sha256": "67a94de8d7e1d5ac1175ca0d8fd2c87810136207c4fb1bc2ebba96426dcd68a0"
     },
     {
-      "bytes": 382324,
+      "bytes": 384827,
       "licence": "odbl-osm",
       "origin": "data/out/cervieres/routes/piste_graph.json",
       "path": "data/out/cervieres/routes/piste_graph.json",
-      "sha256": "9f32a099e843aa36922a991e0512dd9b30e08db217320c7599c3d4a4c1fff13c"
+      "sha256": "938362a7e159eaf48c398cc6078d7778bf16b6d6611d46d88a332ec11f4f6bcd"
     },
     {
-      "bytes": 3552,
+      "bytes": 3603,
       "licence": "odbl-osm",
       "origin": "data/out/cervieres/routes/routes.meta.json (files limited to the fixture)",
       "path": "data/out/cervieres/routes/routes.meta.json",
-      "sha256": "715063ade2f2f8241823fb585e0520ec4935c98278dcd6dcc58256fe4bd23743"
+      "sha256": "719988268039fc36a732496baa74f070c1a0876de5ef4830735129610e5a8f85"
     },
     {
       "bytes": 10728,
@@ -207,11 +207,11 @@
       "sha256": "887a7da35009700a03d5f95641bc91f6d05852f4525ddf91088c1791904655e3"
     },
     {
-      "bytes": 23531,
+      "bytes": 23840,
       "licence": "odbl-osm",
       "origin": "data/out/chapelle-des-bois/pistes/pistes.meta.json",
       "path": "data/out/chapelle-des-bois/pistes/pistes.meta.json",
-      "sha256": "3a06c6c23f59e31f1ee52fd495c475b83f4187ab2b2fcb70a28c30ca52d56dfd"
+      "sha256": "011028012ad2b71a754d5ceef627db4f1249c50df336c323ac170d4e2e07a8f8"
     },
     {
       "bytes": 19832,
@@ -242,18 +242,18 @@
       "sha256": "0bfa95716463cd4a08a0126c61bac026986aae2a2ab8799422b8fbe875c4b03a"
     },
     {
-      "bytes": 1141051,
+      "bytes": 1158170,
       "licence": "odbl-osm",
       "origin": "data/out/chapelle-des-bois/routes/piste_graph.json",
       "path": "data/out/chapelle-des-bois/routes/piste_graph.json",
-      "sha256": "e7650524a839c3172b1545b1d85b73a89cd8243dded60c32860044baf24a8e2d"
+      "sha256": "87b25f828e6ae1c782561870e7a74c749f063442758047df8f87284cd9d5c737"
     },
     {
-      "bytes": 3609,
+      "bytes": 3659,
       "licence": "odbl-osm",
       "origin": "data/out/chapelle-des-bois/routes/routes.meta.json (files limited to the fixture)",
       "path": "data/out/chapelle-des-bois/routes/routes.meta.json",
-      "sha256": "b318870f0f9f149e908e268faec53b55d8f6737cda74c2e31c8fe182e6fffe0e"
+      "sha256": "2454a24b1ebce099b37f57484aea1827e4959ea1a44fc68a81ddcfb1ed6f330c"
     },
     {
       "bytes": 3058,
@@ -312,11 +312,11 @@
       "sha256": "762bcc7173f8277fee85db3fcbe0aa419faf36f33e6b1e28e61994f7aa843c08"
     },
     {
-      "bytes": 156647,
+      "bytes": 156643,
       "licence": "lo-ign",
-      "origin": "data/out/cervieres/terrain/dem_5m.tif, 24899 cells read by the graph profiles, NaN elsewhere",
+      "origin": "data/out/cervieres/terrain/dem_5m.tif, 24898 cells read by the graph profiles, NaN elsewhere",
       "path": "inputs/cervieres/dem_profile_cells_5m.tif",
-      "sha256": "62535ba2d97270c9945434add8b4caaf3a9d49990af45d80cca242ddd883f8b6"
+      "sha256": "2e3097ad0cce5440ac9cdfb3e75a018fd5d8bb13f1590ee76a4cf85f15f74e51"
     },
     {
       "bytes": 127099,
@@ -326,11 +326,11 @@
       "sha256": "80cc6e3e69d9cd0ab84499694ccac1a10bab3d9ae760913f5301e67bf410362d"
     },
     {
-      "bytes": 471364,
+      "bytes": 471305,
       "licence": "lo-ign",
-      "origin": "data/out/chapelle-des-bois/terrain/dem_5m.tif, 112257 cells read by the graph profiles, NaN elsewhere",
+      "origin": "data/out/chapelle-des-bois/terrain/dem_5m.tif, 112249 cells read by the graph profiles, NaN elsewhere",
       "path": "inputs/chapelle-des-bois/dem_profile_cells_5m.tif",
-      "sha256": "31dfdcfa5c103ec5c33f81fb83cdf70f496d07a9dbe33fd649d6c7fb6f2b1a17"
+      "sha256": "b147d16f8e61e4535233d15f787e4f32ee22264cc1d01c80c75200f7e8edcb2c"
     },
     {
       "bytes": 129683,
@@ -344,15 +344,15 @@
       "licence": "odbl-osm",
       "origin": "data/cache/opensnowmap planet_pistes-state.txt",
       "path": "inputs/osm/planet_pistes-state.txt",
-      "sha256": "436ac81d871b77c472ed9efee7d4976fd1d3589a4469728a931debc070473482"
+      "sha256": "ca7794c3c5625e8d1140d95bfe4b7de99b619e31813ae09426710f5e99133691"
     },
     {
-      "bytes": 1081390,
+      "bytes": 1081393,
       "licence": "odbl-osm",
-      "origin": "data/cache/opensnowmap planet_pistes.osm.gz (sha256 4a68841cff09076f1d361b5c8abcae3404a29e273b992a30ccf26927dc61a00b), ways around the two sites",
+      "origin": "data/cache/opensnowmap planet_pistes.osm.gz (sha256 b16e62ece15cce13d066f8231b0b8f2202fcde69487fe119f032948088951d67), ways around the two sites",
       "path": "inputs/osm/planet_pistes_sites.osm.gz",
-      "sha256": "b0c6f1b514b6f3a0000f80121d7a25cb7ee6cae144439cdbd3fdb5c82d1a2a12"
+      "sha256": "cb16209f4949aaac6eab0cdaad14c5a660ed2897d17e93d96b4481dc1cbd2d8b"
     }
   ],
-  "total_bytes": 6588303
+  "total_bytes": 6608585
 }

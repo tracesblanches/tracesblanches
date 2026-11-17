@@ -260,7 +260,7 @@ fn full_data_suggestions_respect_time_and_report_graph_limits() {
         ),
     );
     assert!(
-        s.notes.iter().any(|n| n.starts_with("138 nœuds sur 189")),
+        s.notes.iter().any(|n| n.starts_with("141 nœuds sur 192")),
         "{:?}",
         s.notes
     );
@@ -523,7 +523,7 @@ fn suggestions_on_the_fixtures_without_weather() {
     );
     println!("{}", s.text.join("\n"));
     assert!(
-        s.notes.iter().any(|n| n.starts_with("138 nœuds sur 189")),
+        s.notes.iter().any(|n| n.starts_with("141 nœuds sur 192")),
         "{:?}",
         s.notes
     );

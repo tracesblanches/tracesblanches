@@ -2,8 +2,8 @@
   "crs": "EPSG:4326 (WGS84, longitude, latitude) ; altitudes IGN69",
   "files": [
     {
-      "bytes": 1141051,
-      "count": 773,
+      "bytes": 1158170,
+      "count": 815,
       "description": "graphe de pistes typé (skimap_core::graph::GraphData) : nœuds, arêtes (sens unique, damage classique / skating, hors damage, usages, difficulté), profil d'altitude par arête",
       "format": "JSON (serde)",
       "licence": "ODbL 1.0 (géométrie et attributs OSM) ; altitudes : IGN Licence Ouverte 2.0",
@@ -17,7 +17,7 @@
       }
     }
   ],
-  "generated_at": "2026-11-15T08:59:28Z",
+  "generated_at": "2026-11-17T14:51:21Z",
   "layer": "routes",
   "notes": [
     "Jeu de référence des tests (fixtures/, skimap fixtures) : seuls les fichiers listés sont repris."
@@ -35,13 +35,13 @@
   "sources": [
     {
       "attribution": "© les contributeurs d'OpenStreetMap (ODbL), extrait quotidien OpenSnowMap.org",
-      "etag": "\"c29a951-6603427b2307e\"",
-      "fetched_at": "2026-11-14T21:40:58Z",
-      "last_modified": "Sat, 14 Nov 2026 03:29:40 GMT",
+      "etag": "\"c2aa52c-66070cea9d2a4\"",
+      "fetched_at": "2026-11-17T07:36:24Z",
+      "last_modified": "Tue, 17 Nov 2026 03:51:20 GMT",
       "licence": "ODbL 1.0",
       "name": "OpenSnowMap planet_pistes.osm.gz",
       "personal_use_only": false,
-      "sha256": "4a68841cff09076f1d361b5c8abcae3404a29e273b992a30ccf26927dc61a00b",
+      "sha256": "b16e62ece15cce13d066f8231b0b8f2202fcde69487fe119f032948088951d67",
       "url": "https://www.opensnowmap.org/download/planet_pistes.osm.gz"
     },
     {
@@ -55,26 +55,26 @@
     }
   ],
   "stats": {
-    "components": 11,
-    "edges": 773,
-    "gain_forward_m": 6826.409729003906,
-    "graph_bytes": 1141051,
-    "graph_path": "data/out/chapelle-des-bois/routes/piste_graph.json",
-    "length_km": 311.5324189603745,
-    "nodes": 649,
-    "oneway_km": 94.39834998366987,
+    "components": 6,
+    "edges": 815,
+    "gain_forward_m": 6827.452697753906,
+    "graph_bytes": 1158170,
+    "graph_path": "/var/lib/skimap/pipeline/snapshot-for-the-test-fixtures/out/chapelle-des-bois/routes/piste_graph.json",
+    "length_km": 311.5565886071365,
+    "nodes": 671,
+    "oneway_km": 94.3983499909633,
     "profiles": {
-      "edges_with_profile": 689,
+      "edges_with_profile": 731,
       "edges_without": 84,
-      "length_with_m": 273117.4713451104,
+      "length_with_m": 273141.64099187247,
       "length_without_m": 38414.947615264166,
-      "stations": 32312,
+      "stations": 32380,
       "stations_filled": 581
     },
     "seconds": [
-      0.182292491,
-      0.009685988,
-      0.003733261
+      0.127087447,
+      0.005086566,
+      0.006926595
     ],
     "site": "chapelle-des-bois"
   },
@@ -85,7 +85,7 @@
     "C5 (#37)",
     "C7 (#39)"
   ],
-  "valid_from": "2026-11-13T23:00:00Z",
+  "valid_from": "2026-11-16T23:00:00Z",
   "valid_until": null,
   "validity": "réseau OSM à la date de l'extrait (valid_from) ; relief permanent (levés LiDAR HD)"
 }

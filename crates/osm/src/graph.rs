@@ -9,9 +9,10 @@
 //!   closer than a threshold but not joined in OSM (a frequent mapping slip). Connectors are
 //!   flagged so that a router can trust or ignore them.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
-use rstar::{AABB, RTree, primitives::GeomWithData};
+use rstar::primitives::{GeomWithData, Rectangle};
+use rstar::{AABB, RTree};
 use skimap_common::geom::LonLat;
 
 use crate::pistes::{Oneway, PisteSet};
@@ -91,7 +92,346 @@ pub struct OnewayTrap {
     pub sink: bool,
 }
 
-type Vertex = GeomWithData<[f64; 2], (usize, usize)>;
+/// Largest gap closed between two dead ends that are in different components, metres: the
+/// width of a road with its verges and snow banks, where piste ways stop on both sides
+/// and the road (not a piste) joins them (B166, #166). Only components are joined: a
+/// network already connected never gets a shortcut.
+pub const DEAD_END_PAIR_MAX_M: f64 = 25.0;
+
+/// A projected point closer than this to a vertex is snapped to it, metres.
+pub const VERTEX_SNAP_M: f64 = 1.0;
+
+/// A node to insert into piste `.0`, inside segment `.1` (from vertex `.1` to `.1 + 1`), at
+/// fraction `.2` of it: node id `.3`, position `.4`.
+type Cut = (usize, usize, f64, i64, LonLat);
+
+type Segment = GeomWithData<Rectangle<[f64; 2]>, (usize, usize)>;
+
+/// Occurrences of each node over all pistes.
+fn node_uses(points: &[Vec<(i64, LonLat)>]) -> HashMap<i64, u32> {
+    let mut uses: HashMap<i64, u32> = HashMap::new();
+    for pts in points {
+        for (id, _) in pts {
+            *uses.entry(*id).or_default() += 1;
+        }
+    }
+    uses
+}
+
+/// Inserts the nodes `cuts` into the pistes.
+fn insert_cuts(points: &mut [Vec<(i64, LonLat)>], mut cuts: Vec<Cut>) {
+    // Last segment first, and inside a segment the farthest point first, so that every
+    // insertion keeps the indices of the next ones.
+    cuts.sort_by(|a, b| {
+        (b.0, b.1)
+            .cmp(&(a.0, a.1))
+            .then(b.2.total_cmp(&a.2))
+            .then(a.3.cmp(&b.3))
+    });
+    cuts.dedup_by(|a, b| a.0 == b.0 && a.3 == b.3);
+    for (pi, si, _, id, pos) in cuts {
+        points[pi].insert(si + 1, (id, pos));
+    }
+}
+
+/// Local plane in metres around `origin` (equirectangular).
+fn plane(origin: LonLat) -> impl Fn(LonLat) -> [f64; 2] {
+    let k = origin.lat.to_radians().cos();
+    move |p: LonLat| {
+        [
+            (p.lon - origin.lon) * k * M_PER_DEG_LAT,
+            (p.lat - origin.lat) * M_PER_DEG_LAT,
+        ]
+    }
+}
+
+/// R-tree of the segments of every piste, in degrees: data `(piste, segment)`.
+fn segment_tree(points: &[Vec<(i64, LonLat)>]) -> RTree<Segment> {
+    RTree::bulk_load(
+        points
+            .iter()
+            .enumerate()
+            .flat_map(|(pi, pts)| {
+                pts.windows(2).enumerate().map(move |(si, w)| {
+                    Segment::new(
+                        Rectangle::from_corners([w[0].1.lon, w[0].1.lat], [w[1].1.lon, w[1].1.lat]),
+                        (pi, si),
+                    )
+                })
+            })
+            .collect(),
+    )
+}
+
+/// Nodes at the crossings of segments of two pistes that share no node there, unless one
+/// of them is on another level ([`crate::pistes::Piste::layered`]).
+fn crossings(set: &PisteSet, points: &[Vec<(i64, LonLat)>], next_id: &mut i64) -> Vec<Cut> {
+    let tree = segment_tree(points);
+    let mut cuts = Vec::new();
+    for (pi, pts) in points.iter().enumerate() {
+        if set.pistes[pi].layered {
+            continue;
+        }
+        for (si, w) in pts.windows(2).enumerate() {
+            let env = AABB::from_corners([w[0].1.lon, w[0].1.lat], [w[1].1.lon, w[1].1.lat]);
+            let mut hits: Vec<(usize, usize)> = tree
+                .locate_in_envelope_intersecting(&env)
+                .map(|s| s.data)
+                .filter(|&(qi, _)| qi > pi && !set.pistes[qi].layered)
+                .collect();
+            hits.sort_unstable();
+            for (qi, qs) in hits {
+                let v = &points[qi][qs..qs + 2];
+                if [w[0].0, w[1].0]
+                    .iter()
+                    .any(|id| *id == v[0].0 || *id == v[1].0)
+                {
+                    continue;
+                }
+                let xy = plane(w[0].1);
+                let (a, b, c, d) = (xy(w[0].1), xy(w[1].1), xy(v[0].1), xy(v[1].1));
+                let Some((t, u)) = segment_intersection(a, b, c, d) else {
+                    continue;
+                };
+                let pos = LonLat::new(
+                    w[0].1.lon + t * (w[1].1.lon - w[0].1.lon),
+                    w[0].1.lat + t * (w[1].1.lat - w[0].1.lat),
+                );
+                let id = *next_id;
+                *next_id -= 1;
+                cuts.push((pi, si, t, id, pos));
+                cuts.push((qi, qs, u, id, pos));
+            }
+        }
+    }
+    cuts
+}
+
+/// Fractions `(t, u)` along `a b` and `c d` of their crossing, when they cross strictly
+/// inside both.
+fn segment_intersection(a: [f64; 2], b: [f64; 2], c: [f64; 2], d: [f64; 2]) -> Option<(f64, f64)> {
+    let r = [b[0] - a[0], b[1] - a[1]];
+    let s = [d[0] - c[0], d[1] - c[1]];
+    let den = r[0] * s[1] - r[1] * s[0];
+    if den.abs() < 1e-12 {
+        return None;
+    }
+    let ac = [c[0] - a[0], c[1] - a[1]];
+    let t = (ac[0] * s[1] - ac[1] * s[0]) / den;
+    let u = (ac[0] * r[1] - ac[1] * r[0]) / den;
+    (t > 0.0 && t < 1.0 && u > 0.0 && u < 1.0).then_some((t, u))
+}
+
+/// Distance from the origin to the segment `a b` (local plane), and the fraction of the
+/// nearest point along it.
+fn point_segment(a: [f64; 2], b: [f64; 2]) -> (f64, f64) {
+    let d = [b[0] - a[0], b[1] - a[1]];
+    let l = d[0] * d[0] + d[1] * d[1];
+    let t = if l == 0.0 {
+        0.0
+    } else {
+        (-(a[0] * d[0] + a[1] * d[1]) / l).clamp(0.0, 1.0)
+    };
+    let q = [a[0] + t * d[0], a[1] + t * d[1]];
+    ((q[0] * q[0] + q[1] * q[1]).sqrt(), t)
+}
+
+/// Connectors from every dead end to the nearest point of another piste up to `max_m`,
+/// and the nodes to insert where that point is inside a segment.
+fn dead_end_connectors(
+    points: &[Vec<(i64, LonLat)>],
+    max_m: f64,
+    next_id: &mut i64,
+) -> (Vec<Cut>, Vec<(i64, i64)>) {
+    let uses = node_uses(points);
+    let tree = segment_tree(points);
+    let mut cuts = Vec::new();
+    let mut connectors = Vec::new();
+    for (pi, pts) in points.iter().enumerate() {
+        let n = pts.len();
+        if n < 2 {
+            continue;
+        }
+        for end in [0, n - 1] {
+            let (id, pos) = pts[end];
+            if uses[&id] != 1 {
+                continue;
+            }
+            let xy = plane(pos);
+            // (distance, piste, segment, fraction) of the nearest point; ties by piste and
+            // segment.
+            let best = tree
+                .locate_in_envelope_intersecting(&search_box(pos, max_m))
+                .filter(|s| s.data.0 != pi)
+                .map(|s| {
+                    let (qi, qs) = s.data;
+                    let (a, b) = (xy(points[qi][qs].1), xy(points[qi][qs + 1].1));
+                    let (d, t) = point_segment(a, b);
+                    (d, qi, qs, t)
+                })
+                .filter(|(d, ..)| *d <= max_m)
+                .min_by(|a, b| a.0.total_cmp(&b.0).then((a.1, a.2).cmp(&(b.1, b.2))));
+            let Some((_, qi, qs, t)) = best else {
+                continue;
+            };
+            let (a, b) = (points[qi][qs], points[qi][qs + 1]);
+            let seg_m = a.1.haversine_m(b.1);
+            let target = if t * seg_m <= VERTEX_SNAP_M {
+                a.0
+            } else if (1.0 - t) * seg_m <= VERTEX_SNAP_M {
+                b.0
+            } else {
+                let at = LonLat::new(
+                    a.1.lon + t * (b.1.lon - a.1.lon),
+                    a.1.lat + t * (b.1.lat - a.1.lat),
+                );
+                let nid = *next_id;
+                *next_id -= 1;
+                cuts.push((qi, qs, t, nid, at));
+                nid
+            };
+            if target != id {
+                connectors.push((id, target));
+            }
+        }
+    }
+    (cuts, connectors)
+}
+
+/// Union-find over node indices.
+struct Components(Vec<usize>);
+
+impl Components {
+    fn find(&mut self, mut x: usize) -> usize {
+        while self.0[x] != x {
+            self.0[x] = self.0[self.0[x]];
+            x = self.0[x];
+        }
+        x
+    }
+
+    /// Joins the components of `a` and `b`; `false` when they were one already.
+    fn union(&mut self, a: usize, b: usize) -> bool {
+        let (ra, rb) = (self.find(a), self.find(b));
+        if ra == rb {
+            return false;
+        }
+        self.0[ra.max(rb)] = ra.min(rb);
+        true
+    }
+}
+
+/// Connectors between dead ends of different components up to `max_m` apart, the
+/// shortest first: each one joins two components, none is added inside one.
+fn dead_end_pairs(
+    points: &[Vec<(i64, LonLat)>],
+    connectors: &[(i64, i64)],
+    max_m: f64,
+) -> Vec<(i64, i64)> {
+    let mut id_index: HashMap<i64, usize> = HashMap::new();
+    for (id, _) in points.iter().flatten() {
+        let n = id_index.len();
+        id_index.entry(*id).or_insert(n);
+    }
+    let mut comps = Components((0..id_index.len()).collect());
+    for pts in points {
+        for w in pts.windows(2) {
+            comps.union(id_index[&w[0].0], id_index[&w[1].0]);
+        }
+    }
+    let mut connected: HashMap<i64, u32> = HashMap::new();
+    for (a, b) in connectors {
+        comps.union(id_index[a], id_index[b]);
+        *connected.entry(*a).or_default() += 1;
+        *connected.entry(*b).or_default() += 1;
+    }
+    let uses = node_uses(points);
+    let ends: Vec<(i64, LonLat)> = points
+        .iter()
+        .filter(|pts| pts.len() >= 2)
+        .flat_map(|pts| [pts[0], pts[pts.len() - 1]])
+        .filter(|(id, _)| uses[id] == 1 && !connected.contains_key(id))
+        .collect();
+    let tree: RTree<GeomWithData<[f64; 2], usize>> = RTree::bulk_load(
+        ends.iter()
+            .enumerate()
+            .map(|(i, (_, p))| GeomWithData::new([p.lon, p.lat], i))
+            .collect(),
+    );
+    let mut pairs: Vec<(f64, i64, i64)> = Vec::new();
+    for (i, (id, pos)) in ends.iter().enumerate() {
+        for v in tree.locate_in_envelope(&search_box(*pos, max_m)) {
+            let (qid, qpos) = ends[v.data];
+            if v.data <= i || qid == *id {
+                continue;
+            }
+            let d = pos.haversine_m(qpos);
+            if d <= max_m {
+                pairs.push((d, (*id).min(qid), (*id).max(qid)));
+            }
+        }
+    }
+    pairs.sort_by(|a, b| a.0.total_cmp(&b.0).then((a.1, a.2).cmp(&(b.1, b.2))));
+    pairs
+        .into_iter()
+        .filter(|&(_, a, b)| comps.union(id_index[&a], id_index[&b]))
+        .map(|(_, a, b)| (a, b))
+        .collect()
+}
+
+/// Makes one node of the nodes that are at the very same place (same coordinates), unless
+/// one of them is on a piste on another level ([`crate::pistes::Piste::layered`]): two
+/// OSM nodes duplicated by the mapper, or two crossing nodes put on one way where it
+/// crosses two ways drawn on top of each other. Kept apart, they would give an edge of
+/// zero length, which no elevation profile can describe (`skimap-core` rejects the
+/// graph). The kept id is the smallest OSM id, or the added node made first. Returns the
+/// replaced ids and their replacement.
+fn merge_coincident(set: &PisteSet, points: &mut [Vec<(i64, LonLat)>]) -> HashMap<i64, i64> {
+    let layered: HashSet<i64> = points
+        .iter()
+        .enumerate()
+        .filter(|(pi, _)| set.pistes[*pi].layered)
+        .flat_map(|(_, pts)| pts.iter().map(|(id, _)| *id))
+        .collect();
+    let mut keep: HashMap<(u64, u64), i64> = HashMap::new();
+    for (id, pos) in points.iter().flatten() {
+        if layered.contains(id) {
+            continue;
+        }
+        let k = keep
+            .entry((pos.lon.to_bits(), pos.lat.to_bits()))
+            .or_insert(*id);
+        if (*id < 0, id.unsigned_abs()) < (*k < 0, k.unsigned_abs()) {
+            *k = *id;
+        }
+    }
+    let mut remap = HashMap::new();
+    for (id, pos) in points.iter().flatten() {
+        if let Some(&k) = keep.get(&(pos.lon.to_bits(), pos.lat.to_bits()))
+            && k != *id
+            && !layered.contains(id)
+        {
+            remap.insert(*id, k);
+        }
+    }
+    if remap.is_empty() {
+        return remap;
+    }
+    for pts in points.iter_mut() {
+        for p in pts.iter_mut() {
+            if let Some(&k) = remap.get(&p.0) {
+                p.0 = k;
+            }
+        }
+        // The two nodes were consecutive on this way: one vertex is left.
+        pts.dedup_by_key(|p| p.0);
+        // A way that was all at one place is no way: no edge, no node, no dead end.
+        if pts.len() < 2 {
+            pts.clear();
+        }
+    }
+    remap
+}
 
 /// Degree box around `p` covering `radius_m` (with margin).
 pub fn search_box(p: LonLat, radius_m: f64) -> AABB<[f64; 2]> {
@@ -101,64 +441,43 @@ pub fn search_box(p: LonLat, radius_m: f64) -> AABB<[f64; 2]> {
 }
 
 impl Graph {
-    /// Builds the graph of `set`, adding connectors for gaps up to `connector_max_m`
-    /// (0 disables them).
+    /// Builds the graph of `set`, repairing the mapping gaps when `connector_max_m` is
+    /// positive (0 disables every repair):
+    ///
+    /// 1. two pistes whose segments cross without a shared node (neither on a bridge, in a
+    ///    tunnel or on a layer) get a node at the crossing;
+    /// 2. a dead end gets a connector to the nearest point of another piste up to
+    ///    `connector_max_m`, on a vertex or inside a segment (a node is added there);
+    /// 3. two dead ends still in different components get a connector when at most
+    ///    [`DEAD_END_PAIR_MAX_M`] apart, the shortest first, never inside one component.
+    ///
+    /// Added nodes have negative ids (OSM ids are positive).
     pub fn build(set: &PisteSet, connector_max_m: f64) -> Graph {
-        // Occurrences of each node over all pistes.
-        let mut uses: HashMap<i64, u32> = HashMap::new();
-        for p in &set.pistes {
-            for (id, _) in &p.points {
-                *uses.entry(*id).or_default() += 1;
-            }
-        }
-        let mut junction: HashMap<i64, LonLat> = HashMap::new();
-        for p in &set.pistes {
-            let n = p.points.len();
-            for (i, (id, pos)) in p.points.iter().enumerate() {
-                if i == 0 || i + 1 == n || uses[id] >= 2 {
-                    junction.insert(*id, *pos);
-                }
-            }
-        }
-
-        // Connectors from dead ends.
+        let repair = connector_max_m > 0.0;
+        let mut points: Vec<Vec<(i64, LonLat)>> =
+            set.pistes.iter().map(|p| p.points.clone()).collect();
+        let mut next_id = -1i64;
         let mut connectors: Vec<(i64, i64)> = Vec::new();
-        if connector_max_m > 0.0 {
-            let tree: RTree<Vertex> = RTree::bulk_load(
-                set.pistes
-                    .iter()
-                    .enumerate()
-                    .flat_map(|(pi, p)| {
-                        p.points
-                            .iter()
-                            .enumerate()
-                            .map(move |(vi, (_, pos))| Vertex::new([pos.lon, pos.lat], (pi, vi)))
-                    })
-                    .collect(),
-            );
-            for (pi, p) in set.pistes.iter().enumerate() {
-                let n = p.points.len();
-                for &end in &[0, n - 1] {
-                    let (id, pos) = p.points[end];
-                    if uses[&id] != 1 {
-                        continue;
-                    }
-                    let best = tree
-                        .locate_in_envelope(&search_box(pos, connector_max_m))
-                        .filter(|v| v.data.0 != pi)
-                        .map(|v| {
-                            let (qi, qv) = v.data;
-                            let (qid, qpos) = set.pistes[qi].points[qv];
-                            (pos.haversine_m(qpos), qid, qpos)
-                        })
-                        .filter(|(d, qid, _)| *d <= connector_max_m && *qid != id)
-                        .min_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
-                    if let Some((_, qid, qpos)) = best {
-                        connectors.push((id, qid));
-                        junction.insert(qid, qpos);
-                    }
-                }
-            }
+        if repair {
+            let cuts = crossings(set, &points, &mut next_id);
+            insert_cuts(&mut points, cuts);
+            // Duplicated nodes are one before looking for dead ends: a dead end on the
+            // very node of another way is a junction, not a connector of zero length.
+            merge_coincident(set, &mut points);
+            let (cuts, found) = dead_end_connectors(&points, connector_max_m, &mut next_id);
+            insert_cuts(&mut points, cuts);
+            // Two dead ends facing one point of a segment put two nodes there.
+            let remap = merge_coincident(set, &mut points);
+            connectors = found
+                .into_iter()
+                .map(|(a, b)| {
+                    let m = |x: i64| remap.get(&x).copied().unwrap_or(x);
+                    (m(a), m(b))
+                })
+                .filter(|(a, b)| a != b)
+                .collect();
+            let pairs = dead_end_pairs(&points, &connectors, DEAD_END_PAIR_MAX_M);
+            connectors.extend(pairs);
             // Two dead ends pointing at each other give the same connector twice.
             for c in &mut connectors {
                 if c.0 > c.1 {
@@ -167,6 +486,22 @@ impl Graph {
             }
             connectors.sort_unstable();
             connectors.dedup();
+        }
+
+        let uses = node_uses(&points);
+        let mut junction: HashMap<i64, LonLat> = HashMap::new();
+        for pts in &points {
+            let n = pts.len();
+            for (i, (id, pos)) in pts.iter().enumerate() {
+                if i == 0 || i + 1 == n || uses[id] >= 2 {
+                    junction.insert(*id, *pos);
+                }
+            }
+        }
+        let position: HashMap<i64, LonLat> = points.iter().flatten().copied().collect();
+        for (a, b) in &connectors {
+            junction.insert(*a, position[a]);
+            junction.insert(*b, position[b]);
         }
 
         let ordered: BTreeMap<i64, LonLat> = junction.into_iter().collect();
@@ -182,12 +517,13 @@ impl Graph {
 
         let mut edges = Vec::new();
         for (pi, p) in set.pistes.iter().enumerate() {
+            let pp = &points[pi];
             let mut start = 0;
-            for i in 1..p.points.len() {
-                if !index.contains_key(&p.points[i].0) {
+            for i in 1..pp.len() {
+                if !index.contains_key(&pp[i].0) {
                     continue;
                 }
-                let part = &p.points[start..=i];
+                let part = &pp[start..=i];
                 let mut pts: Vec<LonLat> = part.iter().map(|(_, q)| *q).collect();
                 let (mut a, mut b) = (index[&part[0].0], index[&part[part.len() - 1].0]);
                 let oneway = matches!(p.oneway, Oneway::Forward | Oneway::Backward);
@@ -522,11 +858,12 @@ mod tests {
 
     #[test]
     fn connectors_close_small_gaps_only() {
-        // Way 2 ends at node 9, 5 m from node 3 of way 1; way 3 ends 500 m away.
+        // Way 2 ends at node 9, 5 m from node 3 of way 1 and goes north; way 3 starts
+        // 150 m beyond the end of way 1.
         let d = data(vec![
             way(1, &[1, 2, 3, 4, 5], None),
-            way(2, &[9, 8], None),
-            way(3, &[10, 6], None),
+            way(2, &[9, 10], None),
+            way(3, &[7, 8], None),
         ]);
         let set = classify(&d);
         let g = Graph::build(&set, 10.0);
@@ -551,6 +888,199 @@ mod tests {
         );
         assert_eq!(g.components().1, 2);
         assert_eq!(Graph::build(&set, 0.0).components().1, 3);
+    }
+
+    /// Data of nodes given as `(id, metres east, metres north)` of 6.0° E 46.6° N.
+    fn data_m(nodes: &[(i64, f64, f64)], ways: Vec<Way>) -> OsmData {
+        let k = 46.6f64.to_radians().cos();
+        OsmData::from_elements(
+            nodes.iter().map(|&(id, x, y)| {
+                (
+                    id,
+                    LonLat::new(6.0 + x / (M_PER_DEG_LAT * k), 46.6 + y / M_PER_DEG_LAT),
+                )
+            }),
+            ways,
+            vec![],
+        )
+    }
+
+    fn connectors(g: &Graph) -> Vec<(i64, i64, f64)> {
+        g.edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::Connector)
+            .map(|e| {
+                let (a, b) = (g.nodes[e.from].osm_id, g.nodes[e.to].osm_id);
+                (a.min(b), a.max(b), e.length_m)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn dead_ends_facing_across_a_road_join_two_networks() {
+        // B166: two loops whose tails stop 17 m apart, on both sides of a road that is no
+        // piste; nothing else joins them.
+        let nodes = [
+            (1, 0.0, 0.0),
+            (2, 200.0, 0.0),
+            (3, 200.0, 200.0),
+            (4, 0.0, 200.0),
+            (5, 300.0, 0.0),
+            (6, 317.0, 0.0),
+            (7, 500.0, 0.0),
+            (8, 700.0, 0.0),
+            (9, 700.0, 200.0),
+            (10, 500.0, 200.0),
+        ];
+        let d = data_m(
+            &nodes,
+            vec![
+                way(1, &[1, 2, 3, 4, 1], None),
+                way(2, &[2, 5], None),
+                way(3, &[6, 7], None),
+                way(4, &[7, 8, 9, 10, 7], None),
+            ],
+        );
+        let g = Graph::build(&classify(&d), 10.0);
+        assert_eq!(g.components().1, 1);
+        let c = connectors(&g);
+        assert_eq!(c.len(), 1, "{c:?}");
+        assert_eq!((c[0].0, c[0].1), (5, 6));
+        assert!((c[0].2 - 17.0).abs() < 0.2, "{c:?}");
+        // Repairs off: the two loops stay apart.
+        assert_eq!(Graph::build(&classify(&d), 0.0).components().1, 2);
+    }
+
+    #[test]
+    fn dead_ends_get_no_shortcut_inside_a_network_nor_beyond_the_gap() {
+        // Way 1 is a U whose ends are 17 m apart: one network, no shortcut. Way 2 stops
+        // 30 m from end 1: farther than a road, left apart.
+        let nodes = [
+            (1, 0.0, 0.0),
+            (2, 300.0, 0.0),
+            (3, 300.0, 17.0),
+            (4, 0.0, 17.0),
+            (5, 0.0, -30.0),
+            (6, 0.0, -400.0),
+        ];
+        let d = data_m(
+            &nodes,
+            vec![way(1, &[1, 2, 3, 4], None), way(2, &[5, 6], None)],
+        );
+        let g = Graph::build(&classify(&d), 10.0);
+        assert_eq!(connectors(&g), vec![]);
+        assert_eq!(g.components().1, 2);
+    }
+
+    #[test]
+    fn dead_end_joins_the_segment_it_stops_against() {
+        // Way 2 stops 5 m from the middle of a 400 m segment of way 1, 200 m from its
+        // vertices.
+        let nodes = [
+            (1, 0.0, 0.0),
+            (2, 400.0, 0.0),
+            (3, 200.0, 5.0),
+            (4, 200.0, 300.0),
+        ];
+        let d = data_m(&nodes, vec![way(1, &[1, 2], None), way(2, &[3, 4], None)]);
+        let g = Graph::build(&classify(&d), 10.0);
+        assert_eq!(g.components().1, 1);
+        let c = connectors(&g);
+        assert_eq!(c.len(), 1, "{c:?}");
+        assert!((c[0].2 - 5.0).abs() < 0.1, "{c:?}");
+        // Way 1 is split at the foot of the connector.
+        let parts: Vec<f64> = g
+            .edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::Piste { piste: 0 })
+            .map(|e| e.length_m)
+            .collect();
+        assert_eq!(parts.len(), 2, "{parts:?}");
+        assert!(parts.iter().all(|l| (l - 200.0).abs() < 0.5), "{parts:?}");
+    }
+
+    #[test]
+    fn crossing_ways_share_a_node_unless_on_another_level() {
+        let nodes = [
+            (1, 0.0, 0.0),
+            (2, 400.0, 0.0),
+            (3, 200.0, -200.0),
+            (4, 200.0, 200.0),
+        ];
+        let d = data_m(&nodes, vec![way(1, &[1, 2], None), way(2, &[3, 4], None)]);
+        let g = Graph::build(&classify(&d), 10.0);
+        assert_eq!(g.components().1, 1);
+        assert_eq!(g.edges.len(), 4);
+        let adj = g.adjacency();
+        let cross: Vec<usize> = (0..g.nodes.len()).filter(|&i| adj[i].len() == 4).collect();
+        assert_eq!(cross.len(), 1);
+        let p = g.nodes[cross[0]].pos;
+        let k = 46.6f64.to_radians().cos();
+        assert!(
+            ((p.lon - 6.0) * M_PER_DEG_LAT * k - 200.0).abs() < 0.1,
+            "{p:?}"
+        );
+        assert!(((p.lat - 46.6) * M_PER_DEG_LAT).abs() < 0.1, "{p:?}");
+        // On a bridge, way 2 passes over way 1.
+        let mut bridge = way(2, &[3, 4], None);
+        bridge.tags.0.push(("bridge".to_owned(), "yes".to_owned()));
+        let d = data_m(&nodes, vec![way(1, &[1, 2], None), bridge]);
+        assert_eq!(Graph::build(&classify(&d), 10.0).components().1, 2);
+    }
+
+    #[test]
+    fn a_way_crossing_two_ways_drawn_on_top_of_each_other_crosses_them_at_one_node() {
+        // B166 (Autrans): ways 1 and 2 are the same trail drawn twice, with nodes of their
+        // own at the same places; way 3 crosses both. One crossing node, not two nodes at
+        // one place joined by an edge of zero length.
+        let nodes = [
+            (1, 0.0, 0.0),
+            (2, 100.0, 0.0),
+            (3, 300.0, 0.0),
+            (12, 100.0, 0.0),
+            (5, 200.0, -100.0),
+            (6, 200.0, 100.0),
+        ];
+        let d = data_m(
+            &nodes,
+            vec![
+                way(1, &[1, 2, 3], None),
+                way(2, &[1, 12, 3], None),
+                way(3, &[5, 6], None),
+            ],
+        );
+        let g = Graph::build(&classify(&d), 10.0);
+        assert!(g.edges.iter().all(|e| e.length_m > 0.0), "{:?}", g.edges);
+        let adj = g.adjacency();
+        let cross: Vec<usize> = (0..g.nodes.len()).filter(|&i| adj[i].len() == 6).collect();
+        assert_eq!(cross.len(), 1, "{:?}", g.nodes);
+        assert!(g.nodes[cross[0]].osm_id < 0);
+        // The duplicated node 12 is node 2.
+        assert!(g.nodes.iter().all(|n| n.osm_id != 12), "{:?}", g.nodes);
+        assert_eq!(g.components().1, 1);
+    }
+
+    #[test]
+    fn a_dead_end_on_a_duplicated_node_is_a_junction_not_a_connector() {
+        // Way 2 starts on a node of its own at the very place of node 2 of way 1.
+        let nodes = [
+            (1, 0.0, 0.0),
+            (2, 100.0, 0.0),
+            (3, 200.0, 0.0),
+            (4, 100.0, 0.0),
+            (5, 100.0, 300.0),
+        ];
+        let d = data_m(
+            &nodes,
+            vec![way(1, &[1, 2, 3], None), way(2, &[4, 5], None)],
+        );
+        let g = Graph::build(&classify(&d), 10.0);
+        assert_eq!(connectors(&g), vec![]);
+        assert!(g.edges.iter().all(|e| e.length_m > 0.0), "{:?}", g.edges);
+        assert_eq!(g.edges.len(), 3);
+        assert_eq!(g.components().1, 1);
+        // Repairs off: the raw OSM topology, two networks.
+        assert_eq!(Graph::build(&classify(&d), 0.0).components().1, 2);
     }
 
     fn way_ids(set: &PisteSet, ids: &[usize]) -> Vec<i64> {

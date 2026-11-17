@@ -324,6 +324,9 @@ pub struct Piste {
     pub points: Vec<(i64, LonLat)>,
     /// Length in metres (haversine).
     pub length_m: f64,
+    /// Way on another level than the ground (`bridge`, `tunnel` or a non-zero `layer`):
+    /// a way crossing it without a shared node passes over or under it.
+    pub layered: bool,
 }
 
 impl Piste {
@@ -341,6 +344,17 @@ impl Piste {
     pub fn mean_lat(&self) -> f64 {
         self.points.iter().map(|(_, p)| p.lat).sum::<f64>() / self.points.len().max(1) as f64
     }
+}
+
+/// Whether the tags put a way on another level than the ground: `bridge` or `tunnel`
+/// other than `no`, or a `layer` other than 0.
+pub fn is_layered(tags: &Tags) -> bool {
+    let set = |k: &str| tags.get(k).is_some_and(|v| v != "no");
+    set("bridge")
+        || set("tunnel")
+        || tags
+            .get("layer")
+            .is_some_and(|v| v.trim().parse::<i32>().is_ok_and(|l| l != 0))
 }
 
 /// Length of a polyline in metres.
@@ -491,6 +505,7 @@ pub fn classify(data: &OsmData) -> PisteSet {
             lit: lit_of(&w.tags),
             points,
             length_m,
+            layered: is_layered(&w.tags),
         });
     }
 
