@@ -1742,4 +1742,72 @@ mod tests {
         let empty = Profile::of(&eta, &[]).for_group(params, ratio);
         assert_eq!((empty.out_s, empty.back_s), (vec![0.0], vec![0.0]));
     }
+
+    #[test]
+    fn loop_status_from_both_sources() {
+        use crate::layers::{Itinerary, Practice, Status};
+        let mut d = data();
+        let g = d.graph.as_ref().unwrap();
+        let km = |e: usize| g.length_m(e) / 1000.0;
+        let perimeter: f64 = (0..4).map(km).sum();
+        let (sud, est, nord, ouest) = (km(0), km(1), km(2), km(3));
+        let it = |source: &str, state: OpenState, line: Vec<LonLat>, ways: Vec<i64>| Itinerary {
+            id: format!("{source}:{}", ways.first().unwrap_or(&0)),
+            name: "x".into(),
+            source: source.into(),
+            sector: None,
+            practice: Practice::Nordic,
+            state,
+            length_km: None,
+            difficulty: None,
+            comment: None,
+            line,
+            osm_way_ids: ways,
+        };
+        // Nordic France by OSM way: « Sud » open; « Est » closed by one itinerary, open by
+        // another (open wins). ENJ by line: the middle fifth of « Nord » closed (its middle
+        // within 30 m, its ends 900 m away); a one-point line on « Ouest », ignored.
+        let at = |f: f64| LonLat::new(6.12 - 0.02 * f, 46.62);
+        d.status = Some(Status {
+            polled_at: crate::sun::local_to_utc(
+                NaiveDate::from_ymd_opt(2027, 1, 12)
+                    .unwrap()
+                    .and_hms_opt(7, 30, 0)
+                    .unwrap(),
+            ),
+            itineraries: vec![
+                it("nordicfrance", OpenState::Open, vec![], vec![1]),
+                it("nordicfrance", OpenState::Closed, vec![], vec![2]),
+                it("nordicfrance", OpenState::Open, vec![], vec![2]),
+                it("enj", OpenState::Closed, vec![at(0.4), at(0.6)], vec![]),
+                it(
+                    "enj",
+                    OpenState::Open,
+                    vec![LonLat::new(6.10, 46.61)],
+                    vec![],
+                ),
+            ],
+            messages: vec![],
+            conflicts: vec![],
+        });
+        let budget = perimeter / 10.6 * 60.0;
+        let s = suggest(&d, &req(budget, None));
+        let best = s.suggestions.first().expect("a loop");
+        assert!((best.length_km - perimeter).abs() < 0.06, "{best:?}");
+        let (open, closed, unknown) = best.status_km;
+        assert!((open - (sud + est)).abs() < 1e-6, "{open}");
+        assert!((closed - nord).abs() < 1e-6, "{closed}");
+        assert!((unknown - ouest).abs() < 1e-6, "{unknown}");
+        let says = |what: &str| best.reasons.iter().any(|r| r.text.contains(what));
+        assert!(says("km sur des pistes fermées"), "{:?}", best.reasons);
+        assert!(says("km sur des pistes ouvertes"), "{:?}", best.reasons);
+        assert!(says("km sans état connu"), "{:?}", best.reasons);
+        // Four days after the poll: the states are not used, everything unknown.
+        let mut late = req(budget, None);
+        late.start_time += Duration::days(4);
+        let s = suggest(&d, &late);
+        let best = s.suggestions.first().expect("a loop");
+        assert_eq!((best.status_km.0, best.status_km.1), (0.0, 0.0));
+        assert!((best.status_km.2 - perimeter).abs() < 1e-6);
+    }
 }
