@@ -9,7 +9,7 @@ publish.workspace = true
 [features]
 default = []
 # Registration and transcription of the official plans (pipeline side): downloader,
-# OSM pistes (planet extract) and landmarks (Overpass), OCR (ocrs, pure Rust, rten),
+# OSM pistes (planet extract) and landmarks (local Geofabrik extracts), OCR (ocrs, pure Rust, rten),
 # PNG for diagnostics. Without it the crate only reads the transcription.
 pipeline = [
     "skimap-common/download",

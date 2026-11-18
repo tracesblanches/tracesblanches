@@ -111,7 +111,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .cloned()
         .collect();
-    let (lms, src_l) = osmref::landmarks_any(&dl, &hint)?;
+    let (lms, src_l) = osmref::landmarks_any(&layout, &dl, &hint)?;
     let (min_sim, ele) = match s.labels {
         LabelSource::TextLayer => (0.92, Some(30.0)),
         LabelSource::Ocr => (0.75, None),

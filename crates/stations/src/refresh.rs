@@ -4,7 +4,7 @@
 //! when it is due, so a second call the same day changes nothing (idempotent).
 //!
 //! - Station cards (OSM, OpenSkiMap, SkiRadar): weekly ([`FICHES_EVERY_DAYS`]); points
-//!   of interest change slowly and the Overpass instances are shared.
+//!   of interest change slowly (read from the local OSM extracts, X5).
 //! - Titles, prices, member lists, day prices: daily during the season (1 November to
 //!   30 April), when the issuers publish and change them (pre-sales end mid-November),
 //!   weekly otherwise ([`TITRES_EVERY_DAYS`]).

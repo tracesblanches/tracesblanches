@@ -85,7 +85,7 @@ pub struct Registration {
     pub union: SkelGraph,
     /// OSM reference.
     pub osm: OsmRef,
-    /// Source of the landmarks (Overpass answer or BD TOPO toponyms).
+    /// Source of the landmarks (local OSM extracts or BD TOPO toponyms).
     pub landmarks_source: osmref::LandmarkSource,
     /// Label ↔ landmark candidates.
     pub candidates: Vec<LabelMatch>,
@@ -290,7 +290,7 @@ pub fn register_input(
     };
     lap("segmentation", &mut t);
     let mut osm = osmref::pistes(planet, &spec.extent)?;
-    let (lms, landmarks_source) = osmref::landmarks_any(dl, &spec.extent)?;
+    let (lms, landmarks_source) = osmref::landmarks_any(layout, dl, &spec.extent)?;
     osm.landmarks = lms;
     lap("osm", &mut t);
     let (min_sim, ele_tol) = match spec.labels {
@@ -968,13 +968,9 @@ pub fn transcribe_and_write(
                 spec.page_url
             )),
         planet_source.clone(),
-        SourceRef::from_fetched(
-            reg.landmarks_source.name,
-            reg.landmarks_source.licence,
-            reg.landmarks_source.attribution,
-            &reg.landmarks_source.fetched,
-        ),
     ];
+    meta.sources
+        .extend(reg.landmarks_source.sources.iter().cloned());
     meta.sources.extend(paths_source);
     meta.files = vec![
         FileMeta::new(
