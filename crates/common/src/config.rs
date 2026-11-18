@@ -8,6 +8,7 @@
 //! | `SKITOUR_API_KEY` | Skitour API key |
 //! | `SKIMAP_RATE_LIMIT_<SOURCE>` | rate-limit override, e.g. `SKIMAP_RATE_LIMIT_DATATOURISME=1000/h` |
 //! | `SKIMAP_PERSONAL_SOURCES` | `1` or `true`: also use the personal-use-only sources (default off) |
+//! | `SKIMAP_BUILD_MEMORY_MIB` | memory limit `build-all` plans its parallel sites with, MiB (default: the container's cgroup limit, else 4096) |
 //!
 //! Keys are wrapped in [`Secret`], whose `Debug` and `Display` never print the value:
 //! a key never reaches a log, an error message or a cache file.
@@ -172,6 +173,10 @@ pub struct Config {
     /// latest complete one (`SKIMAP_AROME_RUN`, RFC 3339): replay of a run still published
     /// (measurements of successive runs, tests). Unset in production.
     pub arome_run: Option<String>,
+    /// Memory limit, MiB, under which `build-all` plans the sites it builds together
+    /// (`SKIMAP_BUILD_MEMORY_MIB`); unset: the cgroup limit of the container when
+    /// readable, else a safe default (`batch::DEFAULT_MEMORY_LIMIT`).
+    pub build_memory_mib: Option<u64>,
 }
 
 impl Config {
@@ -195,6 +200,7 @@ impl Config {
             rate_limits: BTreeMap::new(),
             personal_sources: false,
             arome_run: None,
+            build_memory_mib: None,
         };
         for (k, v) in vars {
             let (k, v) = (k.as_ref(), v.into());
@@ -208,6 +214,11 @@ impl Config {
                 "SKITOUR_API_KEY" => cfg.skitour_api_key = Some(Secret::new(v)),
                 "SKIMAP_PERSONAL_SOURCES" => cfg.personal_sources = parse_flag(k, &v)?,
                 "SKIMAP_AROME_RUN" => cfg.arome_run = Some(v),
+                "SKIMAP_BUILD_MEMORY_MIB" => {
+                    cfg.build_memory_mib = Some(v.trim().parse().map_err(|_| {
+                        Error::Config(format!("{k}: `{v}` n'est pas un nombre de Mio"))
+                    })?)
+                }
                 _ => {
                     if let Some(src) = k.strip_prefix("SKIMAP_RATE_LIMIT_") {
                         let source = src.to_ascii_lowercase().replace('_', "-");
