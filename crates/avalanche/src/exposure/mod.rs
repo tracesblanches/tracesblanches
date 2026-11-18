@@ -141,6 +141,13 @@ pub fn exposure_classes_with_margin(
     )
 }
 
+/// Peak memory of [`layer_model`] per cell of its grid, bytes: an upper bound measured on
+/// a steep grid routing many paths (`tests/model_memory.rs`, 111 B per cell with 3
+/// threads on 18/11/2026; real sites 49 B per cell for a 27.8-million-cell Jura traverse,
+/// 85 B for a 7.7-million-cell Vercors domain, the whole step included). The heaviest
+/// step of a site per cell: `build-all` plans the sites it runs together with it (#173).
+pub const LAYER_PEAK_BYTES_PER_CELL: f64 = 120.0;
+
 /// Wall-clock seconds of the model stages.
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct Timings {
@@ -265,6 +272,107 @@ pub fn model_with(
         runout_extreme: re,
         ates: a,
         exposure,
+        timings: t,
+    }
+}
+
+impl Model {
+    /// What the layer reads of the model ([`LayerModel`]), as [`layer_model`] computes it.
+    pub fn layer(&self) -> LayerModel {
+        let n = self.exposure.data.len();
+        LayerModel {
+            exposure: self.exposure.clone(),
+            ates_classes: self.ates.classes.clone(),
+            reached_extreme: (0..n).map(|i| self.runout_extreme.reached(i)).collect(),
+            reached_frequent: (0..n).map(|i| self.runout_frequent.reached(i)).collect(),
+            paths: (self.runout_frequent.paths, self.runout_extreme.paths),
+            timings: self.timings.clone(),
+        }
+    }
+}
+
+/// What the layer build reads of the model: the classes and where each runout reaches.
+#[derive(Debug, Clone)]
+pub struct LayerModel {
+    /// User classes 1–3, 255 = no data.
+    pub exposure: Raster<u8>,
+    /// ATES-like classes 0–4, 255 = invalid.
+    pub ates_classes: Raster<u8>,
+    /// Cells reached by the infrequent runout.
+    pub reached_extreme: Vec<bool>,
+    /// Cells reached by the typical runout.
+    pub reached_frequent: Vec<bool>,
+    /// Release cells routed (typical, infrequent).
+    pub paths: (usize, usize),
+    /// Stage timings.
+    pub timings: Timings,
+}
+
+/// The classes of [`model`], bit for bit, keeping only what the next stage reads (#173):
+/// the continuous PRA and the start-zone sizes are reduced to the bits the classifier
+/// reads as soon as the PRA is known, each runout to one byte per cell as soon as it is
+/// routed (the typical one before the infrequent one is routed), and the classifier keeps
+/// none of its intermediate layers. [`model`] keeps every layer for the diagnostics.
+pub fn layer_model(inputs: &Inputs) -> LayerModel {
+    use std::time::Instant;
+    let t_all = Instant::now();
+    let mut t = Timings::default();
+    let t0 = Instant::now();
+    let (slope, ws) = terrain(&inputs.dem);
+    t.terrain = t0.elapsed().as_secs_f64();
+    let t0 = Instant::now();
+    let pf = pra::pra(&slope, &ws, &inputs.canopy, &pra::FREQUENT);
+    let pe = pra::pra(&slope, &ws, &inputs.canopy, &pra::EXTREME);
+    drop((slope, ws));
+    let pra_frequent = ates::pra_bits(&pf, ates::Scenario::Frequent);
+    let pra_extreme = ates::pra_bits(&pe, ates::Scenario::Extreme);
+    let (release_f, release_e, binary_e) = (pf.release, pe.release, pe.binary);
+    drop((pf.continuous, pf.binary, pe.continuous));
+    t.pra = t0.elapsed().as_secs_f64();
+    let fsi = forest_index(&inputs.canopy);
+    let t0 = Instant::now();
+    let (ff, fe) = (&flowpy::FREQUENT, &flowpy::EXTREME);
+    let mut wf = flowpy::Weights::new(&inputs.dem, &fsi, ff.exp);
+    let mut we = (fe.exp.to_bits() != ff.exp.to_bits())
+        .then(|| flowpy::Weights::new(&inputs.dem, &fsi, fe.exp));
+    let rf = flowpy::run_with(&mut wf, &release_f, ff);
+    drop(release_f);
+    let runout_frequent = ates::runout_bits(&rf, inputs.dem.cell, ates::Scenario::Frequent);
+    let paths_f = rf.paths;
+    drop(rf);
+    t.runout_frequent = t0.elapsed().as_secs_f64();
+    let t0 = Instant::now();
+    let re = flowpy::run_with(we.as_mut().unwrap_or(&mut wf), &release_e, fe);
+    drop(release_e);
+    let runout_extreme = ates::runout_bits(&re, inputs.dem.cell, ates::Scenario::Extreme);
+    let paths_e = re.paths;
+    drop(re);
+    t.runout_extreme = t0.elapsed().as_secs_f64();
+    drop((wf, we));
+    drop(fsi);
+    let t0 = Instant::now();
+    let d = ates::Drivers {
+        pra_frequent,
+        pra_extreme,
+        runout_frequent,
+        runout_extreme,
+    };
+    let ates_classes = ates::classes(&inputs.dem, &inputs.canopy, &d, &binary_e);
+    t.ates = t0.elapsed().as_secs_f64();
+    let t0 = Instant::now();
+    let n = ates_classes.data.len();
+    let reached_extreme: Vec<bool> = (0..n).map(|i| d.reached_extreme(i)).collect();
+    let reached_frequent: Vec<bool> = (0..n).map(|i| d.reached_frequent(i)).collect();
+    drop(d);
+    let exposure = exposure_classes(&ates_classes, &reached_extreme, &binary_e.data);
+    t.classes = t0.elapsed().as_secs_f64();
+    t.total = t_all.elapsed().as_secs_f64();
+    LayerModel {
+        exposure,
+        ates_classes,
+        reached_extreme,
+        reached_frequent,
+        paths: (paths_f, paths_e),
         timings: t,
     }
 }

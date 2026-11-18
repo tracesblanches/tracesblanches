@@ -97,18 +97,21 @@ pub fn uniform_filter(src: &[f32], w: usize, h: usize, size: usize) -> Vec<f32> 
 /// No gap vote (neighbourhood canopy below [`GAP_CONTEXT_PCT`]).
 const NO_GAP_VOTE: u8 = u8::MAX;
 
-/// Split vote of the classifier (lo, c1, c2, hi, c3; the infrequent scenario owns the
-/// low steps): 0–3, or -1 when neither scenario has a value.
-fn split_vote(lo: f32, c1: f32, c2: f32, hi: f32, c3: f32) -> i8 {
-    if hi > 0.0 || lo > 0.0 {
+/// Split vote of the classifier from its four comparisons: the infrequent scenario owns
+/// the low steps (`lo > c1`, `lo > c2`), the typical one the high step (`hi > c3`); 0–3,
+/// or -1 when neither scenario has a value (`lo > 0`, `hi > 0`). The low cut `c1` is 0
+/// for every vote of dev8 (start zone, size, travel angle, flux area), so `lo > c1` is
+/// `lo > 0`.
+fn split_vote(lo_pos: bool, lo_c2: bool, hi_pos: bool, hi_c3: bool) -> i8 {
+    if hi_pos || lo_pos {
         let mut v = 0;
-        if lo > c1 {
+        if lo_pos {
             v = 1;
         }
-        if lo > c2 {
+        if lo_c2 {
             v = 2;
         }
-        if hi > c3 {
+        if hi_c3 {
             v = 3;
         }
         v
@@ -117,36 +120,148 @@ fn split_vote(lo: f32, c1: f32, c2: f32, hi: f32, c3: f32) -> i8 {
     }
 }
 
-/// Driver layers of the classifier for one scenario, on the DEM grid (`driverStack`).
-struct Scenario<'a> {
-    pra: &'a Pra,
-    run: &'a Runout,
+/// The two scenarios of the classifier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Scenario {
+    /// Typical (α = 30°): the high step of the split votes and the floors 2 and 3.
+    Frequent,
+    /// Infrequent (α = 18°): the low steps of the split votes and the floor 1.
+    Extreme,
 }
 
-impl Scenario<'_> {
-    /// Aligned zDelta (0 where not reached).
-    fn zdelta(&self, i: usize) -> f32 {
-        if self.run.reached(i) {
-            self.run.zdelta.data[i]
-        } else {
-            0.0
+/// Vote cuts of one scenario: continuous PRA, start-zone size (ha), travel angle (°).
+/// The infrequent scenario owns `c2`, the typical one `c3` (`split_vote`).
+fn cuts(s: Scenario) -> (f32, f32, f32) {
+    match s {
+        Scenario::Extreme => (0.0087, 0.0136, 24.005),
+        Scenario::Frequent => (0.1613, 0.3086, 34.270),
+    }
+}
+
+/// Flux-area cuts of dev8 at the cell size: (low cut, `c2`, `c3`, floor 3), m².
+fn flux_cuts(cell: f64) -> (f32, f32, f32, f32) {
+    let area_factor = (cell * cell) / (CUT_REF_CELL * CUT_REF_CELL);
+    (
+        (0.0 * area_factor) as f32,
+        (10.299 * area_factor) as f32,
+        (375.18 * area_factor) as f32,
+        (FLOOR3_FLUX_AREA * area_factor) as f32,
+    )
+}
+
+/// `m` when `b`, else 0.
+fn flag(b: bool, m: u8) -> u8 {
+    if b { m } else { 0 }
+}
+
+/// Bits of [`pra_bits`], per scenario: continuous PRA above 0, above its cut; start-zone
+/// size above 0, above its cut.
+const PRA_POS: u8 = 1;
+const PRA_CUT: u8 = 2;
+const SIZE_POS: u8 = 4;
+const SIZE_CUT: u8 = 8;
+
+/// What the classifier reads of the start zones of one scenario, one byte per cell
+/// (four bits): the comparisons of the continuous PRA and of the start-zone size (ha,
+/// `pra::component_area_m2` of the release cells) with 0 and with the vote cut of the
+/// scenario. Computed once the PRA is known, so that the continuous PRA (4 bytes per
+/// cell and scenario) need not be kept through the runout (#173).
+pub fn pra_bits(p: &Pra, s: Scenario) -> Vec<u8> {
+    let (pra_cut, size_cut, _) = cuts(s);
+    let size = pra::component_area_m2(&p.release);
+    p.continuous
+        .data
+        .par_iter()
+        .zip(&size.data)
+        .map(|(c, a)| {
+            let ha = a / 10000.0;
+            flag(*c > 0.0, PRA_POS)
+                | flag(*c > pra_cut, PRA_CUT)
+                | flag(ha > 0.0, SIZE_POS)
+                | flag(ha > size_cut, SIZE_CUT)
+        })
+        .collect()
+}
+
+/// Bits of [`runout_bits`].
+const REACHED: u8 = 1;
+const ZDELTA_POS: u8 = 2;
+const TRAVEL_POS: u8 = 4;
+const TRAVEL_CUT: u8 = 8;
+const FLUX_POS: u8 = 16;
+const FLUX_CUT: u8 = 32;
+const FLUX_FLOOR3: u8 = 64;
+
+/// What the classifier and the layer read of the runout of one scenario, one byte per
+/// cell instead of 16 (#173): reached, zDelta above 0, travel angle and routed flux area
+/// (0 where not reached, as the driver stack aligns them) above 0 and above the vote cut
+/// of the scenario, flux area at least the floor-3 area.
+pub fn runout_bits(run: &Runout, cell: f64, s: Scenario) -> Vec<u8> {
+    let (_, _, travel_cut) = cuts(s);
+    let (_, flux_c2, flux_c3, floor3) = flux_cuts(cell);
+    let flux_cut = match s {
+        Scenario::Extreme => flux_c2,
+        Scenario::Frequent => flux_c3,
+    };
+    let cell_area = (cell * cell) as f32;
+    (0..run.cell_counts.data.len())
+        .into_par_iter()
+        .map(|i| {
+            let reached = run.reached(i);
+            let (zdelta, travel, flux) = if reached {
+                (
+                    run.zdelta.data[i],
+                    run.fp_travel_angle.data[i],
+                    run.rout_flux_sum.data[i] * cell_area,
+                )
+            } else {
+                (0.0, 0.0, 0.0)
+            };
+            flag(reached, REACHED)
+                | flag(zdelta > 0.0, ZDELTA_POS)
+                | flag(travel > 0.0, TRAVEL_POS)
+                | flag(travel > travel_cut, TRAVEL_CUT)
+                | flag(flux > 0.0, FLUX_POS)
+                | flag(flux > flux_cut, FLUX_CUT)
+                | flag(flux >= floor3, FLUX_FLOOR3)
+        })
+        .collect()
+}
+
+/// Drivers of the classifier from the PRA and the runout of both scenarios, three bytes
+/// per cell ([`pra_bits`], [`runout_bits`]): what the classifier reads of 44 bytes per
+/// cell of PRA and runout layers (#173).
+#[derive(Debug, Clone)]
+pub struct Drivers {
+    /// [`pra_bits`] of the typical scenario.
+    pub pra_frequent: Vec<u8>,
+    /// [`pra_bits`] of the infrequent scenario.
+    pub pra_extreme: Vec<u8>,
+    /// [`runout_bits`] of the typical scenario.
+    pub runout_frequent: Vec<u8>,
+    /// [`runout_bits`] of the infrequent scenario.
+    pub runout_extreme: Vec<u8>,
+}
+
+impl Drivers {
+    /// Drivers of the PRA and runout of both scenarios on a grid of `cell` m.
+    pub fn new(cell: f64, freq: (&Pra, &Runout), ext: (&Pra, &Runout)) -> Self {
+        Self {
+            pra_frequent: pra_bits(freq.0, Scenario::Frequent),
+            pra_extreme: pra_bits(ext.0, Scenario::Extreme),
+            runout_frequent: runout_bits(freq.1, cell, Scenario::Frequent),
+            runout_extreme: runout_bits(ext.1, cell, Scenario::Extreme),
         }
     }
-    /// Aligned travel angle (0 where not reached).
-    fn travel(&self, i: usize) -> f32 {
-        if self.run.reached(i) {
-            self.run.fp_travel_angle.data[i]
-        } else {
-            0.0
-        }
+
+    /// Whether the infrequent runout reaches cell `i`.
+    pub fn reached_extreme(&self, i: usize) -> bool {
+        self.runout_extreme[i] & REACHED != 0
     }
-    /// routFluxSum × cell area, m² (0 where not reached).
-    fn flux_area(&self, i: usize, cell_area: f32) -> f32 {
-        if self.run.reached(i) {
-            self.run.rout_flux_sum.data[i] * cell_area
-        } else {
-            0.0
-        }
+
+    /// Whether the typical runout reaches cell `i`.
+    pub fn reached_frequent(&self, i: usize) -> bool {
+        self.runout_frequent[i] & REACHED != 0
     }
 }
 
@@ -166,43 +281,52 @@ pub struct Ates {
 }
 
 /// dev8 classification. `dem` m, `canopy` % (`NaN` = no data), PRA and runout of the
-/// typical (`freq`) and infrequent (`ext`) scenarios.
+/// typical (`freq`) and infrequent (`ext`) scenarios; every intermediate layer kept.
 pub fn classify(
     dem: &Raster<f32>,
     canopy: &Raster<f32>,
     freq: (&Pra, &Runout),
     ext: (&Pra, &Runout),
 ) -> Ates {
+    let d = Drivers::new(dem.cell, freq, ext);
+    let (valid, raw, coarse, score) = votes(dem, canopy, &d, &ext.0.binary, true);
+    let classes = mmu(&raw, &valid);
+    Ates {
+        valid,
+        raw,
+        classes,
+        coarse_slope: dem.with_data(coarse),
+        class0_score: dem.with_data(score.unwrap_or_default()),
+    }
+}
+
+/// Final dev8 classes 0–4 (255 = invalid) from the [`Drivers`] and the infrequent binary
+/// PRA (before the sieve), as [`classify`] computes them, without keeping its
+/// intermediate layers: what the layer build reads (#173).
+pub fn classes(
+    dem: &Raster<f32>,
+    canopy: &Raster<f32>,
+    d: &Drivers,
+    pra_extreme_binary: &Raster<u8>,
+) -> Raster<u8> {
+    let (valid, raw, coarse, _) = votes(dem, canopy, d, pra_extreme_binary, false);
+    drop(coarse);
+    mmu(&raw, &valid)
+}
+
+/// Classes before the minimum mapping unit: (valid terrain, raw classes, 300 m slope,
+/// class-0 score when `keep_score`).
+#[allow(clippy::type_complexity)]
+fn votes(
+    dem: &Raster<f32>,
+    canopy: &Raster<f32>,
+    d: &Drivers,
+    pra_extreme_binary: &Raster<u8>,
+    keep_score: bool,
+) -> (Vec<bool>, Raster<u8>, Vec<f32>, Option<Vec<f32>>) {
     let (w, h) = (dem.w, dem.h);
     let n = w * h;
     let cell = dem.cell;
-    let cell_area = (cell * cell) as f32;
-    let f = Scenario {
-        pra: freq.0,
-        run: freq.1,
-    };
-    let e = Scenario {
-        pra: ext.0,
-        run: ext.1,
-    };
-
-    // Start-zone sizes (ha), see `pra::component_area_m2`, reduced at once to their
-    // split vote (one byte per cell instead of two Float32 layers alive with the others).
-    let size_vote: Vec<i8> = {
-        let size_e = pra::component_area_m2(&e.pra.release);
-        let size_f = pra::component_area_m2(&f.pra.release);
-        (0..n)
-            .map(|i| {
-                split_vote(
-                    size_e.data[i] / 10000.0,
-                    0.0,
-                    0.0136,
-                    size_f.data[i] / 10000.0,
-                    0.3086,
-                )
-            })
-            .collect()
-    };
 
     // Terrain: GDAL slope without edges, cast to Int16 (truncation) as the driver stack.
     let slope_raw = pra::gdal_slope(dem, false);
@@ -258,21 +382,14 @@ pub fn classify(
     drop(gap_ha);
     // Proximities with the reference's GDAL calls.
     let reach_e = dem.with_data(
-        (0..n)
-            .map(|i| u8::from(e.run.reached(i) && e.travel(i) > 0.0))
+        d.runout_extreme
+            .iter()
+            .map(|b| u8::from(b & REACHED != 0 && b & TRAVEL_POS != 0))
             .collect(),
     );
     let runout_prox = pra::gdal_proximity(&reach_e, ProximityBand::Float32);
     drop(reach_e);
-    let pra_prox = pra::gdal_proximity(&e.pra.binary, ProximityBand::Int16);
-
-    let area_factor = (cell * cell) / (CUT_REF_CELL * CUT_REF_CELL);
-    let flux_cuts = [
-        0.0 * area_factor,
-        10.299 * area_factor,
-        375.18 * area_factor,
-    ];
-    let floor3_flux = (FLOOR3_FLUX_AREA * area_factor) as f32;
+    let pra_prox = pra::gdal_proximity(pra_extreme_binary, ProximityBand::Int16);
 
     let dist_layer = |v: f32| {
         if !v.is_finite() || v < 0.0 || v == -9999.0 {
@@ -281,93 +398,105 @@ pub fn classify(
             v
         }
     };
+    let bit = |b: u8, m: u8| b & m != 0;
+
+    // Class and class-0 score of a valid cell.
+    let cell_class = |i: usize| -> (u8, f32) {
+        let (pf, pe) = (d.pra_frequent[i], d.pra_extreme[i]);
+        let (rf, re) = (d.runout_frequent[i], d.runout_extreme[i]);
+        let (mut num, mut den) = (0.0f64, 0.0f64);
+        // Split votes (see `split_vote`), -1 = no vote.
+        let mut vote = |v: i8| {
+            if v >= 0 {
+                num += f64::from(v);
+                den += 1.0;
+            }
+        };
+        vote(split_vote(
+            bit(pe, PRA_POS),
+            bit(pe, PRA_CUT),
+            bit(pf, PRA_POS),
+            bit(pf, PRA_CUT),
+        ));
+        vote(split_vote(
+            bit(pe, SIZE_POS),
+            bit(pe, SIZE_CUT),
+            bit(pf, SIZE_POS),
+            bit(pf, SIZE_CUT),
+        ));
+        vote(split_vote(
+            bit(re, TRAVEL_POS),
+            bit(re, TRAVEL_CUT),
+            bit(rf, TRAVEL_POS),
+            bit(rf, TRAVEL_CUT),
+        ));
+        vote(split_vote(
+            bit(re, FLUX_POS),
+            bit(re, FLUX_CUT),
+            bit(rf, FLUX_POS),
+            bit(rf, FLUX_CUT),
+        ));
+        num += ord(coarse[i], &COARSE_CUTS);
+        den += 1.0;
+        if gap_vote[i] != NO_GAP_VOTE {
+            num += GAP_WEIGHT * f64::from(gap_vote[i]);
+            den += GAP_WEIGHT;
+        }
+        let tier = if den > 0.0 { num / den.max(1e-9) } else { 0.0 };
+        let mut class = tier.round_ties_even().clamp(0.0, 4.0) as u8;
+        // Floors.
+        let mut floor = 0u8;
+        if bit(re, ZDELTA_POS) {
+            floor = floor.max(1);
+        }
+        if bit(rf, ZDELTA_POS) {
+            floor = floor.max(2);
+        }
+        if bit(rf, FLUX_FLOOR3) {
+            floor = floor.max(3);
+        }
+        if slope[i] > FLOOR4_SLOPE && canopy_pct[i] <= FLOOR4_CANOPY {
+            floor = floor.max(4);
+        }
+        class = class.max(floor);
+        if coarse[i] >= 40.0 && class < 3 {
+            class = 3;
+        }
+        if coarse[i] >= 45.0 && class < 4 {
+            class = 4;
+        }
+        // Class-0 score (Float32 as NumPy), applied last.
+        let f1 = ((14.0f32 - coarse[i]) / 14.0).clamp(0.0, 1.0);
+        let f2 = ((20.0f32 - slope[i]) / 20.0).clamp(0.0, 1.0);
+        let f3 = (canopy_pct[i] / 60.0).clamp(0.0, 1.0);
+        let f4 = (dist_layer(runout_prox.data[i]) / 200.0).clamp(0.0, 1.0);
+        let f5 = (dist_layer(pra_prox.data[i]) / 500.0).clamp(0.0, 1.0);
+        let score = ((((f1 + f2) + f3) + f4) + f5) / 5.0;
+        if score >= CLASS0_T {
+            class = 0;
+        }
+        (class, score)
+    };
 
     let mut raw = vec![255u8; n];
-    let mut score_out = vec![f32::NAN; n];
-    raw.par_iter_mut()
-        .zip(score_out.par_iter_mut())
-        .enumerate()
-        .for_each(|(i, (out, sc))| {
-            if !valid[i] {
-                return;
-            }
-            let (mut num, mut den) = (0.0f64, 0.0f64);
-            // Split votes (see `split_vote`), -1 = no vote.
-            let mut vote = |v: i8| {
-                if v >= 0 {
-                    num += f64::from(v);
-                    den += 1.0;
-                }
-            };
-            vote(split_vote(
-                e.pra.continuous.data[i],
-                0.0,
-                0.0087,
-                f.pra.continuous.data[i],
-                0.1613,
-            ));
-            vote(size_vote[i]);
-            vote(split_vote(e.travel(i), 0.0, 24.005, f.travel(i), 34.270));
-            vote(split_vote(
-                e.flux_area(i, cell_area),
-                flux_cuts[0] as f32,
-                flux_cuts[1] as f32,
-                f.flux_area(i, cell_area),
-                flux_cuts[2] as f32,
-            ));
-            num += ord(coarse[i], &COARSE_CUTS);
-            den += 1.0;
-            if gap_vote[i] != NO_GAP_VOTE {
-                num += GAP_WEIGHT * f64::from(gap_vote[i]);
-                den += GAP_WEIGHT;
-            }
-            let tier = if den > 0.0 { num / den.max(1e-9) } else { 0.0 };
-            let mut class = tier.round_ties_even().clamp(0.0, 4.0) as u8;
-            // Floors.
-            let mut floor = 0u8;
-            if e.zdelta(i) > 0.0 {
-                floor = floor.max(1);
-            }
-            if f.zdelta(i) > 0.0 {
-                floor = floor.max(2);
-            }
-            if f.flux_area(i, cell_area) >= floor3_flux {
-                floor = floor.max(3);
-            }
-            if slope[i] > FLOOR4_SLOPE && canopy_pct[i] <= FLOOR4_CANOPY {
-                floor = floor.max(4);
-            }
-            class = class.max(floor);
-            if coarse[i] >= 40.0 && class < 3 {
-                class = 3;
-            }
-            if coarse[i] >= 45.0 && class < 4 {
-                class = 4;
-            }
-            // Class-0 score (Float32 as NumPy), applied last.
-            let f1 = ((14.0f32 - coarse[i]) / 14.0).clamp(0.0, 1.0);
-            let f2 = ((20.0f32 - slope[i]) / 20.0).clamp(0.0, 1.0);
-            let f3 = (canopy_pct[i] / 60.0).clamp(0.0, 1.0);
-            let f4 = (dist_layer(runout_prox.data[i]) / 200.0).clamp(0.0, 1.0);
-            let f5 = (dist_layer(pra_prox.data[i]) / 500.0).clamp(0.0, 1.0);
-            let score = ((((f1 + f2) + f3) + f4) + f5) / 5.0;
-            *sc = score;
-            if score >= CLASS0_T {
-                class = 0;
-            }
-            *out = class;
-        });
-    drop((slope, canopy_pct, gap_vote, size_vote));
+    let score = if keep_score {
+        let mut score_out = vec![f32::NAN; n];
+        raw.par_iter_mut()
+            .zip(score_out.par_iter_mut())
+            .enumerate()
+            .filter(|(i, _)| valid[*i])
+            .for_each(|(i, (out, sc))| (*out, *sc) = cell_class(i));
+        Some(score_out)
+    } else {
+        raw.par_iter_mut()
+            .enumerate()
+            .filter(|(i, _)| valid[*i])
+            .for_each(|(i, out)| *out = cell_class(i).0);
+        None
+    };
+    drop((slope, canopy_pct, gap_vote));
     drop((runout_prox, pra_prox));
-    let raw = dem.with_data(raw);
-    let classes = mmu(&raw, &valid);
-    Ates {
-        valid,
-        raw,
-        classes,
-        coarse_slope: dem.with_data(coarse),
-        class0_score: dem.with_data(score_out),
-    }
+    (valid, dem.with_data(raw), coarse, score)
 }
 
 /// Minimum mapping unit (`_remove_small_polygons`): 8-connected patches of a class

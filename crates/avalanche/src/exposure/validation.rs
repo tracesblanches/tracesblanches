@@ -9,7 +9,7 @@ use serde::Serialize;
 
 use super::raster::Raster;
 use super::segments::{self, Run};
-use super::{Model, class};
+use super::{LayerModel, class};
 use crate::error::Result;
 use crate::historic::pistes::PisteLine;
 use crate::historic::{
@@ -184,7 +184,7 @@ pub fn fuse_clpa(exposure: &mut Raster<u8>, inside: &[bool]) -> u64 {
 /// (vertex mean in the commune, the rule of `historic` and report 07), `all` every line
 /// of the pistes layer.
 pub fn validate(
-    model: &Model,
+    model: &LayerModel,
     exposure: &Raster<u8>,
     clpa: &[Poly],
     inside: &[bool],
@@ -209,12 +209,12 @@ pub fn validate(
             }
         }
         n += 1;
-        let a = model.ates.classes.data[i];
+        let a = model.ates_classes.data[i];
         if a < 5 {
             ates[a as usize] += 1;
         }
-        re += u64::from(model.runout_extreme.reached(i));
-        rf += u64::from(model.runout_frequent.reached(i));
+        re += u64::from(model.reached_extreme[i]);
+        rf += u64::from(model.reached_frequent[i]);
     }
     let share = |x: u64| if n == 0 { 0.0 } else { x as f64 / n as f64 };
     let cell_area = exposure.cell * exposure.cell;

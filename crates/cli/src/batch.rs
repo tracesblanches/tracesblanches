@@ -81,15 +81,116 @@ pub fn remove_orphan_tmp(dir: &Path) -> usize {
     n
 }
 
-/// Box area from which a site is built alone among the big ones (9 sites of the registry
-/// on 15/11/2026: the GTJ and Vercors traverse sections, Haute-Joux, Les Fourgs…).
-pub const HEAVY_SITE_KM2: f64 = 300.0;
+/// Estimated peak memory of a site build per cell of its 5 m grid, bytes: the heaviest
+/// step per cell, the avalanche exposure layer (`LAYER_PEAK_BYTES_PER_CELL`, steep-grid
+/// bound). Measured alone with 3 threads on 18/11/2026 (#173), a 27.8-million-cell Jura
+/// traverse / a 7.7-million-cell Vercors domain: exposure 49 / 85 B per cell, build-pack
+/// 38 / 47, offpiste-prepare 29 / 30, terrain 14 / 15, snow 10 / 11, export 7 / 11.
+pub const SITE_BYTES_PER_CELL: f64 = skimap_avalanche::exposure::LAYER_PEAK_BYTES_PER_CELL;
 
-/// Area of the box of a site, km².
-pub fn site_area_km2(site: &Site) -> f64 {
-    let b = site.bbox;
-    let lat = ((b.north + b.south) / 2.0).to_radians();
-    (b.north - b.south) * 111.2 * (b.east - b.west) * 111.2 * lat.cos()
+/// Least estimate of a site build, bytes: the coverage step peaks near 300 MiB whatever
+/// the size of the site (ARCEP layers, 270 to 299 MiB measured).
+pub const SITE_MIN_BYTES: u64 = 320 << 20;
+
+/// Memory limit when neither the configuration (`SKIMAP_BUILD_MEMORY_MIB`) nor the cgroup
+/// of the container (`/sys/fs/cgroup/memory.max`) gives one: the limit of the pipeline
+/// pod.
+pub const DEFAULT_MEMORY_LIMIT: u64 = 4 << 30;
+
+/// Share of the memory limit kept out of the plan: the France inputs shared by the
+/// sites (planet extract, census, SRN areas), the allocator and the estimate error.
+pub const MEMORY_MARGIN: f64 = 0.25;
+
+/// Cells of the 5 m terrain grid of a site (its box in Lambert-93, snapped outward);
+/// `None` when the box cannot be projected.
+pub fn grid_cells(site: &Site) -> Option<u64> {
+    let e = skimap_terrain::Extent::from_bbox(site.bbox).ok()?;
+    let c = skimap_terrain::dem::CELL;
+    let w = ((e.max_x - e.min_x) / c).ceil() + 1.0;
+    let h = ((e.max_y - e.min_y) / c).ceil() + 1.0;
+    Some((w * h) as u64)
+}
+
+/// Estimated peak memory of the build of a site, bytes ([`SITE_BYTES_PER_CELL`] per cell
+/// of its grid, at least [`SITE_MIN_BYTES`]).
+pub fn site_memory(site: &Site) -> u64 {
+    let cells = grid_cells(site).unwrap_or(0);
+    ((cells as f64 * SITE_BYTES_PER_CELL) as u64).max(SITE_MIN_BYTES)
+}
+
+/// Limit of `/sys/fs/cgroup/memory.max` (cgroup v2), bytes; `None` for `max` or garbage.
+pub fn parse_cgroup_memory_max(text: &str) -> Option<u64> {
+    text.trim().parse().ok().filter(|n| *n > 0)
+}
+
+/// Memory limit of the batch, bytes, and where it comes from: the configuration, else
+/// the cgroup of the container, else [`DEFAULT_MEMORY_LIMIT`].
+pub fn memory_limit(configured_mib: Option<u64>) -> (u64, &'static str) {
+    if let Some(m) = configured_mib {
+        return (m << 20, "SKIMAP_BUILD_MEMORY_MIB");
+    }
+    match std::fs::read_to_string("/sys/fs/cgroup/memory.max")
+        .ok()
+        .as_deref()
+        .and_then(parse_cgroup_memory_max)
+    {
+        Some(b) => (b, "cgroup"),
+        None => (DEFAULT_MEMORY_LIMIT, "défaut"),
+    }
+}
+
+/// Memory the sites built together may add up to under `limit` ([`MEMORY_MARGIN`]).
+pub fn memory_budget(limit: u64) -> u64 {
+    (limit as f64 * (1.0 - MEMORY_MARGIN)) as u64
+}
+
+/// Next site to start (#173): the first of `waiting` (estimated peaks, queue order)
+/// that fits in `budget` beside the running sites (`running`: sum of their estimates);
+/// a site alone above the budget starts only when no site runs. `None`: wait for a site
+/// to end.
+pub fn next_fitting(
+    waiting: &[u64],
+    running: u64,
+    running_count: usize,
+    budget: u64,
+) -> Option<usize> {
+    if running_count == 0 {
+        return (!waiting.is_empty()).then_some(0);
+    }
+    waiting
+        .iter()
+        .position(|e| running.saturating_add(*e) <= budget)
+}
+
+/// Sites waiting and running in a batch, by estimated memory.
+struct Plan<T> {
+    waiting: Vec<(T, u64)>,
+    running: u64,
+    running_count: usize,
+    /// Largest sum of the estimates of the sites running together.
+    max_running: u64,
+    /// Memory the running sites may add up to ([`memory_budget`]).
+    budget: u64,
+}
+
+/// Takes the next site that fits ([`next_fitting`]), waiting for running sites to end
+/// when none does; `None` when no site is left.
+fn plan_next<T>(plan: &Mutex<Plan<T>>, ended: &std::sync::Condvar) -> Option<(T, u64)> {
+    let mut p = plan.lock().unwrap_or_else(|p| p.into_inner());
+    loop {
+        if p.waiting.is_empty() {
+            return None;
+        }
+        let est: Vec<u64> = p.waiting.iter().map(|w| w.1).collect();
+        if let Some(i) = next_fitting(&est, p.running, p.running_count, p.budget) {
+            let (t, m) = p.waiting.remove(i);
+            p.running += m;
+            p.running_count += 1;
+            p.max_running = p.max_running.max(p.running);
+            return Some((t, m));
+        }
+        p = ended.wait(p).unwrap_or_else(|p| p.into_inner());
+    }
 }
 
 /// Lock file of a site build, in its output directory.
@@ -596,12 +697,39 @@ pub fn build_many_with(
             resume: None,
             journal: None,
         };
-        let queue = Mutex::new(todo);
+        // Sites started by memory (#173): never two sites whose estimated peaks add up
+        // beyond the budget; a site above it alone.
+        let (limit, limit_source) = memory_limit(ctx.cfg.build_memory_mib);
+        let budget = memory_budget(limit);
+        println!(
+            "mémoire : limite {:.0} Mio ({limit_source}), {:.0} Mio planifiables",
+            limit as f64 / 1048576.0,
+            budget as f64 / 1048576.0
+        );
+        let waiting: Vec<_> = todo
+            .into_iter()
+            .map(|t| {
+                let m = site_memory(t.0);
+                if m > budget {
+                    println!(
+                        "{:<34} pic estimé {:.0} Mio au-dessus de la limite planifiable : construit seul",
+                        t.0.id,
+                        m as f64 / 1048576.0
+                    );
+                }
+                (t, m)
+            })
+            .collect();
+        let plan = Mutex::new(Plan {
+            waiting,
+            running: 0,
+            running_count: 0,
+            max_running: 0,
+            budget,
+        });
+        let ended = std::sync::Condvar::new();
         let done = Mutex::new(Vec::new());
         let counter = Mutex::new(0usize);
-        // Big sites one at a time: a GTJ section alone peaks at 5.6 GB (G2), several at
-        // once with the other sites would exhaust the memory of the machine.
-        let heavy = Mutex::new(());
         // A site whose build killed the process runs alone: if it kills it again, no
         // other site is blamed with it (#172).
         let solo = std::sync::RwLock::new(());
@@ -613,9 +741,7 @@ pub fn build_many_with(
                         if deadline.is_some_and(|d| Instant::now() >= d) {
                             break;
                         }
-                        let Some((site, inp, suspect, fp)) =
-                            queue.lock().expect("queue").pop_front()
-                        else {
+                        let Some(((site, inp, suspect, fp), mem)) = plan_next(&plan, &ended) else {
                             break;
                         };
                         let (_solo_w, _solo_r) = if suspect {
@@ -623,8 +749,6 @@ pub fn build_many_with(
                         } else {
                             (None, Some(solo.read().unwrap_or_else(|p| p.into_inner())))
                         };
-                        let _heavy = (site_area_km2(site) >= HEAVY_SITE_KM2)
-                            .then(|| heavy.lock().unwrap_or_else(|p| p.into_inner()));
                         let dir = ctx.layout.out_dir(site);
                         if let Err(e) = begin_attempt(&dir, &fp) {
                             tracing::warn!(site = site.id, error = %e, "attempt not noted");
@@ -681,10 +805,23 @@ pub fn build_many_with(
                         done.lock()
                             .expect("done")
                             .push((site.id.to_owned(), r, publish_failures));
+                        drop((_solo_w, _solo_r));
+                        {
+                            let mut p = plan.lock().unwrap_or_else(|p| p.into_inner());
+                            p.running -= mem;
+                            p.running_count -= 1;
+                        }
+                        ended.notify_all();
                     }
                 });
             }
         });
+        let plan = plan.into_inner().unwrap_or_else(|p| p.into_inner());
+        println!(
+            "mémoire : somme maximale des pics estimés des sites construits ensemble {:.0} Mio sur {:.0}",
+            plan.max_running as f64 / 1048576.0,
+            plan.budget as f64 / 1048576.0
+        );
         for (id, r, p) in done.into_inner().expect("done") {
             if let Some(p) = p {
                 if p.is_empty() {
@@ -1463,6 +1600,171 @@ mod tests {
         drop(f);
         assert_eq!(std::fs::read(&path).unwrap(), b"new build");
         assert_eq!(std::fs::read(&other).unwrap(), b"previous build");
+    }
+
+    #[test]
+    fn sites_are_started_by_memory() {
+        // Budget 10: a running site of 6 leaves room for 4.
+        assert_eq!(next_fitting(&[], 0, 0, 10), None);
+        assert_eq!(next_fitting(&[7, 3], 0, 0, 10), Some(0));
+        assert_eq!(next_fitting(&[7, 3], 6, 1, 10), Some(1));
+        assert_eq!(next_fitting(&[7, 5], 6, 1, 10), None);
+        assert_eq!(next_fitting(&[4], 6, 1, 10), Some(0));
+        // A site above the budget waits for no site to run, then runs alone.
+        assert_eq!(next_fitting(&[12, 1], 0, 0, 10), Some(0));
+        assert_eq!(next_fitting(&[12], 1, 1, 10), None);
+        assert_eq!(next_fitting(&[u64::MAX], 1, 1, 10), None);
+
+        // Two workers over a queue: the sum of the running estimates never exceeds the
+        // budget unless one site runs alone, and every site is built once.
+        let sizes = [9u64, 2, 8, 3, 12, 1, 5, 5, 7, 2];
+        let plan = Mutex::new(Plan {
+            waiting: sizes.iter().enumerate().map(|(i, m)| (i, *m)).collect(),
+            running: 0,
+            running_count: 0,
+            max_running: 0,
+            budget: 10,
+        });
+        let ended = std::sync::Condvar::new();
+        let seen = Mutex::new(Vec::new());
+        let over = std::sync::atomic::AtomicBool::new(false);
+        std::thread::scope(|scope| {
+            for _ in 0..2 {
+                scope.spawn(|| {
+                    while let Some((i, m)) = plan_next(&plan, &ended) {
+                        {
+                            let p = plan.lock().unwrap();
+                            if p.running > p.budget && p.running_count > 1 {
+                                over.store(true, std::sync::atomic::Ordering::SeqCst);
+                            }
+                        }
+                        std::thread::sleep(Duration::from_millis(2 * m));
+                        seen.lock().unwrap().push(i);
+                        let mut p = plan.lock().unwrap();
+                        p.running -= m;
+                        p.running_count -= 1;
+                        drop(p);
+                        ended.notify_all();
+                    }
+                });
+            }
+        });
+        assert!(!over.load(std::sync::atomic::Ordering::SeqCst));
+        let mut seen = seen.into_inner().unwrap();
+        seen.sort_unstable();
+        assert_eq!(seen, (0..sizes.len()).collect::<Vec<_>>());
+        let p = plan.into_inner().unwrap();
+        assert_eq!((p.running, p.running_count), (0, 0));
+        // The largest site ran alone; nothing else went above the budget.
+        assert_eq!(p.max_running, 12);
+
+        assert_eq!(parse_cgroup_memory_max("4294967296\n"), Some(4 << 30));
+        assert_eq!(parse_cgroup_memory_max("max\n"), None);
+        assert_eq!(
+            memory_limit(Some(2048)),
+            (2 << 30, "SKIMAP_BUILD_MEMORY_MIB")
+        );
+        assert_eq!(memory_budget(4 << 30), 3 << 30);
+        // The 5 m grid of the box, as the terrain step crops it (3317 × 3480 cells for
+        // this evaluation site).
+        let site = skimap_common::site::site("cervieres").expect("evaluation site");
+        let cells = grid_cells(site).unwrap() as f64;
+        assert!((cells / (3317.0 * 3480.0) - 1.0).abs() < 0.01, "{cells}");
+        assert_eq!(site_memory(site), (cells * SITE_BYTES_PER_CELL) as u64);
+    }
+
+    /// Simulated pass over the sites of the registry of `SKIMAP_DATA_DIR`, in the order of
+    /// `build-all --all`, 2 jobs, 4 GiB: the former rule (sites of 300 km² or more one at a
+    /// time) against the memory plan. Site durations: a + b × cells fitted on the
+    /// `build-all.json` of the sites built in the data directory.
+    /// `cargo test -p skimap-cli --bin skimap simulated_pass -- --ignored --nocapture`
+    #[test]
+    #[ignore = "reads the registry of SKIMAP_DATA_DIR"]
+    fn simulated_pass() {
+        let cfg = skimap_common::config::Config::from_env().unwrap();
+        let layout = cfg.layout();
+        let registry = Registry::load(&layout).unwrap();
+        let sites = registry.buildable();
+        let cells: Vec<f64> = sites
+            .iter()
+            .map(|s| grid_cells(s).unwrap() as f64)
+            .collect();
+        let pts: Vec<(f64, f64)> = sites
+            .iter()
+            .zip(&cells)
+            .filter_map(|(s, c)| Some((*c, france::read_record(&layout, s.id)?.outcome.seconds)))
+            .collect();
+        let n = pts.len() as f64;
+        let (mx, my) = (
+            pts.iter().map(|p| p.0).sum::<f64>() / n,
+            pts.iter().map(|p| p.1).sum::<f64>() / n,
+        );
+        let b = pts.iter().map(|p| (p.0 - mx) * (p.1 - my)).sum::<f64>()
+            / pts.iter().map(|p| (p.0 - mx).powi(2)).sum::<f64>();
+        let a = my - b * mx;
+        let secs: Vec<f64> = cells.iter().map(|c| (a + b * c).max(1.0)).collect();
+        let mem: Vec<u64> = sites.iter().map(|s| site_memory(s)).collect();
+        let budget = memory_budget(DEFAULT_MEMORY_LIMIT);
+        let area = |s: &Site| {
+            let b = s.bbox;
+            let lat = ((b.north + b.south) / 2.0).to_radians();
+            (b.north - b.south) * 111.2 * (b.east - b.west) * 111.2 * lat.cos()
+        };
+        let heavy: Vec<bool> = sites.iter().map(|s| area(s) >= 300.0).collect();
+        // Event simulation: 2 workers; `pick` gives the next site among the waiting ones
+        // and the running ones, or None (wait for the next end).
+        type Pick<'a> = &'a dyn Fn(&[usize], &[usize]) -> Option<usize>;
+        let simulate = |pick: Pick<'_>| {
+            let mut waiting: Vec<usize> = (0..sites.len()).collect();
+            let mut running: Vec<(f64, usize)> = Vec::new();
+            let (mut now, mut max_sum, mut max_peak_sum) = (0.0f64, 0u64, 0u64);
+            while !waiting.is_empty() || !running.is_empty() {
+                while running.len() < 2 && !waiting.is_empty() {
+                    let ids: Vec<usize> = running.iter().map(|r| r.1).collect();
+                    let Some(k) = pick(&waiting, &ids) else { break };
+                    let i = waiting.remove(k);
+                    running.push((now + secs[i], i));
+                    let sum: u64 = running.iter().map(|r| mem[r.1]).sum();
+                    max_sum = max_sum.max(sum);
+                    if running.len() > 1 {
+                        max_peak_sum = max_peak_sum.max(sum);
+                    }
+                }
+                running.sort_by(|x, y| x.0.total_cmp(&y.0));
+                let (t, _) = running.remove(0);
+                now = t;
+            }
+            (now, max_sum, max_peak_sum)
+        };
+        // Former rule: the head of the queue, held while another big site runs.
+        let old = simulate(&|w, r| (!(heavy[w[0]] && r.iter().any(|i| heavy[*i]))).then_some(0));
+        let new = simulate(&|w, r| {
+            let est: Vec<u64> = w.iter().map(|i| mem[*i]).collect();
+            next_fitting(&est, r.iter().map(|i| mem[*i]).sum(), r.len(), budget)
+        });
+        let gib = |b: u64| b as f64 / (1u64 << 30) as f64;
+        println!(
+            "{} sites, durée = {a:.1} s + {:.2} s par million de cellules ({} sites mesurés)",
+            sites.len(),
+            b * 1e6,
+            pts.len()
+        );
+        println!(
+            "au-dessus de {:.2} Gio planifiables : {}",
+            gib(budget),
+            mem.iter().filter(|m| **m > budget).count()
+        );
+        for (name, (t, max_sum, pair)) in [("ancienne règle (300 km²)", old), ("plan mémoire", new)]
+        {
+            println!(
+                "{name:<26} {:.0} s ; somme estimée maximale {:.2} Gio (sites ensemble : {:.2} Gio)",
+                t,
+                gib(max_sum),
+                gib(pair)
+            );
+        }
+        println!("écart de durée : {:+.1} %", (new.0 / old.0 - 1.0) * 100.0);
+        assert!(new.2 <= budget);
     }
 
     #[test]

@@ -54,6 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
     for (name, ext) in variants {
         let m = exposure::model_with(&inputs, &flowpy::FREQUENT, &ext);
+        let layer = m.layer();
         let reached: Vec<bool> = (0..m.exposure.data.len())
             .map(|i| m.runout_extreme.reached(i))
             .collect();
@@ -76,7 +77,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             match &clpa {
                 Some(p) => {
                     let inside = validation::rasterize(&ex, &p.iter().collect::<Vec<_>>());
-                    let v = validation::validate(&m, &ex, p, &inside, &nordic, &all)?;
+                    let v = validation::validate(&layer, &ex, p, &inside, &nordic, &all)?;
                     println!(
                         "{name:<24} marge {margin:>4} m | CLPA peu exposé {:.4} (recall {:.4}), atteint rare {:.4} | pistes CLPA peu exposé {:.3} / {:.3} km | réseau nordique peu exposé {:.2} km | cellules peu exposé {low_cells} | runout {:.1} s",
                         v.area.low,
