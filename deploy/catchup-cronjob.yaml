@@ -1,7 +1,9 @@
 # Automatic catch-up (#118, #139): every 6 hours, `skimap-job catchup` runs
 # `skimap meteo-refresh` (AROME weather of every site at the latest run, X17: the 06:40
 # run takes the 03 UTC run of the morning; idempotent), then
-# `skimap build-all --all --stale` on the volume, then publishes every site pack
+# `skimap build-all --all --stale` on the volume, publishing each site as soon as it is
+# built (`--publish-with "skimap-server publish"`, #172: a pass killed later, OOMKilled
+# or past its deadline, keeps the sites already published), then publishes every site pack
 # (`skimap-server publish --all-in`: an unchanged pack is not republished, a changed one
 # goes out as a delta bundle). To append to the pipeline manifest of the infrastructure repository once
 # the pipeline image contains `build-all --stale` (same image, volume and security context
@@ -10,8 +12,11 @@
 # What it redoes, source by source and site by site: only the steps that failed (source
 # down: the previous outputs stay published with their date), whose outputs no longer
 # match their fingerprint (altered, removed, half written: `--stale`), or older than
-# `--max-age-hours` (a week here: the daily layers have their own CronJobs), and the steps
-# that depend on them; the rest is taken over (`build-all.json`, one journal per site).
+# `--max-age-hours` (a week here: the daily layers have their own CronJobs) among the
+# steps reading an external source without local fingerprint (`build::ages`: OSM,
+# terrain, refuges, zones, coverage, pack; never the exposure to avalanches, the
+# off-piste rasters, the routing graph or the export, redone only when their inputs
+# change, #172), and the steps that depend on them; the rest is taken over (`build-all.json`, one journal per site).
 # A new AROME run changes the weather of every site: the pack of each is rebuilt, but
 # only its weather-dependent part is made again (#164): the slope, avalanche exposure and
 # snow polygons, the OSM and Plan IGN basemaps and the export overlays are taken from the
@@ -20,6 +25,12 @@
 # (snow, BERA, refuges) are recorded in `build-all.json`, so this run does not redo them.
 # Downloads go through the shared cache (ETag / If-Modified-Since): a run with nothing to
 # catch up sends no request to the sources and publishes nothing. Idempotent.
+#
+# A site whose build kills the process (memory): `build-all.attempt.json` is written
+# before it starts and removed when it ends; the next pass counts an attempt left behind,
+# builds that site last and alone, and after 2 killed attempts sets it aside
+# (status.json: state `set_aside`, `killed_attempts`, an alert), retried when its inputs
+# change or 24 h later; the Job then ends non-zero after publishing the others (#172).
 #
 # A source that is still down fails its step again (retries with backoff in the
 # downloader; the run goes on with the other steps and sites) and the Job ends non-zero;

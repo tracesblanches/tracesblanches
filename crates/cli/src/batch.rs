@@ -582,10 +582,11 @@ pub fn build_many_with(
     todo.extend(suspects);
     let n = todo.len();
     println!(
-        "build-all : {} sites, {} à construire, {} à jour ; {} en parallèle",
+        "build-all : {} sites, {} à construire, {} à jour, {} mis de côté ; {} en parallèle",
         sites.len(),
         n,
-        sites.len() - n,
+        results.iter().filter(|r| r.result == "up_to_date").count(),
+        results.iter().filter(|r| r.result == "set_aside").count(),
         opts.jobs
     );
     let mut built: Vec<(String, BuildOutcome)> = Vec::new();

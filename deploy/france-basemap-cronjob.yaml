@@ -1,0 +1,71 @@
+# France basemap (X20, #172): weekly, `skimap-job france-basemap` runs
+# `skimap france-basemap` (Protomaps build of France, zooms 0 to 6, and the glyphs of its
+# labels, into data/out/france-basemap; kept while the build in use is recent, nothing
+# rewritten) then `skimap-server publish-france data/out/france-basemap` (only the files
+# that changed are written; `GET /v1/basemap/france.json`). To append to the pipeline manifest of the
+# infrastructure repository once the pipeline image contains `skimap france-basemap`
+# (same image, volume and security context as the other pipeline CronJobs). It waits on
+# the pipeline lock like the other tasks.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: skimap-france-basemap
+  namespace: skimap
+  labels:
+    app.kubernetes.io/name: skimap-pipeline
+    app.kubernetes.io/part-of: skimap
+spec:
+  schedule: "10 4 * * 2"          # Tuesday 04:10, between two catch-up runs
+  timeZone: Europe/Paris
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      # The next week's run (or a manual Job from this CronJob) tries again.
+      backoffLimit: 0
+      activeDeadlineSeconds: 7200
+      ttlSecondsAfterFinished: 259200
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: skimap-pipeline
+            app.kubernetes.io/part-of: skimap
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: pipeline
+              image: skimap-pipeline
+              imagePullPolicy: IfNotPresent
+              args: ["france-basemap"]
+              env:
+                - { name: SKIMAP_DATA_DIR, value: /data/pipeline }
+                - { name: SKIMAP_STORE, value: /data/store }
+                - { name: TMPDIR, value: /tmp }
+                - { name: RUST_LOG, value: warn }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: ["ALL"] }
+              volumeMounts:
+                - { name: data, subPath: pipeline, mountPath: /data/pipeline }
+                - { name: data, subPath: store, mountPath: /data/store }
+                - { name: tmp, mountPath: /tmp }
+              resources:
+                requests: { cpu: 250m, memory: 512Mi }
+                limits: { cpu: "2", memory: 2Gi }
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: data
+            - name: tmp
+              emptyDir:
+                sizeLimit: 2Gi
