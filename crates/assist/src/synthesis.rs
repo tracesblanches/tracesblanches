@@ -312,9 +312,10 @@ fn rules_sentence(
                     if matches!(r.topic, Topic::Bivouac | Topic::Fire) && general {
                         continue;
                     }
-                    if verdict_words(r.topic, r.verdict, r.stoves == Some(true)).is_none() {
+                    let Some(verdict) = verdict_words(r.topic, r.verdict, r.stoves == Some(true))
+                    else {
                         continue;
-                    }
+                    };
                     let names: Vec<String> = r
                         .zones
                         .iter()
@@ -337,8 +338,7 @@ fn rules_sentence(
                         None => found.push(ActiveRule {
                             rule: r.rule.clone(),
                             topic: r.topic,
-                            verdict: verdict_words(r.topic, r.verdict, r.stoves == Some(true))
-                                .expect("checked"),
+                            verdict,
                             kind: r.verdict,
                             protected: kinds
                                 .iter()
@@ -612,6 +612,27 @@ mod tests {
         // Another date: the bulletin does not apply.
         let s = synthesise(&d, NaiveDate::from_ymd_opt(2023, 4, 16).unwrap());
         assert!(s.sentences[0].contains("pas chargé"), "{}", s.sentences[0]);
+    }
+
+    #[test]
+    fn zone_rules_of_the_voice() {
+        use Topic::*;
+        use Verdict::*;
+        assert_eq!(zone_rule(Access, Forbidden), Some(ZoneRule::NoEntry));
+        assert_eq!(zone_rule(Access, AvoidRecommended), Some(ZoneRule::Quiet));
+        assert_eq!(zone_rule(Access, ForbiddenInPlaces), None);
+        assert_eq!(
+            zone_rule(LeaveRoutes, Forbidden),
+            Some(ZoneRule::StayOnRoutes)
+        );
+        assert_eq!(
+            zone_rule(LeaveRoutes, ForbiddenInPlaces),
+            Some(ZoneRule::StayOnRoutes)
+        );
+        assert_eq!(zone_rule(LeaveRoutes, AvoidRecommended), None);
+        assert_eq!(zone_rule(Bivouac, Forbidden), Some(ZoneRule::NoBivouac));
+        assert_eq!(zone_rule(Fire, Forbidden), Some(ZoneRule::NoFire));
+        assert_eq!(zone_rule(Fire, AvoidRecommended), None);
     }
 
     #[test]

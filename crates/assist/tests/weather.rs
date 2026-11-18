@@ -1296,6 +1296,403 @@ fn a7_route_through_avalanche_paths_and_without_network() {
     assert_eq!(t.facts.clpa_km, None);
 }
 
+/// The longest piste of the first domain of a set.
+fn longest_piste(d: &SiteData) -> Vec<LonLat> {
+    d.pistes
+        .iter()
+        .filter(|p| d.domains[0].ways.contains(&p.way_id))
+        .max_by(|a, b| {
+            skimap_assist::layers::line_length_m(&a.line)
+                .total_cmp(&skimap_assist::layers::line_length_m(&b.line))
+        })
+        .unwrap()
+        .line
+        .clone()
+}
+
+/// Bounding box of a line, widened by 1e-4°: (west, south, east, north).
+fn bounds(line: &[LonLat]) -> (f64, f64, f64, f64) {
+    let w = line.iter().map(|p| p.lon).fold(f64::INFINITY, f64::min) - 1e-4;
+    let e = line.iter().map(|p| p.lon).fold(f64::NEG_INFINITY, f64::max) + 1e-4;
+    let s = line.iter().map(|p| p.lat).fold(f64::INFINITY, f64::min) - 1e-4;
+    let n = line.iter().map(|p| p.lat).fold(f64::NEG_INFINITY, f64::max) + 1e-4;
+    (w, s, e, n)
+}
+
+#[test]
+fn a7_route_entirely_in_an_avalanche_path() {
+    use skimap_assist::layers::{Areas, Clpa, Route};
+    let mut d = data("vent-fort");
+    let date = set("vent-fort").date();
+    let line = longest_piste(&d);
+    let (w, s, e, n) = bounds(&line);
+    d.clpa = Some(Clpa {
+        covered: true,
+        areas: Areas {
+            areas: vec![
+                Area::new("CLPA 7", rect(w, s, e, n).shape),
+                Area::new("CLPA 8", rect(w, s, e, n).shape),
+            ],
+        },
+        piste_km: Default::default(),
+    });
+    d.route = Some(Route {
+        name: "test".into(),
+        line: line.clone(),
+    });
+    let t = synthesis::synthesise(&d, date);
+    // The whole route, to the 10 m of the rounding, in the first path met.
+    let len = skimap_assist::layers::line_length_m(&line) / 1000.0;
+    let km = t.facts.clpa_km.unwrap();
+    assert!(len > 0.5, "{len}");
+    assert!((km - len).abs() <= 0.005 + 1e-9, "{km} {len}");
+    assert_eq!(km, (km * 100.0).round() / 100.0);
+    assert_eq!(t.facts.clpa_paths, 1);
+}
+
+#[test]
+fn a7_bulletin_without_level_or_aspects() {
+    let name = "froid-sec";
+    let date = set(name).date();
+    // A bulletin flagged as read but without its content: not readable offline, never a
+    // level made up.
+    let d = data_with(
+        name,
+        Some(60.0),
+        Some(bera_status(date, BeraStatus::Bulletin)),
+    );
+    let s = synthesis::synthesise(&d, date);
+    assert_eq!(
+        s.sentences[0],
+        "Le BERA Queyras de ce jour n'est pas disponible hors ligne : consultez-le avant de \
+         partir, le risque d'avalanche n'est jamais nul en montagne."
+    );
+    assert_eq!(s.facts.bera_level, None);
+    // No aspect given, or all eight: no list of aspects.
+    let mut b = bera(date, 2, false);
+    b.bulletin.as_mut().unwrap().aspects = BeraAspects::default();
+    let s = synthesis::synthesise(&data_with(name, Some(60.0), Some(b.clone())), date);
+    assert_eq!(
+        s.sentences[0],
+        "Risque d'avalanche deux sur cinq, limité : lisez le bulletin complet avant de partir."
+    );
+    b.bulletin.as_mut().unwrap().aspects = BeraAspects {
+        n: true,
+        ne: true,
+        e: true,
+        se: true,
+        s: true,
+        sw: true,
+        w: true,
+        nw: true,
+    };
+    let s = synthesis::synthesise(&data_with(name, Some(60.0), Some(b)), date);
+    assert_eq!(
+        s.sentences[0],
+        "Risque d'avalanche deux sur cinq, limité : lisez le bulletin complet avant de partir."
+    );
+}
+
+#[test]
+fn a7_weather_sentence_thresholds() {
+    let name = "regel";
+    let date = set(name).date();
+    let with = |freezing: f64, cloud: f64| {
+        let mut d = data(name);
+        for p in &mut d.weather.as_mut().unwrap().points {
+            for h in &mut p.hours {
+                h.freezing_level_m = Some(freezing);
+                h.cloud_cover_pct = Some(cloud);
+            }
+        }
+        synthesis::synthesise(&d, date).sentences[1].clone()
+    };
+    let base = "Météo de 9 h à 16 h (Le Laus, 1750 m) : de 0 à 5 °C, vent faible";
+    // Freezing level at 2000 m or above: not said; below: said. Cloud cover 30 % to 80 %:
+    // nothing said; below 30 %: clear; above 80 %: overcast.
+    assert_eq!(with(2000.0, 30.0), format!("{base}."));
+    assert_eq!(with(2000.0, 80.0), format!("{base}."));
+    assert_eq!(
+        with(1999.0, 29.0),
+        format!("{base}, isotherme 0 °C vers 2000 m, ciel dégagé.")
+    );
+    assert_eq!(with(2400.0, 81.0), format!("{base}, ciel couvert."));
+}
+
+#[test]
+fn a7_protected_zone_rules_day_and_night() {
+    use skimap_assist::text::Lang;
+    use skimap_voice::Event;
+    use skimap_voice::bank::ZoneRule;
+    use skimap_voice::clips::DayMonth;
+    use skimap_zones::{Months, Zone, ZoneKind, ZoneProps};
+    let name = "redoux";
+    let date = set(name).date();
+    let mut d = data(name);
+    let before = synthesis::synthesise(&d, date);
+    // The points evaluated: every 10th vertex of the nordic pistes (no route).
+    let pts: Vec<LonLat> = d
+        .pistes
+        .iter()
+        .filter(|p| p.uses.iter().any(|u| u == "nordic"))
+        .flat_map(|p| p.line.iter().step_by(10).copied())
+        .collect();
+    assert_eq!(before.facts.points_evaluated, pts.len());
+    // Points outside France and Switzerland are counted once (by day), never all of them.
+    assert!(before.facts.points_not_covered > 0);
+    assert!(
+        2 * before.facts.points_not_covered < pts.len(),
+        "{} {}",
+        before.facts.points_not_covered,
+        pts.len()
+    );
+    // A core zone of an APPB (closed from 15 December to 30 June, and at night all year)
+    // and a Biodiv'sports zone sensitive in February, over the longest piste.
+    let (w, s, e, n) = bounds(&longest_piste(&d));
+    let shape = rect(w, s, e, n).shape;
+    let inside = pts
+        .iter()
+        .filter(|p| p.lon > w && p.lon < e && p.lat > s && p.lat < n)
+        .count();
+    assert!(inside >= 3, "{inside}");
+    let zone = |id: &str, name: &str, practices: Vec<String>, months: Option<Months>| {
+        Zone::new(
+            ZoneProps {
+                id: id.into(),
+                kind: ZoneKind::BiodivSports,
+                name: name.into(),
+                source: "test".into(),
+                url: None,
+                months,
+                practices,
+                designated: None,
+                area_ha: 1.0,
+                clipped: false,
+                note: None,
+            },
+            shape.clone(),
+        )
+    };
+    let layer = &mut d.zones.as_mut().unwrap().0;
+    layer
+        .zones
+        .push(zone("biodiv:686", "Zone cœur test", vec![], None));
+    for i in 1..=5 {
+        layer.zones.push(zone(
+            &format!("biodiv:99000{i}"),
+            &format!("Zone sensible {i}"),
+            vec!["terrestre".into()],
+            Some(Months::from_numbers([1, 2, 3]).unwrap()),
+        ));
+    }
+    let t = synthesis::synthesise(&d, date);
+    let rule = |id: &str| t.facts.rules.iter().find(|r| r.rule == id).unwrap();
+    let day = rule("appb-haut-doubs-core-access");
+    assert_eq!(
+        (day.points, day.night_only, day.protected),
+        (inside, false, true)
+    );
+    assert_eq!(day.zones, ["Zone cœur test"]);
+    let night = rule("appb-haut-doubs-core-night");
+    assert_eq!((night.points, night.night_only), (0, true));
+    let quiet = rule("biodiv-sports-terrestre");
+    assert_eq!((quiet.points, quiet.night_only), (inside, false));
+    assert_eq!(quiet.zones.len(), 5);
+    // Each rule once, the rules of the site unchanged.
+    let mut ids: Vec<&str> = t.facts.rules.iter().map(|r| r.rule.as_str()).collect();
+    let n_ids = ids.len();
+    ids.sort_unstable();
+    ids.dedup();
+    assert_eq!(ids.len(), n_ids);
+    // The four rules of the core zone (access by day, at night, bivouac, fire) and the
+    // sensitive zone.
+    assert_eq!(n_ids, before.facts.rules.len() + 5);
+    for id in ["appb-haut-doubs-core-bivouac", "appb-haut-doubs-core-fire"] {
+        assert_eq!((rule(id).points, rule(id).night_only), (inside, false));
+    }
+    for r in &before.facts.rules {
+        assert_eq!(rule(&r.rule).points, r.points, "{}", r.rule);
+    }
+    assert_eq!(t.facts.points_not_covered, before.facts.points_not_covered);
+    // Said, with the end of the period, the night rule apart.
+    let rules = &t.sentences[2];
+    assert!(
+        rules.contains("accès interdit (Zone cœur test) jusqu'au 30 juin"),
+        "{rules}"
+    );
+    assert!(
+        rules.contains(
+            "zone de quiétude de la faune à éviter (Zone sensible 1, Zone sensible 2 et 3 autres)"
+        ),
+        "{rules}"
+    );
+    assert!(
+        rules.contains("la nuit, accès interdit (Zone cœur test)"),
+        "{rules}"
+    );
+    // The voice: no entry until 30 June, quiet zone, no fire; nothing for the night.
+    let zones: Vec<&Event> = t
+        .voice
+        .iter()
+        .filter(|e| matches!(e, Event::ProtectedZone { .. }))
+        .collect();
+    assert!(zones.contains(&&Event::ProtectedZone {
+        entered: false,
+        zone: Some("Zone cœur test".into()),
+        rules: vec![ZoneRule::NoEntry],
+        until: Some(DayMonth { day: 30, month: 6 }),
+    }));
+    assert!(zones.contains(&&Event::ProtectedZone {
+        entered: false,
+        zone: Some("Zone sensible 1".into()),
+        rules: vec![ZoneRule::Quiet],
+        until: None,
+    }));
+    let before_zones = before
+        .voice
+        .iter()
+        .filter(|e| matches!(e, Event::ProtectedZone { .. }))
+        .count();
+    assert!(zones.contains(&&Event::ProtectedZone {
+        entered: false,
+        zone: Some("Zone cœur test".into()),
+        rules: vec![ZoneRule::NoFire],
+        until: None,
+    }));
+    // Not the bivouac (said by the rule sentence only), not the night.
+    assert_eq!(zones.len(), before_zones + 3);
+    // The same in English.
+    let en = synthesis::synthesise_in(&d, date, Lang::En);
+    assert_eq!(en.facts.rules.len(), n_ids);
+}
+
+#[test]
+fn a7_route_rules_network_and_voice() {
+    use skimap_assist::layers::{Areas, Route};
+    use skimap_voice::Event;
+    use skimap_voice::bank::Briefing as Line;
+    use skimap_zones::{Zone, ZoneKind, ZoneProps};
+    let name = "redoux";
+    let date = set(name).date();
+    let mut d = data(name);
+    let line = longest_piste(&d);
+    let len = skimap_assist::layers::line_length_m(&line) / 1000.0;
+    assert!(len > 0.5, "{len}");
+    d.route = Some(Route {
+        name: "test".into(),
+        line: line.clone(),
+    });
+    // Network everywhere on the route, every point in France.
+    d.no_network = Some(Areas { areas: vec![] });
+    let t = synthesis::synthesise(&d, date);
+    assert_eq!(t.facts.points_not_covered, 0);
+    assert!(t.facts.points_evaluated > 0);
+    assert_eq!(t.facts.no_network_km, Some(0.0));
+    assert!(
+        t.sentences[2].starts_with("Sur votre itinéraire : ")
+            && t.sentences[2].ends_with(
+                " ; réseau mobile annoncé sur tout l'itinéraire (cartes des opérateurs)."
+            )
+            && !t.sentences[2].contains("aucune règle connue"),
+        "{}",
+        t.sentences[2]
+    );
+    assert!(!t.voice.contains(&Event::Briefing(Line::RouteNoNetwork)));
+    // No network on the whole route.
+    let (w, s, e, n) = bounds(&line);
+    d.no_network = Some(Areas {
+        areas: vec![Area::new("sans réseau", rect(w, s, e, n).shape)],
+    });
+    let t = synthesis::synthesise(&d, date);
+    let km = t.facts.no_network_km.unwrap();
+    assert!((km - len).abs() <= 0.005 + 1e-9, "{km} {len}");
+    assert_eq!(km, (km * 100.0).round() / 100.0);
+    assert!(
+        t.sentences[2].ends_with(" km sans aucun réseau mobile, même pour le 112."),
+        "{}",
+        t.sentences[2]
+    );
+    assert!(t.voice.contains(&Event::Briefing(Line::RouteNoNetwork)));
+    // A protected zone over the route with only its night rule: nothing said by day.
+    let (layer, rules) = d.zones.as_mut().unwrap();
+    layer.zones.push(Zone::new(
+        ZoneProps {
+            id: "biodiv:686".into(),
+            kind: ZoneKind::BiodivSports,
+            name: "Zone cœur test".into(),
+            source: "test".into(),
+            url: None,
+            months: None,
+            practices: vec![],
+            designated: None,
+            area_ha: 1.0,
+            clipped: false,
+            note: None,
+        },
+        rect(w, s, e, n).shape,
+    ));
+    let all = rules.rules.clone();
+    let only = |ids: &[&str]| {
+        all.iter()
+            .filter(|r| ids.contains(&r.id.as_str()))
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+    rules.rules = only(&["appb-haut-doubs-core-night"]);
+    let t = synthesis::synthesise(&d, date);
+    assert_eq!(t.facts.rules.len(), 1);
+    assert!(t.facts.rules[0].night_only && t.facts.rules[0].protected);
+    assert!(!t.voice.contains(&Event::Briefing(Line::RouteProtectedZone)));
+    assert!(t.sentences[2].contains("la nuit, accès interdit (Zone cœur test)"));
+    // With the fire rule of the zone, stoves included: the protected zone is said, the
+    // commune sentence on stoves is not (it is the zone's rule).
+    let mut fire = only(&["appb-haut-doubs-core-fire"]).remove(0);
+    fire.stoves = Some(true);
+    d.zones.as_mut().unwrap().1.rules.push(fire);
+    let t = synthesis::synthesise(&d, date);
+    assert_eq!(t.facts.rules.len(), 2);
+    assert!(t.voice.contains(&Event::Briefing(Line::RouteProtectedZone)));
+    assert!(
+        !t.voice
+            .contains(&Event::Briefing(Line::FireStovesForbidden))
+    );
+    assert!(
+        t.sentences[2].contains("feu interdit, réchauds compris (Zone cœur test)"),
+        "{}",
+        t.sentences[2]
+    );
+}
+
+#[test]
+fn a7_avalanche_voice_without_a_level() {
+    use skimap_voice::Event;
+    use skimap_voice::bank::Briefing as Line;
+    let possible = [
+        Event::Briefing(Line::Avalanche { level: None }),
+        Event::Briefing(Line::AvalanchesPossible),
+    ];
+    // A massif with bulletins whose file says there is none that day.
+    let name = "froid-sec";
+    let date = set(name).date();
+    let d = data_with(
+        name,
+        Some(60.0),
+        Some(bera_status(date, BeraStatus::NoBera)),
+    );
+    assert!(d.site.has_bera);
+    let s = synthesis::synthesise(&d, date);
+    assert_eq!(s.voice[..2], possible);
+    // A site without bulletins, none loaded.
+    let name = "redoux";
+    let mut d = data(name);
+    assert!(!d.site.has_bera);
+    d.beras.clear();
+    let s = synthesis::synthesise(&d, set(name).date());
+    assert_eq!(s.facts.bera_status, None);
+    assert_eq!(s.voice[..2], possible);
+    assert!(s.sentences[0].starts_with("Pas de bulletin d'avalanche pour ce massif"));
+}
+
 // ---------------------------------------------------------------------------------------
 // A8: alerts.
 

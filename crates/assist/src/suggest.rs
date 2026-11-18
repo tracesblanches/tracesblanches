@@ -1687,4 +1687,192 @@ mod tests {
             s.notes
         );
     }
+
+    #[test]
+    fn snow_classes_of_the_qualities() {
+        use Quality::*;
+        for (q, c) in [
+            (Some(Fresh), SnowClass::NewSnow),
+            (Some(Windblown), SnowClass::NewSnow),
+            (Some(Transformed), SnowClass::Wet),
+            (Some(Wet), SnowClass::Wet),
+            (Some(Slush), SnowClass::Wet),
+            (Some(Hard), SnowClass::Icy),
+            (Some(Icy), SnowClass::Icy),
+            (Some(OldDry), SnowClass::Groomed),
+            (None, SnowClass::Groomed),
+        ] {
+            assert_eq!(snow_class(q), c, "{q:?}");
+        }
+    }
+
+    /// Three pieces: 1 km up 100 m, 2 km flat, 1 km down 100 m.
+    fn hill(a: &EdgeAttrs) -> Vec<Piece<'_>> {
+        [(1000.0, 100.0), (2000.0, 0.0), (1000.0, -100.0)]
+            .into_iter()
+            .map(|(dist_m, dz_m)| Piece {
+                attrs: a,
+                dist_m,
+                dz_m,
+                elev_m: Some(1200.0),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn profile_out_and_back_of_pieces() {
+        let eta = EtaModel::new(Style::Classic);
+        let a = attrs("x", 1, Difficulty::Easy);
+        let pieces = hill(&a);
+        let p = Profile::of(&eta, &pieces);
+        assert_eq!(p.dist_m, [0.0, 1000.0, 3000.0, 4000.0]);
+        let t = |d, dz| eta.piece_time_s(&a, d, dz, Some(1200.0));
+        let (up, flat, down) = (t(1000.0, 100.0), t(2000.0, 0.0), t(1000.0, -100.0));
+        assert!(up > flat / 2.0 && flat / 2.0 > down, "{up} {flat} {down}");
+        assert_eq!(p.out_s, [0.0, up, up + flat, up + flat + down]);
+        // Back: each piece the other way.
+        assert_eq!(p.back_s, [0.0, down, down + flat, down + flat + up]);
+        assert_eq!(p.total_s(), up + flat + down);
+        assert_eq!(p.length_m(), 4000.0);
+        assert_eq!(p.index_at(0.0), 0);
+        assert_eq!(p.index_at(2999.0), 1);
+        assert_eq!(p.index_at(3000.0), 2);
+        assert_eq!(p.index_at(9000.0), 3);
+        // By terrain: the climb, the flat, the descent, each its own time.
+        let ratio = terrain_ratio(&eta);
+        let m = p.model_by_terrain(ratio);
+        let near = |x: f64, y: f64| assert!((x - y).abs() < 1e-9, "{x} {y}");
+        near(m[Terrain::Up as usize], up);
+        near(m[Terrain::Flat as usize], flat);
+        near(m[Terrain::Down as usize], down);
+        // The climb after the flat: each piece by its own out and back times, not by the
+        // times accumulated before it.
+        let p2 = Profile::of(&eta, &pieces[1..]);
+        let m2 = p2.model_by_terrain(ratio);
+        near(m2[Terrain::Flat as usize], flat);
+        near(m2[Terrain::Down as usize], down);
+        assert_eq!(m2[Terrain::Up as usize], 0.0);
+        let p3 = Profile::of(&eta, &[pieces[1], pieces[0]]);
+        let m3 = p3.model_by_terrain(ratio);
+        near(m3[Terrain::Flat as usize], flat);
+        near(m3[Terrain::Up as usize], up);
+        assert_eq!(m3[Terrain::Down as usize], 0.0);
+        assert_eq!(
+            Profile::of(&eta, &[]).model_by_terrain(ratio),
+            [0.0; TERRAINS]
+        );
+    }
+
+    #[test]
+    fn profile_at_the_pace_of_a_group() {
+        use skimap_core::calibration::GroupProfile;
+        let eta = EtaModel::new(Style::Classic);
+        let a = attrs("x", 1, Difficulty::Easy);
+        let p = Profile::of(&eta, &hill(&a));
+        let ratio = terrain_ratio(&eta);
+        let family = ProfileModel::new(GroupProfile::family(2, &[6, 9], Style::Classic));
+        let params = &family.params;
+        for q in [0.5, 0.8] {
+            let g = p.for_group_at(params, ratio, q);
+            assert_eq!(g.dist_m, p.dist_m);
+            // The total is the group's prediction at that quantile.
+            let total = params.predict(p.model_by_terrain(ratio)).quantile_s(q);
+            assert!(
+                (g.total_s() - total).abs() < 1e-6,
+                "{} {total}",
+                g.total_s()
+            );
+            // Each piece at the group's pace on its terrain: out, climb over flat; back,
+            // descent (the climb taken down) over flat.
+            let piece = |v: &[f64], i: usize| v[i + 1] - v[i];
+            let k = |t: Terrain| 1.0 / params.progress_pace(t);
+            let up_flat =
+                (p.out_s[1] * k(Terrain::Up)) / ((p.out_s[2] - p.out_s[1]) * k(Terrain::Flat));
+            assert!(
+                (piece(&g.out_s, 0) / piece(&g.out_s, 1) - up_flat).abs() < 1e-9,
+                "{up_flat}"
+            );
+            let down_flat =
+                (p.back_s[1] * k(Terrain::Down)) / ((p.back_s[2] - p.back_s[1]) * k(Terrain::Flat));
+            assert!(
+                (piece(&g.back_s, 0) / piece(&g.back_s, 1) - down_flat).abs() < 1e-9,
+                "{down_flat}"
+            );
+        }
+        assert_ne!(
+            p.for_group_at(params, ratio, 0.8).total_s(),
+            p.for_group(params, ratio).total_s()
+        );
+        // Nothing to scale: zeros, not NaN.
+        let empty = Profile::of(&eta, &[]).for_group(params, ratio);
+        assert_eq!((empty.out_s, empty.back_s), (vec![0.0], vec![0.0]));
+    }
+
+    #[test]
+    fn loop_status_from_both_sources() {
+        use crate::layers::{Itinerary, Practice, Status};
+        let mut d = data();
+        let g = d.graph.as_ref().unwrap();
+        let km = |e: usize| g.length_m(e) / 1000.0;
+        let perimeter: f64 = (0..4).map(km).sum();
+        let (sud, est, nord, ouest) = (km(0), km(1), km(2), km(3));
+        let it = |source: &str, state: OpenState, line: Vec<LonLat>, ways: Vec<i64>| Itinerary {
+            id: format!("{source}:{}", ways.first().unwrap_or(&0)),
+            name: "x".into(),
+            source: source.into(),
+            sector: None,
+            practice: Practice::Nordic,
+            state,
+            length_km: None,
+            difficulty: None,
+            comment: None,
+            line,
+            osm_way_ids: ways,
+        };
+        // Nordic France by OSM way: « Sud » open; « Est » closed by one itinerary, open by
+        // another (open wins). ENJ by line: the middle fifth of « Nord » closed (its middle
+        // within 30 m, its ends 900 m away); a one-point line on « Ouest », ignored.
+        let at = |f: f64| LonLat::new(6.12 - 0.02 * f, 46.62);
+        d.status = Some(Status {
+            polled_at: crate::sun::local_to_utc(
+                NaiveDate::from_ymd_opt(2027, 1, 12)
+                    .unwrap()
+                    .and_hms_opt(7, 30, 0)
+                    .unwrap(),
+            ),
+            itineraries: vec![
+                it("nordicfrance", OpenState::Open, vec![], vec![1]),
+                it("nordicfrance", OpenState::Closed, vec![], vec![2]),
+                it("nordicfrance", OpenState::Open, vec![], vec![2]),
+                it("enj", OpenState::Closed, vec![at(0.4), at(0.6)], vec![]),
+                it(
+                    "enj",
+                    OpenState::Open,
+                    vec![LonLat::new(6.10, 46.61)],
+                    vec![],
+                ),
+            ],
+            messages: vec![],
+            conflicts: vec![],
+        });
+        let budget = perimeter / 10.6 * 60.0;
+        let s = suggest(&d, &req(budget, None));
+        let best = s.suggestions.first().expect("a loop");
+        assert!((best.length_km - perimeter).abs() < 0.06, "{best:?}");
+        let (open, closed, unknown) = best.status_km;
+        assert!((open - (sud + est)).abs() < 1e-6, "{open}");
+        assert!((closed - nord).abs() < 1e-6, "{closed}");
+        assert!((unknown - ouest).abs() < 1e-6, "{unknown}");
+        let says = |what: &str| best.reasons.iter().any(|r| r.text.contains(what));
+        assert!(says("km sur des pistes fermées"), "{:?}", best.reasons);
+        assert!(says("km sur des pistes ouvertes"), "{:?}", best.reasons);
+        assert!(says("km sans état connu"), "{:?}", best.reasons);
+        // Four days after the poll: the states are not used, everything unknown.
+        let mut late = req(budget, None);
+        late.start_time += Duration::days(4);
+        let s = suggest(&d, &late);
+        let best = s.suggestions.first().expect("a loop");
+        assert_eq!((best.status_km.0, best.status_km.1), (0.0, 0.0));
+        assert!((best.status_km.2 - perimeter).abs() < 1e-6);
+    }
 }
