@@ -47,8 +47,10 @@ pub const ATTRIBUTION: &str =
     "© les contributeurs d'OpenStreetMap (ODbL), extraits Geofabrik (download.geofabrik.de)";
 /// Directory of the derived index, under the cache root.
 pub const INDEX_DIR: &str = "osm-local";
-/// Version of the index format and of [`wanted`]: a change rebuilds the index.
+/// Version of the layers index format and of [`wanted`]: a change rebuilds the index.
 pub const INDEX_VERSION: u32 = 1;
+/// Version of the landmarks index format and of [`is_landmark`]: a change rebuilds it.
+pub const LANDMARKS_VERSION: u32 = 1;
 
 /// Geofabrik catalogue of the extracts, with their polygons.
 pub const CATALOGUE_URL: &str = "https://download.geofabrik.de/index-v1.json";
@@ -259,9 +261,87 @@ pub fn is_site_relation<'a>(get: impl Fn(&str) -> Option<&'a str>) -> bool {
     get("site") == Some("piste")
 }
 
-/// What the index keeps: the union of the filters above.
+/// Named landmarks of the plans of the pistes (`skimap_pisteplan::osmref`), formerly
+/// `node["name"]["place"]; way["name"]["place"];
+/// node["name"]["natural"~"^(peak|saddle|volcano|spring)$"];
+/// node["name"]["mountain_pass"="yes"];
+/// nwr["name"]["tourism"~"^(alpine_hut|wilderness_hut|museum|hotel|chalet)$"];
+/// nwr["name"]["amenity"~"^(shelter|restaurant|place_of_worship)$"];
+/// nwr["name"]["natural"="water"]; nwr["name"]["historic"]`.
+pub fn is_landmark<'a>(kind: Kind, get: impl Fn(&str) -> Option<&'a str>) -> bool {
+    if get("name").is_none() {
+        return false;
+    }
+    let node = kind == Kind::Node;
+    (kind != Kind::Relation && get("place").is_some())
+        || (node
+            && matches!(
+                get("natural"),
+                Some("peak" | "saddle" | "volcano" | "spring")
+            ))
+        || (node && get("mountain_pass") == Some("yes"))
+        || matches!(
+            get("tourism"),
+            Some("alpine_hut" | "wilderness_hut" | "museum" | "hotel" | "chalet")
+        )
+        || matches!(
+            get("amenity"),
+            Some("shelter" | "restaurant" | "place_of_worship")
+        )
+        || get("natural") == Some("water")
+        || get("historic").is_some()
+}
+
+/// What the layers index ([`Set::Layers`]) keeps: the union of the filters of the
+/// refuges and stations layers (the landmarks have their own index, [`Set::Landmarks`]:
+/// 1.35 million elements, read by the plans of the pistes only).
 pub fn wanted<'a>(get: impl Fn(&str) -> Option<&'a str> + Copy) -> bool {
     is_hut(get) || is_station_far(get) || is_station_near(get) || is_site_relation(get)
+}
+
+/// The two indexes built from the extracts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Set {
+    /// Elements of the refuges and stations layers ([`wanted`]), read by `build-all` and
+    /// `skimap refresh`.
+    Layers,
+    /// Named landmarks of the plans of the pistes ([`is_landmark`]).
+    Landmarks,
+}
+
+impl Set {
+    /// File name prefix.
+    pub fn prefix(self) -> &'static str {
+        match self {
+            Set::Layers => "index",
+            Set::Landmarks => "landmarks",
+        }
+    }
+
+    /// Format version.
+    pub fn version(self) -> u32 {
+        match self {
+            Set::Layers => INDEX_VERSION,
+            Set::Landmarks => LANDMARKS_VERSION,
+        }
+    }
+
+    /// Whether the set keeps an element.
+    pub fn keeps<'a>(self, kind: Kind, get: impl Fn(&str) -> Option<&'a str> + Copy) -> bool {
+        match self {
+            Set::Layers => wanted(get),
+            Set::Landmarks => is_landmark(kind, get),
+        }
+    }
+
+    /// Whether the geometry (bounding box of the members) of a kept relation is needed
+    /// (`site=piste` relations: tags only, their members are pistes).
+    fn relation_geometry<'a>(self, get: impl Fn(&str) -> Option<&'a str> + Copy) -> bool {
+        match self {
+            Set::Layers => is_hut(get) || is_station_far(get) || is_station_near(get),
+            Set::Landmarks => true,
+        }
+    }
 }
 
 // --- Index -------------------------------------------------------------------------------
@@ -413,9 +493,10 @@ impl Index {
     }
 }
 
-/// Index of the process, shared by every site of a run (`build-all` builds many sites
-/// in parallel): checked once per [`RECHECK`], built or read once per set of extracts.
-static LOADED: Mutex<Option<Loaded>> = Mutex::new(None);
+/// Indexes of the process ([`Set::Layers`], [`Set::Landmarks`]), shared by every site of
+/// a run (`build-all` builds many sites in parallel): checked once per [`RECHECK`], built
+/// or read once per set of extracts.
+static LOADED: [Mutex<Option<Loaded>>; 2] = [Mutex::new(None), Mutex::new(None)];
 
 struct Loaded {
     key: String,
@@ -451,10 +532,25 @@ fn registry_boxes(layout: &DataLayout) -> Vec<BBox> {
     boxes
 }
 
-/// Downloads (or revalidates) the extracts covering the registry and returns the index,
-/// built if needed.
+/// Downloads (or revalidates) the extracts covering the registry and returns the layers
+/// index ([`Set::Layers`]), built if needed.
 pub fn load(layout: &DataLayout, dl: &Downloader) -> Result<Arc<Index>> {
-    let mut loaded = LOADED.lock().unwrap_or_else(|p| p.into_inner());
+    load_set(layout, dl, Set::Layers)
+}
+
+/// Same as [`load`] for the landmarks index ([`Set::Landmarks`]).
+pub fn load_landmarks(layout: &DataLayout, dl: &Downloader) -> Result<Arc<Index>> {
+    load_set(layout, dl, Set::Landmarks)
+}
+
+/// Downloads (or revalidates) the extracts covering the registry and returns the index of
+/// `set`, built if needed.
+pub fn load_set(layout: &DataLayout, dl: &Downloader, set: Set) -> Result<Arc<Index>> {
+    let slot = match set {
+        Set::Layers => 0,
+        Set::Landmarks => 1,
+    };
+    let mut loaded = LOADED[slot].lock().unwrap_or_else(|p| p.into_inner());
     if let Some(l) = loaded.as_ref()
         && l.at.elapsed() < RECHECK
     {
@@ -472,7 +568,7 @@ pub fn load(layout: &DataLayout, dl: &Downloader) -> Result<Arc<Index>> {
     for x in &extracts {
         fetched.push((x.id.as_str(), fetch_or_cached(dl, &x.url)?));
     }
-    let key = index_key(&fetched);
+    let key = index_key(&fetched, set);
     if let Some(l) = loaded.as_mut()
         && l.key == key
     {
@@ -481,9 +577,14 @@ pub fn load(layout: &DataLayout, dl: &Downloader) -> Result<Arc<Index>> {
     }
     let dir = layout.cache_dir(INDEX_DIR)?;
     DataLayout::ensure(&dir)?;
-    let path = dir.join(format!("index-v{INDEX_VERSION}-{}.jsonl.gz", &key[..16]));
+    let path = dir.join(format!(
+        "{}-v{}-{}.jsonl.gz",
+        set.prefix(),
+        set.version(),
+        &key[..16]
+    ));
     let t = std::time::Instant::now();
-    let (header, elements) = match read_index(&path, &key) {
+    let (header, elements) = match read_index(&path, &key, set) {
         Ok(x) => {
             remove_other_indexes(&dir, &path);
             x
@@ -495,13 +596,13 @@ pub fn load(layout: &DataLayout, dl: &Downloader) -> Result<Arc<Index>> {
             let mut timestamps = BTreeMap::new();
             let mut all: Vec<Element> = Vec::new();
             for ((name, f), x) in fetched.iter_mut().zip(&extracts) {
-                let (ts, els) = match scan(&f.path) {
+                let (ts, els) = match scan(&f.path, set) {
                     Ok(v) => v,
                     Err(e) => {
                         // A truncated or corrupted copy: downloaded again once.
                         tracing::warn!(extract = %name, error = %e, "extract unreadable, downloaded again");
                         *f = dl.fetch(&Request::get(SOURCE, &x.url).cache(CachePolicy::Reload))?;
-                        scan(&f.path)?
+                        scan(&f.path, set)?
                     }
                 };
                 timestamps.insert((*name).to_owned(), ts);
@@ -510,8 +611,8 @@ pub fn load(layout: &DataLayout, dl: &Downloader) -> Result<Arc<Index>> {
             all.sort_by_key(|e| (e.kind, e.id));
             all.dedup_by_key(|e| (e.kind, e.id));
             let header = Header {
-                version: INDEX_VERSION,
-                key: index_key(&fetched),
+                version: set.version(),
+                key: index_key(&fetched, set),
                 timestamps,
                 elements: all.len(),
             };
@@ -525,6 +626,7 @@ pub fn load(layout: &DataLayout, dl: &Downloader) -> Result<Arc<Index>> {
         elements = elements.len(),
         extracts = fetched.len(),
         path = %path.display(),
+        set = set.prefix(),
         "local OSM index ready"
     );
     let valid_at = header.timestamps.values().flatten().min().cloned();
@@ -567,11 +669,15 @@ pub fn load(layout: &DataLayout, dl: &Downloader) -> Result<Arc<Index>> {
     Ok(index)
 }
 
-/// Key of a set of extracts: the index version and the sha256 of every body.
-fn index_key(fetched: &[(&str, Fetched)]) -> String {
+/// Key of a set of extracts: the index set and version and the sha256 of every body.
+fn index_key(fetched: &[(&str, Fetched)], set: Set) -> String {
     use std::hash::{Hash, Hasher};
     // Not a security hash: two 64-bit hashes of the sha256 list are enough to name a file.
-    let mut parts = vec![format!("v{INDEX_VERSION}")];
+    // The layers key is the one it always was (no rebuild of the existing indexes).
+    let mut parts = vec![match set {
+        Set::Layers => format!("v{INDEX_VERSION}"),
+        Set::Landmarks => format!("{}-v{LANDMARKS_VERSION}", set.prefix()),
+    }];
     for (name, f) in fetched {
         parts.push(format!("{name}:{}", f.meta.sha256));
     }
@@ -583,7 +689,7 @@ fn index_key(fetched: &[(&str, Fetched)]) -> String {
     format!("{:016x}{:016x}", h1.finish(), h2.finish())
 }
 
-fn read_index(path: &Path, key: &str) -> Result<(Header, Vec<Element>)> {
+fn read_index(path: &Path, key: &str, set: Set) -> Result<(Header, Vec<Element>)> {
     let f = std::fs::File::open(path).map_err(|e| OsmError::io(path, e))?;
     let r = BufReader::new(flate2::read::GzDecoder::new(f));
     let mut lines = r.lines();
@@ -593,7 +699,7 @@ fn read_index(path: &Path, key: &str) -> Result<(Header, Vec<Element>)> {
         .ok_or_else(|| bad("empty".into()))?
         .map_err(|e| OsmError::io(path, e))?;
     let header: Header = serde_json::from_str(&first).map_err(|e| bad(e.to_string()))?;
-    if header.version != INDEX_VERSION || header.key != key {
+    if header.version != set.version() || header.key != key {
         return Err(bad("other version or extracts".into()));
     }
     let mut elements = Vec::with_capacity(header.elements);
@@ -656,7 +762,7 @@ fn remove_other_indexes(dir: &Path, keep: &Path) {
         let Some(n) = p.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
-        let old_index = n.starts_with("index-")
+        let old_index = (n.starts_with("index-") || n.starts_with("landmarks-"))
             && !n.contains(".tmp")
             && age(&p).as_secs() > INDEX_UNUSED_DAYS * 86_400;
         let orphan = n.contains(".tmp") && age(&p).as_secs() > 3600;
@@ -754,8 +860,8 @@ fn timestamp(path: &Path) -> Result<Option<String>> {
     Ok(None)
 }
 
-/// Reads one extract: the [`wanted`] elements with their bounding boxes.
-pub fn scan(path: &Path) -> Result<(Option<String>, Vec<Element>)> {
+/// Reads one extract: the elements `set` keeps, with their bounding boxes.
+pub fn scan(path: &Path, set: Set) -> Result<(Option<String>, Vec<Element>)> {
     let t = std::time::Instant::now();
     let ts = timestamp(path)?;
     // Pass 1: kept elements.
@@ -767,7 +873,7 @@ pub fn scan(path: &Path) -> Result<(Option<String>, Vec<Element>)> {
             block.for_each_element(|el| match el {
                 PbfElement::Node(n) => {
                     let t = tags_of(n.tags());
-                    if !t.is_empty() && wanted(lookup(&t)) {
+                    if !t.is_empty() && set.keeps(Kind::Node, lookup(&t)) {
                         let (la, lo) = (n.decimicro_lat(), n.decimicro_lon());
                         out.nodes.push(Element {
                             kind: Kind::Node,
@@ -779,7 +885,7 @@ pub fn scan(path: &Path) -> Result<(Option<String>, Vec<Element>)> {
                 }
                 PbfElement::DenseNode(n) => {
                     let t = tags_of(n.tags());
-                    if !t.is_empty() && wanted(lookup(&t)) {
+                    if !t.is_empty() && set.keeps(Kind::Node, lookup(&t)) {
                         let (la, lo) = (n.decimicro_lat(), n.decimicro_lon());
                         out.nodes.push(Element {
                             kind: Kind::Node,
@@ -791,7 +897,7 @@ pub fn scan(path: &Path) -> Result<(Option<String>, Vec<Element>)> {
                 }
                 PbfElement::Way(w) => {
                     let t = tags_of(w.tags());
-                    if !t.is_empty() && wanted(lookup(&t)) {
+                    if !t.is_empty() && set.keeps(Kind::Way, lookup(&t)) {
                         out.ways.push((
                             Element {
                                 kind: Kind::Way,
@@ -805,12 +911,8 @@ pub fn scan(path: &Path) -> Result<(Option<String>, Vec<Element>)> {
                 }
                 PbfElement::Relation(r) => {
                     let t = tags_of(r.tags());
-                    if !t.is_empty() && wanted(lookup(&t)) {
-                        // `site=piste` relations: tags only (their members are pistes).
-                        let geometry = {
-                            let g = lookup(&t);
-                            is_hut(g) || is_station_far(g) || is_station_near(g)
-                        };
+                    if !t.is_empty() && set.keeps(Kind::Relation, lookup(&t)) {
+                        let geometry = set.relation_geometry(lookup(&t));
                         let members = if geometry {
                             r.members()
                                 .filter_map(|m| match m.member_type {
@@ -1012,6 +1114,67 @@ mod tests {
     }
 
     #[test]
+    fn landmark_filter_matches_the_former_query() {
+        // Places: nodes and ways, never relations.
+        let place = [("place", "hamlet"), ("name", "Le Laus")];
+        assert!(is_landmark(Kind::Node, get(&place)));
+        assert!(is_landmark(Kind::Way, get(&place)));
+        assert!(!is_landmark(Kind::Relation, get(&place)));
+        // A name is required everywhere.
+        assert!(!is_landmark(Kind::Node, get(&[("place", "hamlet")])));
+        // Peaks, saddles, volcanoes, springs and passes: nodes only, exact values.
+        let peak = [("natural", "peak"), ("name", "Lasseron")];
+        assert!(is_landmark(Kind::Node, get(&peak)));
+        assert!(!is_landmark(Kind::Way, get(&peak)));
+        assert!(!is_landmark(
+            Kind::Node,
+            get(&[("natural", "peaks"), ("name", "x")])
+        ));
+        assert!(is_landmark(
+            Kind::Node,
+            get(&[("natural", "spring"), ("name", "x")])
+        ));
+        assert!(is_landmark(
+            Kind::Node,
+            get(&[("mountain_pass", "yes"), ("name", "Col")])
+        ));
+        assert!(!is_landmark(
+            Kind::Node,
+            get(&[("mountain_pass", "no"), ("name", "Col")])
+        ));
+        // Huts, museums, hotels, chalets, shelters, restaurants, churches, water,
+        // historic: any element type.
+        for t in [
+            ("tourism", "alpine_hut"),
+            ("tourism", "wilderness_hut"),
+            ("tourism", "museum"),
+            ("tourism", "hotel"),
+            ("tourism", "chalet"),
+            ("amenity", "shelter"),
+            ("amenity", "restaurant"),
+            ("amenity", "place_of_worship"),
+            ("natural", "water"),
+            ("historic", "wayside_cross"),
+        ] {
+            for k in [Kind::Node, Kind::Way, Kind::Relation] {
+                assert!(is_landmark(k, get(&[t, ("name", "x")])), "{t:?} {k:?}");
+            }
+        }
+        assert!(!is_landmark(
+            Kind::Way,
+            get(&[("tourism", "camp_site"), ("name", "x")])
+        ));
+        assert!(!is_landmark(
+            Kind::Way,
+            get(&[("amenity", "cafe"), ("name", "x")])
+        ));
+        assert!(Set::Landmarks.keeps(Kind::Node, get(&peak)));
+        assert!(!Set::Landmarks.keeps(Kind::Way, get(&peak)));
+        // The layers index does not grow with the landmarks.
+        assert!(!Set::Layers.keeps(Kind::Node, get(&peak)));
+    }
+
+    #[test]
     fn query_by_box_and_overpass_shape() {
         let idx = Index {
             elements: vec![
@@ -1070,13 +1233,24 @@ mod tests {
             elements: 1,
         };
         write_index(&p, &h, &els).unwrap();
-        let (h2, e2) = read_index(&p, "k").unwrap();
+        let (h2, e2) = read_index(&p, "k", Set::Layers).unwrap();
         assert_eq!(h2.elements, 1);
         assert_eq!(e2, els);
-        assert!(read_index(&p, "other").is_err(), "other extracts");
+        assert!(
+            read_index(&p, "other", Set::Layers).is_err(),
+            "other extracts"
+        );
+        // Version checked per set.
+        let hl = Header {
+            version: LANDMARKS_VERSION + 1,
+            ..h.clone()
+        };
+        write_index(&p, &hl, &els).unwrap();
+        assert!(read_index(&p, "k", Set::Landmarks).is_err());
+        write_index(&p, &h, &els).unwrap();
         // An index cut short is detected (then rebuilt by `load`).
         let h3 = Header { elements: 2, ..h };
         write_index(&p, &h3, &els).unwrap();
-        assert!(read_index(&p, "k").is_err());
+        assert!(read_index(&p, "k", Set::Layers).is_err());
     }
 }

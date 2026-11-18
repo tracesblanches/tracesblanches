@@ -1,6 +1,7 @@
 //! What OSM already knows in the extent of a plan: piste ways and relations (OpenSnowMap
-//! extract, as the `pistes` layer) and named landmarks (Overpass: places, summits, passes,
-//! huts, lakes), projected to Lambert-93.
+//! extract, as the `pistes` layer) and named landmarks (places, summits, passes, huts,
+//! lakes: local Geofabrik extracts, `skimap_osm::local`, X5 #139; formerly Overpass),
+//! projected to Lambert-93.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -8,15 +9,14 @@ use serde_json::Value;
 use skimap_common::crs::to_lambert93;
 use skimap_common::download::{Downloader, Fetched, Request};
 use skimap_common::geom::{BBox, LonLat};
+use skimap_common::layout::DataLayout;
+use skimap_common::meta::SourceRef;
 use skimap_osm::extract::Planet;
 use skimap_osm::pistes::{Colour, Difficulty, Oneway, Use};
 
 use crate::error::{Error, Result};
 use crate::transcript::LandmarkKind;
 use crate::warp::P2;
-
-/// Overpass endpoint (same instance as the refuges layer).
-pub const OVERPASS_URL: &str = "https://overpass-api.de/api/interpreter";
 
 /// A piste way of the extent.
 #[derive(Debug, Clone)]
@@ -195,23 +195,6 @@ pub fn pistes(planet: &Planet, extent: &BBox) -> Result<OsmRef> {
     Ok(out)
 }
 
-/// Overpass query of the named landmarks of `b`.
-pub fn landmark_query(b: &BBox) -> String {
-    let bb = b.overpass();
-    format!(
-        "[out:json][timeout:90];(\
-node[\"name\"][\"place\"]({bb});\
-way[\"name\"][\"place\"]({bb});\
-node[\"name\"][\"natural\"~\"^(peak|saddle|volcano|spring)$\"]({bb});\
-node[\"name\"][\"mountain_pass\"=\"yes\"]({bb});\
-nwr[\"name\"][\"tourism\"~\"^(alpine_hut|wilderness_hut|museum|hotel|chalet)$\"]({bb});\
-nwr[\"name\"][\"amenity\"~\"^(shelter|restaurant|place_of_worship)$\"]({bb});\
-nwr[\"name\"][\"natural\"=\"water\"]({bb});\
-nwr[\"name\"][\"historic\"]({bb});\
-);out center tags;"
-    )
-}
-
 fn kind_of(tags: &serde_json::Map<String, Value>) -> LandmarkKind {
     let t = |k: &str| tags.get(k).and_then(Value::as_str).unwrap_or("");
     if !t("place").is_empty() {
@@ -229,12 +212,13 @@ fn kind_of(tags: &serde_json::Map<String, Value>) -> LandmarkKind {
     }
 }
 
-/// Parses an Overpass `out center tags` answer into landmarks.
+/// Parses an answer in the Overpass `out center tags` shape (the local index,
+/// [`skimap_osm::local::Index::query`]) into landmarks.
 pub fn parse_landmarks(v: &Value) -> Result<Vec<Landmark>> {
     let els = v
         .get("elements")
         .and_then(Value::as_array)
-        .ok_or_else(|| Error::Data("Overpass answer without elements".into()))?;
+        .ok_or_else(|| Error::Data("OSM answer without elements".into()))?;
     let mut out = Vec::new();
     for e in els {
         let (Some(ty), Some(id), Some(tags)) = (
@@ -271,9 +255,6 @@ pub fn parse_landmarks(v: &Value) -> Result<Vec<Landmark>> {
     out.dedup_by(|a, b| a.osm == b.osm);
     Ok(out)
 }
-
-/// Mirror used when the main instance cannot be reached (VK Maps' public Overpass).
-pub const OVERPASS_MIRROR_URL: &str = "https://maps.mail.ru/osm/tools/overpass/api/interpreter";
 
 /// IGN Géoplateforme WFS (BD TOPO).
 pub const IGN_WFS_URL: &str = "https://data.geopf.fr/wfs/ows";
@@ -370,63 +351,65 @@ pub fn landmarks_ign(dl: &Downloader, b: &BBox) -> Result<(Vec<Landmark>, Fetche
 /// Where the landmarks of a registration come from.
 #[derive(Debug, Clone)]
 pub struct LandmarkSource {
-    /// The answer (first page).
-    pub fetched: Fetched,
     /// Name of the source.
     pub name: &'static str,
-    /// Licence.
-    pub licence: &'static str,
-    /// Attribution.
-    pub attribution: &'static str,
+    /// Sources to cite (one per Geofabrik extract read, or the IGN WFS answer).
+    pub sources: Vec<SourceRef>,
 }
 
-/// Landmarks of `b`: an Overpass answer already in the cache (the hand-written sheets),
-/// else the BD TOPO toponyms (IGN), else Overpass on the network.
-pub fn landmarks_any(dl: &Downloader, b: &BBox) -> Result<(Vec<Landmark>, LandmarkSource)> {
-    let osm = |f: Fetched| LandmarkSource {
-        fetched: f,
-        name: "OpenStreetMap, repères nommés (Overpass)",
-        licence: "ODbL 1.0",
-        attribution: "© les contributeurs d'OpenStreetMap (ODbL)",
-    };
-    let q = landmark_query(b);
-    let cached = dl.fetch(
-        &Request::post_form("overpass", OVERPASS_URL, &[("data", &q)])
-            .cache(skimap_common::download::CachePolicy::Offline),
-    );
-    if let Ok(f) = cached {
-        let v: Value = f.json()?;
-        return Ok((parse_landmarks(&v)?, osm(f)));
-    }
-    match landmarks_ign(dl, b) {
-        Ok((l, f)) => Ok((
-            l,
-            LandmarkSource {
-                fetched: f,
-                name: "IGN BD TOPO, toponymie (Géoplateforme, WFS)",
-                licence: "Licence Ouverte Etalab 2.0",
-                attribution: "IGN – BD TOPO",
-            },
-        )),
-        Err(_) => {
-            let (l, f) = landmarks(dl, b)?;
-            Ok((l, osm(f)))
+/// Name of the OSM landmarks source.
+pub const OSM_LANDMARKS: &str = "OpenStreetMap, repères nommés (extraits Geofabrik)";
+
+/// Name of the IGN landmarks source.
+pub const IGN_LANDMARKS: &str = "IGN BD TOPO, toponymie (Géoplateforme, WFS)";
+
+/// Named landmarks of `b` from the local OSM index ([`skimap_osm::local::is_landmark`]).
+pub fn landmarks_osm(
+    layout: &DataLayout,
+    dl: &Downloader,
+    b: &BBox,
+) -> Result<(Vec<Landmark>, LandmarkSource)> {
+    let idx = skimap_osm::local::load_landmarks(layout, dl)
+        .map_err(|e| Error::Data(format!("local OSM index: {e}")))?;
+    let v = idx.query(&[*b], |e| {
+        skimap_osm::local::is_landmark(e.kind, |k| e.get(k))
+    });
+    Ok((
+        parse_landmarks(&v)?,
+        LandmarkSource {
+            name: OSM_LANDMARKS,
+            sources: idx.sources_for(b),
+        },
+    ))
+}
+
+/// Landmarks of `b`: the local OSM extracts, else (extracts neither in the cache nor
+/// downloadable) the BD TOPO toponyms (IGN). No Overpass request.
+pub fn landmarks_any(
+    layout: &DataLayout,
+    dl: &Downloader,
+    b: &BBox,
+) -> Result<(Vec<Landmark>, LandmarkSource)> {
+    match landmarks_osm(layout, dl, b) {
+        Ok(r) => Ok(r),
+        Err(osm) => {
+            let (l, f) = landmarks_ign(dl, b).map_err(|ign| {
+                Error::Data(format!("landmarks: OSM extracts: {osm}; IGN: {ign}"))
+            })?;
+            Ok((
+                l,
+                LandmarkSource {
+                    name: IGN_LANDMARKS,
+                    sources: vec![SourceRef::from_fetched(
+                        IGN_LANDMARKS,
+                        "Licence Ouverte Etalab 2.0",
+                        "IGN – BD TOPO",
+                        &f,
+                    )],
+                },
+            ))
         }
     }
-}
-
-/// Downloads the landmarks of `b` (Overpass, source `overpass`): from the mirror, else
-/// from the main instance (unreachable on 15/11/2026: connection refused, each attempt
-/// costing the downloader's retries).
-pub fn landmarks(dl: &Downloader, b: &BBox) -> Result<(Vec<Landmark>, Fetched)> {
-    let q = landmark_query(b);
-    let req = |url: &str| Request::post_form("overpass", url, &[("data", &q)]);
-    let f = match dl.fetch(&req(OVERPASS_MIRROR_URL)) {
-        Ok(f) => f,
-        Err(_) => dl.fetch(&req(OVERPASS_URL))?,
-    };
-    let v: Value = f.json()?;
-    Ok((parse_landmarks(&v)?, f))
 }
 
 #[cfg(test)]
@@ -448,6 +431,5 @@ mod tests {
         assert_eq!(l[0].ele, Some(2703.0));
         assert_eq!(l[1].kind, LandmarkKind::Place);
         assert_eq!(l[2].kind, LandmarkKind::Lake);
-        assert!(landmark_query(&BBox::new(1.0, 2.0, 3.0, 4.0)).contains("(1,2,3,4)"));
     }
 }
