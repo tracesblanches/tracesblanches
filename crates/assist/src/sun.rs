@@ -122,4 +122,27 @@ mod tests {
             NaiveDateTime::parse_from_str("2026-04-15T12:00:00", "%Y-%m-%dT%H:%M:%S").unwrap();
         assert_eq!(local_to_utc(summer), utc("2026-04-15T10:00:00"));
     }
+
+    #[test]
+    fn legal_time_around_the_changes_of_hour() {
+        let local = |s| NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S").unwrap();
+        // 29 March 2026: 02:00 CET becomes 03:00 CEST (01:00 UTC).
+        assert_eq!(
+            local_to_utc(local("2026-03-29T01:30:00")),
+            utc("2026-03-29T00:30:00")
+        );
+        assert_eq!(
+            local_to_utc(local("2026-03-29T03:30:00")),
+            utc("2026-03-29T01:30:00")
+        );
+        // 25 October 2026: 03:00 CEST becomes 02:00 CET (01:00 UTC).
+        assert_eq!(
+            local_to_utc(local("2026-10-25T01:30:00")),
+            utc("2026-10-24T23:30:00")
+        );
+        assert_eq!(
+            local_to_utc(local("2026-10-25T03:30:00")),
+            utc("2026-10-25T02:30:00")
+        );
+    }
 }
