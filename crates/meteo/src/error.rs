@@ -28,6 +28,11 @@ pub enum Error {
         message: String,
     },
 
+    /// The weather of a site could not be made from a run that was read (#174): the
+    /// reason, as reported for that site by [`crate::arome::refresh_run`].
+    #[error("{0}")]
+    Site(String),
+
     /// A personal-use-only source was requested while `personal_sources` is off.
     #[error("source `{0}` is restricted to personal use; enable `personal_sources` to use it")]
     PersonalSourcesDisabled(&'static str),

@@ -316,11 +316,17 @@ pub fn part_key(bbox: BBox, dl: &Downloader, maxzoom: u8) -> Result<String> {
     k.add(
         "box",
         &format!("{} {} {} {}", bbox.west, bbox.south, bbox.east, bbox.north),
-    )
-    .add("zooms", &format!("{MINZOOM} {maxzoom}"))
-    .add("style", &crate::update::sha256_hex(&style))
-    .add("revision", &revision);
+    );
+    add_code(&mut k, maxzoom);
+    k.add("style", &crate::update::sha256_hex(&style))
+        .add("revision", &revision);
     Ok(k.finish())
+}
+
+/// The code of the Plan IGN basemap in its part key: the zooms
+/// ([`crate::build::code_revision`] takes the same, #174).
+pub(crate) fn add_code(k: &mut crate::build::parts::Key, maxzoom: u8) {
+    k.add("zooms", &format!("{MINZOOM} {maxzoom}"));
 }
 
 pub fn build(bbox: BBox, dl: &Downloader, root: &Path, maxzoom: u8) -> Result<Basemap> {

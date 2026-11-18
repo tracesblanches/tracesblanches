@@ -640,12 +640,18 @@ pub fn part_key(
     let mut k = crate::build::parts::Key::new(&format!("basemap:{ID}"));
     k.add("latest", &latest)
         .add("current", &current)
-        .add("box", &box_name(site.bbox))
-        .add("minzoom", &zooms.0.to_string())
+        .add("box", &box_name(site.bbox));
+    add_code(&mut k, zooms);
+    Ok(k.finish())
+}
+
+/// The code of the OSM basemap in its part key: zooms, style, assets
+/// ([`crate::build::code_revision`] takes the same, #174).
+pub(crate) fn add_code(k: &mut crate::build::parts::Key, zooms: (u8, u8)) {
+    k.add("minzoom", &zooms.0.to_string())
         .add("maxzoom", &zooms.1.to_string())
         .add("style", &crate::update::sha256_hex(STYLE.as_bytes()))
         .add("assets", ASSETS_BASE);
-    Ok(k.finish())
 }
 
 /// Builds the OSM basemap (zooms `zooms.0..=zooms.1` of the site box) into
@@ -791,6 +797,30 @@ fn renewal_note(c: &Chosen) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// The part key keeps the bytes it had before its code was shared with
+    /// [`crate::build::code_revision`] (#174): no basemap is made again for that.
+    #[test]
+    fn part_key_unchanged_by_the_code_revision() {
+        let t = tempfile::tempdir().unwrap();
+        let layout = DataLayout::new(t.path());
+        let site = skimap_common::site::site("cervieres").unwrap();
+        let latest = BuildInfo {
+            key: "20261118.pmtiles".into(),
+            size: 1,
+            uploaded: "x".into(),
+            version: "4".into(),
+        };
+        let mut k = crate::build::parts::Key::new(&format!("basemap:{ID}"));
+        k.add("latest", &serde_json::to_string(&latest).unwrap())
+            .add("current", "none")
+            .add("box", &box_name(site.bbox))
+            .add("minzoom", &ZOOMS.0.to_string())
+            .add("maxzoom", &ZOOMS.1.to_string())
+            .add("style", &crate::update::sha256_hex(STYLE.as_bytes()))
+            .add("assets", ASSETS_BASE);
+        assert_eq!(part_key(site, &layout, &latest, ZOOMS).unwrap(), k.finish());
+    }
     use std::cell::RefCell;
     use std::fs::File;
 

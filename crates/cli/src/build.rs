@@ -275,10 +275,7 @@ impl Ctx {
     /// P14: offline pack of the site from the pipeline outputs, `data/out/<site>/pack/`
     /// (options from the configuration: personal sources).
     pub fn build_pack(&self, site: &Site) -> Result<skimap_pack::build::BuildReport> {
-        let opts = skimap_pack::build::BuildOptions {
-            personal_sources: self.cfg.personal_sources,
-            ..Default::default()
-        };
+        let opts = pack_options(self.cfg.personal_sources);
         Ok(skimap_pack::build::build(
             site,
             &self.layout,
@@ -1181,12 +1178,67 @@ pub fn view(site: &Site, fields: &[Field]) -> Site {
     }
 }
 
-/// Fingerprint of the fields of `site` that `step` reads ([`reads`], [`view`]).
+/// Options of the pack of the `build-pack` step ([`Ctx::build_pack`], [`step_code`]).
+fn pack_options(personal_sources: bool) -> skimap_pack::build::BuildOptions {
+    skimap_pack::build::BuildOptions {
+        personal_sources,
+        ..Default::default()
+    }
+}
+
+/// Fingerprint of the code of a step whose code is versioned (#174): the pack (the code
+/// of each of its parts, [`skimap_pack::build::code_revision`]) and the export
+/// ([`skimap_pack::export::code_revision`]). Part of the inputs of the step
+/// ([`step_inputs`]): a step done by another code is run again on every site, where the
+/// fingerprints of its inputs alone would take it over. `None` for the other steps (their
+/// fingerprint stays the one of the fields they read).
+pub fn step_code(step: &str) -> Option<String> {
+    static PACK: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    static EXPORT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    match step {
+        // The code fingerprint holds no option of the inputs (`personal_sources`).
+        "build-pack" => Some(
+            PACK.get_or_init(|| skimap_pack::build::code_revision(&pack_options(false)))
+                .clone(),
+        ),
+        "export" => Some(
+            EXPORT
+                .get_or_init(skimap_pack::export::code_revision)
+                .clone(),
+        ),
+        _ => None,
+    }
+}
+
+/// Inputs fingerprint of `step` on `site`: the fields of the site it reads ([`reads`],
+/// [`view`]) and the code of the step when it is versioned ([`step_code`]).
 pub fn step_inputs(step: &str, site: &Site) -> String {
+    step_inputs_of(step, site, step_code(step).as_deref())
+}
+
+/// [`step_inputs`] with the code fingerprint `code` (`None`: the fields only, as recorded
+/// before the code was, #174).
+pub fn step_inputs_of(step: &str, site: &Site, code: Option<&str>) -> String {
     use sha2::{Digest, Sha256};
     let v = view(site, reads(step));
-    let body = serde_json::to_vec(&v).expect("a site serializes");
-    hex::encode(Sha256::digest(body))
+    let mut h = Sha256::new();
+    h.update(serde_json::to_vec(&v).expect("a site serializes"));
+    if let Some(code) = code {
+        h.update(b"\0code\0");
+        h.update(code.as_bytes());
+    }
+    hex::encode(h.finalize())
+}
+
+/// Steps of the pipeline ([`READS`], every step of [`Ctx::build_all_with`], each recorded
+/// by a whole run, even when disabled or blocked) absent from `steps`: those of a run
+/// killed before it reached them (#174: its journal is not a build).
+pub fn missing_steps(steps: &[StepRecord]) -> Vec<&'static str> {
+    READS
+        .iter()
+        .map(|(n, _)| *n)
+        .filter(|n| !steps.iter().any(|s| s.name == *n))
+        .collect()
 }
 
 /// Whether a step is run again once older than the age limit of [`Resume`] (#172): the

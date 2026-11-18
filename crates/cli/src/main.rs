@@ -844,7 +844,13 @@ fn run(cli: Cli) -> Result<()> {
                 sites.iter().map(|s| site(s)).collect::<Result<_>>()?
             };
             let run = run.as_deref().map(build::parse_instant).transpose()?;
-            let r = batch::meteo_step_at(&c, &sites, run);
+            let (r, report) = batch::meteo_refresh_at(&c, &sites, run);
+            // Each site: its weather written (pack to redo) or why it has none (#174).
+            if let Some(report) = &report {
+                for l in batch::record_meteo(&c.layout, &sites, report) {
+                    tracing::warn!(line = %l, "meteo not recorded in build-all.json");
+                }
+            }
             if r.state == build::StepState::Failed {
                 anyhow::bail!("meteo-refresh : {}", r.line);
             }

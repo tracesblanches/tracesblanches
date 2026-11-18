@@ -1068,6 +1068,16 @@ pub const PARTS_FILE: &str = "export.parts.json";
 /// it when the same layer gives different overlay files.
 pub const OVERLAY_REVISION: u32 = 1;
 
+/// Fingerprint of the code of the export (#174): the crate version,
+/// [`crate::build::parts::PARTS_REVISION`] and [`OVERLAY_REVISION`], as in the overlay
+/// keys. The pipeline records it with the export step: an export made by another code is
+/// made again.
+pub fn code_revision() -> String {
+    let mut k = crate::build::parts::Key::new("code:export");
+    k.add("revision", &OVERLAY_REVISION.to_string());
+    k.finish()
+}
+
 /// An overlay as recorded with its key: its two files and zooms.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct OverlayPart {
