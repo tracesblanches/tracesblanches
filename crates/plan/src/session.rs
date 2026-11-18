@@ -12,7 +12,7 @@
 //! | Decision | Rule |
 //! |---|---|
 //! | start | not in a vehicle; within [`SessionParams::start_radius_m`] of the plan's start and [`SessionParams::start_route_m`] of the route; the smoothed position moves [`SessionParams::move_m`] over [`SessionParams::move_s`]: the start is the beginning of that movement |
-//! | pause | over [`SessionParams::pause_s`] (90 s), the mean position of the second half is within [`SessionParams::pause_ms`] (0.3 m/s, after the phone said « still » for [`SessionParams::still_pause_s`], or when it counts the steps and none came uphill or on the flat) or [`SessionParams::pause_fix_ms`] (0.15 m/s, the fixes alone; uphill without the steps, [`SessionParams::climb_pause_fix_ms`] over [`SessionParams::climb_pause_s`], 0.08 m/s over 180 s: a slow climb reads like a stop) × half the window of the first half's, the progress along the route (when on it) is below that too (hairpins), no smoothed position is farther than [`SessionParams::pause_m`] from the centre, and fewer than [`SessionParams::pause_steps`] steps over the window: the pause starts at the beginning of that window, or when the striding ended if the skier stayed there since |
+//! | pause | over [`SessionParams::pause_s`] (90 s), the mean position of the second half is within [`SessionParams::pause_ms`] (0.3 m/s, after the phone said « still » for [`SessionParams::still_pause_s`], or when it counts the steps and none came uphill or on the flat) or [`SessionParams::pause_fix_ms`] (0.15 m/s, the fixes alone; uphill without the steps, [`SessionParams::climb_pause_fix_ms`] over [`SessionParams::climb_pause_s`], 0.08 m/s over 180 s: a slow climb reads like a stop; longer and slower still for a skier slower than that, from its expected speed [`Session::set_expected_speed`]: the time it takes to cover [`SessionParams::pause_span_m`], up to [`SessionParams::pause_max_s`], under [`SessionParams::pause_share`] of it, #144) × half the window of the first half's, the progress along the route (when on it) is below that too (hairpins), no smoothed position is farther than [`SessionParams::pause_m`] from the centre, and fewer than [`SessionParams::pause_steps`] steps over the window: the pause starts at the beginning of that window, or when the striding ended if the skier stayed there since |
 //! | refuge | a pause within [`SessionParams::refuge_m`] (50 m) of a refuge of the plan lasting [`SessionParams::refuge_s`] (5 min): said at the first input after those 5 min (the GNSS is off in a pause, report 09), dated at their end |
 //! | waking | significant motion, « on foot » or [`SessionParams::waking_steps`] steps during a pause: the GPS goes back to 1 s |
 //! | resume | the smoothed position leaves the pause by [`SessionParams::resume_m`], dated when the striding came back (with the steps) or when the block that left started |
@@ -95,6 +95,16 @@ pub struct SessionParams {
     pub climb_pause_fix_ms: f64,
     /// …over this window, seconds.
     pub climb_pause_s: f64,
+    /// The fixes alone, with the skier's expected speed here ([`Session::set_expected_speed`],
+    /// #144): the window lasts the time the skier takes to cover this at that speed (0:
+    /// the fixed windows above), metres…
+    pub pause_span_m: f64,
+    /// …between [`SessionParams::pause_s`] and this, seconds…
+    pub pause_max_s: f64,
+    /// …and the speed is below this share of the expected speed…
+    pub pause_share: f64,
+    /// …but not below this, m/s (nor above [`SessionParams::pause_fix_ms`]).
+    pub pause_min_ms: f64,
 }
 
 impl Default for SessionParams {
@@ -122,6 +132,10 @@ impl Default for SessionParams {
             waking_steps: 5,
             climb_pause_fix_ms: 0.08,
             climb_pause_s: 180.0,
+            pause_span_m: 150.0,
+            pause_max_s: 360.0,
+            pause_share: 0.2,
+            pause_min_ms: 0.04,
         }
     }
 }
@@ -262,6 +276,8 @@ pub struct Session {
     pause_steps: u32,
     /// Terrain of the route here (the tracker says so from the plan's profile).
     terrain: Terrain,
+    /// Expected moving speed of the skier here, m/s (#144).
+    expected_ms: Option<f64>,
     /// The phone counts steps (a report came).
     counts_steps: bool,
     /// Last report of the steps, and the start of the striding in progress (reports of
@@ -284,7 +300,7 @@ impl Session {
         refuges: Vec<(Option<String>, LonLat)>,
     ) -> Self {
         let start_keep_s = p.pause_s.max(p.move_s).max(p.vehicle_s) + 3.0 * p.block_s;
-        let keep_s = start_keep_s.max(p.climb_pause_s + 3.0 * p.block_s);
+        let keep_s = start_keep_s.max(p.climb_pause_s.max(p.pause_max_s) + 3.0 * p.block_s);
         // Blocks of at least a second each: the ring never grows past this.
         let cap = (keep_s / p.block_s.max(1.0)).ceil() as usize * 2 + 8;
         Self {
@@ -314,6 +330,7 @@ impl Session {
             acc_steps: 0,
             pause_steps: 0,
             terrain: Terrain::Flat,
+            expected_ms: None,
             counts_steps: false,
             steps_t: None,
             stride_from: None,
@@ -326,6 +343,15 @@ impl Session {
     /// uphill or on the flat says the skier stopped (downhill, one glides without steps).
     pub fn set_terrain(&mut self, terrain: Terrain) {
         self.terrain = terrain;
+    }
+
+    /// Expected moving speed of the skier where it is, m/s: its pace of the day on the
+    /// terrain of the route (#144). With the fixes alone, the pause window lasts the time
+    /// it takes at that speed to cover [`SessionParams::pause_span_m`], and the speed
+    /// threshold is [`SessionParams::pause_share`] of it: a slow climber at 1 km/h moves
+    /// as far over its window as a skier at 10 km/h over 90 s, beyond the GPS error.
+    pub fn set_expected_speed(&mut self, v_ms: Option<f64>) {
+        self.expected_ms = v_ms.filter(|v| v.is_finite() && *v > 0.0);
     }
 
     /// Steps counted by the phone since its previous report.
@@ -647,12 +673,23 @@ impl Session {
                     // No stride (fewer than `pause_steps` over the window, below) where a
                     // skier strides: the threshold of « still ».
                     (self.p.pause_s, self.p.pause_ms)
-                } else if self.terrain == Terrain::Up && !self.counts_steps {
-                    // Without the steps, a slow climb reads like a stop: a longer window
-                    // and a lower speed.
-                    (self.p.climb_pause_s, self.p.climb_pause_fix_ms)
                 } else {
-                    (self.p.pause_s, self.p.pause_fix_ms)
+                    // The fixes alone: on a climb, a longer window and a lower speed (a slow
+                    // climb reads like a stop)…
+                    let (span, limit) = if self.terrain == Terrain::Up {
+                        (self.p.climb_pause_s, self.p.climb_pause_fix_ms)
+                    } else {
+                        (self.p.pause_s, self.p.pause_fix_ms)
+                    };
+                    // …and slower than that for a skier slower than that (#144): as long as
+                    // it takes at its own pace to move `pause_span_m`, under a share of it.
+                    match self.expected_ms {
+                        Some(v) if self.p.pause_span_m > 0.0 => (
+                            span.max((self.p.pause_span_m / v).min(self.p.pause_max_s)),
+                            limit.min((self.p.pause_share * v).max(self.p.pause_min_ms)),
+                        ),
+                        _ => (span, limit),
+                    }
                 };
                 let Some((a, _)) = self.window(span) else {
                     return;

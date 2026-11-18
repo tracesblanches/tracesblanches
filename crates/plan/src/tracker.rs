@@ -1157,6 +1157,24 @@ impl<'a> Tracker<'a> {
                 .max_by(|a, b| m[*a as usize].total_cmp(&m[*b as usize]))
                 .unwrap_or(Terrain::Flat);
             self.session.set_terrain(terrain);
+            // The skier's expected speed here (#144: the window of a pause from the fixes
+            // alone): the slowest 50 m from 150 m behind the cursor to 50 m ahead (the
+            // cursor runs ahead of a slow skier on the GPS error) at its pace of the day
+            // per terrain.
+            let end = f64::from(self.active.view().length());
+            let expected = (0..4)
+                .filter_map(|k| {
+                    let a = (self.cursor - 150.0 + 50.0 * f64::from(k)).max(0.0);
+                    let b = (a + 50.0).min(end);
+                    let m = self.pace_route.between(a, b);
+                    let real: f64 = Terrain::ALL
+                        .into_iter()
+                        .map(|c| m[c as usize].max(0.0) / self.day.pace(c))
+                        .sum();
+                    (b - a > 1.0 && real > 0.0).then(|| (b - a) / real)
+                })
+                .min_by(f64::total_cmp);
+            self.session.set_expected_speed(expected);
         }
         let mut ev = std::mem::take(&mut self.session_events);
         self.session.fix_on(t, pos, Some(d), s, &mut ev);

@@ -1237,9 +1237,9 @@ fn speeds(run: &Run) -> Vec<f64> {
 
 /// A slow skier (the C5 pace divided by `slowdown`: climbs at 0.3 to 0.5 m/s, hairpins of
 /// the Izoard road at Cervières) stopping 3 min on the steepest climb: with the steps
-/// counted by the phone (X10), the one pause is that stop; with the fixes alone, the
-/// thresholds of a climb (180 s under 0.08 m/s) against those of before (90 s under 0.15
-/// m/s).
+/// counted by the phone (X10), the one pause is that stop; with the fixes alone too (the
+/// window sized on the skier's own pace, #144), against the fixed window of X10 (180 s
+/// under 0.08 m/s on a climb) and the thresholds of before (90 s under 0.15 m/s).
 fn slow_climb(b: &Built, name: &str, slowdown: f64, within_m: f64) {
     let at_s = steepest(b, within_m);
     let mut counts = Vec::new();
@@ -1285,23 +1285,33 @@ fn slow_climb(b: &Built, name: &str, slowdown: f64, within_m: f64) {
         let view = TrackView::new(&b.track).unwrap();
         let gps = scenario::run(&sc, &b.plan, view, &b.graph, TrackerParams::default()).unwrap();
         let mut before = TrackerParams::default();
+        before.session.pause_span_m = 0.0;
+        let x10 = scenario::run(&sc, &b.plan, view, &b.graph, before.clone()).unwrap();
         before.session.climb_pause_s = before.session.pause_s;
         before.session.climb_pause_fix_ms = before.session.pause_fix_ms;
         let old = scenario::run(&sc, &b.plan, view, &b.graph, before).unwrap();
-        let false_of = |r: &Run| {
-            let (st, sd) = r.stops[0];
-            pauses(r)
-                .iter()
-                .filter(|p| !(p.0 < st + sd + 30.0 && p.1 > st - 30.0))
-                .count()
-        };
-        counts.push((false_of(&gps), false_of(&old)));
+        let (st, sd) = gps.stops[0];
+        let meets = |p: &(f64, f64)| p.0 < st + sd + 30.0 && p.1 > st - 30.0;
+        let false_of = |r: &Run| pauses(r).iter().filter(|p| !meets(p)).count();
+        // The fixes alone find the stop too (a pause meets it).
+        let found = pauses(&gps).iter().any(meets);
+        println!(
+            "{} : seules positions, pauses {:?}, arrêt trouvé {found}",
+            run.scenario,
+            pauses(&gps)
+        );
+        counts.push((false_of(&gps), false_of(&x10), false_of(&old), found));
     }
-    let (now, old): (usize, usize) = counts.iter().fold((0, 0), |a, c| (a.0 + c.0, a.1 + c.1));
+    let (now, x10, old) = counts
+        .iter()
+        .fold((0, 0, 0), |a, c| (a.0 + c.0, a.1 + c.1, a.2 + c.2));
     println!(
-        "{name} : fausses pauses avec les seules positions {now} (avant X10 : {old}) ; avec les pas 0"
+        "{name} : fausses pauses avec les seules positions {now} (fenêtre fixe de X10 : {x10}, avant X10 : {old}) ; avec les pas 0"
     );
-    assert!(now < old, "{now} vs {old}");
+    // The fixes alone (a phone without a step counter): no false pause either, the stop
+    // found (#144).
+    assert_eq!(now, 0, "{counts:?}");
+    assert!(counts.iter().all(|c| c.3), "{counts:?}");
 }
 
 #[test]
