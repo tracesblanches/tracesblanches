@@ -41,6 +41,10 @@ pub struct BatchOptions {
     /// outputs no longer match its record (altered, removed, half written) is rebuilt
     /// (`build-all --stale`).
     pub verify: bool,
+    /// Command run after each site built, with the directory of each of its packs
+    /// appended (`skimap-server publish`): a pass killed later keeps the sites already
+    /// published (#172).
+    pub publish: Option<Vec<String>>,
 }
 
 /// Whether every output recorded for the steps of `rec` is still on disk unchanged.
@@ -108,6 +112,135 @@ pub fn lock_site(dir: &Path) -> Result<std::fs::File> {
     }
 }
 
+/// Attempt marker of a site build (#172), in its output directory.
+pub const ATTEMPT_FILE: &str = "build-all.attempt.json";
+
+/// Attempts of a site build killed with the process (#172).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, serde::Deserialize)]
+pub struct Attempt {
+    /// Start of an attempt not finished yet, RFC 3339.
+    pub started_at: Option<String>,
+    /// Attempts killed in a row.
+    pub killed: u32,
+    /// Start of the last attempt killed, RFC 3339.
+    pub last_killed_at: Option<String>,
+    /// Fingerprint of the inputs of the last attempt.
+    pub inputs: String,
+}
+
+/// Attempts killed in a row after which a site is set aside (#172).
+pub const SET_ASIDE_AFTER: u32 = 2;
+
+/// Hours after which a site set aside is tried again with unchanged inputs (#172).
+pub const RETRY_SET_ASIDE_HOURS: i64 = 24;
+
+impl Attempt {
+    /// The attempt marker of the site whose output directory is `dir` (empty when none).
+    pub fn read(dir: &Path) -> Self {
+        std::fs::read(dir.join(ATTEMPT_FILE))
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default()
+    }
+
+    fn write(&self, dir: &Path) -> Result<()> {
+        Ok(skimap_common::output::write_json(
+            &dir.join(ATTEMPT_FILE),
+            self,
+        )?)
+    }
+
+    /// Whether the site is set aside: killed [`SET_ASIDE_AFTER`] times in a row with the
+    /// inputs `inputs`, the last time less than [`RETRY_SET_ASIDE_HOURS`] ago.
+    pub fn set_aside(&self, inputs: &str, now: DateTime<Utc>) -> bool {
+        self.killed >= SET_ASIDE_AFTER
+            && self.inputs == inputs
+            && self
+                .last_killed_at
+                .as_deref()
+                .and_then(|t| DateTime::parse_from_rfc3339(t).ok())
+                .is_some_and(|t| (now - t.to_utc()).num_hours() < RETRY_SET_ASIDE_HOURS)
+    }
+}
+
+/// Line of a site set aside, for the summary and the alerts of `status.json`.
+fn set_aside_line(a: &Attempt) -> String {
+    format!(
+        "mis de côté : {} tentatives tuées avec le processus (mémoire, délai), la dernière le {} ; réessayé quand ses entrées changent ou {RETRY_SET_ASIDE_HOURS} h après",
+        a.killed,
+        a.last_killed_at.as_deref().unwrap_or("?")
+    )
+}
+
+/// Fingerprint of the inputs of a site build, for [`Attempt::inputs`].
+fn inputs_fingerprint(inp: &BuildInputs) -> String {
+    use sha2::{Digest, Sha256};
+    hex::encode(Sha256::digest(
+        serde_json::to_vec(inp).expect("inputs serialize"),
+    ))
+}
+
+/// Counts the attempt of a site that a previous process started and never finished
+/// (killed with it: OOM, deadline): the marker is there and nobody holds the site lock.
+fn reckon_attempt(dir: &Path) -> Result<Attempt> {
+    let mut a = Attempt::read(dir);
+    if a.started_at.is_some() && lock_site(dir).is_ok() {
+        a.killed += 1;
+        a.last_killed_at = a.started_at.take();
+        a.write(dir)?;
+    }
+    Ok(a)
+}
+
+/// Notes the start of an attempt before a site is built (#172).
+fn begin_attempt(dir: &Path, inputs: &str) -> Result<()> {
+    DataLayout::ensure(dir)?;
+    let mut a = Attempt::read(dir);
+    a.started_at = Some(now_rfc3339());
+    a.inputs = inputs.to_owned();
+    a.write(dir)
+}
+
+/// The attempt finished (whatever the outcome of its steps): the process was not killed.
+fn end_attempt(dir: &Path) -> Result<()> {
+    match std::fs::remove_file(dir.join(ATTEMPT_FILE)) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+            Err(e).with_context(|| format!("{}", dir.join(ATTEMPT_FILE).display()))
+        }
+        _ => Ok(()),
+    }
+}
+
+/// Pack directories of a site to publish: its pack, then its voice packs (VO6), those
+/// holding a `manifest.json`.
+pub fn pack_dirs(site_dir: &Path) -> Vec<PathBuf> {
+    let mut v = vec![site_dir.join("pack")];
+    if let Ok(rd) = std::fs::read_dir(site_dir.join("voice-pack")) {
+        let mut voices: Vec<PathBuf> = rd.flatten().map(|e| e.path()).collect();
+        voices.sort();
+        v.extend(voices);
+    }
+    v.retain(|d| d.join("manifest.json").is_file());
+    v
+}
+
+/// Publishes the packs of a site with `cmd` (one run per pack directory, appended to
+/// it); the failures, `pack : error`.
+fn publish_site(cmd: &[String], site_dir: &Path) -> Vec<String> {
+    let Some((prog, args)) = cmd.split_first() else {
+        return Vec::new();
+    };
+    let mut failures = Vec::new();
+    for d in pack_dirs(site_dir) {
+        match std::process::Command::new(prog).args(args).arg(&d).status() {
+            Ok(s) if s.success() => {}
+            Ok(s) => failures.push(format!("{} : {s}", d.display())),
+            Err(e) => failures.push(format!("{} : {prog} : {e}", d.display())),
+        }
+    }
+    failures
+}
+
 /// Downloads of the run, per source: files and bytes added to the cache.
 #[derive(Debug, Clone, Default, Serialize, PartialEq)]
 pub struct CacheDelta {
@@ -146,7 +279,8 @@ pub fn cache_inventory(root: &Path) -> BTreeMap<String, (i64, i64)> {
 pub struct SiteResult {
     /// Site.
     pub site: String,
-    /// `built`, `failed`, `up_to_date`, `not_started` (stop time reached).
+    /// `built`, `failed`, `up_to_date`, `not_started` (stop time reached), `set_aside`
+    /// (its build killed the process, #172).
     pub result: String,
     /// Seconds.
     pub seconds: f64,
@@ -181,6 +315,12 @@ pub struct BatchSummary {
     pub up_to_date: usize,
     /// Not started (stop time).
     pub not_started: usize,
+    /// Set aside: their build killed the process [`SET_ASIDE_AFTER`] times (#172).
+    pub set_aside: usize,
+    /// Sites whose packs were published as soon as built (`BatchOptions::publish`).
+    pub published: usize,
+    /// Publications that failed, `site : pack : error`.
+    pub publish_failures: Vec<String>,
     /// Failures grouped by cause (`step : error`, sites).
     pub failure_causes: BTreeMap<String, Vec<String>>,
     /// Seconds per step summed over the built sites, heaviest first.
@@ -389,6 +529,7 @@ pub fn build_many_with(
     let now = Utc::now();
     let mut results = Vec::new();
     let mut todo = VecDeque::new();
+    let mut suspects = Vec::new();
     for s in sites {
         let inp = inputs(ctx, registry, s)?;
         match france::read_record(&ctx.layout, s.id) {
@@ -408,21 +549,52 @@ pub fn build_many_with(
                     not_applicable: Vec::new(),
                 });
             }
-            _ => todo.push_back((*s, inp)),
+            _ => {
+                // A site whose build killed the process (#172): set aside after
+                // SET_ASIDE_AFTER attempts, else built last and alone.
+                let dir = ctx.layout.out_dir(s);
+                let fp = inputs_fingerprint(&inp);
+                let attempt = reckon_attempt(&dir)?;
+                if attempt.set_aside(&fp, now) {
+                    println!(
+                        "{:<34} mis de côté : {} tentatives tuées avec le processus, la dernière le {}",
+                        s.id,
+                        attempt.killed,
+                        attempt.last_killed_at.as_deref().unwrap_or("?")
+                    );
+                    results.push(SiteResult {
+                        site: s.id.to_owned(),
+                        result: "set_aside".into(),
+                        seconds: 0.0,
+                        pack_bytes: None,
+                        export_bytes: None,
+                        failures: vec![set_aside_line(&attempt)],
+                        not_applicable: Vec::new(),
+                    });
+                } else if attempt.killed > 0 {
+                    suspects.push((*s, inp, true, fp));
+                } else {
+                    todo.push_back((*s, inp, false, fp));
+                }
+            }
         }
     }
+    todo.extend(suspects);
     let n = todo.len();
     println!(
-        "build-all : {} sites, {} à construire, {} à jour ; {} en parallèle",
+        "build-all : {} sites, {} à construire, {} à jour, {} mis de côté ; {} en parallèle",
         sites.len(),
         n,
-        sites.len() - n,
+        results.iter().filter(|r| r.result == "up_to_date").count(),
+        results.iter().filter(|r| r.result == "set_aside").count(),
         opts.jobs
     );
     let mut built: Vec<(String, BuildOutcome)> = Vec::new();
     let mut meteo = None;
+    let mut published = 0;
+    let mut publish_failures = Vec::new();
     if n > 0 {
-        let todo_sites: Vec<&Site> = todo.iter().map(|(s, _)| *s).collect();
+        let todo_sites: Vec<&Site> = todo.iter().map(|(s, ..)| *s).collect();
         meteo = (!ctx.cfg.personal_sources).then(|| steps.meteo(ctx, &todo_sites));
         let shared = Shared {
             france: Some(&france),
@@ -435,6 +607,9 @@ pub fn build_many_with(
         // Big sites one at a time: a GTJ section alone peaks at 5.6 GB (G2), several at
         // once with the other sites would exhaust the memory of the machine.
         let heavy = Mutex::new(());
+        // A site whose build killed the process runs alone: if it kills it again, no
+        // other site is blamed with it (#172).
+        let solo = std::sync::RwLock::new(());
         let deadline = opts.stop_after.map(|d| t0 + d);
         std::thread::scope(|scope| {
             for _ in 0..opts.jobs.max(1) {
@@ -443,12 +618,37 @@ pub fn build_many_with(
                         if deadline.is_some_and(|d| Instant::now() >= d) {
                             break;
                         }
-                        let Some((site, inp)) = queue.lock().expect("queue").pop_front() else {
+                        let Some((site, inp, suspect, fp)) =
+                            queue.lock().expect("queue").pop_front()
+                        else {
                             break;
+                        };
+                        let (_solo_w, _solo_r) = if suspect {
+                            (Some(solo.write().unwrap_or_else(|p| p.into_inner())), None)
+                        } else {
+                            (None, Some(solo.read().unwrap_or_else(|p| p.into_inner())))
                         };
                         let _heavy = (site_area_km2(site) >= HEAVY_SITE_KM2)
                             .then(|| heavy.lock().unwrap_or_else(|p| p.into_inner()));
+                        let dir = ctx.layout.out_dir(site);
+                        if let Err(e) = begin_attempt(&dir, &fp) {
+                            tracing::warn!(site = site.id, error = %e, "attempt not noted");
+                        }
                         let r = steps.site(ctx, site, inp, shared, opts);
+                        if let Err(e) = end_attempt(&dir) {
+                            tracing::warn!(site = site.id, error = %e, "attempt not cleared");
+                        }
+                        // Published at once (#172): a pass killed later keeps it.
+                        let publish_failures = match (&r, &opts.publish) {
+                            (Ok(_), Some(cmd)) => {
+                                let f = publish_site(cmd, &dir);
+                                for l in &f {
+                                    println!("{:<34} publication en échec : {l}", site.id);
+                                }
+                                Some(f)
+                            }
+                            _ => None,
+                        };
                         let k = {
                             let mut c = counter.lock().expect("counter");
                             *c += 1;
@@ -483,12 +683,20 @@ pub fn build_many_with(
                             ),
                             Err(e) => println!("[{k}/{n}] {:<34} ERREUR {e:#}", site.id),
                         }
-                        done.lock().expect("done").push((site.id.to_owned(), r));
+                        done.lock()
+                            .expect("done")
+                            .push((site.id.to_owned(), r, publish_failures));
                     }
                 });
             }
         });
-        for (id, r) in done.into_inner().expect("done") {
+        for (id, r, p) in done.into_inner().expect("done") {
+            if let Some(p) = p {
+                if p.is_empty() {
+                    published += 1;
+                }
+                publish_failures.extend(p.into_iter().map(|l| format!("{id} : {l}")));
+            }
             match r {
                 Ok(o) => built.push((id, o)),
                 Err(e) => results.push(SiteResult {
@@ -589,6 +797,9 @@ pub fn build_many_with(
         failed: count("failed"),
         up_to_date: count("up_to_date"),
         not_started: count("not_started"),
+        set_aside: count("set_aside"),
+        published,
+        publish_failures,
         failure_causes,
         step_seconds,
         not_applicable,
@@ -642,8 +853,14 @@ pub struct SiteStatus {
     /// Site.
     pub site: String,
     /// `ok` (every step done or not applicable), `failed` (at least one step failed: its
-    /// previous outputs, if any, are kept and published with their date), `never_built`.
+    /// previous outputs, if any, are kept and published with their date), `never_built`,
+    /// `set_aside` (its build killed the process [`SET_ASIDE_AFTER`] times in a row: the
+    /// other sites go first, it is tried again when its inputs change or once a day; its
+    /// previous pack, if any, stays published, #172).
     pub state: String,
+    /// Attempts of the site killed with the process in a row (#172).
+    #[serde(skip_serializing_if = "is_zero")]
+    pub killed_attempts: u32,
     /// Last run of the site, RFC 3339.
     pub built_at: Option<String>,
     /// Steps that are not done, with their cause.
@@ -652,6 +869,10 @@ pub struct SiteStatus {
     pub empty_steps: Vec<StepStatus>,
     /// Every step.
     pub steps: Vec<StepStatus>,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 /// `data/out/france/status.json`: state of every site of the batch from its record
@@ -682,10 +903,21 @@ pub fn write_status(layout: &DataLayout, sites: &[&'static Site]) -> Result<Path
     let mut alerts = Vec::new();
     let mut out = Vec::new();
     for s in sites {
+        let attempt = Attempt::read(&layout.out_dir(s));
+        let set_aside = attempt.killed >= SET_ASIDE_AFTER;
+        if set_aside {
+            alerts.push(format!("{} : {}", s.id, set_aside_line(&attempt)));
+        }
         let Some(rec) = france::read_record(layout, s.id) else {
             out.push(SiteStatus {
                 site: s.id.to_owned(),
-                state: "never_built".into(),
+                state: if set_aside {
+                    "set_aside"
+                } else {
+                    "never_built"
+                }
+                .into(),
+                killed_attempts: attempt.killed,
                 built_at: None,
                 failed_steps: Vec::new(),
                 empty_steps: Vec::new(),
@@ -752,7 +984,15 @@ pub fn write_status(layout: &DataLayout, sites: &[&'static Site]) -> Result<Path
             .collect();
         out.push(SiteStatus {
             site: s.id.to_owned(),
-            state: if rec.ok { "ok" } else { "failed" }.into(),
+            state: if set_aside {
+                "set_aside"
+            } else if rec.ok {
+                "ok"
+            } else {
+                "failed"
+            }
+            .into(),
+            killed_attempts: attempt.killed,
             built_at: Some(rec.finished_at.clone()),
             failed_steps,
             empty_steps,
@@ -781,6 +1021,7 @@ pub fn write_status(layout: &DataLayout, sites: &[&'static Site]) -> Result<Path
             "ok": count("ok"),
             "failed": count("failed"),
             "never_built": count("never_built"),
+            "set_aside": count("set_aside"),
             "empty": out.iter().filter(|x| !x.empty_steps.is_empty()).count(),
             "empty_steps": empty,
             "alert_after_days": ALERT_AFTER_DAYS,
@@ -995,6 +1236,7 @@ fn build_site(
     let resume = previous.as_ref().map(|r| crate::build::Resume {
         previous: &r.outcome.steps,
         max_age,
+        personal_sources: ctx.cfg.personal_sources,
         pack_bytes: r.outcome.pack_bytes,
         export_bytes: r.outcome.export_bytes,
     });
@@ -1140,9 +1382,20 @@ pub fn describe_status(path: &Path) -> Result<Vec<String>> {
 /// French text of a summary.
 pub fn describe(s: &BatchSummary) -> Vec<String> {
     let mut l = vec![format!(
-        "build-all : {} sites en {:.0} s ({} en parallèle) : {} construits sans échec, {} avec échec, {} à jour, {} non commencés",
-        s.sites, s.seconds, s.jobs, s.built, s.failed, s.up_to_date, s.not_started
+        "build-all : {} sites en {:.0} s ({} en parallèle) : {} construits sans échec, {} avec échec, {} à jour, {} non commencés, {} mis de côté (processus tué) ; {} publiés au fil des sites",
+        s.sites,
+        s.seconds,
+        s.jobs,
+        s.built,
+        s.failed,
+        s.up_to_date,
+        s.not_started,
+        s.set_aside,
+        s.published
     )];
+    for f in &s.publish_failures {
+        l.push(format!("publication en échec : {f}"));
+    }
     l.push(format!(
         "packs : {:.1} Mo ; exports : {:.1} Mo ; mémoire maximale du processus : {}",
         s.pack_bytes as f64 / 1e6,
@@ -1234,6 +1487,8 @@ mod tests {
         new_start: std::sync::atomic::AtomicBool,
         /// Per site build: site, starts of the site built, previous record taken over.
         builds: Mutex<Vec<(String, usize, bool)>>,
+        /// The build of this site kills the process (`abort`, as the OOM killer does).
+        abort_on: Option<String>,
     }
 
     impl Steps for Fake {
@@ -1312,11 +1567,21 @@ mod tests {
             Self {
                 new_start: false.into(),
                 builds: Mutex::new(Vec::new()),
+                abort_on: None,
             }
         }
 
         /// A site build: its record.
         fn build(&self, ctx: &Ctx, site: &'static Site, inp: BuildInputs) -> Result<BuildOutcome> {
+            let dir = ctx.layout.out_dir(site);
+            skimap_common::output::append_bytes(
+                &ctx.layout.root().join("built.txt"),
+                format!("{}\n", site.id).as_bytes(),
+            )?;
+            if self.abort_on.as_deref() == Some(site.id) {
+                std::process::abort();
+            }
+            skimap_common::output::write_bytes(&dir.join("pack/manifest.json"), b"{}")?;
             let taken_over = france::read_record(&ctx.layout, site.id)
                 .is_some_and(|r| r.inputs.resumable_by(&inp) && r.inputs.record == inp.record);
             self.builds
@@ -1431,6 +1696,7 @@ mod tests {
             max_age: Duration::from_secs(86_400),
             stop_after: None,
             verify: false,
+            publish: None,
         };
         let steps = Fake::new();
         catch_up(&ctx, &steps, &|registry, site| {
@@ -1694,5 +1960,149 @@ mod tests {
         std::fs::write(d.path().join("ign/a.json"), b"{}").unwrap();
         let inv = cache_inventory(d.path());
         assert_eq!(inv["ign"], (1, 4));
+    }
+
+    /// Data directory of [`a_site_that_kills_the_process_does_not_block_the_others`]
+    /// and site whose build kills the process; the child pass runs only when both are set.
+    const CRASH_DIR: &str = "SKIMAP_TEST_CRASH_DIR";
+    const CRASH_SITE: &str = "SKIMAP_TEST_CRASH_SITE";
+
+    /// One pass of the catch-up in a child process (run by
+    /// [`a_site_that_kills_the_process_does_not_block_the_others`]): every site of the
+    /// registry, the build of `CRASH_SITE` aborts the process, each site built is
+    /// published by a command that appends its pack directory to `published.txt`.
+    #[test]
+    fn crash_pass_child() {
+        let (Ok(dir), Ok(poison)) = (std::env::var(CRASH_DIR), std::env::var(CRASH_SITE)) else {
+            return;
+        };
+        let cfg =
+            skimap_common::config::Config::from_vars([("SKIMAP_DATA_DIR".to_owned(), dir.clone())])
+                .unwrap();
+        let ctx = Ctx::new(&cfg).unwrap();
+        let registry = Registry::load(&ctx.layout).unwrap();
+        let opts = BatchOptions {
+            jobs: 1,
+            force: false,
+            max_age: Duration::from_secs(86_400),
+            stop_after: None,
+            verify: false,
+            publish: Some(vec![
+                "sh".into(),
+                "-c".into(),
+                format!("printf '%s\\n' \"$0\" >> {dir}/published.txt"),
+            ]),
+        };
+        let steps = Fake {
+            abort_on: Some(poison),
+            ..Fake::new()
+        };
+        build_many_with(&ctx, &registry, &registry.buildable(), &opts, &steps).unwrap();
+    }
+
+    /// #172, catch-up of 17/11/2026 on the server: the process was killed (OOMKilled) on one
+    /// big site; nothing was published (the publication came at the end of the pass) and
+    /// every following pass died on the same site. Each pass here is a child process
+    /// whose build of the first site aborts.
+    #[test]
+    fn a_site_that_kills_the_process_does_not_block_the_others() {
+        let t = tempfile::tempdir().unwrap();
+        let cfg = skimap_common::config::Config::from_vars([(
+            "SKIMAP_DATA_DIR".to_owned(),
+            t.path().display().to_string(),
+        )])
+        .unwrap();
+        let ctx = Ctx::new(&cfg).unwrap();
+        // Four sites: the evaluation sites, and copies of the first under other names.
+        let mut records: Vec<_> = skimap_common::site::evaluation_records()
+            .iter()
+            .filter(|r| r.buildable())
+            .cloned()
+            .collect();
+        for k in 1..=4 - records.len().min(4) {
+            let mut r = records[0].clone();
+            r.id = format!("{}-copie-{k}", r.id);
+            records.push(r);
+        }
+        assert_eq!(records.len(), 4);
+        Registry::write(
+            &Registry::path(&ctx.layout).unwrap(),
+            &skimap_common::site::RegistryFile {
+                generated_at: now_rfc3339(),
+                notes: Vec::new(),
+                sites: records.clone(),
+            },
+        )
+        .unwrap();
+        let poison = records[0].id.clone();
+        let others: Vec<String> = records[1..].iter().map(|r| r.id.clone()).collect();
+        let pass = || {
+            std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["batch::tests::crash_pass_child", "--exact", "--nocapture"])
+                .env(CRASH_DIR, t.path())
+                .env(CRASH_SITE, &poison)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .unwrap()
+                .success()
+        };
+        let read = |f: &str| std::fs::read_to_string(t.path().join(f)).unwrap_or_default();
+        let published = |id: &str| {
+            read("published.txt")
+                .lines()
+                .filter(|l| l.ends_with(&format!("/{id}/pack")))
+                .count()
+        };
+        let builds = |id: &str| read("built.txt").lines().filter(|l| *l == id).count();
+
+        assert!(!pass(), "the first pass is killed on the first site");
+        assert!(!pass(), "the second pass is killed again, last");
+        for id in &others {
+            assert_eq!(
+                published(id),
+                1,
+                "{id} built and published before the site that kills the process: {}",
+                read("published.txt")
+            );
+        }
+        assert_eq!(builds(&poison), 2);
+        // Two attempts killed: set aside, the pass ends, the others are up to date.
+        assert!(pass(), "the third pass leaves the killing site aside");
+        assert_eq!(builds(&poison), 2, "not tried a third time the same day");
+        let status: serde_json::Value =
+            serde_json::from_str(&read("out/france/status.json")).unwrap();
+        let site = status["by_site"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["site"] == poison.as_str())
+            .unwrap();
+        assert_eq!(site["state"], "set_aside", "{site}");
+        assert_eq!(site["killed_attempts"], 2, "{site}");
+        assert!(
+            status["alerts"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|a| a.as_str().unwrap().starts_with(&format!("{poison} : "))),
+            "{status}"
+        );
+        // A day later it is tried again, after the others (here up to date).
+        let path = ctx
+            .layout
+            .out_dir(Registry::load(&ctx.layout).unwrap().get(&poison).unwrap())
+            .join(ATTEMPT_FILE);
+        let mut a: Attempt = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        a.last_killed_at = Some(
+            (Utc::now() - chrono::Duration::hours(25))
+                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        );
+        skimap_common::output::write_json(&path, &a).unwrap();
+        assert!(!pass(), "tried again a day later");
+        assert_eq!(builds(&poison), 3);
+        for id in &others {
+            assert_eq!(builds(id), 1, "{id} up to date, not rebuilt");
+        }
     }
 }
