@@ -25,6 +25,8 @@ pub mod error;
 pub mod france;
 pub mod manifest;
 pub mod mvt;
+pub mod patch;
+pub mod pmtiles_v3;
 pub mod png;
 pub mod reader;
 pub mod sync;

@@ -12,7 +12,7 @@ Détail des formats, du plan et des mesures : [`crates/pack/docs/mise-a-jour.md`
 
 1. `GET /v1/catalog.json` (liste des zones, à l'ouverture de l'écran de choix) ; `If-None-Match` → 304.
 2. `GET /v1/sites/<site>/index.json` avec `If-None-Match` : 304 si rien de neuf (une requête, corps vide).
-3. Les paquets de `skimap_pack::sync::plan(index, état)` : `GET /v1/bundles/<sha256>.skb`, reprise avec `Range: bytes=<déjà reçu>-` et `If-Range: "<sha256>"` (l'`ETag` d'un paquet est son empreinte) ; installation par `skimap_pack::update::apply_bundle`.
+3. Les paquets de `skimap_pack::sync::plan(index, état)` : `GET /v1/bundles/<sha256>.skb`, reprise avec `Range: bytes=<déjà reçu>-` et `If-Range: "<sha256>"` (l'`ETag` d'un paquet est son empreinte) ; installation par `skimap_pack::update::apply_bundle`. L'index liste deux jeux de deltas, fichiers statiques sans négociation par requête : `deltas` (fichiers entiers, format 2, ce que lit une app de format 2) et `patched_deltas` (les mêmes, avec les PMTiles changés de quelques tuiles envoyés en correctifs, format 3, #160 ; absents quand aucun n'est plus petit) ; une app de format 3 prend le second, une app plus ancienne ignore ce champ.
 
 | Ressource | `Cache-Control` | `ETag` |
 |---|---|---|

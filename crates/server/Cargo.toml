@@ -34,6 +34,8 @@ webpki-roots.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+# PMTiles archives written by the tests of the tile-by-tile update (#160).
+pmtiles.workspace = true
 
 [lints]
 workspace = true

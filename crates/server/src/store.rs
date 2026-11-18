@@ -39,7 +39,9 @@ use skimap_common::output::{AtomicFile, FileLock, copy_file};
 use skimap_pack::Pack;
 use skimap_pack::manifest::{MANIFEST_FILE, Manifest, SiteInfo};
 use skimap_pack::sync::{BundleRef, INDEX_FORMAT, INDEX_FORMAT_VERSION, LatestVersion, SiteIndex};
-use skimap_pack::update::{Update, parse_manifest, sha256_hex, write_bundle};
+use skimap_pack::update::{
+    TilePatches, Update, parse_manifest, sha256_hex, tile_patches, write_bundle_patched,
+};
 
 /// File of the pack that changes at every build (its build time) without changing any
 /// layer: a pack that differs from the latest only by it is not published again.
@@ -108,8 +110,12 @@ pub struct PublishReport {
     pub new_blobs: u64,
     /// Bundles written: `(from, bytes)`, `from` empty for the base bundle.
     pub bundles: Vec<(String, u64)>,
-    /// The delta from the previous latest version (what a daily sync downloads).
+    /// The delta from the previous latest version, every file whole (what a daily sync of
+    /// an app of update format 2 downloads).
     pub daily_delta_bytes: Option<u64>,
+    /// The same delta with PMTiles patches, when published (smaller): what an app of
+    /// format 3 downloads (#160).
+    pub daily_patched_bytes: Option<u64>,
     /// Layers changed or added since the previous latest version.
     pub changed: Vec<String>,
     /// Versions removed by the retention.
@@ -429,20 +435,24 @@ impl Store {
         Ok(true)
     }
 
-    /// Writes the bundle of `update` (blobs from the store), named by its SHA-256.
-    fn write_bundle(&self, update: &Update) -> Result<BundleRef> {
+    /// Opens blob `sha` of the store.
+    fn open_blob(&self, sha: &str) -> skimap_pack::Result<fs::File> {
+        let p = self
+            .blob_path(sha)
+            .ok_or_else(|| skimap_pack::Error::Pack(format!("bad blob {sha}")))?;
+        fs::File::open(&p).map_err(|e| skimap_pack::Error::io(&p, e))
+    }
+
+    /// Writes the bundle of `update` (blobs from the store), named by its SHA-256, with
+    /// the files of `patches` as patches (update format 3 if any, else 2).
+    fn write_bundle(&self, update: &Update, patches: &TilePatches) -> Result<BundleRef> {
         let dir = self.public().join("bundles");
         // Named by its hash once written; removed if dropped on an error.
         let mut w = HashingWriter {
             inner: AtomicFile::create(&dir.join(".bundle"))?,
             hash: Sha256::new(),
         };
-        let bytes = write_bundle(&mut w, update, |sha| {
-            let p = self
-                .blob_path(sha)
-                .ok_or_else(|| skimap_pack::Error::Pack(format!("bad blob {sha}")))?;
-            fs::File::open(&p).map_err(|e| skimap_pack::Error::io(&p, e))
-        })?;
+        let bytes = write_bundle_patched(&mut w, update, patches, |sha| self.open_blob(sha))?;
         let sha = hex::encode(w.hash.finalize());
         let dst = self.bundle_path(&sha).expect("hex SHA-256");
         w.inner.commit_as(&dst)?;
@@ -546,6 +556,7 @@ impl Store {
             new_blobs: 0,
             bundles: Vec::new(),
             daily_delta_bytes: None,
+            daily_patched_bytes: None,
             changed: Vec::new(),
             versions_removed: Vec::new(),
             files_removed: 0,
@@ -622,7 +633,7 @@ impl Store {
             base.expect("kept base")
         } else {
             let u = Update::between(None, &new, &manifest_bytes);
-            let bundle = self.write_bundle(&u)?;
+            let bundle = self.write_bundle(&u, &TilePatches::default())?;
             report.bundles.push((String::new(), bundle.bytes));
             report.rebased = true;
             let b = BaseEntry {
@@ -658,18 +669,29 @@ impl Store {
             }
         }
 
-        // Deltas from every kept version to the new latest.
+        // Deltas from every kept version to the new latest: every file whole (what an app
+        // of update format 2 reads), and, when smaller, with the PMTiles that changed by a
+        // few tiles as patches (format 3, #160).
         let mut deltas = Vec::new();
+        let mut patched_deltas = Vec::new();
         for v in kept.iter().filter(|v| v.pack_version != new.pack_version) {
             let old = self.manifest(v)?;
             let u = Update::between(Some(&old.0), &new, &manifest_bytes);
-            let b = self.write_bundle(&u)?;
+            let b = self.write_bundle(&u, &TilePatches::default())?;
             report.bundles.push((v.pack_version.clone(), b.bytes));
+            let patches = tile_patches(&u, &old.0, |sha| self.open_blob(sha))?;
+            let patched = if patches.is_empty() {
+                None
+            } else {
+                let pb = self.write_bundle(&u, &patches)?;
+                (pb.bytes < b.bytes).then_some(pb)
+            };
             if previous
                 .as_ref()
                 .is_some_and(|p| p.pack_version == v.pack_version)
             {
                 report.daily_delta_bytes = Some(b.bytes);
+                report.daily_patched_bytes = patched.as_ref().map(|p| p.bytes);
                 report.changed = u
                     .changes
                     .iter()
@@ -684,6 +706,7 @@ impl Store {
                     .collect();
             }
             deltas.push(b);
+            patched_deltas.extend(patched);
         }
 
         let changes = Update::between(
@@ -708,6 +731,7 @@ impl Store {
             base_version: base.version.clone(),
             base: base.bundle.clone(),
             deltas,
+            patched_deltas,
             changes,
         };
         let index_path = self.index_path(&site).expect("checked site");
@@ -779,6 +803,7 @@ impl Store {
             for i in [self.index(&site)?, prev].into_iter().flatten() {
                 bundles.insert(i.base.sha256.clone());
                 bundles.extend(i.deltas.iter().map(|d| d.sha256.clone()));
+                bundles.extend(i.patched_deltas.iter().map(|d| d.sha256.clone()));
             }
             if let Some(b) = read_json::<BaseEntry>(&self.site_dir(&site).join("base.json"))? {
                 bundles.insert(b.bundle.sha256);

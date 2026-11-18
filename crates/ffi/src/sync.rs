@@ -11,8 +11,9 @@
 //! 4. Each bundle is downloaded (resumed with `Range` / `If-Range`), checked whole with
 //!    [`verify_bundle`] (length and SHA-256: its name), then installed with
 //!    [`install_bundle`], which checks every blob again before writing anything and swaps
-//!    the new version in. [`SyncError::MissingContents`]: start again with
-//!    [`sync_plan_full`].
+//!    the new version in. [`SyncError::PatchFailed`] (a file rebuilt from a patch of
+//!    tiles differs from the server's, #160): start again with [`sync_plan_whole_files`];
+//!    [`SyncError::MissingContents`]: start again with [`sync_plan_full`].
 //! 5. [`record_sync`] keeps the version, base and `ETag` next to the pack.
 //!
 //! A voice language pack (VO6 #129) is a pack of its own (manifest and clips), published
@@ -25,7 +26,7 @@ use serde::Deserialize;
 use skimap_pack::manifest::SiteInfo;
 use skimap_pack::reader::sha256_file;
 use skimap_pack::sync::{self, LatestVersion, SiteIndex, SyncState};
-use skimap_pack::update::{self, MISSING_CONTENTS};
+use skimap_pack::update::{self, MISSING_CONTENTS, PATCH_FAILED};
 
 /// Errors of the sync functions (`SyncException` in Kotlin).
 #[derive(Debug, thiserror::Error, uniffi::Error)]
@@ -34,6 +35,14 @@ pub enum SyncError {
     /// [`sync_plan_full`].
     #[error("missing contents: {detail}")]
     MissingContents {
+        /// Message of the pack crate.
+        detail: String,
+    },
+    /// A PMTiles file rebuilt from the patch of the bundle differs from the server's (or
+    /// the file it patches is gone): nothing was installed; use [`sync_plan_whole_files`]
+    /// (#160).
+    #[error("patch failed: {detail}")]
+    PatchFailed {
         /// Message of the pack crate.
         detail: String,
     },
@@ -307,6 +316,25 @@ pub fn sync_plan(index_json: String, pack_dir: String) -> Result<SyncPlan, SyncE
     Ok(plan_of(&index, installed, bundles))
 }
 
+/// The same update as [`sync_plan`] with every file whole (no patch of tiles): after
+/// [`SyncError::PatchFailed`].
+#[uniffi::export]
+pub fn sync_plan_whole_files(index_json: String, pack_dir: String) -> Result<SyncPlan, SyncError> {
+    let index = parse_index(&index_json)?;
+    let dir = Path::new(&pack_dir);
+    let installed = installed_version(dir);
+    let state = match sync::read_state(dir).map_err(invalid)? {
+        Some(s) if Some(&s.version) == installed.as_ref() => Some(s),
+        _ => installed.as_ref().map(|v| SyncState {
+            version: v.clone(),
+            base_version: String::new(),
+            index_etag: None,
+        }),
+    };
+    let bundles = sync::plan_whole_files(&index, state.as_ref());
+    Ok(plan_of(&index, installed, bundles))
+}
+
 /// The base bundle, then the delta from the base: after [`SyncError::MissingContents`].
 #[uniffi::export]
 pub fn sync_plan_full(index_json: String, pack_dir: String) -> Result<SyncPlan, SyncError> {
@@ -348,7 +376,9 @@ pub fn install_bundle(pack_dir: String, bundle_path: String) -> Result<InstallRe
         }),
         Err(e) => {
             let detail = e.to_string();
-            if detail.contains(MISSING_CONTENTS) {
+            if detail.contains(PATCH_FAILED) {
+                Err(SyncError::PatchFailed { detail })
+            } else if detail.contains(MISSING_CONTENTS) {
                 Err(SyncError::MissingContents { detail })
             } else if detail.contains("incomplete download") {
                 Err(SyncError::Corrupt { detail })
