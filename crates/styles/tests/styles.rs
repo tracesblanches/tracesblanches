@@ -141,6 +141,30 @@ fn every_style_has_its_content() {
 
 /// X6 (#140): in SRN, the avalanche exposure and the slope classes are never both drawn
 /// at full strength at one zoom: exposure up to z13, slope from z13 (fade 12.5 to 13.5).
+/// #160: the OSM basemap of a pack starts at `skimap_pack::OSM_MINZOOM` (the France
+/// basemap and the Plan IGN draw the map below): no layer of the `osm` source may be
+/// visible lower, where the pack has no tile of it.
+#[test]
+fn osm_layers_start_at_the_pack_archive() {
+    let mut seen = 0;
+    for (name, s) in all() {
+        for l in s["layers"].as_array().unwrap() {
+            if l["source"] != "osm" {
+                continue;
+            }
+            seen += 1;
+            let minzoom = l["minzoom"].as_f64().unwrap_or(0.0);
+            assert!(
+                minzoom >= f64::from(skimap_pack::OSM_MINZOOM),
+                "{name}: layer {} visible from z{minzoom}, the pack has OSM tiles from z{}",
+                l["id"],
+                skimap_pack::OSM_MINZOOM
+            );
+        }
+    }
+    assert!(seen > 0, "no osm layer: the test checks nothing");
+}
+
 #[test]
 fn srn_draws_exposure_and_slope_at_different_zooms() {
     // Opacity of an `interpolate linear zoom` expression at zoom z.

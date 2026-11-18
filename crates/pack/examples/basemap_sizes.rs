@@ -118,7 +118,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // OSM (Protomaps).
         let t = Instant::now();
         let build = osm::select_build(&dl, None)?;
-        let ext = osm::cached_extract(s, &layout, &dl, &build, 15)?;
+        let ext = osm::cached_extract(s, &layout, &dl, &build, (0, 15))?;
         println!(
             "osm: {} extract z0-15 ready in {:.1} s ({})",
             build.key,

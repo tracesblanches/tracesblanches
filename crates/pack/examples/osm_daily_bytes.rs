@@ -19,6 +19,7 @@ use std::time::Instant;
 use skimap_common::config::Config;
 use skimap_common::download::Downloader;
 use skimap_common::site::Registry;
+use skimap_pack::OSM_MINZOOM;
 use skimap_pack::build::{OSM_MAXZOOM, osm};
 
 /// Cache entries of a directory: metadata file name -> (fetched at, body size).
@@ -87,10 +88,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for id in &ids {
         let site = registry.get(id)?;
         if let Some(b) = &in_use {
-            // `extracts/<site>-z<zoom>-<box>.current.json`, as `osm::current_extract` names it.
+            // `extracts/<site>-z<min>-<max>-<box>.current.json`, as `osm::current_extract`
+            // names it.
             let bx = site.bbox;
             let state = cache.join("extracts").join(format!(
-                "{}-z{OSM_MAXZOOM}-{}_{}_{}_{}.current.json",
+                "{}-z{OSM_MINZOOM}-{OSM_MAXZOOM}-{}_{}_{}_{}.current.json",
                 site.id, bx.west, bx.south, bx.east, bx.north
             ));
             if !state.is_file() {
@@ -99,7 +101,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         let before = inventory(&cache);
         let t = Instant::now();
-        let chosen = osm::current_extract(site, &layout, &dl, &latest, OSM_MAXZOOM)?;
+        let chosen = osm::current_extract(site, &layout, &dl, &latest, (OSM_MINZOOM, OSM_MAXZOOM))?;
         let after = inventory(&cache);
         let new: Vec<u64> = after
             .iter()

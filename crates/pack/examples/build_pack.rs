@@ -14,7 +14,7 @@ use std::time::Instant;
 
 use skimap_common::config::Config;
 use skimap_common::download::Downloader;
-use skimap_common::site::{self, SITES};
+use skimap_common::site::{Registry, SITES};
 use skimap_pack::Pack;
 use skimap_pack::build::{BuildOptions, build};
 
@@ -23,15 +23,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_env_filter(std::env::var("RUST_LOG").unwrap_or_else(|_| "warn".to_owned()))
         .init();
     let ids: Vec<String> = std::env::args().skip(1).collect();
+    let cfg = Config::from_env()?;
+    let layout = cfg.layout();
+    // Any site of the registry (`data/out/france/sites`), as `skimap build-pack`.
+    let registry = Registry::load(&layout)?;
     let sites: Vec<_> = if ids.is_empty() {
         SITES.iter().collect()
     } else {
         ids.iter()
-            .map(|i| site::site(i))
+            .map(|i| registry.get(i))
             .collect::<Result<_, _>>()?
     };
-    let cfg = Config::from_env()?;
-    let layout = cfg.layout();
     let dl = Downloader::from_config(&cfg)?;
     let mut opts = BuildOptions {
         personal_sources: cfg.personal_sources,
