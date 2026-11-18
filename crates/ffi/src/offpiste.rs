@@ -76,11 +76,7 @@ pub fn inflate_offpiste(pack: &Pack, work_dir: &Path) -> Result<PathBuf, Trackin
         }
         let bytes = std::fs::read(&src).map_err(invalid)?;
         let data = if l.file.ends_with(".gz") {
-            let mut v = Vec::new();
-            flate2::read::GzDecoder::new(bytes.as_slice())
-                .read_to_end(&mut v)
-                .map_err(|e| invalid(format!("{}: {e}", src.display())))?;
-            v
+            inflate_skr(&bytes).map_err(|e| invalid(format!("{}: {e}", src.display())))?
         } else {
             bytes
         };
@@ -88,6 +84,67 @@ pub fn inflate_offpiste(pack: &Pack, work_dir: &Path) -> Result<PathBuf, Trackin
         skimap_common::output::write_text(&stamp_path, &stamp).map_err(invalid)?;
     }
     Ok(out)
+}
+
+/// Largest inflated SKR1 raster accepted, bytes. The largest of the 220 rasters of
+/// `data/out` (2026-11-18) is 55.5 MB (5 m elevation of a Vercors traverse); the bound
+/// leaves four times that.
+const MAX_INFLATED_SKR: u64 = 256 << 20;
+
+/// Inflates a gzipped SKR1 raster: exactly the size its header declares (72 bytes, then
+/// width × height cells of 1 or 2 bytes), at most [`MAX_INFLATED_SKR`]; a stream that
+/// inflates to more (a gzip bomb) or to less is refused without being kept in memory.
+fn inflate_skr(gz: &[u8]) -> Result<Vec<u8>, String> {
+    const HEADER: usize = 72;
+    let mut d = flate2::read::GzDecoder::new(gz);
+    let mut header = [0u8; HEADER];
+    d.read_exact(&mut header)
+        .map_err(|e| format!("en-tête SKR1 illisible : {e}"))?;
+    if &header[..4] != b"SKR1" {
+        return Err("pas un raster SKR1".into());
+    }
+    let cell: u64 = match header[4] & 0x7f {
+        1 => 1,
+        2 => 2,
+        c => return Err(format!("type de cellule SKR1 inconnu : {c}")),
+    };
+    let u32_at = |i: usize| {
+        u64::from(u32::from_le_bytes([
+            header[i],
+            header[i + 1],
+            header[i + 2],
+            header[i + 3],
+        ]))
+    };
+    let cells = u32_at(8)
+        .checked_mul(u32_at(12))
+        .and_then(|n| n.checked_mul(cell))
+        .filter(|n| *n <= MAX_INFLATED_SKR - HEADER as u64)
+        .ok_or_else(|| {
+            format!(
+                "raster SKR1 de {} × {} cellules : au-delà de {} Mio",
+                u32_at(8),
+                u32_at(12),
+                MAX_INFLATED_SKR >> 20
+            )
+        })?;
+    let mut v = Vec::with_capacity(HEADER + cells as usize);
+    v.extend_from_slice(&header);
+    // One byte more than declared, to tell a longer stream from an exact one.
+    d.take(cells + 1)
+        .read_to_end(&mut v)
+        .map_err(|e| e.to_string())?;
+    if v.len() as u64 != HEADER as u64 + cells {
+        return Err(format!(
+            "raster SKR1 de {HEADER} + {cells} octets annoncés, flux {}",
+            if (v.len() as u64) > HEADER as u64 + cells {
+                "plus long"
+            } else {
+                "plus court"
+            }
+        ));
+    }
+    Ok(v)
 }
 
 /// The relief of a pack (5 m elevation of the off-piste rasters), for the altitude of a
@@ -466,6 +523,52 @@ impl OffpistePlanner {
 
 #[cfg(test)]
 mod tests {
+
+    fn gzip(data: &[u8]) -> Vec<u8> {
+        use std::io::Write as _;
+        let mut e = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        e.write_all(data).unwrap();
+        e.finish().unwrap()
+    }
+
+    /// An SKR1 header (72 bytes): cell type, width, height.
+    fn skr1(code: u8, w: u32, h: u32) -> Vec<u8> {
+        let mut v = b"SKR1".to_vec();
+        v.extend([code, 0, 0, 0]);
+        v.extend(w.to_le_bytes());
+        v.extend(h.to_le_bytes());
+        v.extend(2154u32.to_le_bytes());
+        v.extend(0u32.to_le_bytes());
+        for x in [900_000.0f64, 5.0, 0.0, 6_420_000.0, 0.0, -5.0] {
+            v.extend(x.to_le_bytes());
+        }
+        assert_eq!(v.len(), 72);
+        v
+    }
+
+    #[test]
+    fn inflation_bounded_by_the_raster_header() {
+        // A 3 × 2 u16 raster: inflated as is.
+        let mut ok = skr1(2, 3, 2);
+        ok.extend([7u8; 12]);
+        assert_eq!(inflate_skr(&gzip(&ok)).unwrap(), ok);
+        // A gzip bomb: a 3 × 2 header followed by 200 MB of zeros (200 kB gzipped).
+        let mut bomb = skr1(2, 3, 2);
+        bomb.resize(200_000_000, 0);
+        let gz = gzip(&bomb);
+        drop(bomb);
+        assert!(gz.len() < 1_000_000, "{}", gz.len());
+        let e = inflate_skr(&gz).unwrap_err();
+        assert!(e.contains("72 + 12"), "{e}");
+        // A header declaring more than the bound: refused before inflating the cells.
+        let huge = gzip(&skr1(2, u32::MAX, u32::MAX));
+        let e = inflate_skr(&huge).unwrap_err();
+        assert!(e.contains("au-delà"), "{e}");
+        // Truncated cells, not an SKR1 file.
+        let e = inflate_skr(&gzip(&ok[..80])).unwrap_err();
+        assert!(e.contains("72 + 12"), "{e}");
+        assert!(inflate_skr(&gzip(b"PK\x03\x04 not a raster")).is_err());
+    }
     use super::*;
 
     fn data() -> PathBuf {
