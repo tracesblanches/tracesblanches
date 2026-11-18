@@ -28,6 +28,7 @@ sha2.workspace = true
 hex.workspace = true
 rusqlite.workspace = true
 tiny_http.workspace = true
+socket2.workspace = true
 reqwest.workspace = true
 rustls.workspace = true
 webpki-roots.workspace = true

@@ -128,8 +128,8 @@ fn serve(cfg: Config, addr: Option<String>) -> Result<()> {
         }
     });
     let addr = addr.unwrap_or_else(|| cfg.addr.clone());
-    let running = skimap_server::http::serve(&addr, cfg.workers, Arc::new(app))?;
-    tracing::info!(addr = %running.addr, workers = cfg.workers, store = %cfg.store.display(), "listening");
+    let running = skimap_server::http::serve_with(&addr, cfg.limits, Arc::new(app))?;
+    tracing::info!(addr = %running.addr, limits = ?cfg.limits, store = %cfg.store.display(), "listening");
     // The timer of the alerts.
     if let Some(alerts) = alerts {
         std::thread::spawn(move || {

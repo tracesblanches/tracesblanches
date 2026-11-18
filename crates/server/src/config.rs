@@ -14,8 +14,10 @@ use crate::strava::StravaConfig;
 pub struct Config {
     /// Listen address (`SKIMAP_SERVER_ADDR`, default `0.0.0.0:8080`).
     pub addr: String,
-    /// Worker threads (`SKIMAP_SERVER_WORKERS`, default 16).
-    pub workers: usize,
+    /// Worker threads (`SKIMAP_SERVER_WORKERS`, default 16), file downloads at the same
+    /// time (`SKIMAP_SERVER_MAX_DOWNLOADS`, default 512), timeout of a silent connection
+    /// (`SKIMAP_SERVER_IO_TIMEOUT_SECS`, default 60).
+    pub limits: crate::http::Limits,
     /// Published packs (`SKIMAP_STORE`, default `/data/store`).
     pub store: PathBuf,
     /// Alert database (`SKIMAP_SERVER_DB`, default `/data/server/skimap.sqlite`).
@@ -117,7 +119,20 @@ impl Config {
         };
         Ok(Self {
             addr: or("SKIMAP_SERVER_ADDR", "0.0.0.0:8080"),
-            workers: usize::try_from(num("SKIMAP_SERVER_WORKERS", 16)?)?,
+            limits: {
+                let d = crate::http::Limits::default();
+                crate::http::Limits {
+                    workers: usize::try_from(num("SKIMAP_SERVER_WORKERS", d.workers as u64)?)?,
+                    max_downloads: usize::try_from(num(
+                        "SKIMAP_SERVER_MAX_DOWNLOADS",
+                        d.max_downloads as u64,
+                    )?)?,
+                    io_timeout: Duration::from_secs(num(
+                        "SKIMAP_SERVER_IO_TIMEOUT_SECS",
+                        d.io_timeout.as_secs(),
+                    )?),
+                }
+            },
             store: PathBuf::from(or("SKIMAP_STORE", "/data/store")),
             db: PathBuf::from(or("SKIMAP_SERVER_DB", "/data/server/skimap.sqlite")),
             contact_email: get("SKIMAP_CONTACT_EMAIL"),
@@ -154,6 +169,16 @@ mod tests {
         assert!(!format!("{s:?}").contains("s3cret"));
         assert!(c.strava.is_none());
         assert_eq!(c.public_url, "https://skimap.warnier.net");
+        assert_eq!(c.limits, crate::http::Limits::default());
+        let c = Config::from_vars([
+            ("SKIMAP_SERVER_MAX_DOWNLOADS", "64"),
+            ("SKIMAP_SERVER_IO_TIMEOUT_SECS", "120"),
+        ])
+        .unwrap();
+        assert_eq!(
+            (c.limits.max_downloads, c.limits.io_timeout.as_secs()),
+            (64, 120)
+        );
         let c =
             Config::from_vars([("STRAVA_CLIENT_ID", "1"), ("STRAVA_CLIENT_SECRET", "zz")]).unwrap();
         assert!(!format!("{:?}", c.strava.unwrap()).contains("zz"));

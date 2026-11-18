@@ -262,7 +262,15 @@ fn mix(addr: &str, pid: u32, t: Arc<Targets>, conns: usize, secs: u64) -> Result
                                 ("index", _) => "index_200",
                                 (k, _) => k,
                             };
-                            mine.push((kind, q.elapsed().as_secs_f64() * 1e3));
+                            let ms = q.elapsed().as_secs_f64() * 1e3;
+                            if ms > 1000.0 {
+                                eprintln!(
+                                    "slow: connection {i} {target} {} ms={ms:.0} at t={:.1}s",
+                                    resp.status,
+                                    t0.elapsed().as_secs_f64()
+                                );
+                            }
+                            mine.push((kind, ms));
                             reqs.fetch_add(1, Ordering::Relaxed);
                             bytes.fetch_add(resp.bytes, Ordering::Relaxed);
                             if let Some(e) = resp.etag {
