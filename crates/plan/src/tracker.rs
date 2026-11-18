@@ -48,8 +48,8 @@ use skimap_assist::layers::WeatherPoint;
 use skimap_assist::suggest::{loop_voice, node_snap};
 use skimap_common::geom::LonLat;
 use skimap_core::calibration::{
-    DayPace, GroupProfile, OutingObs, PaceParams, Prediction, ProfileModel, TERRAINS, Terrain,
-    terrain_ratio,
+    self as calibration, DayPace, GroupProfile, OutingObs, PaceParams, Prediction, ProfileModel,
+    TERRAINS, Terrain, terrain_ratio,
 };
 use skimap_core::graph::{LocalPlane, PisteGraph, Snap};
 use skimap_core::matching::{AlertEvent, DeviationDetector, Hysteresis, ROUTE_HYSTERESIS};
@@ -1275,6 +1275,7 @@ impl<'a> Tracker<'a> {
             for a in found {
                 self.a8(t, a, out);
             }
+            self.unknown_stops();
             self.return_time(t, out);
             self.pace_check(t, out);
             self.profile_check(t, out);
@@ -2455,6 +2456,32 @@ impl<'a> Tracker<'a> {
             median: t + p.median_s,
             delay,
         });
+    }
+
+    /// Once a minute (X14): on a plan without a group (and no profile chosen), the stops
+    /// still to come are those of the profiles compared ([`Tracker::profiles`]) weighted by
+    /// how well each explains the day so far ([`pace::day_fit`]; equal weights before any
+    /// moving), not those of a lone adult: a family nobody described is not predicted with
+    /// an adult's stops, nor an adult with a family's.
+    fn unknown_stops(&mut self) {
+        if self.plan.pace.is_some() || self.profile_chosen.is_some() || self.profiles.is_empty() {
+            return;
+        }
+        let moving = self.day.moving_total_s();
+        let (stops, _) = self.day.stops();
+        let fit = |m: &ProfileModel| pace::day_fit(&m.params, self.model_done, moving, stops);
+        let best = self
+            .profiles
+            .iter()
+            .map(fit)
+            .fold(f64::NEG_INFINITY, f64::max);
+        if let Some((rate, len)) = calibration::stop_mixture(
+            self.profiles
+                .iter()
+                .map(|m| ((fit(m) - best).exp(), &m.params)),
+        ) {
+            self.day.set_stop_prior(rate, len);
+        }
     }
 
     /// Once a minute (X14): when the pace of the day fits another group profile much better

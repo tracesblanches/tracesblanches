@@ -177,6 +177,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             at(0.5).mae_min[4]
         );
     }
+    // A plan without a group (X14): nobody described the group, every day counted.
+    println!(
+        "\nSans profil (plan sans groupe, toutes les sorties) : erreur moyenne absolue / signée (prévu − réel), couverture à 80 %, à 25, 50, 75 % du parcours ;"
+    );
+    for (name, res) in &all {
+        let s = pace_eval::score(res, 0);
+        let parts: Vec<String> = s
+            .iter()
+            .filter(|x| x.frac > 0.0)
+            .map(|x| {
+                format!(
+                    "{:.0} % : {:.1} / {:+.1} min, {:.0} % ({})",
+                    x.frac * 100.0,
+                    x.unknown.0,
+                    x.unknown.1,
+                    x.unknown.2 * 100.0,
+                    x.n
+                )
+            })
+            .collect();
+        println!("  {name} : {}", parts.join(" ; "));
+    }
     // Calibration of the learned range (X14): the standardised error z = ln(real / median)
     // / σ of each day (on what is left to do during the outing), its mean and mean square
     // (1 when the range is right), and the coverage of the 80 % range, per group and over

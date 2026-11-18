@@ -8,7 +8,9 @@
 //!   outings, test on the next);
 //! - during the outing, at 25, 50 and 75 % of the route: C5 for the rest, the observed pace
 //!   extrapolated (elapsed / model time done, as A8 and J2), C11 online from the prior, C11
-//!   online from the group learned on the days before.
+//!   online from the group learned on the days before, and C11 online on the plan without a
+//!   group (X14: nobody described the group; the tracker compares the day with the
+//!   profiles of [`pace::profile_presets`]).
 //!
 //! The day's outing is simulated once in closed loop (proposals off: the route stays the
 //! plan's), its inputs replayed through the trackers of each variant. Synthetic traces
@@ -72,6 +74,10 @@ pub struct Sample {
     pub learned_in: bool,
     /// Its 80 % interval (from the start), seconds.
     pub learned_range: (f64, f64),
+    /// C11 on the plan without a group (X14; the morning: C5).
+    pub unknown_s: f64,
+    /// Within its 80 % interval.
+    pub unknown_in: bool,
 }
 
 /// One outing.
@@ -183,10 +189,13 @@ pub fn evaluate(c: &Case<'_>) -> Result<Vec<Day>> {
             learned_s: pl.prediction.median_s,
             learned_in: inside(actual, &pl.prediction),
             learned_range: (pl.prediction.lo_s, pl.prediction.hi_s),
+            unknown_s: model_total,
+            unknown_in: false,
         }];
         // Online, both variants on the same inputs.
         let mut a = Tracker::new(&plan_prior, view, c.graph, None, quiet())?;
         let mut b = Tracker::new(&plan_learned, view, c.graph, None, quiet())?;
+        let mut u = Tracker::new(c.plan, view, c.graph, None, quiet())?;
         let mut out = Vec::new();
         let mut next = 0;
         let fracs = [0.25, 0.5, 0.75];
@@ -194,6 +203,7 @@ pub fn evaluate(c: &Case<'_>) -> Result<Vec<Day>> {
         for i in &run.inputs {
             a.push(i, &mut out);
             b.push(i, &mut out);
+            u.push(i, &mut out);
             replay_switched |= out.iter().any(|o| matches!(o, Output::Switched { .. }));
             out.clear();
             let Input::Fix { t, .. } = i else { continue };
@@ -201,7 +211,7 @@ pub fn evaluate(c: &Case<'_>) -> Result<Vec<Day>> {
                 continue;
             }
             let t = t.timestamp_millis() as f64 / 1000.0;
-            let (Some(ea), Some(eb)) = (a.eta(), b.eta()) else {
+            let (Some(ea), Some(eb), Some(eu)) = (a.eta(), b.eta(), u.eta()) else {
                 continue;
             };
             let el = t - t0;
@@ -225,6 +235,8 @@ pub fn evaluate(c: &Case<'_>) -> Result<Vec<Day>> {
                 learned_s: total(&eb.remaining),
                 learned_in: within(&eb.remaining),
                 learned_range: (el + eb.remaining.lo_s, el + eb.remaining.hi_s),
+                unknown_s: total(&eu.remaining),
+                unknown_in: within(&eu.remaining),
             });
             next += 1;
         }
@@ -259,6 +271,9 @@ pub struct Score {
     pub mare: [f64; 5],
     /// Coverage of the 80 % intervals: prior, learned.
     pub cover: [f64; 2],
+    /// C11 on the plan without a group (X14): mean absolute error and mean error (predicted
+    /// − real), minutes, and coverage of its 80 % interval.
+    pub unknown: (f64, f64, f64),
 }
 
 /// Scores at each share of the route.
@@ -282,6 +297,9 @@ pub fn score(days: &[Day], min_learned: usize) -> Vec<Score> {
                 s.mae_min[k] += (p - d.actual_s).abs() / 60.0;
                 s.mare[k] += (p - d.actual_s).abs() / d.actual_s;
             }
+            s.unknown.0 += (x.unknown_s - d.actual_s).abs() / 60.0;
+            s.unknown.1 += (x.unknown_s - d.actual_s) / 60.0;
+            s.unknown.2 += f64::from(u8::from(x.unknown_in));
             s.cover[0] += f64::from(u8::from(x.prior_in));
             s.cover[1] += f64::from(u8::from(x.learned_in));
         }
@@ -293,6 +311,7 @@ pub fn score(days: &[Day], min_learned: usize) -> Vec<Score> {
             }
             s.cover[0] /= n;
             s.cover[1] /= n;
+            s.unknown = (s.unknown.0 / n, s.unknown.1 / n, s.unknown.2 / n);
         }
         out.push(s);
     }
@@ -314,12 +333,12 @@ pub fn table(name: &str, days: &[Day], min_learned: usize) -> Vec<String> {
             .unwrap_or(0),
     )];
     l.push(
-        "  part faite | n | erreur moyenne (min) C5 seul / C5 × 1,2 / rythme extrapolé / C11 a priori / C11 appris | couverture 80 % a priori / appris"
+        "  part faite | n | erreur moyenne (min) C5 seul / C5 × 1,2 / rythme extrapolé / C11 a priori / C11 appris | couverture 80 % a priori / appris | sans profil : erreur moyenne absolue / signée (min), couverture"
             .into(),
     );
     for s in score(days, min_learned) {
         l.push(format!(
-            "  {:>3.0} % | {} | {:.0} / {:.0} / {:.0} / {:.0} / {:.0} | {:.0} % / {:.0} %",
+            "  {:>3.0} % | {} | {:.0} / {:.0} / {:.0} / {:.0} / {:.0} | {:.0} % / {:.0} % | {:.1} / {:+.1} / {:.0} %",
             s.frac * 100.0,
             s.n,
             s.mae_min[0],
@@ -328,7 +347,10 @@ pub fn table(name: &str, days: &[Day], min_learned: usize) -> Vec<String> {
             s.mae_min[3],
             s.mae_min[4],
             s.cover[0] * 100.0,
-            s.cover[1] * 100.0
+            s.cover[1] * 100.0,
+            s.unknown.0,
+            s.unknown.1,
+            s.unknown.2 * 100.0
         ));
     }
     l

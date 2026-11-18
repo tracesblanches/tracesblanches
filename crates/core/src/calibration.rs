@@ -34,7 +34,11 @@
 //!   ratio of the time predicted at the group's pace to the real moving time, both summed
 //!   with a forgetting of [`DAY_TAU_S`] (the pace drifts: tired children); stops of the
 //!   day update the group's gamma and duration priors, capped at [`DAY_PRIOR_H`] hours and
-//!   [`DAY_PRIOR_STOPS`] stops of weight so that the day can move them.
+//!   [`DAY_PRIOR_STOPS`] stops of weight so that the day can move them. A group nobody
+//!   described (X14) takes as stop priors the mixture of the profiles it may be, weighted
+//!   by how well each explains the day so far ([`stop_mixture`],
+//!   [`DayPace::set_stop_prior`]): a slow group with children is not predicted with the
+//!   stops of a lone adult, nor a lone adult with those of a family.
 //!
 //! # Prediction and range
 //!
@@ -892,6 +896,39 @@ pub fn fit(profile: GroupProfile, outings: &[OutingObs]) -> ProfileModel {
     m
 }
 
+/// Stop priors of a mixture of groups (`(weight, parameters)`, weights normalised here):
+/// the rate and the log duration of a stop with the mixture's mean and variance (moments
+/// matched). `None` without a positive weight.
+pub fn stop_mixture<'a>(
+    parts: impl IntoIterator<Item = (f64, &'a PaceParams)>,
+) -> Option<(GammaRate, Nig)> {
+    let (mut w, mut r1, mut r2, mut l1, mut l2) = (0.0, 0.0, 0.0, 0.0, 0.0);
+    for (wi, p) in parts {
+        if !(wi.is_finite() && wi > 0.0) {
+            continue;
+        }
+        let (m, l) = (p.stops.mean(), p.stop_len.m);
+        w += wi;
+        r1 += wi * m;
+        r2 += wi * (p.stops.var() + m * m);
+        l1 += wi * l;
+        l2 += wi * (p.stop_len.pred_var() + l * l);
+    }
+    if w <= 0.0 {
+        return None;
+    }
+    let (rm, lm) = (r1 / w, l1 / w);
+    let rv = (r2 / w - rm * rm).max(1e-9);
+    let lv = (l2 / w - lm * lm).max(1e-9);
+    Some((
+        GammaRate {
+            a: rm * rm / rv,
+            b: rm / rv,
+        },
+        Nig::prior(lm, lv.sqrt()),
+    ))
+}
+
 /// The pace of the day, updated during the outing: fixed size, no allocation.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DayPace {
@@ -940,6 +977,13 @@ impl DayPace {
     /// The group's parameters.
     pub fn base(&self) -> &PaceParams {
         &self.base
+    }
+
+    /// Replaces the group's stop priors (a group nobody described: [`stop_mixture`] of the
+    /// profiles it may be, X14); the day's stops still update them.
+    pub fn set_stop_prior(&mut self, rate: GammaRate, len: Nig) {
+        self.base.stops = rate;
+        self.base.stop_len = len;
     }
 
     /// `dt` seconds moving, progressing `d_model` model seconds per terrain.
@@ -1121,6 +1165,37 @@ mod tests {
         }
         // The prior's predictive has the asked spread.
         assert!((Nig::prior(0.0, 0.3).pred_var().sqrt() - 0.3).abs() < 1e-12);
+    }
+
+    #[test]
+    fn stop_mixture_matches_the_moments() {
+        let adult = PaceParams::prior(&GroupProfile::solo(Style::Classic, Level::Intermediate));
+        let fam = PaceParams::prior(&GroupProfile::app_default());
+        // One component: itself (mean and spread).
+        let (r, l) = stop_mixture([(2.0, &fam)]).expect("weight");
+        assert!((r.mean() - fam.stops.mean()).abs() < 1e-9);
+        assert!((r.var() - fam.stops.var()).abs() < 1e-9);
+        assert!((l.m - fam.stop_len.m).abs() < 1e-9);
+        assert!((l.pred_var() - fam.stop_len.pred_var()).abs() < 1e-9);
+        // Half and half: the mean rate between, the variance of the mixture (within plus
+        // between).
+        let (r, l) = stop_mixture([(1.0, &adult), (1.0, &fam)]).expect("weight");
+        let (ma, mf) = (adult.stops.mean(), fam.stops.mean());
+        let mid = 0.5 * (ma + mf);
+        assert!((r.mean() - mid).abs() < 1e-9, "{}", r.mean());
+        let var = 0.5 * (adult.stops.var() + fam.stops.var()) + 0.25 * (mf - ma).powi(2);
+        assert!((r.var() - var).abs() < 1e-9, "{} {var}", r.var());
+        assert!(l.m > adult.stop_len.m && l.m < fam.stop_len.m);
+        // No weight: none.
+        assert!(stop_mixture([(0.0, &adult), (f64::NAN, &fam)]).is_none());
+        // Set on the day: the family's stops expected for the rest, not an adult's.
+        let route = [600.0, 3600.0, 600.0];
+        let mut day = DayPace::new(&PaceParams::unknown(Style::Classic), route);
+        let before = day.predict(route, None).stop_s;
+        let (r, l) = stop_mixture([(1.0, &fam)]).expect("weight");
+        day.set_stop_prior(r, l);
+        let after = day.predict(route, None).stop_s;
+        assert!(after > 3.0 * before, "{before} → {after}");
     }
 
     #[test]
