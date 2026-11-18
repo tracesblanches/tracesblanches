@@ -1692,6 +1692,18 @@ mod tests {
         near(m[Terrain::Up as usize], up);
         near(m[Terrain::Flat as usize], flat);
         near(m[Terrain::Down as usize], down);
+        // The climb after the flat: each piece by its own out and back times, not by the
+        // times accumulated before it.
+        let p2 = Profile::of(&eta, &pieces[1..]);
+        let m2 = p2.model_by_terrain(ratio);
+        near(m2[Terrain::Flat as usize], flat);
+        near(m2[Terrain::Down as usize], down);
+        assert_eq!(m2[Terrain::Up as usize], 0.0);
+        let p3 = Profile::of(&eta, &[pieces[1], pieces[0]]);
+        let m3 = p3.model_by_terrain(ratio);
+        near(m3[Terrain::Flat as usize], flat);
+        near(m3[Terrain::Up as usize], up);
+        assert_eq!(m3[Terrain::Down as usize], 0.0);
         assert_eq!(
             Profile::of(&eta, &[]).model_by_terrain(ratio),
             [0.0; TERRAINS]
