@@ -88,6 +88,8 @@ clap = { version = "4.6.7", features = ["derive"] }
 approx = "0.5"
 tempfile = "3.27.0"
 tiny_http = "0.12.0"
+# Listening socket of the server: TCP_NODELAY and I/O timeouts inherited by connections (#152).
+socket2 = "0.6.5"
 # Property tests (Q3, #103): dev-dependency only, never linked into a binary.
 proptest = { version = "1.12.0", default-features = false, features = ["std"] }
 # Instruction-count benchmarks under Valgrind (Q5, #105); needs `gungraun-runner` of the

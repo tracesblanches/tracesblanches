@@ -3331,6 +3331,7 @@ dependencies = [
  "skimap-collab",
  "skimap-common",
  "skimap-pack",
+ "socket2",
  "tempfile",
  "tiny_http",
  "tracing",

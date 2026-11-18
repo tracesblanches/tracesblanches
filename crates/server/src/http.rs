@@ -1,14 +1,14 @@
 //! HTTP plumbing: a request and a reply independent of the server library, conditional and
 //! partial responses of static files, and the blocking server loop (tiny_http, fixed
-//! worker pool).
+//! worker pool, file downloads on their own bounded threads).
 
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Instant;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 
@@ -385,6 +385,67 @@ fn read_request(req: &mut tiny_http::Request) -> Result<Req, Reply> {
     })
 }
 
+/// Limits of the server loop ([`serve_with`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Limits {
+    /// Threads answering requests (`SKIMAP_SERVER_WORKERS`).
+    pub workers: usize,
+    /// Downloads of large files (bundles, basemap archives: over [`SMALL_FILE`]) sent at
+    /// the same time, each on its own thread; beyond, 503 with `Retry-After`
+    /// (`SKIMAP_SERVER_MAX_DOWNLOADS`). Small files (catalog, indexes) are never refused:
+    /// up to four times as many on their own threads, beyond that written by the worker.
+    pub max_downloads: usize,
+    /// A connection silent this long (no request, no byte of the body, no byte of the
+    /// reply accepted) is closed (`SKIMAP_SERVER_IO_TIMEOUT_SECS`).
+    pub io_timeout: Duration,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Self {
+            workers: 16,
+            max_downloads: 512,
+            io_timeout: Duration::from_secs(60),
+        }
+    }
+}
+
+/// Largest file counted as small: a catalog or a site index (tens of kB), not a bundle.
+pub const SMALL_FILE: u64 = 1 << 20;
+
+/// File replies being written on their own threads: large ones at most `max`, small ones
+/// at most `4 * max`.
+struct Downloads {
+    large: AtomicUsize,
+    small: AtomicUsize,
+    max: usize,
+}
+
+/// One slot, given back on drop.
+struct Slot(Arc<Downloads>, bool);
+
+impl Drop for Slot {
+    fn drop(&mut self) {
+        self.0.counter(self.1).fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+impl Downloads {
+    fn counter(&self, large: bool) -> &AtomicUsize {
+        if large { &self.large } else { &self.small }
+    }
+
+    fn take(self: &Arc<Self>, large: bool) -> Option<Slot> {
+        let max = if large { self.max } else { 4 * self.max };
+        self.counter(large)
+            .try_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
+                (n < max).then_some(n + 1)
+            })
+            .ok()
+            .map(|_| Slot(Arc::clone(self), large))
+    }
+}
+
 /// A running server: its address and the worker threads.
 pub struct Running {
     server: Arc<tiny_http::Server>,
@@ -414,25 +475,76 @@ impl Running {
     }
 }
 
-/// Binds `addr` and answers requests with `handler` on `workers` threads.
-///
-/// Blocking on purpose: the workspace is blocking, the traffic is a few phones (big files
-/// come from the Cloudflare cache), and a fixed pool bounds memory. A slow download holds
-/// one worker for its duration.
+/// The listening socket. Linux copies its `TCP_NODELAY` and its receive and send timeouts
+/// to every accepted connection, which tiny_http does not let us reach:
+/// - without `TCP_NODELAY`, a reply written as headers then body waits for the delayed
+///   acknowledgement of the headers (40 ms per index or catalog of a few tens of kB);
+/// - without timeouts, a connection that never sends another request keeps its thread
+///   and its two descriptors forever.
+fn listener(addr: &str, io_timeout: Duration) -> anyhow::Result<std::net::TcpListener> {
+    use std::net::ToSocketAddrs;
+    let sa = addr
+        .to_socket_addrs()?
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("{addr}: no address"))?;
+    let s = socket2::Socket::new(
+        socket2::Domain::for_address(sa),
+        socket2::Type::STREAM,
+        Some(socket2::Protocol::TCP),
+    )?;
+    s.set_reuse_address(true)?;
+    s.set_tcp_nodelay(true)?;
+    s.set_read_timeout(Some(io_timeout))?;
+    s.set_write_timeout(Some(io_timeout))?;
+    s.bind(&sa.into())?;
+    s.listen(1024)?;
+    Ok(s.into())
+}
+
+/// Binds `addr` and answers requests with `handler` on `workers` threads (other limits by
+/// default).
 pub fn serve(addr: &str, workers: usize, handler: Arc<dyn Handler>) -> anyhow::Result<Running> {
+    serve_with(
+        addr,
+        Limits {
+            workers,
+            ..Limits::default()
+        },
+        handler,
+    )
+}
+
+/// Binds `addr` and answers requests with `handler` within `limits`.
+///
+/// Blocking on purpose: the workspace is blocking and a fixed pool bounds memory. The
+/// workers only compute replies; a file (bundle, basemap file, catalog, index) is written
+/// on its own thread, so phones on a weak network, or Cloudflare filling its cache, never
+/// hold the workers that answer the catalog, the indexes and the alerts.
+pub fn serve_with(
+    addr: &str,
+    limits: Limits,
+    handler: Arc<dyn Handler>,
+) -> anyhow::Result<Running> {
     let server = Arc::new(
-        tiny_http::Server::http(addr).map_err(|e| anyhow::anyhow!("binding {addr}: {e}"))?,
+        tiny_http::Server::from_listener(listener(addr, limits.io_timeout)?, None)
+            .map_err(|e| anyhow::anyhow!("binding {addr}: {e}"))?,
     );
     let addr = server
         .server_addr()
         .to_ip()
         .ok_or_else(|| anyhow::anyhow!("not an IP listener"))?;
     let stopping = Arc::new(AtomicBool::new(false));
-    let workers = (0..workers.max(1))
+    let downloads = Arc::new(Downloads {
+        large: AtomicUsize::new(0),
+        small: AtomicUsize::new(0),
+        max: limits.max_downloads.max(1),
+    });
+    let workers = (0..limits.workers.max(1))
         .map(|_| {
             let server = Arc::clone(&server);
             let handler = Arc::clone(&handler);
             let stopping = Arc::clone(&stopping);
+            let downloads = Arc::clone(&downloads);
             std::thread::spawn(move || {
                 loop {
                     let mut rq = match server.recv() {
@@ -448,18 +560,44 @@ pub fn serve(addr: &str, workers: usize, handler: Arc<dyn Handler>) -> anyhow::R
                     let t = Instant::now();
                     let method = rq.method().as_str().to_owned();
                     let path = rq.url().split('?').next().unwrap_or("").to_owned();
-                    let reply = match read_request(&mut rq) {
+                    let mut reply = match read_request(&mut rq) {
                         Ok(req) => handler.handle(&req),
                         Err(r) => r,
                     };
-                    let (status, len) = (reply.status, reply.len());
-                    if let Err(e) = respond(rq, reply) {
-                        tracing::debug!(%e, "response not sent");
+                    let large = match reply.body {
+                        Body::File { len, .. } => Some(len > SMALL_FILE),
+                        _ => None,
+                    };
+                    if let Some(large) = large {
+                        match downloads.take(large) {
+                            Some(slot) => {
+                                let sent = std::thread::Builder::new()
+                                    .name("download".into())
+                                    .stack_size(256 * 1024)
+                                    .spawn(move || {
+                                        let _slot = slot;
+                                        send(rq, reply, &method, &path, t);
+                                    });
+                                if let Err(e) = sent {
+                                    // The request is dropped with the closure: tiny_http
+                                    // answers 500 and closes the connection.
+                                    tracing::warn!(%e, "download thread");
+                                }
+                                continue;
+                            }
+                            None if large => {
+                                reply = Reply::error(
+                                    503,
+                                    "busy",
+                                    "too many downloads in progress, try again later",
+                                )
+                                .with("Retry-After", "30");
+                            }
+                            // A small file: the socket buffer takes most of it at once.
+                            None => {}
+                        }
                     }
-                    tracing::info!(
-                        %method, %path, status, bytes = len,
-                        ms = t.elapsed().as_millis() as u64, "request"
-                    );
+                    send(rq, reply, &method, &path, t);
                 }
             })
         })
@@ -470,6 +608,18 @@ pub fn serve(addr: &str, workers: usize, handler: Arc<dyn Handler>) -> anyhow::R
         addr,
         workers,
     })
+}
+
+/// Writes `reply` and logs the request.
+fn send(rq: tiny_http::Request, reply: Reply, method: &str, path: &str, t: Instant) {
+    let (status, len) = (reply.status, reply.len());
+    if let Err(e) = respond(rq, reply) {
+        tracing::debug!(%e, "response not sent");
+    }
+    tracing::info!(
+        %method, %path, status, bytes = len,
+        ms = t.elapsed().as_millis() as u64, "request"
+    );
 }
 
 #[cfg(test)]
