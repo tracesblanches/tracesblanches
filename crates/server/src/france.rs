@@ -199,6 +199,57 @@ mod tests {
         assert!(file_path(&store, "../x").is_none());
     }
 
+    /// What Cloudflare and the phone see (#152): the description revalidated every
+    /// minute, the files immutable, both with an `ETag` (304) and byte ranges.
+    #[test]
+    fn served_with_cache_headers_etag_and_ranges() {
+        use crate::app::{IMMUTABLE, REVALIDATE};
+        use crate::http::{Handler, Req};
+        let tmp = tempfile::tempdir().unwrap();
+        let a = tmp.path().join("a");
+        basemap(&a, b"tiles a", "20261110.pmtiles");
+        publish(&Store::open(tmp.path().join("store")).unwrap(), &a).unwrap();
+        let app = crate::app::App::new(
+            Store::open(tmp.path().join("store")).unwrap(),
+            None,
+            None,
+            "https://example.org",
+            "contact@example.org",
+            std::sync::Arc::new(crate::clock::SystemClock),
+        );
+        let r = app.handle(&Req::new("GET", "/v1/basemap/france.json"));
+        assert_eq!(
+            (r.status, r.header("cache-control")),
+            (200, Some(REVALIDATE))
+        );
+        let etag = r.header("etag").unwrap().to_owned();
+        let r =
+            app.handle(&Req::new("GET", "/v1/basemap/france.json").header("If-None-Match", &etag));
+        assert_eq!((r.status, r.len()), (304, 0));
+        let f = &FranceBasemap::read(&a).unwrap().files[1];
+        let url = format!("/v1/basemap/files/{}", f.sha256);
+        let r = app.handle(&Req::new("GET", &url));
+        assert_eq!(
+            (r.status, r.header("cache-control")),
+            (200, Some(IMMUTABLE))
+        );
+        assert_eq!(r.header("etag"), Some(format!("\"{}\"", f.sha256).as_str()));
+        assert_eq!(r.body_bytes(), b"tiles a");
+        let r = app
+            .handle(&Req::new("GET", &url).header("If-None-Match", &format!("\"{}\"", f.sha256)));
+        assert_eq!(r.status, 304);
+        let r = app.handle(&Req::new("GET", &url).header("Range", "bytes=2-4"));
+        assert_eq!((r.status, r.body_bytes()), (206, b"les".to_vec()));
+        let r = app.handle(&Req::new(
+            "GET",
+            &format!("/v1/basemap/files/{}", "0".repeat(64)),
+        ));
+        assert_eq!(
+            (r.status, r.header("cache-control")),
+            (404, Some("no-store"))
+        );
+    }
+
     #[test]
     fn refuses_files_that_differ_from_the_description() {
         let tmp = tempfile::tempdir().unwrap();
