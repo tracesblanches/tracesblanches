@@ -15,10 +15,13 @@
 //! builds changed 0 to 9 tiles of 399, none of 360, and 0, 1 or 16 of 120. Since the
 //! phone downloads every file whose SHA-256 changed, each new build sent the whole
 //! archive (3.6 MB on 17/11/2026). So the build in use is kept
-//! ([`current_extract`]) until the box really changed ([`CHANGED_SHARE`] of the tiles of
-//! the highest zoom differ from it) or it is [`MAX_AGE_DAYS`] older than the latest one:
+//! ([`current_extract`]) until the box really changed ([`CHANGED_TILES`] tiles of the
+//! highest zoom differ from it) or it is [`MAX_AGE_DAYS`] older than the latest one:
 //! the basemap then changes at most once a week, and the date shown is the date of the
-//! build in use.
+//! build in use. An adopted build travels as a patch of its changed tiles (#160,
+//! [`crate::patch`]), but those are mostly the wide tiles of zooms 2 to 10 that change
+//! every day: 0.4 to 3.4 MB per site between builds 20261114 and 20261115 (38 sites), so
+//! adopting every build would still cost about a megabyte a day.
 //!
 //! Licence: ODbL, « Produced Work » of OpenStreetMap; attribution Protomaps and
 //! OpenStreetMap contributors (report 03).
@@ -57,13 +60,16 @@ pub const ID: &str = "osm";
 /// A newer build replaces the one in use at the latest this many days after it, even
 /// when the site box did not change: the basemap is at most a week behind OSM.
 pub const MAX_AGE_DAYS: i64 = 7;
-/// A newer build replaces the one in use as soon as this share of the tiles of the
-/// highest zoom (those cover the site box) differ from it. One edit (a track, a few
-/// buildings) touched 1 to 9 of the 120 to 400 tiles of a site, under 2.5 %; 16 tiles
-/// of 120 (13 %) between builds 20261115 and 20261116 for one site are a mapping
-/// session in its box. Smaller edits add up against the build in use, and wait at most
-/// [`MAX_AGE_DAYS`]; the trails of the pack come from their own daily OSM layers.
-pub const CHANGED_SHARE: f64 = 0.05;
+/// A newer build replaces the one in use as soon as this many tiles of the highest zoom
+/// (those cover the site box) differ from it. One edit (a track, a few buildings)
+/// touched 1 to 9 tiles of a site; 16 tiles between builds 20261115 and 20261116 for one
+/// site are a mapping session in its box. A count, not a share of the box (5 % before,
+/// #160): an adoption costs the patch of the wide tiles of zooms 2 to 10 whatever the
+/// box (0.4 to 3.4 MB), and 5 % of the 56 tiles of a small box (3 tiles, one edit) made
+/// ten sites adopt build 20261118. Smaller edits add up against the build in use, and
+/// wait at most [`MAX_AGE_DAYS`]; the trails of the pack come from their own daily OSM
+/// layers.
+pub const CHANGED_TILES: u64 = 10;
 
 /// A daily build of the list.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -256,7 +262,7 @@ pub enum Decision {
     Older,
     /// The build in use is [`MAX_AGE_DAYS`] older than the latest one, or more: adopted.
     Age,
-    /// [`CHANGED_SHARE`] of the box tiles changed, or more: adopted.
+    /// [`CHANGED_TILES`] box tiles changed, or more: adopted.
     Changed,
     /// The box barely changed and the build in use is recent: kept.
     Kept,
@@ -298,7 +304,7 @@ pub fn decide(
         _ => return Decision::Age,
     }
     match change {
-        Some(c) if c.share() < CHANGED_SHARE => Decision::Kept,
+        Some(c) if c.changed < CHANGED_TILES => Decision::Kept,
         _ => Decision::Changed,
     }
 }
@@ -717,8 +723,7 @@ pub fn build_from(
 /// Manifest note: which build is in use and why.
 fn renewal_note(c: &Chosen) -> String {
     let rule = format!(
-        "le fond n'est renouvelé que quand {} % des tuiles de l'emprise au zoom maximal ont changé, ou {MAX_AGE_DAYS} jours après le build en usage",
-        CHANGED_SHARE * 100.0
+        "le fond n'est renouvelé que quand {CHANGED_TILES} tuiles de l'emprise au zoom maximal ont changé, ou {MAX_AGE_DAYS} jours après le build en usage"
     );
     let compared = c.change.map(|ch| {
         let s = if ch.changed > 1 { "s" } else { "" };
@@ -838,8 +843,15 @@ mod tests {
         let next = info("20261113", "4.15.2");
         assert!(needs_comparison(Some(&cur), &next));
         assert_eq!(decide(Some(&cur), &next, changed(0)), Decision::Kept);
-        assert_eq!(decide(Some(&cur), &next, changed(19)), Decision::Kept);
-        assert_eq!(decide(Some(&cur), &next, changed(20)), Decision::Changed);
+        assert_eq!(decide(Some(&cur), &next, changed(9)), Decision::Kept);
+        assert_eq!(decide(Some(&cur), &next, changed(10)), Decision::Changed);
+        // A count, not a share: 3 tiles of a small box (5 %) are one edit, kept (#160).
+        let small = Some(BoxChange {
+            zoom: 15,
+            tiles: 56,
+            changed: 3,
+        });
+        assert_eq!(decide(Some(&cur), &next, small), Decision::Kept);
         assert_eq!(decide(Some(&cur), &next, None), Decision::Changed);
         let week = info("20261119", "4.15.2");
         assert!(!needs_comparison(Some(&cur), &week));
@@ -899,7 +911,7 @@ mod tests {
     /// X26 (#160), regression of 17/11/2026: each daily Protomaps build changed the
     /// metadata and the tiles of zooms 2 to 9, and the whole OSM archive went into every
     /// daily update. With a few edits in the box the archive stays the same byte for byte;
-    /// edits add up against the build in use until 5 % of the box tiles changed; a week
+    /// edits add up against the build in use until 10 box tiles changed; a week
     /// after the build in use, the latest is adopted anyway.
     #[test]
     fn daily_builds_keep_the_archive_until_the_box_changes() {
@@ -911,8 +923,8 @@ mod tests {
         let n = box_tiles.len();
         assert!(n >= 100, "{n} tiles at zoom 15");
         // Box tiles edited in the first `k` days: `edits[i]` tiles from day `i`.
-        let five_percent = (n as f64 * CHANGED_SHARE).ceil() as usize;
-        let edits = [0, 3, five_percent - 3, 4];
+        let threshold = CHANGED_TILES as usize;
+        let edits = [0, 3, threshold - 3, 4];
         let day_of_edit = |i: usize| {
             let mut acc = 0;
             edits.iter().position(|&e| {
@@ -968,7 +980,7 @@ mod tests {
             [
                 Decision::First,   // 12th: first build
                 Decision::Kept,    // 13th: 3 box tiles edited
-                Decision::Changed, // 14th: 5 % of the box tiles edited since the 12th
+                Decision::Changed, // 14th: 10 box tiles edited since the 12th
                 Decision::Kept,    // 15th: 4 tiles edited
                 Decision::Kept,
                 Decision::Kept,

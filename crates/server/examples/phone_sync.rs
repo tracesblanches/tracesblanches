@@ -13,8 +13,8 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use anyhow::{Context, Result, bail};
-use skimap_pack::sync::{SyncState, plan, plan_full, read_state, write_state};
-use skimap_pack::update::{MISSING_CONTENTS, apply_bundle};
+use skimap_pack::sync::{SyncState, plan, plan_full, plan_whole_files, read_state, write_state};
+use skimap_pack::update::{MISSING_CONTENTS, PATCH_FAILED, apply_bundle};
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -60,6 +60,10 @@ fn main() -> Result<()> {
     ));
     std::fs::create_dir_all(&work)?;
     let mut fell_back = false;
+    let mut whole_files = std::env::var_os("PHONE_SYNC_WHOLE_FILES").is_some();
+    if whole_files {
+        todo = plan_whole_files(&index, state.as_ref());
+    }
     let mut i = 0;
     while i < todo.len() {
         let b = &todo[i];
@@ -87,6 +91,12 @@ fn main() -> Result<()> {
                 );
                 std::fs::remove_file(&path)?;
                 i += 1;
+            }
+            Err(e) if e.to_string().contains(PATCH_FAILED) && !whole_files => {
+                println!("{e}: falling back to the bundles with whole files");
+                whole_files = true;
+                todo = plan_whole_files(&index, state.as_ref());
+                i = 0;
             }
             Err(e) if e.to_string().contains(MISSING_CONTENTS) && !fell_back => {
                 println!("{e}: falling back to the base bundle");

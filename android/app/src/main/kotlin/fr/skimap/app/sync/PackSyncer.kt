@@ -7,6 +7,7 @@ import fr.skimap.core.installBundle
 import fr.skimap.core.recordSync
 import fr.skimap.core.syncPlan
 import fr.skimap.core.syncPlanFull
+import fr.skimap.core.syncPlanWholeFiles
 import fr.skimap.core.syncState
 import fr.skimap.core.verifyBundle
 import fr.skimap.sync.Fetched
@@ -49,7 +50,8 @@ data class SyncReport(
  * One sync of one pack (K2), the steps of `crates/pack/docs/mise-a-jour.md`: revalidate
  * the index (`If-None-Match`; 304: one request, done), let the core plan the bundles,
  * download each with resume, check it whole (length, SHA-256), let the core install it
- * (every blob checked again, new version swapped in), fall back to the base when the
+ * (every blob checked again, new version swapped in), fall back to whole files when a file
+ * rebuilt from a patch of tiles differs (#160), to the base when the
  * phone lacks contents, record the state. The pack in place stays complete and readable
  * at every step: a cut leaves the old version and the partial download, resumed next time.
  */
@@ -125,8 +127,15 @@ class PackSyncer(
                     val work = File(target.dir.parentFile, ".${target.dir.name}.download")
                     val fellBack =
                         try {
-                            installAll(plan, dir, work, onProgress)
-                            false
+                            try {
+                                installAll(plan, dir, work, onProgress)
+                                false
+                            } catch (_: SyncException.PatchFailed) {
+                                // A file rebuilt from a patch of tiles differs: the same update, files whole.
+                                plan = syncPlanWholeFiles(index, dir)
+                                installAll(plan, dir, work, onProgress)
+                                true
+                            }
                         } catch (_: SyncException.MissingContents) {
                             // The phone no longer has what the delta builds on: base, then delta.
                             plan = syncPlanFull(index, dir)

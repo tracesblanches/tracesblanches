@@ -10,6 +10,9 @@
 //!   drifted from it by more than a tenth (relief, avalanche exposure, basemaps).
 //! - **Deltas**: from the base and from each of the last versions to the latest; a
 //!   daily sync is one delta of a few hundred kilobytes.
+//! - **Patched deltas** (#160): the same deltas with the PMTiles files that changed by a
+//!   few tiles sent as patches (update format 3), listed apart so that an app of format 2
+//!   never sees them; [`plan`] prefers them, [`plan_whole_files`] does not.
 //!
 //! A sync: `GET index.json` with `If-None-Match` (304: done, one tiny request), then the
 //! bundles of [`plan`] (usually one), each installed with [`crate::update::apply_bundle`],
@@ -81,8 +84,14 @@ pub struct SiteIndex {
     /// The whole pack at [`SiteIndex::base_version`].
     pub base: BundleRef,
     /// Deltas to the latest version: from the base (unless it is the latest) and from each
-    /// of the last versions.
+    /// of the last versions. Every file whole (update format 2 at most): what an app of
+    /// format 2 reads.
     pub deltas: Vec<BundleRef>,
+    /// The deltas of [`SiteIndex::deltas`] that are smaller with some PMTiles files sent as
+    /// patches (update format 3, #160), same `from` and `to`; absent when no delta is.
+    /// Ignored by an app of format 2 (an unknown field), so the index stays at version 1.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub patched_deltas: Vec<BundleRef>,
     /// Layers, basemaps and voice of the latest version with their change since the
     /// previous version and their validity.
     pub changes: Vec<ItemChange>,
@@ -103,46 +112,61 @@ pub struct SyncState {
 /// Bundles to download and install, in order, to reach [`SiteIndex::latest`]:
 /// nothing if up to date; the delta from the installed version if the server has it;
 /// the delta from the base if the phone was installed from the same base; else the base
-/// bundle then the delta from the base.
+/// bundle then the delta from the base. A patched delta ([`SiteIndex::patched_deltas`])
+/// is taken when published; after [`crate::update::PATCH_FAILED`], [`plan_whole_files`].
 pub fn plan(index: &SiteIndex, state: Option<&SyncState>) -> Vec<BundleRef> {
+    plan_with(index, state, true)
+}
+
+/// [`plan`] with every file whole (no patched delta): after
+/// [`crate::update::PATCH_FAILED`], the same update with the files that could not be
+/// rebuilt sent whole.
+pub fn plan_whole_files(index: &SiteIndex, state: Option<&SyncState>) -> Vec<BundleRef> {
+    plan_with(index, state, false)
+}
+
+fn plan_with(index: &SiteIndex, state: Option<&SyncState>, patched: bool) -> Vec<BundleRef> {
     let latest = &index.latest.version;
     if let Some(s) = state {
         if &s.version == latest {
             return Vec::new();
         }
-        if let Some(d) = index
-            .deltas
-            .iter()
-            .find(|d| d.from.as_deref() == Some(s.version.as_str()))
-        {
+        if let Some(d) = delta_from(index, &s.version, patched) {
             return vec![d.clone()];
         }
         if s.base_version == index.base_version
-            && let Some(d) = from_base(index)
+            && let Some(d) = delta_from(index, &index.base_version, patched)
         {
             return vec![d.clone()];
         }
     }
-    plan_full(index)
+    full_with(index, patched)
 }
 
-/// The base bundle, then the delta from the base if the base is not the latest version.
-/// Also the fallback when a delta fails with [`crate::update::MISSING_CONTENTS`].
+/// The base bundle, then the delta from the base (every file whole) if the base is not
+/// the latest version. The fallback when a delta fails with
+/// [`crate::update::MISSING_CONTENTS`].
 pub fn plan_full(index: &SiteIndex) -> Vec<BundleRef> {
+    full_with(index, false)
+}
+
+fn full_with(index: &SiteIndex, patched: bool) -> Vec<BundleRef> {
     let mut out = vec![index.base.clone()];
     if index.base_version != index.latest.version
-        && let Some(d) = from_base(index)
+        && let Some(d) = delta_from(index, &index.base_version, patched)
     {
         out.push(d.clone());
     }
     out
 }
 
-fn from_base(index: &SiteIndex) -> Option<&BundleRef> {
-    index
-        .deltas
-        .iter()
-        .find(|d| d.from.as_deref() == Some(index.base_version.as_str()))
+/// The delta from `version`: the patched one first when `patched`.
+fn delta_from<'a>(index: &'a SiteIndex, version: &str, patched: bool) -> Option<&'a BundleRef> {
+    let from = |list: &'a [BundleRef]| list.iter().find(|d| d.from.as_deref() == Some(version));
+    patched
+        .then(|| from(&index.patched_deltas))
+        .flatten()
+        .or_else(|| from(&index.deltas))
 }
 
 /// Where [`SyncState`] is kept: `.<pack directory name>.sync.json` next to the pack.
@@ -217,6 +241,7 @@ mod tests {
             base_version: base.into(),
             base: b(None, base),
             deltas: deltas.iter().map(|f| b(Some(f), latest)).collect(),
+            patched_deltas: Vec::new(),
             changes: Vec::new(),
         }
     }
@@ -244,6 +269,43 @@ mod tests {
         let i = index("v9", "v9", &["v7", "v8"]);
         assert_eq!(plan(&i, None), [b(None, "v9")]);
         assert_eq!(plan(&i, Some(&st("v8", "v1"))), [b(Some("v8"), "v9")]);
+    }
+
+    #[test]
+    fn patched_deltas_first() {
+        let mut i = index("v1", "v9", &["v1", "v7", "v8"]);
+        let p = |from: &str| {
+            let mut d = b(Some(from), "v9");
+            d.sha256.push_str("-patched");
+            d
+        };
+        i.patched_deltas = vec![p("v8"), p("v1")];
+        assert_eq!(plan(&i, Some(&st("v8", "v1"))), [p("v8")]);
+        assert_eq!(
+            plan_whole_files(&i, Some(&st("v8", "v1"))),
+            [b(Some("v8"), "v9")]
+        );
+        // No patched delta from v7: the whole one.
+        assert_eq!(plan(&i, Some(&st("v7", "v1"))), [b(Some("v7"), "v9")]);
+        // Offline for weeks: the patched delta from the base.
+        assert_eq!(plan(&i, Some(&st("v3", "v1"))), [p("v1")]);
+        // First download: base then the patched delta from the base; after missing
+        // contents, the base then the whole delta.
+        assert_eq!(plan(&i, None), [b(None, "v1"), p("v1")]);
+        assert_eq!(
+            plan_whole_files(&i, None),
+            [b(None, "v1"), b(Some("v1"), "v9")]
+        );
+        assert_eq!(plan_full(&i), [b(None, "v1"), b(Some("v1"), "v9")]);
+        // An index of an older server: no patched delta, nothing changes.
+        let old: SiteIndex = serde_json::from_value({
+            let mut v = serde_json::to_value(index("v1", "v9", &["v8"])).unwrap();
+            v.as_object_mut().unwrap().remove("patched_deltas");
+            v
+        })
+        .unwrap();
+        assert!(old.patched_deltas.is_empty());
+        assert_eq!(plan(&old, Some(&st("v8", "v1"))), [b(Some("v8"), "v9")]);
     }
 
     #[test]
