@@ -34,7 +34,7 @@ fn connaught_matches_reference() {
     let inputs = Inputs { dem, canopy };
     let m = exposure::model(&inputs);
     let run = oracle::OracleRun::open(&dir).unwrap();
-    let rep = oracle::compare(&m, &run, false).unwrap();
+    let rep = oracle::compare(&m, &exposure::terrain(&inputs.dem), &run, false).unwrap();
     for l in &rep.layers {
         println!(
             "{:<40} identical {:.6} within {:.0e} {:.6} max {:.3e}",

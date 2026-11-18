@@ -75,31 +75,46 @@ pub fn uniform_filter(src: &[f32], w: usize, h: usize, size: usize) -> Vec<f32> 
             out[ll] = (tmp / size as f64) as f32;
         }
     };
-    // Axis 0 (along columns).
-    let mut cols = vec![0f32; w * h];
-    let col_out: Vec<Vec<f32>> = (0..w)
-        .into_par_iter()
-        .map(|c| {
+    // Axis 0 (along columns), written column-major: one flat buffer, no per-column
+    // allocation left behind in the allocator (#172).
+    let mut cols_t = vec![0f32; w * h];
+    cols_t
+        .par_chunks_mut(h.max(1))
+        .enumerate()
+        .for_each(|(c, o)| {
             let input: Vec<f64> = (0..h).map(|r| f64::from(src[r * w + c])).collect();
-            let mut o = vec![0f32; h];
-            line(&input, &mut o);
-            o
-        })
-        .collect();
-    for (c, col) in col_out.iter().enumerate() {
-        for (r, v) in col.iter().enumerate() {
-            cols[r * w + c] = *v;
-        }
-    }
-    // Axis 1 (along rows).
-    let mut out = vec![0f32; w * h];
-    out.par_chunks_mut(w)
-        .zip(cols.par_chunks(w))
-        .for_each(|(o, row)| {
-            let input: Vec<f64> = row.iter().map(|v| f64::from(*v)).collect();
             line(&input, o);
         });
+    // Axis 1 (along rows).
+    let mut out = vec![0f32; w * h];
+    out.par_chunks_mut(w.max(1)).enumerate().for_each(|(r, o)| {
+        let input: Vec<f64> = (0..w).map(|c| f64::from(cols_t[c * h + r])).collect();
+        line(&input, o);
+    });
     out
+}
+
+/// No gap vote (neighbourhood canopy below [`GAP_CONTEXT_PCT`]).
+const NO_GAP_VOTE: u8 = u8::MAX;
+
+/// Split vote of the classifier (lo, c1, c2, hi, c3; the infrequent scenario owns the
+/// low steps): 0–3, or -1 when neither scenario has a value.
+fn split_vote(lo: f32, c1: f32, c2: f32, hi: f32, c3: f32) -> i8 {
+    if hi > 0.0 || lo > 0.0 {
+        let mut v = 0;
+        if lo > c1 {
+            v = 1;
+        }
+        if lo > c2 {
+            v = 2;
+        }
+        if hi > c3 {
+            v = 3;
+        }
+        v
+    } else {
+        -1
+    }
 }
 
 /// Driver layers of the classifier for one scenario, on the DEM grid (`driverStack`).
@@ -171,6 +186,24 @@ pub fn classify(
         run: ext.1,
     };
 
+    // Start-zone sizes (ha), see `pra::component_area_m2`, reduced at once to their
+    // split vote (one byte per cell instead of two Float32 layers alive with the others).
+    let size_vote: Vec<i8> = {
+        let size_e = pra::component_area_m2(&e.pra.release);
+        let size_f = pra::component_area_m2(&f.pra.release);
+        (0..n)
+            .map(|i| {
+                split_vote(
+                    size_e.data[i] / 10000.0,
+                    0.0,
+                    0.0136,
+                    size_f.data[i] / 10000.0,
+                    0.3086,
+                )
+            })
+            .collect()
+    };
+
     // Terrain: GDAL slope without edges, cast to Int16 (truncation) as the driver stack.
     let slope_raw = pra::gdal_slope(dem, false);
     let valid: Vec<bool> = slope_raw.data.iter().map(|v| !v.is_nan()).collect();
@@ -179,6 +212,8 @@ pub fn classify(
         .iter()
         .map(|v| if v.is_nan() { 0.0 } else { v.trunc() })
         .collect();
+    // Every full-grid layer below is freed as soon as it is no longer read (#172).
+    drop(slope_raw);
     // Canopy: rint of the aligned canopy, no-data → 0.
     let canopy_pct: Vec<f32> = canopy
         .data
@@ -186,8 +221,8 @@ pub fn classify(
         .map(|v| if v.is_nan() { 0.0 } else { v.round_ties_even() })
         .collect();
 
+    let ord = |v: f32, cuts: &[f32; 3]| cuts.iter().filter(|c| v > **c).count() as f64;
     let coarse = uniform_filter(&slope, w, h, win_cells(COARSE_WINDOW_M, cell));
-    let neighbourhood = uniform_filter(&canopy_pct, w, h, win_cells(COARSE_WINDOW_M, cell));
 
     // Forest gaps: area (ha) of the 8-connected open component (canopy ≤ 30 %).
     let open: Vec<u8> = (0..n)
@@ -204,10 +239,23 @@ pub fn classify(
             }
         })
         .collect();
-
-    // Start-zone sizes (ha), see `pra::component_area_m2`.
-    let size_e = pra::component_area_m2(&e.pra.release);
-    let size_f = pra::component_area_m2(&f.pra.release);
+    drop((open, glabel, gsize));
+    // Gap vote where the 300 m neighbourhood is forested enough, `NO_GAP_VOTE` elsewhere.
+    let gap_vote: Vec<u8> = {
+        let neighbourhood = uniform_filter(&canopy_pct, w, h, win_cells(COARSE_WINDOW_M, cell));
+        neighbourhood
+            .iter()
+            .zip(&gap_ha)
+            .map(|(nb, g)| {
+                if *nb >= GAP_CONTEXT_PCT {
+                    ord(*g, &GAP_CUTS) as u8
+                } else {
+                    NO_GAP_VOTE
+                }
+            })
+            .collect()
+    };
+    drop(gap_ha);
     // Proximities with the reference's GDAL calls.
     let reach_e = dem.with_data(
         (0..n)
@@ -215,6 +263,7 @@ pub fn classify(
             .collect(),
     );
     let runout_prox = pra::gdal_proximity(&reach_e, ProximityBand::Float32);
+    drop(reach_e);
     let pra_prox = pra::gdal_proximity(&e.pra.binary, ProximityBand::Int16);
 
     let area_factor = (cell * cell) / (CUT_REF_CELL * CUT_REF_CELL);
@@ -225,7 +274,6 @@ pub fn classify(
     ];
     let floor3_flux = (FLOOR3_FLUX_AREA * area_factor) as f32;
 
-    let ord = |v: f32, cuts: &[f32; 3]| cuts.iter().filter(|c| v > **c).count() as f64;
     let dist_layer = |v: f32| {
         if !v.is_finite() || v < 0.0 || v == -9999.0 {
             1.0e4f32
@@ -244,49 +292,33 @@ pub fn classify(
                 return;
             }
             let (mut num, mut den) = (0.0f64, 0.0f64);
-            // Split votes: (lo, c1, c2, hi, c3); extreme owns the low steps.
-            let mut vote = |lo: f32, c1: f32, c2: f32, hi: f32, c3: f32| {
-                if hi > 0.0 || lo > 0.0 {
-                    let mut v = 0.0;
-                    if lo > c1 {
-                        v = 1.0;
-                    }
-                    if lo > c2 {
-                        v = 2.0;
-                    }
-                    if hi > c3 {
-                        v = 3.0;
-                    }
-                    num += v;
+            // Split votes (see `split_vote`), -1 = no vote.
+            let mut vote = |v: i8| {
+                if v >= 0 {
+                    num += f64::from(v);
                     den += 1.0;
                 }
             };
-            vote(
+            vote(split_vote(
                 e.pra.continuous.data[i],
                 0.0,
                 0.0087,
                 f.pra.continuous.data[i],
                 0.1613,
-            );
-            vote(
-                size_e.data[i] / 10000.0,
-                0.0,
-                0.0136,
-                size_f.data[i] / 10000.0,
-                0.3086,
-            );
-            vote(e.travel(i), 0.0, 24.005, f.travel(i), 34.270);
-            vote(
+            ));
+            vote(size_vote[i]);
+            vote(split_vote(e.travel(i), 0.0, 24.005, f.travel(i), 34.270));
+            vote(split_vote(
                 e.flux_area(i, cell_area),
                 flux_cuts[0] as f32,
                 flux_cuts[1] as f32,
                 f.flux_area(i, cell_area),
                 flux_cuts[2] as f32,
-            );
+            ));
             num += ord(coarse[i], &COARSE_CUTS);
             den += 1.0;
-            if neighbourhood[i] >= GAP_CONTEXT_PCT {
-                num += GAP_WEIGHT * ord(gap_ha[i], &GAP_CUTS);
+            if gap_vote[i] != NO_GAP_VOTE {
+                num += GAP_WEIGHT * f64::from(gap_vote[i]);
                 den += GAP_WEIGHT;
             }
             let tier = if den > 0.0 { num / den.max(1e-9) } else { 0.0 };
@@ -325,6 +357,8 @@ pub fn classify(
             }
             *out = class;
         });
+    drop((slope, canopy_pct, gap_vote, size_vote));
+    drop((runout_prox, pra_prox));
     let raw = dem.with_data(raw);
     let classes = mmu(&raw, &valid);
     Ates {
@@ -359,12 +393,16 @@ pub fn mmu(raw: &Raster<u8>, valid: &[bool]) -> Raster<u8> {
     }
     let survivors: Vec<u8> = (0..n).map(|i| u8::from(valid[i] && !to_fill[i])).collect();
     let nearest = nearest_feature(&survivors, w, h);
+    drop(survivors);
     let out: Vec<u8> = (0..n)
         .map(|i| {
             if !valid[i] {
                 255
             } else if to_fill[i] {
-                nearest[i].map_or(raw.data[i], |j| raw.data[j])
+                match nearest[i] {
+                    NO_FEATURE => raw.data[i],
+                    j => raw.data[j as usize],
+                }
             } else {
                 raw.data[i]
             }
@@ -373,42 +411,63 @@ pub fn mmu(raw: &Raster<u8>, valid: &[bool]) -> Raster<u8> {
     raw.with_data(out)
 }
 
+/// No feature in [`nearest_feature`] (empty mask).
+pub const NO_FEATURE: u32 = u32::MAX;
+
 /// Index of the nearest non-zero cell (exact Euclidean feature transform, two separable
-/// passes keeping the argmin). `None` when the mask is empty.
-pub fn nearest_feature(mask: &[u8], w: usize, h: usize) -> Vec<Option<usize>> {
+/// passes keeping the argmin), [`NO_FEATURE`] when the mask is empty. Indices are `u32`
+/// (a grid has fewer than 2³² − 1 cells) and the column pass is one flat column-major
+/// buffer: 8 bytes per cell instead of 32 (#172).
+pub fn nearest_feature(mask: &[u8], w: usize, h: usize) -> Vec<u32> {
     const INF: f64 = 1e20;
-    // Pass 1: per column, nearest feature row.
-    let col_near: Vec<Vec<Option<usize>>> = (0..w)
-        .into_par_iter()
-        .map(|c| {
-            let mut out = vec![None; h];
-            let mut last: Option<usize> = None;
+    assert!(
+        w * h < NO_FEATURE as usize,
+        "grid too large for u32 indices"
+    );
+    // Pass 1: per column, nearest feature row (column-major, NO_FEATURE = none).
+    let mut col_near = vec![NO_FEATURE; w * h];
+    col_near
+        .par_chunks_mut(h.max(1))
+        .enumerate()
+        .for_each(|(c, out)| {
+            let mut last = NO_FEATURE;
             for (r, o) in out.iter_mut().enumerate() {
                 if mask[r * w + c] != 0 {
-                    last = Some(r);
+                    last = r as u32;
                 }
                 *o = last;
             }
-            let mut next: Option<usize> = None;
+            let mut next = NO_FEATURE;
             for r in (0..h).rev() {
                 if mask[r * w + c] != 0 {
-                    next = Some(r);
+                    next = r as u32;
                 }
                 let best = match (out[r], next) {
-                    (Some(a), Some(b)) => Some(if r - a <= b - r { a } else { b }),
-                    (a, b) => a.or(b),
+                    (NO_FEATURE, b) => b,
+                    (a, NO_FEATURE) => a,
+                    (a, b) => {
+                        if r - a as usize <= b as usize - r {
+                            a
+                        } else {
+                            b
+                        }
+                    }
                 };
                 out[r] = best;
             }
-            out
-        })
-        .collect();
+        });
     // Pass 2: per row, lower envelope of parabolas over the columns.
-    (0..h)
-        .into_par_iter()
-        .flat_map_iter(|r| {
+    let mut nearest = vec![NO_FEATURE; w * h];
+    nearest
+        .par_chunks_mut(w.max(1))
+        .enumerate()
+        .for_each(|(r, o)| {
+            let near = |c: usize| col_near[c * h + r];
             let f: Vec<f64> = (0..w)
-                .map(|c| col_near[c][r].map_or(INF, |rr| ((rr as f64) - r as f64).powi(2)))
+                .map(|c| match near(c) {
+                    NO_FEATURE => INF,
+                    rr => ((rr as f64) - r as f64).powi(2),
+                })
                 .collect();
             let mut v = vec![0usize; w];
             let mut z = vec![0f64; w + 1];
@@ -430,18 +489,18 @@ pub fn nearest_feature(mask: &[u8], w: usize, h: usize) -> Vec<Option<usize>> {
                 z[k + 1] = f64::INFINITY;
             }
             k = 0;
-            let col_near = &col_near;
-            (0..w)
-                .map(move |q| {
-                    while z[k + 1] < q as f64 {
-                        k += 1;
-                    }
-                    let p = v[k];
-                    col_near[p][r].map(|rr| rr * w + p)
-                })
-                .collect::<Vec<_>>()
-        })
-        .collect()
+            for (q, out) in o.iter_mut().enumerate() {
+                while z[k + 1] < q as f64 {
+                    k += 1;
+                }
+                let p = v[k];
+                *out = match near(p) {
+                    NO_FEATURE => NO_FEATURE,
+                    rr => rr * w as u32 + p as u32,
+                };
+            }
+        });
+    nearest
 }
 
 #[cfg(test)]
@@ -487,7 +546,8 @@ mod tests {
         let nf = nearest_feature(&m, w, h);
         for r in 0..h {
             for c in 0..w {
-                let j = nf[r * w + c].unwrap();
+                let j = nf[r * w + c] as usize;
+                assert_ne!(nf[r * w + c], NO_FEATURE);
                 let d = |i: usize| {
                     let (rr, cc) = (i / w, i % w);
                     (rr as i64 - r as i64).pow(2) + (cc as i64 - c as i64).pow(2)
@@ -496,7 +556,11 @@ mod tests {
                 assert_eq!(d(j), best, "cell ({r}, {c})");
             }
         }
-        assert!(nearest_feature(&[0, 0], 2, 1).iter().all(Option::is_none));
+        assert!(
+            nearest_feature(&[0, 0], 2, 1)
+                .iter()
+                .all(|j| *j == NO_FEATURE)
+        );
     }
 
     #[test]

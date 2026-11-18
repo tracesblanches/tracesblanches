@@ -128,6 +128,12 @@ impl Runout {
 
 /// Side of the square tiles of [`Cells::tb_exp`], cells.
 const TILE: usize = 64;
+/// Rows of release cells routed together before the workspaces are dropped and the
+/// tiles behind are evicted (#172).
+const BAND_ROWS: usize = 4 * TILE;
+/// Rows kept above a band: paths of a band that run uphill in the grid (north) reach
+/// these tiles again without recomputing them.
+const KEEP_ROWS: usize = 4 * TILE;
 
 /// Routing weights of a grid, shared by the scenarios that route over the same DEM and
 /// forest index with the same spreading exponent (the two AutoATES scenarios differ only
@@ -178,6 +184,8 @@ struct Cells<'a> {
     /// Per tile, row-major inside the tile: `tan β^exp` towards the neighbours `k ≠ 4`
     /// (slot [`slot`]), 0 where `tan β ≤ 0` and on cells that are not routable.
     tb_exp: Vec<OnceLock<Box<[[f64; 8]]>>>,
+    /// Tile rows evicted by [`Cells::evict_above`] during the current run.
+    evicted_rows: usize,
 }
 
 /// Slot of the neighbour `k ≠ 4` of the 3 × 3 window in [`Cells::tb_exp`].
@@ -214,6 +222,7 @@ impl<'a> Cells<'a> {
             exp,
             tiles_w,
             tb_exp: (0..tiles).map(|_| OnceLock::new()).collect(),
+            evicted_rows: 0,
         }
     }
 
@@ -230,6 +239,16 @@ impl<'a> Cells<'a> {
         let t = (r / TILE) * self.tiles_w + c / TILE;
         let tile = self.tb_exp[t].get_or_init(|| self.tile(t));
         &tile[(r % TILE) * TILE + c % TILE]
+    }
+
+    /// Drops the weight tiles that lie entirely above `row`: a path that reaches one of
+    /// them again recomputes it.
+    fn evict_above(&mut self, row: usize) {
+        let rows = (row / TILE).min(self.h.div_ceil(TILE));
+        for t in self.evicted_rows * self.tiles_w..rows * self.tiles_w {
+            self.tb_exp[t].take();
+        }
+        self.evicted_rows = self.evicted_rows.max(rows);
     }
 
     /// Weights of one tile (calc_tanbeta of the kernel: β = atan(Δz / d) + π/2, then
@@ -377,6 +396,41 @@ struct CellAcc {
     flux: AtomicU64,
 }
 
+/// Cells per chunk of [`Acc`]: 96 MB, above the largest mmap threshold of glibc (32 MB),
+/// so that a freed chunk goes back to the system instead of staying in an arena.
+const ACC_CHUNK: usize = 1 << 22;
+
+/// Shared accumulators of a run, by chunks of [`ACC_CHUNK`] cells so that the outputs
+/// can be built while the chunks are freed one after the other.
+struct Acc {
+    chunks: Vec<Box<[CellAcc]>>,
+}
+
+impl Acc {
+    fn new(n: usize) -> Self {
+        Self {
+            chunks: (0..n.div_ceil(ACC_CHUNK))
+                .into_par_iter()
+                .map(|k| {
+                    (k * ACC_CHUNK..((k + 1) * ACC_CHUNK).min(n))
+                        .map(|_| CellAcc {
+                            zdelta: AtomicU32::new(0f32.to_bits()),
+                            count: AtomicU32::new(0),
+                            gamma: AtomicU64::new(0),
+                            flux: AtomicU64::new(0),
+                        })
+                        .collect()
+                })
+                .collect(),
+        }
+    }
+
+    #[inline]
+    fn get(&self, i: usize) -> &CellAcc {
+        &self.chunks[i / ACC_CHUNK][i % ACC_CHUNK]
+    }
+}
+
 /// Resolution of the fixed-point flux sum: 2⁻⁴⁰ (about 9 × 10⁻¹³). The per-path sum of a
 /// cell (Float64, at least the minimum flux 0.0003 when positive) is rounded to it once,
 /// far below the Float32 precision of the output; the largest sum it holds is 2²⁴ (a
@@ -450,11 +504,11 @@ fn total_key(v: f64) -> i64 {
 /// Routes every release cell of `release` over `dem` (m, `NaN` no-data) with the
 /// forest structure index `fsi` (0–1, the canopy cover / 100 of the reference).
 pub fn run(dem: &Raster<f32>, release: &Raster<u8>, fsi: &Raster<f32>, p: &FlowParams) -> Runout {
-    run_with(&Weights::new(dem, fsi, p.exp), release, p)
+    run_with(&mut Weights::new(dem, fsi, p.exp), release, p)
 }
 
 /// [`run`] over precomputed [`Weights`] (same DEM, forest index and exponent as `p`).
-pub fn run_with(weights: &Weights<'_>, release: &Raster<u8>, p: &FlowParams) -> Runout {
+pub fn run_with(weights: &mut Weights<'_>, release: &Raster<u8>, p: &FlowParams) -> Runout {
     let dem = weights.cells.dem;
     assert!(dem.same_grid(release), "runout grids");
     assert!(
@@ -469,71 +523,84 @@ pub fn run_with(weights: &Weights<'_>, release: &Raster<u8>, p: &FlowParams) -> 
         .filter(|(_, v)| **v > 0)
         .map(|(i, _)| i as u32)
         .collect();
-    let acc: Vec<CellAcc> = (0..n)
-        .into_par_iter()
-        .map(|_| CellAcc {
-            zdelta: AtomicU32::new(0f32.to_bits()),
-            count: AtomicU32::new(0),
-            gamma: AtomicU64::new(0),
-            flux: AtomicU64::new(0),
-        })
-        .collect();
+    let acc = Acc::new(n);
+    weights.cells.evicted_rows = 0;
     let t0 = std::time::Instant::now();
-    let k = Kernel::new(&weights.cells, p);
-    let t_cells = t0.elapsed().as_secs_f64();
-    let t0 = std::time::Instant::now();
-    let pool: Mutex<Vec<Work>> = Mutex::new(Vec::new());
-    let (paths, visits) = starts
-        .par_chunks(256)
-        .map(|chunk| {
-            let mut work = pool
-                .lock()
-                .expect("workspace pool")
-                .pop()
-                .unwrap_or_else(|| Work::new(n));
-            let (mut paths, mut visits) = (0usize, 0u64);
-            for &s in chunk {
-                let v = k.path(s as usize, &mut work, &acc);
-                if v > 0 {
-                    paths += 1;
-                    visits += v;
+    // Release cells by bands of rows, in order: the per-thread workspaces are dropped
+    // after each band and the weight tiles above the next band (less a margin) are
+    // evicted, so that memory follows the band and not the grid (#172). A path is
+    // independent of every other and an evicted tile is recomputed by the same operations
+    // when a later path reaches it again: the outputs are those of a single pass.
+    let (mut paths, mut visits) = (0usize, 0u64);
+    let mut lo = 0usize;
+    while lo < starts.len() {
+        let band = starts[lo] as usize / dem.w / BAND_ROWS;
+        let hi = lo + starts[lo..].partition_point(|s| *s as usize / dem.w / BAND_ROWS == band);
+        let k = Kernel::new(&weights.cells, p);
+        let pool: Mutex<Vec<Work>> = Mutex::new(Vec::new());
+        let (bp, bv) = starts[lo..hi]
+            .par_chunks(256)
+            .map(|chunk| {
+                let mut work = pool
+                    .lock()
+                    .expect("workspace pool")
+                    .pop()
+                    .unwrap_or_else(|| Work::new(n));
+                let (mut paths, mut visits) = (0usize, 0u64);
+                for &s in chunk {
+                    let v = k.path(s as usize, &mut work, &acc);
+                    if v > 0 {
+                        paths += 1;
+                        visits += v;
+                    }
                 }
-            }
-            pool.lock().expect("workspace pool").push(work);
-            (paths, visits)
-        })
-        .reduce(|| (0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
+                pool.lock().expect("workspace pool").push(work);
+                (paths, visits)
+            })
+            .reduce(|| (0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
+        drop(pool);
+        paths += bp;
+        visits += bv;
+        lo = hi;
+        if let Some(next) = starts.get(lo) {
+            let top = next / dem.w as u32 / BAND_ROWS as u32 * BAND_ROWS as u32;
+            weights
+                .cells
+                .evict_above((top as usize).saturating_sub(KEEP_ROWS));
+        }
+    }
+    // The tiles left at the bottom of the grid are freed before the outputs are
+    // gathered: the next scenario reaches them only at its own end, and recomputes them.
+    weights.cells.evict_above(usize::MAX);
     tracing::debug!(
         scenario = p.name,
-        cells_s = t_cells,
         paths_s = t0.elapsed().as_secs_f64(),
         paths,
         visits,
         "runout"
     );
-    let count: Vec<u32> = acc
-        .par_iter()
-        .map(|a| a.count.load(Ordering::Relaxed))
-        .collect();
-    let zdelta: Vec<f32> = acc
-        .par_iter()
-        .map(|a| f32::from_bits(a.zdelta.load(Ordering::Relaxed)))
-        .collect();
-    let flux: Vec<f32> = acc
-        .par_iter()
-        .map(|a| (a.flux.load(Ordering::Relaxed) as f64 * FLUX_UNIT) as f32)
-        .collect();
-    let fp: Vec<f32> = acc
-        .par_iter()
-        .zip(&count)
-        .map(|(a, c)| {
-            if *c == 0 {
+    // Outputs filled chunk by chunk while the accumulator chunks are freed: the two
+    // never both cover the whole grid (#172). The output vectors are reserved, not
+    // written ahead, so their pages become resident only as they are filled.
+    let (mut count, mut zdelta, mut flux, mut fp) = (
+        Vec::with_capacity(n),
+        Vec::with_capacity(n),
+        Vec::with_capacity(n),
+        Vec::with_capacity(n),
+    );
+    for chunk in acc.chunks {
+        for a in chunk.iter() {
+            let c = a.count.load(Ordering::Relaxed);
+            count.push(c);
+            zdelta.push(f32::from_bits(a.zdelta.load(Ordering::Relaxed)));
+            flux.push((a.flux.load(Ordering::Relaxed) as f64 * FLUX_UNIT) as f32);
+            fp.push(if c == 0 {
                 f32::NAN
             } else {
                 travel_angle(key_f64(a.gamma.load(Ordering::Relaxed)))
-            }
-        })
-        .collect();
+            });
+        }
+    }
     Runout {
         zdelta: dem.with_data(zdelta),
         rout_flux_sum: dem.with_data(flux),
@@ -616,7 +683,7 @@ impl<'a> Kernel<'a> {
     /// The arithmetic is the reference kernel's, operation for operation and in the same
     /// order for every sum; only the bookkeeping differs (3 × 3 window read once, loops
     /// without data-dependent exits, per-direction constants in tables).
-    fn path(&self, start: usize, work: &mut Work, acc: &[CellAcc]) -> u64 {
+    fn path(&self, start: usize, work: &mut Work, acc: &Acc) -> u64 {
         let w = self.w;
         let cells = &self.cells;
         if !cells.routable[start] {
@@ -914,7 +981,7 @@ impl<'a> Kernel<'a> {
         // Merge the path into the shared outputs: one count, two maxima (independent of
         // the order) and one integer sum per reached cell.
         for t in &work.touched {
-            let a = &acc[t.cell as usize];
+            let a = acc.get(t.cell as usize);
             a.count.fetch_add(1, Ordering::Relaxed);
             atomic_max_u32(&a.zdelta, t.zdelta);
             atomic_max_u64(&a.gamma, t.gamma);
@@ -1107,18 +1174,57 @@ mod tests {
                 o.visits,
             )
         };
-        let shared = Weights::new(&dem, &fsi, EXTREME.exp);
+        let mut shared = Weights::new(&dem, &fsi, EXTREME.exp);
         let reference = bits(&run(&dem, &rel, &fsi, &EXTREME));
         for threads in [1, 3, 8] {
             let pool = rayon::ThreadPoolBuilder::new()
                 .num_threads(threads)
                 .build()
                 .unwrap();
-            let again = pool.install(|| bits(&run_with(&shared, &rel, &EXTREME)));
+            let again = pool.install(|| bits(&run_with(&mut shared, &rel, &EXTREME)));
             assert!(again == reference, "{threads} threads");
         }
-        let _ = run_with(&shared, &rel, &FREQUENT);
-        assert!(bits(&run_with(&shared, &rel, &EXTREME)) == reference);
+        let _ = run_with(&mut shared, &rel, &FREQUENT);
+        assert!(bits(&run_with(&mut shared, &rel, &EXTREME)) == reference);
+    }
+
+    /// The weight tiles of a run do not outlive it, and routing by bands with eviction
+    /// gives the bits of the unbanded run (#172: on a 21-million-cell zone the tiles
+    /// kept for the whole grid weighed 1.4 GB).
+    #[test]
+    fn weight_tiles_are_freed_by_bands() {
+        let (w, h, cell) = (40usize, 1300usize, 5.0f64);
+        let dem = plane(w, h, cell, 35.0);
+        let fsi = Raster::filled_like(&dem, 0f32);
+        let mut rel = Raster::filled_like(&dem, 0u8);
+        for r in [5usize, 600, 1200] {
+            for c in [10usize, 20, 30] {
+                rel.data[r * w + c] = 1;
+            }
+        }
+        let mut weights = Weights::new(&dem, &fsi, EXTREME.exp);
+        let banded = run_with(&mut weights, &rel, &EXTREME);
+        let cached = weights
+            .cells
+            .tb_exp
+            .iter()
+            .filter(|t| t.get().is_some())
+            .count();
+        assert_eq!(cached, 0, "weight tiles left after the run");
+        // Each band alone, on fresh weights, sums to the same outputs.
+        let mut counts = vec![0u32; w * h];
+        for r in [5usize, 600, 1200] {
+            let mut one = Raster::filled_like(&dem, 0u8);
+            for c in [10usize, 20, 30] {
+                one.data[r * w + c] = 1;
+            }
+            let o = run(&dem, &one, &fsi, &EXTREME);
+            for (a, b) in counts.iter_mut().zip(&o.cell_counts.data) {
+                *a += b;
+            }
+        }
+        assert_eq!(banded.cell_counts.data, counts);
+        assert!(banded.reached((h - 10) * w + 20), "paths reach the bottom");
     }
 
     #[test]
