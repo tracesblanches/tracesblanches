@@ -94,9 +94,15 @@ pub struct ExtractStats {
     pub bytes: u64,
 }
 
-/// Extracts the tiles of `bbox` up to `maxzoom` from `src` into `out`.
-pub fn extract(src: &dyn RangeSource, bbox: BBox, maxzoom: u8, out: &Path) -> Result<ExtractStats> {
-    Archive::open(src)?.extract(bbox, maxzoom, out)
+/// Extracts the tiles of `bbox` at zooms `zooms.0..=zooms.1` (within those of the
+/// source) from `src` into `out`.
+pub fn extract(
+    src: &dyn RangeSource,
+    bbox: BBox,
+    zooms: (u8, u8),
+    out: &Path,
+) -> Result<ExtractStats> {
+    Archive::open(src)?.extract(bbox, zooms, out)
 }
 
 /// Decompresses a tile stored with the tile compression `compression` of a header (1:
@@ -276,13 +282,21 @@ impl<'a> Archive<'a> {
         Ok(out)
     }
 
-    /// Writes the tiles of `bbox` up to `maxzoom` into `out` (tiles as they are, metadata
-    /// of the source); reads only what was not read before. The read figures are those
-    /// of the whole archive session (comparison included).
-    pub fn extract(&mut self, bbox: BBox, maxzoom: u8, out: &Path) -> Result<ExtractStats> {
+    /// Writes the tiles of `bbox` at zooms `zooms.0..=zooms.1` (within those of the
+    /// archive) into `out` (tiles as they are, metadata of the source); reads only what was
+    /// not read before. The read figures are those of the whole archive session
+    /// (comparison included).
+    pub fn extract(&mut self, bbox: BBox, zooms: (u8, u8), out: &Path) -> Result<ExtractStats> {
         let h = self.header;
-        let maxzoom = maxzoom.min(h.zooms.1);
-        let found = self.locate(bbox, h.zooms.0, maxzoom)?;
+        let maxzoom = zooms.1.min(h.zooms.1);
+        let minzoom = zooms.0.max(h.zooms.0);
+        if minzoom > maxzoom {
+            return Err(Error::Pack(format!(
+                "extract: zooms {}-{} outside the archive zooms {}-{}",
+                zooms.0, zooms.1, h.zooms.0, h.zooms.1
+            )));
+        }
+        let found = self.locate(bbox, minzoom, maxzoom)?;
         self.fetch(&found)?;
         let mut stats = self.reads.clone();
         stats.tiles = found.len();
@@ -313,11 +327,11 @@ impl<'a> Archive<'a> {
         let c = bbox.center();
         let mut w = PmTilesWriter::new(tile_type)
             .precompressed(compression)
-            .min_zoom(h.zooms.0)
+            .min_zoom(minzoom)
             .max_zoom(maxzoom)
             .bounds(bbox.west, bbox.south, bbox.east, bbox.north)
             .center(c.lon, c.lat)
-            .center_zoom(maxzoom.min(12).max(h.zooms.0))
+            .center_zoom(maxzoom.min(12).max(minzoom))
             .metadata(self.metadata.clone())
             .create(&mut f)
             .map_err(|e| Error::pmtiles(out, e))?;
@@ -406,7 +420,7 @@ mod tests {
         .unwrap();
         let out = dir.path().join("out.pmtiles");
         let src = Counted(File::open(&src_path).unwrap(), Cell::new(0));
-        let s = extract(&src, small, 13, &out).unwrap();
+        let s = extract(&src, small, (0, 13), &out).unwrap();
         let want = tiles_covering(small, 10, 13);
         assert_eq!(s.tiles, want.len());
         assert_eq!(s.contents, want.len());
@@ -425,6 +439,29 @@ mod tests {
         }
         assert!(a.tile(14, 8600, 5900).unwrap().is_none());
         assert!(a.metadata().unwrap().contains("source"));
+
+        // From zoom 12 only: the tiles of the lower zooms are neither read nor written.
+        let high = dir.path().join("high.pmtiles");
+        let src = Counted(File::open(&src_path).unwrap(), Cell::new(0));
+        let s = extract(&src, small, (12, 13), &high).unwrap();
+        let want = tiles_covering(small, 12, 13);
+        assert_eq!(s.tiles, want.len());
+        let a = TileArchive::open(&high).unwrap();
+        assert_eq!(a.zoom_range(), (12, 13));
+        assert_eq!(a.addressed_tiles().unwrap(), want.len() as u64);
+        for (z, x, y) in tiles_covering(small, 10, 11) {
+            assert!(a.tile(z, x, y).unwrap().is_none(), "{z}/{x}/{y}");
+        }
+        for (z, x, y) in want {
+            assert_eq!(
+                a.tile(z, x, y).unwrap().unwrap(),
+                format!("{z}/{x}/{y}").into_bytes()
+            );
+        }
+        assert!(
+            extract(&src, small, (15, 16), &high).is_err(),
+            "above the source"
+        );
     }
 
     /// A source with leaf directories (more than 16 384 entries): they are walked and
@@ -457,7 +494,7 @@ mod tests {
             "source must have leaves"
         );
         let out = dir.path().join("out.pmtiles");
-        let s = extract(&File::open(&src_path).unwrap(), small, 15, &out).unwrap();
+        let s = extract(&File::open(&src_path).unwrap(), small, (0, 15), &out).unwrap();
         assert!(s.leaf_directories >= 1);
         let want = tiles_covering(small, 0, 15);
         assert_eq!(s.tiles, want.len());

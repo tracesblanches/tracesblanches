@@ -48,6 +48,15 @@ pub use reader::{Pack, TileArchive};
 /// Name of this crate, checked by the crate smoke test.
 pub const CRATE: &str = env!("CARGO_PKG_NAME");
 
+/// Lowest zoom of the OSM (Protomaps) basemap of a pack (#160). The styles of the app
+/// draw the `osm` source only from zoom 12 (parkings and nordic centres, `crates/styles`,
+/// checked by its test `osm_layers_start_at_the_pack_archive`); below, the map is the
+/// France basemap (zooms 0 to [`france::MAXZOOM`], shared by every site) and the Plan IGN
+/// of the pack (zooms 0 to 16). The tiles of the lower zooms each cover tens to thousands
+/// of kilometres around the site and change with every daily build (edits made anywhere
+/// in them): they made most of an adopted build and of the archive.
+pub const OSM_MINZOOM: u8 = 12;
+
 #[cfg(test)]
 mod tests {
     #[test]

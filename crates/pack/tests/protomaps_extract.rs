@@ -43,7 +43,7 @@ fn rust_extract_matches_go_pmtiles() {
                 url: &url,
             },
             site.bbox,
-            OSM_MAXZOOM,
+            (0, OSM_MAXZOOM),
             &out,
         )
         .unwrap();

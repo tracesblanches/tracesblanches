@@ -50,6 +50,8 @@ pub const OSM_MAXZOOM: u8 = 15;
 pub struct BuildOptions {
     /// Highest zoom of the Plan IGN tiles.
     pub plan_ign_maxzoom: u8,
+    /// Lowest zoom of the OSM extract ([`crate::OSM_MINZOOM`]).
+    pub osm_minzoom: u8,
     /// Highest zoom of the OSM extract.
     pub osm_maxzoom: u8,
     /// Build the Plan IGN basemap.
@@ -79,6 +81,7 @@ impl Default for BuildOptions {
     fn default() -> Self {
         Self {
             plan_ign_maxzoom: PLAN_IGN_MAXZOOM,
+            osm_minzoom: crate::OSM_MINZOOM,
             osm_maxzoom: OSM_MAXZOOM,
             plan_ign: true,
             osm: true,
@@ -199,13 +202,14 @@ fn build_into(
         let t = Instant::now();
         let id = format!("basemap:{}", osm::ID);
         let latest = osm::select_build(dl, opts.protomaps_build.as_deref())?;
-        let key = osm::part_key(site, layout, &latest, opts.osm_maxzoom)?;
+        let zooms = (opts.osm_minzoom, opts.osm_maxzoom);
+        let key = osm::part_key(site, layout, &latest, zooms)?;
         let b = match parts.reuse::<Basemap>(&id, &key, root) {
             Some(b) => b,
             None => {
-                let b = osm::build_from(site, layout, dl, root, &latest, opts.osm_maxzoom)?;
+                let b = osm::build_from(site, layout, dl, root, &latest, zooms)?;
                 // The key after the choice of the build in use (adopted or kept).
-                let key = osm::part_key(site, layout, &latest, opts.osm_maxzoom)?;
+                let key = osm::part_key(site, layout, &latest, zooms)?;
                 let dir = format!("basemap/{}", osm::ID);
                 parts.record(&id, key, root, &[&b.tiles, &dir], &b)?;
                 b

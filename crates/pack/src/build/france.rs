@@ -124,7 +124,7 @@ pub fn build(
                 url: &url,
             },
             BBOX,
-            maxzoom,
+            (0, maxzoom),
             &tmp,
         )?;
         tracing::info!(url, ?s, "France extract");

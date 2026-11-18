@@ -147,26 +147,37 @@ fn box_name(b: BBox) -> String {
     format!("{}_{}_{}_{}", b.west, b.south, b.east, b.north)
 }
 
-/// Path of the cached extract of a build, `<site>-<build>-z<zoom>-<box>.pmtiles`.
-fn extract_path(dir: &Path, site: &Site, key: &str, maxzoom: u8) -> PathBuf {
+/// Zooms of the extracts in their names: `z<max>` from zoom 0 (the only form before
+/// [`crate::OSM_MINZOOM`]), `z<min>-<max>` otherwise.
+fn zoom_tag(zooms: (u8, u8)) -> String {
+    match zooms {
+        (0, max) => format!("z{max}"),
+        (min, max) => format!("z{min}-{max}"),
+    }
+}
+
+/// Path of the cached extract of a build, `<site>-<build>-<zooms>-<box>.pmtiles`
+/// ([`zoom_tag`]).
+fn extract_path(dir: &Path, site: &Site, key: &str, zooms: (u8, u8)) -> PathBuf {
     let stem = key.trim_end_matches(".pmtiles");
     dir.join(format!(
-        "{}-{stem}-z{maxzoom}-{}.pmtiles",
+        "{}-{stem}-{}-{}.pmtiles",
         site.id,
+        zoom_tag(zooms),
         box_name(site.bbox)
     ))
 }
 
-/// Cached extract of a site (`data/cache/protomaps/extracts/<site>-<build>-z<zoom>-<box>.pmtiles`),
-/// made if absent.
+/// Cached extract of a site at zooms `zooms.0..=zooms.1`
+/// (`data/cache/protomaps/extracts/<site>-<build>-<zooms>-<box>.pmtiles`), made if absent.
 pub fn cached_extract(
     site: &Site,
     layout: &DataLayout,
     dl: &Downloader,
     build: &BuildInfo,
-    maxzoom: u8,
+    zooms: (u8, u8),
 ) -> Result<PathBuf> {
-    let path = extract_path(&extracts_dir(layout)?, site, &build.key, maxzoom);
+    let path = extract_path(&extracts_dir(layout)?, site, &build.key, zooms);
     if !path.is_file() {
         let tmp = path.with_extension("pmtiles.part");
         let url = format!("{BUILD_BASE}{}", build.key);
@@ -178,7 +189,7 @@ pub fn cached_extract(
                 url: &url,
             },
             site.bbox,
-            maxzoom,
+            zooms,
             &tmp,
         )?;
         tracing::info!(
@@ -334,17 +345,40 @@ pub struct Chosen {
     pub decision: Decision,
 }
 
-/// File of the build in use of a site box, `<site>-z<zoom>-<box>.current.json`.
-fn state_path(dir: &Path, site: &Site, maxzoom: u8) -> PathBuf {
+/// File of the build in use of a site box, `<site>-<zooms>-<box>.current.json`
+/// ([`zoom_tag`]).
+fn state_path(dir: &Path, site: &Site, zooms: (u8, u8)) -> PathBuf {
     dir.join(format!(
-        "{}-z{maxzoom}-{}.current.json",
+        "{}-{}-{}.current.json",
         site.id,
+        zoom_tag(zooms),
         box_name(site.bbox)
     ))
 }
 
-/// The extract the pack uses: the one of the build in use, recorded in
-/// `extracts/<site>-z<zoom>-<box>.current.json`, or the one of `latest` when [`decide`]
+/// The build in use recorded in `state` and its extract, when that extract is still in
+/// the cache.
+fn read_state(
+    dir: &Path,
+    site: &Site,
+    state: &Path,
+    zooms: (u8, u8),
+) -> Result<Option<(BuildInfo, PathBuf)>> {
+    match std::fs::read(state) {
+        Ok(b) => {
+            let build: BuildInfo = serde_json::from_slice(&b)
+                .map_err(|e| Error::json(state.display().to_string(), e))?;
+            let path = extract_path(dir, site, &build.key, zooms);
+            Ok(path.is_file().then_some((build, path)))
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(Error::io(state, e)),
+    }
+}
+
+/// The extract the pack uses (zooms `zooms.0..=zooms.1`): the one of the build in use,
+/// recorded in `extracts/<site>-<zooms>-<box>.current.json`, or the one of `latest` when
+/// [`decide`]
 /// adopts it (then recorded in its place). The latest build is read by range requests
 /// ([`HttpRanges`]); first, once per process and latest build, the cache of the builds
 /// that are neither in use nor the latest is removed ([`purge`]).
@@ -353,7 +387,7 @@ pub fn current_extract(
     layout: &DataLayout,
     dl: &Downloader,
     latest: &BuildInfo,
-    maxzoom: u8,
+    zooms: (u8, u8),
 ) -> Result<Chosen> {
     purge_once(layout, latest)?;
     let url = format!("{BUILD_BASE}{}", latest.key);
@@ -362,7 +396,7 @@ pub fn current_extract(
         source: SOURCE,
         url: &url,
     };
-    current_extract_from(site, layout, latest, maxzoom, &src)
+    current_extract_from(site, layout, latest, zooms, &src)
 }
 
 /// [`current_extract`] with the latest build read from `src`.
@@ -377,21 +411,23 @@ pub fn current_extract_from(
     site: &Site,
     layout: &DataLayout,
     latest: &BuildInfo,
-    maxzoom: u8,
+    zooms: (u8, u8),
     src: &dyn RangeSource,
 ) -> Result<Chosen> {
     let dir = extracts_dir(layout)?;
-    let state = state_path(&dir, site, maxzoom);
-    let current: Option<(BuildInfo, PathBuf)> = match std::fs::read(&state) {
-        Ok(b) => {
-            let build: BuildInfo = serde_json::from_slice(&b)
-                .map_err(|e| Error::json(state.display().to_string(), e))?;
-            let path = extract_path(&dir, site, &build.key, maxzoom);
-            path.is_file().then_some((build, path))
+    let state = state_path(&dir, site, zooms);
+    let current = read_state(&dir, site, &state, zooms)?;
+    if current.is_none() && zooms.0 != 0 {
+        // The extract from zoom 0 in use before `OSM_MINZOOM`: no longer read (its low
+        // zooms are not in the pack), removed with its state so that [`purge`] does not
+        // keep it as a build in use. The latest build is adopted from `zooms.0`.
+        let legacy = (0, zooms.1);
+        let old_state = state_path(&dir, site, legacy);
+        if let Some((_, old)) = read_state(&dir, site, &old_state, legacy)? {
+            remove_file(&old)?;
         }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-        Err(e) => return Err(Error::io(&state, e)),
-    };
+        remove_file(&old_state)?;
+    }
     let mut archive: Option<Archive<'_>> = None;
     let change = match &current {
         Some((cur, cur_path)) if needs_comparison(Some(cur), latest) => {
@@ -400,7 +436,7 @@ pub fn current_extract_from(
                 &TileArchive::open(cur_path)?,
                 a,
                 site.bbox,
-                maxzoom,
+                zooms.1,
             )?)
         }
         _ => None,
@@ -409,14 +445,14 @@ pub fn current_extract_from(
     let (build, path) = match current {
         Some(c) if !decision.adopts() => c,
         previous => {
-            let path = extract_path(&dir, site, &latest.key, maxzoom);
+            let path = extract_path(&dir, site, &latest.key, zooms);
             if !path.is_file() {
                 let a = match archive.as_mut() {
                     Some(a) => a,
                     None => archive.insert(Archive::open(src)?),
                 };
                 let t = std::time::Instant::now();
-                let s = a.extract(site.bbox, maxzoom, &path)?;
+                let s = a.extract(site.bbox, zooms, &path)?;
                 tracing::info!(
                     site = site.id,
                     build = latest.key,
@@ -577,8 +613,8 @@ fn purge_once(layout: &DataLayout, latest: &BuildInfo) -> Result<()> {
 }
 
 /// Key of the OSM basemap of a site ([`crate::build::parts`]): the latest build, the
-/// build in use (`<site>-z<zoom>-<box>.current.json` and whether its extract is still
-/// in the cache), the box, the zoom and the style. Unchanged while no new Protomaps build
+/// build in use (`<site>-<zooms>-<box>.current.json` and whether its extract is still
+/// in the cache), the box, the zooms and the style. Unchanged while no new Protomaps build
 /// appears and the build in use stays: the pack then takes the basemap of the previous
 /// pack without reading the extracts again. Made after a build, the key already holds
 /// the build it adopted.
@@ -586,18 +622,14 @@ pub fn part_key(
     site: &Site,
     layout: &DataLayout,
     latest: &BuildInfo,
-    maxzoom: u8,
+    zooms: (u8, u8),
 ) -> Result<String> {
     let dir = extracts_dir(layout)?;
-    let state = dir.join(format!(
-        "{}-z{maxzoom}-{}.current.json",
-        site.id,
-        box_name(site.bbox)
-    ));
+    let state = state_path(&dir, site, zooms);
     let current = match std::fs::read(&state) {
         Ok(b) => {
             let present = serde_json::from_slice::<BuildInfo>(&b)
-                .is_ok_and(|c| extract_path(&dir, site, &c.key, maxzoom).is_file());
+                .is_ok_and(|c| extract_path(&dir, site, &c.key, zooms).is_file());
             format!("{} {present}", crate::update::sha256_hex(&b))
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => "none".to_owned(),
@@ -608,20 +640,22 @@ pub fn part_key(
     k.add("latest", &latest)
         .add("current", &current)
         .add("box", &box_name(site.bbox))
-        .add("maxzoom", &maxzoom.to_string())
+        .add("minzoom", &zooms.0.to_string())
+        .add("maxzoom", &zooms.1.to_string())
         .add("style", &crate::update::sha256_hex(STYLE.as_bytes()))
         .add("assets", ASSETS_BASE);
     Ok(k.finish())
 }
 
-/// Builds the OSM basemap into `root/basemap/`.
+/// Builds the OSM basemap (zooms `zooms.0..=zooms.1` of the site box) into
+/// `root/basemap/`.
 pub fn build(
     site: &Site,
     layout: &DataLayout,
     dl: &Downloader,
     root: &Path,
     wanted_build: Option<&str>,
-    maxzoom: u8,
+    zooms: (u8, u8),
 ) -> Result<Basemap> {
     build_from(
         site,
@@ -629,7 +663,7 @@ pub fn build(
         dl,
         root,
         &select_build(dl, wanted_build)?,
-        maxzoom,
+        zooms,
     )
 }
 
@@ -640,9 +674,9 @@ pub fn build_from(
     dl: &Downloader,
     root: &Path,
     latest: &BuildInfo,
-    maxzoom: u8,
+    zooms: (u8, u8),
 ) -> Result<Basemap> {
-    let chosen = current_extract(site, layout, dl, latest, maxzoom)?;
+    let chosen = current_extract(site, layout, dl, latest, zooms)?;
     let build = &chosen.build;
     let archive_rel = format!("basemap/{ID}.pmtiles");
     let archive_bytes = copy_file(&chosen.path, &root.join(&archive_rel))?;
@@ -758,6 +792,9 @@ mod tests {
     use serde_json::json;
     use std::cell::RefCell;
     use std::fs::File;
+
+    /// Zooms of the pack extracts.
+    const ZOOMS: (u8, u8) = (crate::OSM_MINZOOM, 15);
 
     /// A local build read by ranges, every read recorded.
     struct Recorded(File, RefCell<Vec<(u64, u64)>>);
@@ -953,20 +990,26 @@ mod tests {
             });
             let src = Recorded::open(&build);
             let chosen =
-                current_extract_from(site, &layout, &info(&key, "4.15.2"), 15, &src).unwrap();
+                current_extract_from(site, &layout, &info(&key, "4.15.2"), ZOOMS, &src).unwrap();
             // A build kept aside: only the tiles of the highest zoom were read, and no
             // extract of it was written (#164).
-            let written = extract_path(&dir, site, &key, 15).is_file();
+            let written = extract_path(&dir, site, &key, ZOOMS).is_file();
             assert_eq!(written, chosen.decision.adopts(), "day {day}");
             let stored = TileArchive::open(&build).unwrap();
-            let z15: u64 = box_tiles
-                .iter()
-                .map(|&(z, x, y)| stored.raw_tile(z, x, y).unwrap().unwrap().len() as u64)
-                .sum();
+            let bytes = |tiles: &[(u8, u32, u32)]| -> u64 {
+                tiles
+                    .iter()
+                    .map(|&(z, x, y)| stored.raw_tile(z, x, y).unwrap().unwrap().len() as u64)
+                    .sum()
+            };
+            let z15 = bytes(&box_tiles);
+            let pack_zooms = bytes(&tiles_covering(site.bbox, ZOOMS.0, ZOOMS.1));
+            assert!(pack_zooms < src.data_len());
             if chosen.decision == Decision::Kept {
                 assert_eq!(src.data_bytes(), z15, "day {day}: the zoom 15 tiles only");
             } else if chosen.decision.adopts() {
-                assert_eq!(src.data_bytes(), src.data_len(), "day {day}: read once");
+                // Each tile of the pack zooms once; the wide tiles below them never.
+                assert_eq!(src.data_bytes(), pack_zooms, "day {day}: read once");
             }
             let root = tmp.path().join(format!("pack-{day}"));
             let rel = format!("basemap/{ID}.pmtiles");
@@ -1006,6 +1049,13 @@ mod tests {
         assert_eq!(kept, pack);
         let a = TileArchive::open(tmp.path().join(format!("pack-8/basemap/{ID}.pmtiles"))).unwrap();
         assert!(a.metadata().unwrap().contains("20261114"));
+        // Zooms of the pack only (#160): the wide tiles that every build changes are not
+        // in it.
+        assert_eq!(a.zoom_range(), ZOOMS);
+        assert_eq!(
+            a.addressed_tiles().unwrap(),
+            tiles_covering(site.bbox, ZOOMS.0, ZOOMS.1).len() as u64
+        );
         // Only the extract in use is left: each one replaced was removed (#164).
         let left: Vec<String> = std::fs::read_dir(&dir)
             .unwrap()
@@ -1014,7 +1064,7 @@ mod tests {
             .collect();
         assert_eq!(
             left,
-            [extract_path(&dir, site, "20261121", 15)
+            [extract_path(&dir, site, "20261121", ZOOMS)
                 .file_name()
                 .unwrap()
                 .to_string_lossy()
@@ -1127,22 +1177,75 @@ mod tests {
             site,
             &layout,
             &info("20261112", "4.15.2"),
-            15,
+            ZOOMS,
             &build("20261112"),
         )
         .unwrap();
         assert_eq!(first.decision, Decision::First);
-        std::fs::remove_file(extract_path(&dir, site, "20261112", 15)).unwrap();
+        std::fs::remove_file(extract_path(&dir, site, "20261112", ZOOMS)).unwrap();
         let next = current_extract_from(
             site,
             &layout,
             &info("20261113", "4.15.2"),
-            15,
+            ZOOMS,
             &build("20261113"),
         )
         .unwrap();
         assert_eq!(next.decision, Decision::First);
         assert_eq!(next.build.key, "20261113.pmtiles");
+    }
+
+    /// #160: the extract from zoom 0 in use before the pack started at
+    /// [`crate::OSM_MINZOOM`] is removed with its state, and the latest build adopted
+    /// from that zoom; the purge then keeps only the new extract.
+    #[test]
+    fn extract_from_zoom_0_gives_way() {
+        let site = &skimap_common::site::SITES[0];
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = DataLayout::new(tmp.path());
+        let dir = extracts_dir(&layout).unwrap();
+        let build = |key: &str| {
+            let p = tmp.path().join(format!("{key}.pmtiles"));
+            write_day(&p, site.bbox, key, |_, _, _| 0);
+            Recorded::open(&p)
+        };
+        let legacy = (0, ZOOMS.1);
+        let old = current_extract_from(
+            site,
+            &layout,
+            &info("20261112", "4.15.2"),
+            legacy,
+            &build("20261112"),
+        )
+        .unwrap();
+        assert_eq!(old.decision, Decision::First);
+        assert_eq!(
+            old.path.file_name().unwrap().to_string_lossy(),
+            format!("{}-20261112-z15-{}.pmtiles", site.id, box_name(site.bbox))
+        );
+        assert!(state_path(&dir, site, legacy).is_file());
+        let next = current_extract_from(
+            site,
+            &layout,
+            &info("20261113", "4.15.2"),
+            ZOOMS,
+            &build("20261113"),
+        )
+        .unwrap();
+        assert_eq!(next.decision, Decision::First);
+        assert_eq!(
+            next.path.file_name().unwrap().to_string_lossy(),
+            format!(
+                "{}-20261113-z{}-15-{}.pmtiles",
+                site.id,
+                ZOOMS.0,
+                box_name(site.bbox)
+            )
+        );
+        assert!(!old.path.exists() && !state_path(&dir, site, legacy).exists());
+        assert_eq!(TileArchive::open(&next.path).unwrap().zoom_range(), ZOOMS);
+        purge(&layout, &info("20261114", "4.15.2")).unwrap();
+        assert!(next.path.is_file(), "in use: kept by the purge");
     }
 
     #[test]
