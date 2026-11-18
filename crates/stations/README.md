@@ -8,7 +8,7 @@ API : `refresh(&layout, &downloader, personal_sources, now, force)` (tâche plan
 
 | Source | Accès | Licence | Ce qu'on garde |
 |---|---|---|---|
-| OpenStreetMap | Overpass (source `overpass`) : overpass-api.de, puis le miroir VK Maps ; requêtes « loin » (secours en montagne, ambulances, centres de secours, offices de tourisme, écoles de ski : emprises + 6 km) et « près » (emprises + 1,3 km, 6 petites boîtes par requête : premiers secours, postes de pisteurs, défibrillateurs, téléphones d'urgence, points de rencontre des secours, vente, parkings, recherche par nom) ; relations `site=piste` | ODbL | catégorie, nom, téléphones, site, horaires, capacité |
+| OpenStreetMap | Extraits Geofabrik locaux (`skimap_osm::local`, [X5](../osm/docs/local.md) ; autrefois Overpass) ; requêtes « loin » (secours en montagne, ambulances, centres de secours, offices de tourisme, écoles de ski : emprises + 6 km) et « près » (emprises + 1,3 km, 6 petites boîtes par requête : premiers secours, postes de pisteurs, défibrillateurs, téléphones d'urgence, points de rencontre des secours, vente, parkings, recherche par nom) ; relations `site=piste` | ODbL | catégorie, nom, téléphones, site, horaires, capacité |
 | OpenSkiMap `ski_areas.csv`, SkiRadar | mêmes requêtes que le recensement | ODbL ; « réutilisables avec attribution « skiradar.fr » » | sites de la station, école de ski, fiche SkiRadar |
 | Nordic France, ENJ, Haute-Savoie Nordic, Nordic Alpes du Sud, Nordic Isère | pages lues et **analysées** à chaque fois (`sources.rs`) | aucune licence : **usage personnel** (`personal_sources`) | titres, validité citée, prix datés, listes de membres, groupes de sites de la boutique ENJ, pages de domaine (prix journée, téléphones) |
 
