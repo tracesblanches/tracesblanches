@@ -98,6 +98,7 @@ object Fixtures {
             LegendEntry("pistes", "intermediate", "#d81e1e", LegendKind.LINE),
             LegendEntry("pistes", "advanced", "#111111", LegendKind.LINE),
             LegendEntry("pistes", "unknown", "#6b6b6b", LegendKind.LINE),
+            LegendEntry("pistes", "state-unknown", "#dadee2", LegendKind.BAND, "#0062c4"),
             LegendEntry("pistes", "closed", "#0062c4", LegendKind.DASHED),
             LegendEntry("pistes", "backcountry", "#0062c4", LegendKind.DASHED),
             LegendEntry("pistes", "hike", "#6a5f55", LegendKind.DOTTED),

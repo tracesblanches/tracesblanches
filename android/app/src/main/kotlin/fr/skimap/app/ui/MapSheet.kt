@@ -259,6 +259,7 @@ private fun legendLabel(e: LegendEntry): String =
         "intermediate" -> stringResource(R.string.legend_intermediate)
         "advanced" -> stringResource(R.string.legend_advanced)
         "closed" -> stringResource(R.string.legend_closed)
+        "state-unknown" -> stringResource(R.string.legend_state_unknown)
         "backcountry" -> stringResource(R.string.legend_backcountry)
         "hike" -> stringResource(R.string.legend_hike)
         "slope-1" -> stringResource(R.string.legend_slope_1)
@@ -289,7 +290,7 @@ private fun Legend(entries: List<LegendEntry>) {
         }
         Row(Modifier.fillMaxWidth().heightIn(min = 40.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(72.dp), contentAlignment = Alignment.Center) {
-                Sample(Color(e.color.toColorInt()), e.kind)
+                Sample(Color(e.color.toColorInt()), e.kind, e.core?.let { Color(it.toColorInt()) })
             }
             Text(legendLabel(e), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 8.dp))
         }
@@ -300,6 +301,7 @@ private fun Legend(entries: List<LegendEntry>) {
 private fun Sample(
     color: Color,
     kind: LegendKind,
+    core: Color?,
 ) {
     val casing = MaterialTheme.colorScheme.surface
     val outline = MaterialTheme.colorScheme.outlineVariant
@@ -315,6 +317,16 @@ private fun Sample(
             return@Canvas
         }
         val y = size.height / 2
+        if (kind == LegendKind.BAND) {
+            // State unknown: the neutral band of the map with its thin core, outlined so a
+            // pale band stays visible on the sheet.
+            drawLine(outline, Offset(0f, y), Offset(size.width, y), strokeWidth = BAND_OUTLINE, cap = StrokeCap.Round)
+            drawLine(color, Offset(0f, y), Offset(size.width, y), strokeWidth = BAND, cap = StrokeCap.Round)
+            if (core != null) {
+                drawLine(core, Offset(0f, y), Offset(size.width, y), strokeWidth = BAND_CORE, cap = StrokeCap.Round)
+            }
+            return@Canvas
+        }
         val effect =
             when (kind) {
                 LegendKind.DASHED -> PathEffect.dashPathEffect(floatArrayOf(DASH_ON, DASH_OFF))
@@ -331,6 +343,9 @@ private const val DASH_OFF = 10f
 private const val DOT_ON = 4f
 private const val DOT_OFF = 8f
 private const val AREA_ALPHA = 0.7f
+private const val BAND_OUTLINE = 18f
+private const val BAND = 16f
+private const val BAND_CORE = 4f
 
 /** Test tag of the group entry of the sheet. */
 const val GROUP_ENTRY = "sheet_group"
