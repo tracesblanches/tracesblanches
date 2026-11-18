@@ -628,8 +628,15 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
         chosen
     };
     // The loops: turning points whose round trip is 50 to 110 % of the budget (the way
-    // back by another trail is longer); the petals of the figures of eight: 15 to 55 %.
-    let chosen = spread(0.5, 1.1, 40);
+    // back by another trail is longer), and 25 to 50 % (on a loop whose only junctions are
+    // near the start, the fastest round trip to them is a small part of the loop, #150);
+    // the petals of the figures of eight: 15 to 55 %.
+    let mut chosen = spread(0.5, 1.1, 40);
+    for v in spread(0.25, 0.5, 20) {
+        if !chosen.contains(&v) {
+            chosen.push(v);
+        }
+    }
     let petal_points = spread(0.15, 0.55, 20);
     // With children: the group's light margin (C7 plus caution, C11).
     let tp = group.map_or_else(TurnaroundParams::default, |g| g.profile.turnaround_params());
@@ -1251,6 +1258,20 @@ mod tests {
     /// A flat graph: nodes (lon, lat) and straight edges (from, to, name, OSM way,
     /// difficulty).
     fn site(pts: &[(f64, f64)], edges: &[(usize, usize, &str, i64, Difficulty)]) -> SiteData {
+        let edges: Vec<_> = edges
+            .iter()
+            .map(|(a, b, name, way, d)| (*a, *b, *name, *way, *d, &[][..]))
+            .collect();
+        site_bends(pts, &edges)
+    }
+
+    /// A flat graph whose edges may bend: (from, to, name, OSM way, difficulty, the
+    /// points between its ends).
+    #[allow(clippy::type_complexity)]
+    fn site_bends(
+        pts: &[(f64, f64)],
+        edges: &[(usize, usize, &str, i64, Difficulty, &[(f64, f64)])],
+    ) -> SiteData {
         let pts: Vec<LonLat> = pts.iter().map(|(x, y)| LonLat::new(*x, *y)).collect();
         let nodes = pts
             .iter()
@@ -1264,11 +1285,14 @@ mod tests {
             nodes,
             edges: edges
                 .iter()
-                .map(|(a, b, name, way, d)| Edge {
+                .map(|(a, b, name, way, d, bends)| Edge {
                     from: *a,
                     to: *b,
                     oneway: false,
-                    points: vec![pts[*a], pts[*b]],
+                    points: std::iter::once(pts[*a])
+                        .chain(bends.iter().map(|(x, y)| LonLat::new(*x, *y)))
+                        .chain(std::iter::once(pts[*b]))
+                        .collect(),
                     attrs: attrs(name, *way, *d),
                     profile: None,
                 })
@@ -1610,6 +1634,35 @@ mod tests {
             assert!(!x.reasons.iter().any(|r| r.text.starts_with("en huit")));
             assert!(x.length_km < 0.6 * (east + west), "{x:?}");
         }
+    }
+
+    #[test]
+    fn a_real_loop_whose_junctions_are_all_near_the_start() {
+        // A loop of 13.9 km from A whose only junctions, B and C, are 2 km from A: their
+        // fastest round trip is under 30 % of the loop. The turning point of the loop is
+        // one of them (#150).
+        let d = site_bends(
+            &[(6.10, 46.60), (6.126, 46.60), (6.10, 46.618)],
+            &[
+                (0, 1, "Sud", 1, Difficulty::Easy, &[]),
+                (0, 2, "Ouest", 2, Difficulty::Easy, &[]),
+                (
+                    1,
+                    2,
+                    "Grand tour",
+                    3,
+                    Difficulty::Easy,
+                    &[(6.14, 46.60), (6.14, 46.635), (6.10, 46.635)],
+                ),
+            ],
+        );
+        let g = d.graph.as_ref().unwrap();
+        let lap: f64 = (0..3).map(|e| g.length_m(e)).sum::<f64>() / 1000.0;
+        assert!((g.length_m(0) / 1000.0 / lap) < 0.15, "{lap}");
+        let s = suggest(&d, &req(minutes(lap), None));
+        let x = s.suggestions.first().expect("the loop");
+        assert!(x.real_loop && x.out_and_back_share < 0.05, "{x:?}");
+        assert!((x.length_km - lap).abs() < 0.1, "{x:?}");
     }
 
     #[test]
