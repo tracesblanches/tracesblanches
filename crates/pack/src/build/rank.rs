@@ -13,9 +13,11 @@
 //! the one the morning and the evening preparation ask, #170) at [`START_TIME`], the
 //! first day of the pack's forecast, and the starts of the record are reordered:
 //!
-//! 1. most loops proposed (out-and-backs included: the morning proposes them only when no
-//!    real loop fits);
-//! 2. most real loops;
+//! 1. most real loops (#150: a start from which the morning proposes three out-and-backs
+//!    goes after one from which it proposes one real loop);
+//! 2. most loops proposed (out-and-backs included: the morning proposes them only when no
+//!    real loop fits, so between starts without real loop, the one with an out-and-back
+//!    goes before the one with none);
 //! 3. best loop score (`skimap_assist::suggest`: fit to the time, status, snow, weather);
 //! 4. the registry order.
 //!
@@ -115,13 +117,13 @@ pub fn rank(
     Some(ranking)
 }
 
-/// Order of two starts, best first (module documentation): most loops, most real loops,
+/// Order of two starts, best first (module documentation): most real loops, most loops,
 /// best loop score, registry order.
 pub fn order(a: &StartScore, b: &StartScore) -> Ordering {
     let best = |s: &StartScore| s.best_score.unwrap_or(f64::NEG_INFINITY);
-    b.loops
-        .cmp(&a.loops)
-        .then(b.real_loops.cmp(&a.real_loops))
+    b.real_loops
+        .cmp(&a.real_loops)
+        .then(b.loops.cmp(&a.loops))
         .then(best(b).total_cmp(&best(a)))
         .then(a.registry_rank.cmp(&b.registry_rank))
 }
@@ -194,16 +196,30 @@ mod tests {
     }
 
     #[test]
-    fn more_loops_then_real_loops_then_score_then_registry() {
+    fn more_real_loops_then_loops_then_score_then_registry() {
         assert_eq!(
             ranked(vec![
+                s("f", 5, 1, 0, Some(-1.0)),
                 s("a", 0, 1, 1, Some(-1.0)),
                 s("b", 1, 3, 0, Some(-3.0)),
                 s("c", 2, 3, 2, Some(-2.5)),
                 s("d", 3, 3, 2, Some(-1.5)),
                 s("e", 4, 3, 2, Some(-1.5)),
             ]),
-            ["d", "e", "c", "b", "a"]
+            ["d", "e", "c", "a", "b", "f"]
+        );
+    }
+
+    #[test]
+    fn a_real_loop_goes_before_out_and_backs() {
+        // The registry's main start gives three out-and-backs, the second one real loop
+        // (#150): the second first.
+        assert_eq!(
+            ranked(vec![
+                s("a", 0, 3, 0, Some(-1.7)),
+                s("b", 1, 1, 1, Some(-1.35))
+            ]),
+            ["b", "a"]
         );
     }
 
