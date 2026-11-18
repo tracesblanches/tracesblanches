@@ -36,6 +36,10 @@ pub const FONTS_DIR: &str = "fonts";
 /// Highest zoom of the archive. Beyond it MapLibre enlarges the tiles of this zoom; the
 /// packs draw their own basemap where they are installed.
 pub const MAXZOOM: u8 = 6;
+
+/// Directory of the France basemap under the pipeline outputs (`data/out/france-basemap`),
+/// built by `skimap france-basemap`, published by `skimap-server publish-france`.
+pub const OUT_DIR: &str = "france-basemap";
 /// Metropolitan France and Corsica, with a margin (the neighbouring borders show).
 pub const BBOX: BBox = BBox {
     west: -5.5,

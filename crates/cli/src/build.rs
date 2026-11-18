@@ -1189,6 +1189,29 @@ pub fn step_inputs(step: &str, site: &Site) -> String {
     hex::encode(Sha256::digest(body))
 }
 
+/// Whether a step is run again once older than the age limit of [`Resume`] (#172): the
+/// steps that read an external source whose changes leave no local fingerprint, so that
+/// only time can tell them. The other steps read only local outputs (of the steps they
+/// depend on, whose changes run them again) and the site fields they declare
+/// ([`step_inputs`]): their age alone never runs them again.
+///
+/// | Step | Aged | External source |
+/// |---|---|---|
+/// | `domaines`, `srn`, `pistes` | yes | planet extract (Protomaps build), census, SRN sources |
+/// | `terrain` | yes | IGN RGE ALTI / LiDAR HD tiles (new tiles, new flights) |
+/// | `snow`, `bera`, `meteo`, `status-poll` | yes | daily Météo-France, trail status |
+/// | `refuges`, `zones`, `coverage`, `avalanche-historic` | yes | refuges.info / OSM / Camptocamp, protected areas, ARCEP release, CLPA |
+/// | `build-pack` | yes | Protomaps basemap and Plan IGN (renewed at most weekly inside the pack) |
+/// | `avalanche-exposure` | personal sources only | LiDAR HD canopy tiles of the terrain tiles (follow `terrain`), CLPA (personal use) |
+/// | `routing`, `offpiste-prepare`, `export` | no | local outputs only |
+pub fn ages(step: &str, personal_sources: bool) -> bool {
+    match step {
+        "routing" | "offpiste-prepare" | "export" => false,
+        "avalanche-exposure" => personal_sources,
+        _ => true,
+    }
+}
+
 /// Output directory (layer) of a step that can be taken over by a later run: its
 /// outputs are all in that directory of the site.
 pub fn step_dir(step: &str) -> Option<&'static str> {
@@ -1344,16 +1367,19 @@ pub fn fingerprint(dir: &Path) -> Option<String> {
 }
 
 /// What a run takes over from the previous run of the site (`build-all.json`): a step
-/// done less than `max_age` ago whose output directory still has its fingerprint and
-/// whose dependencies did not change in this run is not run again. The pack and the
+/// whose output directory still has its fingerprint, whose inputs did not change and
+/// whose dependencies did not change in this run is not run again, unless it reads an
+/// external source without local fingerprint ([`ages`]) and was done `max_age` ago. The pack and the
 /// export are rebuilt as soon as any step changed its outputs.
 #[derive(Clone, Copy)]
 pub struct Resume<'a> {
     /// Steps of the previous run (or of the interrupted one: the journal is written after
     /// every step).
     pub previous: &'a [StepRecord],
-    /// Age beyond which a step is run again.
+    /// Age beyond which a step reading an external source is run again ([`ages`]).
     pub max_age: std::time::Duration,
+    /// Personal-use sources on (CLPA in the exposure to avalanches, [`ages`]).
+    pub personal_sources: bool,
     /// Pack and export sizes of the previous run.
     pub pack_bytes: Option<u64>,
     /// Export size of the previous run.
@@ -1512,7 +1538,7 @@ impl<'a> Run<'a> {
         }
         let at = DateTime::parse_from_rfc3339(prev.at.as_deref()?).ok()?;
         let age = (Utc::now() - at.to_utc()).to_std().ok()?;
-        if age >= r.max_age {
+        if age >= r.max_age && ages(name, r.personal_sources) {
             return None;
         }
         // The fields of the site record the step reads changed (#164): run again. A
@@ -1914,6 +1940,7 @@ mod resume_tests {
             max_age: std::time::Duration::from_secs(3600),
             pack_bytes: None,
             export_bytes: None,
+            personal_sources: false,
         }
     }
 
@@ -1976,6 +2003,72 @@ mod resume_tests {
             "refuges older than max_age: run again"
         );
         assert!(o6.steps[2].resumed);
+    }
+
+    /// #172: the age limit of the catch-up (`--max-age-hours 168`) redid every step a
+    /// week old, the heavy ones derived from local outputs too (exposure to avalanches,
+    /// off-piste rasters: 5.6 GB on a big SRN area, killed on the server), although their
+    /// inputs fingerprints had not changed. Only a step reading an external source
+    /// without a local fingerprint (the terrain here) is run again by age; derived steps
+    /// follow it only when its outputs change.
+    #[test]
+    fn age_redoes_only_the_steps_of_an_external_source() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        let site = skimap_common::site::site("cervieres").expect("evaluation site");
+        let calls = Cell::new([0u32; 3]);
+        let go = |resume: Option<Resume<'_>>, dem: &'static [u8]| {
+            let shared = Shared {
+                resume,
+                ..Shared::default()
+            };
+            let mut log = Vec::new();
+            let mut r = Run::new(site, dir.to_path_buf(), &shared, &mut log);
+            let bump = |i: usize| {
+                let mut c = calls.get();
+                c[i] += 1;
+                calls.set(c);
+            };
+            let write = |d: &str, v: &[u8]| -> Result<String> {
+                std::fs::create_dir_all(dir.join(d))?;
+                std::fs::write(dir.join(d).join("f"), v)?;
+                Ok(d.to_owned())
+            };
+            r.step("terrain", &[], |_| {
+                bump(0);
+                write("terrain", dem)
+            });
+            r.step("avalanche-exposure", &["terrain"], |_| {
+                bump(1);
+                write("avalanche-exposure", &std::fs::read(dir.join("terrain/f"))?)
+            });
+            r.step("offpiste-prepare", &["terrain"], |_| {
+                bump(2);
+                write("offpiste", &std::fs::read(dir.join("terrain/f"))?)
+            });
+            r.finish()
+        };
+        let o1 = go(None, b"dem");
+        assert_eq!(calls.get(), [1, 1, 1]);
+        // A week later, nothing changed: the terrain source is checked again, its
+        // outputs are identical, the derived steps are taken over.
+        let mut old = o1.steps.clone();
+        for s in &mut old {
+            s.at = Some("2000-01-01T00:00:00Z".into());
+        }
+        let o2 = go(Some(resume(&old)), b"dem");
+        assert_eq!(
+            calls.get(),
+            [2, 1, 1],
+            "only the external source is redone by age: {:?}",
+            o2.steps
+        );
+        assert!(o2.steps[1].resumed && o2.steps[2].resumed);
+        // The source changed: what reads the terrain follows.
+        let mut old = o2.steps.clone();
+        old[0].at = Some("2000-01-01T00:00:00Z".into());
+        go(Some(resume(&old)), b"dem2");
+        assert_eq!(calls.get(), [3, 2, 2]);
     }
 
     #[test]
@@ -2336,6 +2429,7 @@ mod outage_tests {
             max_age: std::time::Duration::from_secs(max_age_s),
             pack_bytes: None,
             export_bytes: None,
+            personal_sources: false,
         }
     }
 

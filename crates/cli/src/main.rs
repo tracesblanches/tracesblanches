@@ -324,6 +324,20 @@ enum Command {
         #[arg(long)]
         request: Option<usize>,
     },
+    /// France basemap (X20): Protomaps build of France, zooms 0 to 6, and the glyphs of
+    /// its labels, into `data/out/france-basemap` (kept while the build in use is recent,
+    /// renewed at most weekly); published by `skimap-server publish-france` (#172).
+    FranceBasemap {
+        /// Output directory (default: `data/out/france-basemap`).
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Protomaps build `AAAAMMJJ` (default: the latest, kept while recent).
+        #[arg(long)]
+        build: Option<String>,
+        /// Highest zoom.
+        #[arg(long, default_value_t = skimap_pack::france::MAXZOOM)]
+        maxzoom: u8,
+    },
     /// Every available builder of a site, in dependency order, timed; with `--all` or
     /// `--domains`, many sites in parallel (resumable, log per site, summary, catalogue).
     BuildAll(BuildAllArgs),
@@ -384,7 +398,11 @@ struct BuildAllArgs {
     /// Rebuild the sites that are up to date, and every part of the stations layer.
     #[arg(long)]
     force: bool,
-    /// A successful build older than this is redone, hours.
+    /// Age, hours, beyond which a site is looked at again and the steps reading an
+    /// external source without local fingerprint are redone (`build::ages`: terrain,
+    /// OSM, refuges, zones, coverage, pack…); the steps derived from local outputs
+    /// (exposure to avalanches, off-piste rasters, routing, export) are redone only when
+    /// their inputs change (#172).
     #[arg(long, default_value_t = 24.0)]
     max_age_hours: f64,
     /// Start no site after this many minutes (running ones finish; run again to resume).
@@ -396,6 +414,11 @@ struct BuildAllArgs {
     /// depending on them are run again.
     #[arg(long)]
     stale: bool,
+    /// Command publishing a pack, run after each site built with the directory of each
+    /// of its packs appended (`skimap-server publish`): a pass killed later (memory,
+    /// deadline) keeps the sites already published (#172).
+    #[arg(long, value_name = "CMD")]
+    publish_with: Option<String>,
 }
 
 /// Arguments of a subcommand not implemented yet.
@@ -604,6 +627,10 @@ fn build_all(cfg: &Config, registry: &Registry, a: BuildAllArgs) -> Result<()> {
             .stop_after_min
             .map(|m| Duration::from_secs_f64(m.max(0.0) * 60.0)),
         verify: a.stale,
+        publish: a
+            .publish_with
+            .as_deref()
+            .map(|c| c.split_whitespace().map(str::to_owned).collect()),
     };
     let summary = batch::build_many(&c, registry, &sites, &opts)?;
     for l in batch::describe(&summary) {
@@ -625,8 +652,51 @@ fn build_all(cfg: &Config, registry: &Registry, a: BuildAllArgs) -> Result<()> {
     if summary.failed > 0 {
         anyhow::bail!("build-all : {} sites en échec", summary.failed);
     }
+    if summary.set_aside > 0 {
+        anyhow::bail!(
+            "build-all : {} sites mis de côté (leur construction a tué le processus)",
+            summary.set_aside
+        );
+    }
+    if !summary.publish_failures.is_empty() {
+        anyhow::bail!(
+            "build-all : {} publications en échec",
+            summary.publish_failures.len()
+        );
+    }
     if summary.stations.state == build::StepState::Failed {
         anyhow::bail!("build-all : stations en échec : {}", summary.stations.line);
+    }
+    Ok(())
+}
+
+/// `skimap france-basemap`: builds (or keeps) the France basemap and prints it.
+fn france_basemap(
+    c: &build::Ctx,
+    out: Option<PathBuf>,
+    wanted: Option<&str>,
+    maxzoom: u8,
+) -> Result<()> {
+    let out = out.unwrap_or_else(|| c.layout.out_root().join(skimap_pack::france::OUT_DIR));
+    let b = skimap_pack::build::france::build(&c.layout, &c.dl, &out, wanted, maxzoom)?;
+    println!(
+        "fond France -> {} : build {} ({}), z0-{maxzoom}, {:.2} Mo ({} fichiers), {:.1} s{}",
+        out.display(),
+        b.basemap.build,
+        b.basemap.data_date,
+        b.basemap.bytes() as f64 / 1e6,
+        b.basemap.files.len(),
+        b.seconds,
+        if b.kept { " (conservé)" } else { "" }
+    );
+    if let Some(s) = b.extract {
+        println!(
+            "  extrait : {} tuiles, {} contenus, {} lectures, {:.2} Mo lus",
+            s.tiles,
+            s.contents,
+            s.data_reads,
+            s.data_bytes_read as f64 / 1e6
+        );
     }
     Ok(())
 }
@@ -1061,6 +1131,11 @@ fn run(cli: Cli) -> Result<()> {
             print_json(&ctx()?.export(s)?)
         }
         Command::Briefing(_) => not_implemented("briefing", "A1 #88"),
+        Command::FranceBasemap {
+            out,
+            build,
+            maxzoom,
+        } => france_basemap(&ctx()?, out, build.as_deref(), maxzoom),
         Command::Fixtures { out } => {
             for l in fixtures::generate(&cfg.layout(), &out)? {
                 println!("{l}");

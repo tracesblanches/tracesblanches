@@ -20,7 +20,10 @@
 #   skimap-job catchup                                 # every site: AROME weather of the
 #                                                      # latest run, then only what failed,
 #                                                      # is altered or old (build-all
-#                                                      # --stale), then every pack published
+#                                                      # --stale), each site published as
+#                                                      # soon as built, then every pack
+#   skimap-job france-basemap                          # France basemap (X20), renewed at
+#                                                      # most weekly, then published
 #
 # Environment: SKIMAP_DATA_DIR (pipeline data), SKIMAP_STORE (published store),
 # METEOFRANCE_API_KEY and the other keys of the pipeline.
@@ -59,10 +62,24 @@ if [ "$task" = catchup ]; then
   # Weather of every site at the latest AROME run (idempotent: nothing written when the
   # run has not changed); the packs that change are published below.
   step skimap meteo-refresh
+  # Each site is published as soon as it is built (#172): a pass killed later (memory,
+  # deadline) keeps them. A site whose build killed the process twice is set aside
+  # (status.json, alert) and tried again when its inputs change or a day later; the
+  # others go first. The final publication takes the packs built by the other tasks.
   step skimap build-all --all --stale --jobs "${SKIMAP_CATCHUP_JOBS:-2}" \
     --max-age-hours "${SKIMAP_CATCHUP_MAX_AGE_HOURS:-168}" \
-    --stop-after-min "${SKIMAP_CATCHUP_STOP_AFTER_MIN:-240}"
+    --stop-after-min "${SKIMAP_CATCHUP_STOP_AFTER_MIN:-240}" \
+    --publish-with "skimap-server publish"
   step skimap-server publish --all-in "$SKIMAP_DATA_DIR/out"
+  exit $rc
+fi
+
+# France basemap (X20, deploy/france-basemap-cronjob.yaml): kept while the Protomaps
+# build in use is recent (nothing rewritten, nothing published), else rebuilt and
+# published (`publish-france` writes only the files that changed).
+if [ "$task" = france-basemap ]; then
+  step skimap france-basemap &&
+    step skimap-server publish-france "$SKIMAP_DATA_DIR/out/france-basemap"
   exit $rc
 fi
 
