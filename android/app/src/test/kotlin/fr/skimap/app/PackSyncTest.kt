@@ -33,7 +33,8 @@ import java.security.MessageDigest
  * Gradle, task `cargoServer`) serving a store where the test pack was published at
  * version 1 then 2 (task `testStore`), with the real Rust core installing the bundles:
  * first download, sync without change (304), delta, resume after a cut, a corrupt partial
- * file, a phone that lost contents, the server unreachable, and a voice pack apart (VO6).
+ * file, a phone that lost contents, a basemap that does not rebuild from its patch of
+ * tiles (#160), the server unreachable, and a voice pack apart (VO6).
  */
 class PackSyncTest {
     @get:Rule
@@ -179,6 +180,21 @@ class PackSyncTest {
         File(pack("test"), "layers/refuges-camptocamp.geojson").delete()
         val r = PackSyncer(http()).sync(target())
         println("missing contents: $r")
+        assertTrue(r.fellBack)
+        assertEquals(tree(testPack(2)), tree(pack("test")))
+    }
+
+    @Test
+    fun aBasemapThatDoesNotRebuildFallsBackToWholeFiles() {
+        testPack(1).copyRecursively(pack("test"))
+        // The basemap of version 1 altered in its tile data, same size: the file rebuilt
+        // from the patch of tiles differs from the server's (#160).
+        val f = File(pack("test"), "basemap/plan-ign.pmtiles")
+        val b = f.readBytes()
+        b[b.size - 1] = (b[b.size - 1].toInt() xor 0xff).toByte()
+        f.writeBytes(b)
+        val r = PackSyncer(http()).sync(target())
+        println("patch failed: $r")
         assertTrue(r.fellBack)
         assertEquals(tree(testPack(2)), tree(pack("test")))
     }

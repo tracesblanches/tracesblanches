@@ -10,8 +10,9 @@
 //! `cargo run -p skimap-ffi --example test_pack -- <pack directory> [2]`
 //!
 //! The optional `2` writes version 2 of the same pack (another piste status, another
-//! refuge capacity, a later `pack_version`): the server publishes both, the app updates
-//! from one to the other by a delta (K2). `voice-en` writes a voice language pack apart
+//! refuge capacity, the basemap tile of the village gzip-compressed otherwise: same map,
+//! other bytes, a later `pack_version`): the server publishes both, the app updates from
+//! one to the other by a delta (K2), the basemap as a patch of one tile (#160). `voice-en` writes a voice language pack apart
 //! (VO6): site `test`, voice slot `en`, a clip manifest and two clips, nothing else. Deterministic apart from the build times written
 //! in the manifest. About 40 kB.
 
@@ -82,7 +83,7 @@ pub(crate) fn write_test_pack(out: &Path, variant: u8) -> Res<String> {
     };
     let report = build(&TEST_SITE, &layout, &dl, &opts)?;
     let pack = report.pack_dir;
-    add_basemap(&pack, VERSIONS[usize::from(variant - 1)])?;
+    add_basemap(&pack, variant)?;
     if out.exists() {
         std::fs::remove_dir_all(out)?;
     }
@@ -496,8 +497,10 @@ fn gzip(data: &[u8]) -> Res<Vec<u8>> {
 
 /// Writes `basemap/plan-ign.pmtiles`, its fonts and sprite, and a stand-in for the
 /// basemap style, adds the basemap to the manifest, sets the version and lists the files
-/// again.
-fn add_basemap(pack: &Path, version: &str) -> Res<()> {
+/// again. In variant 2 the tile of zoom 14 at the village is compressed at another gzip
+/// level: the same tile drawn, other bytes, so that the update sends one tile (#160).
+fn add_basemap(pack: &Path, variant: u8) -> Res<()> {
+    let version = VERSIONS[usize::from(variant - 1)];
     let bbox = TEST_SITE.bbox;
     let c = TEST_SITE.commune_center;
     let near = BBox::new(c.lat - 0.03, c.lon - 0.04, c.lat + 0.03, c.lon + 0.04);
@@ -510,6 +513,13 @@ fn add_basemap(pack: &Path, version: &str) -> Res<()> {
     ids.sort_unstable();
     ids.dedup();
     let data = gzip(&tile())?;
+    let (vx, vy) = skimap_common::crs::tile_for(c, 14);
+    let village = TileId::from(TileCoord::new(14, vx, vy)?).value();
+    let other = {
+        let mut e = GzEncoder::new(Vec::new(), Gz::fast());
+        e.write_all(&tile())?;
+        e.finish()?
+    };
 
     let path = pack.join("basemap/plan-ign.pmtiles");
     let dir = pack.join("basemap/plan-ign");
@@ -530,7 +540,12 @@ fn add_basemap(pack: &Path, version: &str) -> Res<()> {
         )
         .create(f)?;
     for id in &ids {
-        w.add_tile(TileId::new(*id)?.into(), &data)?;
+        let bytes = if variant == 2 && *id == village {
+            &other
+        } else {
+            &data
+        };
+        w.add_tile(TileId::new(*id)?.into(), bytes)?;
     }
     w.finalize()?;
     for font in FONTS {
