@@ -3321,6 +3321,7 @@ dependencies = [
  "chrono",
  "clap",
  "hex",
+ "pmtiles",
  "reqwest",
  "rusqlite",
  "rustls",

@@ -15,7 +15,7 @@ Formats et API : [`crates/pack/docs/mise-a-jour.md`](../../crates/pack/docs/mise
 1. Index du site avec l'`ETag` noté : 304 → fini, une requête, corps vide.
 2. Plan du noyau (`sync_plan`) : rien, le delta depuis la version installée, ou la base puis le delta. Un pack copié à la main sans état est reconnu par sa version.
 3. Chaque paquet : téléchargé dans `.<site>.download/<sha256>.part` (repris après coupure), contrôlé entier (`verify_bundle` : longueur et SHA-256, son nom ; faux → retéléchargé une fois depuis zéro), installé par le noyau (`install_bundle` : chaque blob revérifié avant toute écriture, nouvelle version construite à côté puis échangée).
-4. Contenus manquants sur le téléphone (`MissingContents`) → plan complet (`sync_plan_full`).
+4. Fichier reconstruit d'un correctif de tuiles différent de celui du serveur (`PatchFailed`, #160 : le paquet de format 3 envoie les PMTiles changés tuile par tuile) → le même plan, fichiers entiers (`sync_plan_whole_files`) ; contenus manquants sur le téléphone (`MissingContents`) → plan complet (`sync_plan_full`).
 5. État noté (`record_sync`) ; dossier de téléchargement supprimé. Le pack en place reste complet et lisible à chaque étape ; serveur injoignable → exception, rien ne change.
 
 ## WorkManager (`PackSync`, `PackSyncWorker`)

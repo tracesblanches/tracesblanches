@@ -15,7 +15,9 @@ use std::sync::Arc;
 use chrono::{Duration, TimeZone, Utc};
 use common::{get, make_pack, request};
 use skimap_pack::Pack;
-use skimap_pack::sync::{SiteIndex, SyncState, plan, plan_full, read_state, write_state};
+use skimap_pack::sync::{
+    SiteIndex, SyncState, plan, plan_full, plan_whole_files, read_state, write_state,
+};
 use skimap_pack::update::{MISSING_CONTENTS, apply_bundle};
 use skimap_server::app::App;
 use skimap_server::clock::{Clock, ManualClock};
@@ -304,6 +306,120 @@ fn publish_and_sync() {
     let e = store.publish(&out, clock.now(), retention).unwrap_err();
     assert!(format!("{e:#}").contains("does not verify"), "{e:#}");
 
+    server.stop();
+}
+
+/// A PMTiles archive of 60 x 60 tiles of zoom 12 that do not compress; `changed` tiles
+/// (by index) get other contents.
+fn archive(changed: &[u32]) -> Vec<u8> {
+    let mut out = Vec::new();
+    {
+        let mut w = pmtiles::PmTilesWriter::new(pmtiles::TileType::Mvt)
+            .min_zoom(12)
+            .max_zoom(12)
+            .create(std::io::Cursor::new(&mut out))
+            .unwrap();
+        for i in 0..3600u32 {
+            let seed = u64::from(i) + if changed.contains(&i) { 1 << 32 } else { 0 };
+            let mut x = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+            let tile: Vec<u8> = (0..300)
+                .map(|_| {
+                    x ^= x << 13;
+                    x ^= x >> 7;
+                    x ^= x << 17;
+                    x as u8
+                })
+                .collect();
+            let c = pmtiles::TileCoord::new(12, 2000 + i % 60, 1400 + i / 60).unwrap();
+            w.add_tile(c, &tile).unwrap();
+        }
+        w.finalize().unwrap();
+    }
+    out
+}
+
+/// Tile-by-tile update (#160): a basemap changed by a few tiles is published twice, whole
+/// in `deltas` (what an app of format 2 reads, unchanged) and as a patch in
+/// `patched_deltas`; a phone of format 3 installs the patched one, a phone of format 2
+/// the whole one, both end with the pipeline's pack byte for byte.
+#[test]
+fn patched_deltas_send_the_changed_tiles() {
+    let t = tempfile::tempdir().unwrap();
+    let out = t.path().join("out/cervieres/pack");
+    let store = Store::open(t.path().join("store")).unwrap();
+    let retention = Retention {
+        recent_versions: 2,
+        // No rebase: the deltas are from the base.
+        rebase_fraction: 1.0,
+    };
+    let now = Utc.with_ymd_and_hms(2026, 11, 17, 2, 0, 0).unwrap();
+    let (a, b) = (archive(&[]), archive(&[5, 1000, 3599]));
+    let pack = |basemap: &[u8], bera: &[u8]| -> Vec<(&'static str, Vec<u8>)> {
+        vec![
+            ("basemap/osm.pmtiles", basemap.to_vec()),
+            ("layers/pistes.json", b"{\"pistes\":1}".to_vec()),
+            ("layers/bera.json", bera.to_vec()),
+            ("pack.meta.json", bera.to_vec()),
+        ]
+    };
+    let make = |version: &str, files: &[(&'static str, Vec<u8>)]| {
+        let f: Vec<(&str, &[u8])> = files.iter().map(|(p, b)| (*p, b.as_slice())).collect();
+        make_pack(&out, version, &f);
+    };
+    make("v01", &pack(&a, b"1"));
+    store.publish(&out, now, retention).unwrap();
+    let phone = t.path().join("phone/cervieres");
+    let old_phone = t.path().join("old-phone/cervieres");
+    let clock = Arc::new(ManualClock::new(now));
+    let app = App::new(
+        Store::open(t.path().join("store")).unwrap(),
+        None,
+        None,
+        "https://skimap.test",
+        "contact@example.org",
+        clock,
+    );
+    let server = skimap_server::http::serve("127.0.0.1:0", 4, Arc::new(app)).unwrap();
+    let addr = server.addr;
+    // Installs the bundles of `todo`; returns the bytes downloaded.
+    let install = |dir: &Path, todo: Vec<skimap_pack::sync::BundleRef>| -> u64 {
+        let mut n = 0;
+        for b in todo {
+            let body = get(addr, &b.url).body;
+            n += body.len() as u64;
+            let p = t.path().join(&b.sha256);
+            std::fs::write(&p, &body).unwrap();
+            apply_bundle(dir, &p).unwrap();
+        }
+        n
+    };
+    install(&phone, plan(&index(addr), None));
+    install(&old_phone, plan_whole_files(&index(addr), None));
+    assert_eq!(tree(&phone), tree(&out));
+
+    make("v02", &pack(&b, b"2"));
+    let r = store
+        .publish(&out, now + Duration::days(1), retention)
+        .unwrap();
+    let (whole, patched) = (r.daily_delta_bytes.unwrap(), r.daily_patched_bytes.unwrap());
+    assert!(patched * 20 < whole, "{patched} vs {whole}");
+    let i = index(addr);
+    assert_eq!(i.patched_deltas.len(), 1);
+    assert_eq!(i.patched_deltas[0].from.as_deref(), Some("v01"));
+    // What an app of format 2 reads: the whole delta, a bundle of format 2.
+    assert_eq!(i.deltas.len(), 1);
+    assert_eq!(&get(addr, &i.deltas[0].url).body[..8], b"SKMPBND2");
+    assert_eq!(&get(addr, &i.patched_deltas[0].url).body[..8], b"SKMPBND3");
+    let state = |v: &str| SyncState {
+        version: v.into(),
+        base_version: i.base_version.clone(),
+        index_etag: None,
+    };
+    let new_bytes = install(&phone, plan(&i, Some(&state("v01"))));
+    let old_bytes = install(&old_phone, plan_whole_files(&i, Some(&state("v01"))));
+    assert_eq!((new_bytes, old_bytes), (patched, whole));
+    assert_eq!(tree(&phone), tree(&out));
+    assert_eq!(tree(&old_phone), tree(&out));
     server.stop();
 }
 

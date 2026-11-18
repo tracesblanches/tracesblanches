@@ -227,14 +227,19 @@ pub fn diff(old: &[u8], new: &[u8]) -> Result<(Vec<u8>, Diff)> {
             )));
         }
         let bytes = region(new, (start, len))?;
-        push(
-            &mut ops,
-            match have.get(bytes) {
-                Some(&off) => Op::Copy(off, len),
-                None if len <= zeros.1 && bytes.iter().all(|&b| b == 0) => Op::Copy(zeros.0, len),
-                None => Op::Send(start, len),
-            },
-        );
+        match have.get(bytes) {
+            Some(&off) => push(&mut ops, Op::Copy(off, len)),
+            // Zeros: copied from the old run of zeros, as many times as needed.
+            None if zeros.1 > 0 && bytes.iter().all(|&b| b == 0) => {
+                let mut left = len;
+                while left > 0 {
+                    let n = left.min(zeros.1);
+                    push(&mut ops, Op::Copy(zeros.0, n));
+                    left -= n;
+                }
+            }
+            None => push(&mut ops, Op::Send(start, len)),
+        }
         at = start + len;
     }
     if at != new.len() as u64 {

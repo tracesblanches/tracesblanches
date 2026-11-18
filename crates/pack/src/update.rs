@@ -46,7 +46,8 @@ pub const UPDATE_FORMAT_VERSION_WHOLE: u32 = 2;
 pub struct Update {
     /// Always [`UPDATE_FORMAT`].
     pub format: String,
-    /// [`UPDATE_FORMAT_VERSION`].
+    /// [`UPDATE_FORMAT_VERSION_WHOLE`] (2), or [`UPDATE_FORMAT_VERSION`] (3) in a bundle with a
+    /// patch.
     pub format_version: u32,
     /// Site identifier.
     pub site: String,
@@ -272,7 +273,7 @@ impl Update {
             + if up_to_date { 0 } else { manifest.bytes };
         Update {
             format: UPDATE_FORMAT.to_owned(),
-            format_version: UPDATE_FORMAT_VERSION,
+            format_version: UPDATE_FORMAT_VERSION_WHOLE,
             site: new.site.id.clone(),
             from_version: old.map(|o| o.pack_version.clone()),
             to_version: new.pack_version.clone(),
@@ -473,6 +474,8 @@ impl<W: Write> Write for Hashing<W> {
 
 /// The error of a patch that cannot be applied (message starting with [`PATCH_FAILED`]).
 fn patch_failed(path: &Path, what: impl std::fmt::Display) -> Error {
+    let what = what.to_string();
+    let what = what.strip_prefix("pack: ").unwrap_or(&what);
     Error::Pack(format!("{PATCH_FAILED}: {}: {what}", path.display()))
 }
 
