@@ -53,6 +53,7 @@
     <string name="legend_intermediate">Rouge : difficile</string>
     <string name="legend_advanced">Noire : très difficile</string>
     <string name="legend_unknown">Grise : difficulté inconnue</string>
+    <string name="legend_state_unknown">Bande grise, trait fin : état inconnu, ni ouverte ni fermée</string>
     <string name="legend_closed">Fermée : voilée, tirets blancs</string>
     <string name="legend_backcountry">Tirets : hors piste balisé</string>
     <string name="legend_hike">Pointillés : raquettes et piétons</string>

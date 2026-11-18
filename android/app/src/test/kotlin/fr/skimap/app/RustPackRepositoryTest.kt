@@ -71,6 +71,10 @@ class RustPackRepositoryTest {
                     .map { it.id },
             )
             assertTrue(opened.style.legend.any { it.key == "intermediate" })
+            // A piste of unknown state has its own band row, with a core (#141).
+            val unknownState = opened.style.legend.single { it.key == "state-unknown" }
+            assertEquals(fr.skimap.core.LegendKind.BAND, unknownState.kind)
+            assertTrue(unknownState.core != null && unknownState.core != unknownState.color)
 
             for (choice in listOf(StyleChoice(dark = true), StyleChoice(fr.skimap.app.data.Practice.SRN), StyleChoice(guiding = true))) {
                 val st = repo.style(style(choice))

@@ -95,6 +95,9 @@ pub enum LegendKind {
     Dotted,
     /// Filled area.
     Area,
+    /// Wide band of [`LegendEntry::color`] with a thin core of [`LegendEntry::core`]
+    /// (a piste whose state is unknown).
+    Band,
 }
 
 /// A legend row. The app words it from [`LegendEntry::key`] (French and English
@@ -104,13 +107,17 @@ pub struct LegendEntry {
     /// Group of rows (`pistes`, `pentes`, `dangers`).
     pub group: String,
     /// What the row shows: a piste difficulty (`novice`, `easy`, `intermediate`,
-    /// `advanced`, `unknown`), `closed`, `backcountry`, `hike`, a slope class
+    /// `advanced`, `unknown`), `closed`, `state-unknown` (no source publishes the state
+    /// of the piste), `backcountry`, `hike`, a slope class
     /// (`slope-1` … `slope-4`) or an exposure class (`exposure-2`, `exposure-3`).
     pub key: String,
     /// `#rrggbb`.
     pub color: String,
-    /// Line, dashes, dots or area.
+    /// Line, dashes, dots, area or band.
     pub kind: LegendKind,
+    /// `#rrggbb` of the thin core of a [`LegendKind::Band`]; `None` for other kinds.
+    #[uniffi(default)]
+    pub core: Option<String>,
 }
 
 /// The France basemap of the phone cache (`france.json` and its files).
@@ -606,12 +613,13 @@ fn legend(layers: &[Value]) -> Vec<LegendEntry> {
     let find = |id: &str| layers.iter().find(|l| l["id"].as_str() == Some(id));
     let colour = |l: &Value, prop: &str| l["paint"][prop].as_str().map(str::to_owned);
     let mut out = Vec::new();
-    let mut push = |group: &str, key: &str, color: String, kind: LegendKind| {
+    let mut push = |group: &str, key: &str, color: String, kind: LegendKind, core| {
         out.push(LegendEntry {
             group: group.to_owned(),
             key: key.to_owned(),
             color,
             kind,
+            core,
         });
     };
     if let Some((pairs, default)) =
@@ -619,35 +627,50 @@ fn legend(layers: &[Value]) -> Vec<LegendEntry> {
     {
         for d in ["novice", "easy", "intermediate", "advanced"] {
             if let Some((_, c)) = pairs.iter().find(|(v, _)| v == d) {
-                push("pistes", d, c.clone(), LegendKind::Line);
+                push("pistes", d, c.clone(), LegendKind::Line, None);
             }
         }
-        push("pistes", "unknown", default, LegendKind::Line);
+        push("pistes", "unknown", default, LegendKind::Line, None);
+        // State unknown (#141): the neutral band of `pistes-unknown-casing` around a
+        // thin core of the difficulty colour (blue as the sample), never the solid line
+        // of an open piste.
+        if let Some((_, band)) =
+            find("pistes-unknown-casing").and_then(|l| match_colours(&l["paint"]["line-color"]))
+            && let Some((_, c)) = pairs.iter().find(|(v, _)| v == "easy")
+        {
+            push(
+                "pistes",
+                "state-unknown",
+                band,
+                LegendKind::Band,
+                Some(c.clone()),
+            );
+        }
         if find("pistes-closed-dash").is_some()
             && let Some((_, c)) = pairs.iter().find(|(v, _)| v == "easy")
         {
-            push("pistes", "closed", c.clone(), LegendKind::Dashed);
+            push("pistes", "closed", c.clone(), LegendKind::Dashed, None);
         }
     }
     if let Some((pairs, _)) =
         find("pistes-backcountry").and_then(|l| match_colours(&l["paint"]["line-color"]))
         && let Some((_, c)) = pairs.iter().find(|(v, _)| v == "easy")
     {
-        push("pistes", "backcountry", c.clone(), LegendKind::Dashed);
+        push("pistes", "backcountry", c.clone(), LegendKind::Dashed, None);
     }
     if let Some(c) = find("pistes-hike").and_then(|l| colour(l, "line-color")) {
-        push("pistes", "hike", c, LegendKind::Dotted);
+        push("pistes", "hike", c, LegendKind::Dotted, None);
     }
     for k in 1..=4 {
         let id = format!("slope-{k}");
         if let Some(c) = find(&id).and_then(|l| colour(l, "fill-color")) {
-            push("pentes", &id, c, LegendKind::Area);
+            push("pentes", &id, c, LegendKind::Area, None);
         }
     }
     for k in 2..=3 {
         let id = format!("exposure-{k}");
         if let Some(c) = find(&id).and_then(|l| colour(l, "fill-color")) {
-            push("dangers", &id, c, LegendKind::Area);
+            push("dangers", &id, c, LegendKind::Area, None);
         }
     }
     out

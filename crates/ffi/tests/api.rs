@@ -239,6 +239,35 @@ fn test_pack_with_every_validated_style() {
             .unwrap();
         let row = st.legend.iter().find(|e| e.key == "easy").unwrap();
         assert_eq!((row.color.as_str(), row.kind), (easy, LegendKind::Line));
+        // A piste whose state is unknown has its own row (#141): the neutral band of
+        // `pistes-unknown-casing` with a thin core, never the solid line of an open piste.
+        let band = originals["pistes-unknown-casing"]["paint"]["line-color"]
+            .as_array()
+            .unwrap()
+            .last()
+            .unwrap()
+            .as_str()
+            .unwrap();
+        let row = st
+            .legend
+            .iter()
+            .find(|e| e.key == "state-unknown")
+            .unwrap_or_else(|| panic!("{name}: no state-unknown row in {:?}", st.legend));
+        assert_eq!(
+            (row.group.as_str(), row.color.as_str(), row.kind),
+            ("pistes", band, LegendKind::Band),
+            "{name}"
+        );
+        assert_eq!(row.core.as_deref(), Some(easy), "{name}");
+        assert_ne!(row.color, easy, "{name}: the band is not the open colour");
+        // Every other row has no core.
+        assert!(
+            st.legend
+                .iter()
+                .filter(|e| e.key != "state-unknown")
+                .all(|e| e.core.is_none()),
+            "{name}"
+        );
         // Attributions of what is drawn, from the manifest.
         assert!(
             st.attributions
