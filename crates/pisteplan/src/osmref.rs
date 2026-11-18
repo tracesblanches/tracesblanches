@@ -383,31 +383,74 @@ pub fn landmarks_osm(
     ))
 }
 
-/// Landmarks of `b`: the local OSM extracts, else (extracts neither in the cache nor
-/// downloadable) the BD TOPO toponyms (IGN). No Overpass request.
+/// Overpass endpoint whose answers may already be in the cache (read offline only, never
+/// requested: [`landmarks_any`]).
+pub const OVERPASS_URL: &str = "https://overpass-api.de/api/interpreter";
+
+/// Former Overpass query of the named landmarks of `b`: the cache key of the answers
+/// downloaded before X5 (the filter is [`skimap_osm::local::is_landmark`]).
+pub fn landmark_query(b: &BBox) -> String {
+    let bb = b.overpass();
+    format!(
+        "[out:json][timeout:90];(\
+node[\"name\"][\"place\"]({bb});\
+way[\"name\"][\"place\"]({bb});\
+node[\"name\"][\"natural\"~\"^(peak|saddle|volcano|spring)$\"]({bb});\
+node[\"name\"][\"mountain_pass\"=\"yes\"]({bb});\
+nwr[\"name\"][\"tourism\"~\"^(alpine_hut|wilderness_hut|museum|hotel|chalet)$\"]({bb});\
+nwr[\"name\"][\"amenity\"~\"^(shelter|restaurant|place_of_worship)$\"]({bb});\
+nwr[\"name\"][\"natural\"=\"water\"]({bb});\
+nwr[\"name\"][\"historic\"]({bb});\
+);out center tags;"
+    )
+}
+
+/// Landmarks of `b`, in the order the registrations always used, so that every plan keeps
+/// its landmarks: an Overpass answer already in the cache (read offline, no request), else
+/// the BD TOPO toponyms (IGN), else, instead of the former Overpass request, the local OSM
+/// extracts ([`landmarks_osm`]; same elements as Overpass, `crates/osm/docs/local.md`).
 pub fn landmarks_any(
     layout: &DataLayout,
     dl: &Downloader,
     b: &BBox,
 ) -> Result<(Vec<Landmark>, LandmarkSource)> {
-    match landmarks_osm(layout, dl, b) {
-        Ok(r) => Ok(r),
-        Err(osm) => {
-            let (l, f) = landmarks_ign(dl, b).map_err(|ign| {
-                Error::Data(format!("landmarks: OSM extracts: {osm}; IGN: {ign}"))
-            })?;
-            Ok((
-                l,
-                LandmarkSource {
-                    name: IGN_LANDMARKS,
-                    sources: vec![SourceRef::from_fetched(
-                        IGN_LANDMARKS,
-                        "Licence Ouverte Etalab 2.0",
-                        "IGN – BD TOPO",
-                        &f,
-                    )],
-                },
-            ))
+    let q = landmark_query(b);
+    let cached = dl.fetch(
+        &Request::post_form("overpass", OVERPASS_URL, &[("data", &q)])
+            .cache(skimap_common::download::CachePolicy::Offline),
+    );
+    if let Ok(f) = cached {
+        let v: Value = f.json()?;
+        let name = "OpenStreetMap, repères nommés (Overpass, réponse en cache)";
+        return Ok((
+            parse_landmarks(&v)?,
+            LandmarkSource {
+                name,
+                sources: vec![SourceRef::from_fetched(
+                    name,
+                    skimap_osm::local::LICENCE,
+                    "© les contributeurs d'OpenStreetMap (ODbL)",
+                    &f,
+                )],
+            },
+        ));
+    }
+    match landmarks_ign(dl, b) {
+        Ok((l, f)) => Ok((
+            l,
+            LandmarkSource {
+                name: IGN_LANDMARKS,
+                sources: vec![SourceRef::from_fetched(
+                    IGN_LANDMARKS,
+                    "Licence Ouverte Etalab 2.0",
+                    "IGN – BD TOPO",
+                    &f,
+                )],
+            },
+        )),
+        Err(ign) => {
+            tracing::warn!(error = %ign, "IGN toponyms unreachable, local OSM landmarks used");
+            landmarks_osm(layout, dl, b)
         }
     }
 }
@@ -431,5 +474,6 @@ mod tests {
         assert_eq!(l[0].ele, Some(2703.0));
         assert_eq!(l[1].kind, LandmarkKind::Place);
         assert_eq!(l[2].kind, LandmarkKind::Lake);
+        assert!(landmark_query(&BBox::new(1.0, 2.0, 3.0, 4.0)).contains("(1,2,3,4)"));
     }
 }

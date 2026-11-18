@@ -6,25 +6,42 @@
 //!
 //! Scanned: the `src` and `examples` directories of every crate, outside the trailing
 //! `#[cfg(test)] mod … {` of a file. Forbidden: a downloader request on the `overpass`
-//! source and the addresses of the Overpass instances used so far, except as the
-//! provenance of a saved Overpass dump read from disk (`OVERPASS_URL` of
-//! `skimap_avalanche::historic`, never fetched).
+//! source that may reach the network (allowed: a read of an answer already in the cache,
+//! `CachePolicy::Offline` in the same statement) and the addresses of the mirrors used
+//! so far. The main instance's address stays as a cache key or a provenance (a saved
+//! dump read from disk), never fetched.
 
 use std::path::{Path, PathBuf};
 
-/// Patterns of an Overpass request.
-const FORBIDDEN: [&str; 7] = [
+/// Downloader requests on the Overpass source.
+const REQUESTS: [&str; 3] = [
     "post_form(\"overpass\"",
     "Request::get(\"overpass\"",
     "Request::post(\"overpass\"",
+];
+
+/// Overpass mirrors.
+const MIRRORS: [&str; 4] = [
     "maps.mail.ru",
     "overpass.kumi.systems",
     "overpass.private.coffee",
     "OVERPASS_MIRROR",
 ];
 
-/// The only file allowed to name the main instance: the provenance of a saved dump.
-const DUMP_PROVENANCE: &str = "crates/avalanche/src/historic/mod.rs";
+/// Whether every request of `code` on the Overpass source is an offline cache read (the
+/// statement, up to its `;`, says `CachePolicy::Offline`).
+fn network_requests(code: &str) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    for pat in REQUESTS {
+        for (i, _) in code.match_indices(pat) {
+            let stmt = code[i..].split(';').next().unwrap_or_default();
+            if !stmt.contains("CachePolicy::Offline") {
+                out.push(pat);
+            }
+        }
+    }
+    out
+}
 
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -54,6 +71,15 @@ fn without_tests(text: &str) -> &str {
 }
 
 #[test]
+fn offline_reads_are_told_from_requests() {
+    let read = r#"dl.fetch(&Request::post_form("overpass", U, &[("data", &q)])
+            .cache(skimap_common::download::CachePolicy::Offline));"#;
+    let req = r#"dl.fetch(&Request::post_form("overpass", U, &[("data", &q)]))?;"#;
+    assert!(network_requests(read).is_empty());
+    assert_eq!(network_requests(req).len(), 1);
+}
+
+#[test]
 fn no_crate_sends_an_overpass_request() {
     let root = root();
     let mut files = Vec::new();
@@ -72,13 +98,13 @@ fn no_crate_sends_an_overpass_request() {
             .unwrap()
             .to_string_lossy()
             .into_owned();
-        for pat in FORBIDDEN {
+        for pat in network_requests(code) {
+            found.push(format!("{rel}: {pat}"));
+        }
+        for pat in MIRRORS {
             if code.contains(pat) {
                 found.push(format!("{rel}: {pat}"));
             }
-        }
-        if code.contains("overpass-api.de") && rel != DUMP_PROVENANCE {
-            found.push(format!("{rel}: overpass-api.de"));
         }
     }
     assert!(
