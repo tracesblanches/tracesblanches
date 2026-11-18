@@ -69,8 +69,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("== {id}: {} x {} cells", inputs.dem.w, inputs.dem.h);
         line("dem", &inputs.dem);
         line("canopy", &inputs.canopy);
-        line("slope", &m.slope);
-        line("windshelter", &m.windshelter);
+        let (slope, windshelter) = exposure::terrain(&inputs.dem);
+        line("slope", &slope);
+        line("windshelter", &windshelter);
+        drop((slope, windshelter));
         for (name, p) in [("frequent", &m.pra_frequent), ("extreme", &m.pra_extreme)] {
             line(&format!("pra_{name}_continuous"), &p.continuous);
             line(&format!("pra_{name}_binary"), &p.binary);

@@ -255,19 +255,25 @@ pub struct Report {
     pub flowpy_on_reference_inputs: Vec<LayerAgreement>,
 }
 
-/// Compares a Rust model with a reference run of the same inputs. With `isolate_flowpy`
+/// Compares a Rust model with a reference run of the same inputs; `terrain` is the
+/// slope and wind shelter of [`super::terrain`] on the same DEM. With `isolate_flowpy`
 /// the Rust Flow-Py also runs on the reference release cells (costly: two more runs).
-pub fn compare(model: &Model, run: &OracleRun, isolate_flowpy: bool) -> Result<Report> {
+pub fn compare(
+    model: &Model,
+    terrain: &(Raster<f32>, Raster<f32>),
+    run: &OracleRun,
+    isolate_flowpy: bool,
+) -> Result<Report> {
     let mut layers = vec![
         compare_f32(
             "slope (PRA, edges)",
-            &model.slope,
+            &terrain.0,
             &run.pra("frequent", "slope")?,
             1e-4,
         ),
         compare_f32(
             "windshelter",
-            &model.windshelter,
+            &terrain.1,
             &run.pra("frequent", "windshelter")?,
             1e-6,
         ),

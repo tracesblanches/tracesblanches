@@ -76,7 +76,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     let t = Instant::now();
-    let rep = oracle::compare(&m, &run, isolate)?;
+    let rep = oracle::compare(&m, &exposure::terrain(&inputs.dem), &run, isolate)?;
     println!("comparison {:.1} s", t.elapsed().as_secs_f64());
     for l in rep.layers.iter().chain(&rep.flowpy_on_reference_inputs) {
         println!(

@@ -470,34 +470,25 @@ pub fn component_area_m2(mask: &Raster<u8>) -> Raster<f32> {
 pub fn distance_to(mask: &Raster<u8>) -> Raster<f32> {
     let (w, h) = (mask.w, mask.h);
     const INF: f64 = 1e20;
-    // Columns first.
+    // Columns first, into one flat column-major buffer (#172).
     let mut g = vec![INF; w * h];
-    let cols: Vec<Vec<f64>> = (0..w)
-        .into_par_iter()
-        .map(|c| {
-            let f: Vec<f64> = (0..h)
-                .map(|r| if mask.data[r * w + c] != 0 { 0.0 } else { INF })
-                .collect();
-            edt_1d(&f)
-        })
-        .collect();
-    for (c, col) in cols.iter().enumerate() {
-        for (r, v) in col.iter().enumerate() {
-            g[r * w + c] = *v;
+    g.par_chunks_mut(h.max(1)).enumerate().for_each(|(c, o)| {
+        let f: Vec<f64> = (0..h)
+            .map(|r| if mask.data[r * w + c] != 0 { 0.0 } else { INF })
+            .collect();
+        o.copy_from_slice(&edt_1d(&f));
+    });
+    let mut out = vec![0f32; w * h];
+    out.par_chunks_mut(w.max(1)).enumerate().for_each(|(r, o)| {
+        let row: Vec<f64> = (0..w).map(|c| g[c * h + r]).collect();
+        for (d, d2) in o.iter_mut().zip(edt_1d(&row)) {
+            *d = if d2 >= INF / 2.0 {
+                f32::INFINITY
+            } else {
+                (d2.sqrt() * mask.cell) as f32
+            };
         }
-    }
-    let out: Vec<f32> = g
-        .par_chunks(w)
-        .flat_map_iter(|row| {
-            edt_1d(row).into_iter().map(|d2| {
-                if d2 >= INF / 2.0 {
-                    f32::INFINITY
-                } else {
-                    (d2.sqrt() * mask.cell) as f32
-                }
-            })
-        })
-        .collect();
+    });
     mask.with_data(out)
 }
 

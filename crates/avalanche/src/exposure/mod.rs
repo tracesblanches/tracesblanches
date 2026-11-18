@@ -160,13 +160,23 @@ pub struct Timings {
     pub total: f64,
 }
 
-/// All model layers of one grid.
+/// Terrain layers of the PRA step: Horn slope with edges (degrees) and wind shelter
+/// (radians), as [`model_with`] computes them. Not kept in [`Model`]: only the PRA reads
+/// them, and two Float32 grids alive through the runout cost 174 MB on a 21-million-cell
+/// zone (#172); the diagnostics recompute them, bit for bit, with this function.
+pub fn terrain(dem: &Raster<f32>) -> (Raster<f32>, Raster<f32>) {
+    let slope = pra::gdal_slope(dem, true);
+    let ws = pra::windshelter(
+        dem,
+        pra::FREQUENT.wind_radius_m,
+        pra::FREQUENT.wind_probability,
+    );
+    (slope, ws)
+}
+
+/// All model layers of one grid that the layer and the classifier read.
 #[derive(Debug, Clone)]
 pub struct Model {
-    /// Horn slope with edges (PRA step), degrees.
-    pub slope: Raster<f32>,
-    /// Wind shelter, radians.
-    pub windshelter: Raster<f32>,
     /// Typical PRA.
     pub pra_frequent: pra::Pra,
     /// Infrequent PRA.
@@ -216,28 +226,28 @@ pub fn model_with(
     let t_all = Instant::now();
     let mut t = Timings::default();
     let t0 = Instant::now();
-    let slope = pra::gdal_slope(&inputs.dem, true);
-    let ws = pra::windshelter(
-        &inputs.dem,
-        pra::FREQUENT.wind_radius_m,
-        pra::FREQUENT.wind_probability,
-    );
+    let (slope, ws) = terrain(&inputs.dem);
     t.terrain = t0.elapsed().as_secs_f64();
     let t0 = Instant::now();
     let pf = pra::pra(&slope, &ws, &inputs.canopy, &pra::FREQUENT);
     let pe = pra::pra(&slope, &ws, &inputs.canopy, &pra::EXTREME);
+    drop((slope, ws));
     t.pra = t0.elapsed().as_secs_f64();
     let fsi = forest_index(&inputs.canopy);
     let t0 = Instant::now();
     // One weight table for both scenarios when they spread alike (the defaults do).
-    let wf = flowpy::Weights::new(&inputs.dem, &fsi, flow_frequent.exp);
-    let we = (flow_extreme.exp.to_bits() != flow_frequent.exp.to_bits())
+    let mut wf = flowpy::Weights::new(&inputs.dem, &fsi, flow_frequent.exp);
+    let mut we = (flow_extreme.exp.to_bits() != flow_frequent.exp.to_bits())
         .then(|| flowpy::Weights::new(&inputs.dem, &fsi, flow_extreme.exp));
-    let rf = flowpy::run_with(&wf, &pf.release, flow_frequent);
+    let rf = flowpy::run_with(&mut wf, &pf.release, flow_frequent);
     t.runout_frequent = t0.elapsed().as_secs_f64();
     let t0 = Instant::now();
-    let re = flowpy::run_with(we.as_ref().unwrap_or(&wf), &pe.release, flow_extreme);
+    let re = flowpy::run_with(we.as_mut().unwrap_or(&mut wf), &pe.release, flow_extreme);
     t.runout_extreme = t0.elapsed().as_secs_f64();
+    // The weight tables and the forest index are not used past the runout: freed before
+    // the classifier allocates its own layers (#172).
+    drop((wf, we));
+    drop(fsi);
     let t0 = Instant::now();
     let a = ates::classify(&inputs.dem, &inputs.canopy, (&pf, &rf), (&pe, &re));
     t.ates = t0.elapsed().as_secs_f64();
@@ -249,8 +259,6 @@ pub fn model_with(
     t.classes = t0.elapsed().as_secs_f64();
     t.total = t_all.elapsed().as_secs_f64();
     Model {
-        slope,
-        windshelter: ws,
         pra_frequent: pf,
         pra_extreme: pe,
         runout_frequent: rf,
