@@ -15,7 +15,9 @@ use tracing::info;
 
 use super::raster::{self, Raster};
 use super::validation::{self, ClpaValidation};
-use super::{LAYER, LOW_MARGIN_M, Model, Timings, class, flowpy, inputs_5m, model, pra, segments};
+use super::{
+    LAYER, LOW_MARGIN_M, LayerModel, Timings, class, flowpy, inputs_5m, layer_model, pra, segments,
+};
 use crate::error::{Error, Result};
 use crate::historic::{
     self,
@@ -228,7 +230,7 @@ pub fn build_with(
     let t0 = Instant::now();
     let inputs = inputs_5m(site, layout, dl)?;
     let t_in = t0.elapsed().as_secs_f64();
-    let m = model(&inputs);
+    let m = layer_model(&inputs);
     info!(site = site.id, s = m.timings.total, "exposure model done");
     let t0 = Instant::now();
     let summary = write_layer(
@@ -254,7 +256,7 @@ fn write_layer(
     dl: &Downloader,
     dir: &Path,
     canopy: &Raster<f32>,
-    m: &Model,
+    m: &LayerModel,
     lines: &[PisteLine],
     pistes_source: SourceRef,
     t_in: f64,
@@ -322,7 +324,7 @@ fn write_layer(
         },
         || {
             rayon::join(
-                || raster::write_u8(&dir.join(files::ATES), &m.ates.classes),
+                || raster::write_u8(&dir.join(files::ATES), &m.ates_classes),
                 || {
                     rayon::join(
                         || raster::write_f32(&dir.join(files::CANOPY), canopy),
@@ -367,7 +369,7 @@ fn write_layer(
         files::ATES,
         "Diagnostic, ne pas afficher : classes 0 à 4 du classifieur dev8 d'AutoATES v3.0 (portage), identiques à la référence ; la classe 0 peut tomber dans une zone d'écoulement modélisée",
         "classe",
-        &m.ates.classes,
+        &m.ates_classes,
         bytes,
         "255",
     ));
@@ -471,14 +473,14 @@ fn write_layer(
         sources.push(src);
     }
     let (valid, cs) = shares(&exposure.data, [class::LOW, class::EXPOSED, class::HIGH]);
-    let (_, ates) = shares(&m.ates.classes.data, [0, 1, 2, 3, 4]);
+    let (_, ates) = shares(&m.ates_classes.data, [0, 1, 2, 3, 4]);
     let summary = ExposureSummary {
         site: site.id.into(),
         grid: (exposure.w, exposure.h, exposure.cell),
         valid_cells: valid,
         class_shares: cs,
         ates_shares: ates,
-        paths: (m.runout_frequent.paths, m.runout_extreme.paths),
+        paths: m.paths,
         all_lines: network_exposure(&all_refs),
         nordic_in_commune: network_exposure(&nordic_refs),
         report07,

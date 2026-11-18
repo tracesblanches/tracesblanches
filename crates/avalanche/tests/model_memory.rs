@@ -2,7 +2,9 @@
 //! 21.7 million cells needed 4.3 GB and killed the 4 GiB pipeline pod. The model must
 //! keep its peak memory per cell bounded: the runout weights and workspaces follow a band
 //! of rows, the classifier frees each layer once read, and the terrain layers of the PRA
-//! step are not kept in the model.
+//! step are not kept in the model. The layer build runs [`exposure::layer_model`], which
+//! keeps of the PRA and of each runout only the bits the classifier reads (#173): this is
+//! the figure `build-all` plans its sites with (`batch::BYTES_PER_CELL`).
 
 use skimap_avalanche::exposure::{self, Inputs, raster::Raster};
 
@@ -53,20 +55,20 @@ fn model_peak_memory_per_cell_is_bounded() {
         .build()
         .unwrap();
     let base = status_kb("VmHWM");
-    let m = pool.install(|| exposure::model(&inputs));
+    let m = pool.install(|| exposure::layer_model(&inputs));
     let peak = (status_kb("VmHWM") - base) * 1024;
     let per_cell = peak as f64 / (w * h) as f64;
     eprintln!(
         "peak resident set added by the model: {:.1} MB, {per_cell:.1} B per cell, {} + {} paths",
         peak as f64 / 1e6,
-        m.runout_frequent.paths,
-        m.runout_extreme.paths
+        m.paths.0,
+        m.paths.1
     );
-    assert!(
-        m.runout_extreme.paths > 10_000,
-        "the grid must route many paths"
-    );
+    assert!(m.paths.1 > 10_000, "the grid must route many paths");
     // Measured on this grid (debug build, 3 threads): 228 B per cell before #172,
-    // 133 B per cell after.
-    assert!(per_cell < 170.0, "{per_cell:.1} B per cell");
+    // 133 B per cell after (whole model), 111 B per cell for the layer path (#173).
+    assert!(
+        per_cell < exposure::LAYER_PEAK_BYTES_PER_CELL,
+        "{per_cell:.1} B per cell"
+    );
 }
