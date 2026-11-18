@@ -104,3 +104,7 @@ required-features = ["pipeline"]
 [[example]]
 name = "france_basemap"
 required-features = ["pipeline"]
+
+[[example]]
+name = "start_loops"
+required-features = ["pipeline"]
