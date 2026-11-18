@@ -14,7 +14,7 @@
 //! - [`append_bytes`], [`open_append`]: append to a journal, after breaking a hard link
 //!   ([`break_link`]).
 //! - [`create_log`]: a log written as it goes, on a new inode.
-//! - [`open_lock`]: a lock file, never written.
+//! - [`FileLock`]: an exclusive lock on a lock file, never written, released on drop.
 //!
 //! The direct writers of `std` (`std::fs::write`, `File::create`, `std::fs::copy`,
 //! `OpenOptions::write` / `append`) are denied by `clippy.toml` everywhere else.
@@ -261,9 +261,49 @@ pub fn create_log(path: &Path) -> Result<File> {
         .map_err(|e| Error::io(path, e))
 }
 
-/// Opens (creates if needed) a lock file, for `File::lock`; its content is never written
-/// nor truncated.
-pub fn open_lock(path: &Path) -> Result<File> {
+/// An exclusive lock on a lock file (`flock`), released when dropped or when the process
+/// dies; the content of the file is never written nor truncated.
+///
+/// The lock is released explicitly (`LOCK_UN`) on drop, not by closing the file: a lock
+/// belongs to the open file description, and a child process forked by another thread
+/// (`Command::spawn`: the publication command of `build-all --publish-with`, a test that
+/// runs the binary) holds a copy of every descriptor until its `exec`. Released by
+/// `close` alone, the lock outlived its holder for that instant and the next taker saw
+/// a build in progress where there was none (#172).
+#[derive(Debug)]
+pub struct FileLock {
+    file: File,
+}
+
+impl FileLock {
+    /// Opens (creates if needed) the lock file `path` and waits for its lock.
+    pub fn lock(path: &Path) -> Result<Self> {
+        let file = open_lock(path)?;
+        file.lock().map_err(|e| Error::io(path, e))?;
+        Ok(Self { file })
+    }
+
+    /// Opens (creates if needed) the lock file `path` and takes its lock if nobody holds
+    /// it (`None` when somebody does).
+    pub fn try_lock(path: &Path) -> Result<Option<Self>> {
+        let file = open_lock(path)?;
+        match file.try_lock() {
+            Ok(()) => Ok(Some(Self { file })),
+            Err(std::fs::TryLockError::WouldBlock) => Ok(None),
+            Err(std::fs::TryLockError::Error(e)) => Err(Error::io(path, e)),
+        }
+    }
+}
+
+impl Drop for FileLock {
+    fn drop(&mut self) {
+        // An error leaves the lock to the closing of the file, as before.
+        let _ = self.file.unlock();
+    }
+}
+
+/// Opens (creates if needed) a lock file for [`FileLock`]; never written nor truncated.
+fn open_lock(path: &Path) -> Result<File> {
     ensure_parent(path)?;
     OpenOptions::new()
         .create(true)
@@ -323,6 +363,24 @@ pub fn write_geojson(path: &Path, features: &[Value]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #172: a child forked by another thread holds a copy of the descriptor of a lock
+    /// until its `exec` (here a `dup`, the same sharing of the open file description); the
+    /// lock is free for the next taker as soon as its holder drops it.
+    #[test]
+    fn a_dropped_lock_is_free_even_while_a_copy_of_its_descriptor_lives() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("x/.lock");
+        let held = FileLock::try_lock(&p).unwrap().expect("free");
+        assert!(FileLock::try_lock(&p).unwrap().is_none(), "held");
+        let copy = held.file.try_clone().unwrap();
+        drop(held);
+        let again = FileLock::try_lock(&p).unwrap();
+        assert!(again.is_some(), "released despite the copy");
+        drop(copy);
+        drop(again);
+        drop(FileLock::lock(&p).unwrap());
+    }
 
     #[test]
     fn writers() {

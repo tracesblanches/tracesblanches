@@ -97,18 +97,13 @@ pub const LOCK_FILE: &str = ".build-all.lock";
 
 /// Takes the build lock of a site (no two builds of one site at once, whatever the
 /// process); released when the returned file is dropped (or the process dies).
-pub fn lock_site(dir: &Path) -> Result<std::fs::File> {
-    let p = dir.join(LOCK_FILE);
-    let f = skimap_common::output::open_lock(&p)?;
-    match f.try_lock() {
-        Ok(()) => Ok(f),
-        Err(std::fs::TryLockError::WouldBlock) => {
-            anyhow::bail!(
-                "{} : une autre construction de ce site est en cours",
-                dir.display()
-            )
-        }
-        Err(std::fs::TryLockError::Error(e)) => Err(e).with_context(|| format!("{}", p.display())),
+pub fn lock_site(dir: &Path) -> Result<skimap_common::output::FileLock> {
+    match skimap_common::output::FileLock::try_lock(&dir.join(LOCK_FILE))? {
+        Some(lock) => Ok(lock),
+        None => anyhow::bail!(
+            "{} : une autre construction de ce site est en cours",
+            dir.display()
+        ),
     }
 }
 

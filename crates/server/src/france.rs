@@ -78,8 +78,7 @@ pub fn publish(store: &Store, dir: &Path) -> Result<FrancePublished> {
     let desc = FranceBasemap::read(dir).with_context(|| format!("{}", dir.display()))?;
     desc.verify(dir)
         .with_context(|| format!("{}", dir.display()))?;
-    let lock_file = skimap_common::output::open_lock(&store.root().join(".lock"))?;
-    lock_file.lock()?;
+    let _lock = skimap_common::output::FileLock::lock(&store.root().join(".lock"))?;
     let served = description_path(store);
     let current = read(&served)?;
     let mut out = FrancePublished {

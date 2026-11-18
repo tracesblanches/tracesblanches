@@ -35,7 +35,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use skimap_common::output::{AtomicFile, copy_file, open_lock};
+use skimap_common::output::{AtomicFile, FileLock, copy_file};
 use skimap_pack::Pack;
 use skimap_pack::manifest::{MANIFEST_FILE, Manifest, SiteInfo};
 use skimap_pack::sync::{BundleRef, INDEX_FORMAT, INDEX_FORMAT_VERSION, LatestVersion, SiteIndex};
@@ -487,8 +487,7 @@ impl Store {
             .iter()
             .any(|r| r.as_ref().is_ok_and(|r| r.status == "published"))
         {
-            let lock_file = open_lock(&self.root.join(".lock"))?;
-            lock_file.lock()?;
+            let _lock = FileLock::lock(&self.root.join(".lock"))?;
             self.write_catalog()?;
             self.collect_garbage()?;
         }
@@ -527,8 +526,7 @@ impl Store {
             bail!("bad site {site:?} or version {:?}", new.pack_version);
         }
 
-        let lock_file = open_lock(&self.root.join(".lock"))?;
-        lock_file.lock()?;
+        let _lock = FileLock::lock(&self.root.join(".lock"))?;
 
         let versions = self.versions(&site)?;
         let previous = versions.last().cloned();

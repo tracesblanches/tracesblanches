@@ -10,4 +10,6 @@ disallowed-methods = [
     { path = "std::fs::copy", reason = "truncates the target in place: use skimap_common::output::copy_file (#164)" },
     { path = "std::fs::OpenOptions::write", reason = "writes in place: use skimap_common::output (#164)" },
     { path = "std::fs::OpenOptions::append", reason = "appends to a possibly shared inode: use skimap_common::output::append_bytes (#164)" },
+    { path = "std::fs::File::lock", reason = "released by close only, outlived by forked children: use skimap_common::output::FileLock (#172)" },
+    { path = "std::fs::File::try_lock", reason = "released by close only, outlived by forked children: use skimap_common::output::FileLock (#172)" },
 ]
