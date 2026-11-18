@@ -451,16 +451,34 @@ fn inputs(ctx: &Ctx, registry: &Registry, site: &Site) -> Result<BuildInputs> {
     })
 }
 
-/// Whether the last build of a site is successful, with the same inputs and recent.
+/// Whether the last build of a site is successful, with the same inputs, recent and
+/// current ([`steps_current`]).
 pub fn up_to_date(
     rec: &BuildRecord,
     inputs: &BuildInputs,
+    site: &Site,
     max_age: Duration,
     now: DateTime<Utc>,
 ) -> bool {
     let recent = DateTime::parse_from_rfc3339(&rec.finished_at)
         .is_ok_and(|t| (now - t.to_utc()).to_std().is_ok_and(|age| age < max_age));
-    rec.ok && rec.inputs == *inputs && recent
+    rec.ok && rec.inputs == *inputs && recent && steps_current(rec, site)
+}
+
+/// Whether the record holds every step of the pipeline (a build killed with the process
+/// leaves its journal: the steps it reached, #174) and each step done was done with the
+/// inputs of now ([`crate::build::step_inputs`]: the fields of `site` it reads and, for
+/// the pack and the export, their code: a new code of a part of the pack makes every
+/// pack again, #174).
+pub fn steps_current(rec: &BuildRecord, site: &Site) -> bool {
+    let rec = with_step_inputs(rec.clone());
+    crate::build::missing_steps(&rec.outcome.steps).is_empty()
+        && rec
+            .outcome
+            .steps
+            .iter()
+            .filter(|s| s.state == StepState::Ok)
+            .all(|s| s.inputs.as_deref() == Some(&crate::build::step_inputs(&s.name, site)))
 }
 
 fn first_line(s: &str, n: usize) -> String {
@@ -631,7 +649,7 @@ pub fn build_many_with(
         match france::read_record(&ctx.layout, s.id) {
             Some(r)
                 if !opts.force
-                    && up_to_date(&r, &inp, opts.max_age, now)
+                    && up_to_date(&r, &inp, s, opts.max_age, now)
                     && (!opts.verify || outputs_intact(&ctx.layout, s, &r)) =>
             {
                 println!("{:<34} à jour (construit le {})", s.id, r.finished_at);
@@ -988,8 +1006,13 @@ pub struct SiteStatus {
     /// previous outputs, if any, are kept and published with their date), `never_built`,
     /// `set_aside` (its build killed the process [`SET_ASIDE_AFTER`] times in a row: the
     /// other sites go first, it is tried again when its inputs change or once a day; its
-    /// previous pack, if any, stays published, #172).
+    /// previous pack, if any, stays published, #172), `interrupted` (its last build was
+    /// killed before it reached [`SiteStatus::missing_steps`]: the next catch-up builds
+    /// it, #174).
     pub state: String,
+    /// Steps of the pipeline the last build never reached (#174).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub missing_steps: Vec<String>,
     /// Attempts of the site killed with the process in a row (#172).
     #[serde(skip_serializing_if = "is_zero")]
     pub killed_attempts: u32,
@@ -1050,6 +1073,7 @@ pub fn write_status(layout: &DataLayout, sites: &[&'static Site]) -> Result<Path
                 }
                 .into(),
                 killed_attempts: attempt.killed,
+                missing_steps: Vec::new(),
                 built_at: None,
                 failed_steps: Vec::new(),
                 empty_steps: Vec::new(),
@@ -1114,16 +1138,20 @@ pub fn write_status(layout: &DataLayout, sites: &[&'static Site]) -> Result<Path
             .filter(|x| x.empty.is_some())
             .cloned()
             .collect();
+        let missing = crate::build::missing_steps(&rec.outcome.steps);
         out.push(SiteStatus {
             site: s.id.to_owned(),
             state: if set_aside {
                 "set_aside"
+            } else if !missing.is_empty() {
+                "interrupted"
             } else if rec.ok {
                 "ok"
             } else {
                 "failed"
             }
             .into(),
+            missing_steps: missing.iter().map(|m| (*m).to_owned()).collect(),
             killed_attempts: attempt.killed,
             built_at: Some(rec.finished_at.clone()),
             failed_steps,
@@ -1154,6 +1182,7 @@ pub fn write_status(layout: &DataLayout, sites: &[&'static Site]) -> Result<Path
             "failed": count("failed"),
             "never_built": count("never_built"),
             "set_aside": count("set_aside"),
+            "interrupted": count("interrupted"),
             "empty": out.iter().filter(|x| !x.empty_steps.is_empty()).count(),
             "empty_steps": empty,
             "alert_after_days": ALERT_AFTER_DAYS,
@@ -1174,11 +1203,22 @@ pub fn meteo_step(ctx: &Ctx, sites: &[&Site]) -> StepRecord {
 /// [`meteo_step`] at a given AROME run (`None`: the run of `SKIMAP_AROME_RUN`, else the
 /// latest complete one).
 pub fn meteo_step_at(ctx: &Ctx, sites: &[&Site], run: Option<DateTime<Utc>>) -> StepRecord {
+    meteo_refresh_at(ctx, sites, run).0
+}
+
+/// [`meteo_step_at`] with what was done for each site (`None` when the run itself could
+/// not be read). A site whose weather cannot be made from the run fails alone (#174): the
+/// step is failed, its line names those sites with the reason.
+pub fn meteo_refresh_at(
+    ctx: &Ctx,
+    sites: &[&Site],
+    run: Option<DateTime<Utc>>,
+) -> (StepRecord, Option<skimap_meteo::arome::RefreshReport>) {
     let t = Instant::now();
     let run = match run.map_or_else(|| ctx.arome_run(), |r| Ok(Some(r))) {
         Ok(r) => r,
         Err(e) => {
-            return StepRecord {
+            let rec = StepRecord {
                 name: "meteo-arome".into(),
                 state: StepState::Failed,
                 seconds: 0.0,
@@ -1188,32 +1228,49 @@ pub fn meteo_step_at(ctx: &Ctx, sites: &[&Site], run: Option<DateTime<Utc>>) -> 
                 resumed: false,
                 inputs: None,
             };
+            return (rec, None);
         }
     };
     let refreshed = match run {
         Some(run) => skimap_meteo::arome::refresh_run(sites, &ctx.layout, &ctx.dl, run),
         None => skimap_meteo::arome::refresh(sites, &ctx.layout, &ctx.dl),
     };
-    let (state, line) = match refreshed {
+    let (state, line, report) = match refreshed {
         Ok(r) => {
-            let written = r.sites.iter().filter(|s| s.status == "written").count();
-            (
-                StepState::Ok,
-                format!(
-                    "run AROME {} : {written} sites écrits, {} déjà à ce run",
-                    r.run,
-                    r.sites.len() - written
-                ),
-            )
+            let n = |k: &str| r.sites.iter().filter(|s| s.status == k).count();
+            let failed: Vec<String> = r
+                .sites
+                .iter()
+                .filter_map(|s| Some(format!("{} : {}", s.site, s.error.as_deref()?)))
+                .collect();
+            let mut line = format!(
+                "run AROME {} : {} sites écrits, {} déjà à ce run",
+                r.run,
+                n("written"),
+                n("unchanged")
+            );
+            if !failed.is_empty() {
+                line.push_str(&format!(
+                    ", {} sans météo : {}",
+                    failed.len(),
+                    failed.join(" ; ")
+                ));
+            }
+            let state = if failed.is_empty() {
+                StepState::Ok
+            } else {
+                StepState::Failed
+            };
+            (state, line, Some(r))
         }
-        Err(e) => (StepState::Failed, format!("{e:#}")),
+        Err(e) => (StepState::Failed, format!("{e:#}"), None),
     };
     let seconds = t.elapsed().as_secs_f64();
     match state {
         StepState::Ok => println!("météo AROME : {line} ({seconds:.1} s)"),
         _ => println!("météo AROME : ÉCHEC ({seconds:.1} s) : {line}"),
     }
-    StepRecord {
+    let rec = StepRecord {
         name: "meteo-arome".into(),
         state,
         seconds,
@@ -1222,7 +1279,44 @@ pub fn meteo_step_at(ctx: &Ctx, sites: &[&Site], run: Option<DateTime<Utc>>) -> 
         outputs: None,
         resumed: false,
         inputs: None,
+    };
+    (rec, report)
+}
+
+/// Records in `build-all.json` the weather of each site that `meteo-refresh` wrote (the
+/// pack and the export to be redone, [`record_standalone`]) or could not make (the step
+/// failed with its reason, [`record_standalone_failed`]: said in `status.json`, #174).
+/// Sites at the run already: nothing.
+pub fn record_meteo(
+    layout: &DataLayout,
+    sites: &[&Site],
+    report: &skimap_meteo::arome::RefreshReport,
+) -> Vec<String> {
+    let mut not_recorded = Vec::new();
+    for r in &report.sites {
+        let Some(site) = sites.iter().find(|s| s.id == r.site) else {
+            continue;
+        };
+        let done = match (r.status, r.error.as_deref()) {
+            ("written", _) => record_standalone(
+                layout,
+                site,
+                "meteo",
+                &format!(
+                    "AROME : run {}, {} points, {} heures",
+                    report.run, r.points, r.hours
+                ),
+            ),
+            (_, Some(e)) => {
+                record_standalone_failed(layout, site, "meteo", &format!("AROME : {e}"))
+            }
+            _ => Ok(()),
+        };
+        if let Err(e) = done {
+            not_recorded.push(format!("{} : {e:#}", r.site));
+        }
     }
+    not_recorded
 }
 
 /// Refreshes the stations layer of France once, printed and recorded like a step.
@@ -1292,52 +1386,93 @@ fn dependents(step: &str) -> &'static [&'static str] {
 /// followed, with the off-piste rasters and the pack). The steps that read its outputs
 /// and were not run after it are marked to be redone (state `blocked`); the next
 /// catch-up runs those only. Nothing when the site has no record (never built by
-/// `build-all`: the catch-up builds it whole).
+/// `build-all`: the catch-up builds it whole). The record of a build killed before its
+/// end (its journal) stays not done (#174).
 pub fn record_standalone(layout: &DataLayout, site: &Site, step: &str, line: &str) -> Result<()> {
+    record_alone(layout, site, step, Ok(line))
+}
+
+/// [`record_standalone`] of a step run on its own that failed (#174: the weather of a
+/// site that cannot be made from the AROME run): the step is failed in `build-all.json`,
+/// with `error`, and so in `status.json`; its previous outputs stay in use (the steps
+/// reading them are not to be redone), and the next catch-up tries it again.
+pub fn record_standalone_failed(
+    layout: &DataLayout,
+    site: &Site,
+    step: &str,
+    error: &str,
+) -> Result<()> {
+    record_alone(layout, site, step, Err(error))
+}
+
+fn record_alone(
+    layout: &DataLayout,
+    site: &Site,
+    step: &str,
+    outcome: std::result::Result<&str, &str>,
+) -> Result<()> {
     let dir = layout.out_dir(site);
     let Some(mut rec) = france::read_record(layout, site.id) else {
         return Ok(());
     };
     let _lock = lock_site(&dir)?;
     let at = now_rfc3339();
-    let outputs =
-        crate::build::step_dir(step).and_then(|d| crate::build::fingerprint(&dir.join(d)));
     let Some(i) = rec.outcome.steps.iter().position(|s| s.name == step) else {
         return Ok(());
     };
-    rec.outcome.steps[i] = StepRecord {
-        name: step.to_owned(),
-        state: StepState::Ok,
-        seconds: 0.0,
-        line: format!("{line} (fait seul, hors build-all)"),
-        at: Some(at.clone()),
-        outputs,
-        resumed: false,
-        inputs: Some(crate::build::step_inputs(step, site)),
-    };
-    for d in dependents(step) {
-        if let Some(s) = rec.outcome.steps.iter_mut().find(|s| s.name == *d)
-            && s.state == StepState::Ok
-        {
-            s.state = StepState::Blocked;
-            s.line = format!("à refaire : {step} refait seul le {at}");
-            s.resumed = false;
+    let inputs = Some(crate::build::step_inputs(step, site));
+    match outcome {
+        Ok(line) => {
+            let outputs =
+                crate::build::step_dir(step).and_then(|d| crate::build::fingerprint(&dir.join(d)));
+            rec.outcome.steps[i] = StepRecord {
+                name: step.to_owned(),
+                state: StepState::Ok,
+                seconds: 0.0,
+                line: format!("{line} (fait seul, hors build-all)"),
+                at: Some(at.clone()),
+                outputs,
+                resumed: false,
+                inputs,
+            };
+            for d in dependents(step) {
+                if let Some(s) = rec.outcome.steps.iter_mut().find(|s| s.name == *d)
+                    && s.state == StepState::Ok
+                {
+                    s.state = StepState::Blocked;
+                    s.line = format!("à refaire : {step} refait seul le {at}");
+                    s.resumed = false;
+                }
+            }
+        }
+        Err(error) => {
+            rec.outcome.steps[i] = StepRecord {
+                name: step.to_owned(),
+                state: StepState::Failed,
+                seconds: 0.0,
+                line: format!("{error} (fait seul, hors build-all)"),
+                at: Some(at),
+                outputs: None,
+                resumed: false,
+                inputs,
+            };
         }
     }
-    rec.ok = rec.outcome.ok();
+    rec.ok = rec.outcome.ok() && crate::build::missing_steps(&rec.outcome.steps).is_empty();
     skimap_common::output::write_json(&france::record_path(layout, site.id), &rec)?;
     Ok(())
 }
 
 /// `rec` with the fingerprint of the fields each step read ([`crate::build::step_inputs`])
 /// where it lacks: a record written before the steps recorded it (#164) was built with
-/// its site record whole.
+/// its site record whole, and before the code of a step was recorded (#174): the fields
+/// only, so that a step whose code is versioned is run again.
 fn with_step_inputs(mut rec: BuildRecord) -> BuildRecord {
     if rec.outcome.steps.iter().any(|s| s.inputs.is_none())
         && let Ok(site) = skimap_common::site::interned(&rec.inputs.record)
     {
         for s in rec.outcome.steps.iter_mut().filter(|s| s.inputs.is_none()) {
-            s.inputs = Some(crate::build::step_inputs(&s.name, site));
+            s.inputs = Some(crate::build::step_inputs_of(&s.name, site, None));
         }
     }
     rec
@@ -1484,15 +1619,26 @@ pub fn describe_status(path: &Path) -> Result<Vec<String>> {
     .with_context(|| format!("{}", path.display()))?;
     let n = |k: &str| v[k].as_u64().unwrap_or(0);
     let mut l = vec![format!(
-        "état : {} sites, {} sans échec, {} en échec, {} jamais construits, {} avec une étape vide ({})",
+        "état : {} sites, {} sans échec, {} en échec, {} interrompus, {} jamais construits, {} avec une étape vide ({})",
         n("sites"),
         n("ok"),
         n("failed"),
+        n("interrupted"),
         n("never_built"),
         n("empty"),
         path.display()
     )];
     for site in v["by_site"].as_array().into_iter().flatten() {
+        if let Some(m) = site["missing_steps"].as_array() {
+            l.push(format!(
+                "  interrompu {} : construction arrêtée avant {}",
+                site["site"].as_str().unwrap_or("?"),
+                m.iter()
+                    .filter_map(|x| x.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
         for st in site["failed_steps"].as_array().into_iter().flatten() {
             l.push(format!(
                 "  échec  {} : {} : {}",
@@ -1893,11 +2039,12 @@ mod tests {
                 at: Some(now_rfc3339()),
                 outputs: None,
                 resumed: taken_over,
-                inputs: None,
+                inputs: Some(crate::build::step_inputs(name, site)),
             };
+            // Every step of the pipeline, as a whole run records them.
             let outcome = BuildOutcome {
                 site: site.id.to_owned(),
-                steps: vec![step("meteo"), step("build-pack"), step("export")],
+                steps: crate::build::READS.iter().map(|(n, _)| step(n)).collect(),
                 seconds: 0.0,
                 pack_bytes: None,
                 export_bytes: None,
@@ -2020,6 +2167,93 @@ mod tests {
         });
     }
 
+    fn catch_up_opts() -> BatchOptions {
+        BatchOptions {
+            jobs: 1,
+            force: false,
+            max_age: Duration::from_secs(7 * 86_400),
+            stop_after: None,
+            verify: true,
+            publish: None,
+        }
+    }
+
+    /// #174, catch-up of 18/11/2026: a build killed with the process (OOM) leaves its
+    /// journal, the steps done so far with `ok: false`; the snow CronJob then recorded its
+    /// step in it with `ok` recomputed from those steps only, `true`, and every catch-up
+    /// after found the site up to date with half its steps: its pack was never rebuilt
+    /// (new AROME runs, new OSM basemap code).
+    #[test]
+    fn an_interrupted_build_is_never_up_to_date() {
+        let (_t, ctx) = one_site_registry();
+        let registry = Registry::load(&ctx.layout).unwrap();
+        let site = registry.buildable()[0];
+        let steps = Fake::new();
+        let opts = catch_up_opts();
+        build_many_with(&ctx, &registry, &[site], &opts, &steps).unwrap();
+        // The next build is killed after `zones`: its journal stays.
+        let path = france::record_path(&ctx.layout, site.id);
+        let mut rec = france::read_record(&ctx.layout, site.id).unwrap();
+        let k = rec
+            .outcome
+            .steps
+            .iter()
+            .position(|s| s.name == "zones")
+            .unwrap();
+        rec.outcome.steps.truncate(k + 1);
+        rec.ok = false;
+        skimap_common::output::write_json(&path, &rec).unwrap();
+        // The snow CronJob.
+        record_standalone(&ctx.layout, site, "snow", "simulation du jour").unwrap();
+        let r = france::read_record(&ctx.layout, site.id).unwrap();
+        assert!(!r.ok, "a journal of an interrupted build recorded as done");
+        let registry = Registry::load(&ctx.layout).unwrap();
+        let s = build_many_with(&ctx, &registry, &[site], &opts, &steps).unwrap();
+        assert_eq!(s.up_to_date, 0, "interrupted build taken for up to date");
+        assert_eq!(steps.builds.lock().unwrap().len(), 2);
+    }
+
+    /// #174: the code of a part of the pack changed (OSM basemap from zoom 12 only, #160):
+    /// every pack is made again, though neither the site nor any layer changed. The
+    /// records in production on 18/11/2026 hold, for each step, the fingerprint of the
+    /// fields of the site it reads only.
+    #[test]
+    fn a_new_code_of_the_pack_makes_every_pack_again() {
+        use sha2::{Digest, Sha256};
+        let (_t, ctx) = one_site_registry();
+        let registry = Registry::load(&ctx.layout).unwrap();
+        let site = registry.buildable()[0];
+        let steps = Fake::new();
+        let opts = catch_up_opts();
+        build_many_with(&ctx, &registry, &[site], &opts, &steps).unwrap();
+        let fields_only = |step: &str| {
+            let v = crate::build::view(site, crate::build::reads(step));
+            hex::encode(Sha256::digest(serde_json::to_vec(&v).unwrap()))
+        };
+        let path = france::record_path(&ctx.layout, site.id);
+        let mut rec = france::read_record(&ctx.layout, site.id).unwrap();
+        for s in &mut rec.outcome.steps {
+            s.inputs = Some(fields_only(&s.name));
+        }
+        skimap_common::output::write_json(&path, &rec).unwrap();
+        let s = build_many_with(&ctx, &registry, &[site], &opts, &steps).unwrap();
+        assert_eq!(
+            s.up_to_date, 0,
+            "pack made by another code taken for up to date"
+        );
+        assert_eq!(steps.builds.lock().unwrap().len(), 2);
+        // The steps without a versioned code keep their fingerprint: nothing else is run
+        // again for this.
+        for (n, _) in crate::build::READS {
+            if crate::build::step_code(n).is_none() {
+                assert_eq!(crate::build::step_inputs(n, site), fields_only(n), "{n}");
+            }
+        }
+        // Built again with the code of now: up to date.
+        let s = build_many_with(&ctx, &registry, &[site], &opts, &steps).unwrap();
+        assert_eq!(s.up_to_date, 1);
+    }
+
     #[test]
     fn a_step_run_alone_is_recorded_and_what_reads_it_is_to_be_redone() {
         let t = tempfile::tempdir().unwrap();
@@ -2102,9 +2336,21 @@ mod tests {
 
     #[test]
     fn freshness() {
+        let record = skimap_common::site::evaluation_records()[0].clone();
+        let site = skimap_common::site::interned(&record).unwrap();
+        let step = |name: &str| StepRecord {
+            name: name.into(),
+            state: StepState::Ok,
+            seconds: 0.0,
+            line: String::new(),
+            at: Some("2026-11-15T10:00:00Z".into()),
+            outputs: None,
+            resumed: false,
+            inputs: Some(crate::build::step_inputs(name, site)),
+        };
         let rec = BuildRecord {
             inputs: BuildInputs {
-                record: skimap_common::site::evaluation_records()[0].clone(),
+                record,
                 version: "0.1.0".into(),
                 personal_sources: false,
                 revision: france::BUILD_REVISION,
@@ -2113,8 +2359,8 @@ mod tests {
             finished_at: "2026-11-15T10:01:00Z".into(),
             ok: true,
             outcome: BuildOutcome {
-                site: "cervieres".into(),
-                steps: Vec::new(),
+                site: site.id.into(),
+                steps: crate::build::READS.iter().map(|(n, _)| step(n)).collect(),
                 seconds: 60.0,
                 pack_bytes: Some(1),
                 export_bytes: None,
@@ -2124,22 +2370,50 @@ mod tests {
             .unwrap()
             .to_utc();
         let day = Duration::from_secs(86_400);
-        assert!(up_to_date(&rec, &rec.inputs, day, now));
+        assert!(up_to_date(&rec, &rec.inputs, site, day, now));
         assert!(!up_to_date(
             &rec,
             &rec.inputs,
+            site,
             Duration::from_secs(3600),
             now
         ));
         let mut other = rec.inputs.clone();
         other.personal_sources = true;
-        assert!(!up_to_date(&rec, &other, day, now));
+        assert!(!up_to_date(&rec, &other, site, day, now));
         let mut other = rec.inputs.clone();
         other.record.bbox.north += 0.01;
-        assert!(!up_to_date(&rec, &other, day, now));
+        assert!(!up_to_date(&rec, &other, site, day, now));
         let mut failed = rec.clone();
         failed.ok = false;
-        assert!(!up_to_date(&failed, &rec.inputs, day, now));
+        assert!(!up_to_date(&failed, &rec.inputs, site, day, now));
+        // The journal of a build killed before its end, `ok` or not (#174).
+        let mut interrupted = rec.clone();
+        interrupted.outcome.steps.truncate(8);
+        assert!(!up_to_date(&interrupted, &rec.inputs, site, day, now));
+        // The pack made by another code (#174).
+        let mut other_code = rec.clone();
+        for s in &mut other_code.outcome.steps {
+            if s.name == "build-pack" {
+                s.inputs = Some(crate::build::step_inputs_of(&s.name, site, Some("ancien")));
+            }
+        }
+        assert!(!up_to_date(&other_code, &rec.inputs, site, day, now));
+        // A record written before the code of the pack was recorded: the fields only.
+        let mut legacy = rec.clone();
+        for s in &mut legacy.outcome.steps {
+            s.inputs = None;
+        }
+        assert!(!up_to_date(&legacy, &rec.inputs, site, day, now));
+        for s in &mut legacy.outcome.steps {
+            if crate::build::step_code(&s.name).is_some() {
+                s.inputs = Some(crate::build::step_inputs(&s.name, site));
+            }
+        }
+        assert!(
+            up_to_date(&legacy, &rec.inputs, site, day, now),
+            "the other steps taken with the fields they read"
+        );
         // A new revision of the steps: not up to date, but its steps can be taken over.
         let mut older = rec.inputs.clone();
         older.revision = 1;
@@ -2149,6 +2423,7 @@ mod tests {
                 ..rec.clone()
             },
             &rec.inputs,
+            site,
             day,
             now
         ));
@@ -2161,6 +2436,69 @@ mod tests {
         let mut public = rec.inputs.clone();
         public.personal_sources = !public.personal_sources;
         assert!(!public.resumable_by(&rec.inputs), "personal_sources");
+    }
+
+    /// #174: the weather of a site that cannot be made, recorded by `meteo-refresh`, is a
+    /// failed step of the site in `status.json` with its reason; an interrupted build is
+    /// said too.
+    #[test]
+    fn status_says_why_a_site_has_no_weather_and_an_interrupted_build() {
+        let (_t, ctx) = one_site_registry();
+        let registry = Registry::load(&ctx.layout).unwrap();
+        let site = registry.buildable()[0];
+        let steps = Fake::new();
+        build_many_with(&ctx, &registry, &[site], &catch_up_opts(), &steps).unwrap();
+        let report = skimap_meteo::arome::RefreshReport {
+            run: "2026-11-18T09:00:00Z".into(),
+            sites: vec![skimap_meteo::arome::SiteRefresh {
+                site: site.id.into(),
+                status: "failed",
+                points: 0,
+                hours: 0,
+                error: Some("no value at x (1, 2): outside the AROME grid".into()),
+            }],
+        };
+        assert!(record_meteo(&ctx.layout, &[site], &report).is_empty());
+        let r = france::read_record(&ctx.layout, site.id).unwrap();
+        assert!(!r.ok);
+        let path = write_status(&ctx.layout, &[site]).unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let st = &v["by_site"][0];
+        assert_eq!(st["state"], "failed");
+        assert_eq!(st["failed_steps"][0]["step"], "meteo");
+        assert!(
+            st["failed_steps"][0]["error"]
+                .as_str()
+                .unwrap()
+                .contains("outside the AROME grid"),
+            "{st}"
+        );
+        // The failed step is tried again by the next catch-up; the pack keeps the weather
+        // it has (not marked to redo).
+        let state = |n: &str| r.outcome.steps.iter().find(|s| s.name == n).unwrap().state;
+        assert_eq!(state("build-pack"), StepState::Ok);
+        // The weather written at the next run: the pack and the export to redo.
+        let mut report = report;
+        report.sites[0].status = "written";
+        report.sites[0].error = None;
+        assert!(record_meteo(&ctx.layout, &[site], &report).is_empty());
+        let r = france::read_record(&ctx.layout, site.id).unwrap();
+        let state = |n: &str| r.outcome.steps.iter().find(|s| s.name == n).unwrap().state;
+        assert_eq!(state("meteo"), StepState::Ok);
+        assert_eq!(state("build-pack"), StepState::Blocked);
+        // A build killed after `zones`.
+        let mut rec = r.clone();
+        rec.outcome.steps.truncate(8);
+        rec.ok = true;
+        skimap_common::output::write_json(&france::record_path(&ctx.layout, site.id), &rec)
+            .unwrap();
+        let path = write_status(&ctx.layout, &[site]).unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(v["by_site"][0]["state"], "interrupted");
+        assert_eq!(v["interrupted"], 1);
+        assert_eq!(v["by_site"][0]["missing_steps"][0], "avalanche-exposure");
+        let lines = describe_status(&path).unwrap();
+        assert!(lines.iter().any(|l| l.contains("interrompu")), "{lines:?}");
     }
 
     /// B167: a step that ends `ok` without producing anything is listed in `status.json`

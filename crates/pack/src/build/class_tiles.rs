@@ -1340,12 +1340,18 @@ pub fn part_key(
 ) -> Result<String> {
     let dir = out.join(spec.origin);
     let mut k = crate::build::parts::Key::new(&format!("class:{}", spec.id));
-    k.add("spec", &format!("{spec:?}"))
-        .add("params", &format!("{params:?}"))
-        .add("personal_sources", &personal_sources.to_string());
+    add_code(&mut k, spec, params);
+    k.add("personal_sources", &personal_sources.to_string());
     k.add_file("source", &dir.join(spec.file))?;
     k.add_file("meta", &dir.join(spec.meta))?;
     Ok(k.finish())
+}
+
+/// The code of a class layer in its part key: the layer description and the
+/// vectorisation parameters ([`crate::build::code_revision`] takes the same, #174).
+pub(crate) fn add_code(k: &mut crate::build::parts::Key, spec: &ClassSpec, params: &Params) {
+    k.add("spec", &format!("{spec:?}"))
+        .add("params", &format!("{params:?}"));
 }
 
 /// The metadata copy of a class layer taken from the previous pack
@@ -1457,6 +1463,30 @@ pub fn include(
 mod tests {
     use super::*;
     use skimap_common::grid::GeoTransform;
+
+    /// The part key keeps the bytes it had before its code was shared with
+    /// [`crate::build::code_revision`] (#174): no class layer is made again for that.
+    #[test]
+    fn part_key_unchanged_by_the_code_revision() {
+        let t = tempfile::tempdir().unwrap();
+        let params = Params::default();
+        for spec in catalog() {
+            let mut k = crate::build::parts::Key::new(&format!("class:{}", spec.id));
+            k.add("spec", &format!("{spec:?}"))
+                .add("params", &format!("{params:?}"))
+                .add("personal_sources", "false");
+            k.add_file("source", &t.path().join(spec.origin).join(spec.file))
+                .unwrap();
+            k.add_file("meta", &t.path().join(spec.origin).join(spec.meta))
+                .unwrap();
+            assert_eq!(
+                part_key(&spec, t.path(), &params, false).unwrap(),
+                k.finish(),
+                "{}",
+                spec.id
+            );
+        }
+    }
 
     #[test]
     fn majority_is_monotone_and_drops_single_cells() {

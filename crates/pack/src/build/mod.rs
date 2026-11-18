@@ -45,6 +45,30 @@ pub const PLAN_IGN_MAXZOOM: u8 = 16;
 /// Default highest zoom of the OSM basemap (the highest of the Protomaps builds).
 pub const OSM_MAXZOOM: u8 = 15;
 
+/// Revision of the code of the pack outside its reusable parts ([`parts`]: layers,
+/// rasters, manifest): bump it when a change of that code makes different bytes from the
+/// same layers, so that every pack is built again once (its parts taken over while their
+/// own code is unchanged). Part of [`code_revision`].
+pub const PACK_REVISION: u32 = 1;
+
+/// Fingerprint of the code that makes a pack with `opts` (#174): [`PACK_REVISION`], the
+/// crate version and [`parts::PARTS_REVISION`] ([`parts::Key::new`]), and the code each
+/// reusable part puts in its key (zooms, styles and assets of the basemaps, description
+/// and vectorisation of the class layers: the same helpers as the part keys). The
+/// pipeline records it with the pack step: a pack made by another code is built again,
+/// even when none of its layers changed, and only the parts whose code changed are made
+/// again. The inputs of the parts (layers, Protomaps build, IGN record) are not in it.
+pub fn code_revision(opts: &BuildOptions) -> String {
+    let mut k = parts::Key::new("code:pack");
+    k.add("pack", &PACK_REVISION.to_string());
+    osm::add_code(&mut k, (opts.osm_minzoom, opts.osm_maxzoom));
+    plan_ign::add_code(&mut k, opts.plan_ign_maxzoom);
+    for spec in class_tiles::catalog() {
+        class_tiles::add_code(&mut k, &spec, &opts.class_params);
+    }
+    k.finish()
+}
+
 /// Options of a pack build.
 #[derive(Debug, Clone)]
 pub struct BuildOptions {
@@ -1031,6 +1055,39 @@ fn group_description(group: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #174: the code of a part changes the code fingerprint of the pack (the OSM
+    /// basemap from zoom 12 instead of 0, #160), the inputs of the parts do not.
+    #[test]
+    fn code_revision_follows_the_code_of_every_part() {
+        let now = BuildOptions::default();
+        let base = code_revision(&now);
+        assert_eq!(base, code_revision(&now));
+        let from_zero = BuildOptions {
+            osm_minzoom: 0,
+            ..now.clone()
+        };
+        assert_ne!(base, code_revision(&from_zero), "OSM zooms");
+        let ign = BuildOptions {
+            plan_ign_maxzoom: 15,
+            ..now.clone()
+        };
+        assert_ne!(base, code_revision(&ign), "Plan IGN zooms");
+        let mut params = now.class_params;
+        params.tolerance_px += 0.5;
+        let class = BuildOptions {
+            class_params: params,
+            ..now.clone()
+        };
+        assert_ne!(base, code_revision(&class), "vectorisation");
+        let inputs = BuildOptions {
+            personal_sources: true,
+            protomaps_build: Some("20261118".into()),
+            ..now.clone()
+        };
+        assert_eq!(base, code_revision(&inputs), "inputs, not code");
+        assert_ne!(base, crate::export::code_revision());
+    }
 
     #[test]
     fn leading_dates() {

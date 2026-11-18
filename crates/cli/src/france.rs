@@ -975,6 +975,10 @@ pub fn write_catalog(layout: &DataLayout, registry: &Registry) -> Result<Catalog
         } else {
             match (&rec, &manifest) {
                 (Some(b), _) if b.inputs.record != *r => "stale",
+                // The journal of a build killed before its end (#174).
+                (Some(b), _) if !crate::build::missing_steps(&b.outcome.steps).is_empty() => {
+                    "interrupted"
+                }
                 (Some(b), Some(_)) if b.ok => "built",
                 (Some(_), Some(_)) => "built_with_failures",
                 (Some(_), None) => "failed",

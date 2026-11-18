@@ -632,12 +632,29 @@ pub fn recorded_run(layout: &DataLayout, site: &Site) -> Option<String> {
 pub struct SiteRefresh {
     /// Site identifier.
     pub site: String,
-    /// `written`, or `unchanged` when the layer already holds the run.
+    /// `written`, `unchanged` when the layer already holds the run, or `failed` when the
+    /// weather of the site cannot be made from the run ([`SiteRefresh::error`]; its
+    /// previous layer, if any, is kept).
     pub status: &'static str,
     /// Points written.
     pub points: usize,
     /// Hours per point.
     pub hours: usize,
+    /// Why the site failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+impl SiteRefresh {
+    fn failed(site: &Site, error: String) -> Self {
+        Self {
+            site: site.id.to_owned(),
+            status: "failed",
+            points: 0,
+            hours: 0,
+            error: Some(error),
+        }
+    }
 }
 
 /// Report of [`refresh`].
@@ -764,6 +781,9 @@ fn write_site(
 /// downloads it once (cache), decodes each file once for every point of every site, and
 /// rewrites a site only when its layer does not hold that run yet. Idempotent: a second
 /// call within the same run writes nothing. Publishable (no `personal_sources` needed).
+/// A site whose weather cannot be made (no forecast point, a point outside the grid)
+/// is reported `failed` with the reason and the others are written (#174); an error of
+/// the run itself (listing, download, decoding) fails the whole call.
 pub fn refresh(sites: &[&Site], layout: &DataLayout, dl: &Downloader) -> Result<RefreshReport> {
     let run = latest_run(dl)?;
     refresh_run(sites, layout, dl, run)
@@ -789,15 +809,17 @@ pub fn refresh_run(
                 status: "unchanged",
                 points: 0,
                 hours: 0,
+                error: None,
             });
             continue;
         }
         let pts = crate::hourly::points(site);
         if pts.is_empty() {
-            return Err(Error::format(
-                "site",
+            report.sites.push(SiteRefresh::failed(
+                site,
                 format!("no forecast point for {}", site.id),
             ));
+            continue;
         }
         todo.push((site, pts));
     }
@@ -809,18 +831,34 @@ pub fn refresh_run(
         .flat_map(|(_, pts)| pts.iter().map(|p| (p.lat, p.lon)))
         .collect();
     let decoded = decode_run(dl, run, &all)?;
+    report.sites.extend(write_decoded(&todo, layout, &decoded));
+    Ok(report)
+}
+
+/// Writes the layer of each site of `todo` from `decoded` (its points in the order of
+/// `todo`): a site that cannot be written is `failed`, the others are written.
+fn write_decoded(
+    todo: &[(&Site, Vec<ForecastPoint>)],
+    layout: &DataLayout,
+    decoded: &DecodedRun,
+) -> Vec<SiteRefresh> {
+    let mut out = Vec::new();
     let mut offset = 0;
-    for (site, pts) in &todo {
-        let f = write_site(site, layout, pts, &decoded, offset)?;
+    for (site, pts) in todo {
+        let written = write_site(site, layout, pts, decoded, offset);
         offset += pts.len();
-        report.sites.push(SiteRefresh {
-            site: site.id.to_owned(),
-            status: "written",
-            points: f.points.len(),
-            hours: f.points.first().map_or(0, |p| p.hours.len()),
+        out.push(match written {
+            Ok(f) => SiteRefresh {
+                site: site.id.to_owned(),
+                status: "written",
+                points: f.points.len(),
+                hours: f.points.first().map_or(0, |p| p.hours.len()),
+                error: None,
+            },
+            Err(e) => SiteRefresh::failed(site, e.to_string()),
         });
     }
-    Ok(report)
+    out
 }
 
 /// Publishable hourly weather of one site ([`refresh`] for one site); returns the layer.
@@ -835,10 +873,13 @@ pub fn build_run(
     dl: &Downloader,
     run: Option<DateTime<Utc>>,
 ) -> Result<HourlyFile> {
-    match run {
+    let report = match run {
         Some(run) => refresh_run(&[site], layout, dl, run)?,
         None => refresh(&[site], layout, dl)?,
     };
+    if let Some(e) = report.sites.iter().find_map(|s| s.error.as_deref()) {
+        return Err(Error::Site(e.to_owned()));
+    }
     let path = layout.layer_dir(site, LAYER)?.join("hourly.json");
     let bytes = std::fs::read(&path).map_err(|e| skimap_common::Error::io(&path, e))?;
     serde_json::from_slice(&bytes)
@@ -851,6 +892,49 @@ mod tests {
 
     fn run() -> DateTime<Utc> {
         Utc.with_ymd_and_hms(2026, 11, 15, 9, 0, 0).unwrap()
+    }
+
+    /// #174: a site whose weather cannot be made from the run (a point outside the grid)
+    /// fails alone; the sites after it get their layer.
+    #[test]
+    fn a_site_whose_weather_cannot_be_made_fails_alone() {
+        let t = tempfile::tempdir().unwrap();
+        let layout = DataLayout::new(t.path());
+        let a = skimap_common::site::site("cervieres").unwrap();
+        let b = skimap_common::site::site("chapelle-des-bois").unwrap();
+        let todo = vec![(a, crate::hourly::points(a)), (b, crate::hourly::points(b))];
+        let n = todo.iter().map(|(_, p)| p.len()).sum::<usize>();
+        let na = todo[0].1.len();
+        let mut series = vec![PointSeries::new(); n];
+        for s in &mut series[na..] {
+            s.insert((Var::T2, 0), 270.0);
+            s.insert((Var::T2, 1), 271.0);
+        }
+        let decoded = DecodedRun {
+            run: run(),
+            series,
+            past: Vec::new(),
+            elevation_m: (0..n).map(|i| (i >= na).then_some(1500.0)).collect(),
+            grid_latlon: vec![None; n],
+        };
+        let r = write_decoded(&todo, &layout, &decoded);
+        let status: Vec<(&str, &str)> = r.iter().map(|s| (s.site.as_str(), s.status)).collect();
+        assert_eq!(status, [(a.id, "failed"), (b.id, "written")]);
+        assert!(
+            r[0].error
+                .as_deref()
+                .is_some_and(|e| e.contains("outside the AROME grid")),
+            "{:?}",
+            r[0].error
+        );
+        assert!(
+            layout
+                .layer_dir(b, LAYER)
+                .unwrap()
+                .join("hourly.json")
+                .is_file()
+        );
+        assert_eq!(recorded_run(&layout, a), None);
     }
 
     #[test]
