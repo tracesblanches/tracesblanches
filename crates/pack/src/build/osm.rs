@@ -19,9 +19,10 @@
 //! highest zoom differ from it) or it is [`MAX_AGE_DAYS`] older than the latest one:
 //! the basemap then changes at most once a week, and the date shown is the date of the
 //! build in use. An adopted build travels as a patch of its changed tiles (#160,
-//! [`crate::patch`]), but those are mostly the wide tiles of zooms 2 to 10 that change
-//! every day: 0.4 to 3.4 MB per site between builds 20261114 and 20261115 (38 sites), so
-//! adopting every build would still cost about a megabyte a day.
+//! [`crate::patch`]). Those were mostly the wide tiles of zooms 2 to 10 that change every
+//! day (0.4 to 3.4 MB per site between builds 20261114 and 20261115, 38 sites), which the
+//! app never draws: the extract starts at [`crate::OSM_MINZOOM`], and adopting build
+//! 20261118 cost 1.2 to 19 kB of patch per site instead of 0.57 to 2.35 MB (ten sites).
 //!
 //! Licence: ODbL, « Produced Work » of OpenStreetMap; attribution Protomaps and
 //! OpenStreetMap contributors (report 03).
@@ -64,9 +65,9 @@ pub const MAX_AGE_DAYS: i64 = 7;
 /// (those cover the site box) differ from it. One edit (a track, a few buildings)
 /// touched 1 to 9 tiles of a site; 16 tiles between builds 20261115 and 20261116 for one
 /// site are a mapping session in its box. A count, not a share of the box (5 % before,
-/// #160): an adoption costs the patch of the wide tiles of zooms 2 to 10 whatever the
-/// box (0.4 to 3.4 MB), and 5 % of the 56 tiles of a small box (3 tiles, one edit) made
-/// ten sites adopt build 20261118. Smaller edits add up against the build in use, and
+/// #160): an adoption cost the patch of the wide tiles of zooms 2 to 10 whatever the
+/// box (0.4 to 3.4 MB, before the extract started at [`crate::OSM_MINZOOM`]), and 5 % of
+/// the 56 tiles of a small box (3 tiles, one edit) made ten sites adopt build 20261118. Smaller edits add up against the build in use, and
 /// wait at most [`MAX_AGE_DAYS`]; the trails of the pack come from their own daily OSM
 /// layers.
 pub const CHANGED_TILES: u64 = 10;
