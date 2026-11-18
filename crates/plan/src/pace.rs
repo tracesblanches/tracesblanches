@@ -639,7 +639,8 @@ pub fn profile_presets(style: Style) -> Vec<ProfileModel> {
 /// How well a group's parameters explain the day so far (log likelihood, up to a constant
 /// common to every profile): the moving time against the time the group would take for the
 /// model time progressed per terrain (log-normal: the group's predictive spread and the
-/// day's own), and the stops of 90 s or more (Poisson at the group's rate).
+/// day's own), and the stops of 90 s or more (Poisson at the group's rate, whose gamma
+/// uncertainty is integrated: negative binomial).
 pub fn day_fit(p: &PaceParams, model_done: [f64; TERRAINS], moving_s: f64, stops: u32) -> f64 {
     let (mut pred, mut var_w) = (0.0, 0.0);
     for (m, n) in model_done.iter().zip(&p.pace) {
@@ -653,8 +654,13 @@ pub fn day_fit(p: &PaceParams, model_done: [f64; TERRAINS], moving_s: f64, stops
     let var = var_w / pred + DAY_SIGMA_W * DAY_SIGMA_W * 600.0 / moving_s.max(600.0);
     let z = (moving_s / pred).ln();
     let pace = -0.5 * z * z / var - 0.5 * var.ln();
-    let mu = p.stops.mean().max(1e-3) * moving_s / 3600.0;
-    let stops = f64::from(stops) * mu.ln() - mu;
+    // Negative binomial: Poisson at the group's rate, its uncertainty (gamma) integrated.
+    let (a, b) = (p.stops.a.max(1e-3), p.stops.b.max(1e-6));
+    let h = moving_s / 3600.0;
+    let n = f64::from(stops);
+    let stops = (0..stops).map(|j| (a + f64::from(j)).ln()).sum::<f64>()
+        + a * (b / (b + h)).ln()
+        + n * (h / (b + h)).ln();
     pace + stops
 }
 

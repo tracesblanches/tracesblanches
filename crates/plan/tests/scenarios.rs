@@ -2141,9 +2141,10 @@ fn q9_36_chapelle_family_without_profile_offered_its_profile() {
         );
         errs.push(err);
     }
-    // Measured, not a gain: the first half hour points to a slow lone adult, whose stops
-    // are an adult's; accepted, the first proposal errs as much as without (15/11/2026:
-    // −22, −22, −25 min). The error of the family's first proposal stays open (X14).
+    // The first half hour of this day points to a slow lone adult (no stop in 25 min, then
+    // 20 min of stops). The stops still to come are those of the profiles the day fits
+    // (X14, `calibration::stop_mixture`): 18/11/2026 −20, −20, −25 min (15/11/2026, an
+    // adult's stops: −22, −22, −25). Over many days: example `pace_eval`, « Sans profil ».
     println!("erreurs sans réponse / refusé / accepté : {errs:?} min");
     assert!(errs.iter().all(|e| e.abs() <= 40), "{errs:?}");
 }

@@ -293,3 +293,53 @@ fn a_family_morning_is_cautious() {
         assert!(pc.planned <= p.turnaround.limit.unwrap());
     }
 }
+
+/// X14 (#148): a group nobody described (a plan without a profile). During the outing, the
+/// stops still to come are those of the profiles the day fits (`pace::day_fit`, mixture
+/// of `pace::profile_presets`), not those of a lone adult: the family of 6 and 9 is no
+/// longer predicted back half an hour too early at a quarter of the route, and adults are
+/// not predicted with a family's stops.
+#[test]
+fn a_group_without_profile_is_predicted_at_its_own_stops() {
+    for site in [&CERVIERES, &CHAPELLE_DES_BOIS] {
+        let req = presets::family_request(site, presets::past_day(site));
+        let res = evaluate(
+            site,
+            req,
+            Behaviour::family(),
+            GroupProfile::family(2, &[6, 9], skimap_core::routing::Style::Classic),
+            20,
+        );
+        let q = at(&pace_eval::score(&res, 0), 0.25);
+        let (mae, bias, cover) = q.unknown;
+        println!(
+            "{} famille sans profil à 25 % : erreur {mae:.1} min, biais {bias:+.1} min, couverture {:.0} % ({} jours)",
+            site.id,
+            cover * 100.0,
+            q.n
+        );
+        assert!(q.n >= 15, "{}: {q:?}", site.id);
+        assert!(bias > -15.0, "{}: biais {bias:+.1} min", site.id);
+        assert!(cover >= 0.7, "{}: couverture {cover:.2}", site.id);
+        let req = presets::requests(site, presets::past_day(site))[0].clone();
+        let style = req.style;
+        for bh in [Behaviour::normal_adult(), Behaviour::fast_adult()] {
+            let res = evaluate(
+                site,
+                req.clone(),
+                bh,
+                GroupProfile::solo(style, Level::Intermediate),
+                20,
+            );
+            let q = at(&pace_eval::score(&res, 0), 0.25);
+            let (mae, bias, cover) = q.unknown;
+            println!(
+                "{} adulte sans profil à 25 % : erreur {mae:.1} min, biais {bias:+.1} min, couverture {:.0} %",
+                site.id,
+                cover * 100.0
+            );
+            assert!(mae <= 12.0 && bias.abs() <= 10.0, "{}: {q:?}", site.id);
+            assert!(cover >= 0.75, "{}: couverture {cover:.2}", site.id);
+        }
+    }
+}
