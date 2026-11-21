@@ -176,7 +176,7 @@ impl Relief {
 struct Inputs {
     grid: OffpisteGrid,
     snow: Option<SnowGrid>,
-    exposure: Option<Grid<u8>>,
+    /// The avalanche exposure is the grid of its overlay (one copy in memory, #125).
     overlays: Vec<Overlay>,
     zones: Option<(ZoneLayer, RuleSet)>,
     network: Option<Areas>,
@@ -282,8 +282,8 @@ pub fn open_offpiste(
         missing.push(tx.missing_layer("exposure").to_owned());
     }
     let overlays = exposure
-        .iter()
-        .map(|g| ExposureFactors::default().overlay(g.clone()))
+        .into_iter()
+        .map(|g| ExposureFactors::default().overlay(g))
         .collect();
     let text = |id: &str| -> Option<String> {
         let l = pack.layer(id).ok()?;
@@ -312,7 +312,6 @@ pub fn open_offpiste(
         inputs: Inputs {
             grid,
             snow,
-            exposure,
             overlays,
             zones,
             network,
@@ -410,10 +409,14 @@ impl OffpistePlanner {
         // Difficulty (SR1) on the same rasters.
         let elev = ElevationDm(&i.grid.elevation);
         let slope = SlopeHalfDeg(&i.grid.slope);
-        let exp = i.exposure.as_ref().map(|g| Classes {
-            grid: g,
-            nodata: offpiste::EXPOSURE_NODATA,
-        });
+        let exp = i
+            .overlays
+            .iter()
+            .find(|o| o.kind == offpiste::OverlayKind::AvalancheExposure)
+            .map(|o| Classes {
+                grid: &o.grid,
+                nodata: offpiste::EXPOSURE_NODATA,
+            });
         let pistes = Classes {
             grid: &i.grid.pistes,
             nodata: u8::MAX,

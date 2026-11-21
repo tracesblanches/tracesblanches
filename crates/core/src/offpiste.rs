@@ -652,10 +652,36 @@ fn decode_row<T: RasterValue>(row: &[u8], w: usize, encoding: Encoding) -> Vec<T
     }
 }
 
-/// Reads a raster file.
+/// Reads a raster file, row by row into its grid (E1 #125: the file's bytes are never
+/// held whole next to the grid: the peak is the grid alone).
 pub fn read_raster<T: RasterValue>(path: &Path) -> Result<Grid<T>> {
-    let bytes = std::fs::read(path).map_err(|e| io_err(path, e))?;
-    decode_raster(&bytes).map_err(|e| Error::Format(format!("{}: {e}", path.display())))
+    use std::io::Read as _;
+    let at = |e: Error| Error::Format(format!("{}: {e}", path.display()));
+    let file = std::fs::File::open(path).map_err(|e| io_err(path, e))?;
+    let len = file.metadata().map_err(|e| io_err(path, e))?.len();
+    let mut r = std::io::BufReader::with_capacity(1 << 16, file);
+    let mut head = [0u8; HEADER_LEN];
+    r.read_exact(&mut head)
+        .map_err(|_| at(Error::Format("not an SKR1 raster".into())))?;
+    let h = Header::<T>::parse(&head).map_err(at)?;
+    if len != (HEADER_LEN + h.n_bytes) as u64 {
+        return Err(at(Error::Format(format!(
+            "{} data bytes for {} x {} cells of {} bytes",
+            len.saturating_sub(HEADER_LEN as u64),
+            h.width,
+            h.height,
+            T::SIZE
+        ))));
+    }
+    let mut data: Vec<T> = Vec::with_capacity(h.width * h.height);
+    let mut row = vec![0u8; h.width * T::SIZE];
+    for _ in 0..h.height {
+        r.read_exact(&mut row).map_err(|e| io_err(path, e))?;
+        data.extend(decode_row::<T>(&row, h.width, h.encoding));
+    }
+    Ok(Grid::from_vec(h.width, h.height, h.transform, h.crs, data)
+        .map_err(|e| at(Error::Format(e.to_string())))?
+        .with_nodata(h.nodata))
 }
 
 // ---------------------------------------------------------------------------------------
