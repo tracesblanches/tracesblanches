@@ -190,6 +190,8 @@ class LogicTest {
                     object : VoiceActivity {
                         override fun probability(frame: FloatArray) = if (frame.any { it != 0f }) 0.9f else 0.05f
 
+                        override fun reset() = Unit
+
                         override fun close() {
                             closed++
                         }

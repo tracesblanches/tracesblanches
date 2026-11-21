@@ -142,16 +142,77 @@ fn speech_rms(x: &[f64]) -> f64 {
     (loud.iter().map(|r| r * r).sum::<f64>() / loud.len().max(1) as f64).sqrt()
 }
 
+/// The spoken greeting put before each question (VO5 #87, `GreetingContext` of
+/// `android/voicecmd`, written to its `src/main/resources/fr/skimap/voicecmd/`): one per
+/// language that needs one, so that Parakeet v3 hears the language before a short question.
+/// French: `estelle`, the guidance voice of the packs (measured against `cosette` and
+/// `fantine`: best on the other test voice, `marius`). English has none (« Hello. » by
+/// `jane` lost 7 points on the clean English questions).
+/// Silences trimmed by the energy gate of [`speech_rms`], 50 ms kept around, peak at half
+/// scale, 16 kHz mono WAV.
+///
+/// ```sh
+/// cargo run --release -p skimap-intent --example command_audio -- --prefix android/voicecmd/src/main/resources/fr/skimap/voicecmd
+/// ```
+const PREFIXES: [(&str, &str, &str, &str); 1] =
+    [("greeting-fr.wav", "french", "estelle", "Bonjour.")];
+
+fn prefixes(out: &Path, models: &Path, bin: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    std::fs::create_dir_all(out)?;
+    for (name, model, voice, text) in PREFIXES {
+        let tts = PocketTts {
+            binary: bin.to_path_buf(),
+            model: models.join(format!("pocket-tts-{model}-Q8_0.gguf")),
+            voices: models.join(format!("pocket-tts-{model}-voices.gguf")),
+            voice: voice.into(),
+            device: None,
+            seed: 42,
+        };
+        let (u, _) = tts.synthesize(&[text.to_string()])?;
+        let speech = resample(&u[0].samples);
+        let f = (OUT_RATE / 50) as usize;
+        let rms: Vec<f64> = speech
+            .chunks(f)
+            .map(|c| (c.iter().map(|v| v * v).sum::<f64>() / c.len() as f64).sqrt())
+            .collect();
+        let max = rms.iter().copied().fold(0.0, f64::max);
+        let first = rms.iter().position(|r| *r > max * 0.01).unwrap_or(0);
+        let last = rms.iter().rposition(|r| *r > max * 0.01).unwrap_or(0);
+        let margin = (OUT_RATE / 20) as usize;
+        let a = (first * f).saturating_sub(margin);
+        let b = ((last + 1) * f + margin).min(speech.len());
+        let peak = speech[a..b].iter().fold(0.0f64, |m, v| m.max(v.abs()));
+        let pcm: Vec<i16> = speech[a..b]
+            .iter()
+            .map(|v| (v * 0.5 / peak * 32767.0) as i16)
+            .collect();
+        write_wav(&out.join(name), &pcm, OUT_RATE)?;
+        println!(
+            "{name}: « {text} » by {voice}, {:.2} s",
+            pcm.len() as f64 / f64::from(OUT_RATE)
+        );
+    }
+    Ok(())
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let out = PathBuf::from(
-        std::env::args()
-            .nth(1)
-            .ok_or("usage: command_audio <out dir>")?,
-    );
+    let arg = std::env::args()
+        .nth(1)
+        .ok_or("usage: command_audio <out dir> | --prefix <out dir>")?;
     let home = PathBuf::from(std::env::var("HOME")?);
     let models = home.join("projects/speak/app/models/tts");
     let bin = home.join(".cache/skimap/pockettts/build-cuda/pocket-tts");
-    let cases = parse(include_str!("../tests/data/test.tsv"))?;
+    if arg == "--prefix" {
+        let out = PathBuf::from(std::env::args().nth(2).ok_or("--prefix <out dir>")?);
+        return prefixes(&out, &models, &bin);
+    }
+    let out = PathBuf::from(arg);
+    let dev = std::env::args().nth(2).as_deref() == Some("dev");
+    let cases = parse(if dev {
+        include_str!("../tests/data/dev.tsv")
+    } else {
+        include_str!("../tests/data/test.tsv")
+    })?;
     // Voices: CC0 or CC-BY (docs/voix.md), two per language.
     let runs = [
         (Lang::Fr, "french", "estelle"),
