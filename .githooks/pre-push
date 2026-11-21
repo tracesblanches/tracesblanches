@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# pre-push hook of skimap: the local CI before every push (the CI never runs on GitHub).
+#
+# Enabled per repository with `git config core.hooksPath .githooks`. By default the quick
+# stages (fmt, clippy -D warnings, cargo test --workspace: scripts/ci --quick, a few
+# minutes); SKIMAP_PREPUSH=full runs the whole local CI (scripts/ci), SKIMAP_PREPUSH=<stages>
+# runs these (scripts/ci --only <stages>). A failed stage refuses the push; the summary and
+# the logs (~/.cache/skimap-ci/latest) say why. Nothing here touches the git configuration
+# (commit signing stays as it is).
+set -euo pipefail
+root=$(git rev-parse --show-toplevel)
+
+# Only deletions pushed (e.g. `git push origin :branch`): nothing to check.
+pushes_commits=0
+while read -r _local_ref local_sha _remote_ref _remote_sha; do
+  [[ $local_sha =~ ^0+$ ]] || pushes_commits=1
+done
+((pushes_commits)) || exit 0
+
+case ${SKIMAP_PREPUSH:-quick} in
+  quick) exec "$root/scripts/ci" --quick ;;
+  full) exec "$root/scripts/ci" ;;
+  *) exec "$root/scripts/ci" --only "$SKIMAP_PREPUSH" ;;
+esac

@@ -2,7 +2,7 @@
 
 Deux niveaux :
 
-- **comptage d'instructions** (Callgrind par gungraun 0.20, déterministe : deux exécutions du même binaire donnent les mêmes nombres) sur des entrées réelles réduites versionnées dans `benches/data` ; c'est la vérification de non-régression de la CI (`benches/compare.sh`, job `bench` de `.github/workflows/ci.yml`) ;
+- **comptage d'instructions** (Callgrind par gungraun 0.20, déterministe : deux exécutions du même binaire donnent les mêmes nombres) sur des entrées réelles réduites versionnées dans `benches/data` ; c'est la vérification de non-régression de la CI locale (`benches/compare.sh`, étape `bench` de `scripts/ci`) ;
 - **temps réel sur le poste** sur les entrées complètes de `data/out` : banc `wall` de skimap-core, exemples `offpiste_bench` et `matching_bench`, `skimap build-all`.
 
 ## Cas mesurés
@@ -13,7 +13,7 @@ Deux niveaux :
 | Rattachement d'une sortie entière | `dominant/matching_outing` : Le Laus → refuge des Fonts et retour, 7 576 fixes (1 / s, bruit 10 m, forêt) | `wall` ; `matching_bench` (464 475 et 533 961 fixes) |
 | Routage sur le graphe complet | `dominant/routing_full_graph` : précalcul et 40 itinéraires sur tout le graphe de Chapelle-des-Bois (773 arêtes) | `wall` |
 | Exposition aux avalanches de Cervières | `exposure/exposure_model` : modèle complet sur l'extrait de 64 × 64 cellules le plus exposé (rayon à un fil, le fil du banc) | étape `avalanche-exposure` de `build-all cervieres` |
-| build-all complet | — (téléchargements, 5 Go de cache) | `skimap build-all` sur les deux sites ; chaque semaine en CI (`weekly.yml`) |
+| build-all complet | — (téléchargements, 5 Go de cache) | `skimap build-all` sur les deux sites ; `scripts/ci --weekly` |
 
 ## Comptages (poste, Debian 13, valgrind 3.24, 15/11/2026)
 
@@ -91,4 +91,4 @@ cargo bench -p skimap-core --bench wall                       # temps réel
 SKIMAP_MAKE_BENCH_DATA=1 cargo bench -p skimap-core --features pipeline --bench make_data   # régénère benches/data
 ```
 
-Les entrées de `benches/data` (996 Ko) viennent de `data/out`, sources publiables seulement : exposition du modèle seul (sans la fusion CLPA de la couche), table des classes de zones sans les identifiants de sources à licence non vérifiée ; sources et licences dans `bench_data.meta.json`, vérification `.github/scripts/check-unpublishable-data.sh` (job `workflows`) ; elles seront à remplacer par le jeu réduit versionné de Q1 (#101, `fixtures/`) quand il sera fusionné.
+Les entrées de `benches/data` (996 Ko) viennent de `data/out`, sources publiables seulement : exposition du modèle seul (sans la fusion CLPA de la couche), table des classes de zones sans les identifiants de sources à licence non vérifiée ; sources et licences dans `bench_data.meta.json`, vérification `scripts/check-unpublishable-data.sh` (étape `data-check` de `scripts/ci`) ; elles seront à remplacer par le jeu réduit versionné de Q1 (#101, `fixtures/`) quand il sera fusionné.

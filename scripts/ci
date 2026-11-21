@@ -1,0 +1,405 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2317 # the stages are called indirectly ("stage_$s")
+# Local CI of skimap (F1 #1, Q3 #103, Q5 #105, Q6 #106, Q8 #108, Q9 #109).
+#
+# The CI runs on the workstation only, never on GitHub Actions (decision of 21/11/2026: no
+# paid runner). This script does everything the former workflows did (ci.yml, android.yml,
+# weekly.yml), stage by stage, writes one log per stage and prints a summary; the exit code
+# is 0 only if every stage that ran passed.
+#
+#   scripts/ci                     every stage except the weekly one
+#   scripts/ci --quick             fmt, clippy, test (the pre-push hook)
+#   scripts/ci --weekly            every stage, then the weekly real build-all
+#   scripts/ci --only fuzz,bench   these stages only (names below)
+#   scripts/ci --skip android      every stage except these
+#   scripts/ci --list              the stages and what they run
+#
+# Options:
+#   --fuzz-secs N         fuzzing time per target (default 60)
+#   --bench-base REV      base revision of the instruction-count comparison (default: the
+#                         merge base with main, or HEAD~1 on main itself)
+#   --bench-limit P       allowed instruction growth (default 5%)
+#   --weekly-keep-cache   weekly: keep the download cache of the previous run (default: an
+#                         empty cache, every source downloaded again)
+#   --fail-fast           stop at the first failed stage
+#
+# Environment: SKIMAP_DATA_DIR (complete local data for the full-data tests; default
+# ./data, then the data/ of the main checkout), SKIMAP_CI_LOG_ROOT (default
+# ~/.cache/skimap-ci), SKIMAP_CI_WEEKLY_DIR (data directory of the weekly build, default
+# ~/.cache/skimap-ci/weekly/data, never the shared data/), METEOFRANCE_API_KEY (weekly: BERA;
+# without it the `bera` step reports Unavailable), ANDROID_HOME (default ~/Android/Sdk),
+# FUZZ_TOOLCHAIN (default nightly-2026-10-15).
+#
+# Logs: $SKIMAP_CI_LOG_ROOT/<date>/<stage>.log and summary.txt; `latest` points to the last
+# run. Tools missing from ~/.cargo/bin (cargo-deny, cargo-fuzz, cargo-ndk, gungraun-runner)
+# are installed there at the pinned versions. Nothing here runs on a phone or an emulator:
+# the instrumented Android tests stay manual (android/docs/verifier.md).
+set -euo pipefail
+
+root=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
+cd "$root"
+
+all_stages=(fmt clippy test full-data scenarios doc deny data-check scripts properties fuzz bench android-rust android)
+quick_stages=(fmt clippy test)
+
+describe() {
+  case $1 in
+    fmt) echo "rustfmt --check, workspace and fuzz crate" ;;
+    clippy) echo "clippy -D warnings, all targets: workspace, core and pack with pipeline, fuzz crate" ;;
+    test) echo "cargo test --workspace; phone crates alone; no HTTP/SQLite on the phone; geotiff and pipeline variants" ;;
+    full-data) echo "full_data_ tests on the complete local data (SKIMAP_DATA_DIR), release; skipped without data" ;;
+    scenarios) echo "Q9 outing scenarios replayed in the kernel (skimap-plan --test scenarios), at least 15" ;;
+    doc) echo "cargo doc -D warnings (workspace, pipeline variants) and doctests" ;;
+    deny) echo "cargo deny check: licences, RustSec advisories, bans, sources (deny.toml)" ;;
+    data-check) echo "no unpublishable data (Biodiv'sports, CLPA) in versioned data files" ;;
+    scripts) echo "shellcheck of the CI scripts and hooks; no GitHub workflow left" ;;
+    properties) echo "proptest properties, 16 384 cases each, release" ;;
+    fuzz) echo "corpus replay (stable), then ASan replay and N s of fuzzing per target (nightly)" ;;
+    bench) echo "instruction counts (gungraun/Callgrind), base vs working tree, fails above the limit" ;;
+    android-rust) echo "skimap-cli for aarch64-linux-android (cargo ndk, platform 34)" ;;
+    android) echo "Gradle: build (assemble, JVM/Compose tests, lint), verifyRoborazziDebug, detekt, ktlint, instrumented APK compiled" ;;
+    weekly) echo "real build-all of the test sites with fresh downloads, full_data_ tests on it, layer metadata" ;;
+    *) return 1 ;;
+  esac
+}
+
+usage() { sed -n '3,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; }
+
+selected=("${all_stages[@]}")
+only=""
+skip=""
+weekly=0
+fuzz_secs=60
+bench_base=""
+bench_limit=5%
+keep_cache=0
+fail_fast=0
+mode=full
+while (($#)); do
+  case $1 in
+    --quick) selected=("${quick_stages[@]}"); mode=quick ;;
+    --weekly) weekly=1; mode=weekly ;;
+    --only) only=${2:?--only needs stages}; shift ;;
+    --skip) skip=${2:?--skip needs stages}; shift ;;
+    --fuzz-secs) fuzz_secs=${2:?}; shift ;;
+    --bench-base) bench_base=${2:?}; shift ;;
+    --bench-limit) bench_limit=${2:?}; shift ;;
+    --weekly-keep-cache) keep_cache=1 ;;
+    --fail-fast) fail_fast=1 ;;
+    --list)
+      for s in "${all_stages[@]}" weekly; do printf '  %-13s %s\n' "$s" "$(describe "$s")"; done
+      exit 0
+      ;;
+    -h | --help) usage; exit 0 ;;
+    *) echo "unknown argument: $1 (see scripts/ci --help)" >&2; exit 2 ;;
+  esac
+  shift
+done
+((weekly)) && selected+=(weekly)
+if [[ -n $only ]]; then
+  IFS=, read -r -a selected <<<"$only"
+  mode="only $only"
+fi
+if [[ -n $skip ]]; then
+  IFS=, read -r -a skipped <<<"$skip"
+  kept=()
+  for s in "${selected[@]}"; do
+    [[ " ${skipped[*]} " == *" $s "* ]] || kept+=("$s")
+  done
+  selected=("${kept[@]}")
+fi
+for s in "${selected[@]}"; do
+  describe "$s" >/dev/null || { echo "unknown stage: $s (see scripts/ci --list)" >&2; exit 2; }
+done
+
+log_root=${SKIMAP_CI_LOG_ROOT:-$HOME/.cache/skimap-ci}
+run_id=$(date +%Y-%m-%dT%H%M%S)
+logs=$log_root/$run_id
+mkdir -p "$logs"
+ln -sfn "$run_id" "$log_root/latest"
+
+export CARGO_TERM_COLOR=never
+export FUZZ_TOOLCHAIN=${FUZZ_TOOLCHAIN:-nightly-2026-10-15}
+export ANDROID_HOME=${ANDROID_HOME:-$HOME/Android/Sdk}
+ndk_version=28.2.13676358
+
+# Complete local data: SKIMAP_DATA_DIR, ./data, or the data/ of the main checkout (agent
+# worktrees have none of their own).
+data_dir=""
+if [[ -n ${SKIMAP_DATA_DIR:-} ]]; then
+  data_dir=$SKIMAP_DATA_DIR
+else
+  common=$(git rev-parse --path-format=absolute --git-common-dir)
+  for d in "$root/data" "$(dirname "$common")/data"; do
+    if [[ -d $d/out ]]; then data_dir=$(cd "$d" && pwd -P); break; fi
+  done
+fi
+# Tests that read the complete data (skimap-plan scenarios, allocations and pace; the
+# full_data_ category) find it through SKIMAP_DATA_DIR.
+[[ -n $data_dir ]] && export SKIMAP_DATA_DIR=$data_dir
+
+# Test sites of the reference data set (fixtures/, Q1): the weekly build rebuilds them.
+mapfile -t test_sites < <(find fixtures/data/out -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
+
+# --- helpers -------------------------------------------------------------------------------
+
+# Prints and runs a command (inside a stage, its output goes to the stage log).
+run() {
+  printf '\n$ %s\n' "$*"
+  "$@"
+}
+
+# Installs a cargo tool at a pinned version into ~/.cargo/bin when missing or different.
+need_tool() {
+  local crate=$1 version=$2 bin=$3
+  if command -v "$bin" >/dev/null && "$bin" --version 2>/dev/null | grep -q "$version"; then
+    return 0
+  fi
+  case $bin in
+    cargo-*) if cargo "${bin#cargo-}" --version 2>/dev/null | grep -q "$version"; then return 0; fi ;;
+  esac
+  run cargo install "$crate" --version "$version" --locked
+}
+
+# Totals of the cargo test runs of a log: "N passed, M failed, K ignored".
+test_totals() {
+  awk '/^test result: /{
+      for (i = 1; i <= NF; i++) {
+        if ($(i) ~ /^passed;?$/) p += $(i-1)
+        if ($(i) ~ /^failed;?$/) f += $(i-1)
+        if ($(i) ~ /^ignored;?$/) g += $(i-1)
+      }
+      n++
+    }
+    END { if (n) printf "%d passed, %d failed, %d ignored", p, f, g }' "$1"
+}
+
+# --- stages --------------------------------------------------------------------------------
+
+stage_fmt() {
+  run cargo fmt --all --check
+  run cargo fmt --manifest-path fuzz/Cargo.toml --check
+}
+
+stage_clippy() {
+  run cargo clippy --workspace --all-targets --locked -- -D warnings
+  # Pipeline side of the core (GeoTIFF reading, graph profiles, off-piste rasters) and of
+  # the pack (builder, export), with their examples and benches.
+  run cargo clippy -p skimap-core --features pipeline --all-targets --locked -- -D warnings
+  run cargo clippy -p skimap-pack --features pipeline --all-targets --locked -- -D warnings
+  # Fuzz harness and corpus replay (stable; the fuzzing itself is in the fuzz stage).
+  run cargo clippy --manifest-path fuzz/Cargo.toml --all-targets --locked -- -D warnings
+}
+
+stage_test() {
+  # Unit, integration, property (256 cases), scenario and doc tests; features unified
+  # across the workspace (the CLI enables the pipeline side of every crate).
+  run cargo test --no-fail-fast --workspace --locked
+  # Crates that run on the phone, alone: without `pipeline`, without the downloader.
+  run cargo test --no-fail-fast --locked -p skimap-common -p skimap-core -p skimap-assist -p skimap-voice -p skimap-pack
+  printf '\n$ cargo tree (phone crates): no HTTP stack nor SQLite\n'
+  local tree
+  tree=$(cargo tree --locked -e normal -p skimap-core -p skimap-assist -p skimap-voice -p skimap-pack)
+  if grep -E '(reqwest|hyper|rustls|rusqlite) v' <<<"$tree"; then
+    echo "error: the phone crates link an HTTP stack or SQLite"
+    return 1
+  fi
+  echo "ok: none of reqwest, hyper, rustls, rusqlite"
+  run cargo test --no-fail-fast -p skimap-common --features geotiff --locked
+  run cargo test --no-fail-fast -p skimap-core --features pipeline --locked
+  run cargo test --no-fail-fast -p skimap-pack --features pipeline --locked
+}
+
+full_data_tests() {
+  # The `full_data_` category (fixtures/support/mod.rs): ignored by default, they read the
+  # complete data of $SKIMAP_DATA_DIR; a missing directory fails the test.
+  run cargo test --no-fail-fast --release --locked --workspace \
+    --features skimap-core/pipeline,skimap-pack/pipeline,skimap-collab/phone \
+    -- --ignored full_data_
+}
+
+stage_full-data() {
+  if [[ -z $data_dir ]]; then
+    echo "SKIP: no complete local data (set SKIMAP_DATA_DIR, or build into ./data)"
+    return 10
+  fi
+  echo "SKIMAP_DATA_DIR=$data_dir"
+  SKIMAP_DATA_DIR=$data_dir full_data_tests
+}
+
+stage_scenarios() {
+  run cargo test --no-fail-fast --release --locked -p skimap-plan --test scenarios
+  local n
+  n=$(grep -cE '^test .* \.\.\. ok$' "$stage_log" || true)
+  echo "scenarios passed: $n"
+  if ((n < 15)); then
+    echo "error: fewer than 15 scenarios (Q9 criterion)"
+    return 1
+  fi
+}
+
+stage_doc() {
+  RUSTDOCFLAGS="-D warnings" run cargo doc --workspace --no-deps --locked
+  RUSTDOCFLAGS="-D warnings" run cargo doc -p skimap-core --features pipeline --no-deps --locked
+  RUSTDOCFLAGS="-D warnings" run cargo doc -p skimap-pack --features pipeline --no-deps --locked
+  run cargo test --no-fail-fast --workspace --doc --locked
+  echo "documentation: $root/target/doc/skimap_core/index.html"
+}
+
+stage_deny() {
+  need_tool cargo-deny 0.20.2 cargo-deny
+  # Fetches the RustSec advisory database: a new advisory fails even without a change here.
+  run cargo deny --locked check
+}
+
+stage_data-check() {
+  run scripts/check-unpublishable-data.sh
+}
+
+stage_scripts() {
+  run shellcheck -x scripts/ci scripts/check-unpublishable-data.sh .githooks/pre-push fuzz/ci.sh benches/compare.sh
+  printf '\n$ no GitHub Actions workflow (CI is local only)\n'
+  local wf
+  wf=$(git ls-files -- '.github/workflows/*')
+  if [[ -n $wf ]]; then
+    echo "error: versioned workflows would be run (and billed) by GitHub: $wf"
+    return 1
+  fi
+  echo "ok: no file under .github/workflows"
+}
+
+stage_properties() {
+  PROPTEST_CASES=16384 run cargo test --no-fail-fast --release --locked \
+    -p skimap-core -p skimap-zones -p skimap-avalanche -p skimap-common \
+    -p skimap-snow -p skimap-voice -p skimap-pack \
+    --features skimap-common/geotiff \
+    --test prop_graph --test prop_offpiste --test prop_geom --test prop_clip \
+    --test prop_common --test prop_projection --test prop_rounding --test prop_png_tiles
+}
+
+stage_fuzz() {
+  # Seeds, regressions and corpus replayed on the stable toolchain, no sanitizer.
+  run cargo test --no-fail-fast --manifest-path fuzz/Cargo.toml --release --locked
+  rustup toolchain list | grep -q "^$FUZZ_TOOLCHAIN" ||
+    run rustup toolchain install "$FUZZ_TOOLCHAIN" --profile minimal
+  need_tool cargo-fuzz 0.13.2 cargo-fuzz
+  # Nightly lints of the day must not fail the fuzz build.
+  RUSTFLAGS="" run fuzz/ci.sh "$fuzz_secs" "$(nproc)"
+}
+
+stage_bench() {
+  command -v valgrind >/dev/null || { echo "error: valgrind missing (apt install valgrind libc6-dbg)"; return 1; }
+  run valgrind --version
+  need_tool gungraun-runner 0.20.0 gungraun-runner
+  local base=$bench_base
+  if [[ -z $base ]]; then
+    base=$(git merge-base HEAD main)
+    [[ $base == "$(git rev-parse HEAD)" ]] && base=HEAD~1
+  fi
+  run benches/compare.sh "$base" "$bench_limit"
+}
+
+stage_android-rust() {
+  need_tool cargo-ndk 4.1.2 cargo-ndk
+  ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ndk_version \
+    run cargo ndk -t arm64-v8a --platform 34 build --release --locked -p skimap-cli
+  run file target/aarch64-linux-android/release/skimap
+  file target/aarch64-linux-android/release/skimap | grep -q 'ARM aarch64' ||
+    { echo "error: not an aarch64 binary"; return 1; }
+}
+
+stage_android() {
+  need_tool cargo-ndk 4.1.2 cargo-ndk
+  [[ -d $ANDROID_HOME/ndk/$ndk_version ]] ||
+    { echo "error: NDK $ndk_version missing in $ANDROID_HOME/ndk (sdkmanager --install \"ndk;$ndk_version\")"; return 1; }
+  # build: assemble (debug, release with R8), JVM and Compose tests, Android lint (warnings
+  # are errors); verifyRoborazziDebug: captures against src/test/screenshots. The
+  # instrumented test APK, the test store and skimap-server are built too; running them
+  # needs an emulator (manual, android/docs/verifier.md).
+  (cd android && run ./gradlew build verifyRoborazziDebug detekt ktlintCheck \
+    :app:assembleDebugAndroidTest :app:testStore :app:cargoServer --stacktrace)
+  echo "reports: $root/android/app/build/reports/"
+}
+
+stage_weekly() {
+  local w=${SKIMAP_CI_WEEKLY_DIR:-$log_root/weekly/data}
+  if [[ -n $data_dir && $(cd "$(dirname "$w")" 2>/dev/null && pwd -P)/$(basename "$w") == "$data_dir" ]]; then
+    echo "error: the weekly build must not write into the shared data directory $data_dir"
+    return 1
+  fi
+  if ((keep_cache)); then
+    run rm -rf "$w/out"
+  else
+    # Fresh downloads from every source, as the scheduled job did.
+    run rm -rf "$w"
+  fi
+  mkdir -p "$w"
+  run cargo build --release --locked -p skimap-cli
+  local site failed=0
+  for site in "${test_sites[@]}"; do
+    # Sources for personal use only are left out (SKIMAP_PERSONAL_SOURCES unset).
+    if ! (unset SKIMAP_PERSONAL_SOURCES; SKIMAP_DATA_DIR=$w RUST_LOG=warn \
+      run target/release/skimap build-all "$site") 2>&1 | tee "$logs/build-all-$site.log"; then
+      echo "error: build-all $site failed"
+      failed=1
+    fi
+  done
+  SKIMAP_DATA_DIR=$w full_data_tests || failed=1
+  mkdir -p "$logs/meta"
+  (cd "$w" && find out -name '*.meta.json' -exec cp --parents {} "$logs/meta/" \;)
+  du -sh "$w/cache" "$w/out" | tee "$logs/sizes.txt"
+  return "$failed"
+}
+
+# --- run -----------------------------------------------------------------------------------
+
+declare -A status duration detail
+start_all=$SECONDS
+echo "skimap local CI ($mode) at $(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo ' + working tree'), logs in $logs"
+[[ -n $data_dir ]] && echo "complete local data: $data_dir" || echo "complete local data: none"
+failed_any=0
+for s in "${selected[@]}"; do
+  stage_log=$logs/$s.log
+  printf '%-13s ... ' "$s"
+  t0=$SECONDS
+  set +e
+  (set -e; "stage_$s") >"$stage_log" 2>&1
+  rc=$?
+  set -e
+  duration[$s]=$((SECONDS - t0))
+  case $rc in
+    0) status[$s]=ok ;;
+    10) status[$s]=skipped ;;
+    *) status[$s]=FAILED; failed_any=1 ;;
+  esac
+  detail[$s]=$(test_totals "$stage_log")
+  case $s in
+    fuzz) detail[$s]="$(grep -c '^ok ' "$stage_log" || true) targets ok, $(grep -c '^FAIL ' "$stage_log" || true) failed; ${detail[$s]}" ;;
+    bench) detail[$s]=$(grep -E '^Gungraun result:|regressed by|measuring the head only' "$stage_log" | tail -3 | paste -sd ';' -) ;;
+    scenarios) detail[$s]="$(grep -E '^scenarios passed:' "$stage_log" | tail -1); ${detail[$s]}" ;;
+    deny) detail[$s]=$(grep -oE '(advisories|bans|licenses|sources) (ok|FAILED)' "$stage_log" | paste -sd ',' -) ;;
+    data-check) detail[$s]=$(tail -1 "$stage_log") ;;
+    android) detail[$s]=$(grep -E '^BUILD (SUCCESSFUL|FAILED)' "$stage_log" | tail -1) ;;
+    android-rust) detail[$s]=$(grep -oE 'ELF 64-bit [^,]*, ARM aarch64' "$stage_log" | head -1) ;;
+    full-data) [[ ${status[$s]} == skipped ]] && detail[$s]="no complete local data" ;;
+  esac
+  printf '%s (%d s)\n' "${status[$s]}" "${duration[$s]}"
+  if [[ ${status[$s]} == FAILED ]]; then
+    tail -25 "$stage_log" | sed 's/^/    | /'
+    ((fail_fast)) && break
+  fi
+done
+total=$((SECONDS - start_all))
+
+{
+  echo "skimap local CI ($mode), $(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo ' + working tree'), $(date '+%Y-%m-%d %H:%M')"
+  printf '%-13s %-8s %8s  %s\n' stage status time detail
+  for s in "${selected[@]}"; do
+    [[ -n ${status[$s]:-} ]] || continue
+    printf '%-13s %-8s %6d s  %s\n' "$s" "${status[$s]}" "${duration[$s]}" "${detail[$s]}"
+  done
+  printf 'total %d min %02d s; ' $((total / 60)) $((total % 60))
+  if ((failed_any)); then echo "RESULT: FAILED"; else echo "RESULT: OK"; fi
+  echo "logs: $logs"
+} | tee "$logs/summary.txt"
+exit "$failed_any"
