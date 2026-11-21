@@ -521,7 +521,7 @@ mod tests {
             .map(|i| {
                 let t = i as f64 / f64::from(SR);
                 let k = (t * 8.0) as usize;
-                let amp = if k % 2 == 0 { a } else { a / 4.0 };
+                let amp = if k.is_multiple_of(2) { a } else { a / 4.0 };
                 amp * (2.0 * std::f64::consts::PI * 300.0 * t).sin()
             })
             .collect()
