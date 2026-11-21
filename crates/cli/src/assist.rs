@@ -266,6 +266,19 @@ mod tests {
             "{got:?}"
         );
         assert!(got.iter().all(|(_, ok)| *ok), "{got:?}");
+        // The metadata in the pack names the publishable sources and files only.
+        let in_pack =
+            LayerMeta::read(&pack.path().join("layers/meta/assist/assist.meta.json")).unwrap();
+        assert!(!skimap_pack::build::layers::restricted(&in_pack.sources));
+        assert!(!in_pack.files.is_empty());
+        assert!(
+            in_pack
+                .files
+                .iter()
+                .all(|f| f.name.contains(&date.to_string())),
+            "{:?}",
+            in_pack.files
+        );
         let meta = assist_meta(&layout, site);
         let licence = |name: &str| {
             meta.files
