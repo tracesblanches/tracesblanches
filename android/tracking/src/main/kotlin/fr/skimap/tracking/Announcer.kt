@@ -9,6 +9,7 @@ import android.media.AudioTrack
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
+import android.media.audiofx.LoudnessEnhancer
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
@@ -158,14 +159,22 @@ fun interface PcmOutput {
  * it play (#179: decoding them one after the other once the turn's sound was over left
  * 0.35 to 1.1 s of silence before the words). Everything plays on the guidance stream
  * (usage navigation guidance, content speech) at full player volume: the level is that of
- * the clips (-14 LUFS, `docs/voix/banque-et-clips.md`) and of the phone's volume, never
- * lowered by the app. The text-to-speech engine starts only when first needed.
+ * the clips (-10 LUFS compressed and limited, `docs/voix/banque-et-clips.md`) and of the
+ * stream, raised during an outing while the queue plays when it is low ([StreamBoost],
+ * `android/docs/volume-annonces.md`). The Android voice, not levelled, goes through a
+ * [LoudnessEnhancer] of [TTS_GAIN_MB] on its own session; the clips do not (the platform
+ * effect is a 7:1 compressor above -8 dBFS: on clips that peak at -1 dBTP it lowers them,
+ * measured -3 dB at a gain of 0). The text-to-speech engine starts only when first needed.
  */
 @Suppress("TooManyFunctions")
 class Announcer(
     private val context: Context,
     @Volatile private var locale: Locale = localeOf(phoneLang()),
     private val decoder: (String) -> Pcm = OpusDecoder::decode,
+    /** During an outing: the stream is raised while the queue plays ([StreamBoost]); null: never. */
+    outing: (() -> Boolean)? = null,
+    /** Gain effect on an audio session; the platform's [LoudnessEnhancer] unless a test gives its own. */
+    private val enhancer: (session: Int, gainMb: Int) -> AutoCloseable? = ::loudnessEnhancer,
 ) : AutoCloseable {
     private val audio: ExecutorService = Executors.newSingleThreadExecutor { Thread(it, "skimap-voice") }
     private val decoding: ExecutorService =
@@ -179,6 +188,14 @@ class Announcer(
             .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
             .build()
+
+    /** Volume of the stream raised while the queue plays, during an outing. */
+    val boost: StreamBoost? = outing?.let { StreamBoost(context, attributes, it) }
+
+    init {
+        // Before anything is queued: a volume left raised by an app killed during an announcement.
+        if (boost != null) audio.execute { StreamBoost.recover(context) }
+    }
 
     /** Transient focus that ducks the other sounds while the queue plays. */
     val focusRequest: AudioFocusRequest =
@@ -275,10 +292,12 @@ class Announcer(
                 if (!focused) {
                     manager?.requestAudioFocus(focusRequest)
                     focused = true
+                    boost?.raise()
                 }
                 block()
             } finally {
                 if (queued.decrementAndGet() == 0 && focused) {
+                    boost?.restore()
                     manager?.abandonAudioFocusRequest(focusRequest)
                     focused = false
                 }
@@ -392,8 +411,27 @@ class Announcer(
         return t
     }
 
+    /** Audio session of the last reading of the Android voice, for the tests and the logs. */
+    @Volatile var ttsSession = AudioManager.ERROR
+        private set
+
     private fun speak(text: String): Boolean {
         val t = engine() ?: return false
+        val session = manager?.generateAudioSessionId() ?: AudioManager.ERROR
+        ttsSession = session
+        val gain = if (session > 0) runCatching { enhancer(session, TTS_GAIN_MB) }.getOrNull() else null
+        try {
+            return read(t, text, session)
+        } finally {
+            gain?.close()
+        }
+    }
+
+    private fun read(
+        t: TextToSpeech,
+        text: String,
+        session: Int,
+    ): Boolean {
         val done = CountDownLatch(1)
         t.setOnUtteranceProgressListener(
             object : UtteranceProgressListener() {
@@ -405,7 +443,7 @@ class Announcer(
                 override fun onError(id: String?) = done.countDown()
             },
         )
-        t.speak(text, TextToSpeech.QUEUE_FLUSH, ttsParams(), "skimap")
+        t.speak(text, TextToSpeech.QUEUE_FLUSH, ttsParams(session), "skimap")
         done.await(TTS_MAX_S, TimeUnit.SECONDS)
         spokenByTts++
         return true
@@ -431,8 +469,31 @@ class Announcer(
         /** Clips decoded at the same time: all those of an announcement (up to 7 measured). */
         const val DECODERS = 8
 
-        /** Android voice at full volume, as the clips. */
-        fun ttsParams(): Bundle = Bundle().apply { putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1f) }
+        /**
+         * Gain of the Android voice, mB: +6 dB. Measured through a port of the platform
+         * effect on the clips before #179 (Pocket TTS speech at -21 LUFS, peaks -9 dBTP, as
+         * a voice not levelled): +5.1 dB of loudness in median, no sample clamped; at 900 mB
+         * +6.4 dB only, the 7:1 compressor working more.
+         */
+        const val TTS_GAIN_MB = 600
+
+        /** Android voice at full volume, as the clips, on [session] when one was made. */
+        fun ttsParams(session: Int = AudioManager.ERROR): Bundle =
+            Bundle().apply {
+                putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1f)
+                if (session > 0) putInt(TextToSpeech.Engine.KEY_PARAM_SESSION_ID, session)
+            }
+
+        /** The platform's loudness enhancer on [session], enabled at [gainMb]; released by close. */
+        fun loudnessEnhancer(
+            session: Int,
+            gainMb: Int,
+        ): AutoCloseable {
+            val e = LoudnessEnhancer(session)
+            e.setTargetGain(gainMb)
+            e.enabled = true
+            return AutoCloseable { e.release() }
+        }
 
         /** Language of the app for the phone's: `fr` on a French phone, else `en` (VO6). */
         fun phoneLang(locale: Locale = Locale.getDefault()): String = if (locale.language == "fr") "fr" else "en"

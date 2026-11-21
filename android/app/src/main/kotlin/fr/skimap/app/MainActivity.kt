@@ -36,6 +36,7 @@ import fr.skimap.app.ui.domains.DomainsViewModel
 import fr.skimap.app.ui.map.MapEngine
 import fr.skimap.app.ui.theme.SkimapTheme
 import fr.skimap.community.Community
+import fr.skimap.tracking.StreamBoost
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -69,6 +70,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         MapEngine.start(this, lifecycleScope)
+        // A guidance volume still raised when the app was killed during an announcement (#179).
+        lifecycleScope.launch(Dispatchers.IO) { StreamBoost.recover(applicationContext) }
         Community.core = Community.core ?: RustCommunityCore(applicationContext) { packsDir(applicationContext) }
         val settings = PreferencesSettingsStore { getSharedPreferences("skimap", Context.MODE_PRIVATE) }
         var autoUpdate by mutableStateOf(true)

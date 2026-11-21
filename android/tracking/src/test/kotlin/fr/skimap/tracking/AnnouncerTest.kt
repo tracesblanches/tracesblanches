@@ -78,7 +78,7 @@ class AnnouncerTest {
         val expected = clip + ShortArray(RATE * PAUSE_MS / 1000) + clip
         assertTrue(expected.contentEquals(played[0].samples))
         // The platform track: guidance stream, speech, full player volume (the clips carry
-        // the level, -14 LUFS, and the phone's volume the rest).
+        // the level, -10 LUFS, and the stream's volume the rest).
         val t = a.track(played[0])
         assertGuidance(t.audioAttributes)
         assertEquals(1f, AudioTrack.getMaxVolume())

@@ -80,7 +80,7 @@ abstract class TrackingService : Service() {
     private lateinit var haptics: Haptics
     private lateinit var notifier: GuidanceNotifier
     private var controls: PhysicalControls? = null
-    private var core: TrackingCore? = null
+    @Volatile private var core: TrackingCore? = null
     private var planDir: String? = null
     private var provider: String = LocationManager.GPS_PROVIDER
     private var applied: GpsRequest? = null
@@ -232,7 +232,8 @@ abstract class TrackingService : Service() {
         thread = HandlerThread("skimap-tracking", Process.THREAD_PRIORITY_BACKGROUND).also { it.start() }
         handler = HandlerCompat.createAsync(thread.looper)
         executor = java.util.concurrent.Executor { handler.post(it) }
-        announcer = Announcer(this)
+        // The guidance stream raised while an announcement plays, during the outing only (#179).
+        announcer = Announcer(this, outing = { core != null })
         announcer.onDone = { _, _ ->
             stats.voiced++
             stats.voicedClips = announcer.played
