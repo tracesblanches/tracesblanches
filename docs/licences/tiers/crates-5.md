@@ -4,7 +4,6 @@
 
 | Crate | Version | Licence | App | Dépôt |
 |---|---|---|---|---|
-| uniffi_internal_macros | 0.32.2 | MPL-2.0 |  | https://github.com/mozilla/uniffi-rs |
 | uniffi_macros | 0.32.2 | MPL-2.0 |  | https://github.com/mozilla/uniffi-rs |
 | uniffi_meta | 0.32.2 | MPL-2.0 |  | https://github.com/mozilla/uniffi-rs |
 | uniffi_pipeline | 0.32.2 | MPL-2.0 | oui | https://github.com/mozilla/uniffi-rs |

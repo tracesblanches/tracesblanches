@@ -8,7 +8,6 @@
 | aes | 0.9.4 | MIT OR Apache-2.0 | oui | https://github.com/RustCrypto/block-ciphers |
 | aho-corasick | 1.1.5 | Unlicense OR MIT |  | https://github.com/BurntSushi/aho-corasick |
 | allocator-api2 | 0.2.21 | MIT OR Apache-2.0 | oui | https://github.com/zakarumych/allocator-api2 |
-| android_system_properties | 0.1.6 | MIT OR Apache-2.0 | oui | https://github.com/nical/android_system_properties |
 | anstream | 1.0.0 | MIT OR Apache-2.0 |  | https://github.com/rust-cli/anstyle.git |
 | anstyle | 1.0.14 | MIT OR Apache-2.0 |  | https://github.com/rust-cli/anstyle.git |
 | anstyle-parse | 1.0.0 | MIT OR Apache-2.0 |  | https://github.com/rust-cli/anstyle.git |
@@ -41,7 +40,6 @@
 | cc | 1.11.2 | MIT OR Apache-2.0 |  | https://github.com/rust-lang/cc-rs |
 | cfg-if | 1.0.5 | MIT OR Apache-2.0 | oui | https://github.com/rust-lang/cfg-if |
 | chacha20 | 0.10.2 | MIT OR Apache-2.0 |  | https://github.com/RustCrypto/stream-ciphers |
-| chrono | 0.4.45 | MIT OR Apache-2.0 | oui | https://github.com/chronotope/chrono |
 | chunked_transfer | 1.5.0 | MIT OR Apache-2.0 |  | https://github.com/frewsxcv/rust-chunked-transfer |
 | cipher | 0.5.2 | MIT OR Apache-2.0 | oui | https://github.com/RustCrypto/traits |
 | clap | 4.6.7 | MIT OR Apache-2.0 |  | https://github.com/clap-rs/clap |
@@ -89,3 +87,5 @@
 | float_next_after | 2.0.0 | MIT | oui | https://gitlab.com/bronsonbdevost/next_afterf |
 | fnv | 1.0.7 | Apache-2.0 / MIT |  | https://github.com/servo/rust-fnv |
 | foldhash | 0.1.5 | Zlib |  | https://github.com/orlp/foldhash |
+| foldhash | 0.2.0 | Zlib | oui | https://github.com/orlp/foldhash |
+| form_urlencoded | 1.2.2 | MIT OR Apache-2.0 |  | https://github.com/servo/rust-url |

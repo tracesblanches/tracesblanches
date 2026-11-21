@@ -4,7 +4,6 @@
 
 | Crate | Version | Licence | App | Dépôt |
 |---|---|---|---|---|
-| rust-aec | 0.1.1 | MIT |  | https://github.com/hkwk/rust-aec |
 | rustc-hash | 2.1.3 | Apache-2.0 OR MIT |  | https://github.com/rust-lang/rustc-hash |
 | rustc_version | 0.4.1 | MIT OR Apache-2.0 |  | https://github.com/djc/rustc-version-rs |
 | rustix | 0.38.44 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |  | https://github.com/bytecodealliance/rustix |
@@ -89,3 +88,4 @@
 | uniffi | 0.32.2 | MPL-2.0 | oui | https://github.com/mozilla/uniffi-rs |
 | uniffi_bindgen | 0.32.2 | MPL-2.0 |  | https://github.com/mozilla/uniffi-rs |
 | uniffi_core | 0.32.2 | MPL-2.0 | oui | https://github.com/mozilla/uniffi-rs |
+| uniffi_internal_macros | 0.32.2 | MPL-2.0 |  | https://github.com/mozilla/uniffi-rs |

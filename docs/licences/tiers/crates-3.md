@@ -4,7 +4,6 @@
 
 | Crate | Version | Licence | App | Dépôt |
 |---|---|---|---|---|
-| litemap | 0.8.3 | Unicode-3.0 |  | https://github.com/unicode-org/icu4x |
 | lock_api | 0.4.14 | MIT OR Apache-2.0 |  | https://github.com/Amanieu/parking_lot |
 | log | 0.4.35 | MIT OR Apache-2.0 | oui | https://github.com/rust-lang/log |
 | lzma-rust2 | 0.25.0 | Apache-2.0 |  | https://github.com/hasenbanck/lzma-rust2/ |
@@ -89,3 +88,4 @@
 | rten-tensor | 0.28.0 | MIT OR Apache-2.0 |  | https://github.com/robertknight/rten |
 | rten-vecmath | 0.28.0 | MIT OR Apache-2.0 |  | https://github.com/robertknight/rten |
 | rusqlite | 0.42.0 | MIT |  | https://github.com/rusqlite/rusqlite |
+| rust-aec | 0.1.1 | MIT |  | https://github.com/hkwk/rust-aec |

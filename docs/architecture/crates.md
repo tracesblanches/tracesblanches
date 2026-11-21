@@ -54,7 +54,7 @@ Déclarées une fois dans `[workspace.dependencies]` du `Cargo.toml` racine :
 - erreurs et journaux : `anyhow`, `thiserror`, `tracing`, `tracing-subscriber` ;
 - formats : `serde`, `serde_json`, `quick-xml`, `csv`, `flate2`, `zip`, `sevenz-rust2` (archives ARCEP), `rusqlite` (GeoPackage, SQLite embarqué), `tiff` (MNT LiDAR HD), `pmtiles` (écriture) ;
 - géométrie : `geo`, `geo-types`, `geojson`, `rstar`, `proj4rs`, `petgraph` ;
-- temps : `chrono`, `httpdate` ; calcul : `rayon` ;
+- temps : `jiff`, `httpdate` ; calcul : `rayon` ;
 - HTTP : `reqwest` (bloquant, sans fonctions par défaut), `rustls` (ring), `webpki-roots`, `sha2`, `hex` ;
 - ligne de commande : `clap` ; tests : `approx`, `tempfile`, `tiny_http` ;
 - crates internes : `skimap-common`, `skimap-osm`, …, `skimap-plan`, `skimap-srn`, `skimap-stations` (chemins locaux ; `srndiff`, `pisteplan`, `styles`, `ffi` et `server` n'y figurent pas : aucune autre crate n'en dépend).
