@@ -100,9 +100,7 @@ spec:
                 - { name: tmp, mountPath: /tmp }
               # Workstation (15/11/2026, 8 sites at once): 7.3 GB peak for the process;
               # 2 sites at once stay under 4 GiB except the GTJ sections (5.6 GB alone),
-              # built on the workstation. The voice (#129) adds one Pocket TTS process at
-              # a time whatever the number of sites (lock on the clip cache): 648 MiB
-              # peak for the container in the image, 21/11/2026 (docs/voix/rattrapage.md).
+              # built on the workstation.
               resources:
                 requests: { cpu: 500m, memory: 1Gi }
                 limits: { cpu: "3", memory: 4Gi }

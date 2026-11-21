@@ -4,23 +4,13 @@
 # (deployment script of the infrastructure repository), from the repository root:
 #
 #   docker buildx build --platform linux/arm64 -f deploy/Dockerfile --target server   .
-#   docker buildx build --platform linux/arm64 -f deploy/Dockerfile --target pipeline \
-#     --build-context pockettts-patches=$HOME/projects/speak/app/native/patches \
-#     --build-context tts-models=$HOME/projects/speak/app/models/tts .
+#   docker buildx build --platform linux/arm64 -f deploy/Dockerfile --target pipeline .
 #
 # The same file cross-compiles when the build platform differs from the target (amd64
-# laptop → arm64): only the build stage runs on the build platform; the pockettts stage
-# runs on the target platform (emulated when cross-compiling, native on the server).
+# laptop → arm64): only the build stage runs on the build platform, nothing is emulated.
 #
 # server:   skimap-server alone, distroless (glibc), uid 65532, no shell.
-# pipeline: skimap + skimap-server (publish) + skimap-job, Debian slim (sh, flock), and
-#           the voice of the sites (#129): pockettts.cpp on the CPU, its French and
-#           English models, ffmpeg (Opus).
-#
-# The pipeline image takes two named build contexts, read only, never copied into git:
-#
-#   --build-context pockettts-patches=$HOME/projects/speak/app/native/patches  # of speak
-#   --build-context tts-models=$HOME/projects/speak/app/models/tts  # Pocket TTS GGUF models
+# pipeline: skimap + skimap-server (publish) + skimap-job, Debian slim (sh, flock).
 
 ARG RUST_VERSION=1.99.1
 
@@ -61,34 +51,8 @@ EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/skimap-server"]
 CMD ["serve"]
 
-# pockettts.cpp for the CPU of the target (the image is built natively on the nodes of
-# the cluster: GGML_NATIVE), with the patches of the speak app, by the script of the workstation
-# build (crates/voice/scripts/build-pockettts.sh, BACKEND=cpu).
-FROM debian:trixie-slim AS pockettts
-RUN set -eux; apt-get update; \
-    apt-get install -y --no-install-recommends ca-certificates git cmake ninja-build g++ libgomp1; \
-    rm -rf /var/lib/apt/lists/*
-COPY crates/voice/scripts/build-pockettts.sh /usr/local/bin/build-pockettts.sh
-RUN --mount=type=bind,from=pockettts-patches,target=/speak/app/native/patches \
-    BACKEND=cpu SPEAK_DIR=/speak POCKETTTS_DIR=/pockettts bash /usr/local/bin/build-pockettts.sh
-
 FROM debian:trixie-slim AS pipeline
-RUN set -eux; apt-get update; \
-    apt-get install -y --no-install-recommends ffmpeg libgomp1; \
-    rm -rf /var/lib/apt/lists/*; \
-    groupadd -g 65532 nonroot && useradd -u 65532 -g 65532 -d /nonexistent -s /usr/sbin/nologin nonroot
-COPY --from=pockettts /pockettts/build-cpu/pocket-tts /usr/local/bin/pocket-tts
-COPY --from=tts-models pocket-tts-french-Q8_0.gguf pocket-tts-french-voices.gguf \
-    pocket-tts-english-Q8_0.gguf pocket-tts-english-voices.gguf /opt/pocket-tts/
-# skimap_voice::VoiceConfig::from_env_lang; POCKET_N_THREADS: one thread per CPU of the
-# limit of the pipeline CronJobs (3), not half the cores of the node.
-ENV SKIMAP_POCKETTTS_BIN=/usr/local/bin/pocket-tts \
-    SKIMAP_POCKETTTS_MODEL=/opt/pocket-tts/pocket-tts-french-Q8_0.gguf \
-    SKIMAP_POCKETTTS_VOICES=/opt/pocket-tts/pocket-tts-french-voices.gguf \
-    SKIMAP_POCKETTTS_MODEL_EN=/opt/pocket-tts/pocket-tts-english-Q8_0.gguf \
-    SKIMAP_POCKETTTS_VOICES_EN=/opt/pocket-tts/pocket-tts-english-voices.gguf \
-    SKIMAP_TTS_DEVICE=CPU \
-    POCKET_N_THREADS=3
+RUN groupadd -g 65532 nonroot && useradd -u 65532 -g 65532 -d /nonexistent -s /usr/sbin/nologin nonroot
 COPY --from=build /out/skimap /out/skimap-server /usr/local/bin/
 COPY --chmod=0755 deploy/skimap-job /usr/local/bin/skimap-job
 USER 65532:65532
