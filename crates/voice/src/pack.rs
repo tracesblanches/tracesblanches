@@ -95,9 +95,11 @@ impl VoiceConfig {
             Lang::En => "english",
         };
         let var = |v: &str| format!("{v}{suffix}");
+        // HOME only for the defaults of the workstation: the pipeline image sets every
+        // path (deploy/Dockerfile) and its user has no home.
         let home = std::env::var_os("HOME")
             .map(PathBuf::from)
-            .ok_or_else(|| Error::Config("HOME is not set".into()))?;
+            .unwrap_or_default();
         let tts_dir = home.join("projects/speak/app/models/tts");
         let num = |var: &str, default: u32| -> Result<u32> {
             match std::env::var(var) {
