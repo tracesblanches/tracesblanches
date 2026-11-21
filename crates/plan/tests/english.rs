@@ -30,6 +30,13 @@ fn layout() -> DataLayout {
 fn names(d: &SiteData, ctx: &plan::Context) -> Vec<String> {
     let mut v = vec![d.site.name.to_owned()];
     v.extend(d.domains.iter().map(|x| x.name.clone()));
+    // The clips of the area names (said when a route enters another area, H2 #133), listed
+    // by identifier when the pack lacks them.
+    v.extend(
+        d.domains
+            .iter()
+            .map(|x| format!("name.{}", skimap_voice::names::slug(&x.name))),
+    );
     if let Some(s) = &d.status {
         v.extend(s.itineraries.iter().map(|i| i.name.clone()));
         v.extend(s.messages.iter().cloned());

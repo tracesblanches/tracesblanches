@@ -47,6 +47,41 @@ fn pack(site: &Site) -> PathBuf {
     data().join("out").join(site.id).join("pack")
 }
 
+/// Root of the voice packs of the complete data laid out as the phone installs them
+/// (`<root>/<site>/<lang>/voice/`, read by `open_tracking` through `voice_choice`): a
+/// link to `out/<site>/voice-pack/` of every site that has one (VO6: the clips are in a
+/// voice pack per language, not in the base pack). `None` for data built before VO6: the
+/// session then reads the French clips inside the pack, as on a phone with such a pack.
+fn voice_root() -> Option<String> {
+    static ROOT: std::sync::OnceLock<Option<tempfile::TempDir>> = std::sync::OnceLock::new();
+    ROOT.get_or_init(|| {
+        let out = data().join("out");
+        let tmp = tempfile::tempdir().unwrap();
+        let mut any = false;
+        for e in std::fs::read_dir(&out).unwrap().flatten() {
+            let packs = e.path().join("voice-pack");
+            if packs.is_dir() {
+                std::os::unix::fs::symlink(&packs, tmp.path().join(e.file_name())).unwrap();
+                any = true;
+            }
+        }
+        any.then_some(tmp)
+    })
+    .as_ref()
+    .map(|t| t.path().display().to_string())
+}
+
+/// The French clips of `site`: its voice pack (VO6), or inside the pack for data built
+/// before VO6 (the same choice as `open_tracking`).
+fn voice_dir(site: &Site) -> PathBuf {
+    let v = data().join("out").join(site.id).join("voice-pack/fr/voice");
+    if v.join("manifest.json").is_file() {
+        v
+    } else {
+        pack(site).join("voice")
+    }
+}
+
 fn show(what: &str, s: &SpokenView) {
     let clips = s.segments.iter().filter(|c| c.file.is_some()).count();
     println!(
@@ -115,7 +150,7 @@ fn commands_on(site: &'static Site, budget_min: f64, return_before: Option<&str>
     );
 
     // A third of the outing, fixes in batches of ten as the phone sends them.
-    let s = open_tracking(v.plan_dir.clone(), None, "fr".into()).unwrap();
+    let s = open_tracking(v.plan_dir.clone(), voice_root(), "fr".into()).unwrap();
     let fixes: Vec<(i64, f64, f64)> = run
         .inputs
         .iter()
@@ -132,7 +167,7 @@ fn commands_on(site: &'static Site, budget_min: f64, return_before: Option<&str>
     let g1 = s.guidance().unwrap();
     assert_eq!(g1.phase, PhaseView::Moving, "{g1:?}");
 
-    let answers = VoiceAnswers::new(Some(pack(site).join("voice").display().to_string()));
+    let answers = VoiceAnswers::new(Some(voice_dir(site).display().to_string()));
     assert!(answers.has_clips());
     for lang in [Lang::Fr, Lang::En] {
         for (q, want) in command_questions(lang).iter().zip([
@@ -218,9 +253,43 @@ fn commands_on(site: &'static Site, budget_min: f64, return_before: Option<&str>
     );
     show("(pas compris)", &answers.not_understood(Lang::Fr, t_ms));
 
-    // 600 m off the route, for long enough: « Où suis-je ? » says so.
+    // About 600 m off the route, for long enough: « Où suis-je ? » says so. Away from
+    // every trail of the graph, not only from the route: on a dense network (the Jura test
+    // data) a point 600 m east is on another trail, where the session reroutes from (a new
+    // route starting there, so still « on the route »). Of 16 directions, the point
+    // farthest from the trails, the trails sampled every 20 m.
+    let here = skimap_common::geom::LonLat::new(lon, lat);
+    let trails: Vec<skimap_common::geom::LonLat> = (0..g.data().edges.len())
+        .flat_map(|e| {
+            let len = g.length_m(e);
+            let n = (len / 20.0).ceil().max(1.0) as usize;
+            (0..=n).map(move |k| (e, len * k as f64 / n as f64))
+        })
+        .map(|(e, m)| g.point_at(e, m))
+        .collect();
+    let (dlon, dlat) = (0.008, 0.0055);
+    let (off_lon, off_lat, clear_m) = (0..16)
+        .map(|k| {
+            let a = f64::from(k) * std::f64::consts::TAU / 16.0;
+            let p = skimap_common::geom::LonLat::new(lon + a.cos() * dlon, lat + a.sin() * dlat);
+            let clear = trails
+                .iter()
+                .map(|r| p.haversine_m(*r))
+                .fold(f64::INFINITY, f64::min);
+            (p.lon, p.lat, clear)
+        })
+        .max_by(|a, b| a.2.total_cmp(&b.2))
+        .unwrap();
+    println!(
+        "  off the route: {:.0} m from here, {clear_m:.0} m from any trail",
+        here.haversine_m(skimap_common::geom::LonLat::new(off_lon, off_lat))
+    );
+    assert!(
+        clear_m > 2.0 * TrackerParams::default().enter_m,
+        "{clear_m}"
+    );
     let off: Vec<(i64, f64, f64)> = (1..=40)
-        .map(|k| (t_ms + k * 5000, lon + 0.008, lat))
+        .map(|k| (t_ms + k * 5000, off_lon, off_lat))
         .collect();
     s.push_fixes(pack_fixes(&off)).unwrap();
     let g2 = s.guidance().unwrap();

@@ -19,7 +19,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use skimap_common::geom::LonLat;
 
 use crate::error::{Error, Result};
-use crate::layer::{Zone, ZoneKind, ZoneLayer};
+use crate::layer::{BIODIV_ID_PREFIX, Zone, ZoneKind, ZoneLayer};
 
 /// The rule file, embedded at compile time.
 pub const RULES_JSON: &str = include_str!("../rules/rules.json");
@@ -81,6 +81,16 @@ pub struct Selector {
 }
 
 impl Selector {
+    /// Whether the selector only selects zones of a personal-use source (Biodiv'sports:
+    /// `kind: biodiv_sports` or a `biodiv:` zone), which a public build never has.
+    pub fn personal(&self) -> bool {
+        self.kind == Some(ZoneKind::BiodivSports)
+            || self
+                .zone
+                .as_deref()
+                .is_some_and(|z| z.starts_with(BIODIV_ID_PREFIX))
+    }
+
     /// Whether the selector matches the zone.
     pub fn matches(&self, z: &Zone) -> bool {
         let base = match (&self.zone, self.kind) {
@@ -313,6 +323,21 @@ pub struct Source {
     pub article: Option<String>,
 }
 
+/// Host of the Biodiv'sports pages and API (a personal-use source).
+const BIODIV_HOST: &str = "https://biodiv-sports.fr";
+
+impl Source {
+    /// Whether the source is a personal-use one: Biodiv'sports by its URL, or a title
+    /// naming one of [`skimap_common::licence::UNAUTHORISED_SOURCES`].
+    pub fn personal(&self) -> bool {
+        let title = self.title.to_lowercase();
+        self.url.starts_with(BIODIV_HOST)
+            || skimap_common::licence::UNAUTHORISED_SOURCES
+                .iter()
+                .any(|u| title.contains(u))
+    }
+}
+
 /// One rule.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -403,6 +428,45 @@ impl RuleSet {
         Self::from_json_str(RULES_JSON)
     }
 
+    /// The rules a public build may carry (`personal_sources` off): without the selectors
+    /// of personal-use zones (Biodiv'sports), which such a build does not have, and without
+    /// the sources of personal use; a rule left with no selector or no source is dropped
+    /// (the Biodiv'sports sensitive areas, the APPB Haut-Doubs core zones whose contours
+    /// are Biodiv'sports zone 686). It selects exactly the zones it did on a layer without
+    /// personal zones.
+    pub fn without_personal_sources(&self) -> Self {
+        let rules = self
+            .rules
+            .iter()
+            .filter_map(|r| {
+                let mut r = r.clone();
+                r.applies_to.retain(|s| !s.personal());
+                r.sources.retain(|s| !s.personal());
+                (!r.applies_to.is_empty() && !r.sources.is_empty()).then_some(r)
+            })
+            .collect();
+        Self {
+            schema_version: self.schema_version,
+            reviewed: self.reviewed,
+            rules,
+        }
+    }
+
+    /// The rule file of a build: verbatim with `personal_sources`, otherwise
+    /// [`Self::without_personal_sources`] written back as JSON (`rules.json` of the zones
+    /// layer, `zones-rules` of a pack).
+    pub fn file_for(text: &str, personal_sources: bool) -> Result<String> {
+        if personal_sources {
+            return Ok(text.to_owned());
+        }
+        let public = Self::from_json_str(text)?.without_personal_sources();
+        public.validate()?;
+        let mut out = serde_json::to_string_pretty(&public)
+            .map_err(|e| Error::Rules(format!("rules.json: {e}")))?;
+        out.push('\n');
+        Ok(out)
+    }
+
     /// Rule by identifier.
     pub fn get(&self, id: &str) -> Option<&Rule> {
         self.rules.iter().find(|r| r.id == id)
@@ -487,6 +551,51 @@ impl RuleSet {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A public rule file names no personal-use source: no Biodiv'sports zone, kind,
+    /// page or API, no other unauthorised source; it still parses, and keeps every rule
+    /// that selects other zones (the national ones, the APPB Haut-Jura).
+    #[test]
+    fn public_rules_carry_no_personal_source() {
+        let all = RuleSet::embedded().unwrap();
+        assert!(
+            RULES_JSON.contains("biodiv-sports"),
+            "the test needs a personal rule"
+        );
+        let text = RuleSet::file_for(RULES_JSON, false).unwrap();
+        let low = text.to_lowercase();
+        for bad in [
+            "biodiv-sports",
+            "biodiv_sports",
+            "biodiv'sports",
+            "\"biodiv:",
+        ] {
+            assert!(!low.contains(bad), "public rules contain {bad}");
+        }
+        for u in skimap_common::licence::UNAUTHORISED_SOURCES {
+            assert!(!low.contains(u), "public rules contain {u}");
+        }
+        let public = RuleSet::from_json_str(&text).unwrap();
+        let dropped: Vec<&str> = all
+            .rules
+            .iter()
+            .filter(|r| public.get(&r.id).is_none())
+            .map(|r| r.id.as_str())
+            .collect();
+        assert!(!dropped.is_empty());
+        for id in &dropped {
+            let r = all.get(id).unwrap();
+            assert!(
+                r.applies_to.iter().all(Selector::personal)
+                    || r.sources.iter().all(Source::personal),
+                "{id} dropped"
+            );
+        }
+        assert!(public.get("appb-haut-jura-leave-routes").is_some());
+        assert_eq!(all.rules.len(), public.rules.len() + dropped.len());
+        // With the option, the file is the embedded one, byte for byte.
+        assert_eq!(RuleSet::file_for(RULES_JSON, true).unwrap(), RULES_JSON);
+    }
 
     fn d(y: i32, m: u32, day: u32) -> Date {
         skimap_common::dates::ymd(y, m, day).unwrap()

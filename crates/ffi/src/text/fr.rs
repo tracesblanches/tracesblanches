@@ -103,6 +103,7 @@ impl Texts for Fr {
             KeyKind::NoNetworkEnd => "fin de zone sans réseau",
             KeyKind::AvalancheStart => "début de zone d'avalanche connue",
             KeyKind::AvalancheEnd => "fin de zone d'avalanche connue",
+            KeyKind::DomainEntered => "autre domaine nordique : sa redevance",
             KeyKind::Finish => "arrivée",
         }
     }
@@ -529,6 +530,31 @@ impl Texts for Fr {
         format!("Il est temps de rentrer. Être guidé {to} ?")
     }
 
+    fn fog_kind(&self, kind: &str) -> &'static str {
+        match kind {
+            "refuge" => "Refuge",
+            "parking" => "Parking",
+            "start" => "Départ",
+            _ => "Point",
+        }
+    }
+
+    fn fog_near(&self, what: &str, place: &str) -> String {
+        format!("{what} près {}", de(place))
+    }
+
+    fn fog_off(&self, what: &str, distance: &str, bearing_deg: f64, place: &str) -> String {
+        let side = match crate::fog::cardinal(bearing_deg, crate::card::Lang::Fr) {
+            c @ ("est" | "ouest") => format!("à l'{c}"),
+            c => format!("au {c}"),
+        };
+        format!("{what} à {distance} {side} {}", de(place))
+    }
+
+    fn fog_rank(&self, label: &str, rank: usize) -> String {
+        format!("{label} ({rank})")
+    }
+
     fn all_domains(&self) -> &'static str {
         "Tous les domaines installés"
     }
@@ -543,6 +569,52 @@ impl Texts for Fr {
 
     fn france_only_note(&self, date: &str) -> String {
         format!("Aucun pack installé : fond de France seul, données du {date}.")
+    }
+}
+
+/// « de » before a place name: « du Plan », « des Granges », « de la Combe », « de
+/// l'Ourse », « d'Aval », « du refuge du Lac », « de Valbois ».
+fn de(place: &str) -> String {
+    const MASC: [&str; 15] = [
+        "Refuge", "Parking", "Chalet", "Col", "Lac", "Gîte", "Gite", "Foyer", "Pont", "Plateau",
+        "Hameau", "Centre", "Bivouac", "Camping", "Sommet",
+    ];
+    const FEM: [&str; 10] = [
+        "Cabane", "Place", "Maison", "Station", "Source", "Ferme", "Bergerie", "Chapelle", "Ruine",
+        "Vente",
+    ];
+    const ELIDED: [&str; 10] = [
+        "Office", "Accueil", "Abri", "Aire", "Auberge", "École", "Ecole", "Espace", "Hôtel",
+        "Église",
+    ];
+    let first = place.split_whitespace().next().unwrap_or("");
+    if let Some(r) = place.strip_prefix("Le ") {
+        return format!("du {r}");
+    }
+    if let Some(r) = place.strip_prefix("Les ") {
+        return format!("des {r}");
+    }
+    if let Some(r) = place.strip_prefix("La ") {
+        return format!("de la {r}");
+    }
+    if let Some(r) = place
+        .strip_prefix("L'")
+        .or_else(|| place.strip_prefix("L’"))
+    {
+        return format!("de l'{r}");
+    }
+    if MASC.contains(&first) {
+        return format!("du {}{}", first.to_lowercase(), &place[first.len()..]);
+    }
+    if FEM.contains(&first) {
+        return format!("de la {}{}", first.to_lowercase(), &place[first.len()..]);
+    }
+    if ELIDED.contains(&first) {
+        return format!("de l'{}{}", first.to_lowercase(), &place[first.len()..]);
+    }
+    match place.chars().next() {
+        Some(c) if "AEIOUYÉÈÊÂÎÔaeiouyéèêâîô".contains(c) => format!("d'{place}"),
+        _ => format!("de {place}"),
     }
 }
 

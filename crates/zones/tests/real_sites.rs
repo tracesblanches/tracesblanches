@@ -2,8 +2,9 @@
 //! 05 and 06.
 //!
 //! By default on the versioned reference layers (`fixtures/`, without the Biodiv'sports
-//! areas: no licence found); the `full_data_` variants read the complete local data and
-//! also check the Biodiv'sports areas (weekly job):
+//! areas: no licence found); the `full_data_` variants read the complete local data: built
+//! with the personal sources they also check the Biodiv'sports areas, built without (the
+//! weekly job) that there is none:
 //!
 //! ```sh
 //! cargo test -p skimap-zones --test real_sites
@@ -50,12 +51,19 @@ fn read(site: &Site, data: Data, name: &str) -> String {
     std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))
 }
 
+/// Whether the layers were built with the personal sources (Biodiv'sports): never the
+/// fixtures; the complete data as its build says (fixtures/support/mod.rs).
+fn personal(site: &Site, data: Data) -> bool {
+    data == Data::Full && fixtures::full_data_personal(site.id)
+}
+
 fn layer(site: &Site, data: Data) -> ZoneLayer {
     let l = ZoneLayer::from_geojson_str(&read(site, data, "zones.geojson")).unwrap();
-    if data == Data::Fixtures {
+    if !personal(site, data) {
         assert!(
             l.zones.iter().all(|z| z.kind() != ZoneKind::BiodivSports),
-            "Biodiv'sports areas in the fixtures"
+            "{}: Biodiv'sports areas in a layer built without the personal sources",
+            site.id
         );
     }
     l
@@ -134,7 +142,7 @@ fn chapelle_des_bois(data: Data) {
     // Report 05: PNR du Haut-Jura covers 80 % of the box.
     let share = area(&l, "inpn:FR8000015") / bbox_ha(CHAPELLE_DES_BOIS.bbox) * 100.0;
     assert_close("PNR Haut-Jura (% of the box)", share, 80.0, 0.01);
-    if data == Data::Full {
+    if personal(&CHAPELLE_DES_BOIS, data) {
         // Report 05: 6 Biodiv'sports areas; report 04: "Grand tétras - hiver", Dec-Jun.
         let bs: Vec<_> = l
             .zones
@@ -254,7 +262,7 @@ fn cervieres(data: Data) {
         0.9,
         0.05,
     );
-    if data == Data::Full {
+    if personal(&CERVIERES, data) {
         // Report 05: 10 Biodiv'sports areas, one "Tétras lyre - hiver" (terrestrial).
         assert_eq!(
             l.zones

@@ -11,7 +11,9 @@
 //! 2. feeds the session ([`crate::session`]: start, pause, refuge, end) and the deviation
 //!    hysteresis (C2: 40 m for 15 s, back under 15 m for 5 s);
 //! 3. fires the decision points whose trigger the cursor passed (turns that are not
-//!    obvious, zones without network, avalanche paths);
+//!    obvious, zones without network, avalanche paths); off the route and the trails,
+//!    steep terrain and the entry of a protected zone (K6 #56, [`SlopeParams`],
+//!    [`ZoneParams`]);
 //! 4. decides the GPS mode ([`crate::gps::decide`]) from the distance to the next decision
 //!    point;
 //! 5. asks the speech policy ([`crate::speech`]) whether something is due;
@@ -56,8 +58,8 @@ use skimap_core::graph::{LocalPlane, PisteGraph, Snap};
 use skimap_core::matching::{AlertEvent, DeviationDetector, Hysteresis, ROUTE_HYSTERESIS};
 use skimap_core::turnaround::TurnaroundParams;
 use skimap_voice::Event;
-use skimap_voice::bank::{Announcement, Side};
-use skimap_voice::clips::{Direction, Fixed};
+use skimap_voice::bank::{Announcement, Side, ZoneRule};
+use skimap_voice::clips::{DayMonth, Direction, Fixed};
 
 use crate::course::{Course, PlanLeg};
 use crate::error::{Error, Result};
@@ -143,6 +145,60 @@ pub struct TrackerParams {
     /// Steep terrain off the trails (K6 #56).
     #[serde(default)]
     pub slope: SlopeParams,
+    /// Entering a protected zone off the trails (K6 #56).
+    #[serde(default)]
+    pub zone: ZoneParams,
+}
+
+/// Entering a protected zone off the trails (K6 #56), on the model of the steep terrain
+/// ([`SlopeParams`]): a protected zone of the layers of the day ([`plan::is_protected`]),
+/// with rules for a day outing at the time of the entry ([`plan::zone_rules`]: access,
+/// leaving the routes, fire), entered off the route followed (the deviation of C2) and
+/// farther than [`ZoneParams::trail_m`] from every trail. On a trail the skier is on a
+/// route (the zones the loop crosses are said in the morning, A7; those of a plan B or of a
+/// route computed during the outing at their entry, X11). Said once per entry, with the
+/// zone's name and its rules.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ZoneParams {
+    /// An entry is said after this distance skied inside the zone off the trails, metres…
+    pub enter_m: f64,
+    /// …and this long, seconds. The GPS of the forest strays out of the trail for less:
+    /// normal outings of both sites, σ 15 m with forest outliers, 100 seeds each (109
+    /// deviations of C2 that are the GPS): 1 entry said in 30 runs at 20 m and 15 s, none
+    /// in 200 at 40 m and 30 s (21/11/2026).
+    pub enter_s: f64,
+    /// It ends after this distance skied out of the zone (or on a trail), metres.
+    pub exit_m: f64,
+    /// Off the route, a fix this close to a trail of the graph is on that trail, metres
+    /// (the distance off the route of C2).
+    pub trail_m: f64,
+}
+
+impl Default for ZoneParams {
+    fn default() -> Self {
+        Self {
+            enter_m: 40.0,
+            enter_s: 30.0,
+            exit_m: 150.0,
+            trail_m: ROUTE_HYSTERESIS.enter_m,
+        }
+    }
+}
+
+/// Where the tracker is in a protected zone off the trails (K6 #56).
+#[derive(Debug, Clone, Copy, Default)]
+struct Fence {
+    /// Index of the zone in the layer.
+    zone: usize,
+    /// First fix in it off the trails before the entry is said, seconds, and the distance
+    /// skied since, metres.
+    since: Option<f64>,
+    run_m: f64,
+    /// Entered (said, or without rules to say).
+    inside: bool,
+    /// Distance skied out of it (or on a trail) since, metres.
+    calm_m: f64,
 }
 
 /// Steep terrain off the trails (K6 #56): the terrain slope of the off-piste rasters
@@ -225,6 +281,7 @@ impl Default for TrackerParams {
             propose: ProposeParams::default(),
             profile: ProfileFitParams::default(),
             slope: SlopeParams::default(),
+            zone: ZoneParams::default(),
         }
     }
 }
@@ -377,6 +434,15 @@ pub enum Alert {
     Slope {
         /// Steepest slope read, degrees.
         degrees: u32,
+    },
+    /// A protected zone entered off the trails (K6 #56).
+    ProtectedZone {
+        /// Zone identifier (of the zones layer).
+        id: String,
+        /// Zone name.
+        name: String,
+        /// Its rules said.
+        rules: Vec<ZoneRule>,
     },
 }
 
@@ -721,6 +787,10 @@ pub struct Tracker<'a> {
     /// it (K6 #56).
     slope: Option<&'a Grid<u8>>,
     steep: Steep,
+    /// The protected zones of the layers of the day and where the skier is in them, and
+    /// the last fix (K6 #56).
+    fences: Vec<Fence>,
+    fence_last: Option<LonLat>,
 }
 
 impl<'a> Tracker<'a> {
@@ -839,6 +909,8 @@ impl<'a> Tracker<'a> {
             profile_chosen: None,
             slope: None,
             steep: Steep::default(),
+            fences: Vec::new(),
+            fence_last: None,
             p,
         }
         .with_profiles(pace::profile_presets(plan.request.style)))
@@ -850,6 +922,18 @@ impl<'a> Tracker<'a> {
     /// does not cross.
     pub fn with_layers(mut self, data: &'a SiteData) -> Self {
         self.layers = Some(data);
+        self.fences = data.zones.as_ref().map_or_else(Vec::new, |(layer, _)| {
+            layer
+                .zones
+                .iter()
+                .enumerate()
+                .filter(|(_, z)| plan::is_protected(z))
+                .map(|(zone, _)| Fence {
+                    zone,
+                    ..Fence::default()
+                })
+                .collect()
+        });
         self
     }
 
@@ -1363,9 +1447,10 @@ impl<'a> Tracker<'a> {
                 self.reroute(t, snap, out);
             }
         }
-        // 3b. Steep terrain off the trails.
+        // 3b. Steep terrain and protected zones off the trails.
         if !paused {
             self.steep(t, pos, out);
+            self.fence(t, pos, out);
         }
         // 4. Decision points.
         if !paused {
@@ -1479,6 +1564,117 @@ impl<'a> Tracker<'a> {
         } else {
             st.calm_m = 0.0;
         }
+    }
+
+    /// K6 #56: a protected zone entered off the route and the trails, for
+    /// [`ZoneParams::enter_m`] skied and [`ZoneParams::enter_s`]: one alert and one announcement per entry (the zone's
+    /// name and its rules at that time; no entry: safety); the entry ends after
+    /// [`ZoneParams::exit_m`] skied out of the zone or on a trail. Nothing tested on the
+    /// route (no allocation).
+    fn fence(&mut self, t: f64, pos: LonLat, out: &mut Vec<Output>) {
+        let Some((layer, rules)) = self.layers.and_then(|d| d.zones.as_ref()) else {
+            return;
+        };
+        let moved = self.fence_last.map_or(0.0, |q| q.haversine_m(pos));
+        self.fence_last = Some(pos);
+        let off_route = self.deviating_since.is_some();
+        if !off_route && !self.fences.iter().any(|f| f.inside || f.since.is_some()) {
+            return;
+        }
+        let p = self.p.zone;
+        // Off the route on another trail (asked only inside a zone: rare).
+        let mut on_trail: Option<bool> = None;
+        let mut entered: Vec<usize> = Vec::new();
+        for k in 0..self.fences.len() {
+            let z = &layer.zones[self.fences[k].zone];
+            let off_trail = off_route
+                && z.contains(pos)
+                && !*on_trail.get_or_insert_with(|| self.g.snap(pos, p.trail_m).is_some());
+            let f = &mut self.fences[k];
+            if !f.inside {
+                if !off_trail {
+                    f.since = None;
+                    f.run_m = 0.0;
+                    continue;
+                }
+                // Counted from the first fix inside (a jump of the GPS into the zone is not
+                // skied in it).
+                let since = *f.since.get_or_insert(t);
+                if since < t {
+                    f.run_m += moved;
+                }
+                if f.run_m < p.enter_m || t - since < p.enter_s {
+                    continue;
+                }
+                f.inside = true;
+                f.calm_m = 0.0;
+                entered.push(f.zone);
+            } else if !off_trail {
+                f.calm_m += moved;
+                if f.calm_m >= p.exit_m {
+                    f.inside = false;
+                    f.since = None;
+                    f.run_m = 0.0;
+                }
+            } else {
+                f.calm_m = 0.0;
+            }
+        }
+        if entered.is_empty() {
+            return;
+        }
+        // The rules of each zone entered now (C8 at the time of the entry); zones entered
+        // together are said together: the name of the first with no entry (else the
+        // first), the rules of all.
+        let ev = skimap_core::zone_eval::evaluate(layer, rules, pos, utc_of(t));
+        let mut said: Vec<(usize, Vec<ZoneRule>, Option<DayMonth>)> = entered
+            .into_iter()
+            .filter_map(|i| {
+                let (r, until) = plan::zone_rules(&ev, rules, layer.zones[i].id());
+                (!r.is_empty()).then_some((i, r, until))
+            })
+            .collect();
+        if said.is_empty() {
+            return;
+        }
+        said.sort_by_key(|(_, r, _)| !r.contains(&ZoneRule::NoEntry));
+        let (i, _, until) = said[0];
+        let mut all: Vec<ZoneRule> = Vec::new();
+        for (_, r, _) in &said {
+            for x in r {
+                if !all.contains(x) {
+                    all.push(*x);
+                }
+            }
+        }
+        let zone = &layer.zones[i];
+        out.push(Output::Alert {
+            t: utc_of(t),
+            alert: Alert::ProtectedZone {
+                id: zone.id().to_owned(),
+                name: zone.props.name.clone(),
+                rules: all.clone(),
+            },
+        });
+        let (priority, ttl) = if all.contains(&ZoneRule::NoEntry) {
+            (Priority::Safety, None)
+        } else {
+            (Priority::Direction, Some(60.0))
+        };
+        self.offer(
+            t,
+            priority,
+            "zone_entered",
+            "protected_zone",
+            Event::ProtectedZone {
+                entered: true,
+                zone: Some(zone.props.name.clone()),
+                rules: all,
+                until,
+            }
+            .announce(),
+            ttl,
+        );
     }
 
     fn decisions(&mut self, t: f64) {

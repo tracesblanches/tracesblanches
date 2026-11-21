@@ -29,6 +29,10 @@ use skimap_common::geom::LonLat;
 
 use crate::error::{Error, Result};
 
+/// Identifier prefix of the Biodiv'sports zones (`biodiv:<id>`): a personal-use source
+/// (no licence found, docs/licences-donnees.md).
+pub const BIODIV_ID_PREFIX: &str = "biodiv:";
+
 /// Kind of a zone. The rules ([`crate::rules`]) select zones by id or by kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

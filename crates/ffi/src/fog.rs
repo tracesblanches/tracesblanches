@@ -348,8 +348,192 @@ fn plan_refuges(pack: &Pack) -> Result<Vec<(LonLat, Option<String>)>, PackError>
     Ok(out)
 }
 
+/// Two unnamed points of the same kind closer than this are one (the ways of one car park
+/// mapped apart), metres.
+pub const SAME_PLACE_M: f64 = 150.0;
+/// An unnamed point is told by the nearest named place within this, metres.
+pub const PLACE_MAX_M: f64 = 5000.0;
+
+/// A point to go to as the pack gives it: kind, name when it has one, position.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RawTarget {
+    /// `refuge`, `parking`, `start`, `point`.
+    pub kind: String,
+    /// Name in the data, `None` when the data has none.
+    pub name: Option<String>,
+    /// Position.
+    pub at: LonLat,
+}
+
+/// Named places of a pack an unnamed point is told by: the named targets `raw`, the named
+/// points of interest of the pack (car parks, desks, offices) and its stations.
+fn named_places(pack: &Pack, raw: &[RawTarget]) -> Result<Vec<(LonLat, String)>, PackError> {
+    let mut out: Vec<(LonLat, String)> = raw
+        .iter()
+        .filter_map(|t| Some((t.at, t.name.clone()?)))
+        .collect();
+    for id in ["stations-pois", "stations"] {
+        if pack.layer(id).is_err() {
+            continue;
+        }
+        for f in pack.read_geojson(id)?.features {
+            let Some(p) = point_of(&f) else { continue };
+            if let Some(n) = prop(&f, "name").map(str::trim).filter(|n| !n.is_empty()) {
+                out.push((p, n.to_owned()));
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// The targets of `raw`, each told apart from the others (#181). A point without a name
+/// is called by its kind and the nearest named place of `places` within
+/// [`PLACE_MAX_M`] (« Parking à 300 mètres au sud du Plan », « Parking près du
+/// foyer »), else by its kind and the centre of the site (`site`: name, centre); « près
+/// de » shared by two points gives way to the distance and the direction. A point closer
+/// than [`SAME_PLACE_M`] to a point of the same kind already kept, unnamed or of the same
+/// name, is dropped (the same car park mapped as several ways, the same hut in two
+/// sources). A label still shared gets its rank (« (2) »).
+pub fn label_targets(
+    raw: Vec<RawTarget>,
+    places: &[(LonLat, String)],
+    site: Option<(&str, LonLat)>,
+    lang: Lang,
+) -> Vec<FogTarget> {
+    let tx = text::of(lang);
+    // (target, label, precise label of an unnamed point)
+    let mut kept: Vec<(RawTarget, String, Option<String>)> = Vec::new();
+    // Named first, so that an unnamed way of a named car park is dropped for it.
+    let (named, unnamed): (Vec<RawTarget>, Vec<RawTarget>) =
+        raw.into_iter().partition(|t| t.name.is_some());
+    for t in named {
+        let name = t.name.clone().unwrap_or_default();
+        if !kept.iter().any(|(k, n, _)| {
+            k.kind == t.kind && *n == name && k.at.haversine_m(t.at) < SAME_PLACE_M
+        }) {
+            kept.push((t, name, None));
+        }
+    }
+    for t in unnamed {
+        if kept
+            .iter()
+            .any(|(k, _, _)| k.kind == t.kind && k.at.haversine_m(t.at) < SAME_PLACE_M)
+        {
+            continue;
+        }
+        let (name, precise) = unnamed_names(&t, places, site, lang);
+        kept.push((t, name, Some(precise)));
+    }
+    let count = |kept: &[(RawTarget, String, Option<String>)], kind: &str, name: &str| {
+        kept.iter()
+            .filter(|(k, n, _)| k.kind == kind && n == name)
+            .count()
+    };
+    let shared: Vec<bool> = kept
+        .iter()
+        .map(|(t, n, _)| count(&kept, &t.kind, n) > 1)
+        .collect();
+    for ((_, name, precise), shared) in kept.iter_mut().zip(shared) {
+        if shared && let Some(p) = precise.take() {
+            *name = p;
+        }
+    }
+    let mut seen: std::collections::HashMap<(String, String), usize> =
+        std::collections::HashMap::new();
+    kept.into_iter()
+        .map(|(t, name, _)| {
+            let n = seen.entry((t.kind.clone(), name.clone())).or_insert(0);
+            *n += 1;
+            let name = if *n == 1 {
+                name
+            } else {
+                tx.fog_rank(&name, *n)
+            };
+            FogTarget {
+                kind: t.kind,
+                name,
+                lon: t.at.lon,
+                lat: t.at.lat,
+                distance_m: None,
+            }
+        })
+        .collect()
+}
+
+/// Names of an unnamed point by its kind and the nearest named place: the short one
+/// (« près de » within [`SAME_PLACE_M`]) and the precise one (distance and direction).
+fn unnamed_names(
+    t: &RawTarget,
+    places: &[(LonLat, String)],
+    site: Option<(&str, LonLat)>,
+    lang: Lang,
+) -> (String, String) {
+    let tx = text::of(lang);
+    let what = tx.fog_kind(&t.kind);
+    let nearest = places
+        .iter()
+        .map(|(p, n)| (p.haversine_m(t.at), *p, n.as_str()))
+        .filter(|(d, _, _)| *d <= PLACE_MAX_M)
+        .min_by(|a, b| a.0.total_cmp(&b.0));
+    let Some((d, p, place)) = nearest.or_else(|| site.map(|(n, c)| (c.haversine_m(t.at), c, n)))
+    else {
+        return (what.to_owned(), what.to_owned());
+    };
+    let precise = tx.fog_off(what, &distance_words(d, lang), bearing_deg(p, t.at), place);
+    if d < SAME_PLACE_M {
+        (tx.fog_near(what, place), precise)
+    } else {
+        (precise.clone(), precise)
+    }
+}
+
+/// Points of the pack to go to as the data gives them: its refuges and shelters, its
+/// parkings, the starts of its loops.
+fn raw_targets(pack: &Pack, lang: Lang) -> Result<Vec<RawTarget>, PackError> {
+    let mut out = Vec::new();
+    for (p, name) in plan_refuges(pack)? {
+        out.push(RawTarget {
+            kind: "refuge".into(),
+            name,
+            at: p,
+        });
+    }
+    if pack.layer("stations-pois").is_ok() {
+        for f in pack.read_geojson("stations-pois")?.features {
+            if prop(&f, "kind") != Some("parking") {
+                continue;
+            }
+            let Some(p) = point_of(&f) else { continue };
+            let name = prop(&f, "name")
+                .map(str::trim)
+                .filter(|n| !n.is_empty())
+                .map(str::to_owned);
+            out.push(RawTarget {
+                kind: "parking".into(),
+                name,
+                at: p,
+            });
+        }
+    }
+    for s in crate::tracking_day::day_starts(pack.manifest().site.id.clone(), lang) {
+        out.push(RawTarget {
+            kind: "start".into(),
+            name: Some(s.name),
+            at: LonLat::new(s.lon, s.lat),
+        });
+    }
+    Ok(out)
+}
+
+/// Name and centre of the site of a pack.
+fn site_of(pack: &Pack) -> (String, LonLat) {
+    let s = &pack.manifest().site;
+    (s.name.clone(), LonLat::new(s.center[0], s.center[1]))
+}
+
 /// Points of the pack in `pack_dir` to go to: its refuges and shelters, its parkings, the
-/// starts of its loops; nearest first when a position is given, at most `limit` (0: all).
+/// starts of its loops, each told apart from the others ([`label_targets`]); nearest
+/// first when a position is given, at most `limit` (0: all).
 #[uniffi::export]
 pub fn fog_targets(
     pack_dir: String,
@@ -359,40 +543,10 @@ pub fn fog_targets(
     limit: u32,
 ) -> Result<Vec<FogTarget>, PackError> {
     let pack = Pack::open(PathBuf::from(&pack_dir))?;
-    let mut out: Vec<FogTarget> = Vec::new();
-    let mut add = |kind: &str, name: String, p: LonLat| {
-        if !out
-            .iter()
-            .any(|t| t.kind == kind && t.name == name && (t.lon - p.lon).abs() < 1e-5)
-        {
-            out.push(FogTarget {
-                kind: kind.to_owned(),
-                name,
-                lon: p.lon,
-                lat: p.lat,
-                distance_m: None,
-            });
-        }
-    };
-    for (p, name) in plan_refuges(&pack)? {
-        let name = name.unwrap_or_else(|| card_word(lang, "Refuge"));
-        add("refuge", name, p);
-    }
-    if pack.layer("stations-pois").is_ok() {
-        for f in pack.read_geojson("stations-pois")?.features {
-            if prop(&f, "kind") != Some("parking") {
-                continue;
-            }
-            let Some(p) = point_of(&f) else { continue };
-            let name = prop(&f, "name")
-                .map(str::to_owned)
-                .unwrap_or_else(|| card_word(lang, "Parking"));
-            add("parking", name, p);
-        }
-    }
-    for s in crate::tracking_day::day_starts(pack.manifest().site.id.clone(), lang) {
-        add("start", s.name, LonLat::new(s.lon, s.lat));
-    }
+    let raw = raw_targets(&pack, lang)?;
+    let places = named_places(&pack, &raw)?;
+    let (site, centre) = site_of(&pack);
+    let mut out = label_targets(raw, &places, Some((&site, centre)), lang);
     if let (Some(lon), Some(lat)) = (lon, lat) {
         let here = LonLat::new(lon, lat);
         for t in &mut out {
@@ -419,11 +573,31 @@ impl TotalCmp for Option<f64> {
     }
 }
 
-fn card_word(lang: Lang, fr: &str) -> String {
-    match (lang, fr) {
-        (Lang::En, "Refuge") => "Refuge".into(),
-        (Lang::En, "Parking") => "Car park".into(),
-        _ => fr.to_owned(),
+/// The point touched on the map (`lon`, `lat`) as a target, named by the nearest named
+/// place of the pack in `pack_dir` (« Point à 400 mètres à l'ouest du refuge… »); by its
+/// kind alone without a pack.
+#[uniffi::export]
+pub fn fog_point(pack_dir: Option<String>, lon: f64, lat: f64, lang: Lang) -> FogTarget {
+    let t = RawTarget {
+        kind: "point".into(),
+        name: None,
+        at: LonLat::new(lon, lat),
+    };
+    let name = match pack_dir.and_then(|d| Pack::open(PathBuf::from(d)).ok()) {
+        Some(pack) => {
+            let raw = raw_targets(&pack, lang).unwrap_or_default();
+            let places = named_places(&pack, &raw).unwrap_or_default();
+            let (site, centre) = site_of(&pack);
+            unnamed_names(&t, &places, Some((&site, centre)), lang).0
+        }
+        None => text::of(lang).fog_kind("point").to_owned(),
+    };
+    FogTarget {
+        kind: t.kind,
+        name,
+        lon,
+        lat,
+        distance_m: None,
     }
 }
 
@@ -1471,6 +1645,122 @@ mod tests {
     use crate::tracking::pack_fixes;
 
     const T0: i64 = 1_771_146_000_000; // 2026-02-15 09:00 UTC
+
+    /// `metres` north (`dlat`) and east (`dlon`) of (6, 45).
+    fn off(north: f64, east: f64) -> LonLat {
+        LonLat::new(
+            6.0 + east / (111_195.0 * 45f64.to_radians().cos()),
+            45.0 + north / 111_195.0,
+        )
+    }
+
+    fn raw(kind: &str, name: Option<&str>, at: LonLat) -> RawTarget {
+        RawTarget {
+            kind: kind.into(),
+            name: name.map(str::to_owned),
+            at,
+        }
+    }
+
+    /// #181: the car parks and huts without a name are told apart by the nearest named
+    /// place (« près de » within 150 m, else distance and direction), in French and in
+    /// English; the ways of one car park are one; a named car park keeps its name.
+    #[test]
+    fn unnamed_targets_are_told_apart() {
+        let places = vec![
+            (off(0.0, 0.0), "Le Laus".to_owned()),
+            (off(3000.0, 0.0), "Refuge Napoléon".to_owned()),
+        ];
+        let targets = || {
+            vec![
+                raw("parking", None, off(50.0, 0.0)),
+                // Another way of the same car park, 60 m away: dropped.
+                raw("parking", None, off(110.0, 0.0)),
+                raw("parking", None, off(-300.0, 0.0)),
+                raw("parking", None, off(3000.0, 1200.0)),
+                raw("parking", Some("Parking des Vignes"), off(1000.0, -1000.0)),
+                // An unnamed way of the named car park: dropped for it.
+                raw("parking", None, off(1000.0, -1050.0)),
+                raw("refuge", None, off(0.0, -800.0)),
+                raw("point", None, off(0.0, 8000.0)),
+            ]
+        };
+        let names = |lang| -> Vec<String> {
+            label_targets(
+                targets(),
+                &places,
+                Some(("Cervières", off(-9000.0, 0.0))),
+                lang,
+            )
+            .into_iter()
+            .map(|t| t.name)
+            .collect()
+        };
+        assert_eq!(
+            names(Lang::Fr),
+            [
+                "Parking des Vignes",
+                "Parking près du Laus",
+                "Parking à 300 mètres au sud du Laus",
+                "Parking à 1,2 kilomètre à l'est du refuge Napoléon",
+                "Refuge à 800 mètres à l'ouest du Laus",
+                "Point à 12 kilomètres au nord-est de Cervières",
+            ]
+        );
+        assert_eq!(
+            names(Lang::En),
+            [
+                "Parking des Vignes",
+                "Car park near Le Laus",
+                "Car park 300 metres south of Le Laus",
+                "Car park 1.2 kilometres east of Refuge Napoléon",
+                "Refuge 800 metres west of Le Laus",
+                "Point 12 kilometres north-east of Cervières",
+            ]
+        );
+    }
+
+    /// Beyond 5 km of any named place, the centre of the site; two « près de » of one
+    /// place give way to the distance and the direction; a label still shared gets its
+    /// rank, a named hut in two sources is one.
+    #[test]
+    fn shared_labels_are_made_distinct() {
+        let places = vec![(off(0.0, 0.0), "Accueil".to_owned())];
+        let t = label_targets(
+            vec![
+                raw("parking", None, off(0.0, 100.0)),
+                raw("parking", None, off(0.0, -100.0)),
+                raw("parking", None, off(20_000.0, 0.0)),
+                raw("refuge", Some("Cabane"), off(5000.0, 0.0)),
+                raw("refuge", Some("Cabane"), off(5000.0, 40.0)),
+                raw("refuge", Some("Cabane"), off(-5000.0, 0.0)),
+            ],
+            &places,
+            Some(("Cervières", off(10_000.0, 0.0))),
+            Lang::Fr,
+        );
+        let names: Vec<&str> = t.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "Cabane",
+                "Cabane (2)",
+                "Parking à 100 mètres à l'est de l'accueil",
+                "Parking à 100 mètres à l'ouest de l'accueil",
+                "Parking à 10 kilomètres au nord de Cervières",
+            ]
+        );
+        let mut labels: Vec<(&str, &str)> = t
+            .iter()
+            .map(|t| (t.kind.as_str(), t.name.as_str()))
+            .collect();
+        labels.sort_unstable();
+        labels.dedup();
+        assert_eq!(labels.len(), t.len(), "every label is distinct");
+        // Without a pack, the point on the map is called by its kind.
+        assert_eq!(fog_point(None, 6.0, 45.0, Lang::Fr).name, "Point");
+        assert_eq!(fog_point(None, 6.0, 45.0, Lang::En).kind, "point");
+    }
 
     #[test]
     fn bearings_and_words() {

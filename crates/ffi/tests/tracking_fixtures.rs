@@ -347,9 +347,37 @@ fn bring_me_back_on_the_fixtures() {
     assert_eq!(offs, 0, "{kinds:?}");
     assert_eq!(kinds.iter().filter(|k| *k == "arrive").count(), 1);
     assert!(kinds.iter().all(|k| k != "off_route"), "{kinds:?}");
-    // Back on the tracker's route and GPS mode.
+    // Arrived (#180): the guidance stays on the arrival, never the plan of the day again,
+    // while the outing is not stopped, the skier walking around the car (the tracker's
+    // plan says nothing but safety meanwhile).
     let after = s.guidance().unwrap();
-    assert_ne!(after.route, "back");
+    let arrived_view = |g: &skimap_ffi::tracking::GuidanceView| {
+        assert_eq!(g.route, "back");
+        assert_eq!(g.phase, PhaseView::Finished);
+        assert!(g.next.is_none(), "{:?}", g.next);
+        assert!(g.back.is_none());
+        assert_eq!(g.remaining_m, 0.0);
+    };
+    arrived_view(&after);
+    let mut later = Vec::new();
+    for k in 0..60 {
+        t += 2000;
+        let d = 1e-5 * f64::from(k % 7);
+        later.push((t, here.lon + d, here.lat - d));
+    }
+    for c in later.chunks(5) {
+        let r = s.push_fixes(pack_fixes(c)).unwrap();
+        arrived_view(&r.guidance);
+        assert!(
+            r.spoken
+                .iter()
+                .all(|x| x.priority == skimap_ffi::tracking::SpeechPriority::Safety),
+            "{:?}",
+            r.spoken
+        );
+    }
+    arrived_view(&s.guidance().unwrap());
+    // Asked to stop going back: the plan of the day again.
     let stop = s.back_stop().unwrap();
     assert_ne!(stop.guidance.route, "back");
 }

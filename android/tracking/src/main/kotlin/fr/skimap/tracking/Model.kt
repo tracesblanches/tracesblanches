@@ -45,6 +45,7 @@ enum class AlertKind {
     CLOSED,
     CLOSED_NO_DETOUR,
     SLOPE,
+    PROTECTED_ZONE,
 }
 
 /** Direction of the next turn. */

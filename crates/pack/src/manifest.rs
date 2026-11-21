@@ -109,6 +109,10 @@ pub struct StartScore {
     pub loops: usize,
     /// Of which real loops (less than a quarter of their length travelled twice).
     pub real_loops: usize,
+    /// Of which real loops shorter than the time asked (proposed only when no real loop
+    /// fits it, #150).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub shorter_loops: usize,
     /// Score of the best loop (`skimap_assist::suggest`), if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub best_score: Option<f64>,
@@ -119,6 +123,12 @@ pub struct StartScore {
     /// The planner's last note when it found no loop.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+}
+
+// `serde` passes the field by reference.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(n: &usize) -> bool {
+    *n == 0
 }
 
 /// Validity of the whole pack.

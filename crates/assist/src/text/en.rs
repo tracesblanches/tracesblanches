@@ -659,6 +659,33 @@ impl Texts for En {
         "no loop fits the time and the return time asked"
     }
 
+    fn s_shorter(&self, budget: &str) -> String {
+        format!("shorter than the time asked ({budget}): no real loop of that time here")
+    }
+
+    fn s_shorter_loops(
+        &self,
+        lo: &str,
+        hi: &str,
+        start: &str,
+        shorter: usize,
+        out_and_backs: usize,
+    ) -> String {
+        format!(
+            "no real loop found from {lo} to {hi} from {start}: {}{}",
+            if shorter == 1 {
+                "a shorter real loop is proposed"
+            } else {
+                "shorter real loops are proposed"
+            },
+            match out_and_backs {
+                0 => "",
+                1 => ", with a loop partly out and back on the same way",
+                _ => ", with loops partly out and back on the same way",
+            }
+        )
+    }
+
     fn s_no_real_loop(
         &self,
         lo: &str,

@@ -37,7 +37,7 @@ use skimap_plan::plan::{self, Context};
 use crate::card::Lang;
 use crate::text;
 use crate::tracking::{TrackingError, epoch_ms};
-use crate::tracking_day::{DayOuting, PACK_FILE, PLAN_FILE, PackView, TRACK_FILE};
+use crate::tracking_day::{DayOuting, PACK_FILE, PLAN_FILE, TRACK_FILE};
 
 /// Summary of a prepared day, next to its plan.
 pub const PREPARED_FILE: &str = "prepared.json";
@@ -138,11 +138,20 @@ fn copy_plan(from: &Path, to: &Path) -> Result<(), TrackingError> {
         skimap_common::output::copy_file(&from.join(f), &to.join(f))
             .map_err(|e| invalid(format!("{f}: {e}")))?;
     }
+    // The neighbouring packs of the plan (H2 #133), when it has some.
+    let n = crate::neighbours::NEIGHBOURS_FILE;
+    if from.join(n).is_file() {
+        skimap_common::output::copy_file(&from.join(n), &to.join(n))
+            .map_err(|e| invalid(format!("{n}: {e}")))?;
+    }
     Ok(())
 }
 
-/// Prepares the next `days` days after `today` (`YYYY-MM-DD`) on the pack in `pack_dir`:
-/// mornings and plans written under `<out_dir>/<site>/<date>/`; `work_dir` receives the
+/// Prepares the next `days` days after `today` (`YYYY-MM-DD`) on the pack in `pack_dir`,
+/// joined with the installed packs among `installed` whose box meets its box as the
+/// morning joins them (H2 #133, [`crate::neighbours`]; `installed` may hold every
+/// installed pack, the start's included): mornings and plans written under
+/// `<out_dir>/<site>/<date>/`; `work_dir` receives the
 /// pipeline view of the pack; `group_json`: the group (C11) the times are for; `outing`:
 /// the skier's last choice in the morning, `None` for the app's default outing (#170: the
 /// evening prepares what the morning shows, from the same first start); texts in `lang`.
@@ -150,6 +159,7 @@ fn copy_plan(from: &Path, to: &Path) -> Result<(), TrackingError> {
 #[allow(clippy::too_many_arguments)]
 pub fn prep_run(
     pack_dir: String,
+    installed: Vec<String>,
     work_dir: String,
     out_dir: String,
     group_json: Option<String>,
@@ -164,7 +174,8 @@ pub fn prep_run(
     let pack = Pack::open(PathBuf::from(&pack_dir)).map_err(invalid)?;
     let site = crate::tracking_day::pack_site(&pack)?;
     let covered = forecast_days(&pack);
-    let view = PackView::build(&pack, Path::new(&work_dir))?;
+    let others = crate::neighbours::neighbours(&pack, &installed);
+    let view = crate::neighbours::build_view(&pack, &others, Path::new(&work_dir))?;
     let mut data = SiteData::load(&view.layout, site, &Paths::default()).map_err(invalid)?;
     let ctx = Context::load(&view.layout, site)?;
     let model: Option<ProfileModel> = group_json
@@ -243,6 +254,7 @@ pub fn prep_run(
             skimap_common::output::write_bytes(&pdir.join(TRACK_FILE), &track.to_bytes())
                 .map_err(invalid)?;
             skimap_common::output::write_text(&pdir.join(PACK_FILE), &pack_dir).map_err(invalid)?;
+            crate::neighbours::write_neighbours(&pdir, &others)?;
             let back = p
                 .pace
                 .as_ref()
@@ -522,6 +534,7 @@ mod tests {
         let fam = crate::tracking_day::group_default(crate::card::Lang::Fr).unwrap();
         let r = prep_run(
             pack.display().to_string(),
+            Vec::new(),
             work.path().display().to_string(),
             out.path().display().to_string(),
             Some(fam.model_json),

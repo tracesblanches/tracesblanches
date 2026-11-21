@@ -3338,6 +3338,7 @@ dependencies = [
 name = "skimap-plan"
 version = "0.1.0"
 dependencies = [
+ "geo",
  "jiff",
  "proptest",
  "serde",

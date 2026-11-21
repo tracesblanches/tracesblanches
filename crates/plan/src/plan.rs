@@ -420,6 +420,8 @@ pub enum KeyKind {
     AvalancheStart,
     /// End of a historic avalanche path.
     AvalancheEnd,
+    /// Another nordic area entered (H2 #133): its trail pass applies.
+    DomainEntered,
     /// Finish.
     Finish,
 }
@@ -639,6 +641,99 @@ fn secs(s: f64) -> SignedDuration {
     SignedDuration::from_millis((s * 1000.0).round() as i64)
 }
 
+/// Sampling step of the nordic areas along a route, metres.
+pub const DOMAIN_STEP_M: f64 = 25.0;
+
+/// A route enters another area once it has stayed in it this far, metres: a route that
+/// grazes the outline of a neighbouring area (a shared trail along the border) does not
+/// change area.
+pub const DOMAIN_HOLD_M: f64 = 300.0;
+
+/// Another nordic area entered along a route (H2 #133).
+#[derive(Debug, Clone, PartialEq)]
+pub struct DomainChange {
+    /// Distance along the route where the area is entered, metres.
+    pub s: f64,
+    /// Area identifier (`site-…`, `net-…`, the same in every pack).
+    pub id: String,
+    /// Area name.
+    pub name: String,
+}
+
+/// The area of a point: among the areas containing it, the site areas (`site-…`, a
+/// winter sports site of OSM) before the networks of trails (`net-…`), then the smallest
+/// outline (a site inside a wider network), then the identifier (stable).
+fn domain_at(domains: &[skimap_assist::layers::Domain], p: LonLat) -> Option<usize> {
+    let size = |d: &skimap_assist::layers::Domain| {
+        d.area
+            .bbox
+            .map_or(f64::INFINITY, |b| b.width() * b.height())
+    };
+    domains
+        .iter()
+        .enumerate()
+        .filter(|(_, d)| d.area.contains(p))
+        .min_by(|(_, a), (_, b)| {
+            (!a.id.starts_with("site-"))
+                .cmp(&!b.id.starts_with("site-"))
+                .then(size(a).total_cmp(&size(b)))
+                .then(a.id.cmp(&b.id))
+        })
+        .map(|(i, _)| i)
+}
+
+/// The nordic areas a route enters after the one it starts in (H2 #133), sampled every
+/// [`DOMAIN_STEP_M`], each once: an area counts once the route has stayed [`DOMAIN_HOLD_M`] in it
+/// (from where it entered); stretches outside every area keep the area before them (a
+/// link between two areas). Nothing without the areas, or for a route in one area.
+pub fn domain_changes(
+    line: &[LonLat],
+    domains: &[skimap_assist::layers::Domain],
+) -> Vec<DomainChange> {
+    let mut out = Vec::new();
+    if domains.is_empty() {
+        return out;
+    }
+    let mut current: Option<usize> = None;
+    // Candidate area: index, where it started, how far it has held.
+    let mut cand: Option<(usize, f64)> = None;
+    // Areas the route has been in: one entered again (the way back to the start) is not
+    // said again.
+    let mut visited: Vec<usize> = Vec::new();
+    let mut s = 0.0;
+    for (p, len) in densify(line, DOMAIN_STEP_M) {
+        let here = domain_at(domains, p);
+        match (here, current) {
+            (Some(h), None) => {
+                current = Some(h);
+                visited.push(h);
+            }
+            (Some(h), Some(c)) if h != c => match cand {
+                Some((k, from)) if k == h => {
+                    if s - from >= DOMAIN_HOLD_M {
+                        current = Some(h);
+                        cand = None;
+                        if !visited.contains(&h) {
+                            visited.push(h);
+                            let d = &domains[h];
+                            out.push(DomainChange {
+                                s: from,
+                                id: d.id.clone(),
+                                name: d.name.clone(),
+                            });
+                        }
+                    }
+                }
+                _ => cand = Some((h, s)),
+            },
+            (Some(_), Some(_)) => cand = None,
+            (None, _) => {}
+        }
+        s += len;
+    }
+    out
+}
+
 /// Runs of a predicate along a line, sampled every 10 m: (start, end) in metres; runs
 /// separated by less than `gap_m` are merged, runs shorter than `min_m` dropped.
 fn runs(
@@ -708,6 +803,56 @@ pub struct ZoneCrossing {
     pub runs: Vec<(f64, f64)>,
 }
 
+/// Whether a zone of the layer is a protected zone whose rules are said (A7, K6 #56): not
+/// a country, department, canton or commune.
+pub fn is_protected(z: &skimap_zones::layer::Zone) -> bool {
+    use skimap_zones::layer::ZoneKind;
+    !matches!(
+        z.kind(),
+        ZoneKind::Country | ZoneKind::Department | ZoneKind::Canton | ZoneKind::Commune
+    )
+}
+
+/// The rules of a zone said for a day outing (A7, and on entering it off the trails, K6
+/// #56): of the rules active in an evaluation (C8) that match the zone, access, leaving the
+/// routes and fire, each once; and the end of the period of the first seasonal one.
+pub fn zone_rules(
+    ev: &skimap_core::zone_eval::Evaluation,
+    rules: &skimap_zones::RuleSet,
+    zone: &str,
+) -> (Vec<ZoneRule>, Option<DayMonth>) {
+    use skimap_core::zone_eval::Verdict;
+    use skimap_zones::rules::{Period, Topic};
+    let mut said = Vec::new();
+    let mut until = None;
+    for r in ev
+        .active_rules()
+        .filter(|r| r.zones.iter().any(|id| id == zone))
+    {
+        let zr = match (r.topic, r.verdict) {
+            (Topic::Access, Verdict::Forbidden) => ZoneRule::NoEntry,
+            (Topic::Access, Verdict::AvoidRecommended) => ZoneRule::Quiet,
+            (Topic::LeaveRoutes, Verdict::Forbidden | Verdict::ForbiddenInPlaces) => {
+                ZoneRule::StayOnRoutes
+            }
+            (Topic::Fire, Verdict::Forbidden) => ZoneRule::NoFire,
+            _ => continue,
+        };
+        if !said.contains(&zr) {
+            said.push(zr);
+        }
+        if until.is_none()
+            && let Some(Period::Yearly { to, .. }) = rules.get(&r.rule).map(|x| &x.period)
+        {
+            until = Some(DayMonth {
+                day: to.day as u8,
+                month: to.month as u8,
+            });
+        }
+    }
+    (said, until)
+}
+
 /// Protected zones crossed by a line (sampled every 10 m) between the distances `range`
 /// on a day; nothing without the zones layer. The zones of the layer that are not a country, department, canton or
 /// commune are tested along the line; the rules of each zone crossed are those of C8 at
@@ -719,22 +864,11 @@ pub fn protected_zones(
     data: &SiteData,
     date: Date,
 ) -> Vec<ZoneCrossing> {
-    use skimap_core::zone_eval::Verdict;
-    use skimap_zones::layer::ZoneKind;
-    use skimap_zones::rules::{Period, Topic};
     let Some((layer, rules)) = &data.zones else {
         return Vec::new();
     };
-    let protected: Vec<&skimap_zones::layer::Zone> = layer
-        .zones
-        .iter()
-        .filter(|z| {
-            !matches!(
-                z.kind(),
-                ZoneKind::Country | ZoneKind::Department | ZoneKind::Canton | ZoneKind::Commune
-            )
-        })
-        .collect();
+    let protected: Vec<&skimap_zones::layer::Zone> =
+        layer.zones.iter().filter(|z| is_protected(z)).collect();
     // Stretches of the line inside each zone (closer than NO_NETWORK_MERGE_M merged),
     // and the first point inside: tested every ZONE_STEP samples of 10 m, and at every
     // sample between two tests that disagree (the boundaries to 10 m; a zone crossed on
@@ -800,33 +934,7 @@ pub fn protected_zones(
         };
         // Its rules of a day outing, as A7 says them: access, leaving the routes, fire.
         let ev = skimap_core::zone_eval::evaluate(layer, rules, p, noon);
-        let mut said = Vec::new();
-        let mut until = None;
-        for r in ev
-            .active_rules()
-            .filter(|r| r.zones.iter().any(|id| id == z.id()))
-        {
-            let zr = match (r.topic, r.verdict) {
-                (Topic::Access, Verdict::Forbidden) => ZoneRule::NoEntry,
-                (Topic::Access, Verdict::AvoidRecommended) => ZoneRule::Quiet,
-                (Topic::LeaveRoutes, Verdict::Forbidden | Verdict::ForbiddenInPlaces) => {
-                    ZoneRule::StayOnRoutes
-                }
-                (Topic::Fire, Verdict::Forbidden) => ZoneRule::NoFire,
-                _ => continue,
-            };
-            if !said.contains(&zr) {
-                said.push(zr);
-            }
-            if until.is_none()
-                && let Some(Period::Yearly { to, .. }) = rules.get(&r.rule).map(|x| &x.period)
-            {
-                until = Some(DayMonth {
-                    day: to.day as u8,
-                    month: to.month as u8,
-                });
-            }
-        }
+        let (said, until) = zone_rules(&ev, rules, z.id());
         if said.is_empty() {
             continue;
         }
@@ -1004,6 +1112,25 @@ pub fn announcements(
                     },
                 ));
             }
+        }
+        // Another nordic area entered (H2 #133): said where the route enters it, with
+        // the rule of its trail pass.
+        for (k, d) in domain_changes(c.line().points(), &h.data.domains)
+            .into_iter()
+            .enumerate()
+        {
+            out.push(planned(
+                format!("domain.{k}"),
+                "domain_entered",
+                Trigger::At {
+                    s: d.s,
+                    until: d.s + DOMAIN_HOLD_M,
+                },
+                Priority::Direction,
+                Event::DomainEntered {
+                    domain: Some(d.name),
+                },
+            ));
         }
         if let Some(told) = h.zones_told {
             // At the first entry of each protected zone not told for the plan: its name,
@@ -1293,6 +1420,16 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
             }
         }
     }
+    for d in domain_changes(pts, &data.domains) {
+        keys.push(KeyPoint {
+            kind: KeyKind::DomainEntered,
+            s: d.s,
+            pos: course.line().point_at(d.s),
+            name: Some(d.name),
+            model_s: course.model_s_at(d.s),
+            at: at(d.s),
+        });
+    }
     keys.push(KeyPoint {
         kind: KeyKind::Finish,
         s: course.length_m(),
@@ -1457,11 +1594,9 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
     let mut notes: Vec<String> = m.notes.clone();
     notes.extend(ctx.missing.iter().cloned());
     if !clips.missing.is_empty() {
-        notes.push(format!(
-            "{} clips sur {} absents du pack : ces annonces passent par la voix de secours du téléphone",
-            clips.missing.len(),
-            clips.required.len()
-        ));
+        notes.push(
+            crate::text::of(m.lang).p_clips_fallback(clips.missing.len(), clips.required.len()),
+        );
     }
     let mut plan = DayPlan {
         format: FORMAT.into(),

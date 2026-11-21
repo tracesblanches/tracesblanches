@@ -74,12 +74,15 @@ class VoiceCommands(
     /**
      * The end of the question found by the VAD in the frames of [next] (null: no more),
      * then its transcription; the engines stay loaded (the bulk measurements of the tests
-     * load them once).
+     * load them once), the VAD reset first so that the order of the questions does not matter.
      */
     fun recognize(
         engines: Engines,
         next: () -> FloatArray?,
     ): Recognized {
+        // Silero keeps a state from frame to frame: without this, a question was heard
+        // through the end of the previous one when the engines stay loaded (VadResetTest).
+        engines.vad.reset()
         val ep = Endpointer()
         while (ep.state == Endpointer.State.WAITING || ep.state == Endpointer.State.SPEECH) {
             val f = next() ?: break

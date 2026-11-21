@@ -4,7 +4,8 @@
 //! outing with stops and detours on a plan with the family's profile (C11 #130: the pace
 //! of the day updated on every fix, the arrival and the proposals checked every minute; its
 //! phone counts the steps, X10: their reports are counted too), with the terrain slope read
-//! on every fix (K6 #56).
+//! on every fix and the layers of the day (K6 #56: the protected zones tested off the
+//! route).
 //!
 //! Reads `data/out/<site>/` (fails if absent; `fixtures/` once Q1 is merged).
 
@@ -56,7 +57,7 @@ unsafe impl GlobalAlloc for Counting {
 #[global_allocator]
 static GLOBAL: Counting = Counting;
 
-fn site_counts(site: &'static Site, family: bool) -> (usize, usize, usize, usize) {
+fn site_counts(site: &'static Site, family: bool, zone: bool) -> (usize, usize, usize, usize) {
     let root = std::env::var("SKIMAP_DATA_DIR")
         .unwrap_or_else(|_| format!("{}/../../data", env!("CARGO_MANIFEST_DIR")));
     let layout = DataLayout::new(root);
@@ -79,7 +80,7 @@ fn site_counts(site: &'static Site, family: bool) -> (usize, usize, usize, usize
     }
     let bytes = plan::track(&p, &g).expect("track").to_bytes();
     let view = TrackView::new(&bytes).unwrap();
-    let sc = Scenario {
+    let mut sc = Scenario {
         name: "alloc".into(),
         start: scenario::departure_utc(&p),
         slowdown: 1.0,
@@ -92,7 +93,21 @@ fn site_counts(site: &'static Site, family: bool) -> (usize, usize, usize, usize
         // The family's phone counts the steps (X10): their reports allocate nothing either.
         step_counter: family,
     };
-    // With the terrain slope (K6 #56): read on every fix.
+    if zone {
+        // Off the trails into a protected zone and back (K6 #56): the fixes in the zone
+        // after its entry is said are quiet too.
+        let scenario::ZoneExcursion { at_s, to, .. } =
+            scenario::zone_excursion(&p, &g, &data, 40.0)
+                .unwrap()
+                .expect("a protected zone off the trails");
+        sc.steps.push(Step::Excursion {
+            at_s,
+            to,
+            speed_mps: 0.8,
+        });
+    }
+    // With the terrain slope (K6 #56): read on every fix; and the layers of the day (the
+    // protected zones, K6 #56).
     let slope: skimap_common::grid::Grid<u8> = skimap_core::offpiste::read_raster(
         &layout
             .out_dir(site)
@@ -106,12 +121,13 @@ fn site_counts(site: &'static Site, family: bool) -> (usize, usize, usize, usize
         view,
         &g,
         TrackerParams::default(),
-        None,
+        Some(&data),
         Some(&slope),
     )
     .expect("run");
     let mut tr = Tracker::new(&p, view, &g, None, TrackerParams::default())
         .unwrap()
+        .with_layers(&data)
         .with_slope(&slope);
     let mut out: Vec<Output> = Vec::with_capacity(64);
     let (mut quiet, mut quiet_alloc, mut eventful, mut fixes) = (0, 0, 0, 0);
@@ -135,22 +151,28 @@ fn site_counts(site: &'static Site, family: bool) -> (usize, usize, usize, usize
         }
     }
     println!(
-        "{}{}: {fixes} fixes et relevés de pas, {quiet} sans rien à dire ni décider ({quiet_alloc} allocations), {eventful} avec une sortie ou une annonce proposée",
+        "{}{}{}: {fixes} fixes et relevés de pas, {quiet} sans rien à dire ni décider ({quiet_alloc} allocations), {eventful} avec une sortie ou une annonce proposée",
         site.id,
-        if family { ", famille" } else { "" }
+        if family { ", famille" } else { "" },
+        if zone {
+            ", dans une zone protégée"
+        } else {
+            ""
+        }
     );
     (fixes, quiet, quiet_alloc, eventful)
 }
 
 #[test]
 fn a_quiet_fix_allocates_nothing() {
-    for (site, family) in [
-        (&CERVIERES, false),
-        (&CHAPELLE_DES_BOIS, false),
-        (&CERVIERES, true),
-        (&CHAPELLE_DES_BOIS, true),
+    for (site, family, zone) in [
+        (&CERVIERES, false, false),
+        (&CHAPELLE_DES_BOIS, false, false),
+        (&CERVIERES, true, false),
+        (&CHAPELLE_DES_BOIS, true, false),
+        (&CHAPELLE_DES_BOIS, false, true),
     ] {
-        let (fixes, quiet, allocs, _) = site_counts(site, family);
+        let (fixes, quiet, allocs, _) = site_counts(site, family, zone);
         assert!(quiet > fixes * 9 / 10, "{quiet} of {fixes}");
         assert_eq!(
             allocs, 0,

@@ -428,6 +428,12 @@ pub enum Event {
         /// End of the period, if seasonal.
         until: Option<DayMonth>,
     },
+    /// Another nordic area entered along the route, with its name (H2 #133): its trail
+    /// pass applies.
+    DomainEntered {
+        /// Name of the area entered.
+        domain: Option<String>,
+    },
     /// Zone without any network ahead (P12).
     NoNetworkAhead {
         /// Distance to the zone, metres.
@@ -604,6 +610,13 @@ impl Event {
                 if let Some(d) = until {
                     a.push(clips::until(*d), Short);
                 }
+            }
+            Event::DomainEntered { domain } => {
+                a.push(Fixed::DomainEntered.clip(), Short);
+                if let Some(d) = domain {
+                    a.push(Name::Place(d.clone()).clip(), Long);
+                }
+                a.push(Fixed::DomainFee.clip(), Short);
             }
             Event::NoNetworkAhead { metres, length_m } => {
                 if let Some(m) = round_distance(*metres) {

@@ -6,13 +6,14 @@
 //! - fixtures (default): the redistributable layers of `fixtures/` (graph, pistes, zones,
 //!   coverage, huts, snow, exposure of Chapelle-des-Bois), without any weather: the
 //!   suggestions (A5) and the equipment list (A6) do not need it;
-//! - full data (`full_data_`, weekly job): the archived past days of
-//!   `data/out/<site>/assist/history/` (Open-Meteo historical forecasts, personal use
-//!   only, never versioned), the BERA archive and the status sources.
+//! - full data with the personal sources (`full_data_personal_`, run by hand, not by the
+//!   weekly build): the archived past days of `data/out/<site>/assist/history/`
+//!   (Open-Meteo historical forecasts, personal use only, never versioned), the BERA
+//!   archive and the status sources.
 //!
 //! ```sh
 //! cargo test -p skimap-assist --test real_sites
-//! cargo test -p skimap-assist --test real_sites -- --ignored full_data_
+//! cargo test -p skimap-assist --test real_sites -- --ignored full_data_personal_
 //! ```
 
 #![allow(
@@ -61,6 +62,7 @@ fn fixture_data(site: &Site) -> SiteData {
 }
 
 fn history(site: &Site, forecast: bool, route: &str) -> SiteData {
+    fixtures::require_full_data_personal(site.id);
     let l = layout();
     let h = l.layer_dir(site, "assist").unwrap().join("history");
     let mut paths = Paths::default();
@@ -97,7 +99,7 @@ fn date(s: &str) -> Date {
 
 #[test]
 #[ignore = "full-data: data/out/<site>/assist/history (Open-Meteo, personal use)"]
-fn full_data_cervieres_january_2026_snowfall_and_cold() {
+fn full_data_personal_cervieres_january_2026_snowfall_and_cold() {
     let d = history(&CERVIERES, false, "routes.geojson");
     assert!(d.missing.is_empty(), "{:?}", d.missing);
     let opts = briefing::Options::default();
@@ -139,7 +141,7 @@ fn full_data_cervieres_january_2026_snowfall_and_cold() {
 
 #[test]
 #[ignore = "full-data: data/out/<site>/assist/history (Open-Meteo, personal use)"]
-fn full_data_cervieres_spring_2023_bera_and_softening() {
+fn full_data_personal_cervieres_spring_2023_bera_and_softening() {
     let d = history(&CERVIERES, false, "offpiste_laus_izoard.geojson");
     let b = briefing::day(&d, date("2023-04-15"), &briefing::Options::default());
     assert_eq!(b.bera_level, Some(2));
@@ -160,7 +162,7 @@ fn full_data_cervieres_spring_2023_bera_and_softening() {
 
 #[test]
 #[ignore = "full-data: data/out/<site>/assist/history (Open-Meteo, personal use)"]
-fn full_data_chapelle_february_2026_thaw() {
+fn full_data_personal_chapelle_february_2026_thaw() {
     let d = history(&CHAPELLE_DES_BOIS, false, "offpiste_risoux_fevrier.geojson");
     let day = date("2026-02-24");
     let b = briefing::day(&d, day, &briefing::Options::default());
@@ -186,7 +188,7 @@ fn full_data_chapelle_february_2026_thaw() {
 
 #[test]
 #[ignore = "full-data: data/out/<site>/assist/history (Open-Meteo, personal use)"]
-fn full_data_today_both_sites() {
+fn full_data_personal_today_both_sites() {
     let t = date("2026-11-15");
     let d = history(&CERVIERES, true, "routes.geojson");
     let b = briefing::day(&d, t, &briefing::Options::default());
@@ -225,7 +227,7 @@ fn request(
 
 #[test]
 #[ignore = "full-data: data/out/<site>/assist/history (Open-Meteo, personal use)"]
-fn full_data_suggestions_respect_time_and_report_graph_limits() {
+fn full_data_personal_suggestions_respect_time_and_report_graph_limits() {
     let d = history(&CHAPELLE_DES_BOIS, false, "offpiste_risoux_fevrier.geojson");
     let village = LonLat::new(6.1125, 46.6032);
     let r = request(
@@ -442,7 +444,7 @@ fn suggestions_and_turnaround_for_a_family() {
 
 #[test]
 #[ignore = "full-data: data/out/<site>/assist/history (Open-Meteo, personal use)"]
-fn full_data_best_time_equipment_and_weather_replay() {
+fn full_data_personal_best_time_equipment_and_weather_replay() {
     let d = history(&CERVIERES, false, "routes.geojson");
     let p = d.weather.as_ref().unwrap().point("le-laus").unwrap();
     // 8 January 2026: fog from late morning at Le Laus.
@@ -566,7 +568,8 @@ fn equipment_on_the_fixtures_le_laus_les_fonts() {
 
 /// X16 (#150) on the fixtures (no weather): from Le Laus, a real loop for 2 h of skating
 /// (the 11 km half out-and-back before), and for 3 h, where the network has no real loop
-/// that long, the out-and-backs said as the only option with the longest real loop; at
+/// that long, the out-and-backs with the shorter real loop, said (see
+/// `a_real_loop_shorter_than_the_time_is_proposed_with_the_out_and_backs`); at
 /// Chapelle-des-Bois only real loops. The share is measured on the legs.
 #[test]
 fn real_loops_on_the_fixtures() {
@@ -583,8 +586,8 @@ fn real_loops_on_the_fixtures() {
     assert!(!s.notes.iter().any(|n| n.contains("vraie boucle")));
     let s = suggest::suggest(&c, &reqs[1]);
     println!("{}", s.text.join("\n"));
-    assert!(!s.suggestions.is_empty());
-    assert!(s.suggestions.iter().all(|x| !x.real_loop));
+    assert!(!s.suggestions[0].real_loop);
+    assert!(s.suggestions.iter().all(|x| !x.real_loop || x.shorter));
     assert!(
         share(&s.suggestions[0]) < 0.35,
         "{}",
@@ -596,7 +599,7 @@ fn real_loops_on_the_fixtures() {
         .find(|n| n.starts_with("aucune vraie boucle trouvée de 2 h 15 à 3 h 18 depuis Le Laus"))
         .expect("said");
     assert!(
-        note.contains("la plus longue vraie boucle trouvée fait"),
+        note.contains("avec des boucles en partie en aller-retour"),
         "{note}"
     );
     let d = fixture_data(&CHAPELLE_DES_BOIS);
@@ -608,6 +611,60 @@ fn real_loops_on_the_fixtures() {
             assert!((x.out_and_back_share - share(x)).abs() < 0.006);
         }
     }
+}
+
+/// #150 (rest): a real loop from the start that fits in the time on its own, shorter than
+/// the 75 % of the budget, was set aside (only named in the note) and out-and-backs were
+/// proposed instead. On the fixtures of Le Laus for 3 h of classic, the network has no
+/// real loop of 2 h 15 to 3 h 18; its longest real loop (10,1 km, under 2 h) is proposed,
+/// said shorter than the time asked, with the out-and-backs, best score first (no
+/// proposal lost: the 16,5 km one stays first).
+#[test]
+fn a_real_loop_shorter_than_the_time_is_proposed_with_the_out_and_backs() {
+    let share = |x: &suggest::Suggestion| {
+        let (t, l) = travelled_twice_m(&x.legs);
+        t / l
+    };
+    let c = fixture_data(&CERVIERES);
+    let reqs = skimap_assist::presets::suggestion_requests(&CERVIERES, date("2026-01-09"));
+    let r = &reqs[1];
+    let s = suggest::suggest(&c, r);
+    println!("{}", s.text.join("\n"));
+    let short = s
+        .suggestions
+        .iter()
+        .find(|x| x.real_loop)
+        .expect("a real loop for 3 h");
+    assert!(share(short) < 0.25, "{}", share(short));
+    assert!(short.shorter, "{}", short.label);
+    assert!(
+        short.eta_min >= 0.6 * r.budget_min && short.eta_min < 0.75 * r.budget_min,
+        "{} min for {} min",
+        short.eta_min,
+        r.budget_min
+    );
+    assert!(
+        short
+            .reasons
+            .iter()
+            .any(|x| x.text.starts_with("plus courte que le temps demandé")),
+        "{:?}",
+        short.reasons
+    );
+    // The two out-and-backs of 3 h are still proposed, best score first.
+    let oab: Vec<_> = s.suggestions.iter().filter(|x| !x.real_loop).collect();
+    assert_eq!(oab.len(), 2, "{}", s.text.join("\n"));
+    assert!((s.suggestions[0].length_km - 16.5).abs() < 0.3);
+    assert!(s.suggestions.windows(2).all(|w| w[0].score >= w[1].score));
+    let note = s
+        .notes
+        .iter()
+        .find(|n| n.starts_with("aucune vraie boucle trouvée de 2 h 15 à 3 h 18 depuis Le Laus"))
+        .expect("said");
+    assert!(
+        note.contains("une vraie boucle plus courte est proposée, avec des boucles"),
+        "{note}"
+    );
 }
 
 /// Length of a route on stretches of the graph already travelled, and its length, m:
@@ -646,7 +703,7 @@ fn travelled_twice_m(legs: &[skimap_core::routing::Leg]) -> (f64, f64) {
 /// the one the assistant gives (`out_and_back_share`, printed second).
 #[test]
 #[ignore = "full-data: data/out/<site>/assist/history (Open-Meteo, personal use)"]
-fn full_data_out_and_back_share_of_the_loops() {
+fn full_data_personal_out_and_back_share_of_the_loops() {
     let grid = [60.0, 90.0, 120.0, 180.0, 240.0];
     for (site, day, route, starts) in [
         (
