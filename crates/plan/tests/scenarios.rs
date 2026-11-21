@@ -2378,3 +2378,208 @@ fn k6_normal_outings_never_say_the_slope() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------------------
+// K6 (#56): a protected zone entered off the trails.
+
+fn is_zone(o: &Output) -> Option<(&str, &[skimap_voice::bank::ZoneRule])> {
+    match o {
+        Output::Alert {
+            alert: Alert::ProtectedZone { name, rules, .. },
+            ..
+        } => Some((name.as_str(), rules.as_slice())),
+        _ => None,
+    }
+}
+
+/// An outing of `b` that leaves the loop into a protected zone off the trails and comes
+/// back (with the layers of the day, or without).
+fn zone_outing(b: &Built, name: &str, with_layers: bool) -> Option<Run> {
+    let data = &b.layers.0;
+    let scenario::ZoneExcursion {
+        at_s: s,
+        to,
+        far_m: d,
+        zone,
+        from_inside: start_inside,
+    } = scenario::zone_excursion(&b.plan, &b.graph, data, 40.0).unwrap()?;
+    println!(
+        "{name} : sortie de la boucle à {s:.0} m vers {to:?}, à {d:.0} m de la boucle, dans {zone} (boucle déjà dedans : {start_inside})"
+    );
+    let sc = scen(
+        b,
+        name,
+        vec![
+            Step::WaitAtStart { secs: 60.0 },
+            Step::Excursion {
+                at_s: s,
+                to,
+                speed_mps: 0.8,
+            },
+        ],
+    );
+    let params = TrackerParams {
+        // The skier's own way back (no new route in the meantime).
+        reroute_after_s: 3600.0,
+        ..TrackerParams::default()
+    };
+    let view = TrackView::new(&b.track).expect("track");
+    let layers = with_layers.then_some(data);
+    let run = scenario::run_with(&sc, &b.plan, view, &b.graph, params.clone(), layers, None)
+        .expect("run");
+    println!("== {} ({} fixes, {} lots)", sc.name, run.fixes, run.batches);
+    for l in scenario::timeline(&run) {
+        println!("{l}");
+    }
+    let again =
+        scenario::replay_with(&run.inputs, &b.plan, view, &b.graph, params, layers, None).unwrap();
+    assert_eq!(again, run.outputs, "{}: not deterministic", run.scenario);
+    Some(run)
+}
+
+fn check_zone_outing(run: &Run) {
+    no_manipulation(run);
+    let t = expect(
+        run,
+        &[
+            (M::Alert(Alert::OffRoute), 0.0, 1e6),
+            (M::Said("protected_zone"), 0.0, 1e6),
+            (M::Alert(Alert::BackOnRoute), 0.0, 1e6),
+            (M::Finished(End::Arrived), 0.0, 1e6),
+        ],
+    );
+    let zones: Vec<(f64, &str, &[skimap_voice::bank::ZoneRule])> = run
+        .outputs
+        .iter()
+        .filter_map(|o| is_zone(o).map(|(n, r)| (scenario::rel(run, o.t()), n, r)))
+        .collect();
+    println!("{} : alertes de zone {zones:?}", run.scenario);
+    // One entry (out and back): one alert, one announcement with the zone's name and its
+    // rules, never « sans danger ».
+    assert_eq!(zones.len(), 1, "{zones:?}");
+    assert!(!zones[0].2.is_empty());
+    assert!(t[0] < zones[0].0 && zones[0].0 < t[2], "{t:?} {zones:?}");
+    let said: Vec<(f64, &skimap_plan::speech::Spoken)> = run
+        .outputs
+        .iter()
+        .filter_map(|o| match o {
+            Output::Spoken { spoken, .. }
+                if spoken.items.iter().any(|c| c.kind == "protected_zone") =>
+            {
+                Some((scenario::rel(run, o.t()), spoken))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(said.len(), 1);
+    let (ts, spoken) = said[0];
+    let text = spoken.announcement.text();
+    println!("« {text} » à {ts:.0} s");
+    assert!(
+        text.contains("Vous entrez dans une zone protégée"),
+        "{text}"
+    );
+    // The zone's name as the pack says it and its rules cited (the end of a seasonal
+    // period, if any, after them).
+    let told = skimap_voice::Event::ProtectedZone {
+        entered: true,
+        zone: Some(zones[0].1.to_owned()),
+        rules: zones[0].2.to_vec(),
+        until: None,
+    }
+    .announce()
+    .text();
+    assert!(text.contains(&told), "{text} / {told}");
+    // In English, clip by clip (the phone's language).
+    let en: Vec<String> = spoken
+        .announcement
+        .segments
+        .iter()
+        .map(|s| {
+            skimap_voice::phrase::localise(
+                &s.clip,
+                skimap_common::Lang::Fr,
+                skimap_common::Lang::En,
+            )
+            .text
+        })
+        .collect();
+    let en = en.join(" ");
+    println!("« {en} »");
+    assert!(en.contains("You are entering a protected area."), "{en}");
+    assert!(
+        en.contains("Wildlife quiet area")
+            || en.contains("Stay on the marked routes")
+            || en.contains("No entry"),
+        "{en}"
+    );
+    assert!(never_safe(&text));
+    // Said within the minute of its alert.
+    assert!(ts - zones[0].0 <= 60.0, "{ts} {zones:?}");
+}
+
+#[test]
+fn k6_protected_zone_entered_off_the_trails() {
+    let mut found = 0;
+    for (b, site) in [
+        (cervieres(), "Cervières"),
+        (chapelle(), "Chapelle-des-Bois"),
+    ] {
+        let name = format!("{site}, hors des pistes dans une zone protégée");
+        let Some(run) = zone_outing(&b, &name, true) else {
+            println!(
+                "{site} : aucune zone protégée avec des règles hors des pistes près de la boucle"
+            );
+            continue;
+        };
+        found += 1;
+        check_zone_outing(&run);
+        // Without the zones layer: nothing said of it.
+        let bare = zone_outing(&b, &format!("{site}, sans les zones"), false).unwrap();
+        assert!(bare.outputs.iter().all(|o| is_zone(o).is_none()));
+    }
+    assert!(
+        found >= 1,
+        "no protected zone off the trails near the loops"
+    );
+}
+
+#[test]
+fn k6_normal_outings_never_say_a_protected_zone() {
+    // Silence when all goes well: the loops of both sites with the zones layer, normal and
+    // harsh GPS (σ 15 m, forest outliers).
+    for (b, site) in [
+        (cervieres(), "Cervières"),
+        (chapelle(), "Chapelle-des-Bois"),
+    ] {
+        for (sigma, seed) in [(10.0, 7), (15.0, 99), (15.0, 3)] {
+            let mut sc = scen(
+                &b,
+                &format!("{site} σ {sigma} graine {seed}"),
+                vec![Step::WaitAtStart { secs: 60.0 }],
+            );
+            sc.sigma_m = sigma;
+            sc.seed = seed;
+            let view = TrackView::new(&b.track).expect("track");
+            let run = scenario::run_with(
+                &sc,
+                &b.plan,
+                view,
+                &b.graph,
+                TrackerParams::default(),
+                Some(&b.layers.0),
+                None,
+            )
+            .expect("run");
+            let n = run.outputs.iter().filter(|o| is_zone(o).is_some()).count();
+            println!("{} : {} fixes, {n} alerte(s) de zone", sc.name, run.fixes);
+            for l in scenario::timeline(&run) {
+                if l.contains("alerte") {
+                    println!("{l}");
+                }
+            }
+            assert_eq!(n, 0, "{}", sc.name);
+            expect(&run, &[(M::Finished(End::Arrived), 0.0, 1e6)]);
+        }
+    }
+}

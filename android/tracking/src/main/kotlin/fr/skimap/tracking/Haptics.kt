@@ -9,7 +9,8 @@ import android.os.VibratorManager
 /**
  * Vibrations (K6, F25): felt through a jacket, told apart without looking. Safety: three
  * long pulses; back on the route: one short; left: two short; right: one long; turn back:
- * three short; a proposal: two medium.
+ * three short; a proposal, a closed trail or a protected zone entered off the trails: two
+ * medium.
  */
 object HapticPatterns {
     /** Off and on durations from the start, milliseconds (waveform timings). */
@@ -23,7 +24,7 @@ object HapticPatterns {
     fun alert(kind: AlertKind): LongArray =
         when (kind) {
             AlertKind.BACK_ON_ROUTE -> BACK_ON
-            AlertKind.CLOSED -> PROPOSAL
+            AlertKind.CLOSED, AlertKind.PROTECTED_ZONE -> PROPOSAL
             else -> SAFETY
         }
 

@@ -809,7 +809,10 @@ fn full_data_bring_me_back() {
         if let Some(gq) = r.gps {
             modes.insert(format!("{:?}", gq.mode));
         }
-        if r.guidance.route != "back" {
+        if r.guidance.back.is_none() {
+            // Arrived (#180): the arrival stays on the banner, not the plan.
+            assert_eq!(r.guidance.route, "back");
+            assert_eq!(r.guidance.phase, PhaseView::Finished);
             arrived = true;
             break;
         }
@@ -970,7 +973,10 @@ fn bring_me_back_on(pack_dir: &Path) -> Result<String, String> {
             r.guidance.back.as_ref().is_some_and(|x| x.off_way),
             left.2 + r.spoken.iter().filter(|x| x.kinds == ["off_route"]).count(),
         );
-        if r.guidance.route != "back" {
+        if r.guidance.back.is_none() {
+            // Arrived (#180): the arrival stays on the banner, not the plan.
+            assert_eq!(r.guidance.route, "back");
+            assert_eq!(r.guidance.phase, PhaseView::Finished);
             assert!(
                 r.spoken.iter().any(|x| x.kinds == ["arrive"]),
                 "{}: back over without the arrival said",
@@ -1368,6 +1374,117 @@ fn full_data_personal_steep_terrain_said_through_the_session() {
     assert_eq!(
         said[0].priority,
         skimap_ffi::tracking::SpeechPriority::Safety
+    );
+    assert!(
+        said[0].all_clips,
+        "clips of the pack: {:?}",
+        said[0].segments
+    );
+    assert!(never_safe(&said[0].text));
+    assert!(results.iter().any(|b| b.recap.is_some()));
+}
+
+/// K6 (#56): Chapelle-des-Bois, the 2 h loop, the skier leaves it off the trails into a
+/// protected zone with rules (the scenario of `skimap-plan`, `zone_excursion`) and comes
+/// back. `open_tracking` gives the tracker the pack's zones and rules: the session raises
+/// the protected zone alert once and says the zone's name and its rules with the clips of
+/// the pack, as the core with the same layers does call for call.
+#[test]
+#[ignore = "full-data: needs data/out/chapelle-des-bois/ and the archived day"]
+fn full_data_protected_zone_said_through_the_session() {
+    let site = &CHAPELLE_DES_BOIS;
+    let layout = DataLayout::new(data());
+    let (mut d, ctx) = presets::load(&layout, site).unwrap();
+    let req = presets::requests(site, presets::past_day(site))[0].clone();
+    let m = skimap_plan::plan::morning(&d, &req);
+    let plan = skimap_plan::plan::build(&mut d, &m, 0, &ctx).unwrap();
+    let g = d.graph.take().unwrap();
+    let trk = skimap_plan::plan::track(&plan, &g).unwrap().to_bytes();
+    let work = tempfile::tempdir().unwrap();
+    std::fs::write(work.path().join("plan.json"), plan.to_json().unwrap()).unwrap();
+    std::fs::write(work.path().join("plan.trk"), &trk).unwrap();
+    std::fs::write(
+        work.path().join("pack.txt"),
+        pack(site).display().to_string(),
+    )
+    .unwrap();
+    let pack_layers = load_layers(&pack(site), &work.path().join("direct")).unwrap();
+    assert!(pack_layers.zones.is_some(), "zones of the pack");
+    let scenario::ZoneExcursion {
+        at_s,
+        to,
+        far_m: far,
+        zone,
+        ..
+    } = scenario::zone_excursion(&plan, &g, &pack_layers, 40.0)
+        .unwrap()
+        .expect("a protected zone off the trails near the loop");
+    println!("sortie de la boucle à {at_s:.0} m, jusqu'à {far:.0} m de la boucle, dans {zone}");
+    let sc = Scenario {
+        name: "k6 zone protégée session".into(),
+        start: scenario::departure_utc(&plan),
+        slowdown: 1.0,
+        steps: vec![
+            Step::WaitAtStart { secs: 60.0 },
+            Step::Excursion {
+                at_s,
+                to,
+                speed_mps: 0.8,
+            },
+        ],
+        sigma_m: 10.0,
+        forest: true,
+        seed: 7,
+        tail_s: 300.0,
+        behaviour: None,
+        step_counter: false,
+    };
+    let run = scenario::run_with(
+        &sc,
+        &plan,
+        TrackView::new(&trk).unwrap(),
+        &g,
+        TrackerParams::default(),
+        Some(&pack_layers),
+        None,
+    )
+    .unwrap();
+    let s = open_tracking(work.path().display().to_string(), None, "fr".into()).unwrap();
+    println!("session: {:?}", s.layers());
+    assert!(s.layers().iter().any(|l| l == "zones"), "{:?}", s.layers());
+    let manifest = VoiceManifest::read(&pack(site).join("voice")).unwrap();
+    let voice = Voice::new(&manifest, "pack");
+    let mut direct = Tracker::new(
+        &plan,
+        TrackView::new(&trk).unwrap(),
+        &g,
+        Some(&voice),
+        TrackerParams::default(),
+    )
+    .unwrap()
+    .with_layers(&pack_layers);
+    let results = follow_batched(&s, &mut direct, &run.inputs);
+    let alerts: Vec<skimap_ffi::tracking::AlertKind> = results
+        .iter()
+        .flat_map(|b| b.alerts.iter().map(|a| a.kind))
+        .collect();
+    println!("alertes : {alerts:?}");
+    let zone_alerts = alerts
+        .iter()
+        .filter(|k| **k == skimap_ffi::tracking::AlertKind::ProtectedZone)
+        .count();
+    assert_eq!(zone_alerts, 1, "{alerts:?}");
+    let said: Vec<&skimap_ffi::tracking::SpokenView> = results
+        .iter()
+        .flat_map(|b| b.spoken.iter())
+        .filter(|x| x.kinds.iter().any(|k| k == "protected_zone"))
+        .collect();
+    assert_eq!(said.len(), 1);
+    println!("« {} » {:?}", said[0].text, said[0].priority);
+    assert!(
+        said[0].text.contains("Vous entrez dans une zone protégée."),
+        "{}",
+        said[0].text
     );
     assert!(
         said[0].all_clips,

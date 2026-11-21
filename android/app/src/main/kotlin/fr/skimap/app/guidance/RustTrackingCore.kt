@@ -175,6 +175,7 @@ class RustTrackingCore(
                 fr.skimap.core.AlertKind.CLOSED -> AlertKind.CLOSED
                 fr.skimap.core.AlertKind.CLOSED_NO_DETOUR -> AlertKind.CLOSED_NO_DETOUR
                 fr.skimap.core.AlertKind.SLOPE -> AlertKind.SLOPE
+                fr.skimap.core.AlertKind.PROTECTED_ZONE -> AlertKind.PROTECTED_ZONE
             }
 
         fun turn(d: TurnDirection): Turn =
