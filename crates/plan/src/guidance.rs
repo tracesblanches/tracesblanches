@@ -57,8 +57,10 @@ pub struct Junction {
     pub branches: usize,
     /// Turn angle, degrees, positive to the right.
     pub angle_deg: f64,
-    /// Angles of the branches, degrees, relative to the incoming heading.
-    pub branch_angles_deg: Vec<f64>,
+    /// Angles of the branches, degrees, relative to the incoming heading; `None` when it
+    /// is unknown (a branch shorter than the 1 m chord of a heading, or no heading before
+    /// the junction): such a branch is never « far off », the junction is announced.
+    pub branch_angles_deg: Vec<Option<f64>>,
     /// Direction to announce; `None`: the way is obvious, nothing is said.
     pub direction: Option<Direction>,
     /// Trail name before the junction.
@@ -110,7 +112,7 @@ pub fn junctions(g: &PisteGraph, c: &Course) -> Vec<Junction> {
         let first_leg = nodes[k].next_leg - 1;
         let last_leg = nodes[j].next_leg;
         let used: Vec<usize> = legs[first_leg..=last_leg].iter().map(|l| l.edge).collect();
-        let mut branches: Vec<f64> = Vec::new();
+        let mut branches: Vec<Option<f64>> = Vec::new();
         let s_in = nodes[k].s;
         let s_out = nodes[j].s;
         let line = c.line();
@@ -125,11 +127,10 @@ pub fn junctions(g: &PisteGraph, c: &Course) -> Vec<Junction> {
                 if cluster.contains(&g.head(h)) && g.length_m(h.edge) < CLUSTER_M {
                     continue;
                 }
-                if let (Some(hi), Some(hb)) = (h_in, half_heading(g, h)) {
-                    branches.push(turn_deg(hi, hb));
-                } else {
-                    branches.push(f64::NAN);
-                }
+                branches.push(
+                    h_in.zip(half_heading(g, h))
+                        .map(|(hi, hb)| turn_deg(hi, hb)),
+                );
             }
         }
         if branches.is_empty() {
@@ -145,12 +146,13 @@ pub fn junctions(g: &PisteGraph, c: &Course) -> Vec<Junction> {
         let name_out = first_name(&g.edge(edge_out).attrs.name);
         let near: Vec<f64> = branches
             .iter()
+            .flatten()
             .copied()
-            .filter(|b| b.is_finite() && (b - angle).abs() < 30.0)
+            .filter(|b| (b - angle).abs() < 30.0)
             .collect();
         let apart = branches
             .iter()
-            .all(|b| b.is_finite() && (b - angle).abs() >= 45.0);
+            .all(|b| b.is_some_and(|b| (b - angle).abs() >= 45.0));
         let same_trail = name_in.is_some() && name_in == name_out;
         let obvious = apart && (angle.abs() <= 35.0 || (same_trail && angle.abs() <= 60.0));
         let direction = if obvious {
@@ -216,10 +218,47 @@ mod tests {
         assert_eq!(js[1].branches, 1);
         // The diagonal at node 2 comes from the south-west: 135° to the left of north.
         assert!(
-            (js[1].branch_angles_deg[0] + 135.0).abs() < 2.0,
+            (js[1].branch_angles_deg[0].unwrap() + 135.0).abs() < 2.0,
             "{:?}",
             js[1]
         );
+    }
+
+    /// A branch too short for a heading (here 0.5 m, a stub left by the OSM layer) has
+    /// an unknown angle: the junction is not obvious, and the plan that carries it is
+    /// written and read back (a NaN angle was written `null` and made the plan unreadable,
+    /// #153).
+    #[test]
+    fn branch_without_heading_is_unknown_and_round_trips() {
+        let mut data = square().data().clone();
+        let p = crate::course::tests::plane();
+        data.nodes.push(skimap_core::graph::Node {
+            pos: p.lonlat([1000.5, 0.0]),
+            osm_node_id: None,
+        });
+        let mut stub = data.edges[5].clone();
+        stub.to = 5;
+        stub.points = vec![p.lonlat([1000.0, 0.0]), p.lonlat([1000.5, 0.0])];
+        data.edges.push(stub);
+        let g = PisteGraph::new(data).unwrap();
+        let c = Course::new(&g, &square_loop(&g), &EtaModel::new(Style::Classic)).unwrap();
+        let js = junctions(&g, &c);
+        assert_eq!(js[0].nodes, vec![1]);
+        assert_eq!(js[0].branches, 2, "{:?}", js[0]);
+        assert!(js[0].branch_angles_deg.contains(&None), "{:?}", js[0]);
+        assert!(js[0].announced());
+        let text = serde_json::to_string(&js).unwrap();
+        let back: Vec<Junction> = serde_json::from_str(&text).unwrap();
+        // Read back as written (floats to the last digit serde_json keeps).
+        let known = |js: &[Junction]| -> Vec<(Vec<usize>, Option<Direction>, Vec<bool>)> {
+            js.iter()
+                .map(|j| {
+                    let known = j.branch_angles_deg.iter().map(Option::is_some).collect();
+                    (j.nodes.clone(), j.direction, known)
+                })
+                .collect()
+        };
+        assert_eq!(known(&back), known(&js));
     }
 
     #[test]
