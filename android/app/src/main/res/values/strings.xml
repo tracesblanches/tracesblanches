@@ -24,8 +24,6 @@
     <string name="sheet_layers">Layers</string>
     <string name="layers_always">Always shown, for safety: pistes and their state, avalanche hazards, regulated areas, position.</string>
     <string name="sheet_legend">Legend</string>
-    <string name="sheet_sport">Outings</string>
-    <string name="sheet_sport_open">Send my outings (Health Connect, Strava)</string>
     <string name="sheet_updates">Updates</string>
     <string name="auto_update">Update packs automatically (Wi-Fi for large ones, never on low battery)</string>
     <string name="sheet_sources">Data licences</string>

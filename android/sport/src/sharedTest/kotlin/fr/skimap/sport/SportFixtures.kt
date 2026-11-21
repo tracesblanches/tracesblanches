@@ -1,65 +1,81 @@
-// Test code (the detekt configuration exempts src/test and src/androidTest from MagicNumber).
-@file:Suppress("MagicNumber")
-
 package fr.skimap.sport
 
+import androidx.health.connect.client.records.Record
 import java.io.File
-import java.time.Instant
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
-/** A trace as the core writes it (crates/ffi/src/tracking.rs, `gpx`) and a plan with its morning. */
+/** An outing as the core exports it, with its two files in [dir]. */
 object SportFixtures {
-    /** 2026-01-15 at 09:30 UTC. */
+    /** 2026-01-15 09:30 UTC. */
     const val START_MS = 1_768_469_400_000L
-    const val STEP_MS = 5_000L
-
-    private val TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").withZone(ZoneOffset.UTC)
-
-    fun gpx(
-        points: Int = 120,
-        name: String = "Boucle du Chaumoz",
-    ): String =
-        buildString {
-            append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
-            append("<gpx version=\"1.1\" creator=\"skimap\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n<trk><name>")
-            append(name.replace("&", "&amp;"))
-            append("</name><type>nordic_skiing</type><trkseg>\n")
-            for (i in 0 until points) {
-                val t = TIME.format(Instant.ofEpochMilli(START_MS + i * STEP_MS))
-                append(
-                    "<trkpt lat=\"%.7f\" lon=\"%.7f\"><time>%s</time></trkpt>\n"
-                        .format(Locale.ROOT, 44.8650 + i * 0.0001, 6.7600 + i * 0.00005, t),
-                )
-            }
-            append("</trkseg></trk>\n</gpx>\n")
-        }
-
-    const val PLAN =
-        """{"format":"skimap-day-plan","version":1,"site":"cervieres","morning":[
-        ["briefing",{"text":["Neige fraîche de 10 cm, damage ce matin.","Vent faible, −8 °C au départ."],"voice":[]}],
-        ["best_time",{"text":["Partez vers 10 h."],"voice":[]}],
-        ["wax",{"text":["Fart violet."],"voice":[]}],
-        ["synthesis",{"text":["Itinéraire sans difficulté."],"voice":[]}]]}"""
-
-    /** A plan directory with `plan.json` and `trace.gpx`; the trace. */
-    fun outingDir(
-        root: File,
-        name: String = "2026-01-15-chaumoz",
-        points: Int = 120,
-    ): File {
-        val d = File(root, name).also { it.mkdirs() }
-        File(d, "plan.json").writeText(PLAN)
-        return File(d, "trace.gpx").also { it.writeText(gpx(points)) }
-    }
+    private const val STEP_MS = 5_000L
+    private const val NEAR_MS = 15_000L
+    private const val LAT = 44.8
+    private const val LON = 6.7
+    private const val STEP_DEG = 1e-4
+    private const val STEP_M = 11.1
+    private const val ELE_M = 1850.0
+    private const val CLIMB_M = 119.0
+    private val FIT_HEADER = byteArrayOf(14, 0x20)
 
     fun outing(
-        root: File,
-        sport: SportType = SportType.NORDIC_SKI,
-        name: String = "2026-01-15-chaumoz",
-    ): Outing {
-        val gpx = outingDir(root, name)
-        return Outing.of(gpx.parent, gpx.path, "Sortie terminée. 6,2 km en 1 h 10.", 6.2, sport, french = true)
+        dir: File,
+        heart: List<HeartSample> = emptyList(),
+        n: Int = 120,
+    ): SharedOuting {
+        dir.mkdirs()
+        val points =
+            (0 until n).map { i ->
+                val t = START_MS + i * STEP_MS
+                OutingPoint(
+                    timeMs = t,
+                    lat = LAT + i * STEP_DEG,
+                    lon = LON,
+                    ele = ELE_M + i,
+                    distanceM = i * STEP_M,
+                    heartBpm = heart.firstOrNull { kotlin.math.abs(it.timeMs - t) <= NEAR_MS }?.bpm,
+                )
+            }
+        val gpx = File(dir, "skimap-2026-01-15-1030-boucle.gpx").apply { writeText("<gpx/>") }
+        val fit = File(dir, "skimap-2026-01-15-1030-boucle.fit").apply { writeBytes(FIT_HEADER) }
+        return SharedOuting(
+            id = "2026-01-15-boucle",
+            title = "Boucle du Chaumoz",
+            sport = SportType.NORDIC_SKI,
+            startMs = points.first().timeMs,
+            endMs = points.last().timeMs,
+            distanceM = points.last().distanceM,
+            ascentM = CLIMB_M,
+            points = points,
+            gpx = gpx,
+            fit = fit,
+            notes = "6,2 km en 1 h 10.",
+        )
+    }
+}
+
+/** Health Connect without Health Connect: what was asked, granted, written and read. */
+class FakeHealth(
+    var present: Boolean = true,
+    var have: Set<String> = emptySet(),
+    val heartSamples: List<HeartSample> = emptyList(),
+) : HealthApi {
+    val written = ArrayList<Record>()
+    val heartAsked = ArrayList<Pair<Long, Long>>()
+
+    override fun available(): Boolean = present
+
+    override suspend fun granted(): Set<String> = have
+
+    override suspend fun insert(records: List<Record>): List<String> {
+        written += records
+        return records.indices.map { "hc-$it" }
+    }
+
+    override suspend fun heart(
+        startMs: Long,
+        endMs: Long,
+    ): List<HeartSample> {
+        heartAsked += startMs to endMs
+        return heartSamples.filter { it.timeMs in startMs..endMs }
     }
 }

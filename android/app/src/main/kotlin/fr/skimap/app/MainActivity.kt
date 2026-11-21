@@ -27,7 +27,6 @@ import fr.skimap.app.data.RustDomainCatalog
 import fr.skimap.app.data.RustPackRepository
 import fr.skimap.app.data.UiChoices
 import fr.skimap.app.day.DayActivity
-import fr.skimap.app.guidance.AppSportActivity
 import fr.skimap.app.sync.PackSync
 import fr.skimap.app.sync.WorkManagerDownloads
 import fr.skimap.app.ui.MapUiState
@@ -37,7 +36,6 @@ import fr.skimap.app.ui.domains.DomainsViewModel
 import fr.skimap.app.ui.map.MapEngine
 import fr.skimap.app.ui.theme.SkimapTheme
 import fr.skimap.community.Community
-import fr.skimap.sport.SportActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -116,7 +114,7 @@ class MainActivity : ComponentActivity() {
                 }, onPrepareDay = ::openDay, welcome = welcome, onWelcomeDone = {
                     welcome = false
                     lifecycleScope.launch(Dispatchers.IO) { choices.setWelcomeDone() }
-                }, onSendSettings = { SportActivity.open(this, AppSportActivity::class.java) })
+                })
             }
         }
     }

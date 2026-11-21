@@ -1,32 +1,29 @@
-# Module `sport` : envoyer la sortie vers Health Connect et Strava (K11)
+# Module `sport` : partager la sortie terminée (#63)
 
-À la fin d'une sortie, le bilan (écran du plan) propose « Envoyer » ; le menu de la carte ouvre « Envoyer mes sorties » (Health Connect, Strava, « Envoyer automatiquement à la fin de la sortie », sorties envoyées et où elles en sont). Rien n'est envoyé sans geste de l'utilisateur ou sans l'option automatique.
+Sur le bilan d’une sortie terminée (écran du plan à la fin, et « Bilans des sorties », #97), « Partager la sortie (FIT) » et « Partager en GPX » : le fichier part par le menu de partage d’Android (Strava, Komoot, Garmin Connect, un courriel…), et la sortie est écrite dans Health Connect quand le téléphone l’a et que l’utilisateur l’accorde. Aucun compte, aucune clé, aucun réseau utilisé par l’application. Rien sur la carte, aucun réglage.
 
 | Fonction | Comment |
 |---|---|
-| Sortie | `Outing.of(planDir, gpx, bilan, km, sport)` : le GPX écrit par le noyau à la fin (`trace.gpx`), nom de la boucle, description = bilan + « Conditions : » (briefing A1 et fartage A2 du matin, lus dans `plan.json`) + signature. Type Strava : `NordicSki`, ou `BackcountrySki` quand la pratique choisie est la randonnée nordique (SRN). |
-| Health Connect | `ExerciseSessionRecord` type `SKIING` (Health Connect n'a qu'un type de ski) avec son `ExerciseRoute` (tous les points, fin = dernier point + 1 s), `clientRecordId` stable : renvoyer la même sortie la remplace. Permissions d'écriture seulement (`WRITE_EXERCISE`, `WRITE_EXERCISE_ROUTE`) ; rien n'est jamais lu. Écran de consentement : la demande de Health Connect, et la page de justification (`ACTION_SHOW_PERMISSIONS_RATIONALE`, alias `VIEW_PERMISSION_USAGE` sur Android 14+). |
-| Strava : connexion | Strava n'a pas de PKCE et exige le secret : l'échange passe par skimap-server (`/v1/strava/config`, `token`, `refresh`, `revoke`, voir `crates/server/docs/strava.md`). Page d'autorisation dans le navigateur avec un `state` aléatoire, retour par `skimap://strava/callback` (activité `singleTask`), `state` et portée `activity:write` vérifiés. |
-| Strava : envoi | `POST /uploads` (GPX, nom, description, `external_id`), suivi de `GET /uploads/{id}` jusqu'à l'activité, puis `PUT /activities/{id}` avec `sport_type` et la description. Doublon reconnu (l'activité existante est reprise). Jeton rafraîchi 2 min avant expiration. |
-| File hors ligne | `files/sport/queue/<id>.json` + copie du GPX ; WorkManager : Health Connect tout de suite, Strava avec `NetworkType.CONNECTED` (attend le réseau, survit au redémarrage), reprise exponentielle à partir de 30 s si Strava est injoignable, traite encore, ou limite (429, 5xx). Un fichier refusé est un échec, pas une reprise. |
-| Déconnexion | « Déconnecter Strava » : révocation par le serveur, puis jeton retiré du téléphone (même sans réseau). Autorisation retirée sur strava.com (401) : jeton effacé, la sortie attend une nouvelle connexion ; après connexion ou autorisation Health Connect, les sorties en attente partent (`Sport.resume`). |
-
-Aujourd'hui, https://skimap.warnier.net répond `configured: false` (pas encore d'application Strava) : l'écran dit « La connexion à Strava sera possible quand le service skimap sera configuré pour Strava. » et n'affiche pas de bouton.
+| Fichiers | Écrits par le cœur Rust (`crates/ffi/src/export.rs`, `export_outing`) dans `cache/sport-share/` : GPX 1.1 (trace, altitude, temps, fréquence cardiaque dans l’extension `TrackPointExtension` v1 de Garmin) et FIT activité (file id, événements du chrono, points, tour, séance, activité ; sport `cross_country_skiing`, sous-sport `backcountry` en ski de randonnée nordique ou pour une sortie hors piste guidée). Distance = celle du bilan (sauts GPS et arrêts écartés), altitude = celle du bilan (baromètre recalé sur le relief ; baromètre seul : dénivelé gardé, pas d’altitude par point). |
+| Partage | `ACTION_SEND` du fichier par le `FileProvider` (`${applicationId}.sport.files`, lecture accordée à l’application choisie), dans le sélecteur du système. FIT : `application/vnd.ant.fit` ; GPX : `application/gpx+xml`. |
+| Health Connect | Demandé au premier partage seulement (jamais au démarrage) ; refusé, il n’est plus redemandé ; accordé plus tard dans Health Connect, la sortie y est écrite au partage suivant. `ExerciseSessionRecord` type `SKIING` (Health Connect n’a qu’un type de ski) avec son `ExerciseRoute`, `DistanceRecord`, `ElevationGainedRecord`, chacun selon l’autorisation donnée ; identifiants client stables : repartager la même sortie la remplace. |
+| Fréquence cardiaque | Lue dans Health Connect (celle d’une montre) sur les heures de la sortie seulement, si l’utilisateur l’accorde, pour la mettre dans le fichier partagé. Rien d’autre n’est lu. |
+| Justification | `HealthRationaleActivity` (sous-classée par l’app pour son thème) : ouverte par Health Connect (`ACTION_SHOW_PERMISSIONS_RATIONALE`, alias `VIEW_PERMISSION_USAGE` sur Android 14+). |
 
 ## Vérifier
 
 ```sh
+cargo test -p skimap-ffi --lib export      # FIT relu par fitparser (CRC, points, temps, distance, sport)
 cd android
-./gradlew :sport:testDebugUnitTest :sport:verifyRoborazziDebug :sport:lintDebug :sport:detekt :sport:ktlintCheck
+./gradlew :sport:testDebugUnitTest :app:testDebugUnitTest --tests 'fr.skimap.app.ShareOutingTest'
 # Émulateur Android 14+ (Health Connect intégré) :
 ./gradlew :sport:connectedDebugAndroidTest
-adb logcat -s skimap   # « K11 health connect: … », « K11 strava: … »
+adb logcat -s skimap   # « #63 health connect: … », « share …: FIT, health connect 3 records, menu true »
 ```
 
-Les tests JVM et instrumentés partagent `src/sharedTest` : `FakeStrava` (faux skimap-server et faux API Strava sur un port local, jeton porteur vérifié, requêtes enregistrées) et `SportFixtures` (GPX au format du noyau, `plan.json` avec son matin). Captures : `src/test/screenshots/sport_*.png`.
+Tests JVM : `HealthRecordsTest` (séance, itinéraire, distance, dénivelé selon les autorisations), `ShareFlowTest` (faux Health Connect : demande au premier partage seulement, écriture, fréquence cardiaque relue dans un second export, `ACTION_SEND` avec l’URI du `FileProvider` et la lecture accordée ; capture `src/test/screenshots/sport_share.png`). Côté app, `ShareOutingTest` passe par le vrai cœur : GPX validé contre le schéma GPX 1.1 et celui de `TrackPointExtension` v1 (`app/src/test/resources/gpx/`), mêmes points et temps, en-tête FIT.
 
 ## Limites
 
-- Sans application Strava réelle, l'envoi n'est prouvé que contre le faux Strava ; le critère « sortie réelle visible sur Strava » attend les identifiants (S1).
-- Le GPX du noyau n'a pas d'altitude : ni Strava ni Health Connect n'en reçoivent (Strava la recalcule).
-- FIT non produit : le GPX suffit à Strava.
+- Ce que chaque application fait du fichier reçu (type d’activité retenu par Strava ou Komoot) n’est vérifiable que sur le téléphone.
+- L’application n’enregistre pas elle-même la fréquence cardiaque : elle n’apparaît que si une montre l’a écrite dans Health Connect.

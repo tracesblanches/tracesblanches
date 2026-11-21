@@ -51,6 +51,9 @@ geo.workspace = true
 chrono.workspace = true
 flate2.workspace = true
 tempfile.workspace = true
+# Independent FIT decoder (MIT): the FIT export (#63) read back by another implementation
+# of the protocol, CRCs included. Only this crate's tests use it.
+fitparser = "0.12"
 
 [lints]
 workspace = true

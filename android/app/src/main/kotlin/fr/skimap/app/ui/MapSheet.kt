@@ -165,12 +165,6 @@ fun MapSheetContent(
             // A suggestion, never forced: light reads best on snow in full sun.
             Text(stringResource(R.string.appearance_sun_hint), style = MaterialTheme.typography.bodyMedium)
         }
-        actions.openSport?.let { open ->
-            SectionTitle(stringResource(R.string.sheet_sport))
-            OutlinedButton(onClick = open, modifier = Modifier.fillMaxWidth().heightIn(min = GloveTarget)) {
-                Text(stringResource(R.string.sheet_sport_open), style = MaterialTheme.typography.labelLarge)
-            }
-        }
         // On the ground (V8 to V15, module :community): report, « Mes sorties », fix OSM.
         CommunityEntries(info.siteId)
         // Tools of the outing (K7, V1, A10, E2) and the less exposed terrain (V7).
