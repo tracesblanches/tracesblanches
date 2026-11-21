@@ -47,6 +47,7 @@ use skimap_assist::inputs::SiteData;
 use skimap_assist::layers::WeatherPoint;
 use skimap_assist::suggest::{loop_voice, node_snap};
 use skimap_common::geom::LonLat;
+use skimap_common::grid::Grid;
 use skimap_core::calibration::{
     self as calibration, DayPace, GroupProfile, OutingObs, PaceParams, Prediction, ProfileModel,
     TERRAINS, Terrain, terrain_ratio,
@@ -139,6 +140,68 @@ pub struct TrackerParams {
     /// Proposal to choose another group profile (X14).
     #[serde(default)]
     pub profile: ProfileFitParams,
+    /// Steep terrain off the trails (K6 #56).
+    #[serde(default)]
+    pub slope: SlopeParams,
+}
+
+/// Steep terrain off the trails (K6 #56): the terrain slope of the off-piste rasters
+/// (`slope_5m.skr`, half degrees, 5 m) at the fix and ahead of it along the way the skier
+/// goes. Said once per passage, as safety. Never on a trail: a trail cut across a hillside
+/// has its bank in the 5 m cells beside it (measured on the graphs of every site with the
+/// rasters, `examples/slope_eval.rs`: 0.55 % of the points every 5 m of the groomed trails
+/// are at 30° or more), and the trail is the way across. Only off the route followed (the
+/// deviation of C2, whose hysteresis takes out the GPS error: the fixes of a skier on
+/// the route are up to 55 m from it in the forest) and farther than
+/// [`SlopeParams::trail_m`] from every other trail.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SlopeParams {
+    /// A passage starts at this slope, degrees…
+    pub deg: f64,
+    /// …held over this distance skied, metres.
+    pub enter_m: f64,
+    /// It ends under this slope, degrees…
+    pub exit_deg: f64,
+    /// …held over this distance skied, metres.
+    pub exit_m: f64,
+    /// The terrain is read at the fix and up to this far ahead of it, metres.
+    pub ahead_m: f64,
+    /// Off the route, a fix this close to a trail of the graph is on that trail, metres
+    /// (the distance off the route of C2).
+    pub trail_m: f64,
+}
+
+impl Default for SlopeParams {
+    fn default() -> Self {
+        Self {
+            deg: 30.0,
+            enter_m: 20.0,
+            exit_deg: 27.0,
+            exit_m: 150.0,
+            ahead_m: 30.0,
+            trail_m: ROUTE_HYSTERESIS.enter_m,
+        }
+    }
+}
+
+/// Where the tracker is in the steep terrain (K6 #56), Lambert-93 metres.
+#[derive(Debug, Clone, Copy, Default)]
+struct Steep {
+    /// Last fix.
+    last: Option<(f64, f64)>,
+    /// The fix the heading is taken from (at least 10 m behind).
+    anchor: Option<(f64, f64)>,
+    /// Unit vector of the way the skier goes.
+    heading: Option<(f64, f64)>,
+    /// Distance skied in steep terrain before the passage, metres.
+    run_m: f64,
+    /// Steepest slope read since, degrees.
+    max_deg: f64,
+    /// In a passage (said).
+    inside: bool,
+    /// Distance skied out of it since, metres.
+    calm_m: f64,
 }
 
 impl Default for TrackerParams {
@@ -161,6 +224,7 @@ impl Default for TrackerParams {
             slow_every_s: 60.0,
             propose: ProposeParams::default(),
             profile: ProfileFitParams::default(),
+            slope: SlopeParams::default(),
         }
     }
 }
@@ -309,6 +373,11 @@ pub enum Alert {
     Closed,
     /// A closed trail on the route and no way around it.
     ClosedNoDetour,
+    /// Steep terrain ahead, off the trails (K6 #56).
+    Slope {
+        /// Steepest slope read, degrees.
+        degrees: u32,
+    },
 }
 
 /// Recap of the outing (J3; the spoken and compared recap is A10).
@@ -641,6 +710,10 @@ pub struct Tracker<'a> {
     profile_pending: Option<(f64, usize)>,
     profile_asked: bool,
     profile_chosen: Option<GroupProfile>,
+    /// Terrain slope (half degrees, Lambert-93, `slope_5m.skr`) and where the skier is in
+    /// it (K6 #56).
+    slope: Option<&'a Grid<u8>>,
+    steep: Steep,
 }
 
 impl<'a> Tracker<'a> {
@@ -754,6 +827,8 @@ impl<'a> Tracker<'a> {
             profile_pending: None,
             profile_asked: false,
             profile_chosen: None,
+            slope: None,
+            steep: Steep::default(),
             p,
         })
     }
@@ -764,6 +839,14 @@ impl<'a> Tracker<'a> {
     /// does not cross.
     pub fn with_layers(mut self, data: &'a SiteData) -> Self {
         self.layers = Some(data);
+        self
+    }
+
+    /// The terrain slope of the off-piste rasters (`slope_5m.skr`: half degrees, Lambert-93,
+    /// [`skimap_core::offpiste::SLOPE_NODATA`] unknown): steep terrain off the trails is
+    /// said ([`Alert::Slope`], K6 #56).
+    pub fn with_slope(mut self, slope: &'a Grid<u8>) -> Self {
+        self.slope = Some(slope);
         self
     }
 
@@ -1257,6 +1340,10 @@ impl<'a> Tracker<'a> {
                 self.reroute(t, snap, out);
             }
         }
+        // 3b. Steep terrain off the trails.
+        if !paused {
+            self.steep(t, pos, out);
+        }
         // 4. Decision points.
         if !paused {
             self.decisions(t);
@@ -1282,6 +1369,93 @@ impl<'a> Tracker<'a> {
         }
         // 6. GPS mode.
         self.gps_mode(t, out);
+    }
+
+    /// Slope of the terrain at a Lambert-93 point, degrees (the middle of its half degree).
+    fn slope_at(grid: &Grid<u8>, x: f64, y: f64) -> Option<f64> {
+        grid.value_at(x, y)
+            .filter(|v| **v != skimap_core::offpiste::SLOPE_NODATA)
+            .map(|v| f64::from(*v) / 2.0 + 0.25)
+    }
+
+    /// K6 #56: steep terrain at the fix or ahead of it, off the route and the trails, for
+    /// [`SlopeParams::enter_m`] skied: one alert and one safety announcement per passage;
+    /// the passage ends after [`SlopeParams::exit_m`] skied under
+    /// [`SlopeParams::exit_deg`] (or on a trail).
+    fn steep(&mut self, t: f64, pos: LonLat, out: &mut Vec<Output>) {
+        let Some(grid) = self.slope else {
+            return;
+        };
+        let Ok((x, y)) = skimap_common::crs::to_lambert93(pos) else {
+            return;
+        };
+        let p = self.p.slope;
+        let st = &mut self.steep;
+        let moved = st.last.map_or(0.0, |(x0, y0)| (x - x0).hypot(y - y0));
+        st.last = Some((x, y));
+        match st.anchor {
+            Some((ax, ay)) => {
+                let d = (x - ax).hypot(y - ay);
+                if d >= 10.0 {
+                    st.heading = Some(((x - ax) / d, (y - ay) / d));
+                    st.anchor = Some((x, y));
+                }
+            }
+            None => st.anchor = Some((x, y)),
+        }
+        let mut deg = Self::slope_at(grid, x, y).unwrap_or(0.0);
+        if let Some((hx, hy)) = st.heading {
+            for k in [0.5, 1.0] {
+                let d = p.ahead_m * k;
+                if let Some(v) = Self::slope_at(grid, x + hx * d, y + hy * d) {
+                    deg = deg.max(v);
+                }
+            }
+        }
+        let steep = deg >= p.deg;
+        // On the route followed, or off it on another trail (asked only in steep terrain:
+        // rare, no allocation).
+        let off_route = self.deviating_since.is_some();
+        let on_trail = |g: &PisteGraph| !off_route || g.snap(pos, p.trail_m).is_some();
+        if !st.inside {
+            if !steep || on_trail(self.g) {
+                st.run_m = 0.0;
+                st.max_deg = 0.0;
+                return;
+            }
+            st.run_m += moved;
+            st.max_deg = st.max_deg.max(deg);
+            if st.run_m < p.enter_m {
+                return;
+            }
+            st.inside = true;
+            st.calm_m = 0.0;
+            let degrees = st.max_deg.round().max(p.deg) as u32;
+            out.push(Output::Alert {
+                t: utc_of(t),
+                alert: Alert::Slope { degrees },
+            });
+            self.offer(
+                t,
+                Priority::Safety,
+                "slope",
+                "slope",
+                Event::Slope {
+                    degrees: f64::from(degrees),
+                }
+                .announce(),
+                None,
+            );
+        } else if deg < p.exit_deg || on_trail(self.g) {
+            st.calm_m += moved;
+            if st.calm_m >= p.exit_m {
+                st.inside = false;
+                st.run_m = 0.0;
+                st.max_deg = 0.0;
+            }
+        } else {
+            st.calm_m = 0.0;
+        }
     }
 
     fn decisions(&mut self, t: f64) {

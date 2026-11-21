@@ -3,7 +3,8 @@
 //! every `Tracker::push` while a normal outing of each site is replayed, and a slow family
 //! outing with stops and detours on a plan with the family's profile (C11 #130: the pace
 //! of the day updated on every fix, the arrival and the proposals checked every minute; its
-//! phone counts the steps, X10: their reports are counted too).
+//! phone counts the steps, X10: their reports are counted too), with the terrain slope read
+//! on every fix (K6 #56).
 //!
 //! Reads `data/out/<site>/` (fails if absent; `fixtures/` once Q1 is merged).
 
@@ -91,8 +92,27 @@ fn site_counts(site: &'static Site, family: bool) -> (usize, usize, usize, usize
         // The family's phone counts the steps (X10): their reports allocate nothing either.
         step_counter: family,
     };
-    let run = scenario::run(&sc, &p, view, &g, TrackerParams::default()).expect("run");
-    let mut tr = Tracker::new(&p, view, &g, None, TrackerParams::default()).unwrap();
+    // With the terrain slope (K6 #56): read on every fix.
+    let slope: skimap_common::grid::Grid<u8> = skimap_core::offpiste::read_raster(
+        &layout
+            .out_dir(site)
+            .join("offpiste")
+            .join(skimap_core::offpiste::FILE_SLOPE),
+    )
+    .expect("slope raster");
+    let run = scenario::run_with(
+        &sc,
+        &p,
+        view,
+        &g,
+        TrackerParams::default(),
+        None,
+        Some(&slope),
+    )
+    .expect("run");
+    let mut tr = Tracker::new(&p, view, &g, None, TrackerParams::default())
+        .unwrap()
+        .with_slope(&slope);
     let mut out: Vec<Output> = Vec::with_capacity(64);
     let (mut quiet, mut quiet_alloc, mut eventful, mut fixes) = (0, 0, 0, 0);
     for i in &run.inputs {

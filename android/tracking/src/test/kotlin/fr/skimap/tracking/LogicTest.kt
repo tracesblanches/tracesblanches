@@ -187,6 +187,8 @@ class LogicTest {
     fun vibrationsAreToldApart() {
         assertArrayEquals(HapticPatterns.SAFETY, HapticPatterns.alert(AlertKind.OFF_ROUTE))
         assertArrayEquals(HapticPatterns.SAFETY, HapticPatterns.alert(AlertKind.TURNAROUND_NOW))
+        // Steep terrain off the trails (#56): felt as safety.
+        assertArrayEquals(HapticPatterns.SAFETY, HapticPatterns.alert(AlertKind.SLOPE))
         assertArrayEquals(HapticPatterns.BACK_ON, HapticPatterns.alert(AlertKind.BACK_ON_ROUTE))
         assertArrayEquals(HapticPatterns.LEFT, HapticPatterns.turn(Turn.KEEP_LEFT))
         assertArrayEquals(HapticPatterns.RIGHT, HapticPatterns.turn(Turn.SLIGHT_RIGHT))

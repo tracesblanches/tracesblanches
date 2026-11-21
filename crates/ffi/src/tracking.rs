@@ -33,6 +33,7 @@ use std::sync::{Arc, Mutex};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use skimap_assist::inputs::{Paths, SiteData};
 use skimap_common::geom::LonLat;
+use skimap_common::grid::Grid;
 use skimap_core::graph::PisteGraph;
 use skimap_pack::Pack;
 use skimap_plan::course::Course;
@@ -395,6 +396,8 @@ pub enum AlertKind {
     Closed,
     /// A closed trail ahead, no way around it known.
     ClosedNoDetour,
+    /// Steep terrain (30° or more) ahead, off the route and the trails (K6 #56).
+    Slope,
 }
 
 /// An alert raised.
@@ -418,6 +421,7 @@ fn alert_kind(a: &Alert) -> AlertKind {
         Alert::TurnaroundNow => AlertKind::TurnaroundNow,
         Alert::Closed => AlertKind::Closed,
         Alert::ClosedNoDetour => AlertKind::ClosedNoDetour,
+        Alert::Slope { .. } => AlertKind::Slope,
     }
 }
 
@@ -776,6 +780,8 @@ struct Owned {
     /// The pack's layers of the day (X11): a route computed during the outing announces
     /// zones without network, avalanche paths and protected zones.
     layers: Option<SiteData>,
+    /// The pack's terrain slope (K6 #56): steep terrain off the trails is said.
+    slope: Option<Grid<u8>>,
     log: PathBuf,
     /// Car parks of the pack.
     parkings: Vec<Parking>,
@@ -860,6 +866,7 @@ pub fn open_tracking(
     let pack_dir = PathBuf::from(String::from_utf8_lossy(&read(PACK_FILE)?).trim());
     let graph = load_graph(&pack_dir)?;
     let layers = load_layers(&pack_dir, &dir.join(LAYERS_DIR));
+    let slope = crate::offpiste::load_slope(&pack_dir, &dir.join(LAYERS_DIR));
     let site = Pack::open(pack_dir.clone())
         .map(|p| p.manifest().site.id.clone())
         .unwrap_or_default();
@@ -876,6 +883,7 @@ pub fn open_tracking(
         graph,
         voice_dir,
         layers,
+        slope,
         parkings,
         dir,
         skimap_voice::Lang::of_phone(&phone_lang),
@@ -1060,6 +1068,7 @@ impl TrackingSession {
             graph,
             voice_dir,
             layers,
+            Err("not requested".into()),
             parkings,
             plan_dir,
             skimap_voice::Lang::Fr,
@@ -1067,7 +1076,9 @@ impl TrackingSession {
     }
 
     /// [`TrackingSession::start_full`] for a phone in `phone_lang` (VO6): the clips speak
-    /// their own language; without clips, the Android voice reads `phone_lang`.
+    /// their own language; without clips, the Android voice reads `phone_lang`. With the
+    /// terrain slope of the pack (or why there is none), steep terrain off the trails is
+    /// said (K6 #56).
     #[allow(clippy::too_many_arguments)]
     pub fn start_lang(
         plan: DayPlan,
@@ -1075,11 +1086,13 @@ impl TrackingSession {
         graph: PisteGraph,
         voice_dir: Option<PathBuf>,
         layers: Result<SiteData, String>,
+        slope: Result<Grid<u8>, String>,
         parkings: Vec<Parking>,
         plan_dir: PathBuf,
         phone_lang: skimap_voice::Lang,
     ) -> Result<Arc<Self>, TrackingError> {
-        let note = layers_note(&layers);
+        let mut note = layers_note(&layers);
+        note.push(if slope.is_ok() { "slope" } else { "-slope" }.into());
         let manifest = voice_dir.as_ref().and_then(|v| VoiceManifest::read(v).ok());
         let lang = manifest.as_ref().map_or(phone_lang, |m| m.lang);
         // The plan names the pistes as the pack does, in French: the clips of another
@@ -1109,6 +1122,7 @@ impl TrackingSession {
                 lang,
             },
             layers: layers.ok(),
+            slope: slope.ok(),
             log,
             parkings,
             text_lang: phone_lang,
@@ -1289,10 +1303,16 @@ fn serve(
         owned.voice.as_ref(),
         TrackerParams::default(),
     ) {
-        Ok(t) => match &owned.layers {
-            Some(l) => t.with_layers(l),
-            None => t,
-        },
+        Ok(t) => {
+            let t = match &owned.layers {
+                Some(l) => t.with_layers(l),
+                None => t,
+            };
+            match &owned.slope {
+                Some(s) => t.with_slope(s),
+                None => t,
+            }
+        }
         Err(e) => {
             let _ = tx.send(Err(invalid(e)));
             return;

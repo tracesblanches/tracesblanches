@@ -50,11 +50,31 @@ fn invalid(detail: impl std::fmt::Display) -> TrackingError {
 /// while the pack's file of each is the same (size and generation stamp). Returns the
 /// directory.
 pub fn inflate_offpiste(pack: &Pack, work_dir: &Path) -> Result<PathBuf, TrackingError> {
+    inflate_offpiste_layers(pack, work_dir, |id| id.starts_with("offpiste-"))
+}
+
+/// The terrain slope of a pack (`offpiste-slope`, `slope_5m.skr`: half degrees, 5 m,
+/// Lambert-93) inflated into `work_dir` as [`inflate_offpiste`] does, for the tracker
+/// (steep terrain off the trails, K6 #56). An error (a pack without it) is its text.
+pub fn load_slope(pack_dir: &Path, work_dir: &Path) -> Result<Grid<u8>, String> {
+    let pack = Pack::open(pack_dir.to_path_buf()).map_err(|e| e.to_string())?;
+    pack.layer("offpiste-slope").map_err(|e| e.to_string())?;
+    let dir = inflate_offpiste_layers(&pack, work_dir, |id| id == "offpiste-slope")
+        .map_err(|e| e.to_string())?;
+    offpiste::read_raster(&dir.join(offpiste::FILE_SLOPE)).map_err(|e| e.to_string())
+}
+
+/// [`inflate_offpiste`] of the layers whose id `keep` accepts.
+fn inflate_offpiste_layers(
+    pack: &Pack,
+    work_dir: &Path,
+    keep: impl Fn(&str) -> bool,
+) -> Result<PathBuf, TrackingError> {
     let site = &pack.manifest().site.id;
     let out = work_dir.join("offpiste").join(site);
     std::fs::create_dir_all(&out).map_err(invalid)?;
     for l in pack.manifest().layers.iter() {
-        if !l.id.starts_with("offpiste-") {
+        if !keep(&l.id) {
             continue;
         }
         let name = Path::new(&l.origin)
