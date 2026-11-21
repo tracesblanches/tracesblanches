@@ -11,6 +11,9 @@ import com.k2fsa.sherpa.onnx.VadModelConfig
 /** Speech probability of one [Endpointer.FRAME]-sample frame at 16 kHz. */
 interface VoiceActivity : AutoCloseable {
     fun probability(frame: FloatArray): Float
+
+    /** Forgets the frames heard so far: the next question is heard as by fresh engines. */
+    fun reset()
 }
 
 /** A whole question → its text. */
@@ -60,6 +63,11 @@ class SileroVad(
         val p = vad.compute(window)
         System.arraycopy(frame, frame.size - CONTEXT, window, 0, CONTEXT)
         return p
+    }
+
+    override fun reset() {
+        vad.reset()
+        window.fill(0f)
     }
 
     override fun close() = vad.release()

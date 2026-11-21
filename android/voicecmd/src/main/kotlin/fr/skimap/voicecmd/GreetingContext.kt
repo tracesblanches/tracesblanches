@@ -30,8 +30,8 @@ object Level {
  * guidance voice of the packs), then half a second of silence, then the question; the words timed before the middle of that silence are the
  * greeting's and are dropped. Measured on the phone's path (VoiceCommandAudioTest, French
  * questions of the held-out set, with the [Level] and French hotwords): good commands
- * 61.7 → 70.1 % clean, 31.8 → 50.6 % in wind at 0 dB; `marius`, another speaker than the
- * greeting, 47.2 → 55.1 % clean. A quarter of a second of silence lost 5 points.
+ * 58.4 → 72.1 % clean, 32.5 → 51.3 % in wind at 0 dB; `marius`, another speaker than the
+ * greeting, 43.8 → 60.7 % clean. A quarter of a second of silence lost 5 points.
  *
  * [greeting] null (English): half a second of silence then the question as heard (Parakeet
  * drops or garbles speech that starts abruptly, measured in speak), nothing dropped: the

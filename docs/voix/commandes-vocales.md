@@ -29,10 +29,11 @@ Parakeet v3 devine la langue au son : les questions françaises courtes sortaien
 
 Chemin du téléphone sur le poste (`VoiceCommandAudioTest`, `-Dskimap.voicecmd.audio=1`, puis `cargo run --release -p skimap-intent --example rate_heard`), questions françaises du jeu tenu à l’écart (154 commandes, `estelle` et `marius`), bonne commande avant → après :
 
-| | propre | 10 dB | 0 dB | −5 dB |
-|---|---|---|---|---|
-| Commandes françaises | 61,7 → 70,1 % | 53,9 → 64,9 % | 31,8 → 50,6 % | 17,5 → 35,1 % |
-| dont `marius` (autre locuteur que le « Bonjour ») | 47,2 → 55,1 % | 43,8 → 53,9 % | 29,2 → 47,2 % | 23,6 → 38,2 % |
-| Hors liste refusées (FR) | 95,8 → 95,8 % | 91,7 → 100 % | 95,8 → 100 % | 100 → 95,8 % |
+| | propre | 10 dB | 5 dB | 0 dB | −5 dB |
+|---|---|---|---|---|---|
+| Commandes françaises (154) | 58,4 → 72,1 % | 50,6 → 69,5 % | 43,5 → 61,7 % | 32,5 → 51,3 % | 14,9 → 32,5 % |
+| `marius` (autre locuteur que le « Bonjour », 89) | 43,8 → 60,7 % | 34,8 → 56,2 % | 33,7 → 50,6 % | 28,1 → 48,3 % | 19,1 → 37,1 % |
+| Hors liste refusées (FR, 24) | 91,7 → 95,8 % | 83,3 → 95,8 % | 87,5 → 91,7 % | 95,8 → 95,8 % | 100 → 100 % |
+| Commandes anglaises (122), inchangées | 97,5 % | 97,5 % | 97,5 % | 94,3 % | 83,6 % |
 
-Anglais identique avant et après (même chemin). Le moteur gardé chargé d’une question à l’autre dans ce test rend les taux dépendants de l’ordre des fichiers (jusqu’à 9 points en anglais à 0 dB) : seules des mesures du même ordre se comparent. Voix de synthèse, vent synthétique ; vraie voix et vrai vent : à faire (Pierre).
+Le moteur reste chargé d’une question à l’autre dans ce test, mais l’état de Silero VAD est remis à zéro avant chaque question (`VoiceActivity.reset`, `VadResetTest`), comme sur le téléphone où les moteurs sont libérés après chaque question : les taux ne dépendent plus de l’ordre des fichiers (avant ce correctif, jusqu’à 9 points d’écart en anglais à 0 dB). Voix de synthèse, vent synthétique ; vraie voix et vrai vent : à faire (Pierre).
