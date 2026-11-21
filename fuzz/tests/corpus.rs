@@ -350,12 +350,19 @@ fn geotiff_u8() -> Vec<u8> {
     out.into_inner()
 }
 
+/// SHA-256 of `b` as the pack reader computes it. One file per call: the tests run in
+/// parallel and build the seed pack at the same time (a shared file gave one test the
+/// hashes of the other's bytes).
 fn sha(b: &[u8]) -> String {
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let dir = std::env::temp_dir().join(format!("skimap-seed-sha-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("tmp");
-    let p = dir.join("f");
+    let p = dir.join(format!("f{n}"));
     std::fs::write(&p, b).expect("tmp");
-    skimap_pack::reader::sha256_file(&p).expect("sha").1
+    let h = skimap_pack::reader::sha256_file(&p).expect("sha").1;
+    std::fs::remove_file(&p).expect("tmp");
+    h
 }
 
 /// A small synthetic pack built from the crate types (manifest, `pack.meta.json`, voice
@@ -396,6 +403,10 @@ fn pack_seed() -> Vec<u8> {
         end_burst: false,
         seed: 1,
         onset_clipped: false,
+        loudness_lufs: Some(-14.0),
+        true_peak_dbtp: Some(-1.5),
+        limiter_db: Some(0.0),
+        loudness_capped: false,
     };
     let voice = VoiceManifest {
         format: 1,
@@ -406,6 +417,7 @@ fn pack_seed() -> Vec<u8> {
         seed: 1,
         sample_rate: 24_000,
         opus_kbps: 24,
+        loudness_target: Some((-14.0, -1.0)),
         pauses_ms: (200, 500),
         clips: vec![
             clip("fixed.reassurance", "Vous êtes sur l'itinéraire."),
