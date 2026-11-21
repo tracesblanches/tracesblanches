@@ -2161,6 +2161,10 @@ mod lang_tests {
             end_burst: false,
             seed: 42,
             onset_clipped: false,
+            loudness_lufs: None,
+            true_peak_dbtp: None,
+            limiter_db: None,
+            loudness_capped: false,
         };
         let manifest = |lang: Lang, text: &str| VoiceManifest {
             format: 1,
@@ -2171,6 +2175,7 @@ mod lang_tests {
             seed: 42,
             sample_rate: 24_000,
             opus_kbps: 24,
+            loudness_target: None,
             pauses_ms: (150, 400),
             clips: vec![entry("fix.arrive", text)],
         };

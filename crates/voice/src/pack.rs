@@ -31,6 +31,7 @@ use crate::audio::{Ffmpeg, MIN_ONSET_MS, Shape, shape, speech_onset_ms, write_wa
 use crate::bank::Announcement;
 use crate::error::{Error, Result};
 use crate::lang::Lang;
+use crate::loudness::{Loudness, Normalized, Target, measure, normalize};
 use crate::manifest::{ClipKind, PackNames, manifest_split_in};
 use crate::sources::{SiteNames, site_names};
 use crate::tokenizer::PocketText;
@@ -57,8 +58,11 @@ pub struct VoiceConfig {
     pub names_tts: Option<PocketTts>,
     /// Encoder.
     pub ffmpeg: Ffmpeg,
-    /// Trimming and level.
+    /// Trimming and level of each synthesised part.
     pub shape: Shape,
+    /// Loudness of the clips (#179): every clip brought to the same loudness and peak
+    /// ceiling before encoding, checked on the decoded file.
+    pub loudness: Target,
 }
 
 fn env_path(var: &str, default: impl FnOnce() -> PathBuf) -> PathBuf {
@@ -134,6 +138,7 @@ impl VoiceConfig {
                 kbps: num("SKIMAP_OPUS_KBPS", 24)?,
             },
             shape: Shape::default(),
+            loudness: Target::default(),
         })
     }
 }
@@ -199,7 +204,7 @@ pub struct ClipEntry {
     pub lead_trim_ms: u32,
     /// Trailing silence removed, ms.
     pub tail_trim_ms: u32,
-    /// Gain applied, dB.
+    /// Gain applied to the synthesised audio, dB (level of the parts, then loudness).
     pub gain_db: f64,
     /// Whether a cut-off sound at the end of the generated audio was removed.
     pub end_burst: bool,
@@ -207,6 +212,18 @@ pub struct ClipEntry {
     pub seed: u32,
     /// Speech still starts before `MIN_ONSET_MS` after every seed tried (onset maybe cut).
     pub onset_clipped: bool,
+    /// Integrated loudness of the decoded file, LUFS (`None`: layer built before #179).
+    #[serde(default)]
+    pub loudness_lufs: Option<f64>,
+    /// True peak of the decoded file, dBTP (`None`: layer built before #179).
+    #[serde(default)]
+    pub true_peak_dbtp: Option<f64>,
+    /// Largest gain reduction of the peak limiter, dB (0: not limited).
+    #[serde(default)]
+    pub limiter_db: Option<f64>,
+    /// The limiter reached its bound: the clip is a little under the target loudness.
+    #[serde(default)]
+    pub loudness_capped: bool,
 }
 
 /// `personal.json` of the voice layer: the clips that speak a name read only from
@@ -260,6 +277,9 @@ pub struct VoiceManifest {
     pub sample_rate: u32,
     /// Opus bitrate, kbit/s.
     pub opus_kbps: u32,
+    /// Loudness of every clip, LUFS, and highest true peak, dBTP (`None`: built before #179).
+    #[serde(default)]
+    pub loudness_target: Option<(f64, f64)>,
     /// Pause durations, ms: short (inside a message), long (between messages).
     pub pauses_ms: (u32, u32),
     /// Clips, sorted by id.
@@ -344,6 +364,16 @@ pub struct VoiceBuild {
     pub onset_clipped: usize,
     /// Clips of personal names (left out of a published pack): count, bytes.
     pub personal: (usize, u64),
+    /// Integrated loudness of the decoded clips: min, median, max, LUFS.
+    pub lufs: (f64, f64, f64),
+    /// Highest true peak of a decoded clip, dBTP.
+    pub true_peak_max_dbtp: f64,
+    /// Clips whose peaks the limiter brought down; largest reduction, dB.
+    pub limited: (usize, f64),
+    /// Clips left under the target because the limiter reached its bound.
+    pub capped: usize,
+    /// Limiter look-ahead, release and largest reduction, ms, ms, dB.
+    pub limiter: (f64, f64, f64),
     /// pockettts.cpp wall time, s (model load included).
     pub tts_wall_s: f64,
     /// Model load, ms.
@@ -541,7 +571,7 @@ pub fn build_site(
         .map(|(id, kind, t, n, samples, s, seed, clipped)| {
             let file = format!("clips/{id}.opus");
             let path = dir.join(&file);
-            cfg.ffmpeg.encode_opus(samples, SAMPLE_RATE, &path)?;
+            let (level, decoded) = encode_levelled(id, samples, &path, cfg)?;
             let bytes = std::fs::metadata(&path)
                 .map_err(|e| Error::io(&path, e))?
                 .len();
@@ -555,10 +585,14 @@ pub fn build_site(
                 tokens: *n,
                 lead_trim_ms: s.lead_ms.round() as u32,
                 tail_trim_ms: s.tail_ms.round() as u32,
-                gain_db: (s.gain_db * 10.0).round() / 10.0,
+                gain_db: ((s.gain_db + level.gain_db) * 10.0).round() / 10.0,
                 end_burst: s.end_burst,
                 seed: *seed,
                 onset_clipped: *clipped,
+                loudness_lufs: Some(round2(decoded.lufs)),
+                true_peak_dbtp: Some(round2(decoded.true_peak_dbtp)),
+                limiter_db: Some(round2(level.limiter_db)),
+                loudness_capped: level.capped,
             })
         })
         .collect::<Result<_>>()?;
@@ -578,6 +612,7 @@ pub fn build_site(
         seed: cfg.tts.seed,
         sample_rate: SAMPLE_RATE,
         opus_kbps: cfg.ffmpeg.kbps,
+        loudness_target: Some((cfg.loudness.lufs, cfg.loudness.true_peak_dbtp)),
         pauses_ms: (
             crate::bank::Pause::Short.ms(),
             crate::bank::Pause::Long.ms(),
@@ -604,6 +639,14 @@ pub fn build_site(
     }
     let mut leads: Vec<u32> = vm.clips.iter().map(|c| c.lead_trim_ms).collect();
     leads.sort_unstable();
+    let mut lufs: Vec<f64> = vm.clips.iter().filter_map(|c| c.loudness_lufs).collect();
+    lufs.sort_by(f64::total_cmp);
+    let limits: Vec<f64> = vm
+        .clips
+        .iter()
+        .filter_map(|c| c.limiter_db)
+        .filter(|&d| d > 0.0)
+        .collect();
     let summary = VoiceBuild {
         dir,
         per_kind,
@@ -630,6 +673,23 @@ pub fn build_site(
                 .filter(|c| m.is_personal(&c.id))
                 .map(|c| c.bytes)
                 .sum(),
+        ),
+        lufs: (
+            lufs.first().copied().unwrap_or(f64::NAN),
+            lufs.get(lufs.len() / 2).copied().unwrap_or(f64::NAN),
+            lufs.last().copied().unwrap_or(f64::NAN),
+        ),
+        true_peak_max_dbtp: vm
+            .clips
+            .iter()
+            .filter_map(|c| c.true_peak_dbtp)
+            .fold(f64::NEG_INFINITY, f64::max),
+        limited: (limits.len(), limits.iter().copied().fold(0.0, f64::max)),
+        capped: vm.clips.iter().filter(|c| c.loudness_capped).count(),
+        limiter: (
+            cfg.loudness.lookahead_ms,
+            cfg.loudness.release_ms,
+            cfg.loudness.max_limiting_db,
         ),
         tts_wall_s,
         tts_load_ms,
@@ -680,10 +740,15 @@ fn write_meta(
             ("clips[].bytes", "taille du fichier, octets"),
             ("clips[].tokens", "tokens Pocket TTS (vérifiés contre le journal de pockettts.cpp)"),
             ("clips[].lead_trim_ms / tail_trim_ms", "silence coupé au début / à la fin, ms"),
-            ("clips[].gain_db", "gain appliqué, dB"),
+            ("clips[].gain_db", "gain appliqué à la synthèse, dB (niveau des parties, puis sonie)"),
             ("clips[].end_burst", "son coupé de fin de génération retiré"),
             ("clips[].seed", "graine du bruit de la génération gardée"),
             ("clips[].onset_clipped", "attaque peut-être coupée après toutes les graines essayées"),
+            ("clips[].loudness_lufs", "sonie intégrée du fichier décodé (UIT-R BS.1770-4), LUFS"),
+            ("clips[].true_peak_dbtp", "crête vraie du fichier décodé (suréchantillonnée 4 fois), dBTP"),
+            ("clips[].limiter_db", "réduction de crête la plus forte du limiteur, dB (0 : non limité)"),
+            ("clips[].loudness_capped", "limiteur à sa borne : clip un peu sous la sonie visée (première syllabe bien plus forte que la suite)"),
+            ("loudness_target", "sonie de chaque clip (LUFS) et crête vraie maximale (dBTP)"),
         ]),
         FileMeta {
             format: Some(format!(
@@ -693,7 +758,7 @@ fn write_meta(
             bytes: Some(b.total_bytes),
             ..FileMeta::new(
                 "clips/<id>.opus",
-                "un clip par entrée du manifeste ; silence de début et de fin coupé, niveau normalisé",
+                "un clip par entrée du manifeste ; silence de début et de fin coupé, sonie normalisée (-14 LUFS, crête vraie ≤ -1 dBTP)",
             )
             .count(vm.clips.len())
         },
@@ -710,6 +775,14 @@ fn write_meta(
     meta.notes = vec![
         "Clips générés sur le poste par pockettts.cpp (sous-processus), un appel par passe ; un clip dont l'attaque est coupée ou sans fin de parole est refait avec la graine suivante.".into(),
         "Tout texte absent du manifeste est lu par la voix Android (repli).".into(),
+        format!(
+            "Sonie : chaque clip à {} LUFS intégrés (UIT-R BS.1770-4 / EBU R128) et crête vraie ≤ {} dBTP, niveau des voix de guidage des applications de navigation ; un limiteur doux (anticipation {} ms, relâchement {} ms, au plus {} dB) abaisse les crêtes avant encodage, un clip qui demanderait plus reste un peu sous la cible ; mesure vérifiée sur le fichier Opus décodé à 48 kHz (#179).",
+            vm.loudness_target.map_or(f64::NAN, |t| t.0),
+            vm.loudness_target.map_or(f64::NAN, |t| t.1),
+            b.limiter.0,
+            b.limiter.1,
+            b.limiter.2,
+        ),
         "Les clips des noms lus seulement dans des sources à usage personnel (Biodiv'sports, plans des pistes) sont listés dans personal.json ; le pack les écarte sans personal_sources.".into(),
     ];
     meta.parameters = serde_json::json!({
@@ -723,6 +796,10 @@ fn write_meta(
         "sample_rate_hz": vm.sample_rate,
         "opus_kbps": vm.opus_kbps,
         "pauses_ms": [vm.pauses_ms.0, vm.pauses_ms.1],
+        "loudness_target_lufs": vm.loudness_target.map(|t| t.0),
+        "true_peak_max_dbtp": vm.loudness_target.map(|t| t.1),
+        "limiter_lookahead_release_ms": [b.limiter.0, b.limiter.1],
+        "limiter_max_reduction_db": b.limiter.2,
     });
     meta.stats = serde_json::json!({
         "clips": vm.clips.len(),
@@ -750,11 +827,86 @@ fn write_meta(
         "end_bursts": b.end_bursts,
         "passes": b.passes,
         "onset_clipped": b.onset_clipped,
+        "lufs_min_median_max": [round2(b.lufs.0), round2(b.lufs.1), round2(b.lufs.2)],
+        "true_peak_max_dbtp": round2(b.true_peak_max_dbtp),
+        "clips_limited": b.limited.0,
+        "limiter_max_db": round2(b.limited.1),
+        "clips_loudness_capped": b.capped,
         "tts_wall_s": (b.tts_wall_s * 100.0).round() / 100.0,
         "encode_wall_s": (b.encode_wall_s * 100.0).round() / 100.0,
         "total_wall_s": (b.total_wall_s * 100.0).round() / 100.0,
     });
     Ok(meta.write(&b.dir)?)
+}
+
+fn round2(x: f64) -> f64 {
+    (x * 100.0).round() / 100.0
+}
+
+/// Attempts of [`encode_levelled`].
+const LEVEL_ATTEMPTS: usize = 6;
+
+/// Brings a clip to the loudness target ([`normalize`]), encodes it to `path` and checks
+/// the decoded file, what the phone plays. The encoder moves the loudness and the peaks a
+/// little (up to +1.5 dB on the true peak of a sibilant at 24 kbit/s): a file off the
+/// target is levelled again with the aim and the limiter ceiling corrected by what was
+/// measured. When no attempt is within the tolerance, the attempt under the peak ceiling
+/// nearest the target is kept if it is within twice the tolerance. Deterministic: the same
+/// samples go through the same attempts and give the same file.
+fn encode_levelled(
+    id: &str,
+    samples: &[i16],
+    path: &Path,
+    cfg: &VoiceConfig,
+) -> Result<(Normalized, Loudness)> {
+    let t = cfg.loudness;
+    let level = |aim: &Target, ceiling: f64| -> Result<(Normalized, Loudness)> {
+        let (pcm, n) = normalize(samples, SAMPLE_RATE, aim, ceiling).map_err(|e| Error::Clip {
+            id: id.to_owned(),
+            message: e.to_string(),
+        })?;
+        cfg.ffmpeg.encode_opus(&pcm, SAMPLE_RATE, path)?;
+        let d = measure(&cfg.ffmpeg.decode(path, MEASURE_RATE)?, MEASURE_RATE)?;
+        Ok((n, d))
+    };
+    let mut aim = t;
+    let mut ceiling = t.ceiling_dbtp();
+    // Best attempt under the peak ceiling: loudness miss, aim, ceiling.
+    let mut best: Option<(f64, Target, f64)> = None;
+    let mut last = None;
+    for k in 0..LEVEL_ATTEMPTS {
+        let (n, d) = level(&aim, ceiling)?;
+        if t.accepts_level(&d, t.true_peak_dbtp, n.capped) {
+            return Ok((n, d));
+        }
+        let miss = (d.lufs - t.lufs).abs();
+        if d.true_peak_dbtp <= t.true_peak_dbtp && best.is_none_or(|b| miss < b.0) {
+            best = Some((miss, aim, ceiling));
+        }
+        if d.true_peak_dbtp > t.true_peak_dbtp {
+            ceiling -= d.true_peak_dbtp - t.true_peak_dbtp + 0.1;
+        }
+        if !n.capped {
+            // Damped after the first correction: the encoder's offset is not exactly
+            // the same from one level to the next.
+            let step = if k == 0 { 1.0 } else { 0.5 };
+            aim.lufs += step * (t.lufs - d.lufs);
+        }
+        last = Some(d);
+    }
+    if let Some((miss, aim, ceiling)) = best
+        && miss <= 2.0 * t.tolerance_lu
+    {
+        return level(&aim, ceiling);
+    }
+    let d = last.expect("at least one attempt");
+    Err(Error::Clip {
+        id: id.to_owned(),
+        message: format!(
+            "decoded clip at {:.2} LUFS, {:.2} dBTP after {LEVEL_ATTEMPTS} attempts (target {} LUFS ± {}, ceiling {} dBTP)",
+            d.lufs, d.true_peak_dbtp, t.lufs, t.tolerance_lu, t.true_peak_dbtp
+        ),
+    })
 }
 
 fn write_json(path: &Path, v: &impl Serialize) -> Result<()> {
@@ -763,6 +915,22 @@ fn write_json(path: &Path, v: &impl Serialize) -> Result<()> {
         source,
     })?;
     Ok(skimap_common::output::write_bytes(path, &b)?)
+}
+
+/// Rate the clips are decoded at to be measured: that of Opus, the phone's decoder output.
+pub const MEASURE_RATE: u32 = 48_000;
+
+/// Loudness of every clip of the voice layer in `dir`, decoded as the phone decodes it
+/// (Ogg/Opus at 48 kHz), in manifest order.
+pub fn measure_layer(dir: &Path, ffmpeg: &Ffmpeg) -> Result<Vec<(String, Loudness)>> {
+    let vm = VoiceManifest::read(dir)?;
+    vm.clips
+        .par_iter()
+        .map(|c| {
+            let pcm = ffmpeg.decode(&dir.join(&c.file), MEASURE_RATE)?;
+            Ok((c.id.clone(), measure(&pcm, MEASURE_RATE)?))
+        })
+        .collect()
 }
 
 /// An assembled announcement.
@@ -846,6 +1014,10 @@ mod tests {
             end_burst: false,
             seed: 42,
             onset_clipped: false,
+            loudness_lufs: Some(-14.0),
+            true_peak_dbtp: Some(-2.0),
+            limiter_db: Some(0.0),
+            loudness_capped: false,
         };
         let vm = VoiceManifest {
             format: 1,
@@ -856,6 +1028,7 @@ mod tests {
             seed: 42,
             sample_rate: SAMPLE_RATE,
             opus_kbps: 24,
+            loudness_target: Some((-14.0, -1.0)),
             pauses_ms: (150, 400),
             clips: vec![
                 clip("arrivee", ClipKind::Fixed, 1000),
@@ -877,6 +1050,11 @@ mod tests {
             passes: vec![2],
             onset_clipped: 0,
             personal: (1, 2000),
+            lufs: (-14.2, -14.0, -13.8),
+            true_peak_max_dbtp: -1.2,
+            limited: (1, 2.5),
+            capped: 0,
+            limiter: (5.0, 60.0, 6.0),
             tts_wall_s: 1.0,
             tts_load_ms: 250.0,
             encode_wall_s: 0.1,
@@ -932,6 +1110,14 @@ mod tests {
         assert_eq!(m.files[1].bytes, Some(3000));
         assert_eq!(m.parameters["voice"], "estelle");
         assert_eq!(m.stats["clips_name"], 1);
+        assert_eq!(m.parameters["loudness_target_lufs"], -14.0);
+        assert_eq!(m.stats["lufs_min_median_max"][1], -14.0);
+        assert_eq!(m.stats["clips_limited"], 1);
+        assert!(
+            m.notes.iter().any(|n| n.contains("-14 LUFS")),
+            "{:?}",
+            m.notes
+        );
         assert_eq!(m.stats["names"]["pistes"], 0);
     }
 }
