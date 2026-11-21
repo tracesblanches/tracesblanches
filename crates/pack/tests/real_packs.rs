@@ -120,6 +120,8 @@ fn fixture_packs_match_their_sources_and_geotiffs() {
         sources(&p.layout, site);
         let classes = rasters(&p.layout, site);
         let pack = Pack::open(pack_dir(site, &p.layout).unwrap()).unwrap();
+        // A published pack: nothing from a personal-use source, whatever file it is in.
+        assert_restricted_free(&pack);
         let m = pack.manifest();
         let mut k = fixtures::golden::Golden::new(&format!("pack/{}", site.id));
         k.count("files", m.files.len())
@@ -213,11 +215,22 @@ fn sources(layout: &DataLayout, site: &Site) {
                 assert!(got.is_subset(&names), "{:?}", got.difference(&names));
                 continue;
             }
+            let packed = pack.read_geojson(&l.id).unwrap();
+            assert_eq!(
+                packed.features.len() as u64,
+                l.features.unwrap(),
+                "{}",
+                l.id
+            );
+            if l.origin.starts_with("france/") {
+                // A France-wide layer (`out/france/`, skimap-stations): the pack keeps the
+                // features of the site, each one as in its source.
+                national_selection(layout, &pack, l);
+                continue;
+            }
             let src = json(&out.join(&l.origin));
             let n = src["features"].as_array().unwrap().len() as u64;
             assert_eq!(l.features, Some(n), "{}", l.id);
-            let packed = pack.read_geojson(&l.id).unwrap();
-            assert_eq!(packed.features.len() as u64, n, "{}", l.id);
         }
         // Zone rules: the pack's join equals the zones crate's own list (zones.meta.json).
         let meta = json(&out.join("zones/zones.meta.json"));
@@ -247,6 +260,53 @@ fn sources(layout: &DataLayout, site: &Site) {
         );
         assert_eq!(got, want);
     }
+}
+
+/// A pack layer taken from a France-wide output (`out/france/<layer>/`, not
+/// `out/<site>/`): every feature of the pack is a feature of that source, unchanged but for
+/// the link to the official plan that the pack adds (`plan_links::LINK_FIELDS`, when the plan
+/// catalogue exists); the fee zones (personal packs only) are built from two files and only
+/// counted.
+fn national_selection(layout: &DataLayout, pack: &Pack, l: &skimap_pack::manifest::Layer) {
+    if l.origin.contains(" + ") {
+        println!(
+            "{}: {} features from {}",
+            l.id,
+            l.features.unwrap(),
+            l.origin
+        );
+        return;
+    }
+    let src = json(&layout.out_root().join(&l.origin));
+    let all: BTreeSet<String> = src["features"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(Value::to_string)
+        .collect();
+    let packed = json(&pack.path(&l.file).unwrap());
+    let packed = packed["features"].as_array().unwrap();
+    for f in packed {
+        let mut f = f.clone();
+        if let Some(props) = f["properties"].as_object_mut() {
+            for k in skimap_pack::build::plan_links::LINK_FIELDS {
+                props.remove(k);
+            }
+        }
+        assert!(
+            all.contains(&f.to_string()),
+            "{}: {f} not in {}",
+            l.id,
+            l.origin
+        );
+    }
+    println!(
+        "{}: {} of the {} features of {}",
+        l.id,
+        packed.len(),
+        all.len(),
+        l.origin
+    );
 }
 
 /// Checks the rasters of the pack of `site`; returns the sampled class counts by raster.
@@ -588,7 +648,8 @@ fn full_data_public_pack_from_real_outputs_has_no_restricted_source() {
         std::fs::create_dir_all(&out).unwrap();
         for e in std::fs::read_dir(real.out_dir(site)).unwrap() {
             let e = e.unwrap();
-            if e.file_name() == "pack" || e.file_name() == "export" {
+            // The outputs of the packs are rebuilt here, never written through a link.
+            if ["pack", "export", "voice-pack"].contains(&e.file_name().to_str().unwrap()) {
                 continue;
             }
             std::os::unix::fs::symlink(e.path(), out.join(e.file_name())).unwrap();
@@ -617,7 +678,14 @@ fn full_data_public_pack_from_real_outputs_has_no_restricted_source() {
             println!("   left out {} : {}", m.id, m.reason);
         }
         assert_restricted_free(&pack);
-        assert_public_voice(&pack, &real, site);
+        // VO6: the clips are in a voice pack per language, published apart from the base
+        // pack, which has none.
+        assert_eq!(pack.manifest().voice.status, "absent");
+        let v = skimap_pack::build::build_voice_pack(site, &l, "voice", "fr", false).unwrap();
+        let voice = Pack::open(&v.pack_dir).unwrap();
+        assert_eq!(voice.verify().unwrap(), Vec::<String>::new());
+        assert_restricted_free(&voice);
+        assert_public_voice(&voice, &real, site);
     }
 }
 
@@ -710,9 +778,12 @@ fn assert_public_voice(pack: &Pack, real: &DataLayout, site: &Site) {
         .iter()
         .filter(|n| !public.contains(&name_clip_id(n)))
         .collect();
-    assert!(
+    // Biodiv'sports names to keep out of the voice: some in data built with the personal
+    // sources, none in data built without (the weekly build has no Biodiv'sports zone).
+    assert_eq!(
         !personal_only.is_empty(),
-        "{}: Biodiv'sports names",
+        fixtures::full_data_personal(site.id),
+        "{}: Biodiv'sports names {personal_only:?}",
         site.id
     );
     for n in &personal_only {

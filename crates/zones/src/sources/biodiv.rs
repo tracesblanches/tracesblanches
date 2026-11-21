@@ -12,7 +12,7 @@ use skimap_common::geom::BBox;
 
 use super::{RawZone, feature_parts, fetch_fc, fetch_json, prop_str};
 use crate::error::{Error, Result};
-use crate::layer::{Months, ZoneKind, ZoneProps};
+use crate::layer::{BIODIV_ID_PREFIX, Months, ZoneKind, ZoneProps};
 
 /// API root.
 pub const API: &str = "https://biodiv-sports.fr/api/v2";
@@ -88,7 +88,7 @@ pub fn fetch(dl: &Downloader, b: BBox) -> Result<Vec<RawZone>> {
                 .unwrap_or_default();
             out.push(RawZone {
                 props: ZoneProps {
-                    id: format!("biodiv:{id}"),
+                    id: format!("{BIODIV_ID_PREFIX}{id}"),
                     kind: ZoneKind::BiodivSports,
                     name: prop_str(&p, "name").unwrap_or_else(|| format!("Biodiv'sports {id}")),
                     source: "biodiv-sports".into(),

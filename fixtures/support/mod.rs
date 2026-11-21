@@ -19,6 +19,15 @@
 //!   --workspace --features skimap-core/pipeline,skimap-pack/pipeline,skimap-collab/phone
 //!   -- --ignored full_data_`. A missing directory fails the test as well.
 //!
+//!   The weekly build leaves out the sources for personal use only
+//!   (`SKIMAP_PERSONAL_SOURCES` unset), so the category has two parts: `full_data_*`
+//!   run on any complete data, public or personal, and check what it says it was built
+//!   with ([`full_data_personal`]); `full_data_personal_*` need the personal sources
+//!   (archived past days, CLPA, the golden figures of a personal build…) and fail on a
+//!   public build ([`require_full_data_personal`]). The weekly stage runs the first part
+//!   (`--skip full_data_personal_`); `scripts/ci --only full-data` runs both on personal
+//!   data, the first part only on public data.
+//!
 //! Golden fingerprints (Q2): [`golden`].
 
 #![allow(dead_code)]
@@ -77,6 +86,50 @@ pub fn full_data() -> PathBuf {
         root.display()
     );
     root
+}
+
+/// Whether the complete local data of `site` was built with the sources for personal
+/// use only: `inputs.personal_sources` of `out/<site>/build-all.json`, or, for data built
+/// layer by layer (no such record), a source marked `personal_use_only` in one of its
+/// layer metadata files (`out/<site>/<layer>/*.meta.json`).
+pub fn full_data_personal(site: &str) -> bool {
+    let out = full_data().join("out").join(site);
+    let read = |p: &Path| -> Option<serde_json::Value> {
+        serde_json::from_str(&std::fs::read_to_string(p).ok()?).ok()
+    };
+    if let Some(flag) = read(&out.join("build-all.json")).and_then(|v| {
+        v.pointer("/inputs/personal_sources")
+            .and_then(|b| b.as_bool())
+    }) {
+        return flag;
+    }
+    let layers = std::fs::read_dir(&out).unwrap_or_else(|e| panic!("{}: {e}", out.display()));
+    layers.flatten().any(|layer| {
+        std::fs::read_dir(layer.path())
+            .into_iter()
+            .flatten()
+            .flatten()
+            .any(|f| {
+                f.file_name().to_string_lossy().ends_with(".meta.json")
+                    && read(&f.path()).is_some_and(|m| {
+                        m["sources"]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                            .any(|s| s["personal_use_only"] == true)
+                    })
+            })
+    })
+}
+
+/// Fails unless the complete local data of `site` was built with the sources for personal
+/// use only: the `full_data_personal_*` tests (not run by the weekly build).
+pub fn require_full_data_personal(site: &str) {
+    assert!(
+        full_data_personal(site),
+        "{site}: the complete data was built without the sources for personal use only; \
+         full_data_personal_ tests need a build with SKIMAP_PERSONAL_SOURCES=1"
+    );
 }
 
 /// Copies a directory tree (files and subdirectories).

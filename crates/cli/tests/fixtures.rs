@@ -314,10 +314,17 @@ fn trail_graph_rebuilt_from_the_reduced_inputs() {
 }
 
 /// The versioned set is the one `skimap fixtures` writes today from the complete local
-/// data: a pipeline change that alters an extracted layer shows up here (weekly job).
+/// data it was cut from: a pipeline change that alters an extracted layer shows up here.
+/// That data is a build with the personal sources (the zones lose their Biodiv'sports
+/// areas, the huts their personal fields), kept as it is: a fresh build (the weekly one,
+/// without them, with the snow and the OSM of the day) differs by construction, so the
+/// test is in the `full_data_personal_` part, run by hand on `data/`.
 #[test]
-#[ignore = "full-data: data/cache and data/out (skimap fixtures)"]
-fn full_data_fixtures_are_up_to_date() {
+#[ignore = "full-data: data/cache and data/out (skimap fixtures), personal sources"]
+fn full_data_personal_fixtures_are_up_to_date() {
+    for site in SITES.iter() {
+        fixtures::require_full_data_personal(site.id);
+    }
     let data = fixtures::full_data();
     let tmp = tempfile::tempdir().unwrap();
     let out: PathBuf = tmp.path().join("fixtures");
@@ -350,8 +357,9 @@ fn full_data_fixtures_are_up_to_date() {
     // A metadata file that differs only by its build times and fetch stamps (any rebuild
     // of the layer changes them) is up to date.
     let root = fixtures::root();
+    // A file on one side only is stale (listed below), not a crash.
     let same_meta = |p: &str| {
-        p.ends_with(".meta.json") && {
+        p.ends_with(".meta.json") && root.join(p).is_file() && out.join(p).is_file() && {
             let read = |f: PathBuf| -> Value {
                 serde_json::from_str(&std::fs::read_to_string(f).unwrap()).unwrap()
             };

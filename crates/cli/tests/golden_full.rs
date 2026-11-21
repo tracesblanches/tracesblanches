@@ -6,7 +6,11 @@
 //! SKIMAP_BLESS=1 cargo test --release -p skimap-cli --test golden_full -- --ignored full_data_
 //! ```
 //!
-//! References: `fixtures/golden/full/<site>.json` (figures only, no data). The figures
+//! References: `fixtures/golden/full/<site>.json` for a build with the personal sources,
+//! `fixtures/golden/full-public/<site>.json` for one without (the weekly build: no
+//! historic avalanche layer, no CLPA cell raised, no Biodiv'sports zone, fewer pack
+//! layers), whichever the data says it was built with (fixtures/support/mod.rs);
+//! figures only, no data. The figures
 //! come from the files the builders write (`<layer>.meta.json` statistics, reports and
 //! summaries); the layers of the CI fixtures have their own fingerprints in each crate.
 //!
@@ -167,11 +171,20 @@ const FIGURES: &[(&str, &str, Tol)] = &[
     ("pack/pack.meta.json", "/stats/total_bytes", Tol::Rel(0.05)),
 ];
 
+/// Layers only a build with the personal sources writes (the DDT 05 CLPA, personal use).
+const PERSONAL_LAYERS: &[&str] = &["avalanche-historic/"];
+
 fn fingerprint(site: &Site) {
     let out = fixtures::full_data().join("out").join(site.id);
-    let mut k = Golden::new(&format!("full/{}", site.id));
+    let personal = fixtures::full_data_personal(site.id);
+    let golden = if personal { "full" } else { "full-public" };
+    println!("{}: {golden} (personal sources: {personal})", site.id);
+    let mut k = Golden::new(&format!("{golden}/{}", site.id));
     let mut cache: std::collections::HashMap<&str, Value> = std::collections::HashMap::new();
     for (file, pointer, tol) in FIGURES {
+        if !personal && PERSONAL_LAYERS.iter().any(|l| file.starts_with(l)) {
+            continue;
+        }
         let v = cache.entry(file).or_insert_with(|| {
             let p = out.join(file);
             serde_json::from_str(
