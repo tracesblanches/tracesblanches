@@ -98,6 +98,7 @@
     <string name="domain_update_available">A newer pack is published</string>
     <string name="domain_available">Pack ready to download</string>
     <string name="domain_not_built">No pack published yet</string>
+    <string name="domain_covered_by">Also inside the installed pack %1$s</string>
     <string name="domain_distance">%1$s km away</string>
     <string name="domain_km">%1$s km of pistes</string>
     <string name="domain_download">Download · %1$s</string>

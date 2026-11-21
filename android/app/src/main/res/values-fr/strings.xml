@@ -99,6 +99,7 @@
     <string name="domain_update_available">Une version plus récente est publiée</string>
     <string name="domain_available">Pack prêt à télécharger</string>
     <string name="domain_not_built">Pas encore de pack publié</string>
+    <string name="domain_covered_by">Compris aussi dans le pack installé %1$s</string>
     <string name="domain_distance">à %1$s km</string>
     <string name="domain_km">%1$s km de pistes</string>
     <string name="domain_download">Télécharger · %1$s</string>

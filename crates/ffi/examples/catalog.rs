@@ -1,7 +1,8 @@
 //! Writes the catalogue resource of the Android app (`android/app/src/main/assets/
 //! catalog.json`): the nordic areas of the census (P3, `data/out/france/domaines/
 //! domaines.geojson`) reduced to points, and the département borders of metropolitan
-//! France simplified to about 2 km, for the map of the area picker.
+//! France simplified to about 2 km, for the map of the area picker. Each area carries the
+//! identifier of its site in the registry (`data/out/france/sites/sites.json`, #175).
 //!
 //! `cargo run -p skimap-ffi --example catalog -- [OUT]` (needs `SKIMAP_DATA_DIR` or `./data`;
 //! downloads the borders once through the common downloader, source `etalab-contours`).
@@ -10,12 +11,15 @@
     clippy::disallowed_methods,
     reason = "developer tool, not a pipeline output"
 )]
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use geo::{Coord, LineString, Simplify};
 use serde_json::{Value, json};
 use skimap_common::config::Config;
 use skimap_common::download::{Downloader, Request};
+use skimap_common::output;
+use skimap_common::site::Registry;
 
 type Res<T> = Result<T, Box<dyn std::error::Error>>;
 
@@ -39,14 +43,26 @@ fn main() -> Res<()> {
         .france_layer_dir("domaines")?
         .join("domaines.geojson");
     let fc: Value = serde_json::from_slice(&std::fs::read(&census)?)?;
+    // Site of each census domain (#175): the registry record whose `census_id` is the
+    // domain, the identifier of its pack and of its entry in the server catalog.
+    let registry = Registry::load(&layout)?;
+    let sites: BTreeMap<&str, &str> = registry
+        .records()
+        .iter()
+        .filter_map(|r| Some((r.census_id.as_deref()?, r.id.as_str())))
+        .collect();
 
     let mut domains = Vec::new();
     for f in fc["features"].as_array().ok_or("no features")? {
         let p = &f["properties"];
         let name = p["name"].as_str().unwrap_or_default();
         let commune = p["commune"]["name"].as_str().unwrap_or_default();
+        let id = p["id"].as_str().ok_or("census id")?;
+        let site = sites
+            .get(id)
+            .ok_or_else(|| format!("{id} ({name}): no site in the registry"))?;
         domains.push(json!({
-            "id": p["id"], "name": name, "alt_names": p["alt_names"],
+            "id": id, "site": site, "name": name, "alt_names": p["alt_names"],
             "commune": commune, "dep": p["commune"]["departement"],
             "lon": round(p["lon"].as_f64().ok_or("lon")?, 1e-4),
             "lat": round(p["lat"].as_f64().ok_or("lat")?, 1e-4),
@@ -121,11 +137,8 @@ fn main() -> Res<()> {
         "domains": domains,
         "outline": outline,
     });
-    if let Some(dir) = out.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
     let text = serde_json::to_string(&catalog)?;
-    std::fs::write(&out, &text)?;
+    output::write_text(&out, &text)?;
     println!(
         "{}: {} areas, {} rings, {} points, {} bytes",
         out.display(),
