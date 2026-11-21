@@ -142,11 +142,14 @@ pub fn best_time_in(
         _ => Vec::new(),
     };
     let mut starts = Vec::new();
+    // Starts that end before the deadline but have no hourly forecast.
+    let mut unforecast = 0;
     while deadline.is_none_or(|d| t + planned <= d) && t.hour() < 18 {
         let back = t + planned;
         let hours = point.between(t - Duration::minutes(i64::from(t.minute())), back);
         let mut reasons = Vec::new();
         if hours.is_empty() {
+            unforecast += 1;
             t += Duration::minutes(30);
             continue;
         }
@@ -303,6 +306,7 @@ pub fn best_time_in(
             let alts: Vec<String> = [pick(true), pick(false)].into_iter().flatten().collect();
             tx.bt_best(b.start, b.back, req.duration_min, &why, &alts)
         }
+        None if unforecast > 0 => tx.bt_no_forecast().to_owned(),
         None => tx.bt_none(req.duration_min, deadline),
     };
     BestTime {
@@ -388,6 +392,30 @@ mod tests {
             ..req
         };
         assert!(best_time(&point(24), None, None, &long).best.is_none());
+    }
+
+    #[test]
+    fn a_day_without_forecast_says_so() {
+        // The point's hours are those of 12/01: on 14/01 there is no forecast, the outing
+        // fits the day well; the text tells the missing forecast, not the deadline.
+        let day = Request {
+            date: NaiveDate::from_ymd_opt(2027, 1, 14).unwrap(),
+            ..req(120.0)
+        };
+        for lang in [Lang::Fr, Lang::En] {
+            let b = best_time_in(&point(24), None, None, &day, lang);
+            assert!(b.best.is_none());
+            assert!(
+                !b.text.contains("limite") && !b.text.contains("deadline"),
+                "{}",
+                b.text
+            );
+            assert!(
+                b.text.contains("prévision") || b.text.contains("forecast"),
+                "{}",
+                b.text
+            );
+        }
     }
 
     fn req(minutes: f64) -> Request {
@@ -531,16 +559,13 @@ mod tests {
         let b = best_time(&p, None, None, &req(120.0));
         assert_eq!(b.starts[0].start.hour(), 10);
         assert_eq!(b.starts[0].start.minute(), 0);
-        // No weather at all: no start, said.
+        // No weather at all: no start, and the missing forecast said (not the deadline).
         p.hours.clear();
         let b = best_time(&p, None, None, &req(120.0));
         assert!(b.starts.is_empty() && b.best.is_none());
-        assert!(
-            b.text.starts_with(
-                "Pas de créneau : une sortie de 120 min ne finit pas avant l'heure limite ("
-            ),
-            "{}",
-            b.text
+        assert_eq!(
+            b.text,
+            "Pas de meilleur moment : aucune prévision météo horaire pour ce jour dans le pack."
         );
         assert!(b.voice().is_none());
     }

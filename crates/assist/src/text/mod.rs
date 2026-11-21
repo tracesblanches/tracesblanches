@@ -343,6 +343,8 @@ pub trait Texts: Sync {
     ) -> String;
     /// No start ends before the deadline.
     fn bt_none(&self, minutes: f64, deadline: Option<NaiveDateTime>) -> String;
+    /// No best time: the starts that end before the deadline have no hourly forecast.
+    fn bt_no_forecast(&self) -> &'static str;
 
     // ---- Wax (A2).
 

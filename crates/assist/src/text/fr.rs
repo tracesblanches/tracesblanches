@@ -781,6 +781,10 @@ impl Texts for Fr {
         )
     }
 
+    fn bt_no_forecast(&self) -> &'static str {
+        "Pas de meilleur moment : aucune prévision météo horaire pour ce jour dans le pack."
+    }
+
     fn bt_none(&self, minutes: f64, deadline: Option<NaiveDateTime>) -> String {
         format!(
             "Pas de créneau : une sortie de {} min ne finit pas avant l'heure limite{}.",

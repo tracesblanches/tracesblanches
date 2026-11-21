@@ -805,6 +805,10 @@ impl Texts for En {
         )
     }
 
+    fn bt_no_forecast(&self) -> &'static str {
+        "No best time: no hourly weather forecast for this day in the pack."
+    }
+
     fn bt_none(&self, minutes: f64, deadline: Option<NaiveDateTime>) -> String {
         format!(
             "No time slot: a {} min outing does not end before the time limit{}.",
