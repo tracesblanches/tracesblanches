@@ -22,7 +22,7 @@ serde.workspace = true
 serde_json.workspace = true
 proj4rs.workspace = true
 geo-types.workspace = true
-chrono.workspace = true
+jiff.workspace = true
 tiff = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 rustls = { workspace = true, optional = true }

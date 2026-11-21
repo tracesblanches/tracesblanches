@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use skimap_common::geom::LonLat;
 use skimap_core::zone_eval::{self, Verdict};
 use skimap_pack::Pack;
@@ -186,7 +186,9 @@ pub fn place_rules(
     let tx = text::of(lang);
     let l = load(&pack_dir)?;
     let (layer, rules) = (&l.0, &l.1);
-    let at: DateTime<Utc> = DateTime::from_timestamp_millis(at_ms).unwrap_or_else(Utc::now);
+    let at: Timestamp = Timestamp::from_millisecond(at_ms)
+        .ok()
+        .unwrap_or_else(Timestamp::now);
     let ev = zone_eval::evaluate(layer, rules, LonLat::new(lon, lat), at);
     let order = [
         Topic::Bivouac,
@@ -302,7 +304,7 @@ mod tests {
                 zone("n2000", ZoneKind::Natura2000Sic, "Natura", small),
             ],
         };
-        let at = DateTime::from_timestamp_millis(1_771_146_000_000).unwrap();
+        let at = Timestamp::from_millisecond(1_771_146_000_000).ok().unwrap();
         let ev = zone_eval::evaluate(&layer, &rules, LonLat::new(7.05, 45.05), at);
         let fr = text::of(Lang::Fr);
         let line = fr.local_rules(&local_items(fr, &layer, &rules, &ev));

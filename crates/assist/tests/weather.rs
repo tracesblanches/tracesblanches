@@ -18,7 +18,11 @@ mod fixtures;
 #[path = "support/weather_sets.rs"]
 mod weather_sets;
 
-use chrono::{Duration, NaiveDate, NaiveDateTime, NaiveTime};
+use jiff::civil::time;
+use jiff::{
+    SignedDuration,
+    civil::{Date, DateTime, Time},
+};
 use skimap_assist::inputs::{Paths, SiteData};
 use skimap_assist::layers::{
     Area, Bera, BeraAspects, BeraBulletin, BeraRisk, BeraStatus, Domain, Itinerary, OpenState,
@@ -46,7 +50,7 @@ fn site_of(name: &str) -> Site {
 }
 
 /// A uniform snow map of `depth_cm` over the site, valid at 06 h UTC of `date`.
-fn snow_map(site: &Site, date: NaiveDate, depth_cm: f32) -> SnowMap {
+fn snow_map(site: &Site, date: Date, depth_cm: f32) -> SnowMap {
     let b = site.bbox;
     let (x0, y0) =
         skimap_common::crs::to_lambert93(LonLat::new(b.west - 0.05, b.north + 0.05)).unwrap();
@@ -65,7 +69,7 @@ fn snow_map(site: &Site, date: NaiveDate, depth_cm: f32) -> SnowMap {
         )
     };
     SnowMap {
-        valid_at: date.and_hms_opt(6, 0, 0).unwrap().and_utc(),
+        valid_at: skimap_common::dates::utc(date.at(6, 0, 0, 0)).unwrap(),
         depth: grid(depth_cm),
         low: Some(grid(depth_cm * 0.7)),
         high: Some(grid(depth_cm * 1.3)),
@@ -164,7 +168,7 @@ fn data_with(name: &str, snow_cm: Option<f32>, bera: Option<Bera>) -> SiteData {
     }
     assert_eq!(its.len(), 3);
     d.status = Some(Status {
-        polled_at: skimap_assist::sun::local_to_utc(date.and_hms_opt(7, 30, 0).unwrap()),
+        polled_at: skimap_assist::sun::local_to_utc(date.at(7, 30, 0, 0)),
         itineraries: its,
         messages: vec!["Nordic France : 2/3 ouverts".into()],
         conflicts: vec![],
@@ -177,7 +181,7 @@ fn data_with(name: &str, snow_cm: Option<f32>, bera: Option<Bera>) -> SiteData {
     d
 }
 
-fn bera(date: NaiveDate, level: u8, split: bool) -> Bera {
+fn bera(date: Date, level: u8, split: bool) -> Bera {
     Bera {
         site: "cervieres".into(),
         date: date.to_string(),
@@ -213,7 +217,7 @@ fn bera(date: NaiveDate, level: u8, split: bool) -> Bera {
 
 /// A bulletin of the day without a level: not readable offline (Queyras) or no BERA in the
 /// massif (Jura).
-fn bera_status(date: NaiveDate, status: BeraStatus) -> Bera {
+fn bera_status(date: Date, status: BeraStatus) -> Bera {
     Bera {
         status,
         bulletin: None,
@@ -259,8 +263,8 @@ fn point<'a>(d: &'a SiteData, id: &str) -> &'a WeatherPoint {
     d.weather.as_ref().unwrap().point(id).unwrap()
 }
 
-fn at(date: NaiveDate, h: u32, m: u32) -> NaiveDateTime {
-    date.and_time(NaiveTime::from_hms_opt(h, m, 0).unwrap())
+fn at(date: Date, h: u32, m: u32) -> DateTime {
+    date.to_datetime(skimap_common::dates::hms(h, m, 0).unwrap())
 }
 
 #[test]
@@ -288,7 +292,7 @@ fn the_sets_are_the_rules() {
         }
         assert_eq!(
             w.files[0].span,
-            Some((s.start(), s.start() + Duration::hours(95)))
+            Some((s.start(), s.start() + SignedDuration::from_hours(95)))
         );
     }
 }
@@ -340,7 +344,7 @@ fn outputs_in(name: &str, d: &SiteData, lang: skimap_assist::text::Lang) -> Vec<
             &best_time::Request {
                 date,
                 duration_min: 120.0,
-                earliest: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
+                earliest: time(8, 0, 0, 0),
                 classes: vec![],
             },
             lang,
@@ -355,7 +359,7 @@ fn outputs_in(name: &str, d: &SiteData, lang: skimap_assist::text::Lang) -> Vec<
                 .map(|x| {
                     format!(
                         "{} {:?} {} ({})",
-                        x.at.format("%H:%M"),
+                        x.at.strftime("%H:%M"),
                         x.kind,
                         x.text,
                         x.spoken
@@ -496,7 +500,7 @@ fn golden_outputs_of_every_set_in_english() {
 
 use skimap_assist::snow_quality::{self, DayQuality, Params, Quality};
 
-fn quality(d: &SiteData, id: &str, date: NaiveDate) -> DayQuality {
+fn quality(d: &SiteData, id: &str, date: Date) -> DayQuality {
     snow_quality::day_quality(point(d, id), date, &Params::default(), Some(60.0)).unwrap()
 }
 
@@ -545,9 +549,9 @@ fn a3_dry_cold_stays_old_dry_snow_everywhere() {
         assert_eq!(code, "flat");
         assert_eq!(slot.quality, Quality::OldDry);
         assert_eq!(slot.score, 2.5);
-        assert_eq!(slot.end.time(), NaiveTime::from_hms_opt(17, 0, 0).unwrap());
-        assert!(slot.start + Duration::minutes(30) >= q.daylight.0);
-        assert!(slot.start - Duration::minutes(30) < q.daylight.0);
+        assert_eq!(slot.end.time(), time(17, 0, 0, 0));
+        assert!(slot.start + SignedDuration::from_mins(30) >= q.daylight.0);
+        assert!(slot.start - SignedDuration::from_mins(30) < q.daylight.0);
         assert!(q.summary[0].contains("neige ancienne froide et sèche entre 10 h et 15 h"));
         assert!(!q.summary.iter().any(|s| s.contains("ramollissement")));
         assert!(q.enough_snow);
@@ -571,9 +575,9 @@ fn a3_fresh_snow_then_wind_blows_it() {
     // The best slot: the fresh snow of the morning.
     let (_, slot) = q.best.clone().unwrap();
     assert_eq!(slot.quality, Quality::Fresh);
-    assert_eq!(slot.end.time(), NaiveTime::from_hms_opt(11, 0, 0).unwrap());
+    assert_eq!(slot.end.time(), time(11, 0, 0, 0));
     // The snow starts at 20 h the day before: old snow until 19 h.
-    let before = quality(&d, "le-laus", date - Duration::days(1));
+    let before = quality(&d, "le-laus", date - SignedDuration::from_hours(24));
     assert_eq!(before.flat, Quality::OldDry);
     assert_eq!(letters(&before.classes[0]), "AAAAAAAAAAAAAA");
 }
@@ -606,10 +610,7 @@ fn a3_a_thaw_wets_everything_without_refreeze() {
     );
     assert!(matches!(q.flat, Quality::Wet | Quality::Slush));
     for c in q.classes.iter().filter(|c| c.class.slope_deg == 20.0) {
-        assert_eq!(
-            c.wet_at.map(|t| t.time()),
-            NaiveTime::from_hms_opt(10, 0, 0)
-        );
+        assert_eq!(c.wet_at.map(|t| t.time()), Time::new(10, 0, 0, 0).ok());
         assert!(!matches!(c.morning, Quality::Hard | Quality::Icy));
     }
     assert!(q.summary.iter().any(|s| s.starts_with("Neige lourde : ")));
@@ -635,13 +636,10 @@ fn a3_refreeze_then_spring_snow() {
     let soft = |code: &str| class(&q, code).softens_at.unwrap();
     assert!(soft("E20") < soft("W20"), "{} {}", soft("E20"), soft("W20"));
     assert!(soft("SE20") <= soft("S20"));
-    assert_eq!(
-        soft("flat").time(),
-        NaiveTime::from_hms_opt(10, 0, 0).unwrap()
-    );
+    assert_eq!(soft("flat").time(), time(10, 0, 0, 0));
     assert_eq!(
         class(&q, "flat").wet_at.map(|t| t.time()),
-        NaiveTime::from_hms_opt(12, 0, 0)
+        Time::new(12, 0, 0, 0).ok()
     );
     // North 40°: transformed the latest, never heavy.
     assert!(class(&q, "N40").wet_at.is_none());
@@ -814,7 +812,11 @@ fn brief(name: &str, offset: i64) -> briefing::DayBriefing {
         home: Some(home(name)),
         lang: skimap_assist::text::Lang::Fr,
     };
-    briefing::day(&d, set(name).date() + Duration::days(offset), &opts)
+    briefing::day(
+        &d,
+        set(name).date() + SignedDuration::from_hours(24 * offset),
+        &opts,
+    )
 }
 
 /// The reason of a factor of a candidate: (points, text).
@@ -1164,7 +1166,10 @@ fn a7_weather_sentence_of_each_set() {
     }
     // The day after the sets: no weather for that day at the point.
     let d = data("froid-sec");
-    let late = synthesis::synthesise(&d, set("froid-sec").date() + Duration::days(5));
+    let late = synthesis::synthesise(
+        &d,
+        set("froid-sec").date() + SignedDuration::from_hours(24 * 5),
+    );
     assert_eq!(
         late.sentences[1],
         "Pas de prévision météo hors ligne pour ce jour au point Le Laus."
@@ -1707,7 +1712,7 @@ fn replay(name: &str, id: &str) -> Vec<alerts::Alert> {
 fn a8_wind_rising_and_temperature_drop() {
     let a = replay("vent-fort", "le-laus");
     let date = set("vent-fort").date();
-    let kinds: Vec<(Kind, NaiveDateTime)> = a.iter().map(|x| (x.kind, x.at)).collect();
+    let kinds: Vec<(Kind, DateTime)> = a.iter().map(|x| (x.kind, x.at)).collect();
     // Gusts of 75 km/h from 11 h, seen one hour ahead from 10 h 10 (weather alerts start 10
     // minutes after the departure); the front of 14 h, three hours ahead from 11 h 05.
     assert_eq!(
@@ -1739,7 +1744,7 @@ fn a8_wind_rising_and_temperature_drop() {
     let mut m = alerts::Monitor::new(at(date, 12, 0), &profile, p, alerts::Params::default());
     let mut said = Vec::new();
     for k in 0..48 {
-        let t = at(date, 12, 0) + Duration::minutes(5 * k);
+        let t = at(date, 12, 0) + SignedDuration::from_mins(5 * k);
         said.extend(m.update(t, 50.0 * (5 * k) as f64));
     }
     assert!(
@@ -1801,7 +1806,7 @@ fn best(name: &str, id: &str, crowd: Option<CrowdLevel>) -> BestTime {
         &best_time::Request {
             date,
             duration_min: 120.0,
-            earliest: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
+            earliest: time(8, 0, 0, 0),
             classes: vec![],
         },
     )
@@ -1947,7 +1952,7 @@ fn a9_the_snow_of_the_hours_of_the_outing_only() {
         &best_time::Request {
             date,
             duration_min: 150.0,
-            earliest: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
+            earliest: time(8, 0, 0, 0),
             classes: vec![],
         },
     );
@@ -1971,7 +1976,7 @@ fn a9_the_snow_of_the_hours_of_the_outing_only() {
         &best_time::Request {
             date,
             duration_min: 150.0,
-            earliest: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
+            earliest: time(8, 0, 0, 0),
             classes: vec!["N40".into(), "S20".into()],
         },
     );
@@ -2143,8 +2148,9 @@ fn layer_build_writes_every_output_of_a_windy_day() {
         assert!(rs[..3].iter().all(|r| r.start == s.request.start_time));
         assert_eq!(rs[0].route, best.label);
         let d = rs[0].deadline.unwrap();
-        let late =
-            d - Duration::seconds((best.profile.total_s() * 1.2) as i64) - Duration::minutes(30);
+        let late = d
+            - SignedDuration::from_secs((best.profile.total_s() * 1.2) as i64)
+            - SignedDuration::from_mins(30);
         if late > s.request.start_time {
             assert_eq!(rs.len(), 4);
             assert_eq!((rs[3].start, rs[3].slowdown), (late, 1.5));
@@ -2164,7 +2170,7 @@ fn layer_build_writes_every_output_of_a_windy_day() {
     assert!(wx.contains("  Voix : Fartage."), "{wx}");
     // The meta file keeps one run per first day.
     let opts2 = skimap_assist::Options {
-        date: Some(date + Duration::days(1)),
+        date: Some(date + SignedDuration::from_hours(24)),
         extra_days: 0,
         requests: vec![],
         ..opts
@@ -2174,7 +2180,7 @@ fn layer_build_writes_every_output_of_a_windy_day() {
     let runs = meta.parameters["runs"].as_object().unwrap();
     assert!(
         runs.contains_key(&date.to_string())
-            && runs.contains_key(&(date + Duration::days(1)).to_string())
+            && runs.contains_key(&(date + SignedDuration::from_hours(24)).to_string())
     );
     assert!(meta.sources.iter().any(|s| s.name.starts_with("Swix")));
     assert!(
@@ -2204,7 +2210,7 @@ fn layer_build_writes_every_output_of_a_windy_day() {
     assert!(meta.tickets.iter().any(|t| t == "A1 (#88)"));
     assert_eq!(
         meta.valid_from.as_deref(),
-        Some((date + Duration::days(1)).to_string().as_str())
+        Some((date + SignedDuration::from_hours(24)).to_string().as_str())
     );
     assert!(meta.validity.is_some() && !meta.notes.is_empty());
 }
@@ -2372,15 +2378,15 @@ fn a6_equipment_with_the_weather() {
     let h = e.items.iter().find(|i| i.kind == Item::Headlamp).unwrap();
     let (_, set_t) = skimap_core::ephemeris::sun_times(date, route[0]).unwrap();
     let set_t = skimap_core::ephemeris::local_time(set_t);
-    let back = at(date, 15, 30) + Duration::seconds((60.0 * 60.0 * 1.2) as i64);
+    let back = at(date, 15, 30) + SignedDuration::from_secs((60.0 * 60.0 * 1.2) as i64);
     assert_eq!(
         h.reason,
         format!(
             "retour prévu vers {} h {:02}, coucher du soleil à {} h {:02}",
-            chrono::Timelike::hour(&back),
-            chrono::Timelike::minute(&back),
-            chrono::Timelike::hour(&set_t),
-            chrono::Timelike::minute(&set_t)
+            back.hour(),
+            back.minute(),
+            set_t.hour(),
+            set_t.minute()
         )
     );
     // Off the pistes with a BERA of 3: the avalanche kit, said; with 2: not for that.

@@ -24,7 +24,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use skimap_common::geom::LonLat;
 use skimap_core::calibration::{ProfileModel, TERRAINS};
@@ -74,8 +74,8 @@ fn invalid(detail: impl std::fmt::Display) -> TrackingError {
     }
 }
 
-fn utc(ms: i64) -> DateTime<Utc> {
-    DateTime::<Utc>::from_timestamp_millis(ms).unwrap_or_default()
+fn utc(ms: i64) -> Timestamp {
+    Timestamp::from_millisecond(ms).ok().unwrap_or_default()
 }
 
 // ---------------------------------------------------------------------------------------
@@ -542,7 +542,7 @@ pub fn guided_bearing(
         lang: lang_code(lang),
         site_id,
         pack_dir,
-        created_at: Utc::now().to_rfc3339(),
+        created_at: skimap_common::dates::rfc3339(Timestamp::now()),
     }
     .write(Path::new(&dir))
 }
@@ -942,7 +942,7 @@ impl Engine {
 
     fn feed(&mut self, i: &Input, quiet: bool) {
         match i {
-            Input::Fix { t, pos } => self.fix(t.timestamp_millis() as f64 / 1000.0, *pos, quiet),
+            Input::Fix { t, pos } => self.fix(t.as_millisecond() as f64 / 1000.0, *pos, quiet),
             Input::Screen { on, .. } => self.screen_on = *on,
             _ => {}
         }
@@ -1289,9 +1289,10 @@ impl Engine {
         let d = self.distance();
         let remaining_m = if d.is_finite() { d } else { 0.0 };
         let (med, lo, hi) = self.remaining();
-        let now = self
-            .last
-            .map_or_else(|| Utc::now().timestamp_millis() as f64 / 1000.0, |(t, _)| t);
+        let now = self.last.map_or_else(
+            || Timestamp::now().as_millisecond() as f64 / 1000.0,
+            |(t, _)| t,
+        );
         let at = |s: f64| skimap_core::ephemeris::local_time(utc(((now + s) * 1000.0) as i64));
         let label = match (self.spec.kind, self.last) {
             (GuidedKind::Bearing, Some((_, p))) => format!(
@@ -1458,7 +1459,7 @@ pub fn fog_expected(plan_dir: String, now_ms: i64) -> bool {
     let now = skimap_core::ephemeris::local_time(utc(now_ms));
     p.weather.as_ref().is_some_and(|w| {
         w.hours.iter().any(|h| {
-            (h.time - now).num_minutes().abs() <= 60
+            h.time.duration_since(now).as_mins().abs() <= 60
                 && (h.fog == Some(true) || h.visibility_m.is_some_and(|v| v < FOG_VISIBILITY_M))
         })
     })
@@ -1646,7 +1647,7 @@ mod tests {
             lang: "fr".into(),
             site_id: None,
             pack_dir: None,
-            created_at: Utc::now().to_rfc3339(),
+            created_at: skimap_common::dates::rfc3339(Timestamp::now()),
         }
         .write(dir.path())
         .unwrap();

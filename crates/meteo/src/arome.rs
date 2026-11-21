@@ -33,8 +33,8 @@ use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use grib::LatLons;
+use jiff::{Timestamp, civil::DateTime};
 use serde::Serialize;
 use skimap_common::download::{CachePolicy, Downloader, Request};
 use skimap_common::layout::DataLayout;
@@ -300,12 +300,12 @@ pub fn extract(
 }
 
 /// Run identifier as in the bucket paths, `2026-11-15T09:00:00Z`.
-pub fn run_id(run: DateTime<Utc>) -> String {
-    run.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+pub fn run_id(run: Timestamp) -> String {
+    run.strftime("%Y-%m-%dT%H:%M:%SZ").to_string()
 }
 
 /// URL of one file of a run: package (`SP1`, `SP2`) and group of hours.
-pub fn file_url(run: DateTime<Utc>, package: &str, (a, b): (u32, u32)) -> String {
+pub fn file_url(run: Timestamp, package: &str, (a, b): (u32, u32)) -> String {
     let id = run_id(run);
     format!(
         "{BUCKET_URL}/pnt/{id}/arome/0025/{package}/arome__0025__{package}__{a:02}H{b:02}H__{id}.grib2"
@@ -338,13 +338,13 @@ pub fn xml_values(xml: &str, tag: &str) -> Vec<String> {
 }
 
 /// Runs of the bucket, newest first, from the `pnt/<run>/` prefixes of a listing.
-pub fn runs_in_listing(xml: &str) -> Vec<DateTime<Utc>> {
-    let mut runs: Vec<DateTime<Utc>> = xml_values(xml, "Prefix")
+pub fn runs_in_listing(xml: &str) -> Vec<Timestamp> {
+    let mut runs: Vec<Timestamp> = xml_values(xml, "Prefix")
         .iter()
         .filter_map(|p| {
             let id = p.strip_prefix("pnt/")?.strip_suffix('/')?;
-            let t = NaiveDateTime::parse_from_str(id, "%Y-%m-%dT%H:%M:%SZ").ok()?;
-            Some(Utc.from_utc_datetime(&t))
+            let t = DateTime::strptime("%Y-%m-%dT%H:%M:%SZ", id).ok()?;
+            skimap_common::dates::utc(t)
         })
         .collect();
     runs.sort_unstable_by(|a, b| b.cmp(a));
@@ -352,7 +352,7 @@ pub fn runs_in_listing(xml: &str) -> Vec<DateTime<Utc>> {
 }
 
 /// Whether a listing of `pnt/<run>/arome/0025/` holds every file needed from the run.
-pub fn run_complete(xml: &str, run: DateTime<Utc>) -> bool {
+pub fn run_complete(xml: &str, run: Timestamp) -> bool {
     let keys = xml_values(xml, "Key");
     let has = |url: String| {
         let key = url.trim_start_matches(BUCKET_URL).trim_start_matches('/');
@@ -362,7 +362,7 @@ pub fn run_complete(xml: &str, run: DateTime<Utc>) -> bool {
 }
 
 /// Latest run whose files are all published.
-pub fn latest_run(dl: &Downloader) -> Result<DateTime<Utc>> {
+pub fn latest_run(dl: &Downloader) -> Result<Timestamp> {
     let listing = dl.fetch(&list_request("pnt/", true))?.text()?;
     let runs = runs_in_listing(&listing);
     if runs.is_empty() {
@@ -402,7 +402,7 @@ pub fn apparent_temperature(t_c: f64, rh_pct: f64, wind_ms: f64) -> f64 {
 /// Hours of one point from its series: local time (Europe/Paris), units of `hourly.json`.
 /// Hourly precipitation and snow are the differences of the accumulations; the hour 0 of
 /// the run (analysis) has neither those nor a gust.
-pub fn hours(run: DateTime<Utc>, s: &PointSeries) -> Vec<Hour> {
+pub fn hours(run: Timestamp, s: &PointSeries) -> Vec<Hour> {
     let last = s.keys().map(|(_, h)| *h).max().unwrap_or(0);
     let get = |v: Var, h: u32| s.get(&(v, h)).copied();
     let cum = |v: Var, h: u32| {
@@ -417,7 +417,7 @@ pub fn hours(run: DateTime<Utc>, s: &PointSeries) -> Vec<Hour> {
     (0..=last)
         .filter(|h| get(Var::T2, *h).is_some())
         .map(|h| {
-            let at = run + chrono::Duration::hours(i64::from(h));
+            let at = run + jiff::SignedDuration::from_hours(i64::from(h));
             let t = get(Var::T2, h).map(|k| round1(k - 273.15));
             let rh = get(Var::Rh2, h).map(|x| x.round().clamp(0.0, 100.0));
             let w_ms = get(Var::Wind, h);
@@ -428,7 +428,7 @@ pub fn hours(run: DateTime<Utc>, s: &PointSeries) -> Vec<Hour> {
             };
             Hour {
                 time: skimap_core::ephemeris::local_time(at)
-                    .format("%Y-%m-%dT%H:%M")
+                    .strftime("%Y-%m-%dT%H:%M")
                     .to_string(),
                 temperature_c: t,
                 relative_humidity_pct: rh,
@@ -457,7 +457,7 @@ pub fn hours(run: DateTime<Utc>, s: &PointSeries) -> Vec<Hour> {
 }
 
 /// Model of each variable of `hourly.json` (absent variables are not listed).
-pub fn models(run: DateTime<Utc>) -> BTreeMap<String, String> {
+pub fn models(run: Timestamp) -> BTreeMap<String, String> {
     let m = format!("{MODEL} (run {})", run_id(run));
     let mut out = BTreeMap::new();
     for v in [
@@ -484,11 +484,11 @@ pub fn models(run: DateTime<Utc>) -> BTreeMap<String, String> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct DecodedRun {
     /// Run (UTC).
-    pub run: DateTime<Utc>,
+    pub run: Timestamp,
     /// Series of each point.
     pub series: Vec<PointSeries>,
     /// Series of each point in each previous run read (00-06 h only), newest first.
-    pub past: Vec<(DateTime<Utc>, Vec<PointSeries>)>,
+    pub past: Vec<(Timestamp, Vec<PointSeries>)>,
     /// Elevation of the nearest grid point, m.
     pub elevation_m: Vec<Option<f64>>,
     /// Coordinates of the nearest grid point.
@@ -498,24 +498,20 @@ pub struct DecodedRun {
 /// Downloads (through the cache) and decodes the files of a run at the given points: the
 /// nine `SP1` groups, the elevation of `SP2` 00-06 h and the `SP1` 00-06 h file of the
 /// [`PAST_RUNS`] previous runs that are still published, one thread per file.
-pub fn decode_run(
-    dl: &Downloader,
-    run: DateTime<Utc>,
-    points: &[(f64, f64)],
-) -> Result<DecodedRun> {
+pub fn decode_run(dl: &Downloader, run: Timestamp, points: &[(f64, f64)]) -> Result<DecodedRun> {
     // (run, URL): the current run first, then the past runs.
-    let mut files: Vec<(DateTime<Utc>, String)> = GROUPS
+    let mut files: Vec<(Timestamp, String)> = GROUPS
         .iter()
         .map(|g| (run, file_url(run, "SP1", *g)))
         .collect();
     files.push((run, file_url(run, "SP2", GROUPS[0])));
     for k in 1..=PAST_RUNS {
-        let r = run - chrono::Duration::hours(6 * i64::from(k));
+        let r = run - jiff::SignedDuration::from_hours(6 * i64::from(k));
         files.push((r, file_url(r, "SP1", GROUPS[0])));
     }
     // Files of a run never change once published: the cache is enough. A past run already
     // removed from the bucket only shortens the past.
-    let mut paths: Vec<(DateTime<Utc>, PathBuf)> = Vec::new();
+    let mut paths: Vec<(Timestamp, PathBuf)> = Vec::new();
     for (r, u) in &files {
         match dl.fetch(&Request::get(SOURCE, u).cache(CachePolicy::Normal)) {
             Ok(f) => paths.push((*r, f.path)),
@@ -540,7 +536,7 @@ pub fn decode_run(
             .map(|h| h.join().expect("decoder thread"))
             .collect()
     });
-    let mut by_run: BTreeMap<DateTime<Utc>, Vec<PointSeries>> = BTreeMap::new();
+    let mut by_run: BTreeMap<Timestamp, Vec<PointSeries>> = BTreeMap::new();
     let mut elevation_m = vec![None; points.len()];
     let grid_latlon = index.grid_latlon.clone();
     let mut all = vec![(run, first)];
@@ -794,7 +790,7 @@ pub fn refresh_run(
     sites: &[&Site],
     layout: &DataLayout,
     dl: &Downloader,
-    run: DateTime<Utc>,
+    run: Timestamp,
 ) -> Result<RefreshReport> {
     let id = run_id(run);
     let mut todo: Vec<(&Site, Vec<ForecastPoint>)> = Vec::new();
@@ -871,7 +867,7 @@ pub fn build_run(
     site: &Site,
     layout: &DataLayout,
     dl: &Downloader,
-    run: Option<DateTime<Utc>>,
+    run: Option<Timestamp>,
 ) -> Result<HourlyFile> {
     let report = match run {
         Some(run) => refresh_run(&[site], layout, dl, run)?,
@@ -889,9 +885,10 @@ pub fn build_run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jiff::civil::date;
 
-    fn run() -> DateTime<Utc> {
-        Utc.with_ymd_and_hms(2026, 11, 15, 9, 0, 0).unwrap()
+    fn run() -> Timestamp {
+        skimap_common::dates::utc(date(2026, 11, 15).at(9, 0, 0, 0)).unwrap()
     }
 
     /// #174: a site whose weather cannot be made from the run (a point outside the grid)
@@ -967,7 +964,7 @@ mod tests {
         let xml = r#"<ListBucketResult><CommonPrefixes><Prefix>pnt/2026-11-15T06:00:00Z/</Prefix></CommonPrefixes><CommonPrefixes><Prefix>pnt/2026-11-15T09:00:00Z/</Prefix></CommonPrefixes></ListBucketResult>"#;
         assert_eq!(
             runs_in_listing(xml),
-            vec![run(), run() - chrono::Duration::hours(3)]
+            vec![run(), run() - jiff::SignedDuration::from_hours(3)]
         );
         let mut keys: String = GROUPS
             .iter()

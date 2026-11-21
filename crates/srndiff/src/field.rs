@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use skimap_common::geom::LonLat;
 use skimap_common::grid::Grid;
 use skimap_core::zone_eval;
-use skimap_zones::chrono::{DateTime, Utc};
+use skimap_zones::jiff::Timestamp;
 use skimap_zones::layer::ZoneLayer;
 use skimap_zones::rules::{RuleSet, Topic};
 
@@ -226,7 +226,7 @@ pub struct SiteZones<'a> {
     /// Rules.
     pub rules: &'a RuleSet,
     /// Instant of the outing.
-    pub at: DateTime<Utc>,
+    pub at: Timestamp,
 }
 
 impl ZoneSource for SiteZones<'_> {

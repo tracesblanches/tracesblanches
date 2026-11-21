@@ -30,7 +30,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 
-use chrono::{DateTime, NaiveDateTime, Utc};
+use jiff::{Timestamp, civil::DateTime};
 use skimap_assist::inputs::{Paths, SiteData};
 use skimap_common::geom::LonLat;
 use skimap_common::grid::Grid;
@@ -127,16 +127,16 @@ fn invalid(detail: impl std::fmt::Display) -> TrackingError {
 }
 
 /// Epoch milliseconds of a local (French legal) time.
-pub fn epoch_ms(local: NaiveDateTime) -> i64 {
-    skimap_assist::sun::local_to_utc(local).timestamp_millis()
+pub fn epoch_ms(local: DateTime) -> i64 {
+    skimap_assist::sun::local_to_utc(local).as_millisecond()
 }
 
-fn utc(ms: i64) -> DateTime<Utc> {
-    DateTime::<Utc>::from_timestamp_millis(ms).unwrap_or_default()
+fn utc(ms: i64) -> Timestamp {
+    Timestamp::from_millisecond(ms).ok().unwrap_or_default()
 }
 
-fn ms(t: DateTime<Utc>) -> i64 {
-    t.timestamp_millis()
+fn ms(t: Timestamp) -> i64 {
+    t.as_millisecond()
 }
 
 /// The trail graph of a pack (`piste-graph` layer).
@@ -1439,7 +1439,7 @@ impl<'a> Engine<'a> {
     /// One input through the tracker (and the way back), outputs into `self.out`.
     fn feed(&mut self, i: &Input) {
         if let Input::Fix { t, pos } = i {
-            let ts = t.timestamp_millis() as f64 / 1000.0;
+            let ts = t.as_millisecond() as f64 / 1000.0;
             // A jump no skier makes (the first fixes of a phone are often a cached position
             // from elsewhere): the way skied starts again from here.
             if let Some((t0, p0)) = self.last {
@@ -1457,7 +1457,7 @@ impl<'a> Engine<'a> {
             if let Some(b) = self.back.as_mut() {
                 let st = b.fix(ts, *pos);
                 if st.off.is_some() || !st.say.is_empty() || st.arrived {
-                    self.back_steps.push((t.timestamp_millis(), st));
+                    self.back_steps.push((t.as_millisecond(), st));
                 }
             }
         }
@@ -2048,7 +2048,7 @@ impl<'a> Engine<'a> {
                     "<trkpt lat=\"{:.7}\" lon=\"{:.7}\"><time>{}</time></trkpt>\n",
                     pos.lat,
                     pos.lon,
-                    t.format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                    t.strftime("%Y-%m-%dT%H:%M:%S%.3fZ")
                 ));
             }
         }

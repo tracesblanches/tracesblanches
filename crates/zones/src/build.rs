@@ -299,7 +299,7 @@ fn layer_meta(
     personal_sources: bool,
 ) -> LayerMeta {
     let b = site.bbox;
-    let today = chrono::Utc::now().date_naive();
+    let today = skimap_common::dates::utc_date(jiff::Timestamp::now());
     let props = [
         ("id", "identifiant stable <espace>:<identifiant source>"),
         (
@@ -327,7 +327,7 @@ fn layer_meta(
     ];
     let mut meta = LayerMeta {
         tickets: vec!["P9 (#22)".into(), "P10 (#23)".into(), "G4 (#120)".into()],
-        valid_until: Some((today + chrono::Days::new(30)).to_string()),
+        valid_until: Some((today + jiff::SignedDuration::from_hours(24 * 30)).to_string()),
         validity: Some("Régénérer au moins chaque mois : Biodiv'sports évolue sans calendrier, INPN est mis à jour chaque semestre, le GPU en continu. Les règles (rules.json) sont relues à la main (date `reviewed`).".into()),
         crs: Some("EPSG:4326 (longitude, latitude), coordonnées arrondies à 1e-6°".into()),
         files: vec![

@@ -8,7 +8,8 @@
 #[path = "../../../fixtures/support/mod.rs"]
 mod fixtures;
 
-use chrono::{Duration, NaiveDate, NaiveDateTime};
+use jiff::civil::date;
+use jiff::{SignedDuration, civil::DateTime};
 use skimap_assist::equipment::{self, Kind, Outing};
 use skimap_assist::inputs::{Paths, SiteData};
 use skimap_common::geom::LonLat;
@@ -30,8 +31,8 @@ fn data(site: &Site) -> SiteData {
     SiteData::load(&DataLayout::new(fixtures::data()), site, &Paths::default()).unwrap()
 }
 
-fn at(s: &str) -> NaiveDateTime {
-    NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").unwrap()
+fn at(s: &str) -> DateTime {
+    DateTime::strptime("%Y-%m-%dT%H:%M", s).unwrap()
 }
 
 fn outing(route: Vec<LonLat>, start: &str, minutes: f64) -> Outing {
@@ -106,7 +107,7 @@ fn distances_return_time_and_avalanche_terrain() {
     assert_eq!(e.facts.clpa_km, 0.0);
     // Back at start + duration × the turnaround factor.
     let f = TurnaroundParams::default().eta_factor;
-    let back = at("2027-01-15T10:00") + Duration::seconds((120.0 * 60.0 * f) as i64);
+    let back = at("2027-01-15T10:00") + SignedDuration::from_secs((120.0 * 60.0 * f) as i64);
     assert_eq!(e.facts.back, back);
     assert!(e.facts.sunset.is_some());
     // No weather: no weather item.
@@ -152,7 +153,7 @@ fn with_network(d: &SiteData, route: &[LonLat]) -> Vec<LonLat> {
 fn headlamp_long_offpiste_and_wax() {
     let d = data(&CHAPELLE_DES_BOIS);
     let route = chapelle_route(&d);
-    let date = NaiveDate::from_ymd_opt(2027, 1, 15).unwrap();
+    let date = date(2027, 1, 15);
     let (rise, set) = skimap_core::ephemeris::sun_times(date, route[0]).unwrap();
     let (rise, set) = (
         skimap_core::ephemeris::local_time(rise),
@@ -161,7 +162,9 @@ fn headlamp_long_offpiste_and_wax() {
     let f = TurnaroundParams::default().eta_factor;
     // Back less than an hour before sunset: headlamp, with both times.
     let minutes = 60.0;
-    let start = set - Duration::minutes(90) - Duration::seconds((minutes * 60.0 * f) as i64);
+    let start = set
+        - SignedDuration::from_mins(90)
+        - SignedDuration::from_secs((minutes * 60.0 * f) as i64);
     let o = Outing {
         start,
         ..outing(route.clone(), "2027-01-15T10:00", minutes)
@@ -169,7 +172,7 @@ fn headlamp_long_offpiste_and_wax() {
     let e = equipment::equipment(&d, &o);
     assert!(!kinds(&e).contains(&Kind::Headlamp), "{}", e.text);
     let o = Outing {
-        start: start + Duration::minutes(31),
+        start: start + SignedDuration::from_mins(31),
         ..o
     };
     let e = equipment::equipment(&d, &o);
@@ -177,14 +180,14 @@ fn headlamp_long_offpiste_and_wax() {
     assert!(e.text.contains("coucher du soleil à"), "{}", e.text);
     // Start before sunrise.
     let o = Outing {
-        start: rise - Duration::minutes(1),
+        start: rise - SignedDuration::from_mins(1),
         ..outing(route.clone(), "2027-01-15T10:00", 60.0)
     };
     let e = equipment::equipment(&d, &o);
     assert!(kinds(&e).contains(&Kind::Headlamp));
     assert!(e.text.contains("avant le lever du soleil"), "{}", e.text);
     let o = Outing {
-        start: rise + Duration::minutes(1),
+        start: rise + SignedDuration::from_mins(1),
         ..o
     };
     assert!(!kinds(&equipment::equipment(&d, &o)).contains(&Kind::Headlamp));

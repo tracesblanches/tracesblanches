@@ -6,7 +6,7 @@
 //! Short, concrete sentences; never « sans danger » / « safe ».
 
 #[allow(unused_imports)]
-use chrono::{NaiveDate, NaiveDateTime};
+use jiff::civil::{Date, DateTime};
 pub use skimap_common::Lang;
 
 pub mod en;
@@ -33,9 +33,9 @@ pub trait Texts: Sync {
     /// A duration rounded to 5 min: « 2 h 30 », « 45 min ».
     fn duration(&self, s: f64) -> String;
     /// A clock time rounded to 5 min: « 15 h 20 », « 15:20 ».
-    fn clock5(&self, t: NaiveDateTime) -> String;
+    fn clock5(&self, t: DateTime) -> String;
     /// A clock time, « le lendemain » when after the day.
-    fn clock_day(&self, t: NaiveDateTime, day: NaiveDate) -> String;
+    fn clock_day(&self, t: DateTime, day: Date) -> String;
     /// A range of durations: « 1 h 40 à 2 h 50 ».
     fn duration_range(&self, lo: &str, hi: &str) -> String;
     /// A median duration with its range.
@@ -51,7 +51,7 @@ pub trait Texts: Sync {
     /// Back around a time with the margin.
     fn back_with_margin(&self, at: &str) -> String;
     /// Expected return after the limit of the day.
-    fn after_limit(&self, limit: NaiveDateTime, for_group: bool) -> String;
+    fn after_limit(&self, limit: DateTime, for_group: bool) -> String;
     /// The walk off the network from the car park (or lodge, desk) to the start of the
     /// loop on the network, `metres` (#168): no trail is drawn for it.
     fn off_network_access(&self, metres: f64) -> String;
@@ -62,15 +62,15 @@ pub trait Texts: Sync {
     fn sms(
         &self,
         site: &str,
-        date: NaiveDate,
+        date: Date,
         start: &str,
-        departure: NaiveDateTime,
+        departure: DateTime,
         label: &str,
         km: f64,
         trails: &[String],
-        back: NaiveDateTime,
-        limit: Option<NaiveDateTime>,
-        alert: NaiveDateTime,
+        back: DateTime,
+        limit: Option<DateTime>,
+        alert: DateTime,
     ) -> String;
     /// Name of the group the app offers first.
     fn default_group_name(&self) -> &'static str;
@@ -79,7 +79,7 @@ pub trait Texts: Sync {
 
     // ---- The recap of an outing (S4).
     /// When an outing started: « 15/02 à 10 h 05 ».
-    fn when(&self, t: NaiveDateTime) -> String;
+    fn when(&self, t: DateTime) -> String;
     /// Actual against estimated time: « comme prévu », « 10 min de plus que prévu ».
     fn delta(&self, actual_s: f64, estimated_s: f64) -> String;
     /// « Distance : 12,4 km ».
@@ -144,7 +144,7 @@ pub trait Texts: Sync {
     /// Kind of the source of a rule.
     fn source_kind(&self, k: skimap_zones::rules::SourceKind) -> &'static str;
     /// The instant of the rules: « le 15/02 à 9 h 00 ».
-    fn rules_at(&self, t: NaiveDateTime) -> String;
+    fn rules_at(&self, t: DateTime) -> String;
     /// What the rules are not.
     fn rules_note(&self) -> &'static str;
     /// The act governing a zone besides the national rules (G4).
@@ -163,9 +163,9 @@ pub trait Texts: Sync {
 
     // ---- Preparing the next days and ski mode (S3).
     /// A day: « lundi 16/02 ».
-    fn day(&self, d: NaiveDate) -> String;
+    fn day(&self, d: Date) -> String;
     /// « mis à jour le 15/11 à 10 h 05 ».
-    fn updated(&self, t: NaiveDateTime) -> String;
+    fn updated(&self, t: DateTime) -> String;
     /// No date known.
     fn date_unknown(&self) -> &'static str;
     /// A day skipped: no forecast in the pack.
@@ -202,7 +202,7 @@ pub trait Texts: Sync {
 
     // ---- Guidance (J7, #54).
     /// A range of arrival times: « 15 h 20 à 15 h 40 ».
-    fn arrival_range(&self, lo: NaiveDateTime, hi: NaiveDateTime) -> String;
+    fn arrival_range(&self, lo: DateTime, hi: DateTime) -> String;
     /// Why the route changed.
     fn cause(&self, c: &skimap_plan::tracker::Cause) -> String;
     /// The written proposal of « ramène-moi ».

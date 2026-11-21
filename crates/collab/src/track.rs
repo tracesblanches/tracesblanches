@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use serde::{Deserialize, Serialize};
@@ -25,7 +25,7 @@ pub struct Point {
     pub ele: Option<f64>,
     /// Time, when recorded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub t: Option<DateTime<Utc>>,
+    pub t: Option<Timestamp>,
 }
 
 /// Errors reading a track.
@@ -124,7 +124,7 @@ pub fn parse_xml(xml: &str) -> Result<Vec<Point>, TrackError> {
                     let s = t.trim();
                     match f {
                         "ele" => p.ele = s.parse().ok().filter(|v: &f64| v.is_finite()),
-                        "time" => p.t = s.parse::<DateTime<Utc>>().ok(),
+                        "time" => p.t = s.parse::<Timestamp>().ok(),
                         "lat" => p.lat = s.parse().unwrap_or(f64::NAN),
                         "lon" => p.lon = s.parse().unwrap_or(f64::NAN),
                         _ => {}
@@ -165,7 +165,7 @@ pub struct Outing {
     /// Activity type as the source says it (`Nordic Ski`, `nordic_skiing`).
     pub activity: String,
     /// Start, when the track has times.
-    pub start: Option<DateTime<Utc>>,
+    pub start: Option<Timestamp>,
     /// Elapsed time, s.
     pub elapsed_s: f64,
     /// Moving time, s (stops of 90 s or more removed).
@@ -221,7 +221,7 @@ fn segment(points: &[Point]) -> Segmentation {
     let elapsed = match (timed.first(), timed.last()) {
         (Some(a), Some(b)) => {
             (b.t.unwrap_or_default() - a.t.unwrap_or_default())
-                .num_milliseconds()
+                .as_millis()
                 .max(0) as f64
                 / 1000.0
         }
@@ -230,7 +230,7 @@ fn segment(points: &[Point]) -> Segmentation {
     for w in timed.windows(2) {
         let (a, b) = (w[0], w[1]);
         let dt =
-            (b.t.unwrap_or_default() - a.t.unwrap_or_default()).num_milliseconds() as f64 / 1000.0;
+            (b.t.unwrap_or_default() - a.t.unwrap_or_default()).as_millis() as i64 as f64 / 1000.0;
         if dt <= 0.0 {
             continue;
         }
@@ -376,18 +376,19 @@ pub fn load_or_summarise(dir: &Path) -> Option<Outing> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jiff::tz::Offset;
 
     /// A timed track going north at `speed` m/s for `n` seconds, one point a second,
     /// climbing `grade`.
     pub(crate) fn line(n: usize, speed: f64, grade: f64) -> Vec<Point> {
-        let t0: DateTime<Utc> = "2026-01-10T09:00:00Z".parse().unwrap();
+        let t0: Timestamp = "2026-01-10T09:00:00Z".parse().unwrap();
         let dlat = speed / 111_195.0;
         (0..n)
             .map(|i| Point {
                 lon: 6.77,
                 lat: 44.85 + dlat * i as f64,
                 ele: Some(1800.0 + grade * speed * i as f64),
-                t: Some(t0 + chrono::Duration::seconds(i as i64)),
+                t: Some(t0 + jiff::SignedDuration::from_secs(i as i64)),
             })
             .collect()
     }
@@ -402,7 +403,10 @@ mod tests {
         let p = parse_xml(gpx).unwrap();
         assert_eq!(p.len(), 2);
         assert_eq!(p[0].ele, Some(1800.5));
-        assert_eq!(p[1].t.unwrap().to_rfc3339(), "2026-01-10T09:01:00+00:00");
+        assert_eq!(
+            p[1].t.unwrap().display_with_offset(Offset::UTC).to_string(),
+            "2026-01-10T09:01:00+00:00"
+        );
         let tcx = r#"
   <?xml version="1.0" encoding="UTF-8"?><TrainingCenterDatabase><Activities><Activity Sport="Other"><Lap><Track>
 <Trackpoint><Time>2026-01-10T09:00:00Z</Time><Position><LatitudeDegrees>46.6</LatitudeDegrees><LongitudeDegrees>6.1</LongitudeDegrees></Position><AltitudeMeters>1090</AltitudeMeters></Trackpoint>
@@ -421,7 +425,7 @@ mod tests {
         let last = *p.last().unwrap();
         for i in 1..=300 {
             p.push(Point {
-                t: Some(last.t.unwrap() + chrono::Duration::seconds(i)),
+                t: Some(last.t.unwrap() + jiff::SignedDuration::from_secs(i)),
                 ..last
             });
         }
@@ -429,7 +433,7 @@ mod tests {
         for (i, q) in line(600, 3.0, 0.0).into_iter().enumerate().skip(1) {
             p.push(Point {
                 lat: after.lat + (q.lat - 44.85),
-                t: Some(after.t.unwrap() + chrono::Duration::seconds(i as i64)),
+                t: Some(after.t.unwrap() + jiff::SignedDuration::from_secs(i as i64)),
                 ..q
             });
         }
@@ -475,7 +479,7 @@ mod tests {
                 "<trkpt lat=\"{}\" lon=\"{}\"><time>{}</time></trkpt>",
                 q.lat,
                 q.lon,
-                q.t.unwrap().to_rfc3339()
+                q.t.unwrap().display_with_offset(Offset::UTC)
             ));
         }
         gpx.push_str("</trkseg></trk></gpx>");

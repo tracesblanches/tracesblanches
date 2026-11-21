@@ -3,6 +3,7 @@
 //! Uses `METEOFRANCE_API_KEY` when set (today's bulletin from the API), otherwise the public
 //! archive of the given day. Writes `data/out/<site>/bera/`.
 
+use jiff::civil::Date;
 use skimap_common::config::Config;
 use skimap_common::download::Downloader;
 use skimap_common::site;
@@ -11,8 +12,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
     let site = site::site(&args.next().ok_or("usage: bera <site> [YYYY-MM-DD]")?)?;
     let date = match args.next() {
-        Some(d) => chrono::NaiveDate::parse_from_str(&d, "%Y-%m-%d")?,
-        None => chrono::Local::now().date_naive(),
+        Some(d) => Date::strptime("%Y-%m-%d", &d)?,
+        None => jiff::ZonedDateTime::now().date(),
     };
     let cfg = Config::from_env()?;
     let dl = Downloader::from_config(&cfg)?;

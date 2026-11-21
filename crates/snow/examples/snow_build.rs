@@ -10,7 +10,7 @@
 
 use std::time::Instant;
 
-use chrono::NaiveDate;
+use jiff::civil::Date;
 use skimap_common::config::Config;
 use skimap_common::download::Downloader;
 use skimap_common::site::{SITES, site};
@@ -31,10 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .offline(offline)
         .build()?;
     let mut args: Vec<String> = std::env::args().skip(1).collect();
-    let date = match args
-        .first()
-        .map(|a| NaiveDate::parse_from_str(a, "%Y-%m-%d"))
-    {
+    let date = match args.first().map(|a| Date::strptime("%Y-%m-%d", a)) {
         Some(Ok(d)) => {
             args.remove(0);
             Some(d)

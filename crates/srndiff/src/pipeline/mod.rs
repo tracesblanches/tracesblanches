@@ -19,7 +19,7 @@ use std::path::PathBuf;
 
 use skimap_common::download::Downloader;
 use skimap_common::layout::DataLayout;
-use skimap_zones::chrono::{DateTime, Utc};
+use skimap_zones::jiff::Timestamp;
 
 use crate::profile::Profile;
 use crate::{Error, Result};
@@ -73,7 +73,7 @@ pub fn profile_of(
     dl: &Downloader,
     route: &RefRoute,
     sites: &[SiteLayers],
-    at: DateTime<Utc>,
+    at: Timestamp,
     c: &Corridor,
     force: bool,
 ) -> Result<(Profile, Option<CorridorStats>)> {

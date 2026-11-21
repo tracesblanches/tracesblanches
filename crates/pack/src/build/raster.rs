@@ -634,7 +634,7 @@ pub fn ign_slopes(bbox: BBox, dl: &Downloader, root: &Path) -> Result<Layer> {
         file,
         meta: None,
         origin: "WMTS IGN (cache du téléchargeur, source ign)".to_owned(),
-        generated_at: Some(chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)),
+        generated_at: Some(jiff::Timestamp::now().strftime("%Y-%m-%dT%H:%M:%SZ").to_string()),
         valid_from: None,
         valid_until: None,
         validity: Some("relief permanent (RGE ALTI 5 m)".to_owned()),

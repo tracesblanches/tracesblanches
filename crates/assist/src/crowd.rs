@@ -42,7 +42,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::LazyLock;
 
-use chrono::{Datelike, NaiveDate};
+use jiff::civil;
 use serde::Deserialize;
 use skimap_common::site::Site;
 
@@ -477,7 +477,7 @@ pub fn catchment(site: &Site) -> Catchment {
             v
         }
     };
-    let date = |n: NaiveDate| Date::new(n.year(), n.month() as u8, n.day() as u8);
+    let date = |n: civil::Date| Date::new(i32::from(n.year()), n.month() as u8, n.day() as u8);
     let season = skimap_common::site::local(site.id)
         .and_then(|l| l.season.as_ref())
         .map(|s| (date(s.first), date(s.last)));

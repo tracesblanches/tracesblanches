@@ -15,7 +15,7 @@
 
 use std::path::{Path, PathBuf};
 
-use chrono::{NaiveDateTime, Timelike};
+use jiff::civil::DateTime;
 use skimap_intent::{Intent, Lang as IntentLang};
 
 use crate::card::Lang;
@@ -299,7 +299,7 @@ impl VoiceAnswers {
 }
 
 /// Never announced later than it is: rounded down to the quarter.
-fn floor_quarter(t: NaiveDateTime) -> Clock {
+fn floor_quarter(t: DateTime) -> Clock {
     Clock::floor_quarter(t.hour() as u8, t.minute() as u8)
 }
 
@@ -471,6 +471,7 @@ impl VoiceAnswers {
 mod tests {
     use super::*;
     use crate::tracking::{GpsModeView, TurnDirection};
+    use jiff::civil::date;
 
     fn guidance(off: f64, phase: PhaseView) -> GuidanceView {
         GuidanceView {
@@ -614,12 +615,7 @@ mod tests {
 
     #[test]
     fn floor_quarter_never_later() {
-        let t = |h, m, s| {
-            chrono::NaiveDate::from_ymd_opt(2026, 1, 10)
-                .unwrap()
-                .and_hms_opt(h, m, s)
-                .unwrap()
-        };
+        let t = |h, m, s| date(2026, 1, 10).at(h, m, s, 0);
         assert_eq!(
             floor_quarter(t(14, 44, 0)),
             Clock {

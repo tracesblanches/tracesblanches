@@ -6,7 +6,10 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use anyhow::{Context, Result, anyhow, bail};
-use chrono::{DateTime, Duration as ChronoDuration, NaiveDate, NaiveDateTime, TimeZone, Utc};
+use jiff::{
+    SignedDuration, Timestamp,
+    civil::{Date, DateTime},
+};
 use serde::{Deserialize, Serialize};
 use skimap_common::config::Config;
 use skimap_common::download::Downloader;
@@ -98,7 +101,7 @@ impl Ctx {
             &self.layout,
             &self.dl,
             self.cfg.personal_sources,
-            Utc::now(),
+            Timestamp::now(),
             force,
         )?;
         crate::france::departs_after_stations(self, &r.ran)?;
@@ -111,7 +114,7 @@ impl Ctx {
     }
 
     /// P6: snow layer.
-    pub fn snow(&self, site: &Site, date: Option<NaiveDate>) -> Result<skimap_snow::SnowBuild> {
+    pub fn snow(&self, site: &Site, date: Option<Date>) -> Result<skimap_snow::SnowBuild> {
         Ok(skimap_snow::build(site, &self.layout, &self.dl, date)?)
     }
 
@@ -119,7 +122,7 @@ impl Ctx {
     /// cards keep their `changed_at` and the changes reach `journal.jsonl` (a bare
     /// `skimap_refuges::build` would reset them). Key figures of the build.
     pub fn refuges(&self, site: &Site) -> Result<serde_json::Value> {
-        let r = skimap_refuges::refresh(site, &self.layout, &self.dl, Utc::now(), true)?;
+        let r = skimap_refuges::refresh(site, &self.layout, &self.dl, Timestamp::now(), true)?;
         if let Some(e) = r.error {
             bail!("{e} (fichiers précédents gardés)");
         }
@@ -146,12 +149,8 @@ impl Ctx {
     }
 
     /// P8: BERA of the massif (`date` defaults to today, UTC).
-    pub fn bera(
-        &self,
-        site: &Site,
-        date: Option<NaiveDate>,
-    ) -> Result<skimap_meteo::bera::BeraFile> {
-        let date = date.unwrap_or_else(|| Utc::now().date_naive());
+    pub fn bera(&self, site: &Site, date: Option<Date>) -> Result<skimap_meteo::bera::BeraFile> {
+        let date = date.unwrap_or_else(|| skimap_common::dates::utc_date(Timestamp::now()));
         Ok(skimap_meteo::bera::build(
             site,
             &self.layout,
@@ -172,7 +171,7 @@ impl Ctx {
     }
 
     /// The AROME run replayed instead of the latest (`SKIMAP_AROME_RUN`), if any.
-    pub fn arome_run(&self) -> Result<Option<DateTime<Utc>>> {
+    pub fn arome_run(&self) -> Result<Option<Timestamp>> {
         self.cfg
             .arome_run
             .as_deref()
@@ -1770,8 +1769,8 @@ impl<'a> Run<'a> {
         if !matches!(prev.state, StepState::Ok | StepState::NotApplicable) {
             return None;
         }
-        let at = DateTime::parse_from_rfc3339(prev.at.as_deref()?).ok()?;
-        let age = (Utc::now() - at.to_utc()).to_std().ok()?;
+        let at = prev.at.as_deref()?.parse::<Timestamp>().ok()?;
+        let age = std::time::Duration::try_from(Timestamp::now() - at).ok()?;
         if age >= r.max_age && ages(name, r.personal_sources) {
             return None;
         }
@@ -1915,8 +1914,8 @@ pub fn peak_rss_mb() -> Option<f64> {
 }
 
 /// Parses `YYYY-MM-DD`.
-pub fn parse_date(s: &str) -> Result<NaiveDate> {
-    NaiveDate::parse_from_str(s, "%Y-%m-%d").with_context(|| format!("date `{s}` (YYYY-MM-DD)"))
+pub fn parse_date(s: &str) -> Result<Date> {
+    Date::strptime("%Y-%m-%d", s).with_context(|| format!("date `{s}` (YYYY-MM-DD)"))
 }
 
 /// Parses an ARCEP release `YYYY_TQ` (e.g. `2026_T2`).
@@ -1934,28 +1933,34 @@ pub fn parse_release(s: &str) -> Result<skimap_coverage::Release> {
 }
 
 /// Instant of a French / Swiss legal local time (CET / CEST).
-fn from_legal_time(local: NaiveDateTime) -> DateTime<Utc> {
-    let guess = Utc.from_utc_datetime(&(local - ChronoDuration::hours(1)));
-    let utc = Utc.from_utc_datetime(&(local - ChronoDuration::hours(legal_offset_hours(guess))));
+/// `None` at the two ends of the date range, where no instant exists.
+fn from_legal_time(local: DateTime) -> Option<Timestamp> {
+    let minus = |hours: i64| {
+        skimap_common::dates::utc(local.checked_sub(SignedDuration::from_hours(hours)).ok()?)
+    };
+    let guess = minus(1)?;
+    let utc = minus(legal_offset_hours(guess))?;
     // Around a change of offset the first guess may be on the other side.
-    Utc.from_utc_datetime(&(local - ChronoDuration::hours(legal_offset_hours(utc))))
+    minus(legal_offset_hours(utc))
 }
 
 /// Parses an instant: RFC 3339, or `YYYY-MM-DDTHH:MM` / `YYYY-MM-DD HH:MM` in French legal
 /// time, or `YYYY-MM-DD` (noon, legal time).
-pub fn parse_instant(s: &str) -> Result<DateTime<Utc>> {
-    if let Ok(t) = DateTime::parse_from_rfc3339(s) {
-        return Ok(t.to_utc());
+pub fn parse_instant(s: &str) -> Result<Timestamp> {
+    if let Ok(t) = s.parse::<Timestamp>() {
+        return Ok(t);
     }
     for f in ["%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M"] {
-        if let Ok(t) = NaiveDateTime::parse_from_str(s, f) {
-            return Ok(from_legal_time(t));
+        if let Ok(t) = DateTime::strptime(f, s) {
+            return from_legal_time(t)
+                .with_context(|| format!("instant `{s}` hors des dates connues"));
         }
     }
-    let d = NaiveDate::parse_from_str(s, "%Y-%m-%d").with_context(|| {
+    let d = Date::strptime("%Y-%m-%d", s).with_context(|| {
         format!("instant `{s}` (YYYY-MM-DD, YYYY-MM-DDTHH:MM heure légale, ou RFC 3339)")
     })?;
-    Ok(from_legal_time(d.and_hms_opt(12, 0, 0).expect("noon")))
+    from_legal_time(d.at(12, 0, 0, 0))
+        .with_context(|| format!("instant `{s}` hors des dates connues"))
 }
 
 /// C8: zones and rules at a position and an instant, from the site's `zones` layer.
@@ -1964,7 +1969,7 @@ pub fn zones_at(
     site: &Site,
     lat: f64,
     lon: f64,
-    at: DateTime<Utc>,
+    at: Timestamp,
 ) -> Result<Evaluation> {
     let dir = layout.layer_dir(site, skimap_zones::LAYER)?;
     let read = |name: &str| {
@@ -1993,6 +1998,7 @@ pub fn zones_at(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jiff::civil::date;
 
     /// B167: what an `ok` step left on disk says whether it produced anything.
     #[test]
@@ -2060,12 +2066,12 @@ mod tests {
     fn instants() {
         // Winter: CET, UTC+1.
         assert_eq!(
-            parse_instant("2027-01-10").unwrap().to_rfc3339(),
+            skimap_common::dates::rfc3339(parse_instant("2027-01-10").unwrap()),
             "2027-01-10T11:00:00+00:00"
         );
         // Summer: CEST, UTC+2.
         assert_eq!(
-            parse_instant("2027-07-10T08:30").unwrap().to_rfc3339(),
+            skimap_common::dates::rfc3339(parse_instant("2027-07-10T08:30").unwrap()),
             "2027-07-10T06:30:00+00:00"
         );
         assert_eq!(
@@ -2074,7 +2080,7 @@ mod tests {
         );
         // Last Sunday of March 2027 is the 28th: 03:30 legal time is after the change.
         assert_eq!(
-            parse_instant("2027-03-28T03:30").unwrap().to_rfc3339(),
+            skimap_common::dates::rfc3339(parse_instant("2027-03-28T03:30").unwrap()),
             "2027-03-28T01:30:00+00:00"
         );
         assert!(parse_instant("demain").is_err());
@@ -2086,10 +2092,7 @@ mod tests {
         assert_eq!((r.year, r.quarter), (2026, 2));
         assert!(parse_release("2026_T5").is_err());
         assert!(parse_release("2026-2").is_err());
-        assert_eq!(
-            parse_date("2027-01-10").unwrap(),
-            NaiveDate::from_ymd_opt(2027, 1, 10).unwrap()
-        );
+        assert_eq!(parse_date("2027-01-10").unwrap(), date(2027, 1, 10));
         assert!(parse_date("10/01/2027").is_err());
     }
 

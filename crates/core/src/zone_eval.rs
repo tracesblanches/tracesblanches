@@ -26,7 +26,10 @@
 
 use std::fmt::Write as _;
 
-use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, Utc};
+use jiff::{
+    Timestamp,
+    civil::{Date, DateTime},
+};
 use skimap_common::geom::LonLat;
 use skimap_zones::layer::{Zone, ZoneKind, ZoneLayer};
 use skimap_zones::rules::{Effect, Period, Rule, RuleSet, SourceKind, Topic};
@@ -162,7 +165,7 @@ pub struct Evaluation {
     /// Position evaluated.
     pub position: LonLat,
     /// Local legal time (CET / CEST) of the instant.
-    pub local_time: NaiveDateTime,
+    pub local_time: DateTime,
     /// Whether the position is inside a jurisdiction of the layer (France, a Swiss
     /// canton): outside, no rule is known.
     pub covered: bool,
@@ -199,7 +202,9 @@ impl Evaluation {
         let _ = writeln!(
             s,
             "{:.5} N {:.5} E, {} (heure légale)",
-            self.position.lat, self.position.lon, self.local_time
+            self.position.lat,
+            self.position.lon,
+            skimap_common::dates::spaced(self.local_time)
         );
         if !self.covered {
             let _ = writeln!(s, "  hors des territoires couverts : aucune règle connue");
@@ -254,12 +259,7 @@ impl Evaluation {
 
 pub use crate::ephemeris::{legal_offset_hours, local_time, sun_times};
 
-fn period_state(
-    period: &Period,
-    date: NaiveDate,
-    at: DateTime<Utc>,
-    zones: &[&Zone],
-) -> Option<Inactive> {
+fn period_state(period: &Period, date: Date, at: Timestamp, zones: &[&Zone]) -> Option<Inactive> {
     match period {
         Period::AllYear | Period::Yearly { .. } => {
             if period.contains_date(date) == Some(true) {
@@ -274,7 +274,7 @@ fn period_state(
             None => Some(Inactive::NoSunEvent),
         },
         Period::ZoneMonths => {
-            if zones.iter().any(|z| z.active_in_month(date.month())) {
+            if zones.iter().any(|z| z.active_in_month(date.month() as u32)) {
                 None
             } else {
                 Some(Inactive::ZoneNotSensitive)
@@ -284,12 +284,7 @@ fn period_state(
 }
 
 /// Zones and rules at `position` at the instant `at`.
-pub fn evaluate(
-    layer: &ZoneLayer,
-    rules: &RuleSet,
-    position: LonLat,
-    at: DateTime<Utc>,
-) -> Evaluation {
+pub fn evaluate(layer: &ZoneLayer, rules: &RuleSet, position: LonLat, at: Timestamp) -> Evaluation {
     let local = local_time(at);
     let date = local.date();
     let containing: Vec<&Zone> = layer.containing(position).collect();
@@ -303,7 +298,7 @@ pub fn evaluate(
             id: z.id().to_owned(),
             kind: z.kind(),
             name: z.props.name.clone(),
-            sensitive_now: z.active_in_month(date.month()),
+            sensitive_now: z.active_in_month(date.month() as u32),
         })
         .collect();
 
@@ -396,7 +391,8 @@ pub fn evaluate(
 mod tests {
     use super::*;
     use crate::ephemeris::last_sunday;
-    use chrono::TimeZone;
+    use jiff::civil::date;
+    use jiff::tz::Offset;
     use skimap_common::geom::BBox;
     use skimap_zones::geo::MultiPolygon;
     use skimap_zones::geom::bbox_polygon;
@@ -421,7 +417,7 @@ mod tests {
         )
     }
 
-    fn utc(s: &str) -> DateTime<Utc> {
+    fn utc(s: &str) -> Timestamp {
         s.parse().unwrap()
     }
 
@@ -527,10 +523,7 @@ mod tests {
         let layer = risoux();
         // 14 December 23:30 UTC is 15 December 00:30 in Paris: the ban has started.
         let e = evaluate(&layer, &rules, RISOUX, utc("2026-12-14T23:30:00Z"));
-        assert_eq!(
-            e.local_time.date(),
-            NaiveDate::from_ymd_opt(2026, 12, 15).unwrap()
-        );
+        assert_eq!(e.local_time.date(), date(2026, 12, 15));
         assert!(e.is_active("appb-haut-jura-bivouac"));
         let e = evaluate(&layer, &rules, RISOUX, utc("2026-12-14T22:30:00Z"));
         assert!(!e.is_active("appb-haut-jura-bivouac"));
@@ -746,7 +739,7 @@ mod tests {
         let Period::Night { reference, .. } = &rule.period else {
             panic!("{id}: not a night rule")
         };
-        let date = NaiveDate::from_ymd_opt(2027, 7, 15).unwrap();
+        let date = date(2027, 7, 15);
         let (rise, set) = sun_times(date, *reference).unwrap();
         let p = LonLat::new(6.17, 46.75);
         let state = |at| {
@@ -760,11 +753,11 @@ mod tests {
         // Night from sunset (included) to sunrise (excluded).
         assert_eq!(state(set), None);
         assert_eq!(
-            state(set - chrono::Duration::seconds(1)),
+            state(set - jiff::SignedDuration::from_secs(1)),
             Some(Inactive::Daytime)
         );
         assert_eq!(state(rise), Some(Inactive::Daytime));
-        assert_eq!(state(rise - chrono::Duration::seconds(1)), None);
+        assert_eq!(state(rise - jiff::SignedDuration::from_secs(1)), None);
         let e = evaluate(&layer, &rules, p, set);
         assert!(e.active_rules().any(|r| r.rule == id));
         assert!(e.active_rules().all(|r| r.active()));
@@ -824,12 +817,9 @@ mod tests {
         assert_eq!(legal_offset_hours(utc("2027-03-28T01:00:00Z")), 2);
         assert_eq!(legal_offset_hours(utc("2027-10-31T00:59:59Z")), 2);
         assert_eq!(legal_offset_hours(utc("2027-10-31T01:00:00Z")), 1);
+        assert_eq!(last_sunday(2026, 10), date(2026, 10, 25));
         assert_eq!(
-            last_sunday(2026, 10),
-            NaiveDate::from_ymd_opt(2026, 10, 25).unwrap()
-        );
-        assert_eq!(
-            local_time(utc("2027-01-01T12:00:00Z")).to_string(),
+            skimap_common::dates::spaced(local_time(utc("2027-01-01T12:00:00Z"))),
             "2027-01-01 13:00:00"
         );
     }
@@ -845,23 +835,19 @@ mod tests {
             ((2027, 7, 15), "03:55:05", "19:25:28"),
         ];
         for ((y, m, d), rise, set) in cases {
-            let date = NaiveDate::from_ymd_opt(y, m, d).unwrap();
+            let date = date(y, m, d);
             let (r, s) = sun_times(date, pontarlier).unwrap();
             for (got, want) in [(r, rise), (s, set)] {
-                let want = Utc.from_utc_datetime(&date.and_time(want.parse().unwrap()));
-                let diff = (got - want).num_seconds().abs();
+                let want = Offset::UTC
+                    .to_timestamp(date.to_datetime(want.parse().unwrap()))
+                    .unwrap();
+                let diff = (got - want).as_secs().abs();
                 println!("{date}: {got} vs {want} ({diff} s)");
                 assert!(diff <= 90, "{date}: {got} vs {want} ({diff} s)");
             }
         }
         // Polar night at 80° N in December.
-        assert!(
-            sun_times(
-                NaiveDate::from_ymd_opt(2026, 12, 21).unwrap(),
-                LonLat::new(15.0, 80.0)
-            )
-            .is_none()
-        );
+        assert!(sun_times(date(2026, 12, 21), LonLat::new(15.0, 80.0)).is_none());
     }
 
     // ---- Real layers of both sites. ----

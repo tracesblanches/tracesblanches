@@ -20,7 +20,10 @@
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+use jiff::{
+    Timestamp,
+    civil::{Date, DateTime},
+};
 use serde::{Deserialize, Serialize};
 use skimap_assist::inputs::{Paths, SiteData};
 use skimap_common::geom::LonLat;
@@ -45,10 +48,8 @@ fn invalid(detail: impl std::fmt::Display) -> TrackingError {
     }
 }
 
-fn local(ms: i64) -> NaiveDateTime {
-    skimap_core::ephemeris::local_time(
-        DateTime::<Utc>::from_timestamp_millis(ms).unwrap_or_default(),
-    )
+fn local(ms: i64) -> DateTime {
+    skimap_core::ephemeris::local_time(Timestamp::from_millisecond(ms).ok().unwrap_or_default())
 }
 
 /// « mis à jour le 15/11 à 10 h 05 » (local time) of an epoch millisecond, in `lang`.
@@ -117,10 +118,10 @@ pub struct PrepReport {
 }
 
 /// Dates the pack's hourly forecast covers (at least 8 hours of the day).
-pub fn forecast_days(pack: &Pack) -> Vec<NaiveDate> {
+pub fn forecast_days(pack: &Pack) -> Vec<Date> {
     pack.forecast_days()
         .iter()
-        .filter_map(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
+        .filter_map(|d| Date::strptime("%Y-%m-%d", d).ok())
         .collect()
 }
 
@@ -159,7 +160,7 @@ pub fn prep_run(
 ) -> Result<PrepReport, TrackingError> {
     let t0 = Instant::now();
     let tx = text::of(lang);
-    let today = NaiveDate::parse_from_str(&today, "%Y-%m-%d").map_err(invalid)?;
+    let today = Date::strptime("%Y-%m-%d", &today).map_err(invalid)?;
     let pack = Pack::open(PathBuf::from(&pack_dir)).map_err(invalid)?;
     let site = crate::tracking_day::pack_site(&pack)?;
     let covered = forecast_days(&pack);
@@ -176,7 +177,7 @@ pub fn prep_run(
     let mut out = Vec::new();
     let mut skipped = Vec::new();
     for k in 1..=days {
-        let date = today + chrono::Duration::days(i64::from(k));
+        let date = today + jiff::SignedDuration::from_hours(24 * (i64::from(k)));
         if !covered.contains(&date) {
             skipped.push(tx.skipped_no_forecast(&tx.day(date)));
             continue;
@@ -223,7 +224,7 @@ pub fn prep_run(
             group: model
                 .as_ref()
                 .map(|md| tx.assist().group_label(&md.profile)),
-            prepared_ms: Utc::now().timestamp_millis(),
+            prepared_ms: Timestamp::now().as_millisecond(),
             prepared_text: String::new(),
             never_safe: skimap_plan::text::of(lang).never_safe().into(),
         };
@@ -307,9 +308,7 @@ const INFOS: [&str; 9] = [
 ];
 
 fn rfc3339_ms(s: &str) -> Option<i64> {
-    DateTime::parse_from_rfc3339(s)
-        .ok()
-        .map(|d| d.timestamp_millis())
+    s.parse::<Timestamp>().ok().map(|d| d.as_millisecond())
 }
 
 /// Ages of the informations of the packs in `pack_dirs`, labels in `lang`.

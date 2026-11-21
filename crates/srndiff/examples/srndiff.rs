@@ -24,7 +24,7 @@ use skimap_srndiff::pipeline::refs::{self, RefRoute};
 use skimap_srndiff::pipeline::{self as pl, out_dir, read_profile};
 use skimap_srndiff::rules::Params;
 use skimap_srndiff::{Conditions, Profile, assess};
-use skimap_zones::chrono::{DateTime, TimeZone, Utc};
+use skimap_zones::jiff::Timestamp;
 
 type Res<T> = Result<T, Box<dyn std::error::Error>>;
 
@@ -37,9 +37,8 @@ struct Entry {
 }
 
 /// Instant used for the zone rules: 15/02/2026 09:00 UTC (as the C3 proofs).
-fn at() -> DateTime<Utc> {
-    Utc.with_ymd_and_hms(2026, 2, 15, 9, 0, 0)
-        .single()
+fn at() -> Timestamp {
+    skimap_common::dates::utc(skimap_zones::jiff::civil::date(2026, 2, 15).at(9, 0, 0, 0))
         .expect("valid date")
 }
 
@@ -876,7 +875,7 @@ fn write_meta(layout: &DataLayout, ev: &serde_json::Value) -> Res<()> {
     m.parameters = serde_json::json!({
         "default": params_json(&Params::default()),
         "corridor": Corridor::default(),
-        "zones_at": at().to_rfc3339(),
+        "zones_at": skimap_common::dates::rfc3339(at()),
     });
     m.stats = serde_json::json!({
         "cases": ev["cases"],

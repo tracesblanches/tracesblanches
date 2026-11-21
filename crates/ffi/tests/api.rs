@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
+use jiff::Timestamp;
 use serde_json::{Value, json};
 use skimap_ffi::sync::{
     SyncError, install_bundle, record_sync, remove_pack, sync_plan, sync_plan_full, sync_state,
@@ -1065,7 +1066,7 @@ fn check_infos(site: &str, dir: &Path, pack: &Pack) -> (Vec<String>, usize, Vec<
             i.sources
         );
         assert!(
-            chrono::DateTime::parse_from_rfc3339(&i.updated_at).is_ok(),
+            i.updated_at.parse::<Timestamp>().is_ok(),
             "{site} {}: update date {:?}",
             i.id,
             i.updated_at

@@ -24,7 +24,9 @@ mod fixtures;
 
 use std::path::PathBuf;
 
-use chrono::NaiveDate;
+use jiff::civil::Date;
+use jiff::civil::DateTime;
+use jiff::civil::time;
 use skimap_assist::briefing::{self, Factor};
 use skimap_assist::inputs::{Paths, SiteData};
 use skimap_assist::layers::OpenState;
@@ -89,8 +91,8 @@ fn history(site: &Site, forecast: bool, route: &str) -> SiteData {
     SiteData::load(&l, site, &paths).unwrap()
 }
 
-fn date(s: &str) -> NaiveDate {
-    NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap()
+fn date(s: &str) -> Date {
+    Date::strptime("%Y-%m-%d", s).unwrap()
 }
 
 #[test]
@@ -211,10 +213,10 @@ fn request(
         label: format!("{min} min"),
         start,
         start_name: name.into(),
-        start_time: chrono::NaiveDateTime::parse_from_str(at, "%Y-%m-%dT%H:%M").unwrap(),
+        start_time: DateTime::strptime("%Y-%m-%dT%H:%M", at).unwrap(),
         budget_min: min,
         style,
-        return_before: back.map(|h| chrono::NaiveTime::from_hms_opt(h, 0, 0).unwrap()),
+        return_before: back.map(|h| skimap_common::dates::hms(h, 0, 0).unwrap()),
         max_difficulty: None,
         max_results: 3,
         lang: skimap_assist::text::Lang::Fr,
@@ -238,7 +240,7 @@ fn full_data_suggestions_respect_time_and_report_graph_limits() {
     assert_eq!(s.suggestions.len(), 3, "{:?}", s.text);
     for x in &s.suggestions {
         assert!((90.0..=132.0).contains(&x.eta_min), "{}", x.eta_min);
-        assert!(x.arrival.time() <= chrono::NaiveTime::from_hms_opt(16, 0, 0).unwrap());
+        assert!(x.arrival.time() <= time(16, 0, 0, 0));
         assert!(x.length_km > 5.0);
     }
     // One-way trails of the graph (C1): part of the network is out of reach, said.
@@ -270,7 +272,7 @@ fn full_data_suggestions_respect_time_and_report_graph_limits() {
     );
     // A8 on the best loop, started late and 1.5 times slower: the turnaround is advanced.
     let best = &s.suggestions[0];
-    let late = chrono::NaiveDateTime::parse_from_str("2026-01-09T15:00", "%Y-%m-%dT%H:%M").unwrap();
+    let late = DateTime::strptime("%Y-%m-%dT%H:%M", "2026-01-09T15:00").unwrap();
     let p = c.weather.as_ref().unwrap().point("les-fonts").unwrap();
     let trace = alerts::synthetic_trace(&best.profile, 1.5, 300.0);
     let a = alerts::replay(late, &best.profile, p, &trace, alerts::Params::default());
@@ -309,7 +311,7 @@ fn suggestions_and_turnaround_without_group_golden() {
             let mut turns = Vec::new();
             if let Some((p, _)) = d.weather.as_ref().and_then(|w| w.nearest(r.start)) {
                 for x in &s.suggestions {
-                    let late = r.start_time.date().and_hms_opt(13, 0, 0).unwrap();
+                    let late = r.start_time.date().at(13, 0, 0, 0);
                     let m = alerts::Monitor::new(late, &x.profile, p, alerts::Params::default());
                     let trace = alerts::synthetic_trace(&x.profile, 1.6, 300.0);
                     let a = alerts::replay(late, &x.profile, p, &trace, alerts::Params::default());
@@ -451,23 +453,19 @@ fn full_data_best_time_equipment_and_weather_replay() {
     let req = best_time::Request {
         date: day,
         duration_min: 120.0,
-        earliest: chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
+        earliest: time(8, 0, 0, 0),
         classes: vec![],
     };
     let b = best_time::best_time(p, Some(&q), None, &req);
     let best = b.best.clone().unwrap();
-    assert!(
-        best.start.time() < chrono::NaiveTime::from_hms_opt(11, 0, 0).unwrap(),
-        "{}",
-        b.text
-    );
+    assert!(best.start.time() < time(11, 0, 0, 0), "{}", b.text);
     assert!(b.starts.iter().all(|s| s.back <= b.deadline.unwrap()));
     // Le Laus → Les Fonts on the pistes: avalanche terrain (P16–P18, CLPA) and 5 km
     // without network.
     let route = d.route.as_ref().unwrap().line.clone();
     let o = equipment::Outing {
         label: "Le Laus → Les Fonts".into(),
-        start: date("2026-01-05").and_hms_opt(10, 0, 0).unwrap(),
+        start: date("2026-01-05").at(10, 0, 0, 0),
         duration_min: 135.0,
         route,
         offpiste: false,
@@ -501,7 +499,7 @@ fn suggestions_on_the_fixtures_without_weather() {
     assert_eq!(s.suggestions.len(), 3, "{:?}", s.text);
     for x in &s.suggestions {
         assert!((90.0..=132.0).contains(&x.eta_min), "{}", x.eta_min);
-        assert!(x.arrival.time() <= chrono::NaiveTime::from_hms_opt(16, 0, 0).unwrap());
+        assert!(x.arrival.time() <= time(16, 0, 0, 0));
         assert!(x.length_km > 5.0);
     }
     // One-way trails of the graph (C1): part of the network is out of reach, said.
@@ -550,7 +548,7 @@ fn equipment_on_the_fixtures_le_laus_les_fonts() {
         .polyline(g);
     let o = equipment::Outing {
         label: "Le Laus → Les Fonts".into(),
-        start: date("2026-01-05").and_hms_opt(10, 0, 0).unwrap(),
+        start: date("2026-01-05").at(10, 0, 0, 0),
         duration_min: 135.0,
         route,
         offpiste: false,

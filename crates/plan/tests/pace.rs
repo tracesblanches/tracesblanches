@@ -7,6 +7,7 @@
 //! Reads `data/out/<site>/` (fails if absent; `fixtures/` once Q1 is merged). Synthetic
 //! traces only: the real validation waits for real outings (T1).
 
+use jiff::civil::time;
 use skimap_common::layout::DataLayout;
 use skimap_common::site::Site;
 /// Evaluation site of `data/sites.json`, test data.
@@ -161,9 +162,7 @@ fn the_testimony_falls_in_the_prior_range() {
                 label: "témoignage".into(),
                 start: base.start,
                 start_name: base.start_name.clone(),
-                start_time: base
-                    .date
-                    .and_time(chrono::NaiveTime::from_hms_opt(9, 0, 0).unwrap()),
+                start_time: base.date.to_datetime(time(9, 0, 0, 0)),
                 budget_min: budget,
                 style: fam.profile.style,
                 return_before: None,
@@ -242,7 +241,7 @@ fn a_family_morning_is_cautious() {
         let req = PlanRequest {
             label: "famille avec enfants débutants, 6 h, classique, jusqu'au rouge, départ 9 h"
                 .into(),
-            start_time: Some(chrono::NaiveTime::from_hms_opt(9, 0, 0).unwrap()),
+            start_time: Some(time(9, 0, 0, 0)),
             budget_min: 360.0,
             style: fam.profile.style,
             return_before: None,
@@ -297,7 +296,7 @@ fn a_family_morning_is_cautious() {
             .unwrap();
         assert_eq!(
             p.turnaround.deadline.unwrap(),
-            dl - chrono::Duration::minutes(30)
+            dl - jiff::SignedDuration::from_mins(30)
         );
         assert!(pc.planned <= p.turnaround.limit.unwrap());
     }

@@ -210,7 +210,7 @@ pub fn evaluate(c: &Case<'_>) -> Result<Vec<Day>> {
             if next >= fracs.len() || b.progress() < fracs[next] * len {
                 continue;
             }
-            let t = t.timestamp_millis() as f64 / 1000.0;
+            let t = t.as_millisecond() as f64 / 1000.0;
             let (Some(ea), Some(eb), Some(eu)) = (a.eta(), b.eta(), u.eta()) else {
                 continue;
             };

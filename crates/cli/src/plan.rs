@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use anyhow::{Result, bail};
-use chrono::NaiveDate;
+use jiff::civil::Date;
 use skimap_common::layout::DataLayout;
 use skimap_common::site::Site;
 use skimap_plan::plan::{self, DayPlan};
@@ -16,7 +16,7 @@ use skimap_plan::presets;
 #[derive(Debug, Clone, Default)]
 pub struct PlanArgs {
     /// Day of the plans (default: the archived day of the site, `presets::past_day`).
-    pub date: Option<NaiveDate>,
+    pub date: Option<Date>,
     /// Only this request of the site, numbered from 1 (default: all).
     pub request: Option<usize>,
 }

@@ -11,6 +11,7 @@ use serde::Serialize;
 use skimap_refuges::privacy::{self, Phone};
 
 use crate::titres::{decode_entities, normalise};
+use jiff::civil::Date;
 
 /// A price read on a page.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -364,8 +365,10 @@ pub fn dates(line: &str, season: &str) -> Vec<String> {
 
 /// Day after a `YYYY-MM-DD` date.
 pub fn next_day(d: &str) -> Option<String> {
-    let date = chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok()?;
-    date.succ_opt().map(|x| x.format("%Y-%m-%d").to_string())
+    let date = Date::strptime("%Y-%m-%d", d).ok()?;
+    date.tomorrow()
+        .ok()
+        .map(|x| x.strftime("%Y-%m-%d").to_string())
 }
 
 /// Season written in a line (`2026 – 2027`, `2026-2027`, `2025/2026`) as `YYYY-YYYY`.

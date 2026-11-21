@@ -10,7 +10,7 @@ license.workspace = true
 [dependencies]
 skimap-common = { workspace = true, features = ["download"] }
 skimap-core.workspace = true
-chrono.workspace = true
+jiff.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

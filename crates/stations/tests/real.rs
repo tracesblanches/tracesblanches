@@ -28,7 +28,7 @@ fn setup() -> (Vec<domains::Domain>, Downloader) {
 #[ignore = "network and data directory"]
 fn titles_from_live_sources() {
     let (ds, dl) = setup();
-    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let today = jiff::Timestamp::now().strftime("%Y-%m-%d").to_string();
     let read = titres::read_titles(&dl, &today);
     for d in &read.docs {
         if d.status != "ok" {
@@ -148,7 +148,7 @@ fn refresh_is_idempotent() {
         &layout,
         &dl,
         cfg.personal_sources,
-        chrono::Utc::now(),
+        jiff::Timestamp::now(),
         false,
     )
     .unwrap();

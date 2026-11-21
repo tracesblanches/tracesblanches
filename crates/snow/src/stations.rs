@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader};
 use std::sync::LazyLock;
 
-use chrono::NaiveDate;
+use jiff::civil::Date;
 use serde::{Deserialize, Serialize};
 use skimap_common::download::{Downloader, Request};
 
@@ -95,7 +95,7 @@ pub struct StationSeries {
     /// Altitude, m.
     pub alti: f64,
     /// Snow depth (cm) at 06 UTC by date.
-    pub depth_cm: BTreeMap<NaiveDate, f32>,
+    pub depth_cm: BTreeMap<Date, f32>,
     /// Values dropped because flagged doubtful.
     pub doubtful_dropped: usize,
 }
@@ -171,7 +171,7 @@ pub fn parse_reader(
         let d: u32 = date[..8]
             .parse()
             .map_err(|e| err(format!("date {date}: {e}")))?;
-        let day = NaiveDate::from_ymd_opt((d / 10_000) as i32, d / 100 % 100, d % 100)
+        let day = skimap_common::dates::ymd((d / 10_000) as i32, d / 100 % 100, d % 100)
             .ok_or_else(|| err(format!("bad date {date}")))?;
         s.depth_cm.insert(day, depth);
     }
@@ -201,6 +201,7 @@ pub fn fetch(dl: &Downloader, defs: &[StationDef]) -> Result<BTreeMap<String, St
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jiff::civil::date;
 
     #[test]
     fn parse_keeps_06_utc_and_drops_doubtful() {
@@ -216,10 +217,7 @@ mod tests {
         assert_eq!(s.name, "CERVIERES");
         assert_eq!(s.alti, 1614.0);
         assert_eq!(s.depth_cm.len(), 1);
-        assert_eq!(
-            s.depth_cm[&NaiveDate::from_ymd_opt(2025, 1, 1).unwrap()],
-            32.0
-        );
+        assert_eq!(s.depth_cm[&date(2025, 1, 1)], 32.0);
         assert_eq!(s.doubtful_dropped, 1);
         assert!(!out.contains_key("05001400"));
     }

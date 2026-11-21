@@ -7,7 +7,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use chrono::{DateTime, Datelike, NaiveDate, Utc};
+use jiff::{Timestamp, civil::Date};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use skimap_common::download::Downloader;
@@ -22,7 +22,7 @@ use crate::{FICHES_FILE, LAYER, Result};
 pub const EVERY_DAYS: (i64, i64) = (1, 7);
 
 /// Whether `d` is in the nordic season (1 November to 30 April).
-pub fn in_season(d: NaiveDate) -> bool {
+pub fn in_season(d: Date) -> bool {
     d.month() >= 11 || d.month() <= 4
 }
 
@@ -39,23 +39,20 @@ pub struct State {
 
 impl State {
     /// Whether a refresh is due at `now`.
-    pub fn due(&self, now: DateTime<Utc>) -> bool {
+    pub fn due(&self, now: Timestamp) -> bool {
         let Some(last) = self
             .last_ok
             .as_deref()
-            .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+            .and_then(|s| s.parse::<Timestamp>().ok())
         else {
             return true;
         };
-        let every = if in_season(now.date_naive()) {
+        let every = if in_season(skimap_common::dates::utc_date(now)) {
             EVERY_DAYS.0
         } else {
             EVERY_DAYS.1
         };
-        now.signed_duration_since(last.with_timezone(&Utc))
-            .num_hours()
-            + 1
-            >= every * 24
+        now.duration_since(last).as_hours() + 1 >= every * 24
     }
 }
 
@@ -93,11 +90,11 @@ pub fn refresh(
     site: &Site,
     layout: &DataLayout,
     dl: &Downloader,
-    now: DateTime<Utc>,
+    now: Timestamp,
     force: bool,
 ) -> Result<RefreshReport> {
     let dir = layout.layer_dir(site, LAYER)?;
-    let at = now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let at = now.strftime("%Y-%m-%dT%H:%M:%SZ").to_string();
     let state_path = dir.join("refresh_state.json");
     let mut state: State = std::fs::read(&state_path)
         .ok()
@@ -168,8 +165,8 @@ pub fn refresh(
     let stale_days = state
         .last_ok
         .as_deref()
-        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
-        .map(|d| now.signed_duration_since(d.with_timezone(&Utc)).num_days());
+        .and_then(|s| s.parse::<Timestamp>().ok())
+        .map(|d| now.duration_since(d).as_hours() / 24);
     write_json(
         &dir.join("status.json"),
         &json!({
@@ -188,8 +185,8 @@ pub fn refresh(
 mod tests {
     use super::*;
 
-    fn at(s: &str) -> DateTime<Utc> {
-        DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
+    fn at(s: &str) -> Timestamp {
+        s.parse::<Timestamp>().unwrap()
     }
 
     #[test]

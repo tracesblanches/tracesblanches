@@ -6,7 +6,7 @@
 
 use std::path::PathBuf;
 
-use chrono::{NaiveDate, NaiveTime};
+use jiff::civil::{Date, Time};
 use skimap_common::layout::DataLayout;
 use skimap_common::site::Site;
 use skimap_core::graph::Difficulty;
@@ -56,8 +56,8 @@ pub fn history_paths(layout: &DataLayout, site: &Site, with_forecast: bool) -> R
 /// Three requests on `date`: « 2 h skating, back before 16 h », « 3 h classic » from the
 /// main start, « 1 h 30 classic, green and blue » at 14:30 (from the second start of the
 /// site table, when there is one).
-pub fn suggestion_requests(site: &Site, date: NaiveDate) -> Vec<Request> {
-    let at = |h: u32, m: u32| date.and_hms_opt(h, m, 0).expect("time");
+pub fn suggestion_requests(site: &Site, date: Date) -> Vec<Request> {
+    let at = |h: u32, m: u32| date.to_datetime(skimap_common::dates::hms(h, m, 0).unwrap());
     // Starts of the site table (`skimap_common::site::starts`): the main one, and the
     // second one for the easy request when the site has two; otherwise the site centre.
     let starts = skimap_common::site::starts(site);
@@ -90,7 +90,7 @@ pub fn suggestion_requests(site: &Site, date: NaiveDate) -> Vec<Request> {
             at(10, 0),
             120.0,
             Style::Skating,
-            NaiveTime::from_hms_opt(16, 0, 0),
+            Time::new(16, 0, 0, 0).ok(),
             None,
         ),
         req(
@@ -122,7 +122,7 @@ pub fn suggestion_requests(site: &Site, date: NaiveDate) -> Vec<Request> {
 pub fn proof_outings(
     layout: &DataLayout,
     site: &Site,
-    date: NaiveDate,
+    date: Date,
 ) -> Result<(Vec<Outing>, Vec<String>)> {
     let dir = layout.layer_dir(site, "routes")?;
     // Proof outings of the site table (`skimap_common::site::local`); none elsewhere.
@@ -136,8 +136,8 @@ pub fn proof_outings(
                     (
                         o.label.as_str(),
                         o.file.as_str(),
-                        chrono::Timelike::hour(&t),
-                        chrono::Timelike::minute(&t),
+                        t.hour() as u32,
+                        t.minute() as u32,
                         o.offpiste,
                     )
                 })
@@ -163,7 +163,7 @@ pub fn proof_outings(
             .ok_or_else(|| Error::format(&path, "no time on the route"))?;
         outings.push(Outing {
             label: (*label).into(),
-            start: date.and_hms_opt(*h, *m, 0).expect("time"),
+            start: date.to_datetime(skimap_common::dates::hms(*h, *m, 0).unwrap()),
             duration_min: secs / 60.0,
             route: crate::layers::line_coords(&f["geometry"]),
             offpiste: *off,
@@ -176,8 +176,9 @@ pub fn proof_outings(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use skimap_common::geom::LonLat;
     /// Evaluation site of `data/sites.json`, test data.
+    use jiff::civil::date;
+    use skimap_common::geom::LonLat;
     static CERVIERES: std::sync::LazyLock<skimap_common::site::Site> =
         std::sync::LazyLock::new(|| {
             *skimap_common::site::site("cervieres").expect("evaluation site")
@@ -245,15 +246,15 @@ mod tests {
 
     #[test]
     fn requests_of_both_sites() {
-        let d = NaiveDate::from_ymd_opt(2027, 1, 12).unwrap();
+        let d = date(2027, 1, 12);
         let c = suggestion_requests(&CERVIERES, d);
         assert_eq!(c.len(), 3);
         assert_eq!(c[0].start_name, "Le Laus");
         assert_eq!(c[2].start_name, "Les Fonts");
         assert_eq!(c[2].max_difficulty, Some(Difficulty::Easy));
-        assert_eq!(c[0].return_before, NaiveTime::from_hms_opt(16, 0, 0));
+        assert_eq!(c[0].return_before, Time::new(16, 0, 0, 0).ok());
         assert_eq!((c[1].budget_min, c[1].style), (180.0, Style::Classic));
-        assert_eq!(c[2].start_time, d.and_hms_opt(14, 30, 0).unwrap());
+        assert_eq!(c[2].start_time, d.at(14, 30, 0, 0));
         let ch = suggestion_requests(&CHAPELLE_DES_BOIS, d);
         assert!(ch.iter().all(|r| r.start == LonLat::new(6.1125, 46.6032)));
     }
@@ -275,11 +276,11 @@ mod tests {
             .to_string(),
         )
         .unwrap();
-        let d = NaiveDate::from_ymd_opt(2027, 1, 12).unwrap();
+        let d = date(2027, 1, 12);
         let (o, skipped) = proof_outings(&layout, &CERVIERES, d).unwrap();
         assert_eq!(o.len(), 1);
         assert_eq!(o[0].duration_min, 135.0);
-        assert_eq!(o[0].start, d.and_hms_opt(10, 0, 0).unwrap());
+        assert_eq!(o[0].start, d.at(10, 0, 0, 0));
         assert!(!o[0].offpiste);
         assert_eq!(o[0].route.len(), 2);
         assert_eq!(o[0].label, "Le Laus → refuge des Fonts, pistes, classique");
@@ -297,7 +298,7 @@ mod tests {
         assert!(skipped.is_empty());
         assert_eq!(o.len(), 2);
         assert_eq!((o[1].duration_min, o[1].offpiste), (60.0, true));
-        assert_eq!(o[1].start, d.and_hms_opt(13, 0, 0).unwrap());
+        assert_eq!(o[1].start, d.at(13, 0, 0, 0));
         // A file without a route feature, or without a time: an error.
         std::fs::write(
             dir.join("offpiste_laus_izoard.geojson"),
@@ -330,9 +331,6 @@ mod tests {
         .unwrap();
         let (o, _) = proof_outings(&layout, &CHAPELLE_DES_BOIS, d).unwrap();
         assert_eq!(o.len(), 1);
-        assert_eq!(
-            (o[0].start, o[0].offpiste),
-            (d.and_hms_opt(10, 30, 0).unwrap(), true)
-        );
+        assert_eq!((o[0].start, o[0].offpiste), (d.at(10, 30, 0, 0), true));
     }
 }

@@ -139,7 +139,7 @@ fn the_morning_opens_on_packs_of_several_massifs() {
 
         // The evening preparation on the same pack: the first forecast day.
         if let Some(first) = days.first() {
-            let today = (*first - chrono::Duration::days(1)).to_string();
+            let today = (*first - jiff::SignedDuration::from_hours(24)).to_string();
             let out = tempfile::tempdir().unwrap();
             let r = skimap_ffi::prep::prep_run(
                 e.dir.clone(),

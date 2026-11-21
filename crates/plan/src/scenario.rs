@@ -21,7 +21,7 @@
 //! A [`Run`] keeps every input given to the tracker and every output, so that a run can be
 //! replayed (the client's instrumented tests use the same inputs and expected outputs).
 
-use chrono::{DateTime, Duration, NaiveDateTime, Utc};
+use jiff::{SignedDuration, Timestamp, civil::DateTime};
 use serde::{Deserialize, Serialize};
 use skimap_assist::inputs::SiteData;
 use skimap_common::geom::LonLat;
@@ -213,7 +213,7 @@ pub struct Scenario {
     /// Name.
     pub name: String,
     /// Start of the skier (UTC); the plan's departure by default.
-    pub start: DateTime<Utc>,
+    pub start: Timestamp,
     /// Model pace divided by this (1: the model pace).
     pub slowdown: f64,
     /// Script.
@@ -247,9 +247,9 @@ pub struct Run {
     /// Outputs in order.
     pub outputs: Vec<Output>,
     /// Start of the skier.
-    pub t0: DateTime<Utc>,
+    pub t0: Timestamp,
     /// End of the simulation.
-    pub t1: DateTime<Utc>,
+    pub t1: Timestamp,
     /// Fixes given.
     pub fixes: usize,
     /// Batches given.
@@ -584,10 +584,8 @@ pub fn run_with(
     let mut steps_acc = 0.0f64;
     let mut ignore_next = false;
     let mut finished_at: Option<f64> = None;
-    let t_start = sc.start.timestamp() as f64;
-    let at = |k: f64| {
-        DateTime::<Utc>::from_timestamp_millis(((t_start + k) * 1000.0) as i64).expect("time")
-    };
+    let t_start = sc.start.as_second() as f64;
+    let at = |k: f64| Timestamp::from_millisecond(((t_start + k) * 1000.0) as i64).expect("time");
     for (k, o) in offsets.iter().enumerate() {
         let t = k as f64;
         // Script.
@@ -817,7 +815,7 @@ pub fn run_with(
         let delay = req.map_or(0.0, |r| r.max_delay_s);
         let oldest = batch.first().map(|i| i.t());
         let due =
-            oldest.is_some_and(|o| (at(t) - o).num_milliseconds() as f64 / 1000.0 >= delay - 1e-9);
+            oldest.is_some_and(|o| (at(t) - o).as_millis() as i64 as f64 / 1000.0 >= delay - 1e-9);
         let before = out.len();
         for e in &events {
             if let Some(o) = batch.first().map(Input::t)
@@ -1021,12 +1019,12 @@ pub fn steep_excursion(
 }
 
 /// Seconds from the start of a run.
-pub fn rel(run: &Run, t: DateTime<Utc>) -> f64 {
-    (t - run.t0).num_milliseconds() as f64 / 1000.0
+pub fn rel(run: &Run, t: Timestamp) -> f64 {
+    (t - run.t0).as_millis() as i64 as f64 / 1000.0
 }
 
 /// Local time of a run instant.
-pub fn local(t: DateTime<Utc>) -> NaiveDateTime {
+pub fn local(t: Timestamp) -> DateTime {
     skimap_core::ephemeris::local_time(t)
 }
 
@@ -1098,18 +1096,24 @@ pub fn timeline(run: &Run) -> Vec<String> {
                     profile.as_ref().map_or("", |p| p.name.as_str())
                 ),
             };
-            format!("{:>6.0} s  {}  {what}", s, local(o.t()).format("%H:%M:%S"))
+            format!(
+                "{:>6.0} s  {}  {what}",
+                s,
+                local(o.t()).strftime("%H:%M:%S")
+            )
         })
         .collect()
 }
 
 /// The default start of a plan's scenario: its departure (local) in UTC.
-pub fn departure_utc(plan: &DayPlan) -> DateTime<Utc> {
+pub fn departure_utc(plan: &DayPlan) -> Timestamp {
     skimap_assist::sun::local_to_utc(plan.departure)
 }
 
 /// A start at another local time of the plan's day.
-pub fn start_at(plan: &DayPlan, hour: u32, minute: u32) -> DateTime<Utc> {
-    let t = plan.date.and_hms_opt(hour, minute, 0).expect("time");
-    skimap_assist::sun::local_to_utc(t) + Duration::zero()
+pub fn start_at(plan: &DayPlan, hour: u32, minute: u32) -> Timestamp {
+    let t = plan
+        .date
+        .to_datetime(skimap_common::dates::hms(hour, minute, 0).unwrap());
+    skimap_assist::sun::local_to_utc(t) + SignedDuration::ZERO
 }

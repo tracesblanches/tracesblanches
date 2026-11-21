@@ -8,7 +8,6 @@
 | aes | 0.9.4 | MIT OR Apache-2.0 | oui | https://github.com/RustCrypto/block-ciphers |
 | aho-corasick | 1.1.5 | Unlicense OR MIT |  | https://github.com/BurntSushi/aho-corasick |
 | allocator-api2 | 0.2.21 | MIT OR Apache-2.0 | oui | https://github.com/zakarumych/allocator-api2 |
-| android_system_properties | 0.1.6 | MIT OR Apache-2.0 | oui | https://github.com/nical/android_system_properties |
 | anstream | 1.0.0 | MIT OR Apache-2.0 |  | https://github.com/rust-cli/anstyle.git |
 | anstyle | 1.0.14 | MIT OR Apache-2.0 |  | https://github.com/rust-cli/anstyle.git |
 | anstyle-parse | 1.0.0 | MIT OR Apache-2.0 |  | https://github.com/rust-cli/anstyle.git |
@@ -27,6 +26,7 @@
 | base64 | 0.23.1 | MIT OR Apache-2.0 |  | https://github.com/marshallpierce/rust-base64 |
 | basic-toml | 0.1.10 | MIT OR Apache-2.0 |  | https://github.com/dtolnay/basic-toml |
 | bincode-next | 3.1.2 | MIT or Apache-2.0 |  | https://github.com/Apich-Organization/bincode |
+| bitflags | 1.3.2 | MIT/Apache-2.0 | oui | https://github.com/bitflags/bitflags |
 | bitflags | 2.13.2 | MIT OR Apache-2.0 | oui | https://github.com/bitflags/bitflags |
 | block-buffer | 0.12.1 | MIT OR Apache-2.0 | oui | https://github.com/RustCrypto/utils |
 | block-padding | 0.4.2 | MIT OR Apache-2.0 |  | https://github.com/RustCrypto/utils |
@@ -41,7 +41,6 @@
 | cc | 1.11.2 | MIT OR Apache-2.0 |  | https://github.com/rust-lang/cc-rs |
 | cfg-if | 1.0.5 | MIT OR Apache-2.0 | oui | https://github.com/rust-lang/cfg-if |
 | chacha20 | 0.10.2 | MIT OR Apache-2.0 |  | https://github.com/RustCrypto/stream-ciphers |
-| chrono | 0.4.45 | MIT OR Apache-2.0 | oui | https://github.com/chronotope/chrono |
 | chunked_transfer | 1.5.0 | MIT OR Apache-2.0 |  | https://github.com/frewsxcv/rust-chunked-transfer |
 | cipher | 0.5.2 | MIT OR Apache-2.0 | oui | https://github.com/RustCrypto/traits |
 | clap | 4.6.7 | MIT OR Apache-2.0 |  | https://github.com/clap-rs/clap |
@@ -67,13 +66,17 @@
 | csv-core | 0.1.13 | Unlicense/MIT | oui | https://github.com/BurntSushi/rust-csv |
 | ctr | 0.10.1 | MIT OR Apache-2.0 | oui | https://github.com/RustCrypto/block-modes |
 | ctutils | 0.4.8 | Apache-2.0 OR MIT | oui | https://github.com/RustCrypto/utils |
+| dasp_frame | 0.11.0 | MIT OR Apache-2.0 | oui | https://github.com/rustaudio/dasp.git |
+| dasp_sample | 0.11.0 | MIT OR Apache-2.0 | oui | https://github.com/rustaudio/sample.git |
 | derive_more | 2.1.1 | MIT |  | https://github.com/JelteF/derive_more |
 | derive_more-impl | 2.1.1 | MIT |  | https://github.com/JelteF/derive_more |
 | digest | 0.11.3 | MIT OR Apache-2.0 | oui | https://github.com/RustCrypto/traits |
 | displaydoc | 0.2.7 | MIT OR Apache-2.0 |  | https://github.com/yaahc/displaydoc |
 | earcut | 0.4.5 | ISC | oui | https://github.com/ciscorn/earcut-rs |
+| ebur128 | 0.1.11 | MIT | oui | https://github.com/sdroege/ebur128 |
 | either | 1.19.0 | MIT OR Apache-2.0 | oui | https://github.com/rayon-rs/either |
 | either-or-both | 0.3.1 | Apache-2.0 OR MIT |  | https://github.com/gamma0987/either-or-both |
+| embedded-io | 0.7.1 | MIT OR Apache-2.0 |  | https://github.com/rust-embedded/embedded-hal |
 | encoding_rs | 0.8.44 | (Apache-2.0 OR MIT) AND BSD-3-Clause |  | https://github.com/hsivonen/encoding_rs |
 | equivalent | 1.0.3 | Apache-2.0 OR MIT | oui | https://github.com/indexmap-rs/equivalent |
 | errno | 0.3.15 | MIT OR Apache-2.0 | oui | https://github.com/lambda-fairy/rust-errno |
@@ -86,6 +89,3 @@
 | find-msvc-tools | 0.1.15 | MIT OR Apache-2.0 |  | https://github.com/rust-lang/cc-rs |
 | fixedbitset | 0.5.9 | MIT OR Apache-2.0 |  | https://github.com/petgraph/fixedbitset |
 | flate2 | 1.1.11 | MIT OR Apache-2.0 | oui | https://github.com/rust-lang/flate2-rs |
-| float_next_after | 2.0.0 | MIT | oui | https://gitlab.com/bronsonbdevost/next_afterf |
-| fnv | 1.0.7 | Apache-2.0 / MIT |  | https://github.com/servo/rust-fnv |
-| foldhash | 0.1.5 | Zlib |  | https://github.com/orlp/foldhash |

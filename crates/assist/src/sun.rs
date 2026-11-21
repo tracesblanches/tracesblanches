@@ -17,7 +17,12 @@
 //! Not modelled: shading by the surrounding relief (valleys get the sun later than a free
 //! horizon), forest shade.
 
-use chrono::{DateTime, NaiveDateTime, Utc};
+use jiff::{SignedDuration, Timestamp, civil::DateTime};
+
+/// The instant of a UTC civil date-time inside the range of the workspace dates.
+fn utc(at: DateTime) -> Timestamp {
+    skimap_common::dates::utc(at).expect("date-time within the jiff range")
+}
 pub use skimap_core::ephemeris::SunPosition;
 
 /// Solar constant, W/m².
@@ -26,12 +31,12 @@ pub const SOLAR_CONSTANT: f64 = 1361.0;
 pub const GROUND_ALBEDO: f64 = 0.8;
 
 /// UTC instant of a French / Swiss legal local time (CET / CEST).
-pub fn local_to_utc(local: NaiveDateTime) -> DateTime<Utc> {
+pub fn local_to_utc(local: DateTime) -> Timestamp {
     // The offset is taken one hour before so that the change of hour itself is handled
     // like the hour before it (one ambiguous hour a year).
-    let guess = DateTime::<Utc>::from_naive_utc_and_offset(local - chrono::Duration::hours(1), Utc);
+    let guess = utc(local - SignedDuration::from_hours(1));
     let off = skimap_core::ephemeris::legal_offset_hours(guess);
-    DateTime::<Utc>::from_naive_utc_and_offset(local - chrono::Duration::hours(off), Utc)
+    utc(local - SignedDuration::from_hours(off))
 }
 
 /// Air mass (Kasten & Young 1989) for an elevation in degrees.
@@ -86,10 +91,12 @@ pub fn global_on_slope(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::TimeZone;
+    use jiff::tz::Offset;
 
-    fn utc(s: &str) -> DateTime<Utc> {
-        Utc.from_utc_datetime(&NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S").unwrap())
+    fn utc(s: &str) -> Timestamp {
+        Offset::UTC
+            .to_timestamp(DateTime::strptime("%Y-%m-%dT%H:%M:%S", s).unwrap())
+            .unwrap()
     }
 
     #[test]
@@ -115,17 +122,15 @@ mod tests {
 
     #[test]
     fn legal_time_round_trip() {
-        let winter =
-            NaiveDateTime::parse_from_str("2026-01-05T12:00:00", "%Y-%m-%dT%H:%M:%S").unwrap();
+        let winter = DateTime::strptime("%Y-%m-%dT%H:%M:%S", "2026-01-05T12:00:00").unwrap();
         assert_eq!(local_to_utc(winter), utc("2026-01-05T11:00:00"));
-        let summer =
-            NaiveDateTime::parse_from_str("2026-04-15T12:00:00", "%Y-%m-%dT%H:%M:%S").unwrap();
+        let summer = DateTime::strptime("%Y-%m-%dT%H:%M:%S", "2026-04-15T12:00:00").unwrap();
         assert_eq!(local_to_utc(summer), utc("2026-04-15T10:00:00"));
     }
 
     #[test]
     fn legal_time_around_the_changes_of_hour() {
-        let local = |s| NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S").unwrap();
+        let local = |s| DateTime::strptime("%Y-%m-%dT%H:%M:%S", s).unwrap();
         // 29 March 2026: 02:00 CET becomes 03:00 CEST (01:00 UTC).
         assert_eq!(
             local_to_utc(local("2026-03-29T01:30:00")),

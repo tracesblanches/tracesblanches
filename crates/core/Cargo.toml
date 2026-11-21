@@ -19,7 +19,7 @@ pipeline = ["skimap-common/geotiff"]
 [dependencies]
 skimap-common = { workspace = true }
 skimap-zones = { workspace = true }
-chrono.workspace = true
+jiff.workspace = true
 rstar.workspace = true
 serde.workspace = true
 serde_json.workspace = true

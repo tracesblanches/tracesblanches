@@ -13,7 +13,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
-use chrono::{DateTime, Duration, Utc};
+use jiff::{SignedDuration, Timestamp};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
@@ -54,7 +54,7 @@ pub struct Position {
     pub lat: f64,
     /// Time of the fix (default: when received).
     #[serde(default)]
-    pub at: Option<DateTime<Utc>>,
+    pub at: Option<Timestamp>,
     /// Accuracy, metres.
     #[serde(default)]
     pub accuracy_m: Option<f64>,
@@ -71,7 +71,7 @@ pub struct TripPlan {
     /// E-mail addresses of 1 to 3 contacts.
     pub contacts: Vec<String>,
     /// Return deadline, RFC 3339.
-    pub deadline: DateTime<Utc>,
+    pub deadline: Timestamp,
     /// Delay after the deadline before alerting, minutes (default 30, at most 180).
     #[serde(default)]
     pub grace_minutes: Option<u32>,
@@ -107,15 +107,15 @@ pub struct TripStatus {
     /// `active`, `alerted`, `returned`, `cancelled`.
     pub state: String,
     /// Deadline.
-    pub deadline: DateTime<Utc>,
+    pub deadline: Timestamp,
     /// When the alert goes (or went) out: deadline + grace.
-    pub alert_at: DateTime<Utc>,
+    pub alert_at: Timestamp,
     /// Creation time.
-    pub created_at: DateTime<Utc>,
+    pub created_at: Timestamp,
     /// Alert time, if alerted.
-    pub alerted_at: Option<DateTime<Utc>>,
+    pub alerted_at: Option<Timestamp>,
     /// Return or cancellation time.
-    pub closed_at: Option<DateTime<Utc>>,
+    pub closed_at: Option<Timestamp>,
     /// Last position received.
     pub last_position: Option<Position>,
     /// Messages to the contacts.
@@ -134,7 +134,7 @@ pub struct Notification {
     /// Attempts so far.
     pub attempts: u32,
     /// When sent.
-    pub sent_at: Option<DateTime<Utc>>,
+    pub sent_at: Option<Timestamp>,
 }
 
 /// Reply to a creation: the token is shown once, only its hash is stored.
@@ -204,12 +204,12 @@ CREATE TABLE IF NOT EXISTS outbox (
 CREATE INDEX IF NOT EXISTS outbox_due ON outbox(sent_at, failed_at, cancelled_at, next_attempt_at);
 ";
 
-fn ts(t: DateTime<Utc>) -> i64 {
-    t.timestamp()
+fn ts(t: Timestamp) -> i64 {
+    t.as_second()
 }
 
-fn from_ts(s: i64) -> DateTime<Utc> {
-    DateTime::from_timestamp(s, 0).unwrap_or_default()
+fn from_ts(s: i64) -> Timestamp {
+    Timestamp::new(s, 0).ok().unwrap_or_default()
 }
 
 /// The alert service.
@@ -330,7 +330,7 @@ impl Alerts {
     }
 
     /// Time of the last [`Alerts::tick`], `None` before the first one.
-    pub fn last_tick(&self) -> Option<DateTime<Utc>> {
+    pub fn last_tick(&self) -> Option<Timestamp> {
         match self.last_tick.load(std::sync::atomic::Ordering::Relaxed) {
             0 => None,
             t => Some(from_ts(t)),
@@ -375,8 +375,8 @@ impl Alerts {
         if let Some(bad) = contacts.iter().find(|c| !valid_email(c)) {
             return invalid(&format!("contacts: {bad:?} is not an e-mail address"));
         }
-        if plan.deadline < now + Duration::minutes(limits::MIN_LEAD_MINUTES)
-            || plan.deadline > now + Duration::days(limits::MAX_DAYS)
+        if plan.deadline < now + SignedDuration::from_mins(limits::MIN_LEAD_MINUTES)
+            || plan.deadline > now + SignedDuration::from_hours(24 * (limits::MAX_DAYS))
         {
             return invalid("deadline: between 5 minutes and 7 days from now");
         }
@@ -572,7 +572,7 @@ impl Alerts {
         &self,
         id: &str,
         token: &str,
-        deadline: DateTime<Utc>,
+        deadline: Timestamp,
     ) -> Result<std::result::Result<TripStatus, Refusal>> {
         let Some(t) = self.authorized(id, token)? else {
             return Ok(Err(Refusal::NotFound));
@@ -584,7 +584,10 @@ impl Alerts {
                 t.state
             ))));
         }
-        if deadline <= now || deadline > from_ts(t.created_at) + Duration::days(limits::MAX_DAYS) {
+        if deadline <= now
+            || deadline
+                > from_ts(t.created_at) + SignedDuration::from_hours(24 * (limits::MAX_DAYS))
+        {
             return Ok(Err(Refusal::Invalid(
                 "deadline: after now, at most 7 days after the plan".into(),
             )));
@@ -714,7 +717,7 @@ impl Alerts {
         )
     }
 
-    fn returned_message(&self, t: &TripRow, now: DateTime<Utc>) -> (String, String) {
+    fn returned_message(&self, t: &TripRow, now: Timestamp) -> (String, String) {
         let name = &t.skier_name;
         (
             format!("skimap : {name} est rentré(e), alerte levée"),
@@ -771,7 +774,7 @@ impl Alerts {
         // 2. Deliveries (outside the lock: the relay can take seconds).
         let sent_24h: i64 = self.db().query_row(
             "SELECT COUNT(*) FROM outbox WHERE sent_at > ?1",
-            [ts(now - Duration::hours(24))],
+            [ts(now - SignedDuration::from_hours(24))],
             |r| r.get(0),
         )?;
         let mut budget = i64::from(self.daily_cap) - sent_24h;
@@ -811,9 +814,10 @@ impl Alerts {
                 }
                 Err(e) => {
                     let n = attempts + 1;
-                    let give_up = now - from_ts(created) >= Duration::hours(limits::RETRY_HOURS);
+                    let give_up =
+                        now - from_ts(created) >= SignedDuration::from_hours(limits::RETRY_HOURS);
                     // 1, 2, 4, 8, 16, then every 30 minutes.
-                    let wait = Duration::minutes(match n {
+                    let wait = SignedDuration::from_mins(match n {
                         0 | 1 => 1,
                         2 => 2,
                         3 => 4,
@@ -843,7 +847,7 @@ impl Alerts {
         }
 
         // 3. Retention.
-        let cutoff = ts(now - Duration::days(limits::KEEP_DAYS));
+        let cutoff = ts(now - SignedDuration::from_hours(24 * (limits::KEEP_DAYS)));
         rep.purged = self.db().execute(
             "DELETE FROM trips WHERE (closed_at IS NOT NULL AND closed_at < ?1) \
              OR (state = 'alerted' AND deadline < ?1 AND NOT EXISTS \

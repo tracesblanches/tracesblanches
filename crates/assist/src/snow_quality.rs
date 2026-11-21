@@ -60,7 +60,10 @@
 //! Not modelled: shade of the relief and forest, snow drift, grooming (the groomer breaks
 //! the crust in the morning), the snowpack below the surface.
 
-use chrono::{Duration, NaiveDate, NaiveDateTime, Timelike};
+use jiff::{
+    SignedDuration,
+    civil::{Date, DateTime},
+};
 use serde::Serialize;
 use skimap_common::geom::LonLat;
 
@@ -242,7 +245,7 @@ impl Default for Params {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct HourState {
     /// Local time of the start of the hour.
-    pub time: NaiveDateTime,
+    pub time: DateTime,
     /// Surface quality.
     pub quality: Quality,
     /// Score of the quality.
@@ -342,14 +345,14 @@ fn simulate_hours(
 ) -> Vec<HourState> {
     let mut s = Surface::default();
     let mut out = Vec::with_capacity(hours.len());
-    let mut prev: Option<NaiveDateTime> = None;
+    let mut prev: Option<DateTime> = None;
     for h in hours {
-        if prev.is_some_and(|t| (h.time - t).num_hours() > MAX_GAP_HOURS) {
+        if prev.is_some_and(|t| h.time.duration_since(t).as_hours() > MAX_GAP_HOURS) {
             s = Surface::default();
         }
         prev = Some(h.time);
         // Sun at the middle of the hour.
-        let mid = sun::local_to_utc(h.time + Duration::minutes(30));
+        let mid = sun::local_to_utc(h.time + SignedDuration::from_mins(30));
         let sp = skimap_core::ephemeris::sun_position(mid, place);
         let mut energy = 0.0;
         if let Some(t) = h.temperature_c {
@@ -447,9 +450,9 @@ fn step(
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Slot {
     /// First hour (local).
-    pub start: NaiveDateTime,
+    pub start: DateTime,
     /// End (local, excluded).
-    pub end: NaiveDateTime,
+    pub end: DateTime,
     /// Quality at the start of the slot.
     pub quality: Quality,
     /// Score.
@@ -459,7 +462,7 @@ pub struct Slot {
 impl Slot {
     /// Number of hours.
     pub fn hours(&self) -> i64 {
-        (self.end - self.start).num_hours()
+        self.end.duration_since(self.start).as_hours()
     }
 
     /// « de 10 h à 13 h ».
@@ -482,9 +485,9 @@ pub struct ClassDay {
     /// Mean score in daylight.
     pub mean_score: f64,
     /// First daylight hour where the surface is transformed or wetter.
-    pub softens_at: Option<NaiveDateTime>,
+    pub softens_at: Option<DateTime>,
     /// First daylight hour where it is wet or slush.
-    pub wet_at: Option<NaiveDateTime>,
+    pub wet_at: Option<DateTime>,
     /// Quality at 07 h (end of the night).
     pub morning: Quality,
 }
@@ -493,7 +496,7 @@ pub struct ClassDay {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DayQuality {
     /// Date.
-    pub date: NaiveDate,
+    pub date: Date,
     /// Forecast point.
     pub point: String,
     /// Name of the forecast point, as shown to the skier (empty when the point has none).
@@ -501,7 +504,7 @@ pub struct DayQuality {
     /// Elevation of the weather of the point, m.
     pub elevation_m: f64,
     /// Daylight window used (local).
-    pub daylight: (NaiveDateTime, NaiveDateTime),
+    pub daylight: (DateTime, DateTime),
     /// Every class.
     pub classes: Vec<ClassDay>,
     /// Best class and its slot.
@@ -526,37 +529,43 @@ pub const SPIN_UP_HOURS: i64 = 24;
 /// (06 h to 20 h) or lacks the 24 hours of history.
 pub fn day_quality(
     point: &WeatherPoint,
-    date: NaiveDate,
+    date: Date,
     p: &Params,
     snow_cm: Option<f64>,
 ) -> Option<DayQuality> {
-    let six = date.and_hms_opt(6, 0, 0)?;
-    let end = date.and_hms_opt(20, 0, 0)?;
+    let six = date.at(6, 0, 0, 0);
+    let end = date.at(20, 0, 0, 0);
     if !point.covers(date, 6, 20) {
         return None;
     }
     // Start of the series without gap that contains the day.
     let i6 = point.hours.partition_point(|h| h.time < six);
     let mut i0 = i6;
-    while i0 > 0 && (point.hours[i0].time - point.hours[i0 - 1].time).num_hours() <= MAX_GAP_HOURS {
+    while i0 > 0
+        && point.hours[i0]
+            .time
+            .duration_since(point.hours[i0 - 1].time)
+            .as_hours()
+            <= MAX_GAP_HOURS
+    {
         i0 -= 1;
     }
-    if (six - point.hours[i0].time).num_hours() < SPIN_UP_HOURS {
+    if six.duration_since(point.hours[i0].time).as_hours() < SPIN_UP_HOURS {
         return None;
     }
     let i1 = point.hours.partition_point(|h| h.time < end);
     let series = &point.hours[i0..i1];
     let (rise, set) = skimap_core::ephemeris::sun_times(date, point.position)?;
     let local = skimap_core::ephemeris::local_time;
-    let day_start = (local(rise) + Duration::minutes(30)).max(date.and_hms_opt(8, 0, 0)?);
-    let day_end = (local(set) - Duration::minutes(30)).min(date.and_hms_opt(17, 0, 0)?);
+    let day_start = (local(rise) + SignedDuration::from_mins(30)).max(date.at(8, 0, 0, 0));
+    let day_end = (local(set) - SignedDuration::from_mins(30)).min(date.at(17, 0, 0, 0));
     let mut days = Vec::new();
     for class in classes() {
         let all = simulate_hours(series, point.position, point.elevation_m, class, p);
         let hours: Vec<HourState> = all.into_iter().filter(|h| h.time >= six).collect();
         let daylight: Vec<&HourState> = hours
             .iter()
-            .filter(|h| h.time + Duration::minutes(30) >= day_start && h.time < day_end)
+            .filter(|h| h.time + SignedDuration::from_mins(30) >= day_start && h.time < day_end)
             .collect();
         let best = best_slot(&daylight);
         let mean_score = if daylight.is_empty() {
@@ -655,7 +664,7 @@ fn best_slot(hours: &[&HourState]) -> Option<Slot> {
     let (a, b) = best?;
     Some(Slot {
         start: hours[a].time,
-        end: hours[b].time + Duration::hours(1),
+        end: hours[b].time + SignedDuration::from_hours(1),
         quality: hours[a].quality,
         score: top,
     })
@@ -717,6 +726,7 @@ pub fn summary(q: &DayQuality, lang: crate::text::Lang) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jiff::civil::date;
 
     /// A weather point with `days` days of hours from `start`, filled by `f(hour index,
     /// local hour)`.
@@ -726,11 +736,11 @@ mod tests {
         days: usize,
         f: impl Fn(usize, u32) -> (f64, f64, f64, f64),
     ) -> WeatherPoint {
-        let t0 = NaiveDateTime::parse_from_str(start, "%Y-%m-%dT%H:%M").unwrap();
+        let t0 = DateTime::strptime("%Y-%m-%dT%H:%M", start).unwrap();
         let hours = (0..days * 24)
             .map(|i| {
-                let time = t0 + Duration::hours(i as i64);
-                let (t, cloud, snow, wind) = f(i, time.hour());
+                let time = t0 + SignedDuration::from_hours(i as i64);
+                let (t, cloud, snow, wind) = f(i, time.hour() as u32);
                 WeatherHour {
                     time,
                     temperature_c: Some(t),
@@ -774,7 +784,7 @@ mod tests {
         let p = point(44.85, "2026-04-12T00:00", 4, |_, h| {
             (cycle(h, -4.0, 2.0), 0.0, 0.0, 5.0)
         });
-        let d = NaiveDate::from_ymd_opt(2026, 4, 14).unwrap();
+        let d = date(2026, 4, 14);
         let q = day_quality(&p, d, &Params::default(), None).unwrap();
         let (e, s, n40) = (class(&q, "E20"), class(&q, "S20"), class(&q, "N40"));
         // Refrozen in the morning, everywhere.
@@ -785,7 +795,7 @@ mod tests {
         assert!(s.softens_at.unwrap() < w.softens_at.unwrap());
         // South 40° softens two hours before north 40° and turns heavy; north 40° does not.
         let s40 = class(&q, "S40");
-        assert!(s40.softens_at.unwrap() + Duration::hours(2) <= n40.softens_at.unwrap());
+        assert!(s40.softens_at.unwrap() + SignedDuration::from_hours(2) <= n40.softens_at.unwrap());
         assert!(s40.wet_at.is_some());
         assert!(n40.wet_at.is_none(), "{:?}", n40.hours);
         // On flat ground: a transformed day, softening around 10 h.
@@ -801,7 +811,7 @@ mod tests {
         let p = point(44.85, "2026-01-03T00:00", 4, |_, h| {
             (cycle(h, -12.0, -5.0), 0.0, 0.0, 5.0)
         });
-        let d = NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
+        let d = date(2026, 1, 5);
         let q = day_quality(&p, d, &Params::default(), None).unwrap();
         assert_eq!(q.flat, Quality::OldDry);
         assert!(class(&q, "flat").softens_at.is_none());
@@ -812,7 +822,7 @@ mod tests {
     fn overcast_mild_night_does_not_refreeze() {
         // Overcast and +2 °C day and night: the surface stays wet in the morning.
         let p = point(44.85, "2026-03-01T00:00", 3, |_, _| (2.0, 100.0, 0.0, 5.0));
-        let d = NaiveDate::from_ymd_opt(2026, 3, 2).unwrap();
+        let d = date(2026, 3, 2);
         let q = day_quality(&p, d, &Params::default(), None).unwrap();
         assert!(class(&q, "flat").morning.is_wet());
         // Wet since the morning everywhere: nothing « softens » during the day.
@@ -834,10 +844,10 @@ mod tests {
             let wind = if i >= 54 { 40.0 } else { 5.0 };
             (cycle(h, -8.0, -4.0), 100.0, snow, wind)
         });
-        let d2 = NaiveDate::from_ymd_opt(2026, 2, 21).unwrap();
+        let d2 = date(2026, 2, 21);
         let q2 = day_quality(&p, d2, &Params::default(), None).unwrap();
         assert_eq!(q2.flat, Quality::Fresh);
-        let d3 = NaiveDate::from_ymd_opt(2026, 2, 22).unwrap();
+        let d3 = date(2026, 2, 22);
         let q3 = day_quality(&p, d3, &Params::default(), None).unwrap();
         assert_eq!(q3.flat, Quality::Windblown);
         assert_eq!(
@@ -851,18 +861,18 @@ mod tests {
         let p = point(44.85, "2026-04-12T00:00", 4, |_, h| {
             (cycle(h, -4.0, 2.0), 0.0, 0.0, 5.0)
         });
-        let d = NaiveDate::from_ymd_opt(2026, 4, 14).unwrap();
+        let d = date(2026, 4, 14);
         let q = day_quality(&p, d, &Params::default(), Some(2.0)).unwrap();
         assert!(!q.enough_snow && q.best.is_none());
         assert!(q.summary[0].starts_with("Pas ou trop peu de neige"));
         // A gap of a year before the day: the model restarts, so the day needs 24 h after it.
         let mut p2 = p.clone();
         for h in p2.hours.iter_mut().skip(24) {
-            h.time += Duration::days(365);
+            h.time += SignedDuration::from_hours(24 * 365);
         }
-        let d2 = NaiveDate::from_ymd_opt(2027, 4, 14).unwrap();
+        let d2 = date(2027, 4, 14);
         assert!(day_quality(&p2, d2, &Params::default(), None).is_some());
-        let d3 = NaiveDate::from_ymd_opt(2027, 4, 13).unwrap();
+        let d3 = date(2027, 4, 13);
         assert!(
             day_quality(&p2, d3, &Params::default(), None).is_none(),
             "only 0 h of history"
@@ -874,7 +884,7 @@ mod tests {
         let p = point(44.85, "2026-04-14T00:00", 2, |_, h| {
             (cycle(h, -3.0, 5.0), 0.0, 0.0, 5.0)
         });
-        let d = NaiveDate::from_ymd_opt(2026, 4, 14).unwrap();
+        let d = date(2026, 4, 14);
         assert!(day_quality(&p, d, &Params::default(), None).is_none());
         assert_eq!(classes().len(), 17);
         assert_eq!(classes()[5].code(), "S20");
@@ -928,10 +938,7 @@ mod tests {
     /// One hour of `step` at night (no sun) on the flat.
     fn night(s: &mut Surface, t: f64, wind: f64, snow: f64, precip: f64) -> f64 {
         let h = WeatherHour {
-            time: NaiveDate::from_ymd_opt(2027, 1, 12)
-                .unwrap()
-                .and_hms_opt(2, 0, 0)
-                .unwrap(),
+            time: date(2027, 1, 12).at(2, 0, 0, 0),
             temperature_c: Some(t),
             apparent_temperature_c: None,
             wind_chill_c: None,
@@ -1033,7 +1040,7 @@ mod tests {
         assert_eq!(all.len(), 48);
         for (h, w) in all.iter().zip(&p.hours) {
             assert_eq!(h.time, w.time);
-            let mid = sun::local_to_utc(w.time + Duration::minutes(30));
+            let mid = sun::local_to_utc(w.time + SignedDuration::from_mins(30));
             let sp = skimap_core::ephemeris::sun_position(mid, p.position);
             assert_eq!(
                 h.sun_elevation_deg,
@@ -1098,10 +1105,7 @@ mod tests {
         let drift = |fresh: f64, liquid: f64, wind: f64, gust: f64| {
             let mut s = surface(fresh, liquid, 0.0, false);
             let h = WeatherHour {
-                time: NaiveDate::from_ymd_opt(2027, 1, 12)
-                    .unwrap()
-                    .and_hms_opt(2, 0, 0)
-                    .unwrap(),
+                time: date(2027, 1, 12).at(2, 0, 0, 0),
                 temperature_c: Some(-10.0),
                 apparent_temperature_c: None,
                 wind_chill_c: None,
@@ -1146,10 +1150,7 @@ mod tests {
         let drift = |liquid: f64| {
             let mut s = surface(3.0, liquid, 0.0, false);
             let h = WeatherHour {
-                time: NaiveDate::from_ymd_opt(2027, 1, 12)
-                    .unwrap()
-                    .and_hms_opt(2, 0, 0)
-                    .unwrap(),
+                time: date(2027, 1, 12).at(2, 0, 0, 0),
                 temperature_c: Some(0.0),
                 apparent_temperature_c: None,
                 wind_chill_c: None,
@@ -1189,15 +1190,12 @@ mod tests {
 
     #[test]
     fn longest_run_of_the_best_score() {
-        let t0 = NaiveDate::from_ymd_opt(2027, 1, 12)
-            .unwrap()
-            .and_hms_opt(8, 0, 0)
-            .unwrap();
+        let t0 = date(2027, 1, 12).at(8, 0, 0, 0);
         let hs: Vec<HourState> = [3.0, 3.0, 1.0, 3.0, 3.0, 3.0, 2.5]
             .iter()
             .enumerate()
             .map(|(i, sc)| HourState {
-                time: t0 + Duration::hours(i as i64),
+                time: t0 + SignedDuration::from_hours(i as i64),
                 quality: if *sc == 3.0 {
                     Quality::Fresh
                 } else {
@@ -1233,26 +1231,30 @@ mod tests {
             };
             (cycle(h, -10.0, -4.0), 100.0, snow, 5.0)
         });
-        let d = NaiveDate::from_ymd_opt(2027, 1, 12).unwrap();
+        let d = date(2027, 1, 12);
         let q = day_quality(&p, d, &Params::default(), None).unwrap();
         let flat = class(&q, "flat");
         assert_eq!(flat.hours[0].quality, Quality::OldDry);
         assert_eq!(flat.morning, Quality::Fresh);
         // The daylight ends 30 min before the sunset (17 h at the latest).
         let (_, set) = skimap_core::ephemeris::sun_times(d, p.position).unwrap();
-        let end = (skimap_core::ephemeris::local_time(set) - Duration::minutes(30))
-            .min(d.and_hms_opt(17, 0, 0).unwrap());
+        let end = (skimap_core::ephemeris::local_time(set) - SignedDuration::from_mins(30))
+            .min(d.at(17, 0, 0, 0));
         assert_eq!(q.daylight.1, end);
         // The mean score over the daylight hours.
         let n = flat
             .hours
             .iter()
-            .filter(|h| h.time + Duration::minutes(30) >= q.daylight.0 && h.time < q.daylight.1)
+            .filter(|h| {
+                h.time + SignedDuration::from_mins(30) >= q.daylight.0 && h.time < q.daylight.1
+            })
             .count();
         let sum: f64 = flat
             .hours
             .iter()
-            .filter(|h| h.time + Duration::minutes(30) >= q.daylight.0 && h.time < q.daylight.1)
+            .filter(|h| {
+                h.time + SignedDuration::from_mins(30) >= q.daylight.0 && h.time < q.daylight.1
+            })
             .map(|h| h.score)
             .sum();
         assert!((flat.mean_score - sum / n as f64).abs() < 1e-12);

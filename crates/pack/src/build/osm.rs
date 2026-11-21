@@ -43,6 +43,7 @@ use crate::error::{Error, Result};
 use crate::manifest::Basemap;
 use crate::reader::TileArchive;
 use crate::tiles::tiles_covering;
+use jiff::civil::Date;
 
 /// Downloader source of the build list.
 pub const SOURCE: &str = "protomaps";
@@ -288,8 +289,8 @@ impl Decision {
 }
 
 /// Date of a build key `AAAAMMJJ.pmtiles`.
-fn build_date(key: &str) -> Option<chrono::NaiveDate> {
-    chrono::NaiveDate::parse_from_str(key.trim_end_matches(".pmtiles"), "%Y%m%d").ok()
+fn build_date(key: &str) -> Option<jiff::civil::Date> {
+    Date::strptime("%Y%m%d", key.trim_end_matches(".pmtiles")).ok()
 }
 
 /// Whether the latest build `latest` replaces the build in use `current`. `change`: the
@@ -311,7 +312,7 @@ pub fn decide(
     }
     match (build_date(&cur.key), build_date(&latest.key)) {
         (Some(a), Some(b)) if b < a => return Decision::Older,
-        (Some(a), Some(b)) if (b - a).num_days() < MAX_AGE_DAYS => {}
+        (Some(a), Some(b)) if i64::from((b - a).get_days()) < MAX_AGE_DAYS => {}
         // Older than the limit, or keys that are not dates (no age known).
         _ => return Decision::Age,
     }

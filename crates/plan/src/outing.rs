@@ -9,7 +9,7 @@
 //! [`EARLIEST`] unless one is given (the ranking of the starts fixes one, so that the
 //! light does not decide between starts).
 
-use chrono::{NaiveDate, NaiveTime};
+use jiff::civil::{Date, Time};
 use skimap_common::Lang;
 use skimap_common::geom::LonLat;
 use skimap_core::graph::Difficulty;
@@ -19,10 +19,7 @@ use crate::plan::PlanRequest;
 
 /// Earliest start the best time of the day may choose, on a day to come (the app moves
 /// it later on the day itself).
-pub const EARLIEST: NaiveTime = match NaiveTime::from_hms_opt(8, 0, 0) {
-    Some(t) => t,
-    None => panic!("8 h"),
-};
+pub const EARLIEST: Time = Time::constant(8, 0, 0, 0);
 
 /// Loops the morning proposes.
 pub const MAX_RESULTS: usize = 3;
@@ -35,7 +32,7 @@ pub struct Outing {
     /// Technique.
     pub style: Style,
     /// Back before (local), if any.
-    pub return_before: Option<NaiveTime>,
+    pub return_before: Option<Time>,
     /// Green and blue pistes only.
     pub easy_only: bool,
 }
@@ -62,9 +59,9 @@ impl Outing {
         &self,
         start: LonLat,
         start_name: String,
-        date: NaiveDate,
-        start_time: Option<NaiveTime>,
-        earliest: NaiveTime,
+        date: Date,
+        start_time: Option<Time>,
+        earliest: Time,
         lang: Lang,
     ) -> PlanRequest {
         PlanRequest {
@@ -92,6 +89,8 @@ impl Default for Outing {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jiff::civil::date;
+    use jiff::civil::time;
 
     #[test]
     fn labels_in_both_languages() {
@@ -100,7 +99,7 @@ mod tests {
         let o = Outing {
             budget_min: 90.0,
             style: Style::Skating,
-            return_before: NaiveTime::from_hms_opt(16, 0, 0),
+            return_before: Time::new(16, 0, 0, 0).ok(),
             easy_only: true,
         };
         assert_eq!(
@@ -120,7 +119,7 @@ mod tests {
 
     #[test]
     fn the_default_request_is_the_app_default() {
-        let d = NaiveDate::from_ymd_opt(2026, 11, 18).unwrap();
+        let d = date(2026, 11, 18);
         let r = Outing::DEFAULT.request(
             LonLat::new(6.0, 45.0),
             "le parking".into(),
@@ -134,7 +133,7 @@ mod tests {
         assert_eq!(r.return_before, None);
         assert_eq!(r.max_difficulty, None);
         assert_eq!(r.start_time, None);
-        assert_eq!(r.earliest, NaiveTime::from_hms_opt(8, 0, 0).unwrap());
+        assert_eq!(r.earliest, time(8, 0, 0, 0));
         assert_eq!(r.max_results, 3);
     }
 }

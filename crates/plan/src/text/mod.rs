@@ -6,7 +6,7 @@
 //! Short, concrete sentences; never « sans danger » / « safe ».
 
 #[allow(unused_imports)]
-use chrono::{NaiveDate, NaiveDateTime};
+use jiff::civil::{Date, DateTime};
 pub use skimap_common::Lang;
 use skimap_core::routing::Style;
 
@@ -34,7 +34,7 @@ pub trait Texts: Sync {
     /// No hourly weather.
     fn no_hourly_weather(&self) -> &'static str;
     /// No best time computed: the start used.
-    fn no_best_time(&self, start: NaiveDateTime) -> String;
+    fn no_best_time(&self, start: DateTime) -> String;
 
     // ---- Start names.
 
@@ -51,13 +51,13 @@ pub trait Texts: Sync {
         budget_min: u32,
         style: Style,
         easy_only: bool,
-        return_before: Option<chrono::NaiveTime>,
+        return_before: Option<jiff::civil::Time>,
     ) -> String;
 
     // ---- The plan as text (`DayPlan::text`).
 
     /// First line: date, label, start, departure.
-    fn p_title(&self, date: NaiveDate, label: &str, start: &str, at: NaiveDateTime) -> String;
+    fn p_title(&self, date: Date, label: &str, start: &str, at: DateTime) -> String;
     /// The loop: rank, label, km, climb, model minutes, technique, score.
     #[allow(clippy::too_many_arguments)]
     fn p_loop(
@@ -75,13 +75,13 @@ pub trait Texts: Sync {
     /// Planned arrival, with the margin, the light limit and the return asked.
     fn p_arrival(
         &self,
-        arrival: NaiveDateTime,
-        with_margin: NaiveDateTime,
-        deadline: Option<NaiveDateTime>,
-        return_before: Option<NaiveDateTime>,
+        arrival: DateTime,
+        with_margin: DateTime,
+        deadline: Option<DateTime>,
+        return_before: Option<DateTime>,
     ) -> String;
     /// Latest turnaround (`group`: at the group's planned pace); `None`: none needed.
-    fn p_turnaround(&self, at: Option<NaiveDateTime>, group: bool) -> String;
+    fn p_turnaround(&self, at: Option<DateTime>, group: bool) -> String;
     /// Header of the reasons.
     fn p_reasons(&self) -> &'static str;
     /// A reason and its points.
@@ -91,7 +91,7 @@ pub trait Texts: Sync {
     /// What a key point is.
     fn p_key_kind(&self, k: KeyKind) -> &'static str;
     /// A key point: distance (m), time, what, name.
-    fn p_key_point(&self, s_m: f64, at: NaiveDateTime, what: &str, name: Option<&str>) -> String;
+    fn p_key_point(&self, s_m: f64, at: DateTime, what: &str, name: Option<&str>) -> String;
     /// Header of the announcements.
     fn p_announcements(&self) -> &'static str;
     /// When an announcement is said: at the departure (`None` and `false`), at a distance
@@ -104,7 +104,7 @@ pub trait Texts: Sync {
     /// A plan B and its switch announcement.
     fn p_plan_b(&self, text: &str, switch: &str) -> String;
     /// The latest passage at a junction exit (m) to finish before the limit.
-    fn p_latest_exit(&self, s_m: f64, at: NaiveDateTime) -> String;
+    fn p_latest_exit(&self, s_m: f64, at: DateTime) -> String;
     /// Header of the morning texts.
     fn p_morning(&self) -> &'static str;
     /// A morning text.
@@ -154,17 +154,17 @@ pub trait Texts: Sync {
     /// A duration rounded to 5 min: « 2 h 30 », « 45 min ».
     fn duration5(&self, seconds: f64) -> String;
     /// A clock time rounded to 5 min: « 15 h 20 », « 15:20 ».
-    fn clock5(&self, t: NaiveDateTime) -> String;
+    fn clock5(&self, t: DateTime) -> String;
     /// Outings learned by the group.
     fn pc_learned(&self, outings: u32) -> String;
     /// The range of the time (`about`: with its median).
     fn pc_duration(&self, median: Option<f64>, lo: f64, hi: f64) -> String;
     /// Planned on the slow side: median, planned, chances in 10 to have finished, back.
-    fn pc_slow_side(&self, median: f64, planned: f64, chances: f64, back: NaiveDateTime) -> String;
+    fn pc_slow_side(&self, median: f64, planned: f64, chances: f64, back: DateTime) -> String;
     /// Back between.
-    fn pc_back_between(&self, lo: NaiveDateTime, hi: NaiveDateTime) -> String;
+    fn pc_back_between(&self, lo: DateTime, hi: DateTime) -> String;
     /// Back around.
-    fn pc_back_around(&self, t: NaiveDateTime) -> String;
+    fn pc_back_around(&self, t: DateTime) -> String;
     /// The time of the plan for a group.
     #[allow(clippy::too_many_arguments)]
     fn pc_text(
@@ -186,7 +186,7 @@ pub trait Texts: Sync {
         &self,
         why: &str,
         what: &str,
-        back: (NaiveDateTime, NaiveDateTime, NaiveDateTime),
+        back: (DateTime, DateTime, DateTime),
         saved_min: Option<f64>,
     ) -> String;
 

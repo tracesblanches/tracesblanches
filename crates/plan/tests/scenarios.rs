@@ -12,7 +12,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use chrono::NaiveTime;
+use jiff::civil::Time;
+use jiff::civil::time;
 use skimap_assist::inputs::SiteData;
 use skimap_common::layout::DataLayout;
 use skimap_common::site::Site;
@@ -236,7 +237,7 @@ fn expect(run: &Run, want: &[(M, f64, f64)]) -> Vec<f64> {
 /// Seconds from the start of a run: the time a session decision refers to (the start of
 /// the movement, of the pause…), else the time of the output.
 fn event_time(run: &Run, o: &Output) -> f64 {
-    let t0 = run.t0.timestamp() as f64;
+    let t0 = run.t0.as_second() as f64;
     match o {
         Output::Session { event, .. } => match event {
             SessionEvent::Started { t, .. }
@@ -498,7 +499,7 @@ fn q9_05_cervieres_wrong_turn_and_back() {
         .find(|o| is(o, &M::Alert(Alert::BackOnRoute)))
         .unwrap();
     // 250 m out and back at the model pace: off for a few minutes at most.
-    assert!((back.t() - off.t()).num_seconds() < 600);
+    assert!((back.t() - off.t()).as_secs() < 600);
     assert_eq!(count(&run, &M::Alert(Alert::OffRoute)), 1);
     never(&run, &[M::Switched("deviation")]);
 }
@@ -860,7 +861,7 @@ fn q9_10_chapelle_closed_trail_ignored() {
 fn q9_11_chapelle_late_for_the_return_time() {
     // 2 h skating from 13:30, back before 16 h, skiing at 1/1.4 of the model pace.
     let b = built(&CHAPELLE_DES_BOIS, "2h-13h30", |r| {
-        r.start_time = NaiveTime::from_hms_opt(13, 30, 0)
+        r.start_time = Time::new(13, 30, 0, 0).ok()
     });
     let mut sc = scen(
         &b,
@@ -887,7 +888,7 @@ fn q9_11_chapelle_late_for_the_return_time() {
     let back = scenario::local(fin.t());
     let rb = b.plan.turnaround.return_before.unwrap();
     assert!(
-        back <= rb + chrono::Duration::minutes(10),
+        back <= rb + jiff::SignedDuration::from_mins(10),
         "back at {back}, asked {rb}"
     );
 }
@@ -897,7 +898,7 @@ fn q9_12_cervieres_late_before_night() {
     // 3 h classic from 13 h at half the model pace: the C7 deadline (17:13) would be missed;
     // the exit of the morning still ahead (1.7 km) shortens the loop.
     let b = built(&CERVIERES, "3h-13h", |r| {
-        r.start_time = NaiveTime::from_hms_opt(13, 0, 0)
+        r.start_time = Time::new(13, 0, 0, 0).ok()
     });
     let mut sc = scen(
         &b,
@@ -935,7 +936,7 @@ fn q9_22_cervieres_late_start() {
     // The 13 h plan started at 14 h: the loop no longer ends before the C7 deadline (17:13)
     // even at the model pace; shortened at the departure.
     let b = built(&CERVIERES, "3h-13h", |r| {
-        r.start_time = NaiveTime::from_hms_opt(13, 0, 0)
+        r.start_time = Time::new(13, 0, 0, 0).ok()
     });
     let mut sc = scen(&b, "Cervières, départ en retard", vec![]);
     sc.start = scenario::start_at(&b.plan, 14, 0);
@@ -958,7 +959,7 @@ fn q9_23_cervieres_no_time_left() {
     // Started late and refusing the shortened loop, at 1/1.3 of the model pace: « turn
     // around now » (safety) when no other way ends before the deadline, and the way home.
     let b = built(&CERVIERES, "3h-13h", |r| {
-        r.start_time = NaiveTime::from_hms_opt(13, 0, 0)
+        r.start_time = Time::new(13, 0, 0, 0).ok()
     });
     let mut sc = scen(
         &b,
@@ -997,7 +998,7 @@ fn q9_23_cervieres_no_time_left() {
         .unwrap();
     let dl = b.plan.turnaround.deadline.unwrap();
     println!("retour {}, limite C7 {dl}", scenario::local(fin.t()));
-    assert!(scenario::local(fin.t()) <= dl + chrono::Duration::minutes(30));
+    assert!(scenario::local(fin.t()) <= dl + jiff::SignedDuration::from_mins(30));
 }
 
 // ---------------------------------------------------------------------------------------
@@ -1006,9 +1007,9 @@ fn q9_23_cervieres_no_time_left() {
 fn with_weather(b: &Built, f: impl Fn(&mut skimap_assist::layers::WeatherHour)) -> Built {
     let mut plan = b.plan.clone();
     let w = plan.weather.as_mut().expect("weather of the day");
-    let from = plan.departure + chrono::Duration::minutes(60);
+    let from = plan.departure + jiff::SignedDuration::from_mins(60);
     for h in &mut w.hours {
-        if h.time >= from - chrono::Duration::minutes(59) {
+        if h.time >= from - jiff::SignedDuration::from_mins(59) {
             f(h);
         }
     }
@@ -1023,7 +1024,7 @@ fn with_weather(b: &Built, f: impl Fn(&mut skimap_assist::layers::WeatherHour)) 
 #[test]
 fn q9_13_chapelle_fog_takes_the_shortcut() {
     let b = with_weather(&chapelle(), |h| {
-        if h.time.time() >= NaiveTime::from_hms_opt(9, 0, 0).unwrap() {
+        if h.time.time() >= time(9, 0, 0, 0) {
             h.fog = Some(true);
         }
     });
@@ -1202,7 +1203,7 @@ fn steepest(b: &Built, within_m: f64) -> f64 {
 
 /// Pauses of a run before its end (start, resumed), seconds from the start.
 fn pauses(run: &Run) -> Vec<(f64, f64)> {
-    let t0 = run.t0.timestamp() as f64;
+    let t0 = run.t0.as_second() as f64;
     let mut v: Vec<(f64, f64)> = Vec::new();
     let mut fin = f64::INFINITY;
     for o in &run.outputs {
@@ -1589,7 +1590,7 @@ fn q9_24_cervieres_family_on_an_adult_plan() {
     // half the C5 pace, 4 stops an hour, detours. Proposed, not imposed: nobody answers,
     // the loop goes on.
     let b = built(&CERVIERES, "3h-10h", |r| {
-        r.start_time = NaiveTime::from_hms_opt(10, 0, 0)
+        r.start_time = Time::new(10, 0, 0, 0).ok()
     });
     let run = group(
         &b,
@@ -1658,18 +1659,18 @@ fn q9_25_chapelle_family_accepts_the_short_loop() {
     // Back well before the loop would have been, about when proposed: the plan has no
     // group (a lone adult expected), the stops still to come are those of an adult (the
     // statistics over many days: example `pace_eval`).
-    let back = run.t0 + chrono::Duration::seconds(arrival_rel(&run) as i64);
+    let back = run.t0 + jiff::SignedDuration::from_secs(arrival_rel(&run) as i64);
     let back = scenario::local(back);
     println!(
         "proposé {} ({}–{}), la boucle {}, arrivée {}",
-        p.arrival.format("%H:%M"),
-        p.arrival_lo.format("%H:%M"),
-        p.arrival_hi.format("%H:%M"),
-        p.loop_arrival.format("%H:%M"),
-        back.format("%H:%M")
+        p.arrival.strftime("%H:%M"),
+        p.arrival_lo.strftime("%H:%M"),
+        p.arrival_hi.strftime("%H:%M"),
+        p.loop_arrival.strftime("%H:%M"),
+        back.strftime("%H:%M")
     );
-    assert!(back < p.loop_arrival - chrono::Duration::minutes(60));
-    assert!((back - p.arrival).num_minutes().abs() <= 30);
+    assert!(back < p.loop_arrival - jiff::SignedDuration::from_mins(60));
+    assert!(back.duration_since(p.arrival).as_mins().abs() <= 30);
     // Accepted: nothing else proposed, no other switch.
     assert_eq!(ps.len(), 1);
     never(&run, &[M::Switched("late")]);
@@ -1929,7 +1930,7 @@ fn q9_31_cervieres_family_turnaround_at_its_pace() {
     // pace: a later turnaround, and no « now ».
     let b = built(&CERVIERES, "famille-13h", |r| {
         *r = presets::family_request(&CERVIERES, presets::past_day(&CERVIERES));
-        r.start_time = NaiveTime::from_hms_opt(13, 0, 0)
+        r.start_time = Time::new(13, 0, 0, 0).ok()
     });
     let model = calibration::ProfileModel::new(GroupProfile::app_default());
     let fam = for_group(&b, &model);
@@ -1947,7 +1948,7 @@ fn q9_31_cervieres_family_turnaround_at_its_pace() {
     );
     assert_eq!(
         tf.limit.unwrap(),
-        tb.limit.unwrap() - chrono::Duration::minutes(30),
+        tb.limit.unwrap() - jiff::SignedDuration::from_mins(30),
         "an hour of light kept with children"
     );
     assert!(pc.planned > pc.arrival, "planned on the slow side");
@@ -1998,7 +1999,7 @@ fn q9_31_cervieres_family_turnaround_at_its_pace() {
         .find(|o| is(o, &M::Alert(Alert::TurnaroundNow)))
         .unwrap();
     assert!(scenario::local(now.t()) < tf.limit.unwrap());
-    let back = run.t0 + chrono::Duration::seconds(arrival_rel(&run) as i64);
+    let back = run.t0 + jiff::SignedDuration::from_secs(arrival_rel(&run) as i64);
     println!(
         "retour {} (limite du groupe {}, limite de lumière moins 30 min {})",
         scenario::local(back),
@@ -2138,16 +2139,17 @@ fn q9_36_chapelle_family_without_profile_offered_its_profile() {
         let (t1, first) = ps.first().cloned().expect("a proposal");
         // Asked before the shorter way, which waits for the answer.
         assert!(*tp < t1, "{name}: profile at {tp} s, proposal at {t1} s");
-        let back = scenario::local(run.t0 + chrono::Duration::seconds(arrival_rel(&run) as i64));
-        let err = (first.arrival - back).num_minutes();
+        let back =
+            scenario::local(run.t0 + jiff::SignedDuration::from_secs(arrival_rel(&run) as i64));
+        let err = first.arrival.duration_since(back).as_mins();
         println!(
             "{name} : profil « {} » proposé à {tp:.0} s (rapport {:.1}), première proposition à {t1:.0} s, retour proposé {} ({}–{}), réel {}, erreur {err:+} min",
             p.profile.name,
             p.log_ratio,
-            first.arrival.format("%H:%M"),
-            first.arrival_lo.format("%H:%M"),
-            first.arrival_hi.format("%H:%M"),
-            back.format("%H:%M"),
+            first.arrival.strftime("%H:%M"),
+            first.arrival_lo.strftime("%H:%M"),
+            first.arrival_hi.strftime("%H:%M"),
+            back.strftime("%H:%M"),
         );
         errs.push(err);
     }

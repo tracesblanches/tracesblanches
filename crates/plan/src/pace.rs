@@ -30,7 +30,7 @@
 //! any switch) or the new return time; refused: « Itinéraire initial conservé. ». Turning
 //! back before nightfall stays the safety alert of J2 / A8.
 
-use chrono::{Duration, NaiveDateTime, Timelike};
+use jiff::{SignedDuration, civil::DateTime};
 use serde::{Deserialize, Serialize};
 use skimap_assist::alerts;
 use skimap_core::calibration::{
@@ -141,28 +141,28 @@ pub struct PlanPace {
     pub params: PaceParams,
     /// Model time of the loop per terrain (C5), seconds.
     pub model_s: [f64; TERRAINS],
-    /// Duration predicted for the group.
+    /// SignedDuration predicted for the group.
     pub prediction: Prediction,
     /// Arrival: median, 10 % and 90 % quantiles (local).
-    pub arrival: NaiveDateTime,
+    pub arrival: DateTime,
     /// 10 % quantile.
-    pub arrival_lo: NaiveDateTime,
+    pub arrival_lo: DateTime,
     /// 90 % quantile.
-    pub arrival_hi: NaiveDateTime,
+    pub arrival_hi: DateTime,
     /// Quantile of the total time the group is planned on (`ProfileModel::plan_quantile`:
     /// the slow side of the range with children, else the median).
     pub plan_q: f64,
     /// Arrival planned on (the median, or the slow side with children): the return time
     /// said, the reference of the proposals.
-    pub planned: NaiveDateTime,
+    pub planned: DateTime,
     /// A range is shown (little history or a wide spread), else a figure.
     pub range: bool,
     /// Text, French.
     pub text: String,
 }
 
-fn secs(s: f64) -> Duration {
-    Duration::milliseconds((s * 1000.0).round() as i64)
+fn secs(s: f64) -> SignedDuration {
+    SignedDuration::from_millis((s * 1000.0).round() as i64)
 }
 
 /// « 2 h 30 », « 45 min », rounded to 5 min.
@@ -171,7 +171,7 @@ pub fn duration_fr(s: f64) -> String {
 }
 
 /// « 15 h 20 », rounded to 5 min.
-pub fn clock_fr(t: NaiveDateTime) -> String {
+pub fn clock_fr(t: DateTime) -> String {
     crate::text::of(Lang::Fr).clock5(t)
 }
 
@@ -254,7 +254,7 @@ pub fn with_pace(plan: &mut DayPlan, g: &PisteGraph, model: &ProfileModel) -> Re
     ta.deadline = deadline;
     ta.limit = limit;
     ta.margin_min =
-        limit.map(|l| ((l - ta.arrival_with_margin).num_seconds() as f64 / 60.0).round());
+        limit.map(|l| (l.duration_since(ta.arrival_with_margin).as_secs() as f64 / 60.0).round());
     ta.latest_turnaround = plan.weather.as_ref().and_then(|w| {
         alerts::Monitor::for_model(
             plan.departure,
@@ -409,15 +409,15 @@ pub struct Proposal {
     /// Stopped time so far, minutes, and planned for the moving time so far.
     pub stops_min: (f64, f64),
     /// Arrival planned (local).
-    pub planned: NaiveDateTime,
+    pub planned: DateTime,
     /// Arrival on the loop at the day's pace (median).
-    pub loop_arrival: NaiveDateTime,
+    pub loop_arrival: DateTime,
     /// Arrival with the proposal (median, 10 %, 90 %).
-    pub arrival: NaiveDateTime,
+    pub arrival: DateTime,
     /// 10 % quantile.
-    pub arrival_lo: NaiveDateTime,
+    pub arrival_lo: DateTime,
     /// 90 % quantile.
-    pub arrival_hi: NaiveDateTime,
+    pub arrival_hi: DateTime,
     /// Delay of the loop on the planned arrival, minutes.
     pub delay_min: f64,
     /// Text, French (screen).
@@ -445,7 +445,7 @@ pub const PROPOSAL_PHRASES: [Fixed; 7] = [
 pub fn proposal_announcement(
     reason: PaceReason,
     kind: ProposalKind,
-    arrival: NaiveDateTime,
+    arrival: DateTime,
 ) -> Announcement {
     let r = match reason {
         PaceReason::Slower => Fixed::PlanPaceSlower,
@@ -482,7 +482,7 @@ pub fn proposal_text(
     reason: PaceReason,
     slower_pct: f64,
     kind: ProposalKind,
-    p: (NaiveDateTime, NaiveDateTime, NaiveDateTime),
+    p: (DateTime, DateTime, DateTime),
     saved_min: Option<f64>,
 ) -> String {
     proposal_text_in(reason, slower_pct, kind, p, saved_min, Lang::Fr)
@@ -493,7 +493,7 @@ pub fn proposal_text_in(
     reason: PaceReason,
     slower_pct: f64,
     kind: ProposalKind,
-    p: (NaiveDateTime, NaiveDateTime, NaiveDateTime),
+    p: (DateTime, DateTime, DateTime),
     saved_min: Option<f64>,
     lang: Lang,
 ) -> String {
@@ -544,7 +544,7 @@ mod tests {
             assert!(c.text.ends_with(end), "{}", c.text);
             assert!(never_safe(&c.text), "{}", c.text);
         }
-        let t = NaiveDateTime::parse_from_str("2026-01-09 15:20:00", "%Y-%m-%d %H:%M:%S").unwrap();
+        let t = DateTime::strptime("%Y-%m-%d %H:%M:%S", "2026-01-09 15:20:00").unwrap();
         let a = proposal_announcement(PaceReason::SlowerAndPauses, ProposalKind::ShortLoop, t);
         assert_eq!(
             a.text(),
@@ -554,7 +554,11 @@ mod tests {
             PaceReason::SlowerAndPauses,
             40.0,
             ProposalKind::ShortLoop,
-            (t, t - Duration::minutes(15), t + Duration::minutes(20)),
+            (
+                t,
+                t - SignedDuration::from_mins(15),
+                t + SignedDuration::from_mins(20),
+            ),
             Some(45.0),
         );
         assert_eq!(
@@ -569,7 +573,7 @@ mod tests {
         assert_eq!(duration_fr(2.5 * 3600.0), "2 h 30");
         assert_eq!(duration_fr(3.0 * 3600.0 + 13.0 * 60.0), "3 h 15");
         assert_eq!(duration_fr(42.0 * 60.0), "40 min");
-        let t = NaiveDateTime::parse_from_str("2026-01-09 15:18:40", "%Y-%m-%d %H:%M:%S").unwrap();
+        let t = DateTime::strptime("%Y-%m-%d %H:%M:%S", "2026-01-09 15:18:40").unwrap();
         assert_eq!(clock_fr(t), "15 h 20");
     }
 }

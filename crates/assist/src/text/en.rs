@@ -1,6 +1,6 @@
 //! Texts of the assistant in English.
 
-use chrono::{Datelike, NaiveDate, NaiveDateTime, Timelike};
+use jiff::civil::{Date, DateTime};
 
 use super::Texts;
 use crate::crowd::{CrowdLevel, Population};
@@ -83,12 +83,12 @@ impl Texts for En {
         format!("{x:.decimals$}")
     }
 
-    fn date(&self, d: NaiveDate) -> String {
+    fn date(&self, d: Date) -> String {
         format!(
             "{} {} {} {}",
-            WEEKDAYS[d.weekday().num_days_from_monday() as usize],
+            WEEKDAYS[d.weekday().to_monday_zero_offset() as usize],
             d.day(),
-            MONTHS[d.month0() as usize],
+            MONTHS[(d.month() - 1) as usize],
             d.year()
         )
     }
@@ -97,11 +97,11 @@ impl Texts for En {
         WEEKDAYS[monday0 % 7]
     }
 
-    fn clock(&self, t: NaiveDateTime) -> String {
+    fn clock(&self, t: DateTime) -> String {
         format!("{}:{:02}", t.hour(), t.minute())
     }
 
-    fn hour(&self, t: NaiveDateTime) -> String {
+    fn hour(&self, t: DateTime) -> String {
         format!("{}:00", t.hour())
     }
 
@@ -145,7 +145,7 @@ impl Texts for En {
         "sunny"
     }
 
-    fn snow_estimate(&self, depth: f64, map: NaiveDate, added: f64, share_pct: f64) -> String {
+    fn snow_estimate(&self, depth: f64, map: Date, added: f64, share_pct: f64) -> String {
         let added = if added >= 0.5 {
             format!(", {} cm fallen since", self.num(added, 0))
         } else {
@@ -154,7 +154,7 @@ impl Texts for En {
         format!(
             "{} cm of estimated snow (median, map of {}{added}, {} % of the points ≥ 20 cm)",
             self.num(depth, 0),
-            map.format("%d/%m"),
+            map.strftime("%d/%m"),
             share_pct
         )
     }
@@ -308,7 +308,7 @@ impl Texts for En {
         format!("{text} [{points:+.2}]")
     }
 
-    fn briefing_title(&self, site: &str, date: NaiveDate) -> String {
+    fn briefing_title(&self, site: &str, date: Date) -> String {
         format!("{site} — {}", self.date(date))
     }
 
@@ -335,7 +335,7 @@ impl Texts for En {
         format!("Snow quality ({point}): {}", summary.join(" "))
     }
 
-    fn briefing_sunset(&self, at: NaiveDateTime) -> String {
+    fn briefing_sunset(&self, at: DateTime) -> String {
         format!("Sunset {}:{:02}.", at.hour(), at.minute())
     }
 
@@ -433,11 +433,11 @@ impl Texts for En {
         format!("Best slot: {class} {slot} ({}).", self.quality(q))
     }
 
-    fn sq_aspect_at(&self, aspect: &str, at: NaiveDateTime) -> String {
+    fn sq_aspect_at(&self, aspect: &str, at: DateTime) -> String {
         format!("{aspect} {}", self.hour(at))
     }
 
-    fn sq_aspect_slope_from(&self, aspect: &str, slope: f64, at: NaiveDateTime) -> String {
+    fn sq_aspect_slope_from(&self, aspect: &str, slope: f64, at: DateTime) -> String {
         format!("{aspect} {slope}° from {}", self.hour(at))
     }
 
@@ -562,7 +562,7 @@ impl Texts for En {
         format!("{label} (loop no. {rank})")
     }
 
-    fn s_loop(&self, km: f64, gain: f64, time: &str, back: NaiveDateTime) -> String {
+    fn s_loop(&self, km: f64, gain: f64, time: &str, back: DateTime) -> String {
         format!(
             "{} km, {gain} m climb, {time}, back around {}",
             self.num(km, 1),
@@ -648,7 +648,7 @@ impl Texts for En {
         )
     }
 
-    fn s_too_late(&self, n: usize, limit: Option<NaiveDateTime>) -> String {
+    fn s_too_late(&self, n: usize, limit: Option<DateTime>) -> String {
         format!(
             "{n} loops set aside: back after {}",
             limit.map(|l| self.clock(l)).unwrap_or_default()
@@ -696,9 +696,9 @@ impl Texts for En {
         &self,
         label: &str,
         start: &str,
-        date: NaiveDate,
-        at: NaiveDateTime,
-        deadline: Option<NaiveDateTime>,
+        date: Date,
+        at: DateTime,
+        deadline: Option<DateTime>,
         group: Option<&str>,
     ) -> String {
         format!(
@@ -781,21 +781,21 @@ impl Texts for En {
         )
     }
 
-    fn bt_near_deadline(&self, deadline: NaiveDateTime) -> String {
+    fn bt_near_deadline(&self, deadline: DateTime) -> String {
         format!(
             "back less than 30 min before the time limit ({})",
             self.clock(deadline)
         )
     }
 
-    fn bt_other_start(&self, start: NaiveDateTime, lost: &[String]) -> String {
+    fn bt_other_start(&self, start: DateTime, lost: &[String]) -> String {
         format!("starting at {}: {}", self.clock(start), lost.join(", "))
     }
 
     fn bt_best(
         &self,
-        start: NaiveDateTime,
-        back: NaiveDateTime,
+        start: DateTime,
+        back: DateTime,
         minutes: f64,
         why: &[String],
         others: &[String],
@@ -822,7 +822,7 @@ impl Texts for En {
         "No best time: no hourly weather forecast for this day in the pack."
     }
 
-    fn bt_none(&self, minutes: f64, deadline: Option<NaiveDateTime>) -> String {
+    fn bt_none(&self, minutes: f64, deadline: Option<DateTime>) -> String {
         format!(
             "No time slot: a {} min outing does not end before the time limit{}.",
             minutes.round(),
@@ -981,7 +981,7 @@ impl Texts for En {
         format!("off-piste with a BERA of {level} out of 5")
     }
 
-    fn eq_back_after_sunset(&self, back: NaiveDateTime, sunset: NaiveDateTime) -> String {
+    fn eq_back_after_sunset(&self, back: DateTime, sunset: DateTime) -> String {
         format!(
             "back planned around {}, sunset at {}",
             self.clock(back),
@@ -989,7 +989,7 @@ impl Texts for En {
         )
     }
 
-    fn eq_start_before_sunrise(&self, start: NaiveDateTime, sunrise: NaiveDateTime) -> String {
+    fn eq_start_before_sunrise(&self, start: DateTime, sunrise: DateTime) -> String {
         format!(
             "start at {}, before sunrise ({})",
             self.clock(start),
@@ -1247,7 +1247,7 @@ impl Texts for En {
         format!("the temperature is dropping: {temperature} °C, feels like {chill} °C within 3 h")
     }
 
-    fn al_turn_now(&self, late_min: f64, pace: f64, deadline: Option<NaiveDateTime>) -> String {
+    fn al_turn_now(&self, late_min: f64, pace: f64, deadline: Option<DateTime>) -> String {
         format!(
             "{late_min} min late (pace × {pace:.2}): turn back now to be back before {}",
             deadline.map(|d| self.clock(d)).unwrap_or_default()
@@ -1258,8 +1258,8 @@ impl Texts for En {
         &self,
         late_min: f64,
         pace: f64,
-        deadline: Option<NaiveDateTime>,
-        turn: NaiveDateTime,
+        deadline: Option<DateTime>,
+        turn: DateTime,
     ) -> String {
         format!(
             "{late_min} min late (pace × {pace:.2}): the loop no longer ends before {}; turn back at {} at the latest",

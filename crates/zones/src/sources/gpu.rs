@@ -13,6 +13,7 @@ use skimap_common::geom::BBox;
 use super::{RawZone, prop_str, wfs_features};
 use crate::error::Result;
 use crate::layer::{ZoneKind, ZoneProps};
+use jiff::civil::Date;
 
 /// GPU easement layer.
 pub const LAYER: &str = "wfs_sup:assiette_sup_s";
@@ -163,7 +164,7 @@ pub fn act_date(fichier: &str) -> Option<String> {
     if m == "00" || day == "00" {
         return None;
     }
-    chrono::NaiveDate::parse_from_str(&format!("{y}-{m}-{day}"), "%Y-%m-%d")
+    Date::strptime("%Y-%m-%d", format!("{y}-{m}-{day}"))
         .ok()
         .map(|d| d.to_string())
 }

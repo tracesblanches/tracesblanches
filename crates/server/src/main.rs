@@ -187,7 +187,7 @@ fn run(cli: Cli) -> Result<()> {
             if let Some(root) = all_in {
                 packs.extend(site_packs(&root)?);
             }
-            let reports = store.publish_many(&packs, chrono::Utc::now(), retention)?;
+            let reports = store.publish_many(&packs, jiff::Timestamp::now(), retention)?;
             let mut failed = 0;
             for (p, r) in packs.iter().zip(reports) {
                 match r {

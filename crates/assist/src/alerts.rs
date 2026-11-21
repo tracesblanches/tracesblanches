@@ -34,7 +34,7 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 
-use chrono::{Duration, NaiveDateTime, Timelike};
+use jiff::{SignedDuration, civil::DateTime};
 use serde::Serialize;
 use skimap_core::calibration::{PaceParams, ProfileModel};
 use skimap_core::turnaround::{self, TurnaroundParams};
@@ -110,7 +110,7 @@ pub enum Kind {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Alert {
     /// Time, local.
-    pub at: NaiveDateTime,
+    pub at: DateTime,
     /// Kind.
     pub kind: Kind,
     /// Text, French.
@@ -130,35 +130,33 @@ pub struct Alert {
 /// forgetting which alerts were already said.
 #[derive(Debug, Clone)]
 pub struct Monitor<'a> {
-    start: NaiveDateTime,
+    start: DateTime,
     profile: Cow<'a, Profile>,
     point: Cow<'a, WeatherPoint>,
     p: Params,
-    deadline: Option<NaiveDateTime>,
+    deadline: Option<DateTime>,
     base_gust: f64,
-    last: HashMap<Kind, NaiveDateTime>,
-    planned_turn: Option<NaiveDateTime>,
-    said_turn: Option<NaiveDateTime>,
+    last: HashMap<Kind, DateTime>,
+    planned_turn: Option<DateTime>,
+    said_turn: Option<DateTime>,
     /// Lowest temperature and wind chill already announced.
     said_cold: (f64, f64),
     /// Language of the texts (VO6).
     lang: Lang,
 }
 
-fn hour_at(point: &WeatherPoint, t: NaiveDateTime) -> Option<&WeatherHour> {
-    let h0 =
-        t - Duration::minutes(i64::from(t.minute())) - Duration::seconds(i64::from(t.second()));
-    point.between(h0, h0 + Duration::hours(1)).first()
+fn hour_at(point: &WeatherPoint, t: DateTime) -> Option<&WeatherHour> {
+    let h0 = t
+        - SignedDuration::from_mins(i64::from(t.minute()))
+        - SignedDuration::from_secs(i64::from(t.second()));
+    point
+        .between(h0, h0 + SignedDuration::from_hours(1))
+        .first()
 }
 
 impl<'a> Monitor<'a> {
     /// Monitor of a route started at `start`, with the weather of `point`.
-    pub fn new(
-        start: NaiveDateTime,
-        profile: &'a Profile,
-        point: &'a WeatherPoint,
-        p: Params,
-    ) -> Self {
+    pub fn new(start: DateTime, profile: &'a Profile, point: &'a WeatherPoint, p: Params) -> Self {
         Self::with(start, Cow::Borrowed(profile), Cow::Borrowed(point), p)
     }
 
@@ -167,7 +165,7 @@ impl<'a> Monitor<'a> {
     /// [`Profile::for_group`]; `ratio`: the `skimap_core::calibration::terrain_ratio` of
     /// the route's time model.
     pub fn for_group(
-        start: NaiveDateTime,
+        start: DateTime,
         profile: &Profile,
         point: &'a WeatherPoint,
         p: Params,
@@ -187,7 +185,7 @@ impl<'a> Monitor<'a> {
     /// range with children, `ProfileModel::plan_quantile`) and with its light margin
     /// (`GroupProfile::turnaround_params`).
     pub fn for_model(
-        start: NaiveDateTime,
+        start: DateTime,
         profile: &Profile,
         point: Cow<'a, WeatherPoint>,
         p: Params,
@@ -205,7 +203,7 @@ impl<'a> Monitor<'a> {
 
     /// Monitor of a route started at `start`, with a borrowed or owned profile and point.
     pub fn with(
-        start: NaiveDateTime,
+        start: DateTime,
         profile: Cow<'a, Profile>,
         point: Cow<'a, WeatherPoint>,
         p: Params,
@@ -215,7 +213,7 @@ impl<'a> Monitor<'a> {
 
     /// [`Monitor::with`] with the light limit and margin `tp` (C7).
     pub fn with_turnaround(
-        start: NaiveDateTime,
+        start: DateTime,
         profile: Cow<'a, Profile>,
         point: Cow<'a, WeatherPoint>,
         p: Params,
@@ -252,12 +250,12 @@ impl<'a> Monitor<'a> {
 
     /// Latest turnaround at a pace from the current position, `None` when the whole route
     /// can be finished before the deadline (or there is no deadline).
-    fn latest_turn(&self, now: NaiveDateTime, along_m: f64, pace: f64) -> Option<NaiveDateTime> {
+    fn latest_turn(&self, now: DateTime, along_m: f64, pace: f64) -> Option<DateTime> {
         let d = self.deadline?;
         let f = TurnaroundParams::default().eta_factor;
         let pr: &Profile = &self.profile;
         let i0 = pr.index_at(along_m);
-        let secs = |s: f64| Duration::seconds(s.round() as i64);
+        let secs = |s: f64| SignedDuration::from_secs(s.round() as i64);
         let finish = now + secs(pace * f * (pr.total_s() - pr.out_s[i0]));
         if finish <= d {
             return None;
@@ -273,35 +271,36 @@ impl<'a> Monitor<'a> {
             }
         }
         // Even turning now is too late: the latest turnaround has passed.
-        Some(best.unwrap_or(now - Duration::minutes(1)))
+        Some(best.unwrap_or(now - SignedDuration::from_mins(1)))
     }
 
-    fn may(&self, kind: Kind, now: NaiveDateTime) -> bool {
+    fn may(&self, kind: Kind, now: DateTime) -> bool {
         self.last
             .get(&kind)
-            .is_none_or(|t| (now - *t).num_minutes() >= self.p.repeat_min)
+            .is_none_or(|t| now.duration_since(*t).as_mins() >= self.p.repeat_min)
     }
 
     /// Alerts at `now`, having travelled `along_m` metres of the route.
-    pub fn update(&mut self, now: NaiveDateTime, along_m: f64) -> Vec<Alert> {
+    pub fn update(&mut self, now: DateTime, along_m: f64) -> Vec<Alert> {
         let mut out = Vec::new();
         let p = self.p;
         // The conditions known at the departure are the briefing's (A1, A7): weather alerts
         // start 10 minutes after it, and only look at hours before the planned return.
-        let cur = (now >= self.start + Duration::minutes(10))
+        let cur = (now >= self.start + SignedDuration::from_mins(10))
             .then(|| hour_at(&self.point, now).cloned())
             .flatten();
         let end = self.start
-            + Duration::seconds(
+            + SignedDuration::from_secs(
                 (self.profile.total_s() * TurnaroundParams::default().eta_factor) as i64,
             );
-        let end = end.max(now + Duration::minutes(30));
+        let end = end.max(now + SignedDuration::from_mins(30));
         // Aggregates of the hours ahead (computed on the slices, without copying them: the
         // phone calls this once a minute during the outing).
         let (g_max, fog_ahead, s_ahead) = {
-            let ahead = self
-                .point
-                .between(now, (now + Duration::minutes(p.lookahead_min)).min(end));
+            let ahead = self.point.between(
+                now,
+                (now + SignedDuration::from_mins(p.lookahead_min)).min(end),
+            );
             (
                 ahead.iter().filter_map(|h| h.gust_kmh).fold(0.0, f64::max),
                 ahead.iter().any(|h| h.fog == Some(true)),
@@ -312,7 +311,9 @@ impl<'a> Monitor<'a> {
             )
         };
         let (chill_min, t_min) = {
-            let three = self.point.between(now, (now + Duration::hours(3)).min(end));
+            let three = self
+                .point
+                .between(now, (now + SignedDuration::from_hours(3)).min(end));
             (
                 three
                     .iter()
@@ -394,7 +395,7 @@ impl<'a> Monitor<'a> {
         let pr: &Profile = &self.profile;
         let i = pr.index_at(along_m);
         let planned = pr.out_s[i];
-        let elapsed = (now - self.start).num_seconds() as f64;
+        let elapsed = now.duration_since(self.start).as_secs() as f64;
         let late_s = elapsed - planned;
         let before_night = self.deadline.is_none_or(|d| now < d);
         if before_night
@@ -425,12 +426,12 @@ impl<'a> Monitor<'a> {
                     }
                 } else {
                     let earlier = match self.planned_turn {
-                        Some(t0) => (t0 - t).num_minutes() >= p.advance_min,
+                        Some(t0) => t0.duration_since(t).as_mins() >= p.advance_min,
                         None => true,
                     };
                     let new = self
                         .said_turn
-                        .is_none_or(|s| (s - t).num_minutes() >= p.advance_min);
+                        .is_none_or(|s| s.duration_since(t).as_mins() >= p.advance_min);
                     if earlier && new {
                         self.said_turn = Some(t);
                         let clock = Clock::floor_quarter(t.hour() as u8, t.minute() as u8);
@@ -453,7 +454,7 @@ impl<'a> Monitor<'a> {
     }
 
     /// Latest turnaround at the planned pace (`None`: the route ends before the deadline).
-    pub fn planned_turnaround(&self) -> Option<NaiveDateTime> {
+    pub fn planned_turnaround(&self) -> Option<DateTime> {
         self.planned_turn
     }
 
@@ -471,14 +472,14 @@ impl<'a> Monitor<'a> {
     }
 
     /// C7 deadline, local.
-    pub fn deadline(&self) -> Option<NaiveDateTime> {
+    pub fn deadline(&self) -> Option<DateTime> {
         self.deadline
     }
 }
 
 /// Replays a trace (time, distance along the route) and collects every alert.
 pub fn replay(
-    start: NaiveDateTime,
+    start: DateTime,
     profile: &Profile,
     point: &WeatherPoint,
     trace: &[(f64, f64)],
@@ -489,7 +490,7 @@ pub fn replay(
 
 /// [`replay`] with the texts in `lang` (VO6).
 pub fn replay_in(
-    start: NaiveDateTime,
+    start: DateTime,
     profile: &Profile,
     point: &WeatherPoint,
     trace: &[(f64, f64)],
@@ -499,20 +500,20 @@ pub fn replay_in(
     let mut m = Monitor::new(start, profile, point, p).in_lang(lang);
     trace
         .iter()
-        .flat_map(|(t_s, along)| m.update(start + Duration::seconds(*t_s as i64), *along))
+        .flat_map(|(t_s, along)| m.update(start + SignedDuration::from_secs(*t_s as i64), *along))
         .collect()
 }
 
 /// Weather alerts of a day: an outing from 10 h of 5 hours model time (planned return at
 /// 16 h with the 1.2 margin), at the planned pace, one update every 5 minutes.
-pub fn day_replay(point: &WeatherPoint, date: chrono::NaiveDate, p: Params) -> Vec<Alert> {
+pub fn day_replay(point: &WeatherPoint, date: jiff::civil::Date, p: Params) -> Vec<Alert> {
     day_replay_in(point, date, p, Lang::Fr)
 }
 
 /// [`day_replay`] with the texts in `lang` (VO6).
 pub fn day_replay_in(
     point: &WeatherPoint,
-    date: chrono::NaiveDate,
+    date: jiff::civil::Date,
     p: Params,
     lang: Lang,
 ) -> Vec<Alert> {
@@ -522,7 +523,7 @@ pub fn day_replay_in(
         out_s: (0..=n).map(|i| f64::from(i) * 60.0).collect(),
         back_s: (0..=n).map(|i| f64::from(i) * 60.0).collect(),
     };
-    let start = date.and_hms_opt(10, 0, 0).expect("10 h");
+    let start = date.at(10, 0, 0, 0);
     let trace = synthetic_trace(&profile, 1.0, 300.0);
     replay_in(start, &profile, point, &trace, p, lang)
 }
@@ -555,18 +556,16 @@ pub fn synthetic_trace(profile: &Profile, slowdown: f64, dt_s: f64) -> Vec<(f64,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::NaiveDate;
+
+    use jiff::civil::date;
     use skimap_common::geom::LonLat;
 
-    fn hhmm(t: NaiveDateTime) -> String {
+    fn hhmm(t: DateTime) -> String {
         crate::text::of(Lang::Fr).clock(t)
     }
 
     fn point(f: impl Fn(u32) -> (f64, f64, bool, f64)) -> WeatherPoint {
-        let d0 = NaiveDate::from_ymd_opt(2027, 1, 12)
-            .unwrap()
-            .and_hms_opt(0, 0, 0)
-            .unwrap();
+        let d0 = date(2027, 1, 12).at(0, 0, 0, 0);
         WeatherPoint {
             id: "p".into(),
             name: "P".into(),
@@ -576,7 +575,7 @@ mod tests {
                 .map(|i| {
                     let (t, gust, fog, snow) = f(i);
                     WeatherHour {
-                        time: d0 + Duration::hours(i64::from(i)),
+                        time: d0 + SignedDuration::from_hours(i64::from(i)),
                         temperature_c: Some(t),
                         apparent_temperature_c: None,
                         wind_chill_c: Some(t - 3.0),
@@ -617,10 +616,7 @@ mod tests {
                 if h >= 15 { 1.0 } else { 0.0 },
             )
         });
-        let start = NaiveDate::from_ymd_opt(2027, 1, 12)
-            .unwrap()
-            .and_hms_opt(11, 0, 0)
-            .unwrap();
+        let start = date(2027, 1, 12).at(11, 0, 0, 0);
         let pr = profile();
         let trace = synthetic_trace(&pr, 1.0, 300.0);
         let alerts = replay(start, &pr, &pt, &trace, Params::default());
@@ -651,10 +647,7 @@ mod tests {
         use skimap_core::eta::EtaModel;
         use skimap_core::routing::Style;
         let pt = point(|_| (-5.0, 15.0, false, 0.0));
-        let start = NaiveDate::from_ymd_opt(2027, 1, 12)
-            .unwrap()
-            .and_hms_opt(9, 0, 0)
-            .unwrap();
+        let start = date(2027, 1, 12).at(9, 0, 0, 0);
         let pr = profile();
         let ratio = terrain_ratio(&EtaModel::new(Style::Classic));
         // A family with children of 6 and 9: the 4 h model loop takes it about 2.5 times
@@ -678,7 +671,7 @@ mod tests {
         let m = Monitor::for_group(start, &pr, &pt, Params::default(), &family, ratio);
         let t = m.planned_turnaround().expect("a turnaround for the family");
         assert!(
-            t > start + Duration::hours(2) && t < start + Duration::hours(6),
+            t > start + SignedDuration::from_hours(2) && t < start + SignedDuration::from_hours(6),
             "{t}"
         );
         // The family at its own pace: on time for itself, nothing said; judged against the
@@ -687,15 +680,19 @@ mod tests {
         let mut mg = Monitor::for_group(start, &pr, &pt, Params::default(), &family, ratio);
         let said: Vec<Alert> = trace
             .iter()
-            .take_while(|(t_s, _)| start + Duration::seconds(*t_s as i64) < t)
-            .flat_map(|(t_s, along)| mg.update(start + Duration::seconds(*t_s as i64), *along))
+            .take_while(|(t_s, _)| start + SignedDuration::from_secs(*t_s as i64) < t)
+            .flat_map(|(t_s, along)| {
+                mg.update(start + SignedDuration::from_secs(*t_s as i64), *along)
+            })
             .collect();
         assert!(said.is_empty(), "{said:#?}");
         let mut mm = Monitor::new(start, &pr, &pt, Params::default());
         let model: Vec<Alert> = trace
             .iter()
-            .take_while(|(t_s, _)| start + Duration::seconds(*t_s as i64) < t)
-            .flat_map(|(t_s, along)| mm.update(start + Duration::seconds(*t_s as i64), *along))
+            .take_while(|(t_s, _)| start + SignedDuration::from_secs(*t_s as i64) < t)
+            .flat_map(|(t_s, along)| {
+                mm.update(start + SignedDuration::from_secs(*t_s as i64), *along)
+            })
             .collect();
         assert!(
             model.iter().any(|a| a.kind == Kind::TurnaroundAdvanced),
@@ -706,7 +703,9 @@ mod tests {
         let mut ms = Monitor::for_group(start, &pr, &pt, Params::default(), &family, ratio);
         let late: Vec<Alert> = slow
             .iter()
-            .flat_map(|(t_s, along)| ms.update(start + Duration::seconds(*t_s as i64), *along))
+            .flat_map(|(t_s, along)| {
+                ms.update(start + SignedDuration::from_secs(*t_s as i64), *along)
+            })
             .collect();
         assert!(
             late.iter()
@@ -728,10 +727,7 @@ mod tests {
     fn delay_advances_the_turnaround() {
         let pt = point(|_| (-5.0, 15.0, false, 0.0));
         // Start 09:00, 4 h model loop: back at 13:48 at the planned pace, deadline ≈ 16:40.
-        let start = NaiveDate::from_ymd_opt(2027, 1, 12)
-            .unwrap()
-            .and_hms_opt(9, 0, 0)
-            .unwrap();
+        let start = date(2027, 1, 12).at(9, 0, 0, 0);
         let pr = profile();
         let m = Monitor::new(start, &pr, &pt, Params::default());
         assert!(m.planned_turnaround().is_none());
@@ -771,33 +767,30 @@ mod tests {
         );
     }
 
-    fn day(h: u32, m: u32, s: u32) -> NaiveDateTime {
-        NaiveDate::from_ymd_opt(2027, 1, 12)
-            .unwrap()
-            .and_hms_opt(h, m, s)
-            .unwrap()
+    fn day(h: u32, m: u32, s: u32) -> DateTime {
+        date(2027, 1, 12).to_datetime(skimap_common::dates::hms(h, m, s).unwrap())
     }
 
     /// The latest turnaround on the flat route of [`profile`] (72 s per 100 m both ways),
     /// from `i0` at a pace: the last station `i` from which going on to it and back the
     /// same way (× 1.2) ends by the deadline.
-    fn expected_turn(now: NaiveDateTime, d: NaiveDateTime, i0: usize, pace: f64) -> NaiveDateTime {
+    fn expected_turn(now: DateTime, d: DateTime, i0: usize, pace: f64) -> DateTime {
         let mut best = None;
         for i in i0..=200 {
             let ahead = (pace * 72.0 * (i - i0) as f64).round() as i64;
             let total =
                 (pace * 72.0 * (i - i0) as f64 + pace * 1.2 * 72.0 * i as f64).round() as i64;
-            if now + Duration::seconds(total) <= d {
-                best = Some(now + Duration::seconds(ahead));
+            if now + SignedDuration::from_secs(total) <= d {
+                best = Some(now + SignedDuration::from_secs(ahead));
             } else {
                 break;
             }
         }
-        best.unwrap_or(now - Duration::minutes(1))
+        best.unwrap_or(now - SignedDuration::from_mins(1))
     }
 
     /// The C7 deadline of the test day at the test point.
-    fn deadline_of_the_day() -> NaiveDateTime {
+    fn deadline_of_the_day() -> DateTime {
         let pt = point(|_| (-5.0, 15.0, false, 0.0));
         skimap_core::ephemeris::local_time(
             turnaround::deadline(
@@ -817,15 +810,20 @@ mod tests {
         let dl = deadline_of_the_day();
         // Leaving 4 h before the deadline, the 4 h loop (× 1.2) ends after it: the
         // turnaround is the last station from which the way back ends in time.
-        let start = dl - Duration::hours(4);
+        let start = dl - SignedDuration::from_hours(4);
         let m = Monitor::new(start, &pr, &pt, Params::default());
         assert_eq!(m.deadline(), Some(dl));
         assert_eq!(m.profile().total_s(), pr.total_s());
         let t = m.planned_turnaround().unwrap();
         assert_eq!(t, expected_turn(start, dl, 0, 1.0));
-        assert!(t > start + Duration::hours(1) && t < dl, "{t}");
+        assert!(t > start + SignedDuration::from_hours(1) && t < dl, "{t}");
         // 5 h before: it ends in time, no turnaround.
-        let m = Monitor::new(dl - Duration::hours(5), &pr, &pt, Params::default());
+        let m = Monitor::new(
+            dl - SignedDuration::from_hours(5),
+            &pr,
+            &pt,
+            Params::default(),
+        );
         assert_eq!(m.planned_turnaround(), None);
         // A shorter route from the same start: recomputed.
         let mut m = Monitor::new(start, &pr, &pt, Params::default());
@@ -850,33 +848,28 @@ mod tests {
     }
 
     /// The alerts of one update `late_s` seconds late at a station of [`profile60`].
-    fn turnaround_alerts(start: NaiveDateTime, late_s: i64, station: usize) -> Vec<Alert> {
+    fn turnaround_alerts(start: DateTime, late_s: i64, station: usize) -> Vec<Alert> {
         let pt = point(|_| (-5.0, 15.0, false, 0.0));
         let pr = profile60();
         let mut m = Monitor::new(start, &pr, &pt, Params::default());
-        let now = start + Duration::seconds(60 * station as i64 + late_s);
+        let now = start + SignedDuration::from_secs(60 * station as i64 + late_s);
         m.update(now, 100.0 * station as f64)
     }
 
     /// The latest turnaround on [`profile60`] from a station at a pace.
-    fn expected_turn60(
-        now: NaiveDateTime,
-        d: NaiveDateTime,
-        i0: usize,
-        pace: f64,
-    ) -> NaiveDateTime {
+    fn expected_turn60(now: DateTime, d: DateTime, i0: usize, pace: f64) -> DateTime {
         let mut best = None;
         for i in i0..=200 {
             let ahead = (pace * 60.0 * (i - i0) as f64).round() as i64;
             let total =
                 (pace * 60.0 * (i - i0) as f64 + pace * 1.2 * 60.0 * i as f64).round() as i64;
-            if now + Duration::seconds(total) <= d {
-                best = Some(now + Duration::seconds(ahead));
+            if now + SignedDuration::from_secs(total) <= d {
+                best = Some(now + SignedDuration::from_secs(ahead));
             } else {
                 break;
             }
         }
-        best.unwrap_or(now - Duration::minutes(1))
+        best.unwrap_or(now - SignedDuration::from_mins(1))
     }
 
     #[test]
@@ -885,7 +878,7 @@ mod tests {
         let pr = profile60();
         let dl = deadline_of_the_day();
         // 5 h before the deadline the 3 h 20 route (× 1.2 = 4 h) ends in time.
-        let start = dl - Duration::hours(5);
+        let start = dl - SignedDuration::from_hours(5);
         let m = Monitor::new(start, &pr, &pt, Params::default());
         assert_eq!(m.planned_turnaround(), None);
         // 20 min of planned time (station 20), 10 min late: at pace 1.5 the route no
@@ -893,7 +886,7 @@ mod tests {
         let a = turnaround_alerts(start, 600, 20);
         assert_eq!(a.len(), 1, "{a:#?}");
         assert_eq!(a[0].kind, Kind::TurnaroundAdvanced);
-        let now = start + Duration::seconds(1800);
+        let now = start + SignedDuration::from_secs(1800);
         let t = expected_turn60(now, dl, 20, 1.5);
         assert!(t > now);
         assert_eq!(
@@ -917,18 +910,18 @@ mod tests {
         // move with the delay, so 10 min later and later still nothing new is said.
         let mut m = Monitor::new(start, &pr, &pt, Params::default());
         assert_eq!(m.update(now, 2000.0).len(), 1);
-        let later = start + Duration::seconds(60 * 25 + 900);
+        let later = start + SignedDuration::from_secs(60 * 25 + 900);
         assert!(m.update(later, 2500.0).is_empty());
         // Planned with a turnaround already (3 h 54 before the deadline): late, the same
         // turnaround, within 10 minutes of the planned one: not said.
-        let start2 = dl - Duration::minutes(234);
+        let start2 = dl - SignedDuration::from_mins(234);
         let m2 = Monitor::new(start2, &pr, &pt, Params::default());
         let t0 = m2.planned_turnaround().unwrap();
         assert_eq!(t0, expected_turn60(start2, dl, 0, 1.0));
         assert!(turnaround_alerts(start2, 600, 20).is_empty());
         // Late by 10 % of the planned time at least: 2 h 30 of planned time (station 150)
         // 15 min before the deadline: too late to go on; turn around now.
-        let start3 = dl - Duration::hours(3);
+        let start3 = dl - SignedDuration::from_hours(3);
         let a = turnaround_alerts(start3, 900, 150);
         assert_eq!(a.len(), 1, "{a:#?}");
         assert_eq!(a[0].kind, Kind::TurnaroundNow);
@@ -942,12 +935,18 @@ mod tests {
         assert!(turnaround_alerts(start3, 899, 150).is_empty());
         // Said once, not again within two hours.
         let mut m = Monitor::new(start3, &pr, &pt, Params::default());
-        let now3 = start3 + Duration::seconds(9900);
+        let now3 = start3 + SignedDuration::from_secs(9900);
         assert_eq!(m.update(now3, 15_000.0).len(), 1);
-        assert!(m.update(now3 + Duration::minutes(5), 15_000.0).is_empty());
+        assert!(
+            m.update(now3 + SignedDuration::from_mins(5), 15_000.0)
+                .is_empty()
+        );
         // After the deadline itself: nothing more (A8 says it no longer).
         let mut m = Monitor::new(start3, &pr, &pt, Params::default());
-        assert!(m.update(dl + Duration::minutes(1), 15_000.0).is_empty());
+        assert!(
+            m.update(dl + SignedDuration::from_mins(1), 15_000.0)
+                .is_empty()
+        );
     }
 
     #[test]
@@ -966,7 +965,7 @@ mod tests {
                 back_s: (0..=n).map(|i| f64::from(i) * minutes * 0.6).collect(),
             }
         };
-        let fog_at = |minutes: f64, now: NaiveDateTime| {
+        let fog_at = |minutes: f64, now: DateTime| {
             let pr = route(minutes);
             let mut m = Monitor::new(day(10, 0, 0), &pr, &pt, Params::default());
             m.update(now, 0.0).iter().any(|a| a.kind == Kind::Fog)

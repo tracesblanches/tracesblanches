@@ -32,7 +32,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result, anyhow, bail};
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use skimap_common::output::{AtomicFile, FileLock, copy_file};
@@ -473,7 +473,7 @@ impl Store {
     pub fn publish(
         &self,
         pack_dir: &Path,
-        now: DateTime<Utc>,
+        now: Timestamp,
         retention: Retention,
     ) -> Result<PublishReport> {
         self.publish_with(pack_dir, now, retention, true)
@@ -486,7 +486,7 @@ impl Store {
     pub fn publish_many(
         &self,
         packs: &[PathBuf],
-        now: DateTime<Utc>,
+        now: Timestamp,
         retention: Retention,
     ) -> Result<Vec<Result<PublishReport>>> {
         let reports: Vec<Result<PublishReport>> = packs
@@ -507,7 +507,7 @@ impl Store {
     fn publish_with(
         &self,
         pack_dir: &Path,
-        now: DateTime<Utc>,
+        now: Timestamp,
         retention: Retention,
         finish: bool,
     ) -> Result<PublishReport> {
@@ -597,7 +597,7 @@ impl Store {
         let entry = VersionEntry {
             site: site.clone(),
             pack_version: new.pack_version.clone(),
-            published_at: now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            published_at: now.strftime("%Y-%m-%dT%H:%M:%SZ").to_string(),
             manifest_sha256: manifest_sha.clone(),
             manifest_bytes: manifest_bytes.len() as u64,
             total_bytes: new.total_bytes,

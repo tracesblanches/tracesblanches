@@ -7,7 +7,8 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use chrono::{TimeZone, Utc};
+use jiff::civil::date;
+use jiff::tz::Offset;
 use skimap_server::alerts::mail::{Email, Mailer, SmtpConfig, SmtpMailer, Tls};
 use skimap_server::alerts::{Alerts, TripPlan};
 use skimap_server::clock::{Clock, ManualClock};
@@ -207,7 +208,7 @@ fn whole_alert_chain_through_smtp() {
     let (port, seen) = fake_relay("alertes@example.org", "app-password");
     let dir = tempfile::tempdir().unwrap();
     let clock = Arc::new(ManualClock::new(
-        Utc.with_ymd_and_hms(2027, 1, 10, 7, 0, 0).unwrap(),
+        skimap_common::dates::utc(date(2027, 1, 10).at(7, 0, 0, 0)).unwrap(),
     ));
     let alerts = Alerts::open(
         &dir.path().join("a.sqlite"),
@@ -218,13 +219,13 @@ fn whole_alert_chain_through_smtp() {
     .unwrap();
     let plan: TripPlan = serde_json::from_value(serde_json::json!({
         "skier_name": "Marie", "contacts": ["paul@example.org"],
-        "deadline": (clock.now() + chrono::Duration::hours(8)).to_rfc3339(),
+        "deadline": (clock.now() + jiff::SignedDuration::from_hours(8)).display_with_offset(Offset::UTC).to_string(),
         "grace_minutes": 0, "site": "chapelle-des-bois",
         "plan": "Crêtes du Risoux, aller-retour."
     }))
     .unwrap();
     alerts.create(plan).unwrap().unwrap();
-    clock.advance(chrono::Duration::hours(8));
+    clock.advance(jiff::SignedDuration::from_hours(8));
     let rep = alerts.tick().unwrap();
     assert_eq!((rep.alerted, rep.sent), (1, 1));
     let seen = seen.lock().unwrap();

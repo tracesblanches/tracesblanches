@@ -15,7 +15,7 @@
 use std::collections::BTreeMap;
 use std::time::Instant;
 
-use chrono::{Datelike, NaiveDate};
+use jiff::civil::Date;
 use serde::{Deserialize, Serialize};
 use skimap_common::crs::to_lambert93;
 use skimap_common::download::Downloader;
@@ -136,7 +136,7 @@ pub struct StationValidation {
     /// Aspect of the 25 m cell, degrees (-1 flat).
     pub cell_aspect_deg: f32,
     /// First and last compared day.
-    pub period: [NaiveDate; 2],
+    pub period: [Date; 2],
     /// Product statistics over all days.
     pub product: Stats,
     /// Flat-at-station-altitude statistics over all days.
@@ -193,10 +193,10 @@ fn month_stats(by_month: BTreeMap<u32, PairLists>) -> Vec<MonthStats> {
 }
 
 /// Season start year of a date (November–May), `None` in summer.
-pub fn season_of(d: NaiveDate) -> Option<i32> {
+pub fn season_of(d: Date) -> Option<i32> {
     match d.month() {
-        11 | 12 => Some(d.year()),
-        1..=5 => Some(d.year() - 1),
+        11 | 12 => Some(i32::from(d.year())),
+        1..=5 => Some(i32::from(d.year()) - 1),
         _ => None,
     }
 }
@@ -252,11 +252,11 @@ pub fn validate(
     let mut codes: Vec<u16> = cells.iter().map(|c| c.5).collect();
     codes.sort_unstable();
     codes.dedup();
-    let current_year = chrono::Utc::now().year();
+    let current_year = i32::from(skimap_common::dates::utc_date(jiff::Timestamp::now()).year());
     let mut sim = Simulation::default();
     for year in first..=last + 1 {
         let gz = fetch_year(dl, year, year == current_year)?;
-        let keep = |d: NaiveDate| season_of(d).is_some_and(|s| (first..=last).contains(&s));
+        let keep = |d: Date| season_of(d).is_some_and(|s| (first..=last).contains(&s));
         sim.extend(Simulation::parse_gz(&gz, &codes, keep)?);
     }
 
@@ -270,7 +270,7 @@ pub fn validate(
         let (mut inside, mut width) = (0usize, 0.0f64);
         let mut presence = 0usize;
         let mut confusion = vec![[[0usize; 3]; 3]; PRACTICES.len()];
-        let mut period: Option<[NaiveDate; 2]> = None;
+        let mut period: Option<[Date; 2]> = None;
         for (&date, &obs) in &s.depth_cm {
             let Some(season) = season_of(date) else {
                 continue;
@@ -292,10 +292,10 @@ pub fn validate(
             });
             all.push((e.depth, obs));
             flat_all.push((flat, obs));
-            let pm = pooled.entry(date.month()).or_default();
+            let pm = pooled.entry(date.month() as u32).or_default();
             pm.0.push((e.depth, obs));
             pm.1.push((flat, obs));
-            let m = by_month.entry(date.month()).or_default();
+            let m = by_month.entry(date.month() as u32).or_default();
             m.0.push((e.depth, obs));
             m.1.push((flat, obs));
             let ss = by_season.entry(season).or_default();
@@ -390,6 +390,7 @@ pub fn validate(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jiff::civil::date;
 
     #[test]
     fn statistics() {
@@ -403,7 +404,7 @@ mod tests {
 
     #[test]
     fn seasons() {
-        let d = |y, m, dd| NaiveDate::from_ymd_opt(y, m, dd).unwrap();
+        let d = |y, m, dd| date(y, m, dd);
         assert_eq!(season_of(d(2025, 11, 1)), Some(2025));
         assert_eq!(season_of(d(2026, 5, 31)), Some(2025));
         assert_eq!(season_of(d(2026, 6, 1)), None);

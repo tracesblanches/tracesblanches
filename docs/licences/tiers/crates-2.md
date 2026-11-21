@@ -4,6 +4,9 @@
 
 | Crate | Version | Licence | App | Dépôt |
 |---|---|---|---|---|
+| float_next_after | 2.0.0 | MIT | oui | https://gitlab.com/bronsonbdevost/next_afterf |
+| fnv | 1.0.7 | Apache-2.0 / MIT |  | https://github.com/servo/rust-fnv |
+| foldhash | 0.1.5 | Zlib |  | https://github.com/orlp/foldhash |
 | foldhash | 0.2.0 | Zlib | oui | https://github.com/orlp/foldhash |
 | form_urlencoded | 1.2.2 | MIT OR Apache-2.0 |  | https://github.com/servo/rust-url |
 | fs-err | 3.3.2 | MIT OR Apache-2.0 |  | https://github.com/andrewhickman/fs-err |
@@ -57,7 +60,6 @@
 | hyper | 1.12.0 | MIT |  | https://github.com/hyperium/hyper |
 | hyper-rustls | 0.27.10 | Apache-2.0 OR ISC OR MIT |  | https://github.com/rustls/hyper-rustls |
 | hyper-util | 0.1.21 | MIT |  | https://github.com/hyperium/hyper-util |
-| iana-time-zone | 0.1.65 | MIT OR Apache-2.0 | oui | https://github.com/strawlab/iana-time-zone |
 | icu_collections | 2.4.0 | Unicode-3.0 |  | https://github.com/unicode-org/icu4x |
 | icu_locale_core | 2.4.0 | Unicode-3.0 |  | https://github.com/unicode-org/icu4x |
 | icu_normalizer | 2.4.0 | Unicode-3.0 |  | https://github.com/unicode-org/icu4x |
@@ -78,6 +80,8 @@
 | is_terminal_polyfill | 1.70.2 | MIT OR Apache-2.0 |  | https://github.com/polyfill-rs/is_terminal_polyfill |
 | itoa | 1.0.19 | MIT OR Apache-2.0 | oui | https://github.com/dtolnay/itoa |
 | i_tree | 0.18.0 | MIT | oui | https://github.com/iShape-Rust/iTree |
+| jiff | 1.0.1 | Unlicense OR MIT | oui | https://github.com/BurntSushi/jiff |
+| jiff-core | 1.0.1 | Unlicense OR MIT | oui | https://github.com/BurntSushi/jiff |
 | jni | 0.22.4 | MIT OR Apache-2.0 |  | https://github.com/jni-rs/jni-rs |
 | jni-macros | 0.22.4 | MIT OR Apache-2.0 |  | https://github.com/jni-rs/jni-rs |
 | jni-sys | 0.4.1 | MIT OR Apache-2.0 |  | https://github.com/jni-rs/jni-sys |
@@ -85,7 +89,3 @@
 | lazy_static | 1.5.1 | MIT OR Apache-2.0 |  | https://github.com/rust-lang-nursery/lazy-static.rs |
 | libbz2-rs-sys | 0.2.6 | bzip2-1.0.6 |  | https://github.com/trifectatechfoundation/libbzip2-rs |
 | libc | 0.2.191 | MIT OR Apache-2.0 | oui | https://github.com/rust-lang/libc |
-| libm | 0.2.16 | MIT | oui | https://github.com/rust-lang/compiler-builtins |
-| libsqlite3-sys | 0.40.0 | MIT |  | https://github.com/rusqlite/rusqlite |
-| linux-raw-sys | 0.4.15 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |  | https://github.com/sunfishcode/linux-raw-sys |
-| linux-raw-sys | 0.12.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | oui | https://github.com/sunfishcode/linux-raw-sys |

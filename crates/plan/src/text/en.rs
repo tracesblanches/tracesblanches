@@ -1,7 +1,7 @@
 //! Texts in English.
 
 #[allow(unused_imports)]
-use chrono::{NaiveDate, NaiveDateTime, Timelike};
+use jiff::civil::{Date, DateTime};
 use skimap_core::routing::Style;
 
 use super::Texts;
@@ -12,7 +12,7 @@ use crate::session::End;
 /// English.
 pub struct En;
 
-fn hhmm(t: NaiveDateTime) -> String {
+fn hhmm(t: DateTime) -> String {
     format!("{}:{:02}", t.hour(), t.minute())
 }
 
@@ -43,7 +43,7 @@ impl Texts for En {
         "no hourly weather: no best time, no wax, no condition alerts"
     }
 
-    fn no_best_time(&self, start: NaiveDateTime) -> String {
+    fn no_best_time(&self, start: DateTime) -> String {
         format!(
             "no best time computed: start at {}",
             self.assist().clock(start)
@@ -55,7 +55,7 @@ impl Texts for En {
         budget_min: u32,
         style: Style,
         easy_only: bool,
-        return_before: Option<chrono::NaiveTime>,
+        return_before: Option<jiff::civil::Time>,
     ) -> String {
         let (h, m) = (budget_min / 60, budget_min % 60);
         let mut s = match (h, m) {
@@ -80,7 +80,7 @@ impl Texts for En {
         en.unwrap_or(fr)
     }
 
-    fn p_title(&self, date: NaiveDate, label: &str, start: &str, at: NaiveDateTime) -> String {
+    fn p_title(&self, date: Date, label: &str, start: &str, at: DateTime) -> String {
         format!(
             "Plan for {} — {label} — start {start} at {}",
             self.assist().date(date),
@@ -111,10 +111,10 @@ impl Texts for En {
 
     fn p_arrival(
         &self,
-        arrival: NaiveDateTime,
-        with_margin: NaiveDateTime,
-        deadline: Option<NaiveDateTime>,
-        return_before: Option<NaiveDateTime>,
+        arrival: DateTime,
+        with_margin: DateTime,
+        deadline: Option<DateTime>,
+        return_before: Option<DateTime>,
     ) -> String {
         format!(
             "Planned arrival {} at the model's pace, {} with the 20 % margin{}{}",
@@ -129,7 +129,7 @@ impl Texts for En {
         )
     }
 
-    fn p_turnaround(&self, at: Option<NaiveDateTime>, group: bool) -> String {
+    fn p_turnaround(&self, at: Option<DateTime>, group: bool) -> String {
         match at {
             Some(x) if group => format!(
                 "Turn back at {} at the latest, at the group's planned pace",
@@ -170,7 +170,7 @@ impl Texts for En {
         }
     }
 
-    fn p_key_point(&self, s_m: f64, at: NaiveDateTime, what: &str, name: Option<&str>) -> String {
+    fn p_key_point(&self, s_m: f64, at: DateTime, what: &str, name: Option<&str>) -> String {
         format!(
             "  {} km  {}  {what}{}",
             km(s_m),
@@ -203,7 +203,7 @@ impl Texts for En {
         format!("  - {text} — announcement “{switch}”")
     }
 
-    fn p_latest_exit(&self, s_m: f64, at: NaiveDateTime) -> String {
+    fn p_latest_exit(&self, s_m: f64, at: DateTime) -> String {
         format!(
             "  exit at the junction at {} km: pass it before {} to finish before the limit",
             km(s_m),
@@ -320,8 +320,9 @@ impl Texts for En {
         }
     }
 
-    fn clock5(&self, t: NaiveDateTime) -> String {
-        let m = (t.hour() * 60 + t.minute()) as f64 + t.second() as f64 / 60.0;
+    fn clock5(&self, t: DateTime) -> String {
+        let m = f64::from(i32::from(t.hour()) * 60 + i32::from(t.minute()))
+            + f64::from(t.second()) / 60.0;
         let m = ((m / 5.0).round() * 5.0) as u32 % (24 * 60);
         format!("{}:{:02}", m / 60, m % 60)
     }
@@ -346,7 +347,7 @@ impl Texts for En {
         }
     }
 
-    fn pc_slow_side(&self, median: f64, planned: f64, chances: f64, back: NaiveDateTime) -> String {
+    fn pc_slow_side(&self, median: f64, planned: f64, chances: f64, back: DateTime) -> String {
         format!(
             "median {}, planned on {} (slow side: {chances} chances in 10 to have finished), back planned around {}",
             self.duration5(median),
@@ -355,11 +356,11 @@ impl Texts for En {
         )
     }
 
-    fn pc_back_between(&self, lo: NaiveDateTime, hi: NaiveDateTime) -> String {
+    fn pc_back_between(&self, lo: DateTime, hi: DateTime) -> String {
         format!("back between {} and {}", self.clock5(lo), self.clock5(hi))
     }
 
-    fn pc_back_around(&self, t: NaiveDateTime) -> String {
+    fn pc_back_around(&self, t: DateTime) -> String {
         format!("back around {}", self.clock5(t))
     }
 
@@ -405,7 +406,7 @@ impl Texts for En {
         &self,
         why: &str,
         what: &str,
-        back: (NaiveDateTime, NaiveDateTime, NaiveDateTime),
+        back: (DateTime, DateTime, DateTime),
         saved_min: Option<f64>,
     ) -> String {
         let saved = saved_min

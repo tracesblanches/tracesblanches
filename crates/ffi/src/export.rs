@@ -18,7 +18,7 @@
 
 use std::path::Path;
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use skimap_common::geom::LonLat;
 
 use crate::card::Lang;
@@ -122,8 +122,9 @@ fn invalid(detail: impl std::fmt::Display) -> TrackingError {
     }
 }
 
-fn utc(ms: i64) -> DateTime<Utc> {
-    DateTime::<Utc>::from_timestamp_millis(ms).unwrap_or_default()
+/// The instant `ms` after the epoch; the epoch for a time outside the years jiff represents.
+fn utc(ms: i64) -> Timestamp {
+    Timestamp::from_millisecond(ms).unwrap_or(Timestamp::UNIX_EPOCH)
 }
 
 /// Exports the outing of `dir` (recorded by the location service) as GPX and FIT into
@@ -276,7 +277,7 @@ fn file_name(title: &str, start_ms: i64) -> String {
         }
     }
     let slug = slug.trim_end_matches('-');
-    let mut name = format!("skimap-{}", local.format("%Y-%m-%d-%H%M"));
+    let mut name = format!("skimap-{}", local.strftime("%Y-%m-%d-%H%M"));
     if !slug.is_empty() {
         name.push('-');
         name.push_str(slug);
@@ -291,7 +292,9 @@ fn xml_escape(s: &str) -> String {
 }
 
 fn gpx_time(ms: i64) -> String {
-    utc(ms).format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
+    skimap_common::dates::utc_datetime(utc(ms))
+        .strftime("%Y-%m-%dT%H:%M:%S%.3fZ")
+        .to_string()
 }
 
 /// The GPX 1.1 document: one track, one segment; the heart rate in Garmin's
@@ -602,9 +605,8 @@ fn fit_bytes(e: &ExportedOuting) -> Vec<u8> {
     );
     // The activity: one session, manual (0), event activity 26, type stop 1; local time
     // of the end (French legal time).
-    let local_end = skimap_core::ephemeris::local_time(utc(e.end_ms))
-        .and_utc()
-        .timestamp_millis();
+    let local_end = skimap_common::dates::utc(skimap_core::ephemeris::local_time(utc(e.end_ms)))
+        .map_or(e.end_ms, Timestamp::as_millisecond);
     f.message(
         5,
         ACTIVITY,
@@ -639,8 +641,9 @@ mod tests {
     use super::*;
     use crate::fog::{FogTarget, GuidedKind, GuidedSpec, guided_bearing};
     use crate::tracking::INPUTS_FILE;
-    use fitparser::Value;
-    use fitparser::profile::MesgNum;
+    use rustyfit::profile::mesgdef;
+    use rustyfit::profile::typedef::MesgNum;
+    use rustyfit::proto::Message;
     use skimap_plan::tracker::Input;
 
     /// 2026-02-15 09:00 UTC.
@@ -688,30 +691,22 @@ mod tests {
         fixes
     }
 
-    fn field<'a>(r: &'a fitparser::FitDataRecord, name: &str) -> Option<&'a Value> {
-        r.fields()
-            .iter()
-            .find(|f| f.name() == name)
-            .map(|f| f.value())
+    /// The messages of a FIT file decoded by rustyfit, an implementation of the protocol
+    /// independent of ours (header and file CRCs checked, components expanded).
+    fn decode(bytes: &[u8]) -> Vec<Message> {
+        let fit = rustyfit::Decoder::new()
+            .decode(bytes)
+            .expect("FIT decoded, CRCs checked")
+            .expect("one FIT sequence");
+        fit.messages
     }
 
-    fn num(r: &fitparser::FitDataRecord, name: &str) -> f64 {
-        let v = field(r, name).unwrap_or_else(|| panic!("{:?} without {name}", r.kind()));
-        TryInto::<f64>::try_into(v.clone()).unwrap_or_else(|_| panic!("{name}: {v:?}"))
+    fn of(msgs: &[Message], k: MesgNum) -> impl Iterator<Item = &Message> {
+        msgs.iter().filter(move |m| m.num == k)
     }
 
-    fn text(r: &fitparser::FitDataRecord, name: &str) -> String {
-        match field(r, name) {
-            Some(Value::String(s)) => s.clone(),
-            v => panic!("{name}: {v:?}"),
-        }
-    }
-
-    fn time_s(r: &fitparser::FitDataRecord, name: &str) -> i64 {
-        match field(r, name) {
-            Some(Value::Timestamp(t)) => t.timestamp(),
-            v => panic!("{name}: {v:?}"),
-        }
+    fn time_s(t: rustyfit::profile::typedef::DateTime) -> i64 {
+        t.unix_timestamp().expect("valid FIT time")
     }
 
     #[test]
@@ -771,45 +766,43 @@ mod tests {
         );
 
         let bytes = std::fs::read(&e.fit_path).unwrap();
-        let recs = fitparser::from_bytes(&bytes).expect("FIT decoded, CRCs checked");
-        let of = |k: MesgNum| recs.iter().filter(move |r| r.kind() == k);
-        let file_id = of(MesgNum::FileId).next().unwrap();
-        assert_eq!(text(file_id, "type"), "activity");
-        let records: Vec<_> = of(MesgNum::Record).collect();
+        let msgs = decode(&bytes);
+        let file_id = mesgdef::FileId::from(of(&msgs, MesgNum::FILE_ID).next().unwrap());
+        assert_eq!(file_id.r#type.to_string(), "activity");
+        let records: Vec<_> = of(&msgs, MesgNum::RECORD)
+            .map(mesgdef::Record::from)
+            .collect();
         assert_eq!(records.len(), e.points.len());
         for (r, p) in records.iter().zip(&e.points) {
-            assert_eq!(time_s(r, "timestamp"), p.t_ms.div_euclid(1000));
-            let lat = num(r, "position_lat") * 180.0 / 2f64.powi(31);
-            let lon = num(r, "position_long") * 180.0 / 2f64.powi(31);
+            assert_eq!(time_s(r.timestamp), p.t_ms.div_euclid(1000));
+            let lat = r.position_lat_degrees().unwrap();
+            let lon = r.position_long_degrees().unwrap();
             assert!(
                 (lat - p.lat).abs() < 1e-7 && (lon - p.lon).abs() < 1e-7,
                 "{lat} {lon} {p:?}"
             );
-            assert!((num(r, "distance") - p.distance_m).abs() < 0.006, "{p:?}");
-            assert_eq!(num(r, "heart_rate"), f64::from(p.heart_bpm.unwrap()));
-            assert!(field(r, "enhanced_altitude").is_none() && field(r, "altitude").is_none());
+            let d = r.distance_scaled().unwrap();
+            assert!((d - p.distance_m).abs() < 0.006, "{p:?}");
+            assert_eq!(u32::from(r.heart_rate), p.heart_bpm.unwrap());
+            assert!(r.enhanced_altitude_scaled().is_none() && r.altitude_scaled().is_none());
         }
-        let session = of(MesgNum::Session).next().unwrap();
-        assert_eq!(text(session, "sport"), "cross_country_skiing");
-        assert_eq!(text(session, "sub_sport"), "generic");
-        assert!((num(session, "total_distance") - e.distance_m).abs() < 0.006);
+        let session = mesgdef::Session::from(of(&msgs, MesgNum::SESSION).next().unwrap());
+        assert_eq!(session.sport.to_string(), "cross_country_skiing");
+        assert_eq!(session.sub_sport.to_string(), "generic");
+        let total = session.total_distance_scaled().unwrap();
+        assert!((total - e.distance_m).abs() < 0.006);
         let elapsed = (e.end_ms - e.start_ms) as f64 / 1000.0;
-        assert!((num(session, "total_elapsed_time") - elapsed).abs() < 1e-3);
-        assert_eq!(time_s(session, "start_time"), e.start_ms.div_euclid(1000));
-        assert_eq!(
-            num(session, "avg_heart_rate"),
-            f64::from(e.heart_avg.unwrap())
-        );
-        assert_eq!(
-            num(session, "max_heart_rate"),
-            f64::from(e.heart_max.unwrap())
-        );
-        assert!(field(session, "total_ascent").is_none());
-        let lap = of(MesgNum::Lap).next().unwrap();
-        assert!((num(lap, "total_distance") - e.distance_m).abs() < 0.006);
-        let activity = of(MesgNum::Activity).next().unwrap();
-        assert_eq!(num(activity, "num_sessions"), 1.0);
-        assert_eq!(of(MesgNum::Event).count(), 2);
+        let total_elapsed = session.total_elapsed_time_scaled().unwrap();
+        assert!((total_elapsed - elapsed).abs() < 1e-3);
+        assert_eq!(time_s(session.start_time), e.start_ms.div_euclid(1000));
+        assert_eq!(u32::from(session.avg_heart_rate), e.heart_avg.unwrap());
+        assert_eq!(u32::from(session.max_heart_rate), e.heart_max.unwrap());
+        assert_eq!(session.total_ascent, u16::MAX, "no climb written");
+        let lap = mesgdef::Lap::from(of(&msgs, MesgNum::LAP).next().unwrap());
+        assert!((lap.total_distance_scaled().unwrap() - e.distance_m).abs() < 0.006);
+        let activity = mesgdef::Activity::from(of(&msgs, MesgNum::ACTIVITY).next().unwrap());
+        assert_eq!(activity.num_sessions, 1);
+        assert_eq!(of(&msgs, MesgNum::EVENT).count(), 2);
 
         // The GPX: the same points and times, read back.
         let gpx = std::fs::read_to_string(&e.gpx_path).unwrap();
@@ -818,7 +811,7 @@ mod tests {
         let pts = skimap_collab::track::parse_xml(&gpx).unwrap();
         assert_eq!(pts.len(), e.points.len());
         for (g, p) in pts.iter().zip(&e.points) {
-            assert_eq!(g.t.unwrap().timestamp_millis(), p.t_ms);
+            assert_eq!(g.t.unwrap().as_millisecond(), p.t_ms);
             assert!((g.lat - p.lat).abs() < 1e-7 && (g.lon - p.lon).abs() < 1e-7);
         }
         assert_eq!(gpx.matches("<gpxtpx:hr>").count(), e.points.len());
@@ -857,33 +850,30 @@ mod tests {
         with.points = points(&fixes, Some(&ele), &[]);
         with.ascent_m = Some(78.0);
         with.descent_m = Some(0.0);
-        let recs = fitparser::from_bytes(&fit_bytes(&with)).unwrap();
-        let records: Vec<_> = recs
-            .iter()
-            .filter(|r| r.kind() == MesgNum::Record)
-            .collect();
+        let msgs = decode(&fit_bytes(&with));
+        let records: Vec<&Message> = of(&msgs, MesgNum::RECORD).collect();
         assert_eq!(records.len(), with.points.len());
-        for (r, p) in records.iter().zip(&with.points) {
-            // `altitude` (2, for the older readers) is expanded into `enhanced_altitude`
-            // by the profile: both are read as `enhanced_altitude`, equal.
-            let z: Vec<f64> = r
-                .fields()
-                .iter()
-                .filter(|f| f.name() == "enhanced_altitude")
-                .map(|f| f.value().clone().try_into().unwrap())
-                .collect();
-            assert_eq!(z.len(), 2, "{p:?}");
+        for (m, p) in records.iter().zip(&with.points) {
+            // `altitude` (2, for the older readers) written, and expanded into
+            // `enhanced_altitude` (78) by the profile: both equal.
+            let written = |num: u8| m.fields.iter().any(|f| f.num == num && !f.is_expanded);
+            assert!(written(mesgdef::Record::ALTITUDE), "{p:?}");
+            let r = mesgdef::Record::from(*m);
+            let z = [
+                r.altitude_scaled().unwrap(),
+                r.enhanced_altitude_scaled().unwrap(),
+            ];
             assert!(
                 z.iter().all(|z| (z - p.ele_m.unwrap()).abs() < 0.1001),
                 "{z:?} {p:?}"
             );
-            assert!(field(r, "heart_rate").is_none());
+            assert_eq!(r.heart_rate, u8::MAX, "no heart rate written");
         }
-        let session = recs.iter().find(|r| r.kind() == MesgNum::Session).unwrap();
-        assert_eq!(text(session, "sport"), "cross_country_skiing");
-        assert_eq!(text(session, "sub_sport"), "backcountry");
-        assert_eq!(num(session, "total_ascent"), 78.0);
-        assert_eq!(num(session, "total_descent"), 0.0);
+        let session = mesgdef::Session::from(of(&msgs, MesgNum::SESSION).next().unwrap());
+        assert_eq!(session.sport.to_string(), "cross_country_skiing");
+        assert_eq!(session.sub_sport.to_string(), "backcountry");
+        assert_eq!(session.total_ascent, 78);
+        assert_eq!(session.total_descent, 0);
         let gpx = gpx_text(&with);
         assert!(gpx.contains("<type>backcountry_skiing</type>"));
         let pts = skimap_collab::track::parse_xml(&gpx).unwrap();

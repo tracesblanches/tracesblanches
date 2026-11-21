@@ -1,7 +1,7 @@
 //! The plan texts shown to the skier carry no internal code (#177): no « modèle C5 »,
 //! « (C7) », « (A8, C11) ».
 
-use chrono::NaiveDate;
+use jiff::civil::date;
 use skimap_core::routing::Style;
 use skimap_plan::text::{self, Lang};
 
@@ -24,11 +24,8 @@ fn plain(s: &str) {
 
 #[test]
 fn plan_texts_have_no_internal_code() {
-    let at = NaiveDate::from_ymd_opt(2026, 11, 21)
-        .unwrap()
-        .and_hms_opt(9, 0, 0)
-        .unwrap();
-    let later = at + chrono::Duration::hours(2);
+    let at = date(2026, 11, 21).at(9, 0, 0, 0);
+    let later = at + jiff::SignedDuration::from_hours(2);
     for lang in [Lang::Fr, Lang::En] {
         let t = text::of(lang);
         plain(&t.p_loop(1, "La Verte", 3.7, 96.0, 60.0, Style::Classic, 1.25));

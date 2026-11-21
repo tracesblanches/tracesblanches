@@ -6,8 +6,9 @@ mod common;
 
 use std::sync::Arc;
 
-use chrono::{DateTime, Duration, TimeZone, Utc};
 use common::request;
+use jiff::civil::date;
+use jiff::{SignedDuration, Timestamp, tz::Offset};
 use serde_json::{Value, json};
 use skimap_server::alerts::Alerts;
 use skimap_server::alerts::mail::RecordingMailer;
@@ -28,7 +29,7 @@ fn env() -> Env {
     let dir = tempfile::tempdir().unwrap();
     // Sunday 15/11/2026, 09:00 in Paris.
     let clock = Arc::new(ManualClock::new(
-        Utc.with_ymd_and_hms(2026, 11, 15, 8, 0, 0).unwrap(),
+        skimap_common::dates::utc(date(2026, 11, 15).at(8, 0, 0, 0)).unwrap(),
     ));
     let mail = Arc::new(RecordingMailer::default());
     let alerts = Arc::new(
@@ -59,12 +60,12 @@ fn env() -> Env {
     }
 }
 
-fn plan(deadline: DateTime<Utc>) -> Value {
+fn plan(deadline: Timestamp) -> Value {
     json!({
         "skier_name": "Marie Dupont",
         "skier_phone": "+33 6 12 34 56 78",
         "contacts": ["paul@example.org", "Anne@Example.org"],
-        "deadline": deadline.to_rfc3339(),
+        "deadline": deadline.display_with_offset(Offset::UTC).to_string(),
         "grace_minutes": 30,
         "site": "cervieres",
         "plan": "Boucle par le Bourget et le col des Thures, retour par la piste des Fonts. Seule, raquettes dans le sac.",
@@ -95,7 +96,7 @@ fn get_trip(e: &Env, id: &str, token: &str) -> common::Resp {
 #[test]
 fn alert_goes_out_after_deadline_and_grace_then_return_is_told() {
     let e = env();
-    let deadline = e.clock.now() + Duration::hours(7); // 16:00 in Paris
+    let deadline = e.clock.now() + SignedDuration::from_hours(7); // 16:00 in Paris
     let r = post(&e, "/v1/trips", None, &plan(deadline));
     assert_eq!(r.status, 201, "{}", String::from_utf8_lossy(&r.body));
     let c = r.json();
@@ -115,7 +116,7 @@ fn alert_goes_out_after_deadline_and_grace_then_return_is_told() {
     assert_eq!(get_trip(&e, &id, &token).json()["state"], "active");
 
     // The phone sends a position on the way.
-    e.clock.advance(Duration::hours(3));
+    e.clock.advance(SignedDuration::from_hours(3));
     let r = post(
         &e,
         &format!("/v1/trips/{id}/position"),
@@ -125,13 +126,13 @@ fn alert_goes_out_after_deadline_and_grace_then_return_is_told() {
     assert_eq!(r.status, 200);
 
     // The phone dies. Deadline passes, grace not yet: nothing.
-    e.clock.set(deadline + Duration::minutes(29));
+    e.clock.set(deadline + SignedDuration::from_mins(29));
     let rep = e.alerts.tick().unwrap();
     assert_eq!((rep.alerted, rep.sent), (0, 0));
     assert!(e.mail.sent().is_empty());
 
     // Grace over: one alert per contact.
-    e.clock.set(deadline + Duration::minutes(30));
+    e.clock.set(deadline + SignedDuration::from_mins(30));
     let rep = e.alerts.tick().unwrap();
     assert_eq!((rep.alerted, rep.sent), (1, 2));
     let sent = e.mail.sent();
@@ -168,7 +169,7 @@ fn alert_goes_out_after_deadline_and_grace_then_return_is_told() {
     assert_eq!(st["notifications"][0]["status"], "sent");
 
     // Back two hours later, with network: the contacts are told.
-    e.clock.advance(Duration::hours(2));
+    e.clock.advance(SignedDuration::from_hours(2));
     let r = post(
         &e,
         &format!("/v1/trips/{id}/checkin"),
@@ -205,9 +206,10 @@ fn alert_goes_out_after_deadline_and_grace_then_return_is_told() {
     );
 
     // Kept 7 days after the return, then deleted.
-    e.clock.advance(Duration::days(7) - Duration::minutes(1));
+    e.clock
+        .advance(SignedDuration::from_hours(24 * 7) - SignedDuration::from_mins(1));
     assert_eq!(e.alerts.tick().unwrap().purged, 0);
-    e.clock.advance(Duration::minutes(2));
+    e.clock.advance(SignedDuration::from_mins(2));
     assert_eq!(e.alerts.tick().unwrap().purged, 1);
     assert_eq!(get_trip(&e, &id, &token).status, 404);
 }
@@ -216,9 +218,15 @@ fn alert_goes_out_after_deadline_and_grace_then_return_is_told() {
 fn return_in_time_extension_and_cancellation() {
     let e = env();
     let now = e.clock.now();
-    let c = post(&e, "/v1/trips", None, &plan(now + Duration::hours(2))).json();
+    let c = post(
+        &e,
+        "/v1/trips",
+        None,
+        &plan(now + SignedDuration::from_hours(2)),
+    )
+    .json();
     let (id, token) = (c["id"].as_str().unwrap(), c["token"].as_str().unwrap());
-    e.clock.advance(Duration::hours(1));
+    e.clock.advance(SignedDuration::from_hours(1));
     assert_eq!(
         post(
             &e,
@@ -229,7 +237,7 @@ fn return_in_time_extension_and_cancellation() {
         .status,
         200
     );
-    e.clock.advance(Duration::hours(5));
+    e.clock.advance(SignedDuration::from_hours(5));
     assert_eq!(e.alerts.tick().unwrap().alerted, 0);
 
     // Extension: the alert moves.
@@ -237,21 +245,22 @@ fn return_in_time_extension_and_cancellation() {
         &e,
         "/v1/trips",
         None,
-        &plan(e.clock.now() + Duration::hours(1)),
+        &plan(e.clock.now() + SignedDuration::from_hours(1)),
     )
     .json();
     let (id, token) = (c["id"].as_str().unwrap(), c["token"].as_str().unwrap());
-    let later = e.clock.now() + Duration::hours(3);
+    let later = e.clock.now() + SignedDuration::from_hours(3);
     let r = post(
         &e,
         &format!("/v1/trips/{id}/extend"),
         Some(token),
-        &json!({"deadline": later.to_rfc3339()}),
+        &json!({"deadline": later.display_with_offset(Offset::UTC).to_string()}),
     );
     assert_eq!(r.status, 200);
-    e.clock.advance(Duration::hours(2));
+    e.clock.advance(SignedDuration::from_hours(2));
     assert_eq!(e.alerts.tick().unwrap().alerted, 0);
-    e.clock.advance(Duration::hours(1) + Duration::minutes(30));
+    e.clock
+        .advance(SignedDuration::from_hours(1) + SignedDuration::from_mins(30));
     assert_eq!(e.alerts.tick().unwrap().alerted, 1);
     // After the alert, no extension and no cancellation: confirm the return.
     assert_eq!(
@@ -259,7 +268,7 @@ fn return_in_time_extension_and_cancellation() {
             &e,
             &format!("/v1/trips/{id}/extend"),
             Some(token),
-            &json!({"deadline": (e.clock.now() + Duration::hours(1)).to_rfc3339()})
+            &json!({"deadline": (e.clock.now() + SignedDuration::from_hours(1)).display_with_offset(Offset::UTC).to_string()})
         )
         .status,
         409
@@ -281,7 +290,7 @@ fn return_in_time_extension_and_cancellation() {
         &e,
         "/v1/trips",
         None,
-        &plan(e.clock.now() + Duration::hours(1)),
+        &plan(e.clock.now() + SignedDuration::from_hours(1)),
     )
     .json();
     let (id, token) = (c["id"].as_str().unwrap(), c["token"].as_str().unwrap());
@@ -296,7 +305,7 @@ fn return_in_time_extension_and_cancellation() {
         (r.status, r.json()["state"].as_str()),
         (200, Some("cancelled"))
     );
-    e.clock.advance(Duration::hours(3));
+    e.clock.advance(SignedDuration::from_hours(3));
     assert_eq!(e.alerts.tick().unwrap().alerted, 0);
 }
 
@@ -307,7 +316,7 @@ fn failed_deliveries_are_retried_and_cancelled_on_return() {
         &e,
         "/v1/trips",
         None,
-        &plan(e.clock.now() + Duration::hours(1)),
+        &plan(e.clock.now() + SignedDuration::from_hours(1)),
     )
     .json();
     let (id, token) = (
@@ -315,13 +324,13 @@ fn failed_deliveries_are_retried_and_cancelled_on_return() {
         c["token"].as_str().unwrap().to_owned(),
     );
     e.mail.fail_next(3);
-    e.clock.advance(Duration::minutes(90));
+    e.clock.advance(SignedDuration::from_mins(90));
     let rep = e.alerts.tick().unwrap();
     assert_eq!((rep.alerted, rep.sent, rep.retried), (1, 0, 2));
     // Not due yet (retry in 1 minute).
-    e.clock.advance(Duration::seconds(30));
+    e.clock.advance(SignedDuration::from_secs(30));
     assert_eq!(e.alerts.tick().unwrap().sent, 0);
-    e.clock.advance(Duration::seconds(30));
+    e.clock.advance(SignedDuration::from_secs(30));
     let rep = e.alerts.tick().unwrap();
     assert_eq!((rep.sent, rep.retried), (1, 1));
     // Paul (first in the outbox) failed again, Anne got it.
@@ -341,7 +350,7 @@ fn failed_deliveries_are_retried_and_cancelled_on_return() {
         .status,
         200
     );
-    e.clock.advance(Duration::minutes(10));
+    e.clock.advance(SignedDuration::from_mins(10));
     let rep = e.alerts.tick().unwrap();
     assert_eq!(rep.sent, 1);
     let sent = e.mail.sent();
@@ -357,7 +366,7 @@ fn failed_deliveries_are_retried_and_cancelled_on_return() {
         &e,
         "/v1/trips",
         None,
-        &plan(e.clock.now() + Duration::hours(1)),
+        &plan(e.clock.now() + SignedDuration::from_hours(1)),
     )
     .json();
     let (id, token) = (
@@ -365,11 +374,11 @@ fn failed_deliveries_are_retried_and_cancelled_on_return() {
         c["token"].as_str().unwrap().to_owned(),
     );
     e.mail.fail_next(10_000);
-    e.clock.advance(Duration::minutes(90));
+    e.clock.advance(SignedDuration::from_mins(90));
     let mut failed = 0;
     for _ in 0..60 {
         failed += e.alerts.tick().unwrap().failed;
-        e.clock.advance(Duration::minutes(30));
+        e.clock.advance(SignedDuration::from_mins(30));
     }
     assert_eq!(failed, 2);
     let st = get_trip(&e, &id, &token).json();
@@ -380,7 +389,7 @@ fn failed_deliveries_are_retried_and_cancelled_on_return() {
 #[test]
 fn bad_plans_are_refused_and_creation_is_limited() {
     let e = env();
-    let ok = plan(e.clock.now() + Duration::hours(2));
+    let ok = plan(e.clock.now() + SignedDuration::from_hours(2));
     for (i, (field, value)) in [
         ("contacts", json!([])),
         ("contacts", json!(["a@b.fr", "c@d.fr", "e@f.fr", "g@h.fr"])),
@@ -388,11 +397,19 @@ fn bad_plans_are_refused_and_creation_is_limited() {
         ("contacts", json!(["x@y.fr\r\nBcc: z@w.fr"])),
         (
             "deadline",
-            json!((e.clock.now() - Duration::minutes(1)).to_rfc3339()),
+            json!(
+                (e.clock.now() - SignedDuration::from_mins(1))
+                    .display_with_offset(Offset::UTC)
+                    .to_string()
+            ),
         ),
         (
             "deadline",
-            json!((e.clock.now() + Duration::days(8)).to_rfc3339()),
+            json!(
+                (e.clock.now() + SignedDuration::from_hours(24 * 8))
+                    .display_with_offset(Offset::UTC)
+                    .to_string()
+            ),
         ),
         ("grace_minutes", json!(500)),
         ("skier_name", json!("")),
@@ -445,8 +462,8 @@ fn bad_plans_are_refused_and_creation_is_limited() {
     assert_eq!(r.status, 429);
     assert_eq!(r.header("retry-after"), Some("600"));
     assert_eq!(from("192.0.2.2").status, 201);
-    e.clock.advance(Duration::minutes(61));
-    let ok = plan(e.clock.now() + Duration::hours(2));
+    e.clock.advance(SignedDuration::from_mins(61));
+    let ok = plan(e.clock.now() + SignedDuration::from_hours(2));
     let r = request(
         e.addr,
         "POST",

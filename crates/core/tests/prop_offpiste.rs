@@ -13,7 +13,7 @@ use skimap_core::offpiste::{
     OverlayKind, PISTE_NONE, RouteError, Router, SnowGrid, Window, ZoneClass, ZonePolicy,
     decode_raster, encode_raster_with, encode_zone_classes, parse_zone_classes,
 };
-use skimap_zones::chrono::{DateTime, Utc};
+use skimap_zones::jiff::Timestamp;
 
 const CELL: f64 = 5.0;
 // Lambert-93 origin near Chapelle-des-Bois.
@@ -181,7 +181,7 @@ struct Built {
     policy: ZonePolicy,
 }
 
-fn at() -> DateTime<Utc> {
+fn at() -> Timestamp {
     "2026-02-15T10:00:00Z".parse().expect("date")
 }
 

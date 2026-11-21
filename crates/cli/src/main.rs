@@ -827,7 +827,7 @@ fn run(cli: Cli) -> Result<()> {
             } else {
                 sites.iter().map(|s| site(s)).collect::<Result<_>>()?
             };
-            let summary = refresh::refresh(&c, &sites, chrono::Utc::now())?;
+            let summary = refresh::refresh(&c, &sites, jiff::Timestamp::now())?;
             for l in refresh::describe(&summary) {
                 println!("{l}");
             }

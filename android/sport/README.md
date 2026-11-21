@@ -13,7 +13,7 @@ Sur le bilan d’une sortie terminée (écran du plan à la fin, et « Bilans de
 ## Vérifier
 
 ```sh
-cargo test -p skimap-ffi --lib export      # FIT relu par fitparser (CRC, points, temps, distance, sport)
+cargo test -p skimap-ffi --lib export      # FIT relu par rustyfit (CRC, points, temps, distance, sport)
 cd android
 ./gradlew :sport:testDebugUnitTest :app:testDebugUnitTest --tests 'fr.skimap.app.ShareOutingTest'
 # Émulateur Android 14+ (Health Connect intégré) :

@@ -20,6 +20,7 @@ mod common;
 use std::collections::BTreeMap;
 use std::time::Instant;
 
+use jiff::civil::date;
 use serde_json::{Map, Value, json};
 use skimap_common::config::Config;
 use skimap_common::geom::LonLat;
@@ -344,13 +345,11 @@ fn run(site: &Site, layout: &DataLayout) -> Result<(), Box<dyn std::error::Error
                 }
                 if model == "temps_classique" {
                     // C7: out and back on this route, 15 January 2027, start 13:00 local.
-                    let date = chrono::NaiveDate::from_ymd_opt(2027, 1, 15).unwrap();
-                    let start = date.and_hms_opt(12, 0, 0).unwrap().and_utc();
+                    let date = date(2027, 1, 15);
+                    let start = skimap_common::dates::utc(date.at(12, 0, 0, 0)).unwrap();
                     let tp = TurnaroundParams::default();
                     let dl = deadline(date, r.start.pos, &tp).unwrap();
-                    let hm = |t: chrono::DateTime<chrono::Utc>| {
-                        local_time(t).format("%H:%M").to_string()
-                    };
+                    let hm = |t: jiff::Timestamp| local_time(t).strftime("%H:%M").to_string();
                     match out_and_back(&g, &r, &EtaModel::new(Style::Classic), start, &dl, &tp) {
                         Some(ob) => {
                             println!(

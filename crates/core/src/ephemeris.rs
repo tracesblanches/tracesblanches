@@ -8,7 +8,10 @@
 //! see the tests). Sea-level horizon: relief hides the sun earlier in a valley and the
 //! light under forest fades before civil dusk.
 
-use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveDateTime, TimeZone, Utc, Weekday};
+use jiff::{
+    SignedDuration, Timestamp,
+    civil::{Date, DateTime, Weekday},
+};
 use skimap_common::geom::LonLat;
 
 /// Altitude of the sun's centre at sunrise and sunset, degrees.
@@ -19,46 +22,48 @@ pub const CIVIL_ALTITUDE_DEG: f64 = -6.0;
 pub const NAUTICAL_ALTITUDE_DEG: f64 = -12.0;
 
 /// Last Sunday of a month.
-pub(crate) fn last_sunday(year: i32, month: u32) -> NaiveDate {
+pub(crate) fn last_sunday(year: i32, month: u32) -> Date {
     let next = if month == 12 {
-        NaiveDate::from_ymd_opt(year + 1, 1, 1)
+        skimap_common::dates::ymd(year + 1, 1, 1)
     } else {
-        NaiveDate::from_ymd_opt(year, month + 1, 1)
+        skimap_common::dates::ymd(year, month + 1, 1)
     }
     .expect("valid date");
-    let mut d = next - Duration::days(1);
-    while d.weekday() != Weekday::Sun {
-        d -= Duration::days(1);
+    let mut d = next - SignedDuration::from_hours(24);
+    while d.weekday() != Weekday::Sunday {
+        d -= SignedDuration::from_hours(24);
     }
     d
 }
 
 /// UTC offset of French and Swiss legal time at an instant: +2 h from the last Sunday of
 /// March 01:00 UTC to the last Sunday of October 01:00 UTC, +1 h otherwise.
-pub fn legal_offset_hours(at: DateTime<Utc>) -> i64 {
-    let y = at.year();
-    let start = Utc.from_utc_datetime(&last_sunday(y, 3).and_hms_opt(1, 0, 0).expect("time"));
-    let end = Utc.from_utc_datetime(&last_sunday(y, 10).and_hms_opt(1, 0, 0).expect("time"));
+pub fn legal_offset_hours(at: Timestamp) -> i64 {
+    let y = i32::from(skimap_common::dates::utc_date(at).year());
+    let start = skimap_common::dates::utc(last_sunday(y, 3).at(1, 0, 0, 0))
+        .expect("date within the jiff range");
+    let end = skimap_common::dates::utc(last_sunday(y, 10).at(1, 0, 0, 0))
+        .expect("date within the jiff range");
     if at >= start && at < end { 2 } else { 1 }
 }
 
 /// Local legal time (CET / CEST) of an instant.
-pub fn local_time(at: DateTime<Utc>) -> NaiveDateTime {
-    at.naive_utc() + Duration::hours(legal_offset_hours(at))
+pub fn local_time(at: Timestamp) -> DateTime {
+    skimap_common::dates::utc_datetime(at) + SignedDuration::from_hours(legal_offset_hours(at))
 }
 
 /// Times (UTC) when the sun's centre crosses `altitude_deg` in the morning and in the
 /// evening on a date at a place; `None` when it stays above or below all day.
 pub fn sun_crossings(
-    date: NaiveDate,
+    date: Date,
     place: LonLat,
     altitude_deg: f64,
-) -> Option<(DateTime<Utc>, DateTime<Utc>)> {
+) -> Option<(Timestamp, Timestamp)> {
     let rad = f64::to_radians;
     // Julian day of the date at 12:00 UTC (0001-01-01 is day 1 of the common era and
     // JD 1 721 425.5 at 00:00), then days since J2000.0 and mean solar noon at the
     // place (east longitudes are earlier in UTC).
-    let jd_noon = date.num_days_from_ce() as f64 + 1_721_424.5 + 0.5;
+    let jd_noon = f64::from((date - jiff::civil::date(1, 1, 1)).get_days() + 1) + 1_721_424.5 + 0.5;
     let n = (jd_noon - 2_451_545.0).round();
     let j_star = n - place.lon / 360.0;
     let m = (357.5291 + 0.985_600_28 * j_star).rem_euclid(360.0);
@@ -75,7 +80,7 @@ pub fn sun_crossings(
     let w = cos_w.acos().to_degrees();
     let to_utc = |jd: f64| {
         let secs = ((jd - 2_440_587.5) * 86_400.0).round() as i64;
-        DateTime::<Utc>::from_timestamp(secs, 0)
+        Timestamp::new(secs, 0).ok()
     };
     Some((
         to_utc(j_transit - w / 360.0)?,
@@ -84,12 +89,12 @@ pub fn sun_crossings(
 }
 
 /// Sunrise and sunset (UTC) on a date at a place, `None` during polar day or night.
-pub fn sun_times(date: NaiveDate, place: LonLat) -> Option<(DateTime<Utc>, DateTime<Utc>)> {
+pub fn sun_times(date: Date, place: LonLat) -> Option<(Timestamp, Timestamp)> {
     sun_crossings(date, place, SUNSET_ALTITUDE_DEG)
 }
 
 /// Civil dawn and civil dusk (UTC, sun's centre at −6°).
-pub fn civil_twilight(date: NaiveDate, place: LonLat) -> Option<(DateTime<Utc>, DateTime<Utc>)> {
+pub fn civil_twilight(date: Date, place: LonLat) -> Option<(Timestamp, Timestamp)> {
     sun_crossings(date, place, CIVIL_ALTITUDE_DEG)
 }
 
@@ -108,10 +113,10 @@ pub struct SunPosition {
 /// [`sun_crossings`]. Within 0.01° of astral 3.2; at the times [`sun_crossings`] gives, the
 /// sun is at the requested altitude within 0.3° (tests). Used by the snow quality model
 /// of the assistant (A3).
-pub fn sun_position(at: DateTime<Utc>, place: LonLat) -> SunPosition {
+pub fn sun_position(at: Timestamp, place: LonLat) -> SunPosition {
     let rad = f64::to_radians;
     // Days since J2000.0 (2000-01-01 12:00 UTC), fractional.
-    let d = (at.timestamp() as f64) / 86_400.0 + 2_440_587.5 - 2_451_545.0;
+    let d = (at.as_second() as f64) / 86_400.0 + 2_440_587.5 - 2_451_545.0;
     let l = 280.460 + 0.985_647_4 * d;
     let g = rad((357.528 + 0.985_600_3 * d).rem_euclid(360.0));
     let lambda = rad((l + 1.915 * g.sin() + 0.020 * (2.0 * g).sin()).rem_euclid(360.0));
@@ -134,10 +139,12 @@ pub fn sun_position(at: DateTime<Utc>, place: LonLat) -> SunPosition {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jiff::civil::date;
+    use jiff::tz::Offset;
 
     #[test]
     fn last_sundays_including_december() {
-        let d = |y, m, day| NaiveDate::from_ymd_opt(y, m, day).unwrap();
+        let d = |y, m, day| date(y, m, day);
         assert_eq!(last_sunday(2027, 3), d(2027, 3, 28));
         assert_eq!(last_sunday(2027, 10), d(2027, 10, 31));
         // December: the next month is January of the next year.
@@ -249,12 +256,14 @@ mod tests {
                 "cervieres" => LonLat::new(6.7232, 44.8667),
                 _ => LonLat::new(6.1118, 46.5952),
             };
-            let date = NaiveDate::from_ymd_opt(y, m, d).unwrap();
+            let date = skimap_common::dates::ymd(y, m, d).unwrap();
             let (r, s) = sun_times(date, p).unwrap();
             let (a, k) = civil_twilight(date, p).unwrap();
             for (got, want) in [(r, rise), (s, set), (a, dawn), (k, dusk)] {
-                let want = Utc.from_utc_datetime(&date.and_time(want.parse().unwrap()));
-                let diff = (got - want).num_seconds().abs();
+                let want = Offset::UTC
+                    .to_timestamp(date.to_datetime(want.parse().unwrap()))
+                    .unwrap();
+                let diff = (got - want).as_secs().abs();
                 worst = worst.max(diff);
                 println!("{place} {date}: {got} vs astral {want} ({diff} s)");
                 assert!(diff <= 90, "{place} {date}: {got} vs {want} ({diff} s)");
@@ -266,18 +275,20 @@ mod tests {
     #[test]
     fn civil_dusk_is_about_half_an_hour_after_sunset_in_winter() {
         let p = LonLat::new(6.1118, 46.5952);
-        let date = NaiveDate::from_ymd_opt(2027, 1, 15).unwrap();
+        let date = date(2027, 1, 15);
         let (_, set) = sun_times(date, p).unwrap();
         let (_, dusk) = civil_twilight(date, p).unwrap();
-        let gap = (dusk - set).num_minutes();
+        let gap = (dusk - set).as_mins();
         assert!((30..=40).contains(&gap), "{gap} min");
         // Nautical twilight later still.
         let (_, naut) = sun_crossings(date, p, NAUTICAL_ALTITUDE_DEG).unwrap();
         assert!(naut > dusk);
     }
 
-    fn utc_at(s: &str) -> DateTime<Utc> {
-        Utc.from_utc_datetime(&NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S").unwrap())
+    fn utc_at(s: &str) -> Timestamp {
+        Offset::UTC
+            .to_timestamp(DateTime::strptime("%Y-%m-%dT%H:%M:%S", s).unwrap())
+            .unwrap()
     }
 
     /// astral 3.2, `elevation(observer, t, with_refraction=False)` and `azimuth`, observer
@@ -302,7 +313,7 @@ mod tests {
     fn sun_position_at_crossing_times() {
         let place = LonLat::new(6.7269, 44.8552);
         for (y, m, d) in [(2026, 1, 5), (2026, 3, 20), (2026, 6, 21)] {
-            let date = NaiveDate::from_ymd_opt(y, m, d).unwrap();
+            let date = date(y, m, d);
             for alt in [-0.833, 10.0, 20.0] {
                 let Some((rise, set)) = sun_crossings(date, place, alt) else {
                     continue;

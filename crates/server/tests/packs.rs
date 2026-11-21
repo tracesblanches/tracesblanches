@@ -12,8 +12,9 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
 
-use chrono::{Duration, TimeZone, Utc};
 use common::{get, make_pack, request};
+use jiff::SignedDuration;
+use jiff::civil::date;
 use skimap_pack::Pack;
 use skimap_pack::sync::{
     SiteIndex, SyncState, plan, plan_full, plan_whole_files, read_state, write_state,
@@ -129,7 +130,7 @@ fn publish_and_sync() {
     let t = tempfile::tempdir().unwrap();
     let out = t.path().join("out/cervieres/pack");
     let clock = Arc::new(ManualClock::new(
-        Utc.with_ymd_and_hms(2026, 11, 15, 2, 0, 0).unwrap(),
+        skimap_common::dates::utc(date(2026, 11, 15).at(2, 0, 0, 0)).unwrap(),
     ));
     let store = Store::open(t.path().join("store")).unwrap();
     let retention = Retention {
@@ -139,7 +140,7 @@ fn publish_and_sync() {
     let publish = |version: &str, f: &Files| {
         make_pack(&out, version, f);
         let r = store.publish(&out, clock.now(), retention).unwrap();
-        clock.advance(Duration::hours(12));
+        clock.advance(SignedDuration::from_hours(12));
         r
     };
 
@@ -352,7 +353,7 @@ fn patched_deltas_send_the_changed_tiles() {
         // No rebase: the deltas are from the base.
         rebase_fraction: 1.0,
     };
-    let now = Utc.with_ymd_and_hms(2026, 11, 17, 2, 0, 0).unwrap();
+    let now = skimap_common::dates::utc(date(2026, 11, 17).at(2, 0, 0, 0)).unwrap();
     let (a, b) = (archive(&[]), archive(&[5, 1000, 3599]));
     let pack = |basemap: &[u8], bera: &[u8]| -> Vec<(&'static str, Vec<u8>)> {
         vec![
@@ -399,7 +400,7 @@ fn patched_deltas_send_the_changed_tiles() {
 
     make("v02", &pack(&b, b"2"));
     let r = store
-        .publish(&out, now + Duration::days(1), retention)
+        .publish(&out, now + SignedDuration::from_hours(24), retention)
         .unwrap();
     let (whole, patched) = (r.daily_delta_bytes.unwrap(), r.daily_patched_bytes.unwrap());
     assert!(patched * 20 < whole, "{patched} vs {whole}");
@@ -446,7 +447,7 @@ fn publish_many_sites_writes_one_catalog() {
     }
     // A directory without a pack fails alone.
     packs.push(t.path().join("out/absent/pack"));
-    let now = Utc.with_ymd_and_hms(2026, 11, 15, 2, 0, 0).unwrap();
+    let now = skimap_common::dates::utc(date(2026, 11, 15).at(2, 0, 0, 0)).unwrap();
     let reports = store.publish_many(&packs, now, retention).unwrap();
     assert_eq!(reports.len(), 4);
     for r in &reports[..3] {
@@ -496,7 +497,7 @@ fn make_voice_pack(dir: &Path, version: &str, lang: &str, clip: &[u8]) {
 fn voice_packs_apart() {
     let t = tempfile::tempdir().unwrap();
     let clock = Arc::new(ManualClock::new(
-        Utc.with_ymd_and_hms(2026, 11, 15, 2, 0, 0).unwrap(),
+        skimap_common::dates::utc(date(2026, 11, 15).at(2, 0, 0, 0)).unwrap(),
     ));
     let store = Store::open(t.path().join("store")).unwrap();
     let retention = Retention::default();
@@ -512,7 +513,7 @@ fn voice_packs_apart() {
     }
     // A new English voice: the base is rebuilt (a change of language is one bundle) and
     // the delta from v01 is kept for the daily update.
-    clock.advance(Duration::hours(12));
+    clock.advance(SignedDuration::from_hours(12));
     let en = t.path().join("out/cervieres/voice-pack/en");
     make_voice_pack(&en, "v02", "en", &[3u8; 6000]);
     let r = store.publish(&en, clock.now(), retention).unwrap();

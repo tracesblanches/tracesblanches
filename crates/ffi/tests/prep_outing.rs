@@ -52,7 +52,7 @@ fn key(label: &str, km: f64) -> (String, i64) {
 /// yet), what the morning of `first` shows for `asked`; prints both.
 fn same(
     dir: &Path,
-    first: chrono::NaiveDate,
+    first: jiff::civil::Date,
     asked: &DayOuting,
     chosen: Option<DayOuting>,
 ) -> bool {
@@ -84,7 +84,7 @@ fn same(
 
     // The evening before.
     let out = tempfile::tempdir().unwrap();
-    let today = (first - chrono::Duration::days(1)).to_string();
+    let today = (first - jiff::SignedDuration::from_hours(24)).to_string();
     let r = skimap_ffi::prep::prep_run(
         dir_s,
         work.path().join("prep-view").display().to_string(),
