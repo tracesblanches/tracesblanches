@@ -2207,60 +2207,6 @@ fn slope_grid(site: &'static Site) -> Arc<skimap_common::grid::Grid<u8>> {
     g
 }
 
-fn slope_deg(g: &skimap_common::grid::Grid<u8>, p: skimap_common::geom::LonLat) -> f64 {
-    let (x, y) = skimap_common::crs::to_lambert93(p).unwrap();
-    g.value_at(x, y)
-        .filter(|v| **v != skimap_core::offpiste::SLOPE_NODATA)
-        .map_or(0.0, |v| f64::from(*v) / 2.0)
-}
-
-/// Where a skier can leave the loop for steep terrain away from every trail: the distance
-/// along the loop, the farthest point (in a stretch of at least 60 m at 32° or more,
-/// straight from the loop, every point of the way 25 m or more from any trail beyond the
-/// first 40 m), its distance from the loop.
-fn steep_excursion(
-    b: &Built,
-    grid: &skimap_common::grid::Grid<u8>,
-) -> (f64, skimap_common::geom::LonLat, f64) {
-    let c = skimap_plan::course::Course::new(&b.graph, &b.plan.route.legs, &b.plan.eta).unwrap();
-    let len = c.length_m();
-    let mut s = 0.2 * len;
-    while s < 0.8 * len {
-        let p = c.line().point_at(s);
-        let plane = skimap_core::graph::LocalPlane::new(p);
-        let a = plane.xy(c.line().point_at(s - 10.0));
-        let z = plane.xy(c.line().point_at(s + 10.0));
-        let (dx, dy) = (z[0] - a[0], z[1] - a[1]);
-        let n = dx.hypot(dy).max(1e-9);
-        for side in [1.0, -1.0] {
-            let (ux, uy) = (-dy / n * side, dx / n * side);
-            let at = |d: f64| plane.lonlat([ux * d, uy * d]);
-            // Gentle (under 27°) from the loop to the steep stretch: one passage out and
-            // back.
-            let mut run = 0.0;
-            let mut d = 0.0;
-            while d <= 1000.0 {
-                let q = at(d);
-                if d >= 40.0 && b.graph.snap(q, 25.0).is_some() {
-                    break;
-                }
-                let v = slope_deg(grid, q);
-                if v >= 31.0 {
-                    run += 5.0;
-                    if run >= 60.0 {
-                        return (s, at(d), d);
-                    }
-                } else if run > 0.0 || v >= 27.0 {
-                    break;
-                }
-                d += 5.0;
-            }
-        }
-        s += 25.0;
-    }
-    panic!("no steep terrain off the trails along the loop")
-}
-
 fn is_slope(o: &Output) -> Option<u32> {
     match o {
         Output::Alert {
@@ -2273,7 +2219,9 @@ fn is_slope(o: &Output) -> Option<u32> {
 
 fn slope_outing(b: &Built, site: &'static Site, name: &str, with_slope: bool) -> Run {
     let grid = slope_grid(site);
-    let (s, to, d) = steep_excursion(b, &grid);
+    let (s, to, d) = scenario::steep_excursion(&b.plan, &b.graph, &grid)
+        .unwrap()
+        .expect("steep terrain off the trails");
     {
         let c =
             skimap_plan::course::Course::new(&b.graph, &b.plan.route.legs, &b.plan.eta).unwrap();
@@ -2285,7 +2233,7 @@ fn slope_outing(b: &Built, site: &'static Site, name: &str, with_slope: bool) ->
                 let f = 10.0 * k as f64 / d;
                 format!(
                     "{:.0}",
-                    slope_deg(&grid, plane.lonlat([z[0] * f, z[1] * f]))
+                    scenario::slope_deg(&grid, plane.lonlat([z[0] * f, z[1] * f]))
                 )
             })
             .collect();
@@ -2296,7 +2244,7 @@ fn slope_outing(b: &Built, site: &'static Site, name: &str, with_slope: bool) ->
     }
     println!(
         "{name} : sortie de la boucle à {s:.0} m vers {to:?}, à {d:.0} m de la boucle, pente {:.1}°",
-        slope_deg(&grid, to)
+        scenario::slope_deg(&grid, to)
     );
     let sc = scen(
         b,

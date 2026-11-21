@@ -963,6 +963,63 @@ pub fn replay_with(
     Ok(out)
 }
 
+/// Terrain slope at a position (`slope_5m.skr`: half degrees, Lambert-93), degrees; 0
+/// where unknown.
+pub fn slope_deg(g: &Grid<u8>, p: LonLat) -> f64 {
+    skimap_common::crs::to_lambert93(p)
+        .ok()
+        .and_then(|(x, y)| g.value_at(x, y).copied())
+        .filter(|v| *v != skimap_core::offpiste::SLOPE_NODATA)
+        .map_or(0.0, |v| f64::from(v) / 2.0)
+}
+
+/// Where a skier can leave the loop of a plan for steep terrain away from every trail (K6
+/// #56, [`Step::Excursion`]): the distance along the loop (between 20 and 80 % of it), the
+/// farthest point and its distance from the loop. Straight from the loop, square to it:
+/// under 27° up to a stretch of at least 60 m at 31° or more, every point beyond the first
+/// 40 m at 25 m or more from any trail; the farthest point 60 m into that stretch (one
+/// passage out and back). `None`: no such terrain near the loop.
+pub fn steep_excursion(
+    plan: &DayPlan,
+    g: &PisteGraph,
+    slope: &Grid<u8>,
+) -> Result<Option<(f64, LonLat, f64)>> {
+    let c = Course::new(g, &plan.route.legs, &plan.eta)?;
+    let len = c.length_m();
+    let mut s = 0.2 * len;
+    while s < 0.8 * len {
+        let plane = LocalPlane::new(c.line().point_at(s));
+        let a = plane.xy(c.line().point_at(s - 10.0));
+        let z = plane.xy(c.line().point_at(s + 10.0));
+        let (dx, dy) = (z[0] - a[0], z[1] - a[1]);
+        let n = dx.hypot(dy).max(1e-9);
+        for side in [1.0, -1.0] {
+            let (ux, uy) = (-dy / n * side, dx / n * side);
+            let at = |d: f64| plane.lonlat([ux * d, uy * d]);
+            let mut run = 0.0;
+            let mut d = 0.0;
+            while d <= 1000.0 {
+                let q = at(d);
+                if d >= 40.0 && g.snap(q, 25.0).is_some() {
+                    break;
+                }
+                let v = slope_deg(slope, q);
+                if v >= 31.0 {
+                    run += 5.0;
+                    if run >= 60.0 {
+                        return Ok(Some((s, at(d), d)));
+                    }
+                } else if run > 0.0 || v >= 27.0 {
+                    break;
+                }
+                d += 5.0;
+            }
+        }
+        s += 25.0;
+    }
+    Ok(None)
+}
+
 /// Seconds from the start of a run.
 pub fn rel(run: &Run, t: DateTime<Utc>) -> f64 {
     (t - run.t0).num_milliseconds() as f64 / 1000.0
