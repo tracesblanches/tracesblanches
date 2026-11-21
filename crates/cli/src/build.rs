@@ -712,6 +712,7 @@ impl Ctx {
                     days: 3,
                     suggest: true,
                     outings: true,
+                    personal_sources: self.cfg.personal_sources,
                     ..Default::default()
                 },
             )?;

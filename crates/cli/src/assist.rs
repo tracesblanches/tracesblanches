@@ -25,6 +25,10 @@ pub struct AssistArgs {
     pub outings: bool,
     /// Past days archived by `skimap history`: `past`, or `with-forecast`.
     pub history: Option<String>,
+    /// `personal_sources` of the run: off (the default), the assistant reads only the
+    /// layers whose sources may go into a published pack, so that it enters the public
+    /// pack (#151); on, every layer.
+    pub personal_sources: bool,
 }
 
 /// Parses `lon,lat`.
@@ -59,6 +63,7 @@ pub fn assist(
         Some(other) => bail!("--history {other} : past ou with-forecast"),
     }
     opts.paths.route = a.route.clone();
+    opts.paths.publishable_only = !a.personal_sources;
     if a.suggest {
         opts.requests = skimap_assist::presets::suggestion_requests(site, date);
     }
@@ -94,4 +99,119 @@ pub fn assist(
         lines.push(format!("écrit {}", f.display()));
     }
     Ok((out, lines))
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::disallowed_methods,
+        reason = "the test writes its inputs directly"
+    )]
+
+    use std::path::Path;
+
+    use super::*;
+    use skimap_common::meta::LayerMeta;
+
+    /// Copies a directory tree (the reference data set into a working copy).
+    fn copy_tree(from: &Path, to: &Path) {
+        std::fs::create_dir_all(to).unwrap();
+        for e in std::fs::read_dir(from).unwrap_or_else(|e| panic!("{}: {e}", from.display())) {
+            let e = e.unwrap();
+            let dest = to.join(e.file_name());
+            if e.file_type().unwrap().is_dir() {
+                copy_tree(&e.path(), &dest);
+            } else {
+                std::fs::copy(e.path(), &dest).unwrap();
+            }
+        }
+    }
+
+    fn assist_meta(layout: &DataLayout, site: &Site) -> LayerMeta {
+        LayerMeta::read(
+            &layout
+                .out_dir(site)
+                .join("assist")
+                .join(LayerMeta::file_name("assist")),
+        )
+        .unwrap()
+    }
+
+    /// #151: a public build (`personal_sources` off) whose zones layer still cites a
+    /// source without a known reuse licence (metadata written before the licence review,
+    /// or a source still to confirm) must give the assistant made from the publishable
+    /// layers only: its metadata then lets it into the published pack, and the zones
+    /// stay out of it.
+    #[test]
+    fn a_personal_input_leaves_the_public_assistant_publishable() {
+        let tmp = tempfile::tempdir().unwrap();
+        copy_tree(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/data"),
+            tmp.path(),
+        );
+        let layout = DataLayout::new(tmp.path());
+        let site = skimap_common::site::site("cervieres").expect("evaluation site");
+        let zones_meta = layout.out_dir(site).join("zones").join("zones.meta.json");
+        let mut zones = LayerMeta::read(&zones_meta).unwrap();
+        zones.sources[0].licence = "non vérifiée".into();
+        std::fs::write(&zones_meta, serde_json::to_vec_pretty(&zones).unwrap()).unwrap();
+        assert!(skimap_pack::build::layers::restricted(&zones.sources));
+
+        let date = NaiveDate::from_ymd_opt(2026, 1, 15).unwrap();
+        let args = AssistArgs {
+            date: Some(date),
+            ..Default::default()
+        };
+        assist(&layout, site, &args).unwrap();
+        let meta = assist_meta(&layout, site);
+        let personal: Vec<&str> = meta
+            .sources
+            .iter()
+            .filter(|s| skimap_pack::build::layers::unauthorised(s))
+            .map(|s| s.name.as_str())
+            .collect();
+        assert!(
+            personal.is_empty(),
+            "public assistant made of personal sources: {personal:?}"
+        );
+        assert!(
+            !meta.sources.iter().any(|s| s.name == zones.sources[0].name),
+            "the zones layer (personal) was read"
+        );
+
+        // The layer left out is said, in each language.
+        let paths = skimap_assist::inputs::Paths {
+            publishable_only: true,
+            ..Default::default()
+        };
+        let data = skimap_assist::inputs::SiteData::load(&layout, site, &paths).unwrap();
+        assert!(data.zones.is_none());
+        use skimap_assist::text::Lang;
+        assert!(
+            data.missing_in(Lang::Fr).contains(
+                &"zones et règles : source à usage personnel seulement, absente du pack public"
+                    .to_owned()
+            ),
+            "{:?}",
+            data.missing
+        );
+        assert!(
+            data.missing_in(Lang::En).contains(
+                &"zones and rules: personal-use-only source, not in the public pack".to_owned()
+            ),
+            "{:?}",
+            data.missing_in(Lang::En)
+        );
+
+        // With `personal_sources`, every layer is read, the zones included.
+        let args = AssistArgs {
+            date: Some(date),
+            personal_sources: true,
+            ..Default::default()
+        };
+        assist(&layout, site, &args).unwrap();
+        let meta = assist_meta(&layout, site);
+        assert!(skimap_pack::build::layers::restricted(&meta.sources));
+        assert!(meta.sources.iter().any(|s| s.name == zones.sources[0].name));
+    }
 }

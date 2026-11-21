@@ -1266,4 +1266,8 @@ impl Texts for Fr {
     fn layer_missing(&self, l: LayerName, why: &str) -> String {
         format!("{} : {why}", self.layer_name(l))
     }
+
+    fn layer_personal(&self) -> &'static str {
+        "source à usage personnel seulement, absente du pack public"
+    }
 }

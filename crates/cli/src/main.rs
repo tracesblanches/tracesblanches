@@ -1065,6 +1065,7 @@ fn run(cli: Cli) -> Result<()> {
                 suggest,
                 outings,
                 history,
+                personal_sources: cfg.personal_sources,
             };
             let (_, lines) = assist::assist(&cfg.layout(), s, &args)?;
             for l in lines {

@@ -1019,26 +1019,15 @@ pub fn estimated_pistes(v: &Value) -> Value {
     json!({"type": "FeatureCollection", "features": features})
 }
 
-/// Sources whose terms do not allow a published pack until their owner agrees in
-/// writing (docs/licences-donnees.md, « Usage personnel seulement, tant qu'il n'y a pas
-/// d'accord écrit »), recognised by name (lower case) even when an older metadata file
-/// does not mark them `personal_use_only`.
-pub const UNAUTHORISED_SOURCES: [&str; 7] = [
-    "biodiv'sports",
-    "clpa",
-    "enquête permanente sur les avalanches",
-    "enj snowmap",
-    "nordic france",
-    "page info damage",
-    "open-meteo",
-];
+/// Sources refused by name in a published pack ([`licence::UNAUTHORISED_SOURCES`]).
+pub use skimap_common::licence::UNAUTHORISED_SOURCES;
 
-/// Whether a source may not go into a published pack: its licence family is personal
-/// (`skimap_common::licence::of_source`: marked `personal_use_only`, no reuse licence
-/// known, a licence still to confirm, #171), or it is one of [`UNAUTHORISED_SOURCES`].
+/// Whether a source may not go into a published pack: the negation of
+/// [`licence::publishable`] (its licence family is personal: marked `personal_use_only`,
+/// no reuse licence known, a licence still to confirm, #171; or it is one of
+/// [`UNAUTHORISED_SOURCES`]).
 pub fn unauthorised(s: &Source) -> bool {
-    let name = s.name.to_lowercase();
-    !licence::of_source(s).public() || UNAUTHORISED_SOURCES.iter().any(|u| name.contains(u))
+    !licence::publishable(s)
 }
 
 /// The OSM stations an SRN area cites (`stations[]`), in a file that may not hold OSM
