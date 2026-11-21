@@ -7,6 +7,7 @@ import android.content.SharedPreferences
 import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
+import androidx.core.content.edit
 import kotlin.math.ceil
 
 /**
@@ -44,31 +45,40 @@ class StreamBoost(
      * Raises the stream to its floor if it is under it and the conditions allow; nothing
      * when already raised (the queue goes on: the volume before stays the first one).
      */
-    @SuppressLint("ApplySharedPref") // On disk before the raise, for a kill during it.
     fun raise() {
         val m = manager ?: return
-        if (raised || !active() || doNotDisturb()) return
+        if (raised || !allowed()) return
         val s = stream
-        val max = m.getStreamMaxVolume(s)
         val before = m.getStreamVolume(s)
-        val floor = floorOf(max, headset(m))
-        if (before >= floor) return
+        val floor = floorOf(m.getStreamMaxVolume(s), headset(m))
+        if (before < floor) raiseTo(m, s, before, floor)
+    }
+
+    @SuppressLint("ApplySharedPref") // On disk before the raise, for a kill during it.
+    private fun raiseTo(
+        m: AudioManager,
+        s: Int,
+        before: Int,
+        floor: Int,
+    ) {
         // Written before the raise: a kill right after it is given back at the next start.
-        prefs
-            .edit()
-            .putInt(KEY_STREAM, s)
-            .putInt(KEY_BEFORE, before)
-            .putInt(KEY_SET, floor)
-            .commit()
+        prefs.edit(commit = true) {
+            putInt(KEY_STREAM, s)
+            putInt(KEY_BEFORE, before)
+            putInt(KEY_SET, floor)
+        }
         m.setStreamVolume(s, floor, 0)
         // What the system kept (a safe-volume limit may refuse part of it): compared at the end.
-        prefs.edit().putInt(KEY_SET, m.getStreamVolume(s)).commit()
+        prefs.edit(commit = true) { putInt(KEY_SET, m.getStreamVolume(s)) }
     }
 
     /** Gives the volume back after the last sound of the queue ([restore]). */
     fun restore() {
         restore(manager, prefs)
     }
+
+    /** During an outing, outside Do not disturb. */
+    private fun allowed(): Boolean = active() && !doNotDisturb()
 
     private fun doNotDisturb(): Boolean {
         val f = notifications?.currentInterruptionFilter ?: return false
@@ -87,6 +97,8 @@ class StreamBoost(
         private const val KEY_BEFORE = "before"
         private const val KEY_SET = "set"
 
+        // TYPE_BLE_HEADSET (API 31) is a constant: never reported by an older system.
+        @SuppressLint("InlinedApi")
         private val HEADSETS =
             setOf(
                 AudioDeviceInfo.TYPE_WIRED_HEADSET,
@@ -128,12 +140,11 @@ class StreamBoost(
             val set = prefs.getInt(KEY_SET, -1)
             // Still at the raised volume: back to the one before; else the user's is kept.
             if (m != null && m.getStreamVolume(s) == set) m.setStreamVolume(s, before, 0)
-            prefs
-                .edit()
-                .remove(KEY_STREAM)
-                .remove(KEY_BEFORE)
-                .remove(KEY_SET)
-                .commit()
+            prefs.edit(commit = true) {
+                remove(KEY_STREAM)
+                remove(KEY_BEFORE)
+                remove(KEY_SET)
+            }
         }
     }
 }

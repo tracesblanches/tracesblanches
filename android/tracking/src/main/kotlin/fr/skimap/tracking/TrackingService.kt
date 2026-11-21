@@ -80,6 +80,7 @@ abstract class TrackingService : Service() {
     private lateinit var haptics: Haptics
     private lateinit var notifier: GuidanceNotifier
     private var controls: PhysicalControls? = null
+
     @Volatile private var core: TrackingCore? = null
     private var planDir: String? = null
     private var provider: String = LocationManager.GPS_PROVIDER
