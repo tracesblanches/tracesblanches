@@ -566,7 +566,8 @@ fn equipment_on_the_fixtures_le_laus_les_fonts() {
 
 /// X16 (#150) on the fixtures (no weather): from Le Laus, a real loop for 2 h of skating
 /// (the 11 km half out-and-back before), and for 3 h, where the network has no real loop
-/// that long, the out-and-backs said as the only option with the longest real loop; at
+/// that long, the out-and-backs with the shorter real loop, said (see
+/// `a_real_loop_shorter_than_the_time_is_proposed_with_the_out_and_backs`); at
 /// Chapelle-des-Bois only real loops. The share is measured on the legs.
 #[test]
 fn real_loops_on_the_fixtures() {
@@ -583,8 +584,8 @@ fn real_loops_on_the_fixtures() {
     assert!(!s.notes.iter().any(|n| n.contains("vraie boucle")));
     let s = suggest::suggest(&c, &reqs[1]);
     println!("{}", s.text.join("\n"));
-    assert!(!s.suggestions.is_empty());
-    assert!(s.suggestions.iter().all(|x| !x.real_loop));
+    assert!(!s.suggestions[0].real_loop);
+    assert!(s.suggestions.iter().all(|x| !x.real_loop || x.shorter));
     assert!(
         share(&s.suggestions[0]) < 0.35,
         "{}",
@@ -596,7 +597,7 @@ fn real_loops_on_the_fixtures() {
         .find(|n| n.starts_with("aucune vraie boucle trouvée de 2 h 15 à 3 h 18 depuis Le Laus"))
         .expect("said");
     assert!(
-        note.contains("la plus longue vraie boucle trouvée fait"),
+        note.contains("avec des boucles en partie en aller-retour"),
         "{note}"
     );
     let d = fixture_data(&CHAPELLE_DES_BOIS);
@@ -608,6 +609,60 @@ fn real_loops_on_the_fixtures() {
             assert!((x.out_and_back_share - share(x)).abs() < 0.006);
         }
     }
+}
+
+/// #150 (rest): a real loop from the start that fits in the time on its own, shorter than
+/// the 75 % of the budget, was set aside (only named in the note) and out-and-backs were
+/// proposed instead. On the fixtures of Le Laus for 3 h of classic, the network has no
+/// real loop of 2 h 15 to 3 h 18; its longest real loop (10,1 km, under 2 h) is proposed,
+/// said shorter than the time asked, with the out-and-backs, best score first (no
+/// proposal lost: the 16,5 km one stays first).
+#[test]
+fn a_real_loop_shorter_than_the_time_is_proposed_with_the_out_and_backs() {
+    let share = |x: &suggest::Suggestion| {
+        let (t, l) = travelled_twice_m(&x.legs);
+        t / l
+    };
+    let c = fixture_data(&CERVIERES);
+    let reqs = skimap_assist::presets::suggestion_requests(&CERVIERES, date("2026-01-09"));
+    let r = &reqs[1];
+    let s = suggest::suggest(&c, r);
+    println!("{}", s.text.join("\n"));
+    let short = s
+        .suggestions
+        .iter()
+        .find(|x| x.real_loop)
+        .expect("a real loop for 3 h");
+    assert!(share(short) < 0.25, "{}", share(short));
+    assert!(short.shorter, "{}", short.label);
+    assert!(
+        short.eta_min >= 0.6 * r.budget_min && short.eta_min < 0.75 * r.budget_min,
+        "{} min for {} min",
+        short.eta_min,
+        r.budget_min
+    );
+    assert!(
+        short
+            .reasons
+            .iter()
+            .any(|x| x.text.starts_with("plus courte que le temps demandé")),
+        "{:?}",
+        short.reasons
+    );
+    // The two out-and-backs of 3 h are still proposed, best score first.
+    let oab: Vec<_> = s.suggestions.iter().filter(|x| !x.real_loop).collect();
+    assert_eq!(oab.len(), 2, "{}", s.text.join("\n"));
+    assert!((s.suggestions[0].length_km - 16.5).abs() < 0.3);
+    assert!(s.suggestions.windows(2).all(|w| w[0].score >= w[1].score));
+    let note = s
+        .notes
+        .iter()
+        .find(|n| n.starts_with("aucune vraie boucle trouvée de 2 h 15 à 3 h 18 depuis Le Laus"))
+        .expect("said");
+    assert!(
+        note.contains("une vraie boucle plus courte est proposée, avec des boucles"),
+        "{note}"
+    );
 }
 
 /// Length of a route on stretches of the graph already travelled, and its length, m:
