@@ -146,18 +146,21 @@ pub fn declared_layer(path: &str) -> Option<serde_json::Value> {
                 }
             }))
         }
-        // Estimated traces of the pistes absent from OSM (G1, #117), `skimap-pack`
-        // `layers::estimated_pistes`: personal packs of the sites whose plan has some.
+        // Estimated traces of the pistes known but absent from OSM (G1, #117),
+        // `skimap-pack` `layers::estimated_pistes`: from the plan, Geotrek or the IGN
+        // sections.
         "layers/pistes-estimees.geojson" => Some(serde_json::json!({
             "geometry": "LineString",
             "properties": {
                 "name": "string",
                 "colour": ["green", "blue", "red", "black"],
                 "difficulty": ["novice", "easy", "intermediate", "advanced"],
+                "kind": ["ski", "liaison", "pedestrian", "multi_activity", "snowshoe"],
                 "certainty": ["incertain"],
-                "method": ["estimated_paths", "estimated_drawing"],
+                "method": ["estimated_paths", "estimated_drawing", "geotrek", "estimated_route"],
                 "score": "number",
-                "plan_url": "string"
+                "plan_url": "string",
+                "source_url": "string"
             }
         })),
         "layers/fee-zones.geojson" => Some(serde_json::json!({

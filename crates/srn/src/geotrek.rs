@@ -400,6 +400,49 @@ pub fn fetch(dl: &Downloader, snow_boxes: &[BBox]) -> Result<Fetch> {
     })
 }
 
+/// API roots of the instances whose footprint comes within `margin_deg` of `b`, as
+/// `(root, publisher, licence)` (publisher: every instance served by that root), read
+/// like [`fetch`] does (known table, else the website). Instances that cannot be read
+/// are left out.
+pub fn apis_near(
+    dl: &Downloader,
+    b: &BBox,
+    margin_deg: f64,
+) -> Result<Vec<(String, String, String)>> {
+    let list = get(dl, CLIENTS_URL)?;
+    let instances = parse_clients(&list.json::<Value>()?);
+    let known: BTreeMap<String, KnownApi> = known_apis()?
+        .into_iter()
+        .map(|k| (k.name.clone(), k))
+        .collect();
+    let mut by_api: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for inst in instances {
+        if !inst.bbox.is_some_and(|x| boxes_near(&x, b, margin_deg)) {
+            continue;
+        }
+        let api = match known.get(&inst.name) {
+            Some(k) => k.api.clone(),
+            None => inst.websites.iter().find_map(|w| {
+                get(dl, w)
+                    .and_then(|f| f.text().map_err(SrnError::from))
+                    .ok()
+                    .and_then(|h| api_url(&h))
+            }),
+        };
+        if let Some(api) = api {
+            by_api.entry(api).or_default().push(inst.name);
+        }
+    }
+    Ok(by_api
+        .into_iter()
+        .map(|(api, mut names)| {
+            names.sort_unstable();
+            let licence = licence_of(&api).to_owned();
+            (api, names.join(" ; "), licence)
+        })
+        .collect())
+}
+
 /// Drops copies of the same trek (same name, lengths within 1 %), keeping the strongest
 /// class, then the first seen.
 pub fn dedup(routes: Vec<Route>) -> Vec<Route> {
