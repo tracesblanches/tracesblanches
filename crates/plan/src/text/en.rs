@@ -99,7 +99,7 @@ impl Texts for En {
         score: f64,
     ) -> String {
         format!(
-            "Loop no. {rank}: {label} — {km:.1} km, {gain_m} m climb, about {} min (C5 model, {}), score {score:.2}",
+            "Loop no. {rank}: {label} — {km:.1} km, {gain_m} m climb, about {} min (average skier's pace, {}), score {score:.2}",
             minutes.round(),
             self.assist().style(style),
         )
@@ -121,7 +121,7 @@ impl Texts for En {
             hhmm(arrival),
             hhmm(with_margin),
             deadline
-                .map(|d| format!("; light limit minus 30 min (C7): {}", hhmm(d)))
+                .map(|d| format!("; light limit minus 30 min: {}", hhmm(d)))
                 .unwrap_or_default(),
             return_before
                 .map(|d| format!("; back asked before {}", hhmm(d)))
@@ -132,11 +132,11 @@ impl Texts for En {
     fn p_turnaround(&self, at: Option<NaiveDateTime>, group: bool) -> String {
         match at {
             Some(x) if group => format!(
-                "Turn back at {} at the latest, at the group's planned pace (A8, C11)",
+                "Turn back at {} at the latest, at the group's planned pace",
                 hhmm(x)
             ),
             Some(x) => format!(
-                "Turn back at {} at the latest, at the planned pace (A8)",
+                "Turn back at {} at the latest, at the planned pace",
                 hhmm(x)
             ),
             None => "The loop ends before the light limit at the planned pace: no turnaround time"
@@ -279,7 +279,7 @@ impl Texts for En {
 
     fn fb_exit(&self, at: &str, length_m: f64, loop_m: f64, saves_s: f64, names: &str) -> String {
         format!(
-            "Exit {at}: {} km in all instead of {}, {} less (C5 model), by {names}",
+            "Exit {at}: {} km in all instead of {}, {} less at an average skier's pace, by {names}",
             km(length_m),
             km(loop_m),
             minutes(saves_s),
@@ -300,7 +300,7 @@ impl Texts for En {
         names: &str,
     ) -> String {
         format!(
-            "{closed}: detour {at}{}, {} km in all, {} {} (C5 model), by {names}",
+            "{closed}: detour {at}{}, {} km in all, {} {} at an average skier's pace, by {names}",
             match rejoin_m {
                 Some(s) => format!(", back on the loop at {} km", km(s)),
                 None => ", then straight to the finish".into(),
@@ -374,7 +374,7 @@ impl Texts for En {
         c5_s: f64,
     ) -> String {
         format!(
-            "Estimated time for {group} ({learned}): {duration}, {back}; moving {} at the group's pace, stops {}; C5 model alone: {}",
+            "Estimated time for {group} ({learned}): {duration}, {back}; moving {} at the group's pace, stops {}; average skier without stops: {}",
             self.duration5(moving_s),
             self.duration5(stops_s),
             self.duration5(c5_s)

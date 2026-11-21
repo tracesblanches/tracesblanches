@@ -235,6 +235,10 @@ pub trait Texts: Sync {
     ) -> String;
     /// Model time of a loop.
     fn s_time_model(&self, model: &str, style: &str) -> String;
+    /// Label of a loop told apart from another of the same trails by its length.
+    fn s_label_km(&self, label: &str, km: f64) -> String;
+    /// Label of a loop told apart from another of the same trails and length by its rank.
+    fn s_label_rank(&self, label: &str, rank: usize) -> String;
     /// Length, climb, time and return of a loop.
     fn s_loop(&self, km: f64, gain: f64, time: &str, back: NaiveDateTime) -> String;
     /// Share of the loop out and back on the same way.

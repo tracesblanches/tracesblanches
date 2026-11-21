@@ -294,6 +294,9 @@ impl Texts for Fr {
     }
 
     fn briefing_snow_quality(&self, point: &str, summary: &[String]) -> String {
+        if point.is_empty() {
+            return format!("Qualité de neige : {}", summary.join(" "));
+        }
         format!("Qualité de neige ({point}) : {}", summary.join(" "))
     }
 
@@ -493,7 +496,7 @@ impl Texts for Fr {
     ) -> String {
         format!(
             "environ {median} pour {group} ({lo} à {hi}, {learned} ; prévu sur {plan}, le côté lent : 8 chances sur 10 \
-             d'avoir fini ; modèle C5, {style} : {model})"
+             d'avoir fini ; skieur moyen en {style} : {model})"
         )
     }
 
@@ -508,12 +511,20 @@ impl Texts for Fr {
         model: &str,
     ) -> String {
         format!(
-            "environ {median} pour {group} ({lo} à {hi}, {learned} ; modèle C5, {style} : {model})"
+            "environ {median} pour {group} ({lo} à {hi}, {learned} ; skieur moyen en {style} : {model})"
         )
     }
 
     fn s_time_model(&self, model: &str, style: &str) -> String {
-        format!("environ {model} (modèle C5, {style})")
+        format!("environ {model} en {style} (rythme d'un skieur moyen)")
+    }
+
+    fn s_label_km(&self, label: &str, km: f64) -> String {
+        format!("{label} ({} km)", self.num(km, 1))
+    }
+
+    fn s_label_rank(&self, label: &str, rank: usize) -> String {
+        format!("{label} (boucle n° {rank})")
     }
 
     fn s_loop(&self, km: f64, gain: f64, time: &str, back: NaiveDateTime) -> String {
@@ -590,8 +601,8 @@ impl Texts for Fr {
 
     fn s_no_way_back(&self, n: usize) -> String {
         format!(
-            "{n} points de demi-tour sans retour possible vers le départ (sens uniques \
-             du graphe C1)"
+            "{n} points de demi-tour sans retour possible vers le départ (pistes à sens \
+             unique)"
         )
     }
 
@@ -669,7 +680,7 @@ impl Texts for Fr {
             self.date(date),
             self.clock(at),
             deadline
-                .map(|d| format!(" (heure limite de retour C7 : {})", self.clock(d)))
+                .map(|d| format!(" (heure limite de retour : {})", self.clock(d)))
                 .unwrap_or_default(),
             group
                 .map(|l| format!(", temps du groupe : {l}"))
@@ -700,7 +711,7 @@ impl Texts for Fr {
     fn s_unreachable(&self, nodes: usize, of: usize, km: f64, start: &str) -> String {
         format!(
             "{nodes} nœuds sur {of} ({} km de pistes) ne sont pas atteignables depuis {start} : réseau \
-             séparé ou sens uniques dans le graphe des pistes (C1)",
+             séparé ou pistes à sens unique",
             self.num(km, 1)
         )
     }
@@ -855,7 +866,7 @@ impl Texts for Fr {
 
     fn wax_model(&self, snow_type: SnowType, mean: f64, min: f64, max: f64) -> String {
         format!(
-            "{} (modèle de qualité de neige A3, plat), air {mean:+.1} °C en moyenne ({min:+.1} à {max:+.1})",
+            "{} (qualité de neige estimée, terrain plat), air {mean:+.1} °C en moyenne ({min:+.1} à {max:+.1})",
             self.wax_snow_type(snow_type),
         )
         .replace('.', ",")
@@ -997,7 +1008,7 @@ impl Texts for Fr {
     }
 
     fn eq_kick_unreliable(&self) -> &'static str {
-        "retenue du fart incertaine ce jour-là (fartage A2)"
+        "retenue du fart incertaine ce jour-là"
     }
 
     fn eq_nothing(&self, outing: &str) -> String {

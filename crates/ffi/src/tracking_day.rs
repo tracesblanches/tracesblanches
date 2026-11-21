@@ -846,7 +846,7 @@ fn briefing_short(m: &Morning, tx: &dyn Texts) -> Vec<String> {
     let b = &m.briefing;
     b.snow_quality
         .iter()
-        .map(|q| a.briefing_snow_quality(&q.point, &q.summary))
+        .map(|q| a.briefing_snow_quality(&q.point_name, &q.summary))
         .chain(b.sunset.map(|s| a.briefing_sunset(s)))
         .collect()
 }

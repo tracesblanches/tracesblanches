@@ -33,7 +33,10 @@
     <string name="day_if_all_goes_well">Si tout va bien</string>
     <string name="day_no_loop">Aucune boucle pour ces choix. Changez la durée ou le départ.</string>
     <string name="day_loop_stats">%1$s km · D+ %2$d m</string>
-    <string name="day_loop_status">%1$s km ouverts · %2$s km fermés</string>
+    <string name="day_loop_status_unknown">État des pistes inconnu</string>
+    <string name="day_loop_open">%1$s km ouverts</string>
+    <string name="day_loop_closed">%1$s km fermés</string>
+    <string name="day_loop_unknown_km">%1$s km d\'état inconnu</string>
     <string name="day_equipment">À emporter</string>
     <string name="day_contact">Contact prévenu</string>
     <string name="day_contact_none">Aucun contact : touchez pour en choisir un</string>

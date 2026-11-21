@@ -211,16 +211,9 @@ internal fun LoopCard(
                         color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.error,
                     )
                 }
-                // Open, closed, unknown.
+                // Open, closed, unknown: only what is known, never « 0,0 km ».
                 if (l.statusKm.size == STATUS_PARTS) {
-                    Text(
-                        stringResource(
-                            R.string.day_loop_status,
-                            "%.1f".format(LocalConfiguration.current.locales[0], l.statusKm[0]),
-                            "%.1f".format(LocalConfiguration.current.locales[0], l.statusKm[1]),
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+                    Text(loopStatus(l.statusKm), style = MaterialTheme.typography.bodySmall)
                 }
                 if (selected) {
                     l.reasons.take(REASONS_SHOWN).forEach { Text("· $it", style = MaterialTheme.typography.bodySmall) }
@@ -238,6 +231,23 @@ internal fun LoopCard(
     }
 }
 
+/**
+ * The state of the trails of a loop from its km open, closed and of unknown state: the
+ * parts of at least [STATUS_MIN_KM]; « État des pistes inconnu » when none is open or closed.
+ */
+@Composable
+private fun loopStatus(km: List<Double>): String {
+    val locale = LocalConfiguration.current.locales[0]
+    if (km[0] < STATUS_MIN_KM && km[1] < STATUS_MIN_KM) return stringResource(R.string.day_loop_status_unknown)
+    val parts =
+        listOf(R.string.day_loop_open, R.string.day_loop_closed, R.string.day_loop_unknown_km)
+            .zip(km)
+            .filter { (_, x) -> x >= STATUS_MIN_KM }
+            .map { (res, x) -> stringResource(res, "%.1f".format(locale, x)) }
+    return parts.joinToString(" · ")
+}
+
+private const val STATUS_MIN_KM = 0.05
 private const val REASONS_SHOWN = 4
 private const val BRIEFING_SHOWN = 2
 private const val STATUS_PARTS = 3

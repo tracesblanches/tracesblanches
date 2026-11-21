@@ -132,6 +132,7 @@ fn test_pack_with_every_validated_style() {
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].site_id, "test");
 
+    let mut closed_rows = 0;
     for name in STYLES {
         let original: Value = serde_json::from_str(&style_json(name)).unwrap();
         let view = open_packs(
@@ -260,11 +261,31 @@ fn test_pack_with_every_validated_style() {
         );
         assert_eq!(row.core.as_deref(), Some(easy), "{name}");
         assert_ne!(row.color, easy, "{name}: the band is not the open colour");
+        // A closed piste (#177) is drawn as on the map: the piste colour veiled, broken
+        // by dashes of the ground colour of `pistes-closed-dash`; never the plain dashes
+        // of a marked off-piste trail.
+        if let Some(dash) = originals.get("pistes-closed-dash") {
+            let ground = dash["paint"]["line-color"].as_str().unwrap();
+            let row = st
+                .legend
+                .iter()
+                .find(|e| e.key == "closed")
+                .unwrap_or_else(|| panic!("{name}: no closed row in {:?}", st.legend));
+            assert_eq!(
+                (row.color.as_str(), row.kind, row.core.as_deref()),
+                (easy, LegendKind::Veiled, Some(ground)),
+                "{name}"
+            );
+            closed_rows += 1;
+            if let Some(b) = st.legend.iter().find(|e| e.key == "backcountry") {
+                assert_ne!((b.kind, &b.core), (row.kind, &row.core), "{name}");
+            }
+        }
         // Every other row has no core.
         assert!(
             st.legend
                 .iter()
-                .filter(|e| e.key != "state-unknown")
+                .filter(|e| e.key != "state-unknown" && e.key != "closed")
                 .all(|e| e.core.is_none()),
             "{name}"
         );
@@ -275,6 +296,7 @@ fn test_pack_with_every_validated_style() {
         );
         assert!(st.attributions.contains(&"pistes synthétiques".to_owned()));
     }
+    assert!(closed_rows > 0, "no style draws closed pistes");
     // Piste status of the test pack.
     let view = open_packs(
         vec![dir.display().to_string()],

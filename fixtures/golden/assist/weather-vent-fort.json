@@ -22,8 +22,8 @@
     "Itinéraires (les 5 premiers non fermés) :",
     "1. Chemin du Blétonnet (score 1,04) : ouvert [+3,00] ; 61 cm de neige estimée (médiane, carte du 16/01 dont 1 cm tombés depuis, 100 % des points ≥ 20 cm) : suffisante [+2,00] ; 10 cm de neige fraîche en 24 h [+0,50] ; rafales jusqu'à 75 km/h [-2,00] ; très froid, ressenti -24 °C [-1,50] ; surface : neige fraîche soufflée par le vent [-0,50] ; niveau d'affluence modéré (samedi) [-0,25] ; à 11 km à vol d'oiseau [-0,21].",
     "2. Souliers (score 0,91) : ouvert [+3,00] ; 61 cm de neige estimée (médiane, carte du 16/01 dont 1 cm tombés depuis, 100 % des points ≥ 20 cm) : suffisante [+2,00] ; 10 cm de neige fraîche en 24 h [+0,50] ; rafales jusqu'à 80 km/h [-2,00] ; très froid, ressenti -27 °C [-1,50] ; météo du point Les Fonts à 9 km ; surface : neige fraîche soufflée par le vent [-0,50] ; niveau d'affluence modéré (samedi) [-0,25] ; à 17 km à vol d'oiseau [-0,34].",
-    "Qualité de neige (le-laus) : Au plat (1750 m) : neige fraîche soufflée par le vent entre 10 h et 15 h. Meilleur créneau : plat de 9 h à 11 h (neige fraîche). Modèle simple (température, soleil, nuages, vent) : ni ombre du relief ni damage ; à confirmer sur le terrain.",
-    "Qualité de neige (les-fonts) : Au plat (2040 m) : neige fraîche soufflée par le vent entre 10 h et 15 h. Meilleur créneau : plat de 9 h à 11 h (neige fraîche). Modèle simple (température, soleil, nuages, vent) : ni ombre du relief ni damage ; à confirmer sur le terrain.",
+    "Qualité de neige (Le Laus) : Au plat (1750 m) : neige fraîche soufflée par le vent entre 10 h et 15 h. Meilleur créneau : plat de 9 h à 11 h (neige fraîche). Modèle simple (température, soleil, nuages, vent) : ni ombre du relief ni damage ; à confirmer sur le terrain.",
+    "Qualité de neige (Les Fonts) : Au plat (2040 m) : neige fraîche soufflée par le vent entre 10 h et 15 h. Meilleur créneau : plat de 9 h à 11 h (neige fraîche). Modèle simple (température, soleil, nuages, vent) : ni ombre du relief ni damage ; à confirmer sur le terrain.",
     "Coucher du soleil 17 h 17.",
     "Données : BERA ; état des pistes ; domaines ; avalanches historiques ; exposition aux avalanches ; Nordic France : 2/3 ouverts."
   ],
@@ -38,8 +38,8 @@
     "Itinéraires (les 5 premiers non fermés) :",
     "1. Chemin du Blétonnet (score 0,54) : ouvert (dernier état connu) [+3,00] ; 61 cm de neige estimée (médiane, carte du 16/01 dont 1 cm tombés depuis, 100 % des points ≥ 20 cm) : suffisante [+2,00] ; rafales jusqu'à 75 km/h [-2,00] ; très froid, ressenti -24 °C [-1,50] ; surface : neige fraîche soufflée par le vent [-0,50] ; niveau d'affluence modéré (dimanche) [-0,25] ; à 11 km à vol d'oiseau [-0,21].",
     "2. Souliers (score 0,41) : ouvert (dernier état connu) [+3,00] ; 61 cm de neige estimée (médiane, carte du 16/01 dont 1 cm tombés depuis, 100 % des points ≥ 20 cm) : suffisante [+2,00] ; rafales jusqu'à 80 km/h [-2,00] ; très froid, ressenti -27 °C [-1,50] ; météo du point Les Fonts à 9 km ; surface : neige fraîche soufflée par le vent [-0,50] ; niveau d'affluence modéré (dimanche) [-0,25] ; à 17 km à vol d'oiseau [-0,34].",
-    "Qualité de neige (le-laus) : Au plat (1750 m) : neige fraîche soufflée par le vent entre 10 h et 15 h. Meilleur créneau : plat de 9 h à 17 h (neige fraîche soufflée par le vent). Modèle simple (température, soleil, nuages, vent) : ni ombre du relief ni damage ; à confirmer sur le terrain.",
-    "Qualité de neige (les-fonts) : Au plat (2040 m) : neige fraîche soufflée par le vent entre 10 h et 15 h. Meilleur créneau : plat de 9 h à 17 h (neige fraîche soufflée par le vent). Modèle simple (température, soleil, nuages, vent) : ni ombre du relief ni damage ; à confirmer sur le terrain.",
+    "Qualité de neige (Le Laus) : Au plat (1750 m) : neige fraîche soufflée par le vent entre 10 h et 15 h. Meilleur créneau : plat de 9 h à 17 h (neige fraîche soufflée par le vent). Modèle simple (température, soleil, nuages, vent) : ni ombre du relief ni damage ; à confirmer sur le terrain.",
+    "Qualité de neige (Les Fonts) : Au plat (2040 m) : neige fraîche soufflée par le vent entre 10 h et 15 h. Meilleur créneau : plat de 9 h à 17 h (neige fraîche soufflée par le vent). Modèle simple (température, soleil, nuages, vent) : ni ombre du relief ni damage ; à confirmer sur le terrain.",
     "Coucher du soleil 17 h 19.",
     "Données : BERA ; état des pistes ; domaines ; avalanches historiques ; exposition aux avalanches ; état des pistes : dernier connu (16/01 07:30) ; Nordic France : 2/3 ouverts."
   ],
@@ -94,14 +94,14 @@
   ],
   "wax.le-laus": [
     "Matin 9 h–12 h, air -5 °C, neige ≈ -6 °C, neige fraîche : classique, retenue V30 Blue (Swix) ou Nordic GripWax red (Toko) ; glisse classique et skating PS7 Violet (Swix) ou Base Performance Hot Wax red (Toko). Après-midi 12 h–16 h, air -9 °C, neige ≈ -9 °C, neige ancienne à grains fins : classique, retenue V30 Blue (Swix) ou Nordic GripWax red (Toko) ; glisse classique et skating PS6 Blue (Swix) ou Base Performance Hot Wax red (Toko).",
-    "neige fraîche (modèle de qualité de neige A3, plat), air -5,0 °C en moyenne (-5,0 à -5,0) ; glisse : air -5,0 °C (tables Swix), neige estimée -5,8 °C (tables Toko) ; humidité 75 %",
-    "neige ancienne à grains fins (modèle de qualité de neige A3, plat), air -8,5 °C en moyenne (-12,0 à -5,0) ; glisse : air -8,5 °C (tables Swix), neige estimée -9,3 °C (tables Toko) ; humidité 75 %",
+    "neige fraîche (qualité de neige estimée, terrain plat), air -5,0 °C en moyenne (-5,0 à -5,0) ; glisse : air -5,0 °C (tables Swix), neige estimée -5,8 °C (tables Toko) ; humidité 75 %",
+    "neige ancienne à grains fins (qualité de neige estimée, terrain plat), air -8,5 °C en moyenne (-12,0 à -5,0) ; glisse : air -8,5 °C (tables Swix), neige estimée -9,3 °C (tables Toko) ; humidité 75 %",
     "Fartage. Fart de retenue bleu. Fart de glisse pour neige moyenne."
   ],
   "wax.les-fonts": [
     "Matin 9 h–12 h, air -7 °C, neige ≈ -8 °C, neige fraîche : classique, retenue V30 Blue (Swix) ou Nordic GripWax red (Toko) ; glisse classique et skating PS6 Blue (Swix) ou Base Performance Hot Wax red (Toko). Même fartage l'après-midi.",
-    "neige fraîche (modèle de qualité de neige A3, plat), air -7,0 °C en moyenne (-7,0 à -7,0) ; glisse : air -7,0 °C (tables Swix), neige estimée -7,8 °C (tables Toko) ; humidité 75 %",
-    "neige ancienne à grains fins (modèle de qualité de neige A3, plat), air -10,5 °C en moyenne (-14,0 à -7,0) ; glisse : air -10,5 °C (tables Swix), neige estimée -11,3 °C (tables Toko) ; humidité 75 %",
+    "neige fraîche (qualité de neige estimée, terrain plat), air -7,0 °C en moyenne (-7,0 à -7,0) ; glisse : air -7,0 °C (tables Swix), neige estimée -7,8 °C (tables Toko) ; humidité 75 %",
+    "neige ancienne à grains fins (qualité de neige estimée, terrain plat), air -10,5 °C en moyenne (-14,0 à -7,0) ; glisse : air -10,5 °C (tables Swix), neige estimée -11,3 °C (tables Toko) ; humidité 75 %",
     "Fartage. Fart de retenue bleu. Fart de glisse pour neige froide."
   ]
 }

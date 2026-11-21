@@ -105,8 +105,11 @@ pub struct Request {
 pub struct Suggestion {
     /// Label: the three trails with the most length, in order.
     pub label: String,
-    /// Trails in order of first appearance.
+    /// Trails ridden, in order of first appearance.
     pub names: Vec<String>,
+    /// The same trails, the most ridden first (the label takes the first ones).
+    #[serde(skip)]
+    pub ranked_names: Vec<String>,
     /// Length, km.
     pub length_km: f64,
     /// Climb, m.
@@ -375,6 +378,128 @@ fn similar(a: &Suggestion, b: &Suggestion) -> bool {
     let union = a.edges.union(&b.edges).count() as f64;
     union > 0.0 && inter / union > 0.6
 }
+
+/// Hardest colour each trail name can have: the easiest « hardest colour » of the edges
+/// that carry the name (an edge shared by several trails carries all their names, joined by
+/// « / », and the colours of all of them). A trail with one edge of its own gets its own
+/// colour; a trail only ever shared with a harder one is counted as hard as it (never an
+/// easier colour than it has).
+fn trail_levels(g: &PisteGraph) -> HashMap<String, Difficulty> {
+    let mut out: HashMap<String, Difficulty> = HashMap::new();
+    for e in g.edges() {
+        let (Some(name), Some(d)) = (&e.attrs.name, e.attrs.difficulty_max.or(e.attrs.difficulty))
+        else {
+            continue;
+        };
+        for part in name.split(" / ") {
+            out.entry(part.to_owned())
+                .and_modify(|x| *x = (*x).min(d))
+                .or_insert(d);
+        }
+    }
+    out
+}
+
+/// Trails really ridden along `legs`, in order of first appearance, with the length
+/// surely ridden on each, metres. On an edge shared by several trails, the skier is on the
+/// ones of the level asked (`max`: a red trail is never named on a green and blue outing
+/// while a green or blue one shares the way); the length of the edge goes to the ones the
+/// loop also rides on their own if any (split between them), else to all of them.
+fn ridden_trails(
+    g: &PisteGraph,
+    legs: &[Leg],
+    level: &HashMap<String, Difficulty>,
+    max: Option<Difficulty>,
+) -> Vec<(String, f64)> {
+    let within = |part: &str| match (max, level.get(part)) {
+        (Some(m), Some(d)) => *d <= m,
+        _ => true,
+    };
+    // The trails possible on each leg: those of the level asked, else all of them (the
+    // loop does go on a harder trail, said by its reasons).
+    let candidates: Vec<Vec<&str>> = legs
+        .iter()
+        .map(|l| {
+            let Some(n) = &g.edge(l.edge).attrs.name else {
+                return Vec::new();
+            };
+            let parts: Vec<&str> = n.split(" / ").collect();
+            let ok: Vec<&str> = parts.iter().copied().filter(|p| within(p)).collect();
+            if ok.is_empty() { parts } else { ok }
+        })
+        .collect();
+    let sure: HashSet<&str> = candidates
+        .iter()
+        .filter(|c| c.len() == 1)
+        .map(|c| c[0])
+        .collect();
+    let mut out: Vec<(String, f64)> = Vec::new();
+    for (l, c) in legs.iter().zip(&candidates) {
+        let on_own: Vec<&str> = c.iter().copied().filter(|p| sure.contains(p)).collect();
+        let parts = if on_own.is_empty() { c.clone() } else { on_own };
+        let share = l.length_m() / parts.len().max(1) as f64;
+        for part in c {
+            let len = if parts.contains(part) { share } else { 0.0 };
+            match out.iter_mut().find(|(n, _)| n == part) {
+                Some(x) => x.1 += len,
+                None => out.push(((*part).to_owned(), len)),
+            }
+        }
+    }
+    out
+}
+
+/// Label of a loop: the trails of `chosen`, in order of first appearance (`names`).
+fn loop_label(names: &[String], chosen: &[&String], t: &dyn crate::text::Texts) -> String {
+    let top: Vec<&str> = names
+        .iter()
+        .filter(|x| chosen.contains(x))
+        .map(String::as_str)
+        .collect();
+    if top.is_empty() {
+        t.s_unnamed_loop().to_owned()
+    } else {
+        top.join(" – ")
+    }
+}
+
+/// Two loops proposed never have the same label: a loop named like an earlier one adds
+/// to its label its most ridden trail that the earlier ones do not ride, else its length,
+/// else its rank.
+fn distinct_labels(kept: &mut [Suggestion], t: &dyn crate::text::Texts) {
+    for i in 1..kept.len() {
+        let (before, rest) = kept.split_at_mut(i);
+        let s = &mut rest[0];
+        let same: Vec<&Suggestion> = before.iter().filter(|k| k.label == s.label).collect();
+        if same.is_empty() {
+            continue;
+        }
+        let taken = |label: &str| before.iter().any(|k| k.label == label);
+        let own = s
+            .ranked_names
+            .iter()
+            .skip(LABEL_TRAILS)
+            .find(|n| !same.iter().any(|k| k.names.contains(n)));
+        let more = own.map(|n| {
+            let mut chosen: Vec<&String> = s.ranked_names.iter().take(LABEL_TRAILS).collect();
+            chosen.push(n);
+            loop_label(&s.names, &chosen, t)
+        });
+        let label = more
+            .filter(|l| !taken(l))
+            .or_else(|| {
+                let km = |x: f64| (x * 10.0).round();
+                Some(t.s_label_km(&s.label, s.length_km)).filter(|l| {
+                    !taken(l) && same.iter().all(|k| km(k.length_km) != km(s.length_km))
+                })
+            })
+            .unwrap_or_else(|| t.s_label_rank(&s.label, i + 1));
+        s.label = label;
+    }
+}
+
+/// Trails named in the label of a loop: the most ridden ones.
+const LABEL_TRAILS: usize = 3;
 
 /// Adds the loops of `from` (best first) that are not near-duplicates of the kept ones,
 /// until `max` are kept.
@@ -647,6 +772,7 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
         (a, b) => a.or(b),
     };
     let states = edge_states(data, g, date);
+    let trail_level = trail_levels(g);
     let bera = data.bera_for(date).and_then(|b| b.level());
     let map = data.snow_for(date);
     let plan_q = group.map_or(0.5, ProfileModel::plan_quantile);
@@ -848,35 +974,19 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
                 OpenState::Unknown => unknown_km += len / 1000.0,
             }
         }
-        // Trail names in order of first appearance (each part of « A / B »), with the
-        // length on each; the label takes the three longest.
-        let mut names: Vec<String> = Vec::new();
-        let mut name_len: Vec<f64> = Vec::new();
-        for l in &legs {
-            if let Some(n) = &g.edge(l.edge).attrs.name {
-                for part in n.split(" / ") {
-                    match names.iter().position(|x| x == part) {
-                        Some(i) => name_len[i] += l.length_m(),
-                        None => {
-                            names.push(part.to_owned());
-                            name_len.push(l.length_m());
-                        }
-                    }
-                }
-            }
-        }
-        let mut top: Vec<usize> = (0..names.len()).collect();
-        top.sort_by(|a, b| name_len[*b].total_cmp(&name_len[*a]));
-        top.truncate(3);
-        top.sort();
-        let label = if top.is_empty() {
-            t.s_unnamed_loop().to_owned()
-        } else {
-            top.iter()
-                .map(|i| names[*i].clone())
-                .collect::<Vec<_>>()
-                .join(" – ")
-        };
+        // Trails ridden, in order of first appearance, with the length on each; the label
+        // takes the three longest.
+        let ridden = ridden_trails(g, &legs, &trail_level, req.max_difficulty);
+        let names: Vec<String> = ridden.iter().map(|(n, _)| n.clone()).collect();
+        // Only the trails the loop is surely on take part in the label.
+        let mut ranked: Vec<usize> = (0..ridden.len()).filter(|i| ridden[*i].1 > 0.0).collect();
+        ranked.sort_by(|a, b| ridden[*b].1.total_cmp(&ridden[*a].1));
+        let ranked_names: Vec<String> = ranked.iter().map(|i| names[*i].clone()).collect();
+        let label = loop_label(
+            &names,
+            &ranked_names.iter().take(LABEL_TRAILS).collect::<Vec<_>>(),
+            t,
+        );
         let added = match (map, wp) {
             (Some(m), Some(p)) => {
                 p.snowfall_between(m.valid_at.naive_utc() + Duration::hours(1), req.start_time)
@@ -1002,7 +1112,14 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
                 );
             }
         }
-        let named = names.len().min(5) as f64 * 0.1;
+        // The score counts every trail name the loop's ways carry (the ranking does not
+        // depend on which of the trails sharing a way are named for the skier).
+        let ways_named: HashSet<&str> = legs
+            .iter()
+            .filter_map(|l| g.edge(l.edge).attrs.name.as_deref())
+            .flat_map(|n| n.split(" / "))
+            .collect();
+        let named = ways_named.len().min(5) as f64 * 0.1;
         if named > 0.0 {
             briefing::reason(&mut reasons, Factor::Data, named, t.s_trails(&names));
         }
@@ -1044,6 +1161,7 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
         target.push(Suggestion {
             label,
             names,
+            ranked_names,
             length_km: (len_km * 100.0).round() / 100.0,
             gain_m: b.gain_m.round(),
             loss_m: b.loss_m.round(),
@@ -1096,6 +1214,7 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
     {
         kept.push(h);
     }
+    distinct_labels(&mut kept, t);
     if kept.is_empty() {
         notes.push(t.s_none_fits().into());
     } else {
@@ -1874,5 +1993,97 @@ mod tests {
         let best = s.suggestions.first().expect("a loop");
         assert_eq!((best.status_km.0, best.status_km.1), (0.0, 0.0));
         assert!((best.status_km.2 - perimeter).abs() < 1e-6);
+    }
+
+    /// A blue, a red and a green sharing their first way from the start (the way carries
+    /// the three names), then each on its own: the green and the blue close a loop, the red
+    /// a detour.
+    fn shared() -> SiteData {
+        let shared = EdgeAttrs {
+            difficulty: Some(Difficulty::Novice),
+            difficulty_max: Some(Difficulty::Intermediate),
+            ..attrs("La Bleu / La Rouge / La Verte", 1, Difficulty::Novice)
+        };
+        let mut d = site(
+            &[
+                (6.10, 46.60),
+                (6.12, 46.60),
+                (6.12, 46.62),
+                (6.10, 46.62),
+                (6.14, 46.61),
+            ],
+            &[
+                (0, 1, "x", 1, Difficulty::Novice),
+                (1, 2, "La Verte", 2, Difficulty::Novice),
+                (2, 3, "La Verte", 3, Difficulty::Novice),
+                (3, 0, "La Bleu", 4, Difficulty::Easy),
+                (1, 4, "La Rouge", 5, Difficulty::Intermediate),
+                (4, 2, "La Rouge", 6, Difficulty::Intermediate),
+            ],
+        );
+        let mut data = d.graph.take().unwrap().data().clone();
+        data.edges[0].attrs = shared;
+        d.graph = Some(PisteGraph::new(data).unwrap());
+        d
+    }
+
+    #[test]
+    fn a_loop_is_named_after_the_trails_ridden_at_the_level_asked() {
+        let d = shared();
+        let g = d.graph.as_ref().unwrap();
+        let perimeter: f64 = (0..4).map(|e| g.length_m(e)).sum::<f64>() / 1000.0;
+        // Green and blue only (« Vertes et bleues »).
+        let s = suggest(&d, &req(perimeter / 10.6 * 60.0, Some(Difficulty::Easy)));
+        assert!(!s.suggestions.is_empty(), "{:?}", s.notes);
+        for b in &s.suggestions {
+            // The red is named only when the loop does go on the red alone.
+            let on_red = b.edges.contains(&4) || b.edges.contains(&5);
+            assert_eq!(
+                b.names.iter().any(|n| n == "La Rouge"),
+                on_red,
+                "{} {:?}",
+                b.label,
+                b.names
+            );
+            assert_eq!(b.label.contains("La Rouge"), on_red, "{}", b.label);
+        }
+        let best = &s.suggestions[0];
+        assert!(!best.edges.contains(&4) && !best.edges.contains(&5));
+        let mut named = best.names.clone();
+        named.sort();
+        assert_eq!(named, ["La Bleu", "La Verte"], "{}", best.label);
+        // Two loops proposed never share a label.
+        for (i, a) in s.suggestions.iter().enumerate() {
+            for b in &s.suggestions[i + 1..] {
+                assert_ne!(a.label, b.label);
+            }
+        }
+    }
+
+    #[test]
+    fn two_loops_never_share_a_label() {
+        let t = crate::text::of(crate::text::Lang::Fr);
+        let d = data();
+        let g = d.graph.as_ref().unwrap();
+        let perimeter: f64 = (0..4).map(|e| g.length_m(e)).sum::<f64>() / 1000.0;
+        let s = suggest(&d, &req(perimeter / 10.6 * 60.0, None));
+        let one = s.suggestions[0].clone();
+        // Same trails, one more trail on the second; same trails and another length on the
+        // third; the very same loop on the fourth.
+        let mut more = one.clone();
+        more.names.push("Antenne".into());
+        more.ranked_names.push("Antenne".into());
+        let mut longer = one.clone();
+        longer.length_km += 1.0;
+        let mut kept = vec![one.clone(), more, longer, one.clone()];
+        distinct_labels(&mut kept, t);
+        let labels: Vec<&str> = kept.iter().map(|k| k.label.as_str()).collect();
+        assert_eq!(labels[0], one.label);
+        assert_eq!(labels[1], format!("{} – Antenne", one.label));
+        assert_eq!(
+            labels[2],
+            format!("{} ({} km)", one.label, t.num(one.length_km + 1.0, 1))
+        );
+        assert_eq!(labels[3], format!("{} (boucle n° 4)", one.label));
     }
 }
