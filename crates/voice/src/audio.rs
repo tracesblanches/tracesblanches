@@ -245,6 +245,9 @@ impl Ffmpeg {
                 "+bitexact",
                 "-flags:a",
                 "+bitexact",
+                // The Ogg/Opus muxer whatever the name (a temporary file, `*.tmp`).
+                "-f",
+                "opus",
                 "-y",
                 path,
             ],
