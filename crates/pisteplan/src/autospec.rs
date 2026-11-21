@@ -110,7 +110,7 @@ pub fn colour_word_ink(text: &str) -> Option<&'static str> {
 /// Legend lines of a plan: on a text layer, « Name 12,3 km » lines (a column of lengths
 /// joined to the name on its left, [`crate::labels::join_lengths`]; with the
 /// « (Multi-activités) 11,0 km » continuation joined, as [`crate::labels::legend`]); on an
-/// OCR reading, « Piste <couleur> : name • length » lines (as
+/// OCR reading, « Piste `<couleur>` : name • length » lines (as
 /// [`crate::labels::legend_ocr`], two columns read as one line split).
 pub fn entry_candidates(lines: &[TextBox], src: LabelSource) -> Vec<EntryCand> {
     match src {

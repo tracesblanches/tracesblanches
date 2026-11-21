@@ -165,7 +165,7 @@ const NOT_A_SKI_PLAN: &[&str] = &[
 ];
 
 /// Whether a file title or name looks like a cross-country ski plan: it says « plan » or
-/// « carte » and nothing of [`NOT_A_SKI_PLAN`] (« plan des pistes nordiques et alpines »
+/// « carte » and nothing of `NOT_A_SKI_PLAN` (« plan des pistes nordiques et alpines »
 /// stays when it also says « nordique », « fond » or « ski de fond »). `Err` gives the
 /// reason of a rejection.
 pub fn ski_plan_title(text: &str) -> std::result::Result<(), String> {

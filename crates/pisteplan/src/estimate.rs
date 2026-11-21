@@ -551,7 +551,7 @@ const NOT_A_NAME: [&str; 14] = [
 ];
 
 /// Whether a legend line reads as the name of a piste: a word that is not
-/// [`NOT_A_NAME`], of at least four letters or capitalised (« Le Gy »). Measured on six massifs (#117): fragments of the text
+/// `NOT_A_NAME`, of at least four letters or capitalised (« Le Gy »). Measured on six massifs (#117): fragments of the text
 /// layer or of the OCR (« iè e », « km sa », « des pistes ») were estimated as pistes and
 /// all were wrong; an estimated trace is shown under its name, a fragment never is.
 pub fn plausible_name(name: &str) -> bool {

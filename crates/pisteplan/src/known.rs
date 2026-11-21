@@ -802,7 +802,7 @@ pub fn route_liaison(
     (s >= MIN_SCORE).then(|| (line, len, s, pts.into_iter().map(|p| p.1).collect()))
 }
 
-/// What [`build`] did.
+/// What [`trace`] and [`write()`] did.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct Report {
     /// Pistes named and absent from OSM, by the source naming them.
@@ -819,7 +819,7 @@ pub struct Report {
     pub errors: Vec<String>,
 }
 
-/// Inputs of [`build`] read from the network.
+/// Inputs of [`trace`] and [`write()`] read from the network.
 pub struct Ground<'a> {
     /// Geotrek itineraries near the site.
     pub treks: &'a [Trek],
@@ -1011,7 +1011,7 @@ pub fn trace(
     Ok((features, rep))
 }
 
-/// What [`write`] writes: the outputs of [`known_of`] and the sources of the ground.
+/// What [`write()`] writes: the outputs of [`known_of`] and the sources of the ground.
 pub struct Inputs {
     /// Pistes to trace.
     pub known: Vec<Known>,
