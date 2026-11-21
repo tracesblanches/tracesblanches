@@ -149,7 +149,7 @@ pub const ALONG_DISTANCE_M: f64 = 20.0;
 /// itinerary for the way to belong to it.
 pub const ALONG_SHARE: f64 = 0.8;
 /// Spacing of the sample points along an OSM way (m).
-const SAMPLE_M: f64 = 10.0;
+pub const SAMPLE_M: f64 = 10.0;
 
 /// Local metric projection around a reference latitude (equirectangular).
 fn local(lon: f64, lat: f64, lat0: f64) -> (f64, f64) {

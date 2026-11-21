@@ -73,7 +73,7 @@ pub const FRANCE_SOURCE: &str = "france";
 /// and borders (zoom 6 tiles enlarged 16 times) no longer match the Plan IGN drawn over
 /// them (seen on the emulator at zoom 11 over three packs: blocky forests, doubled roads).
 pub const FRANCE_DETAIL_UNTIL: f64 = 10.0;
-/// Zoom from which the Plan IGN names the communes ([`localities`]): the France names stop.
+/// Zoom from which the Plan IGN names the communes (`localities`): the France names stop.
 pub const FRANCE_NAMES_UNTIL: f64 = 10.0;
 
 /// Empty GeoJSON, the initial data of runtime sources.
