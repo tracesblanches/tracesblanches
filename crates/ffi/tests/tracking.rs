@@ -766,7 +766,10 @@ fn full_data_bring_me_back() {
         if let Some(gq) = r.gps {
             modes.insert(format!("{:?}", gq.mode));
         }
-        if r.guidance.route != "back" {
+        if r.guidance.back.is_none() {
+            // Arrived (#180): the arrival stays on the banner, not the plan.
+            assert_eq!(r.guidance.route, "back");
+            assert_eq!(r.guidance.phase, PhaseView::Finished);
             arrived = true;
             break;
         }
@@ -927,7 +930,10 @@ fn bring_me_back_on(pack_dir: &Path) -> Result<String, String> {
             r.guidance.back.as_ref().is_some_and(|x| x.off_way),
             left.2 + r.spoken.iter().filter(|x| x.kinds == ["off_route"]).count(),
         );
-        if r.guidance.route != "back" {
+        if r.guidance.back.is_none() {
+            // Arrived (#180): the arrival stays on the banner, not the plan.
+            assert_eq!(r.guidance.route, "back");
+            assert_eq!(r.guidance.phase, PhaseView::Finished);
             assert!(
                 r.spoken.iter().any(|x| x.kinds == ["arrive"]),
                 "{}: back over without the arrival said",

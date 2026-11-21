@@ -21,7 +21,8 @@
 //! plan when it ends elsewhere, else to the car (recorded on its own at the start of the
 //! outing, corrected by [`TrackingSession::set_car`]), along the pistes of the pack or the
 //! way skied ([`crate::tracking_back`]); the tracker keeps running for the safety alerts.
-//! When the return time of the plan calls for going home and the tracker has no way home
+//! Once arrived (« Vous arrivez à destination »), the guidance stays on the arrival (phase
+//! finished, route `back`, #180) until the way back is stopped or asked again. When the return time of the plan calls for going home and the tracker has no way home
 //! on the pistes, « ramène-moi » is proposed (one gesture to accept).
 
 use std::collections::BTreeSet;
@@ -1354,6 +1355,10 @@ struct Engine<'a> {
     back: Option<Backtrack>,
     /// Where the way back goes and how.
     back_to: Option<(Target, WayKind)>,
+    /// The way back arrived (« Vous arrivez à destination », #180): the guidance stays on
+    /// the arrival, never the plan of the day again, until the way back is stopped or
+    /// asked again.
+    back_arrived: bool,
     /// The car.
     car: CarSpotter,
     /// Trails closed during the outing (OSM ways): the way back avoids them.
@@ -1397,6 +1402,7 @@ impl<'a> Engine<'a> {
             last: None,
             back: None,
             back_to: None,
+            back_arrived: false,
             car: CarSpotter::with(read_car(&o.car_file)),
             closed: BTreeSet::new(),
             back_steps: Vec::new(),
@@ -1567,6 +1573,7 @@ impl<'a> Engine<'a> {
             Cmd::BackStop => {
                 self.back = None;
                 self.back_to = None;
+                self.back_arrived = false;
                 let mut out = self.collect();
                 if let Some(r) = self.tracker.gps_request() {
                     out.gps = Some(gps_view(&r));
@@ -1599,7 +1606,8 @@ impl<'a> Engine<'a> {
             recap: None,
             guidance: placeholder_guidance(),
         };
-        let backing = self.back.is_some();
+        // Going back, or arrived by the way back (#180): the plan is not followed.
+        let backing = self.back.is_some() || self.back_arrived;
         // The return time calls for going home (A8's « turn around now »)…
         let mut home_time = None;
         // …and the tracker found a way home on the pistes.
@@ -1653,7 +1661,7 @@ impl<'a> Engine<'a> {
                     });
                 }
                 Output::Gps { request, .. } => {
-                    if !backing {
+                    if self.back.is_none() {
                         b.gps = Some(gps_view(&request));
                         self.last_gps = Some(request);
                     }
@@ -1792,9 +1800,10 @@ impl<'a> Engine<'a> {
         }
         self.back_gps = st;
         if arrived {
-            // Arrived: the tracker's route and GPS mode again.
+            // Arrived: the tracker's GPS mode again; the guidance stays on the arrival.
             self.back = None;
             self.back_to = None;
+            self.back_arrived = true;
             if let Some(r) = self.tracker.gps_request() {
                 b.gps = Some(gps_view(&r));
                 self.last_gps = Some(r);
@@ -1803,6 +1812,9 @@ impl<'a> Engine<'a> {
     }
 
     fn phase(&self) -> PhaseView {
+        if self.back_arrived {
+            return PhaseView::Finished;
+        }
         match self.tracker.phase() {
             Phase::Waiting => PhaseView::Waiting,
             Phase::Moving => PhaseView::Moving,
@@ -1815,6 +1827,9 @@ impl<'a> Engine<'a> {
     }
 
     fn next_turn(&self) -> Option<NextTurn> {
+        if self.back_arrived {
+            return None;
+        }
         if let Some(b) = &self.back {
             return b.next_turn().map(|(d, m)| NextTurn {
                 direction: direction_view(d),
@@ -1867,6 +1882,13 @@ impl<'a> Engine<'a> {
                 arrival =
                     skimap_core::ephemeris::local_time(utc(((t + remaining_s) * 1000.0) as i64));
             }
+        } else if self.back_arrived {
+            route = "back".into();
+            remaining_m = 0.0;
+            remaining_s = 0.0;
+            if let Some(t) = now {
+                arrival = skimap_core::ephemeris::local_time(utc((t * 1000.0) as i64));
+            }
         }
         GuidanceView {
             phase: self.phase(),
@@ -1880,16 +1902,19 @@ impl<'a> Engine<'a> {
             remaining_text: tx.duration(remaining_s),
             arrival: tx.clock5(arrival),
             arrival_ms: epoch_ms(arrival),
-            arrival_range: if self.back.is_some() {
+            arrival_range: if self.back.is_some() || self.back_arrived {
                 None
             } else {
                 arrival_range
             },
             limit,
-            off_route_m: self
-                .back
-                .as_ref()
-                .map_or(self.tracker.distance_to_route(), Backtrack::distance_m),
+            off_route_m: if self.back_arrived {
+                0.0
+            } else {
+                self.back
+                    .as_ref()
+                    .map_or(self.tracker.distance_to_route(), Backtrack::distance_m)
+            },
             gps_mode: self
                 .last_gps
                 .map_or(GpsModeView::Idle, |r| mode_view(r.mode)),
@@ -1944,6 +1969,7 @@ impl<'a> Engine<'a> {
         });
         self.back_to = way.as_ref().map(|w| (w.target.clone(), w.kind));
         self.back = way.map(|w| w.back);
+        self.back_arrived = false;
         self.back_gps = GpsState::default();
         if self
             .proposal
