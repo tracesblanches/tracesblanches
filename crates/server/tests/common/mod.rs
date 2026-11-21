@@ -120,7 +120,6 @@ pub fn make_pack(dir: &Path, version: &str, files: &[(&str, &[u8])]) -> Vec<u8> 
         "personal_sources": false, "basemaps": [],
         "layers": [layer("pistes", "layers/pistes.json", "2026-12-31"),
                    layer("bera", "layers/bera.json", "2026-11-16")],
-        "voice": {"status": "absent", "clips": 0, "bytes": 0, "note": "n"},
         "attributions": [], "files": entries, "total_bytes": total
     });
     let bytes = serde_json::to_vec_pretty(&m).unwrap();

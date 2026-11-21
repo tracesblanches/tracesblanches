@@ -301,9 +301,6 @@ impl Handler for App {
             ["v1", "sites", site, "index.json"] if read => {
                 self.mutable(req, self.store.index_path(site))
             }
-            ["v1", "sites", site, "voice", lang, "index.json"] if read => {
-                self.mutable(req, self.store.voice_index_path(site, lang))
-            }
             ["v1", "bundles", name] if read => self.bundle(req, name),
             // France basemap (X20): its description, then its files by SHA-256.
             ["v1", "basemap", "france.json"] if read => {
