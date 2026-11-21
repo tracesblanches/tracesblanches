@@ -214,4 +214,73 @@ mod tests {
         assert!(skimap_pack::build::layers::restricted(&meta.sources));
         assert!(meta.sources.iter().any(|s| s.name == zones.sources[0].name));
     }
+
+    /// The assistant layers a public pack takes from `out/<site>/` (`skimap_pack`'s own
+    /// decision): `(id, included)`.
+    fn pack_assist(layout: &DataLayout, site: &Site, root: &Path) -> Vec<(String, bool)> {
+        let out = layout.out_dir(site);
+        skimap_pack::build::layers::discovered(&out)
+            .unwrap()
+            .into_iter()
+            .filter(|s| s.id.starts_with("assist-"))
+            .map(|s| {
+                let o = skimap_pack::build::layers::include(&s, &out, root, false).unwrap();
+                let included = matches!(o, skimap_pack::build::layers::Outcome::Included(_));
+                (s.id.to_string(), included)
+            })
+            .collect()
+    }
+
+    /// #151 on the data of a site already built: an earlier run of the assistant made
+    /// with a personal source (its files and its sources stay in `assist/`) does not keep
+    /// the files of a later public run out of the public pack; the files of the earlier
+    /// run stay personal.
+    #[test]
+    fn an_earlier_personal_run_does_not_keep_the_public_assistant_out_of_the_pack() {
+        let tmp = tempfile::tempdir().unwrap();
+        copy_tree(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/data"),
+            tmp.path(),
+        );
+        let layout = DataLayout::new(tmp.path());
+        let site = skimap_common::site::site("cervieres").expect("evaluation site");
+        let zones_meta = layout.out_dir(site).join("zones").join("zones.meta.json");
+        let mut zones = LayerMeta::read(&zones_meta).unwrap();
+        zones.sources[0].licence = "non vérifiée".into();
+        std::fs::write(&zones_meta, serde_json::to_vec_pretty(&zones).unwrap()).unwrap();
+
+        let earlier = NaiveDate::from_ymd_opt(2026, 1, 9).unwrap();
+        let date = NaiveDate::from_ymd_opt(2026, 1, 15).unwrap();
+        for (d, personal_sources) in [(earlier, true), (date, false)] {
+            let args = AssistArgs {
+                date: Some(d),
+                personal_sources,
+                ..Default::default()
+            };
+            assist(&layout, site, &args).unwrap();
+        }
+        let pack = tempfile::tempdir().unwrap();
+        let got = pack_assist(&layout, site, pack.path());
+        assert!(
+            got.iter().any(|(id, ok)| id == "assist-briefing" && *ok),
+            "{got:?}"
+        );
+        assert!(got.iter().all(|(_, ok)| *ok), "{got:?}");
+        let meta = assist_meta(&layout, site);
+        let licence = |name: &str| {
+            meta.files
+                .iter()
+                .find(|f| f.name == name)
+                .and_then(|f| f.licence.as_deref())
+                .map(skimap_common::licence::classify)
+        };
+        assert_eq!(
+            licence(&format!("briefing_{earlier}.json")),
+            Some(skimap_common::licence::Family::Personal)
+        );
+        assert_eq!(
+            licence(&format!("briefing_{date}.json")),
+            Some(skimap_common::licence::Family::Odbl)
+        );
+    }
 }

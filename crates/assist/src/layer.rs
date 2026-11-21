@@ -592,9 +592,17 @@ fn write_meta(
         .ok()
         .and_then(|m| serde_json::from_value(m.parameters["runs"].clone()).ok())
         .unwrap_or_default();
-    let mut sources: Vec<SourceRef> = LayerMeta::read(&path)
-        .map(|m| m.sources)
+    let previous = LayerMeta::read(&path).ok();
+    let mut sources: Vec<SourceRef> = previous
+        .as_ref()
+        .map(|m| m.sources.clone())
         .unwrap_or_default();
+    // Licence of each file written by an earlier run (kept while it stays on disk).
+    let earlier: BTreeMap<String, String> = previous
+        .iter()
+        .flat_map(|m| &m.files)
+        .filter_map(|f| Some((f.name.clone(), f.licence.clone()?)))
+        .collect();
     let charts = [
         SourceRef::new(
             "Swix, pages produits (farts de retenue V, klisters KX et K, glisse PS)",
@@ -610,6 +618,22 @@ fn write_meta(
         ),
     ];
     merge_sources(&mut sources, data.sources.iter().chain(&charts));
+    // The files of this run are made of the sources of this run only (#151): their
+    // licence group, so that a file of a public run enters the public pack even when an
+    // earlier run of the layer read a personal source (`skimap_pack` reads the licence
+    // of each file).
+    let run_licence = skimap_common::licence::group(data.sources.iter().chain(&charts).map(|s| {
+        match skimap_common::licence::publishable(s) {
+            true => skimap_common::licence::of_source(s),
+            false => skimap_common::licence::Family::Personal,
+        }
+    }))
+    .licence_fr();
+    let this_run: Vec<String> = files
+        .iter()
+        .filter_map(|f| f.file_name())
+        .map(|f| f.to_string_lossy().into_owned())
+        .collect();
     runs.insert(
         date.to_string(),
         json!({
@@ -652,7 +676,15 @@ fn write_meta(
         } else {
             "fichier de l'assistant"
         };
-        FileMeta::new(n, d)
+        let licence = if this_run.iter().any(|f| f == n) {
+            Some(run_licence.to_owned())
+        } else {
+            earlier.get(n).cloned()
+        };
+        FileMeta {
+            licence,
+            ..FileMeta::new(n, d)
+        }
     };
     LayerMeta {
         tickets: vec![
