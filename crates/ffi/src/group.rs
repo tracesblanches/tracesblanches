@@ -277,14 +277,31 @@ pub fn open_group_session(
         },
         ..Config::default()
     };
+    // Off the trails (SRN, #77): chosen by the outing, never by a setting.
+    let cfg = if plan_dir.as_deref().is_some_and(off_piste) {
+        cfg.off_piste()
+    } else {
+        cfg
+    };
     let s = Session::new(g, me, cfg).map_err(invalid)?;
     Ok(Arc::new(GroupSession {
         session: Mutex::new(s),
     }))
 }
 
+/// Whether the outing in `dir` goes off the trails: a guided outing (an off-piste line,
+/// V1, or a bearing, K7) rather than a day plan on the trail graph.
+fn off_piste(dir: &str) -> bool {
+    crate::fog::GuidedSpec::read(Path::new(dir)).is_ok()
+}
+
 #[uniffi::export]
 impl GroupSession {
+    /// Whether the session has the settings of an outing off the trails (SRN).
+    pub fn off_piste(&self) -> bool {
+        self.lock().config().off_piste
+    }
+
     /// This phone's member.
     pub fn me(&self) -> u8 {
         self.lock().me()
@@ -479,5 +496,42 @@ mod tests {
         .unwrap();
         assert!(!s.plan_matches());
         assert!(open_group_session("x".into(), 0, None, Lang::Fr, 0).is_err());
+    }
+
+    #[test]
+    fn an_outing_off_the_trails_has_the_srn_settings() {
+        let day = tempfile::tempdir().unwrap();
+        std::fs::write(day.path().join(PLAN_FILE), b"{\"plan\":\"test\"}").unwrap();
+        let guided = tempfile::tempdir().unwrap();
+        let target = crate::fog::FogTarget {
+            kind: "refuge".into(),
+            name: "Refuge".into(),
+            lon: 6.73,
+            lat: 44.9,
+            distance_m: None,
+        };
+        let gdir = guided.path().to_string_lossy().into_owned();
+        crate::fog::guided_bearing(gdir.clone(), target, None, 0.0, Lang::Fr, None, None).unwrap();
+        let g =
+            group_mode_create(vec![9u8; 32], vec!["Pierre".into(), "Léa".into()], None, 1).unwrap();
+        let ddir = day.path().to_string_lossy().into_owned();
+        for (dir, srn) in [(Some(ddir), false), (Some(gdir), true), (None, false)] {
+            let a = open_group_session(g.qr_text.clone(), 0, dir.clone(), Lang::Fr, 3600).unwrap();
+            let b = open_group_session(g.qr_text.clone(), 1, dir, Lang::Fr, 3600).unwrap();
+            assert_eq!(a.off_piste(), srn);
+            let tb = b.tick(T0, fix(T0, 44.87, 0.0), vec![]);
+            a.tick(T0, fix(T0, 44.87, 0.0), vec![tb.own_frame.unwrap()]);
+            // 10 min later, Léa not heard, last seen 400 m away: told off the trails only.
+            let now = T0 + 600_000;
+            let ta = a.tick(now, fix(now, 44.87 + 400.0 / 111_195.0, 400.0), vec![]);
+            assert_eq!(ta.alerts.len(), usize::from(srn), "{:?}", ta.alerts);
+            if srn {
+                assert!(
+                    ta.alerts[0].text.ends_with("S'arrêter et regrouper ?"),
+                    "{}",
+                    ta.alerts[0].text
+                );
+            }
+        }
     }
 }

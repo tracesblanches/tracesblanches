@@ -419,76 +419,24 @@ pub fn encode_raster_with<T: RasterValue>(
 
 /// Decodes a raster written by [`encode_raster`]; the grid carries its no-data value.
 pub fn decode_raster<T: RasterValue>(bytes: &[u8]) -> Result<Grid<T>> {
-    if bytes.len() < HEADER_LEN || &bytes[0..4] != MAGIC {
-        return Err(Error::Format("not an SKR1 raster".into()));
-    }
-    let encoding = if bytes[4] == T::CODE {
-        Encoding::Raw
-    } else if bytes[4] == T::CODE | ROW_DELTA_FLAG {
-        Encoding::RowDelta
-    } else {
-        return Err(Error::Format(format!(
-            "value type {} instead of {} (raw) or {} (row delta)",
-            bytes[4],
-            T::CODE,
-            T::CODE | ROW_DELTA_FLAG
-        )));
-    };
-    let u32_at =
-        |o: usize| u32::from_le_bytes([bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3]]);
-    let f64_at = |o: usize| {
-        let mut b = [0u8; 8];
-        b.copy_from_slice(&bytes[o..o + 8]);
-        f64::from_le_bytes(b)
-    };
-    let (w, h) = (u32_at(8) as usize, u32_at(12) as usize);
-    let crs = crs_of_epsg(u32_at(16))?;
-    let nodata = T::from_u32(u32_at(20))
-        .ok_or_else(|| Error::Format("no-data value out of range".into()))?;
-    let mut gt = [0.0; 6];
-    for (k, v) in gt.iter_mut().enumerate() {
-        *v = f64_at(24 + 8 * k);
-    }
-    let transform = GeoTransform::from_gdal(gt).map_err(|e| Error::Format(e.to_string()))?;
-    // Both products checked: a header of 2^31 × 2^31 cells of 2 bytes overflowed the byte
-    // count (found by fuzzing, Q3 #103).
-    let n = w
-        .checked_mul(h)
-        .ok_or_else(|| Error::Format("size overflow".into()))?;
-    let n_bytes = n
-        .checked_mul(T::SIZE)
-        .ok_or_else(|| Error::Format("size overflow".into()))?;
+    let h = Header::<T>::parse(bytes)?;
+    let (w, n_bytes) = (h.width, h.n_bytes);
     let body = &bytes[HEADER_LEN..];
     if body.len() != n_bytes {
         return Err(Error::Format(format!(
-            "{} data bytes for {w} x {h} cells of {} bytes",
+            "{} data bytes for {w} x {} cells of {} bytes",
             body.len(),
+            h.height,
             T::SIZE
         )));
     }
-    let data: Vec<T> = match encoding {
-        Encoding::Raw => body.chunks_exact(T::SIZE).map(T::get).collect(),
-        Encoding::RowDelta => {
-            let mut data = Vec::with_capacity(n);
-            let mut cell = vec![0u8; T::SIZE];
-            for row in body.chunks_exact((w * T::SIZE).max(1)).take(h) {
-                let mut prev: Option<T> = None;
-                for c in 0..w {
-                    for (k, b) in cell.iter_mut().enumerate() {
-                        *b = row[k * w + c];
-                    }
-                    let d = T::get(&cell);
-                    let v = prev.map_or(d, |p| p.wrapping_add(d));
-                    data.push(v);
-                    prev = Some(v);
-                }
-            }
-            data
-        }
-    };
-    Ok(Grid::from_vec(w, h, transform, crs, data)
+    let mut data: Vec<T> = Vec::with_capacity(w * h.height);
+    for row in body.chunks_exact((w * T::SIZE).max(1)).take(h.height) {
+        data.extend(decode_row::<T>(row, w, h.encoding));
+    }
+    Ok(Grid::from_vec(w, h.height, h.transform, h.crs, data)
         .map_err(|e| Error::Format(e.to_string()))?
-        .with_nodata(nodata))
+        .with_nodata(h.nodata))
 }
 
 /// Writes a raster file with [`Encoding::RowDelta`] cells (the pack gzips them: on an
@@ -511,10 +459,230 @@ pub fn write_raster_with<T: RasterValue>(
     Ok(bytes.len() as u64)
 }
 
-/// Reads a raster file.
+/// A raster file read in place (E1 #125): the header once, then only the rows asked,
+/// each read from the file at its offset and decoded ([`Encoding::Raw`] or
+/// [`Encoding::RowDelta`]); the last [`ROWS_KEPT`] rows decoded are kept. For lookups at
+/// a few positions (the altitude of a trace): the raster is never copied into memory
+/// (23 MB of 5 m elevation on the alpine test set); the same file as [`read_raster`]
+/// reads.
+#[derive(Debug)]
+pub struct RasterRows<T> {
+    file: std::fs::File,
+    width: usize,
+    height: usize,
+    transform: GeoTransform,
+    nodata: T,
+    encoding: Encoding,
+    rows: std::sync::Mutex<std::collections::VecDeque<(usize, Vec<T>)>>,
+}
+
+/// Rows kept decoded by a [`RasterRows`] (a trace crosses a few rows between two fixes).
+pub const ROWS_KEPT: usize = 8;
+
+impl<T: RasterValue> RasterRows<T> {
+    /// Opens the raster file at `path`: header checked as [`decode_raster`] does, and the
+    /// file's length against it.
+    pub fn open(path: &Path) -> Result<Self> {
+        use std::io::Read as _;
+        let mut file = std::fs::File::open(path).map_err(|e| io_err(path, e))?;
+        let mut head = [0u8; HEADER_LEN];
+        file.read_exact(&mut head)
+            .map_err(|e| Error::Format(format!("{}: SKR1 header: {e}", path.display())))?;
+        let at = |e: Error| Error::Format(format!("{}: {e}", path.display()));
+        let h = Header::<T>::parse(&head).map_err(at)?;
+        let len = file.metadata().map_err(|e| io_err(path, e))?.len();
+        if len != (HEADER_LEN + h.n_bytes) as u64 {
+            return Err(Error::Format(format!(
+                "{}: {} data bytes for {} x {} cells of {} bytes",
+                path.display(),
+                len.saturating_sub(HEADER_LEN as u64),
+                h.width,
+                h.height,
+                T::SIZE
+            )));
+        }
+        Ok(Self {
+            file,
+            width: h.width,
+            height: h.height,
+            transform: h.transform,
+            nodata: h.nodata,
+            encoding: h.encoding,
+            rows: std::sync::Mutex::new(std::collections::VecDeque::with_capacity(ROWS_KEPT)),
+        })
+    }
+
+    /// Number of columns.
+    pub fn width(&self) -> usize {
+        self.width
+    }
+
+    /// Number of rows.
+    pub fn height(&self) -> usize {
+        self.height
+    }
+
+    /// No-data value.
+    pub fn nodata(&self) -> T {
+        self.nodata
+    }
+
+    /// Value of cell `(col, row)` (`None` outside the raster or on a read error).
+    pub fn get(&self, col: usize, row: usize) -> Option<T> {
+        if col >= self.width || row >= self.height {
+            return None;
+        }
+        let mut rows = self
+            .rows
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some((_, r)) = rows.iter().find(|(i, _)| *i == row) {
+            return r.get(col).copied();
+        }
+        let r = self.read_row(row)?;
+        let v = r.get(col).copied();
+        if rows.len() == ROWS_KEPT {
+            rows.pop_front();
+        }
+        rows.push_back((row, r));
+        v
+    }
+
+    /// Value of the cell containing world coordinates (in the raster's CRS).
+    pub fn value_at(&self, x: f64, y: f64) -> Option<T> {
+        let (c, r) = self.transform.world_to_pixel(x, y);
+        if c < 0.0 || r < 0.0 || !c.is_finite() || !r.is_finite() {
+            return None;
+        }
+        self.get(c.floor() as usize, r.floor() as usize)
+    }
+
+    fn read_row(&self, row: usize) -> Option<Vec<T>> {
+        use std::io::{Read as _, Seek as _, SeekFrom};
+        let n = self.width * T::SIZE;
+        let mut bytes = vec![0u8; n];
+        let mut f = &self.file;
+        f.seek(SeekFrom::Start((HEADER_LEN + row * n) as u64))
+            .ok()?;
+        f.read_exact(&mut bytes).ok()?;
+        Some(decode_row(&bytes, self.width, self.encoding))
+    }
+}
+
+/// The header of an SKR1 raster.
+struct Header<T> {
+    width: usize,
+    height: usize,
+    crs: Crs,
+    nodata: T,
+    transform: GeoTransform,
+    encoding: Encoding,
+    n_bytes: usize,
+}
+
+impl<T: RasterValue> Header<T> {
+    fn parse(bytes: &[u8]) -> Result<Self> {
+        if bytes.len() < HEADER_LEN || &bytes[0..4] != MAGIC {
+            return Err(Error::Format("not an SKR1 raster".into()));
+        }
+        let encoding = if bytes[4] == T::CODE {
+            Encoding::Raw
+        } else if bytes[4] == T::CODE | ROW_DELTA_FLAG {
+            Encoding::RowDelta
+        } else {
+            return Err(Error::Format(format!(
+                "value type {} instead of {} (raw) or {} (row delta)",
+                bytes[4],
+                T::CODE,
+                T::CODE | ROW_DELTA_FLAG
+            )));
+        };
+        let u32_at =
+            |o: usize| u32::from_le_bytes([bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3]]);
+        let f64_at = |o: usize| {
+            let mut b = [0u8; 8];
+            b.copy_from_slice(&bytes[o..o + 8]);
+            f64::from_le_bytes(b)
+        };
+        let (width, height) = (u32_at(8) as usize, u32_at(12) as usize);
+        let crs = crs_of_epsg(u32_at(16))?;
+        let nodata = T::from_u32(u32_at(20))
+            .ok_or_else(|| Error::Format("no-data value out of range".into()))?;
+        let mut gt = [0.0; 6];
+        for (k, v) in gt.iter_mut().enumerate() {
+            *v = f64_at(24 + 8 * k);
+        }
+        let transform = GeoTransform::from_gdal(gt).map_err(|e| Error::Format(e.to_string()))?;
+        // Both products checked: a header of 2^31 x 2^31 cells of 2 bytes overflowed the
+        // byte count (found by fuzzing, Q3 #103).
+        let n_bytes = width
+            .checked_mul(height)
+            .and_then(|n| n.checked_mul(T::SIZE))
+            .ok_or_else(|| Error::Format("size overflow".into()))?;
+        Ok(Self {
+            width,
+            height,
+            crs,
+            nodata,
+            transform,
+            encoding,
+            n_bytes,
+        })
+    }
+}
+
+/// Cells of one row of `w` cells as stored.
+fn decode_row<T: RasterValue>(row: &[u8], w: usize, encoding: Encoding) -> Vec<T> {
+    match encoding {
+        Encoding::Raw => row.chunks_exact(T::SIZE).map(T::get).collect(),
+        Encoding::RowDelta => {
+            let mut out = Vec::with_capacity(w);
+            let mut cell = vec![0u8; T::SIZE];
+            let mut prev: Option<T> = None;
+            for c in 0..w {
+                for (k, b) in cell.iter_mut().enumerate() {
+                    *b = row[k * w + c];
+                }
+                let d = T::get(&cell);
+                let v = prev.map_or(d, |p| p.wrapping_add(d));
+                out.push(v);
+                prev = Some(v);
+            }
+            out
+        }
+    }
+}
+
+/// Reads a raster file, row by row into its grid (E1 #125: the file's bytes are never
+/// held whole next to the grid: the peak is the grid alone).
 pub fn read_raster<T: RasterValue>(path: &Path) -> Result<Grid<T>> {
-    let bytes = std::fs::read(path).map_err(|e| io_err(path, e))?;
-    decode_raster(&bytes).map_err(|e| Error::Format(format!("{}: {e}", path.display())))
+    use std::io::Read as _;
+    let at = |e: Error| Error::Format(format!("{}: {e}", path.display()));
+    let file = std::fs::File::open(path).map_err(|e| io_err(path, e))?;
+    let len = file.metadata().map_err(|e| io_err(path, e))?.len();
+    let mut r = std::io::BufReader::with_capacity(1 << 16, file);
+    let mut head = [0u8; HEADER_LEN];
+    r.read_exact(&mut head)
+        .map_err(|_| at(Error::Format("not an SKR1 raster".into())))?;
+    let h = Header::<T>::parse(&head).map_err(at)?;
+    if len != (HEADER_LEN + h.n_bytes) as u64 {
+        return Err(at(Error::Format(format!(
+            "{} data bytes for {} x {} cells of {} bytes",
+            len.saturating_sub(HEADER_LEN as u64),
+            h.width,
+            h.height,
+            T::SIZE
+        ))));
+    }
+    let mut data: Vec<T> = Vec::with_capacity(h.width * h.height);
+    let mut row = vec![0u8; h.width * T::SIZE];
+    for _ in 0..h.height {
+        r.read_exact(&mut row).map_err(|e| io_err(path, e))?;
+        data.extend(decode_row::<T>(&row, h.width, h.encoding));
+    }
+    Ok(Grid::from_vec(h.width, h.height, h.transform, h.crs, data)
+        .map_err(|e| at(Error::Format(e.to_string())))?
+        .with_nodata(h.nodata))
 }
 
 // ---------------------------------------------------------------------------------------
@@ -1892,6 +2060,47 @@ mod tests {
         assert_eq!(back.unwrap(), g);
         // A raw-only reader (type byte check) rejects them: here, the wrong type width.
         assert!(decode_raster::<u8>(&b).is_err());
+    }
+
+    #[test]
+    fn raster_rows_read_in_place_as_the_whole_raster() {
+        let d = tempfile::tempdir().unwrap();
+        let g = grid_of(23, 17, |c, r| match (c, r) {
+            (4, 2) => ELEVATION_NODATA,
+            (5, 2) => 3,
+            _ => (18_000 + c * 13 + r * 977) as u16,
+        })
+        .with_nodata(ELEVATION_NODATA);
+        let g8 = grid_of(23, 17, |c, r| ((c * 37 + r * 91) % 256) as u8).with_nodata(255);
+        for enc in [Encoding::Raw, Encoding::RowDelta] {
+            let p = d.path().join(format!("e{enc:?}.skr"));
+            write_raster_with(&p, &g, ELEVATION_NODATA, enc).unwrap();
+            let rows = RasterRows::<u16>::open(&p).unwrap();
+            assert_eq!((rows.width(), rows.height()), (23, 17));
+            assert_eq!(rows.nodata(), ELEVATION_NODATA);
+            // Every cell, rows out of order (more than ROWS_KEPT rows: re-read).
+            for r in (0..17).rev().chain(0..17) {
+                for c in 0..23 {
+                    assert_eq!(rows.get(c, r), g.get(c, r).copied(), "{enc:?} {c} {r}");
+                }
+            }
+            assert_eq!(rows.get(23, 0), None);
+            assert_eq!(rows.get(0, 17), None);
+            // By world position, as the grid.
+            let (x, y) = g.transform().cell_center(7, 9);
+            assert_eq!(rows.value_at(x, y), g.value_at(x, y).copied());
+            assert_eq!(rows.value_at(-1e9, y), None);
+            let p8 = d.path().join(format!("z{enc:?}.skr"));
+            write_raster_with(&p8, &g8, 255, enc).unwrap();
+            let rows8 = RasterRows::<u8>::open(&p8).unwrap();
+            assert_eq!(rows8.get(22, 16), g8.get(22, 16).copied());
+            // Wrong type, truncated file.
+            assert!(RasterRows::<u8>::open(&p).is_err());
+            let bytes = std::fs::read(&p).unwrap();
+            let t = d.path().join("truncated.skr");
+            std::fs::write(&t, &bytes[..bytes.len() - 1]).unwrap();
+            assert!(RasterRows::<u16>::open(&t).is_err());
+        }
     }
 
     #[test]

@@ -12,10 +12,15 @@
 //!   (else this phone is the one who dropped: the others are ahead); without the progress
 //!   along the plan, last position more than that distance away (both sides alert);
 //! - **long stop**: the member's phone says it is stopped for long away from a refuge
-//!   (paused for more than [`Config::stop_after_s`], not at a refuge: flag `STOPPED`);
+//!   (paused for more than [`Config::stop_after_s`], not at a refuge: flag `STOPPED`),
+//!   unless this phone is stopped with it ([`TOGETHER_M`]: the whole group stopped);
 //! - **off the route**: the member's phone says it is off the route (flag `OFF_ROUTE`).
 //!
 //! A loss of contact alone never raises anything: the body masks the link at 5 m.
+//!
+//! Off the trails (SRN, #77), [`Config::off_piste`]: the straggler told as soon after the
+//! loss of contact at the pace of nordic touring, last positions kept all day, « regroup »
+//! instead of « wait at the next junction ».
 
 use crate::Error;
 use crate::frame::{FRAME_LEN, Keys, MAX_HOPS, PREFIX_LEN, Position, epoch, flags};
@@ -50,7 +55,44 @@ pub struct Config {
     pub plan_matches: bool,
     /// Language of the alerts.
     pub lang: Lang,
+    /// Off-piste outing (SRN): no junction to wait at, the group regroups where it is.
+    pub off_piste: bool,
 }
+
+impl Config {
+    /// Settings of an off-piste outing (SRN, #77), chosen by the outing itself (a guided
+    /// off-piste line or bearing), never by a setting:
+    /// - straggler when the last position heard is [`SRN_STRAGGLER_BEHIND_M`] behind
+    ///   instead of 500 m: at the pace of nordic touring off the trails (≈ 3 km/h) a
+    ///   member who drops behind is told as soon as on trails at the family pace (5 km/h,
+    ///   500 m): ≈ 8 min after starting to drop 0.2 m/s behind, instead of ≈ 12 min
+    ///   (scenarios, `tests/scenarios.rs`);
+    /// - last positions kept and relayed [`SRN_MAX_AGE_S`] (6 h) instead of 3 h: off the
+    ///   trails the last known position of a member is all there is to go back to, over a
+    ///   whole day out (the frame's time stays readable for 9 h);
+    /// - alerts that say to regroup where one is (no junction off the trails).
+    pub fn off_piste(self) -> Self {
+        Self {
+            straggler_behind_m: SRN_STRAGGLER_BEHIND_M,
+            max_age_s: SRN_MAX_AGE_S,
+            off_piste: true,
+            ..self
+        }
+    }
+}
+
+/// Straggler distance off the trails (SRN), metres ([`Config::off_piste`]).
+pub const SRN_STRAGGLER_BEHIND_M: f64 = 300.0;
+
+/// Age of the positions kept and relayed off the trails (SRN), seconds.
+pub const SRN_MAX_AGE_S: i64 = 6 * 3600;
+
+/// Within this of this phone, by a position dated within this phone's stop (or the
+/// [`TOGETHER_HEARD_S`] around it): together (a stop of the whole group is no alert).
+pub const TOGETHER_M: f64 = 100.0;
+
+/// See [`TOGETHER_M`], seconds.
+pub const TOGETHER_HEARD_S: i64 = 120;
 
 impl Default for Config {
     fn default() -> Self {
@@ -63,6 +105,7 @@ impl Default for Config {
             utc_offset_s: 3600,
             plan_matches: true,
             lang: Lang::Fr,
+            off_piste: false,
         }
     }
 }
@@ -197,6 +240,9 @@ pub struct Session {
     cfg: Config,
     own: Option<OwnFix>,
     paused_since_ms: Option<i64>,
+    /// This phone's last stop (paused or at a refuge): its first and last fix, Unix
+    /// milliseconds.
+    stop_ms: Option<(i64, i64)>,
     /// This phone's progress along the plan over time (seconds, metres), for the order of
     /// the members at the time of their last position.
     history: std::collections::VecDeque<(i64, f64)>,
@@ -243,6 +289,7 @@ impl Session {
             cfg,
             own: None,
             paused_since_ms: None,
+            stop_ms: None,
             history: std::collections::VecDeque::new(),
             table: vec![None; n],
             relay_cursor: 0,
@@ -273,6 +320,13 @@ impl Session {
 
     /// This phone's new position (each GPS batch).
     pub fn own(&mut self, fix: OwnFix) {
+        if fix.phase != Phase::Moving {
+            let moving_before = self.own.is_none_or(|o| o.phase == Phase::Moving);
+            self.stop_ms = match self.stop_ms {
+                Some((start, _)) if !moving_before => Some((start, fix.t_ms)),
+                _ => Some((fix.t_ms, fix.t_ms)),
+            };
+        }
         self.paused_since_ms = match fix.phase {
             Phase::Paused => Some(self.paused_since_ms.unwrap_or(fix.t_ms)),
             Phase::Moving | Phase::Refuge => None,
@@ -485,6 +539,13 @@ impl Session {
             let age_s = now_s - p.t_s;
             let distance = distance_m(here, (p.lat, p.lon));
             let behind = self.behind(&p);
+            // Stopped together: this phone stopped too (or just now), the member's position
+            // nearby during that stop (a picnic, a change of skins, a regrouping; its last
+            // frame of the stop still known when the group starts again).
+            let together = self.stop_ms.is_some_and(|(start, end)| {
+                now_s - end.div_euclid(1000) <= TOGETHER_HEARD_S
+                    && p.t_s >= start.div_euclid(1000) - TOGETHER_HEARD_S
+            }) && distance <= TOGETHER_M;
             // Along the plan: far behind now, and not ahead of this phone when last heard
             // (else it is this phone that dropped behind). Without the plan: far away.
             let far = match behind {
@@ -500,7 +561,7 @@ impl Session {
             for (k, kind) in KINDS.iter().enumerate() {
                 let on = match kind {
                     AlertKind::Straggler => age_s > self.cfg.straggler_after_s && far,
-                    AlertKind::LongStop => p.flags & flags::STOPPED != 0,
+                    AlertKind::LongStop => p.flags & flags::STOPPED != 0 && !together,
                     AlertKind::OffRoute => p.flags & flags::OFF_ROUTE != 0,
                 };
                 if on && !self.raised[i][k] {
@@ -545,6 +606,12 @@ impl Session {
             None => format!("{} away", metres(distance, fr)),
         };
         match (kind, fr) {
+            (AlertKind::Straggler, true) if self.cfg.off_piste => format!(
+                "{name} : pas de nouvelles depuis {min} min, dernière position {where_} à {clock}. S'arrêter et regrouper ?"
+            ),
+            (AlertKind::Straggler, false) if self.cfg.off_piste => format!(
+                "{name}: not heard for {min} min, last seen {where_} at {clock}. Stop and regroup?"
+            ),
             (AlertKind::Straggler, true) => format!(
                 "{name} : pas de nouvelles depuis {min} min, dernière position {where_} à {clock}. Attendre à la prochaine intersection ?"
             ),

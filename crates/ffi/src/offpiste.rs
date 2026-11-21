@@ -168,10 +168,11 @@ fn inflate_skr(gz: &[u8]) -> Result<Vec<u8>, String> {
 }
 
 /// The relief of a pack (5 m elevation of the off-piste rasters), for the altitude of a
-/// trace ([`crate::recap`]).
-#[derive(Debug, Clone)]
+/// trace ([`crate::recap`]): read in place, only the rows under the trace (E1 #125), never
+/// the whole raster copied into memory.
+#[derive(Debug)]
 pub struct Relief {
-    grid: Grid<u16>,
+    rows: offpiste::RasterRows<u16>,
 }
 
 impl Relief {
@@ -179,15 +180,15 @@ impl Relief {
     pub fn open(pack_dir: &Path, work_dir: &Path) -> Result<Self, TrackingError> {
         let pack = Pack::open(pack_dir.to_path_buf()).map_err(invalid)?;
         let dir = inflate_offpiste(&pack, work_dir)?;
-        let grid = offpiste::read_raster(&dir.join(offpiste::FILE_ELEVATION)).map_err(invalid)?;
-        Ok(Self { grid })
+        let rows =
+            offpiste::RasterRows::open(&dir.join(offpiste::FILE_ELEVATION)).map_err(invalid)?;
+        Ok(Self { rows })
     }
 
     /// Elevation at a position, metres.
     pub fn at(&self, p: LonLat) -> Option<f64> {
         let (x, y) = skimap_common::crs::to_lambert93(p).ok()?;
-        let (c, r) = self.grid.cell_at(x, y)?;
-        offpiste::elevation_m(*self.grid.get(c, r)?).map(f64::from)
+        offpiste::elevation_m(self.rows.value_at(x, y)?).map(f64::from)
     }
 }
 
@@ -195,7 +196,7 @@ impl Relief {
 struct Inputs {
     grid: OffpisteGrid,
     snow: Option<SnowGrid>,
-    exposure: Option<Grid<u8>>,
+    /// The avalanche exposure is the grid of its overlay (one copy in memory, #125).
     overlays: Vec<Overlay>,
     zones: Option<(ZoneLayer, RuleSet)>,
     network: Option<Areas>,
@@ -301,8 +302,8 @@ pub fn open_offpiste(
         missing.push(tx.missing_layer("exposure").to_owned());
     }
     let overlays = exposure
-        .iter()
-        .map(|g| ExposureFactors::default().overlay(g.clone()))
+        .into_iter()
+        .map(|g| ExposureFactors::default().overlay(g))
         .collect();
     let text = |id: &str| -> Option<String> {
         let l = pack.layer(id).ok()?;
@@ -331,7 +332,6 @@ pub fn open_offpiste(
         inputs: Inputs {
             grid,
             snow,
-            exposure,
             overlays,
             zones,
             network,
@@ -429,10 +429,14 @@ impl OffpistePlanner {
         // Difficulty (SR1) on the same rasters.
         let elev = ElevationDm(&i.grid.elevation);
         let slope = SlopeHalfDeg(&i.grid.slope);
-        let exp = i.exposure.as_ref().map(|g| Classes {
-            grid: g,
-            nodata: offpiste::EXPOSURE_NODATA,
-        });
+        let exp = i
+            .overlays
+            .iter()
+            .find(|o| o.kind == offpiste::OverlayKind::AvalancheExposure)
+            .map(|o| Classes {
+                grid: &o.grid,
+                nodata: offpiste::EXPOSURE_NODATA,
+            });
         let pistes = Classes {
             grid: &i.grid.pistes,
             nodata: u8::MAX,

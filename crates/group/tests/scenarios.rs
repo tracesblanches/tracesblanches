@@ -4,7 +4,8 @@
 //! The radio: every 10 s (the screen-off scan window), each phone hears each frame of a
 //! phone within [`RANGE_M`] with probability [`P_HEARD`] (the body masks the link), its own
 //! frame and one relay in turn. Skiers walk along a meridian; their progress along the
-//! common plan is the distance walked.
+//! common plan is the distance walked. Off the trails (SRN, #77): the same at ≈ 3 km/h with
+//! [`Config::off_piste`].
 
 use skimap_group::{AlertKind, Config, Group, OwnFix, Phase, Session, Source, plan_fingerprint};
 
@@ -51,10 +52,14 @@ fn group(n: usize) -> Group {
 
 impl World {
     fn new(n: usize, seed: u64) -> Self {
+        Self::with(n, seed, Config::default())
+    }
+
+    fn with(n: usize, seed: u64, cfg: Config) -> Self {
         let g = group(n);
         let skiers = (0..n)
             .map(|i| Skier {
-                session: Session::new(g.clone(), i as u8, Config::default()).unwrap(),
+                session: Session::new(g.clone(), i as u8, cfg).unwrap(),
                 at_m: 0.0,
                 phase: Phase::Moving,
                 off_route: false,
@@ -230,4 +235,122 @@ fn positions_travel_hop_by_hop() {
     let (_, _, t) = lea.position.unwrap();
     assert!(t * 1000 <= heard_at && lea.age_s.unwrap() >= 320);
     assert!((lea.distance_m.unwrap() - 1_000.0).abs() < 5.0);
+}
+
+#[test]
+fn a_stop_of_the_whole_group_raises_nothing() {
+    // Off the trails, the group stops together 20 min (a picnic, a change of skins): no
+    // « arrêt prolongé » about one another.
+    for seed in 1..=10 {
+        let mut w = World::new(3, seed);
+        w.run(300, &[0.8, 0.8, 0.8]);
+        for s in &mut w.skiers {
+            s.phase = Phase::Paused;
+        }
+        w.run(1_200, &[0.0, 0.0, 0.0]);
+        let alerts: Vec<_> = w.skiers.iter().flat_map(|s| s.alerts.iter()).collect();
+        assert!(alerts.is_empty(), "seed {seed}: {alerts:?}");
+    }
+}
+
+/// SRN pace off the trails, m/s (≈ 2.9 km/h).
+const SRN_MS: f64 = 0.8;
+
+/// When the first straggler alert of Pierre about Léa comes, Léa 0.2 m/s slower from the
+/// 10th minute: seconds after the split, and its text.
+fn straggler_delay(cfg: Config, seed: u64, pace: f64) -> (i64, String) {
+    let mut w = World::with(2, seed, cfg);
+    w.run(600, &[pace, pace]);
+    let split = w.now;
+    while w.skiers[0].alerts.is_empty() && w.now - split < 4 * 3_600_000 {
+        w.step(&[pace, pace - 0.2]);
+    }
+    let (t, a) = w.skiers[0].alerts[0].clone();
+    assert_eq!(a.kind, AlertKind::Straggler);
+    assert!(w.skiers[1].alerts.is_empty());
+    ((t - split) / 1000, a.text)
+}
+
+#[test]
+fn off_piste_a_slower_member_is_told_as_soon_as_on_trails() {
+    for seed in 1..=10 {
+        // On trails at the family pace (5 km/h), trails settings.
+        let (trail_s, _) = straggler_delay(Config::default(), seed, 1.39);
+        // Off the trails (2.9 km/h): trails settings, then SRN settings.
+        let (late_s, _) = straggler_delay(Config::default(), seed, SRN_MS);
+        let (srn_s, text) = straggler_delay(Config::default().off_piste(), seed, SRN_MS);
+        println!(
+            "seed {seed}: trails 5 km/h {trail_s} s; off the trails 2.9 km/h: trails settings {late_s} s, SRN settings {srn_s} s"
+        );
+        assert!((srn_s - trail_s).abs() <= 60, "{srn_s} {trail_s}");
+        assert!(late_s >= srn_s + 180, "{late_s} {srn_s}");
+        assert!(text.ends_with("S'arrêter et regrouper ?"), "{text}");
+    }
+}
+
+#[test]
+fn off_piste_side_by_side_for_three_hours_raises_nothing() {
+    for seed in 1..=20 {
+        let mut w = World::with(3, seed, Config::default().off_piste());
+        // 3 h at 0.8 m/s, gaps of up to 24 m that come and go, a stop of the group of
+        // 20 min in the middle (skins, a bite).
+        for k in 0..1_080 {
+            let wobble = if k % 60 < 30 { 0.04 } else { -0.04 };
+            w.step(&[SRN_MS, SRN_MS + wobble, SRN_MS - wobble]);
+            if k == 540 {
+                w.skiers.iter_mut().for_each(|s| s.phase = Phase::Paused);
+                w.run(1_200, &[0.0, 0.0, 0.0]);
+                w.skiers.iter_mut().for_each(|s| s.phase = Phase::Moving);
+            }
+        }
+        let alerts: Vec<_> = w.skiers.iter().flat_map(|s| s.alerts.iter()).collect();
+        assert!(alerts.is_empty(), "seed {seed}: {alerts:?}");
+    }
+}
+
+#[test]
+fn a_member_stopped_away_from_the_waiting_group_is_told() {
+    // Pierre waits (paused) 300 m ahead of Léa, who stopped: told, the stop is not shared.
+    let mut w = World::with(2, 9, Config::default().off_piste());
+    w.run(300, &[SRN_MS, SRN_MS]);
+    w.skiers[1].phase = Phase::Paused;
+    // Pierre goes on 300 m (out of range, Léa's frames relayed by nobody), then comes back
+    // within range and waits.
+    w.run(375, &[SRN_MS, 0.0]);
+    w.skiers[0].phase = Phase::Paused;
+    w.run(300, &[0.0, 0.0]);
+    w.skiers[0].phase = Phase::Moving;
+    w.run(375, &[-SRN_MS, 0.0]);
+    w.skiers[0].phase = Phase::Paused;
+    w.run(600, &[0.0, 0.0]);
+    let kinds: Vec<AlertKind> = w.skiers[0].alerts.iter().map(|(_, a)| a.kind).collect();
+    assert!(kinds.contains(&AlertKind::LongStop), "{kinds:?}");
+}
+
+#[test]
+fn off_piste_last_positions_are_relayed_all_day() {
+    for (cfg, relayed) in [
+        (Config::default(), false),
+        (Config::default().off_piste(), true),
+    ] {
+        let mut w = World::with(3, 4, cfg);
+        // Léa heard by Jo, then lost; Jo meets Pierre 5 h later.
+        w.skiers[0].at_m = 10_000.0;
+        w.run(60, &[0.0, 0.0, 0.0]);
+        w.skiers[1].at_m = -10_000.0;
+        w.run(5 * 3_600, &[0.0, 0.0, 0.0]);
+        w.skiers[2].at_m = w.skiers[0].at_m;
+        w.run(120, &[0.0, 0.0, 0.0]);
+        let lea = w.skiers[0]
+            .session
+            .members(w.now)
+            .into_iter()
+            .find(|m| m.member == 1)
+            .unwrap();
+        assert_eq!(lea.position.is_some(), relayed, "{lea:?}");
+        if relayed {
+            assert!(lea.age_s.unwrap() > 5 * 3_600);
+            assert_eq!(lea.source, Some(Source::Relayed(1)));
+        }
+    }
 }

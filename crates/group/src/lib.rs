@@ -20,7 +20,8 @@ pub mod session;
 pub use frame::{FRAME_LEN, Keys, Position, SERVICE_UUID};
 pub use group::{Group, MAX_MEMBERS, plan_fingerprint};
 pub use session::{
-    Alert, AlertKind, Config, Lang, MemberView, OwnFix, Phase, Received, Session, Source, Stats,
+    Alert, AlertKind, Config, Lang, MemberView, OwnFix, Phase, Received, SRN_MAX_AGE_S,
+    SRN_STRAGGLER_BEHIND_M, Session, Source, Stats,
 };
 
 /// Errors of the group mode.
