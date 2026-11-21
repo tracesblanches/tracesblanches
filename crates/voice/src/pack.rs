@@ -1100,7 +1100,7 @@ fn write_meta(
             bytes: Some(b.total_bytes),
             ..FileMeta::new(
                 "clips/<id>.opus",
-                "un clip par entrée du manifeste ; silence de début et de fin coupé, sonie normalisée (-14 LUFS, crête vraie ≤ -1 dBTP)",
+                "un clip par entrée du manifeste ; silence de début et de fin coupé, parole compressée, sonie normalisée (-10 LUFS, crête vraie ≤ -1 dBTP)",
             )
             .count(vm.clips.len())
         },
@@ -1118,7 +1118,7 @@ fn write_meta(
         "Clips générés sur le poste par pockettts.cpp (sous-processus), un appel par passe ; un clip dont l'attaque est coupée ou sans fin de parole est refait avec la graine suivante.".into(),
         "Tout texte absent du manifeste est lu par la voix Android (repli).".into(),
         format!(
-            "Sonie : chaque clip à {} LUFS intégrés (UIT-R BS.1770-4 / EBU R128) et crête vraie ≤ {} dBTP, niveau des voix de guidage des applications de navigation ; un limiteur doux (anticipation {} ms, relâchement {} ms, au plus {} dB) abaisse les crêtes avant encodage, un clip qui demanderait plus reste un peu sous la cible ; mesure vérifiée sur le fichier Opus décodé à 48 kHz (#179).",
+            "Sonie : chaque clip à {} LUFS intégrés (UIT-R BS.1770-4 / EBU R128) et crête vraie ≤ {} dBTP, aussi fort que la parole peut l'être sous ce plafond (annonces audibles au volume Multimédia habituel d'un téléphone) ; un compresseur de parole (3:1 au-dessus des voyelles fortes, seuil relatif à la sonie du clip) rapproche les syllabes fortes du reste, puis un limiteur doux (anticipation {} ms, relâchement {} ms, au plus {} dB) abaisse les crêtes avant encodage, un clip qui demanderait plus reste un peu sous la cible ; mesure vérifiée sur le fichier Opus décodé à 48 kHz (#179).",
             vm.loudness_target.map_or(f64::NAN, |t| t.0),
             vm.loudness_target.map_or(f64::NAN, |t| t.1),
             b.limiter.0,
@@ -1197,7 +1197,7 @@ const LEVEL_ATTEMPTS: usize = 6;
 /// measured. When no attempt is within the tolerance, the attempt under the peak ceiling
 /// nearest the target is kept if it is within twice the tolerance. Deterministic: the same
 /// samples go through the same attempts and give the same file.
-fn encode_levelled(
+pub fn encode_levelled(
     id: &str,
     samples: &[i16],
     path: &Path,
@@ -1543,7 +1543,16 @@ mod tests {
         bumped["loudness"]["algorithm"] = (crate::loudness::ALGORITHM_VERSION + 1).into();
         assert_ne!(inputs.to_string(), bumped.to_string());
         type Change = (&'static str, fn(&mut Target));
-        let changes: [Change; 7] = [
+        let changes: [Change; 10] = [
+            // The target of the first #179 version: -14 LUFS, no compression.
+            ("version 1", |t| {
+                t.lufs = -14.0;
+                t.compressor.ratio = 1.0;
+            }),
+            ("compressor.ratio", |t| t.compressor.ratio = 4.0),
+            ("compressor.threshold_lu", |t| {
+                t.compressor.threshold_lu = -6.0
+            }),
             ("lufs", |t| t.lufs = -16.0),
             ("true_peak_dbtp", |t| t.true_peak_dbtp = -2.0),
             ("tolerance_lu", |t| t.tolerance_lu = 0.25),

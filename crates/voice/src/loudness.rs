@@ -1,18 +1,23 @@
 //! Loudness of the clips (#179): measure (ITU-R BS.1770-4 / EBU R128, through the
 //! `ebur128` crate) and normalisation of every clip to one target.
 //!
-//! Target ([`Target::default`]): integrated loudness -14 LUFS, true peak at most -1 dBTP,
-//! the level of the guidance voices of navigation apps (about -16 to -14 LUFS, peaks at
-//! most -1 dBTP). The Pocket TTS speech normalised to -20 dBFS RMS measured about -21 LUFS
-//! with 8 to 9 dB of unused peak headroom: heard « beaucoup trop faible » on a phone.
+//! Target ([`Target::default`]): integrated loudness -10 LUFS, true peak at most -1 dBTP.
+//! The Pocket TTS speech normalised to -20 dBFS RMS measured about -21 LUFS with 8 to 9 dB
+//! of unused peak headroom: heard « beaucoup trop faible » on a phone. Brought to -14 LUFS
+//! (the level of the guidance voices of navigation apps) it was still « à peine audible »
+//! at the usual media volume of a phone (about 25 %): the clips are now as loud as speech
+//! can be under the peak ceiling, 4 dB above that level, which takes compression.
 //!
-//! [`normalize`]: one gain to the target loudness, then a soft look-ahead limiter on the
-//! 4x oversampled peaks (no clipping, no step in the gain) when the gain would push a peak
-//! above the ceiling; the gain is refined until the limited clip is at the target. The
-//! limiter takes off at most 6 dB ([`Target::max_limiting_db`]): a clip whose loudness sits
-//! on one loud syllable keeps that bound and stays a little under the target. Pure
-//! `f64` arithmetic in a fixed order: the same samples give the same output bit for bit,
-//! and a clip already at the target is returned unchanged.
+//! [`normalize`]: a speech compressor ([`Compressor`]: 3:1 above the loud vowels, the
+//! threshold relative to the clip's own loudness, so the same speech at any level is
+//! compressed the same) brings the loud syllables closer to the rest, then one gain to the
+//! target loudness, then a soft look-ahead limiter on the 4x oversampled peaks (no
+//! clipping, no step in the gain) when the gain would push a peak above the ceiling; the
+//! gain is refined until the limited clip is at the target. The limiter takes off at most
+//! 6 dB ([`Target::max_limiting_db`]): a clip whose loudness sits on one loud syllable
+//! keeps that bound and stays a little under the target. Pure `f64` arithmetic in a fixed
+//! order: the same samples give the same output bit for bit, and a clip already at the
+//! target is returned unchanged.
 
 use ebur128::{EbuR128, Mode};
 
@@ -21,7 +26,8 @@ use crate::error::{Error, Result};
 /// Version of the normalisation ([`normalize`], its limiter and the check of the encoded
 /// file in `pack`): a change that moves a sample of a clip increments it, and every clip
 /// of the cache (`cache/voice/`, key `pack::clip_key`) is made again.
-pub const ALGORITHM_VERSION: u32 = 1;
+/// 2: speech compression before the gain ([`Compressor`], -10 LUFS target, #179).
+pub const ALGORITHM_VERSION: u32 = 2;
 
 /// Loudness of a clip.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -53,19 +59,106 @@ pub struct Target {
     pub release_ms: f64,
     /// Largest gain reduction of the limiter, dB: beyond it the clip stays under the target.
     pub max_limiting_db: f64,
+    /// Speech compression before the gain.
+    pub compressor: Compressor,
 }
 
 impl Default for Target {
     fn default() -> Self {
         Self {
-            lufs: -14.0,
+            lufs: -10.0,
             true_peak_dbtp: -1.0,
             tolerance_lu: 0.5,
             margin_db: 0.5,
             lookahead_ms: 5.0,
             release_ms: 60.0,
             max_limiting_db: 6.0,
+            compressor: Compressor::default(),
         }
+    }
+}
+
+/// Speech compressor of [`normalize`]: the level of the clip (RMS over a short window
+/// centred on each sample) above a threshold set relative to the clip's integrated
+/// loudness is reduced by `ratio`, with a soft knee, the gain smoothed in dB (fast attack,
+/// slower release). Offline and centred: no lag behind the syllable it compresses.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Compressor {
+    /// Threshold, dB relative to the clip's integrated loudness (RMS dBFS against LUFS).
+    pub threshold_lu: f64,
+    /// Compression ratio above the threshold (1: no compression).
+    pub ratio: f64,
+    /// Width of the soft knee, dB (centred on the threshold).
+    pub knee_db: f64,
+    /// RMS window of the detection, ms.
+    pub window_ms: f64,
+    /// Attack time constant of the gain, ms.
+    pub attack_ms: f64,
+    /// Release time constant of the gain, ms.
+    pub release_ms: f64,
+}
+
+impl Default for Compressor {
+    fn default() -> Self {
+        Self {
+            threshold_lu: -3.0,
+            ratio: 3.0,
+            knee_db: 6.0,
+            window_ms: 10.0,
+            attack_ms: 5.0,
+            release_ms: 80.0,
+        }
+    }
+}
+
+impl Compressor {
+    /// Gain of a level `over` dB above the threshold, dB (≤ 0).
+    fn reduction_db(&self, over: f64) -> f64 {
+        let slope = 1.0 / self.ratio - 1.0;
+        let half = self.knee_db / 2.0;
+        if over <= -half {
+            0.0
+        } else if over >= half {
+            slope * over
+        } else {
+            slope * (over + half).powi(2) / (2.0 * self.knee_db)
+        }
+    }
+
+    /// `x` compressed for a clip of integrated loudness `lufs`, and the largest gain
+    /// reduction, dB (≥ 0).
+    pub fn apply(&self, x: &[f64], sample_rate: u32, lufs: f64) -> (Vec<f64>, f64) {
+        let n = x.len();
+        if n == 0 || self.ratio <= 1.0 {
+            return (x.to_vec(), 0.0);
+        }
+        let fs = f64::from(sample_rate);
+        let half = ((self.window_ms * fs / 2000.0).round() as usize).max(1);
+        let mut prefix = vec![0.0; n + 1];
+        for i in 0..n {
+            prefix[i + 1] = prefix[i] + x[i] * x[i];
+        }
+        let threshold = lufs + self.threshold_lu;
+        let attack = (-1000.0 / (self.attack_ms * fs)).exp();
+        let release = (-1000.0 / (self.release_ms * fs)).exp();
+        let mut state = 0.0f64;
+        let mut deepest = 0.0f64;
+        let mut y = Vec::with_capacity(n);
+        for (i, &v) in x.iter().enumerate() {
+            let lo = i.saturating_sub(half);
+            let hi = (i + half).min(n - 1);
+            let ms = (prefix[hi + 1] - prefix[lo]) / (hi + 1 - lo) as f64;
+            let want = if ms > 0.0 {
+                self.reduction_db(10.0 * ms.log10() - threshold)
+            } else {
+                0.0
+            };
+            let a = if want < state { attack } else { release };
+            state = a * state + (1.0 - a) * want;
+            deepest = deepest.min(state);
+            y.push(v * 10f64.powf(state / 20.0));
+        }
+        (y, -deepest)
     }
 }
 
@@ -146,6 +239,8 @@ pub struct Normalized {
     pub before: Loudness,
     /// Loudness after (16-bit output).
     pub after: Loudness,
+    /// Largest gain reduction of the speech compressor, dB (0: not compressed).
+    pub compressor_db: f64,
     /// Gain applied before the limiter, dB (0 when the clip was left as it is).
     pub gain_db: f64,
     /// Largest gain reduction of the limiter, dB (0: not limited).
@@ -277,8 +372,9 @@ fn to_i16(x: &[f64]) -> Vec<i16> {
 }
 
 /// Brings mono 16-bit samples to the target loudness under the peak ceiling
-/// `ceiling_dbtp` (usually [`Target::ceiling_dbtp`]). A clip already within the tolerance
-/// and under the ceiling is returned unchanged.
+/// `ceiling_dbtp` (usually [`Target::ceiling_dbtp`]): compressed ([`Target::compressor`]),
+/// raised, limited. A clip already within the tolerance and under the ceiling is returned
+/// unchanged.
 ///
 /// The limiter takes off at most [`Target::max_limiting_db`]: a clip whose loudness sits
 /// on a few loud syllables (« Sept heures trente. », the first word 15 dB above the rest)
@@ -300,19 +396,22 @@ pub fn normalize(
             Normalized {
                 before,
                 after: before,
+                compressor_db: 0.0,
                 gain_db: 0.0,
                 limiter_db: 0.0,
                 capped: false,
             },
         ));
     }
-    let x: Vec<f64> = samples.iter().map(|&s| f64::from(s) / 32768.0).collect();
+    let raw: Vec<f64> = samples.iter().map(|&s| f64::from(s) / 32768.0).collect();
+    let (x, compressor_db) = t.compressor.apply(&raw, sample_rate, before.lufs);
+    let compressed = measure_f64(&x, sample_rate)?;
     let peaks = oversampled_peaks(&x);
     let peak_db = db(peaks.iter().copied().fold(0.0, f64::max));
     let r = ((t.lookahead_ms * f64::from(sample_rate) / 1000.0).round() as usize).max(1);
     let release = 1.0 - (-1000.0 / (t.release_ms * f64::from(sample_rate))).exp();
     let mut ceiling_db = ceiling_dbtp;
-    let mut gain_db = t.lufs - before.lufs;
+    let mut gain_db = t.lufs - compressed.lufs;
     let mut best: Option<(Vec<i16>, Normalized)> = None;
     // The gain reached the bound of the limiter: the target is out of reach.
     let mut reached_cap = false;
@@ -330,6 +429,7 @@ pub fn normalize(
         let n = Normalized {
             before,
             after,
+            compressor_db,
             gain_db,
             limiter_db: -db(env.iter().copied().fold(1.0, f64::min)),
             capped: capped && after.lufs < t.lufs,
@@ -402,6 +502,96 @@ mod tests {
             .collect()
     }
 
+    /// The limiter alone, at the target before the compression (-14 LUFS).
+    fn limiter_only() -> Target {
+        Target {
+            lufs: -14.0,
+            compressor: Compressor {
+                ratio: 1.0,
+                ..Compressor::default()
+            },
+            ..Target::default()
+        }
+    }
+
+    /// Syllables of 125 ms alternately at `loud` and `loud - 12 dB`, a 300 Hz carrier.
+    fn two_levels(loud: f64) -> Vec<f64> {
+        let a = 10f64.powf(loud / 20.0);
+        (0..SR as usize * 2)
+            .map(|i| {
+                let t = i as f64 / f64::from(SR);
+                let k = (t * 8.0) as usize;
+                let amp = if k % 2 == 0 { a } else { a / 4.0 };
+                amp * (2.0 * std::f64::consts::PI * 300.0 * t).sin()
+            })
+            .collect()
+    }
+
+    fn rms_db(x: &[f64]) -> f64 {
+        10.0 * (x.iter().map(|v| v * v).sum::<f64>() / x.len() as f64).log10()
+    }
+
+    #[test]
+    fn default_target_is_loud_and_compressed() {
+        let t = Target::default();
+        assert_eq!(t.lufs, -10.0);
+        assert_eq!(t.true_peak_dbtp, -1.0);
+        assert!(t.compressor.ratio > 1.0);
+        assert_eq!(ALGORITHM_VERSION, 2);
+    }
+
+    #[test]
+    fn compression_brings_loud_syllables_closer_whatever_the_level() {
+        let c = Compressor::default();
+        let syl = SR as usize / 8;
+        // The middle of a loud and of a quiet syllable, away from the transitions.
+        let spread = |y: &[f64]| {
+            rms_db(&y[4 * syl + syl / 4..5 * syl - syl / 4])
+                - rms_db(&y[5 * syl + syl / 4..6 * syl - syl / 4])
+        };
+        let x = two_levels(-6.0);
+        let l = measure_f64(&x, SR).unwrap().lufs;
+        let (y, db) = c.apply(&x, SR, l);
+        assert!((spread(&x) - 12.0).abs() < 0.1, "{}", spread(&x));
+        assert!(
+            spread(&y) < 10.5,
+            "spread {} dB, compression {db}",
+            spread(&y)
+        );
+        assert!(db > 3.0 && db < 12.0, "{db}");
+        // The same speech 20 dB lower is compressed the same (threshold from its loudness).
+        let q: Vec<f64> = x.iter().map(|v| v / 10.0).collect();
+        let (z, dbq) = c.apply(&q, SR, measure_f64(&q, SR).unwrap().lufs);
+        assert!((db - dbq).abs() < 1e-6, "{db} {dbq}");
+        assert!((spread(&z) - spread(&y)).abs() < 1e-6);
+        // Ratio 1: unchanged.
+        let off = Compressor {
+            ratio: 1.0,
+            ..Compressor::default()
+        };
+        assert_eq!(off.apply(&x, SR, l), (x.clone(), 0.0));
+    }
+
+    #[test]
+    fn speech_reaches_minus_10_under_the_ceiling_reproducibly() {
+        let t = Target::default();
+        let x: Vec<i16> = two_levels(-20.0)
+            .iter()
+            .map(|v| (v * 32768.0).round() as i16)
+            .collect();
+        let (y, n) = normalize(&x, SR, &t, t.ceiling_dbtp()).unwrap();
+        assert!((n.after.lufs - t.lufs).abs() <= 0.05, "{n:?}");
+        assert!(n.after.true_peak_dbtp <= t.ceiling_dbtp(), "{n:?}");
+        assert!(n.compressor_db > 3.0, "{n:?}");
+        let (y2, n2) = normalize(&x, SR, &t, t.ceiling_dbtp()).unwrap();
+        assert_eq!(y, y2);
+        assert_eq!(n, n2);
+        // At the target: left as it is.
+        let (z, nz) = normalize(&y, SR, &t, t.ceiling_dbtp()).unwrap();
+        assert_eq!(z, y);
+        assert_eq!(nz.compressor_db, 0.0);
+    }
+
     #[test]
     fn sine_reference_levels() {
         // BS.1770: the K-weighting is +0.69 dB at 1 kHz and the offset -0.691 dB, so a
@@ -428,7 +618,7 @@ mod tests {
 
     #[test]
     fn quiet_clip_reaches_the_target_under_the_ceiling() {
-        let t = Target::default();
+        let t = limiter_only();
         let x = speechy(-12.0, 0.45);
         let (y, n) = normalize(&x, SR, &t, t.ceiling_dbtp()).unwrap();
         assert!(n.before.lufs < -25.0, "{n:?}");
@@ -447,7 +637,7 @@ mod tests {
     fn limiting_is_bounded() {
         // Bursts 14 dB above the syllables: reaching -14 LUFS would take them down by more
         // than the bound; the clip keeps the bound, under the target.
-        let t = Target::default();
+        let t = limiter_only();
         let x = speechy(-12.0, 1.0);
         let (_, n) = normalize(&x, SR, &t, t.ceiling_dbtp()).unwrap();
         assert!(n.capped, "{n:?}");
@@ -464,7 +654,7 @@ mod tests {
 
     #[test]
     fn low_crest_clip_is_only_amplified() {
-        let t = Target::default();
+        let t = limiter_only();
         let x = sine(-30.0, 440.0, 1500);
         let (y, n) = normalize(&x, SR, &t, t.ceiling_dbtp()).unwrap();
         assert_eq!(n.limiter_db, 0.0, "{n:?}");
@@ -476,7 +666,7 @@ mod tests {
 
     #[test]
     fn loud_clip_is_brought_down() {
-        let t = Target::default();
+        let t = limiter_only();
         let x = sine(-1.0, 440.0, 1500);
         let (_, n) = normalize(&x, SR, &t, t.ceiling_dbtp()).unwrap();
         assert!(n.gain_db < -9.0, "{n:?}");
@@ -485,7 +675,7 @@ mod tests {
 
     #[test]
     fn reproducible_and_idempotent() {
-        let t = Target::default();
+        let t = limiter_only();
         let x = speechy(-20.0, 0.45);
         let (a, na) = normalize(&x, SR, &t, t.ceiling_dbtp()).unwrap();
         let (b, nb) = normalize(&x, SR, &t, t.ceiling_dbtp()).unwrap();
@@ -499,7 +689,7 @@ mod tests {
 
     #[test]
     fn silence_is_an_error() {
-        let t = Target::default();
+        let t = limiter_only();
         assert!(normalize(&[0; 24_000], SR, &t, t.ceiling_dbtp()).is_err());
     }
 

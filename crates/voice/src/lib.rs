@@ -14,7 +14,7 @@
 //! [`clips`], [`mod@manifest`], [`names`], [`numbers`], [`quantity`]. Workstation side:
 //! [`pack`] (generation of the voice layer), [`sources`] (names of the built layers and their
 //! provenance), [`tts`] (pockettts.cpp), [`audio`] (trim,
-//! level, Ogg/Opus), [`loudness`] (BS.1770 loudness, normalisation to -14 LUFS, -1 dBTP), [`tokenizer`] and [`gguf`] (exact Pocket TTS token counts).
+//! level, Ogg/Opus), [`loudness`] (BS.1770 loudness, speech compression and normalisation to -10 LUFS, -1 dBTP), [`tokenizer`] and [`gguf`] (exact Pocket TTS token counts).
 //!
 //! An announcement is a list of clips, each a complete spoken unit. The phone plays the
 //! clips of the pack in order with the pauses of the announcement; if one clip is missing
