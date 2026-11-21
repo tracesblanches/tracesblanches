@@ -74,6 +74,10 @@ httpdate = "1.0.3"
 # --- Compute ---
 rayon = "1.12.0"
 
+# --- Audio ---
+# Loudness of the voice clips (ITU-R BS.1770-4 / EBU R128: integrated loudness, true peak), #179.
+ebur128 = "0.1.11"
+
 # --- HTTP (blocking model, see docs/architecture.md) ---
 # No default features: no aws-lc-rs (C build); the platform verifier (needs a JVM on
 # Android) is never used: TLS is a preconfigured rustls client (ring + webpki-roots).
