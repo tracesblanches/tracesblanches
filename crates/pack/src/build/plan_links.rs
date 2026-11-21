@@ -198,10 +198,14 @@ impl PlanLinks {
     }
 }
 
+/// Properties that [`annotate`] adds to a feature: address, title and publisher of the plan.
+pub const LINK_FIELDS: [&str; 3] = ["plan_url", "plan_title", "plan_publisher"];
+
 fn set_link(props: &mut serde_json::Map<String, Value>, l: &PlanLink) {
-    props.insert("plan_url".into(), json!(l.url));
-    props.insert("plan_title".into(), json!(l.title));
-    props.insert("plan_publisher".into(), json!(l.publisher));
+    let [url, title, publisher] = LINK_FIELDS;
+    props.insert(url.into(), json!(l.url));
+    props.insert(title.into(), json!(l.title));
+    props.insert(publisher.into(), json!(l.publisher));
 }
 
 /// Adds the plan links to a FeatureCollection: by `properties.id` (census domain) for

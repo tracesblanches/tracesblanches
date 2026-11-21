@@ -263,8 +263,10 @@ fn sources(layout: &DataLayout, site: &Site) {
 }
 
 /// A pack layer taken from a France-wide output (`out/france/<layer>/`, not
-/// `out/<site>/`): every feature of the pack is a feature of that source, unchanged; the
-/// fee zones (personal packs only) are built from two files and only counted.
+/// `out/<site>/`): every feature of the pack is a feature of that source, unchanged but for
+/// the link to the official plan that the pack adds (`plan_links::LINK_FIELDS`, when the plan
+/// catalogue exists); the fee zones (personal packs only) are built from two files and only
+/// counted.
 fn national_selection(layout: &DataLayout, pack: &Pack, l: &skimap_pack::manifest::Layer) {
     if l.origin.contains(" + ") {
         println!(
@@ -285,6 +287,12 @@ fn national_selection(layout: &DataLayout, pack: &Pack, l: &skimap_pack::manifes
     let packed = json(&pack.path(&l.file).unwrap());
     let packed = packed["features"].as_array().unwrap();
     for f in packed {
+        let mut f = f.clone();
+        if let Some(props) = f["properties"].as_object_mut() {
+            for k in skimap_pack::build::plan_links::LINK_FIELDS {
+                props.remove(k);
+            }
+        }
         assert!(
             all.contains(&f.to_string()),
             "{}: {f} not in {}",
