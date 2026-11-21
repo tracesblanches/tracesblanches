@@ -29,7 +29,8 @@ use skimap_ffi::tracking::{
     load_graph, load_layers, open_tracking, pack_fixes,
 };
 use skimap_ffi::tracking_day::{
-    DayRequest, GroupSpec, day_starts, group_learn, group_new, open_day_planner, read_day_plan,
+    DayRequest, GroupSpec, day_starts, group_default, group_learn, group_new, open_day_planner,
+    read_day_plan,
 };
 use skimap_plan::gps::GpsRequest;
 use skimap_plan::phrases::{Voice, never_safe};
@@ -1169,4 +1170,163 @@ fn full_data_steep_terrain_said_through_the_session() {
     );
     assert!(never_safe(&said[0].text));
     assert!(results.iter().any(|b| b.recap.is_some()));
+
+/// One outing of a group on a loop of `model_min` minutes of model time, `slow` times the
+/// model's pace when moving, four stops of five minutes: the observation the tracking
+/// session writes at the end (`TrackingSession::observation`).
+fn outing_observation(model_min: f64, length_km: f64, slow: f64) -> String {
+    let model = model_min * 60.0;
+    let model_s = [0.4 * model, 0.35 * model, 0.25 * model];
+    let moving_s = model_s.map(|s| s * slow);
+    let stops_s = vec![300.0; 4];
+    let elapsed_s = moving_s.iter().sum::<f64>() + stops_s.iter().sum::<f64>();
+    serde_json::json!({
+        "model_s": model_s,
+        "moving_s": moving_s,
+        "progress_m": length_km * 1000.0,
+        "travelled_m": length_km * 1050.0,
+        "stops_s": stops_s,
+        "elapsed_s": elapsed_s,
+    })
+    .to_string()
+}
+
+/// « 2 h 35 » or « 45 min », minutes.
+fn minutes(s: &str) -> f64 {
+    match s.split_once(" h ") {
+        Some((h, m)) => h.parse::<f64>().unwrap() * 60.0 + m.parse::<f64>().unwrap(),
+        None => s.trim_end_matches(" min").parse().unwrap(),
+    }
+}
+
+/// The range and the median of the group's time in the validated plan's time
+/// (« … (3 sorties apprises) : 1 h 05 à 2 h 10, médiane 1 h 30, prévu sur … »), minutes.
+fn range_and_median(pace: &str) -> (f64, f64, f64) {
+    let rest = pace.split_once(") : ").expect("the group's time").1;
+    let (range, rest) = rest
+        .split_once(", médiane ")
+        .expect("a range and its median");
+    let (lo, hi) = range.split_once(" à ").expect("a range");
+    let median = rest.split(',').next().unwrap();
+    (minutes(lo), minutes(hi), minutes(median))
+}
+
+/// V2 (#65), « calibration visible après 3 sorties »: the app's default family learns its
+/// outings one by one (`group_learn`, as the app does at the end of each outing). After
+/// each one the group says how many it learned, the morning says it for its loops, and the
+/// time of the same loop (the first of the morning a priori, validated with the group)
+/// narrows around what the outings showed; after the third, « 3 sorties apprises », the
+/// range much narrower than a priori, the median at the pace the outings showed. It stays
+/// a range (no figure « environ » yet): with three outings its 80 % interval is still
+/// wider than ±15 % (`pace::FIGURE_SPREAD`), so no figure is claimed.
+fn calibration_visible_after_three_outings(site: &'static Site, date: &str, budget_min: f64) {
+    let work = tempfile::tempdir().unwrap();
+    let lang = skimap_ffi::card::Lang::Fr;
+    let planner = open_day_planner(
+        pack(site).display().to_string(),
+        work.path().join("view").display().to_string(),
+        lang,
+    )
+    .unwrap();
+    let start = day_starts(site.id.into(), lang).remove(0);
+    let req = DayRequest {
+        label: "sortie en famille".into(),
+        start,
+        date: date.into(),
+        start_time: Some("10:00".into()),
+        earliest: "08:00".into(),
+        budget_min,
+        skating: false,
+        return_before: None,
+        max_difficulty: None,
+    };
+    let mut g = group_default(lang).unwrap();
+    assert_eq!(g.learned, "a priori, aucune sortie apprise");
+    let prior_json = g.model_json.clone();
+    // The time of the first loop of the morning a priori, validated with `group`.
+    let time_of = |group: &str, n: u32| {
+        let m = planner
+            .morning(req.clone(), Some(prior_json.clone()))
+            .unwrap();
+        let v = planner
+            .validate(
+                0,
+                Some(group.to_owned()),
+                work.path().join(format!("plan-{n}")).display().to_string(),
+            )
+            .unwrap();
+        (m.loops[0].clone(), v.pace_text.unwrap_or_default())
+    };
+    let (l0, pace0) = time_of(&prior_json, 0);
+    println!(
+        "{} · {}: {:.1} km, model {:.0} min; a priori: {pace0}",
+        site.id, l0.label, l0.length_km, l0.model_min
+    );
+    assert!(l0.range, "{l0:?}");
+    assert!(
+        pace0.contains("(a priori, aucune sortie apprise)"),
+        "{pace0}"
+    );
+    let (lo0, hi0, _) = range_and_median(&pace0);
+    // The family is half again as slow as the model when moving, every outing alike, with
+    // four stops of 5 min.
+    let slow = 1.5;
+    let shown = l0.model_min.mul_add(slow, 20.0);
+    let mut width = hi0 - lo0;
+    let mut median = 0.0;
+    for n in 1..=3u32 {
+        g = group_learn(
+            g.model_json,
+            outing_observation(l0.model_min, l0.length_km, slow),
+            lang,
+        )
+        .unwrap();
+        assert_eq!(g.outings, n);
+        // The morning for the group says what it learned.
+        let m = planner
+            .morning(req.clone(), Some(g.model_json.clone()))
+            .unwrap();
+        assert!(
+            m.loops[0].reasons[0].contains(&g.learned),
+            "{}: {:?}",
+            g.learned,
+            m.loops[0].reasons
+        );
+        let (l, pace) = time_of(&g.model_json, n);
+        assert_eq!(l.label, l0.label);
+        let (lo, hi, med) = range_and_median(&pace);
+        println!("  {}: {pace}", g.learned);
+        assert!(pace.contains(&format!("({})", g.learned)), "{pace}");
+        assert!(hi - lo < width, "the range narrows: {pace}");
+        assert!(lo <= shown && shown <= hi, "{shown} min in {pace}");
+        width = hi - lo;
+        median = med;
+    }
+    assert_eq!(g.learned, "3 sorties apprises");
+    println!(
+        "  width {:.0} min a priori, {width:.0} min after 3 outings; outings {shown:.0} min, median {median:.0} min",
+        hi0 - lo0
+    );
+    assert!(width <= 0.65 * (hi0 - lo0), "{width} vs {}", hi0 - lo0);
+    assert!(
+        (median - shown).abs() <= 0.1 * shown,
+        "median {median} min, outings {shown:.0} min"
+    );
+    assert!(
+        0.5 * width / median > skimap_plan::pace::FIGURE_SPREAD,
+        "a figure would be due at ±{:.0} %",
+        50.0 * width / median
+    );
+}
+
+#[test]
+#[ignore = "full-data: needs data/out/<site>/pack"]
+fn full_data_calibration_visible_after_three_outings_cervieres() {
+    calibration_visible_after_three_outings(&CERVIERES, "2026-11-16", 180.0);
+}
+
+#[test]
+#[ignore = "full-data: needs data/out/<site>/pack"]
+fn full_data_calibration_visible_after_three_outings_chapelle() {
+    calibration_visible_after_three_outings(&CHAPELLE_DES_BOIS, "2026-11-16", 120.0);
 }

@@ -107,6 +107,32 @@ class MapScreenTest {
     }
 
     @Test
+    fun everyInfoOfThePackWithItsDateAndSourcesInTheCredits() {
+        // K3 (#53), real core on the test pack: each kind of information it holds is listed
+        // in the ⓘ dialog with its update date and its sources.
+        val opened =
+            fr.skimap.core.openPacks(
+                listOf(checkNotNull(System.getProperty("skimap.testPack"))),
+                java.io
+                    .File(checkNotNull(System.getProperty("skimap.styles")), "fond-clair.json")
+                    .readText(),
+                false,
+                fr.skimap.core.Lang.FR,
+            )
+        val infos = opened.info.infos
+        assertEquals(listOf("pistes", "status", "zones", "refuges"), infos.map { it.id })
+        val state = readyState().copy(opened = Fixtures.opened().copy(info = opened.info))
+        rule.setContent { Themed { TestMapScreen(state) } }
+        rule.onNodeWithContentDescription("Sources et licences des données").performClick()
+        val titles = listOf("Pistes et itinéraires", "État des pistes", "Zones réglementées et redevances", "Refuges et abris")
+        for ((i, title) in infos.zip(titles)) {
+            assertTrue(i.id, i.sources.isNotEmpty())
+            val text = "$title — Mis à jour le 15 novembre 2026. Sources : ${i.sources.joinToString(" · ")}"
+            rule.onNodeWithText(text).performScrollTo().assertIsDisplayed()
+        }
+    }
+
+    @Test
     fun autoViewButtonOnceTheMapWasMoved() {
         var recenter = 0
         rule.setContent { Themed { TestMapScreen(readyState(), MapActions(recenter = { recenter++ }), mapMoved = true) } }

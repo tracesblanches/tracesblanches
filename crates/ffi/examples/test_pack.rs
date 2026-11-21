@@ -63,7 +63,10 @@ pub(crate) const VERSIONS: [&str; 2] = ["20261115T060000Z", "20261116T060000Z"];
 pub(crate) fn write_test_pack(out: &Path, variant: u8) -> Res<String> {
     let parent = out.parent().ok_or("pack directory without parent")?;
     std::fs::create_dir_all(parent)?;
-    let work = parent.join(".test-pack-work");
+    // One work directory per pack written: tests that write their packs straight into
+    // their own temporary directory share its parent (the system temporary directory).
+    let name = out.file_name().ok_or("pack directory without name")?;
+    let work = parent.join(format!(".{}.test-pack-work", name.to_string_lossy()));
     if work.exists() {
         std::fs::remove_dir_all(&work)?;
     }
@@ -131,7 +134,7 @@ fn add_fee_zones(pack: &Path, m: &mut Manifest) -> Res<()> {
     layer["meta"] = Value::Null;
     layer["origin"] = json!("crates/ffi/examples/test_pack.rs");
     layer["personal_use_only"] = json!(false);
-    layer["sources"] = json!([]);
+    layer["sources"] = meta(false, "Redevances de test")["sources"].clone();
     layer["bytes"] = json!(std::fs::metadata(pack.join(file))?.len());
     layer["features"] = json!(2);
     layer["geometry_types"] = json!(["Polygon"]);
@@ -636,7 +639,7 @@ mod tests {
         let (tx, ty, _, _) =
             skimap_pack::tiles::tile_pixel(skimap_common::geom::LonLat::new(6.7746, 44.8586), 14);
         assert_eq!(t.tile(14, tx, ty).unwrap().unwrap(), tile());
-        assert!(!tmp.path().join("packs/.test-pack-work").exists());
+        assert!(!tmp.path().join("packs/.test.test-pack-work").exists());
         let v2 = tmp.path().join("packs/test-v2");
         write_test_pack(&v2, 2).unwrap();
         let p2 = skimap_pack::Pack::open(&v2).unwrap();

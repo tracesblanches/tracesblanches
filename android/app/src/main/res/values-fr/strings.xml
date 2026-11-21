@@ -66,6 +66,19 @@
 
     <string name="validity_valid">Valable jusqu\'au %1$s</string>
     <string name="validity_last_day">Dernier jour de validité : %1$s</string>
+    <string name="info_line">%1$s — %2$s. Sources : %3$s</string>
+    <string name="info_data_at">données du %1$s</string>
+    <string name="info_pistes">Pistes et itinéraires</string>
+    <string name="info_status">État des pistes</string>
+    <string name="info_slopes">Pentes et exposition</string>
+    <string name="info_avalanche">Zones d\'avalanche connues</string>
+    <string name="info_snow">Neige estimée</string>
+    <string name="info_zones">Zones réglementées et redevances</string>
+    <string name="info_refuges">Refuges et abris</string>
+    <string name="info_network">Couverture du réseau mobile</string>
+    <string name="info_bera">BERA (risque d\'avalanche)</string>
+    <string name="info_weather">Météo</string>
+    <string name="info_stations">Stations</string>
     <string name="validity_updated">Mis à jour le %1$s</string>
     <string name="validity_updated_online">Mis à jour le %1$s · connecté : vous pouvez le mettre à jour</string>
     <string name="validity_unknown">Validité inconnue</string>

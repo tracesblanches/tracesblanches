@@ -68,6 +68,19 @@
 
     <string name="validity_valid">Valid until %1$s</string>
     <string name="validity_last_day">Last day of validity: %1$s</string>
+    <string name="info_line">%1$s — %2$s. Sources: %3$s</string>
+    <string name="info_data_at">data of %1$s</string>
+    <string name="info_pistes">Trails and routes</string>
+    <string name="info_status">Trail status</string>
+    <string name="info_slopes">Slopes and exposure</string>
+    <string name="info_avalanche">Known avalanche areas</string>
+    <string name="info_snow">Estimated snow</string>
+    <string name="info_zones">Regulated zones and fees</string>
+    <string name="info_refuges">Huts and shelters</string>
+    <string name="info_network">Mobile coverage</string>
+    <string name="info_bera">Avalanche bulletin (BERA)</string>
+    <string name="info_weather">Weather</string>
+    <string name="info_stations">Resorts</string>
     <string name="validity_updated">Updated %1$s</string>
     <string name="validity_updated_online">Updated %1$s · online: you can update it</string>
     <string name="validity_unknown">Validity unknown</string>

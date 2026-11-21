@@ -3,6 +3,7 @@ package fr.skimap.app.ui
 import android.content.res.Resources
 import fr.skimap.app.R
 import fr.skimap.app.data.PackProblem
+import fr.skimap.core.InfoSource
 import fr.skimap.core.PackInfo
 import fr.skimap.core.StatusSummary
 import java.time.Instant
@@ -61,6 +62,25 @@ class PackTexts(
     ): String {
         val at = parseDate(info.generatedAt)?.format(day) ?: info.generatedAt
         return res.getString(if (online) R.string.validity_updated_online else R.string.validity_updated, at)
+    }
+
+    /**
+     * One kind of information of the packs shown (K3 #53) with its dates and its sources:
+     * `Pistes et itinéraires — Mis à jour le 15 novembre 2026, données du 13 novembre 2026.
+     * Sources : …`. The data date is said when it is another day than the update.
+     */
+    fun infoText(i: InfoSource): String {
+        val updatedOn = parseDate(i.updatedAt)
+        val dates =
+            listOfNotNull(
+                res.getString(R.string.validity_updated, updatedOn?.format(day) ?: i.updatedAt),
+                i.dataAt
+                    ?.let(::parseDate)
+                    ?.takeIf { it != updatedOn }
+                    ?.let { res.getString(R.string.info_data_at, it.format(day)) },
+            ).joinToString(", ")
+        val title = INFO_TITLES[i.id]?.let(res::getString) ?: i.title
+        return res.getString(R.string.info_line, title, dates, i.sources.joinToString(" · "))
     }
 
     /** `2 open, 40 closed` (map chip). */
@@ -148,5 +168,21 @@ class PackTexts(
             }
 
         private const val DATE_LENGTH = 10
+
+        /** Titles of the kinds of information of the core (`INFO_KINDS`). */
+        private val INFO_TITLES =
+            mapOf(
+                "pistes" to R.string.info_pistes,
+                "status" to R.string.info_status,
+                "slopes" to R.string.info_slopes,
+                "avalanche" to R.string.info_avalanche,
+                "snow" to R.string.info_snow,
+                "zones" to R.string.info_zones,
+                "refuges" to R.string.info_refuges,
+                "network" to R.string.info_network,
+                "bera" to R.string.info_bera,
+                "weather" to R.string.info_weather,
+                "stations" to R.string.info_stations,
+            )
     }
 }

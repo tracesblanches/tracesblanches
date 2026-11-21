@@ -71,9 +71,14 @@ class DayStore(
         prefs().edit { putString(KEY_GROUPS, a.toString()) }
     }
 
-    /** Adds or replaces (same name) a group. */
+    /**
+     * Adds a group, or replaces in place the group of the same name: a group that learns
+     * keeps its rank, so the group the morning offers when none was chosen stays the same.
+     */
     fun putGroup(g: GroupView) {
-        saveGroups(groups().filterNot { it.spec.name == g.spec.name } + g)
+        val all = groups()
+        val i = all.indexOfFirst { it.spec.name == g.spec.name }
+        saveGroups(if (i < 0) all + g else all.toMutableList().also { it[i] = g })
     }
 
     fun selectedGroup(): String? = prefs().getString(KEY_SELECTED, null)
@@ -168,4 +173,14 @@ class DayStore(
         /** The profile chosen during the outing (X14), written beside the plan by the location service. */
         const val PROFILE_CHOSEN_FILE = "profile_chosen.json"
     }
+}
+
+/**
+ * The group of the next plans: the one selected, else the first (the one the morning
+ * offers). The morning, the evening preparation and the guided outings use the same.
+ */
+fun DayStore.group(): GroupView? {
+    val all = groups()
+    val name = selectedGroup()
+    return all.firstOrNull { it.spec.name == name } ?: all.firstOrNull()
 }

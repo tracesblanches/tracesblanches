@@ -96,6 +96,143 @@ pub struct PackInfo {
     pub personal_sources: bool,
     /// Every attribution of the pack, deduplicated.
     pub attributions: Vec<String>,
+    /// Each kind of information of the pack with its sources and dates (K3 #53), in
+    /// [`INFO_KINDS`] order then the layers of no known kind.
+    #[uniffi(default)]
+    pub infos: Vec<InfoSource>,
+}
+
+/// One kind of information of a pack as the app shows it (K3 #53): where it comes from and
+/// how old it is. Several packs together (free mode) keep the oldest dates: a datum not
+/// refreshed keeps its date.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct InfoSource {
+    /// Kind ([`INFO_KINDS`]: `pistes`, `status`…), or the pack layer id for a layer of no
+    /// known kind.
+    pub id: String,
+    /// Title, French, from the pack (the app words the known kinds itself).
+    pub title: String,
+    /// Last update: the oldest build time of its layers (RFC 3339).
+    pub updated_at: String,
+    /// Date of the data described, the oldest of its layers (`valid_from`), when known.
+    pub data_at: Option<String>,
+    /// Attributions of its sources, deduplicated.
+    pub sources: Vec<String>,
+    /// Pack layers it comes from.
+    pub layers: Vec<String>,
+}
+
+/// The kinds of information shown (K3 #53: F2, F3, F5, F6, F8, F9, F10, F12, F13), in the
+/// order the app lists them.
+pub const INFO_KINDS: [&str; 11] = [
+    "pistes",
+    "status",
+    "slopes",
+    "avalanche",
+    "snow",
+    "zones",
+    "refuges",
+    "network",
+    "bera",
+    "weather",
+    "stations",
+];
+
+/// Kind of information of a pack layer (by its generic id), `None` for a layer of no known
+/// kind.
+pub fn info_kind(layer: &str) -> Option<&'static str> {
+    Some(match layer {
+        "status" | "status-summary" => "status",
+        "bera" => "bera",
+        "meteo-hourly" | "assist-briefing" | "assist-wax" | "assist-suggestions" => "weather",
+        "no-network" | "coverage-area" => "network",
+        "slope" | "offpiste-slope" | "offpiste-elevation" | "offpiste-exposure"
+        | "avalanche-exposure" => "slopes",
+        "zones" | "zones-rules" | "fee-zones" | "offpiste-zones" | "offpiste-zone-classes" => {
+            "zones"
+        }
+        "offpiste-snow" | "assist-snow-quality" => "snow",
+        "offpiste-pistes" | "domaines" | "routes" | "piste-graph" | "piste-labels" => "pistes",
+        l if l.starts_with("snow-") => "snow",
+        l if l.starts_with("avalanche-") => "avalanche",
+        l if l.starts_with("refuges") => "refuges",
+        l if l.starts_with("stations") => "stations",
+        l if l.starts_with("pistes") || l.starts_with("route-") || l.starts_with("srn-") => {
+            "pistes"
+        }
+        _ => return None,
+    })
+}
+
+fn older(a: Option<String>, b: Option<String>) -> Option<String> {
+    match (a, b) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (a, b) => a.or(b),
+    }
+}
+
+/// Adds `i` to `out`: same kind, the oldest dates and every source.
+fn add_info(out: &mut Vec<InfoSource>, i: InfoSource) {
+    let Some(o) = out.iter_mut().find(|o| o.id == i.id) else {
+        out.push(i);
+        return;
+    };
+    if i.updated_at < o.updated_at {
+        o.updated_at = i.updated_at;
+    }
+    o.data_at = older(o.data_at.take(), i.data_at);
+    for s in i.sources {
+        if !o.sources.contains(&s) {
+            o.sources.push(s);
+        }
+    }
+    for l in i.layers {
+        if !o.layers.contains(&l) {
+            o.layers.push(l);
+        }
+    }
+}
+
+fn kind_rank(id: &str) -> usize {
+    INFO_KINDS
+        .iter()
+        .position(|k| *k == id)
+        .unwrap_or(INFO_KINDS.len())
+}
+
+/// The kinds of information of a manifest (K3 #53).
+pub fn infos(m: &skimap_pack::manifest::Manifest) -> Vec<InfoSource> {
+    let mut out: Vec<InfoSource> = Vec::new();
+    for l in &m.layers {
+        let id = info_kind(&l.id).map_or_else(|| l.id.clone(), str::to_owned);
+        let mut sources: Vec<String> = Vec::new();
+        for s in &l.sources {
+            let a = if s.attribution.is_empty() {
+                &s.name
+            } else {
+                &s.attribution
+            };
+            if !sources.contains(a) {
+                sources.push(a.clone());
+            }
+        }
+        add_info(
+            &mut out,
+            InfoSource {
+                title: l.title.clone(),
+                id,
+                updated_at: l
+                    .generated_at
+                    .clone()
+                    .unwrap_or_else(|| m.generated_at.clone()),
+                data_at: l.valid_from.clone(),
+                sources,
+                layers: vec![l.id.clone()],
+            },
+        );
+    }
+    out.sort_by_key(|i| kind_rank(&i.id));
+    out
 }
 
 pub(crate) fn list_packs(root: &Path) -> Vec<PackEntry> {
@@ -192,6 +329,7 @@ pub(crate) fn summarise(pack: &Pack) -> Result<PackInfo, PackError> {
         status,
         personal_sources: m.personal_sources,
         attributions: m.attributions.clone(),
+        infos: infos(m),
     })
 }
 
@@ -257,6 +395,7 @@ pub fn france_only(
         status: None,
         personal_sources: false,
         attributions: f.attributions(),
+        infos: Vec::new(),
     }
 }
 
@@ -295,7 +434,8 @@ pub fn merge(infos: &[PackInfo], id: &str, lang: crate::card::Lang) -> PackInfo 
     out.department = String::new();
     for i in &infos[1..] {
         out.pack_version = out.pack_version.clone().max(i.pack_version.clone());
-        out.generated_at = out.generated_at.clone().max(i.generated_at.clone());
+        // The oldest: a pack not refreshed keeps its date (« Mis à jour le… »).
+        out.generated_at = out.generated_at.clone().min(i.generated_at.clone());
         out.valid_until = match (out.valid_until.take(), i.valid_until.clone()) {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
@@ -323,7 +463,11 @@ pub fn merge(infos: &[PackInfo], id: &str, lang: crate::card::Lang) -> PackInfo 
                 out.attributions.push(a.clone());
             }
         }
+        for info in &i.infos {
+            add_info(&mut out.infos, info.clone());
+        }
     }
+    out.infos.sort_by_key(|i| kind_rank(&i.id));
     out.center_lon = (out.bounds.west + out.bounds.east) / 2.0;
     out.center_lat = (out.bounds.south + out.bounds.north) / 2.0;
     out.validity_note = tx.packs_note(

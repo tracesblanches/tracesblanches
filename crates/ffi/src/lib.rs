@@ -51,7 +51,9 @@ use skimap_pack::Pack;
 pub use card::{Card, Fact, Lang, Link, Phone, feature_card};
 pub use catalog::{Catalog, Domain, DomainDistance, PackStatus};
 pub use fees::{FeePrice, FeeZone};
-pub use info::{BasemapInfo, Bounds, PackEntry, PackInfo, StatusSummary};
+pub use info::{
+    BasemapInfo, Bounds, INFO_KINDS, InfoSource, PackEntry, PackInfo, StatusSummary, info_kind,
+};
 pub use style::{LayerGroup, LegendEntry, LegendKind, MapStyle, OverlayLayers};
 
 uniffi::setup_scaffolding!();
