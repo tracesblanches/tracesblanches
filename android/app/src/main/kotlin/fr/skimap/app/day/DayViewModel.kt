@@ -249,8 +249,7 @@ class DayViewModel(
         val (pick, p, starts) = loaded
         planner = p
         inputs = inputs.copy(start = starts.firstOrNull())
-        val groups = withContext(io) { store.groups() }
-        val selected = store.selectedGroup()
+        val (groups, group) = withContext(io) { store.groups() to store.group() }
         mutable.value =
             DayUi.Ready(
                 siteId = pick.second,
@@ -261,7 +260,7 @@ class DayViewModel(
                 computing = true,
                 choice = 0,
                 groups = groups,
-                group = groups.firstOrNull { it.spec.name == selected } ?: groups.firstOrNull(),
+                group = group,
                 contact = store.contact(),
             )
         recompute()

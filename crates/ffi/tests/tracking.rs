@@ -29,7 +29,8 @@ use skimap_ffi::tracking::{
     load_graph, load_layers, open_tracking, pack_fixes,
 };
 use skimap_ffi::tracking_day::{
-    DayRequest, GroupSpec, day_starts, group_learn, group_new, open_day_planner, read_day_plan,
+    DayRequest, GroupSpec, LoopView, day_starts, group_default, group_learn, group_new,
+    open_day_planner, read_day_plan,
 };
 use skimap_plan::gps::GpsRequest;
 use skimap_plan::phrases::{Voice, never_safe};
@@ -1061,4 +1062,164 @@ fn full_data_bring_me_back_on_every_pack() {
     );
     assert!(failed.is_empty(), "{failed:?}");
     assert!(ok >= 10, "{ok} packs brought back only");
+}
+
+/// One outing of a group on a loop of `model_min` minutes of model time, `slow` times the
+/// model's pace when moving, four stops of five minutes: the observation the tracking
+/// session writes at the end (`TrackingSession::observation`).
+fn outing_observation(model_min: f64, length_km: f64, slow: f64) -> String {
+    let model = model_min * 60.0;
+    let model_s = [0.4 * model, 0.35 * model, 0.25 * model];
+    let moving_s = model_s.map(|s| s * slow);
+    let stops_s = vec![300.0; 4];
+    let elapsed_s = moving_s.iter().sum::<f64>() + stops_s.iter().sum::<f64>();
+    serde_json::json!({
+        "model_s": model_s,
+        "moving_s": moving_s,
+        "progress_m": length_km * 1000.0,
+        "travelled_m": length_km * 1050.0,
+        "stops_s": stops_s,
+        "elapsed_s": elapsed_s,
+    })
+    .to_string()
+}
+
+/// « 2 h 35 » or « 45 min », minutes.
+fn minutes(s: &str) -> f64 {
+    match s.split_once(" h ") {
+        Some((h, m)) => h.parse::<f64>().unwrap() * 60.0 + m.parse::<f64>().unwrap(),
+        None => s.trim_end_matches(" min").parse().unwrap(),
+    }
+}
+
+/// The range « 1 h 05 à 2 h 10 » of a loop and the median of its return text
+/// (« médiane 1 h 30, … »), minutes.
+fn range_and_median(l: &LoopView) -> (f64, f64, f64) {
+    let (lo, hi) = l.time_text.split_once(" à ").expect("a range");
+    let median = l
+        .back_text
+        .strip_prefix("médiane ")
+        .and_then(|b| b.split(',').next())
+        .expect("the median of a family");
+    (minutes(lo), minutes(hi), minutes(median))
+}
+
+/// V2 (#65), « calibration visible après 3 sorties »: the app's default family learns its
+/// outings one by one (`group_learn`, as the app does at the end of each outing). After
+/// each one the group says how many it learned and the morning's range of the same loop
+/// narrows around what the outings showed; after the third, « 3 sorties apprises » in the
+/// group and in the validated plan's time, the range much narrower than a priori, the
+/// median at the pace the outings showed. The range stays a range (no figure « environ »
+/// yet): with three outings its 80 % interval is still wider than ±15 %
+/// (`pace::FIGURE_SPREAD`), so no figure is claimed.
+fn calibration_visible_after_three_outings(site: &'static Site, date: &str, budget_min: f64) {
+    let work = tempfile::tempdir().unwrap();
+    let lang = skimap_ffi::card::Lang::Fr;
+    let planner = open_day_planner(
+        pack(site).display().to_string(),
+        work.path().join("view").display().to_string(),
+        lang,
+    )
+    .unwrap();
+    let start = day_starts(site.id.into(), lang).remove(0);
+    let req = DayRequest {
+        label: "sortie en famille".into(),
+        start,
+        date: date.into(),
+        start_time: Some("10:00".into()),
+        earliest: "08:00".into(),
+        budget_min,
+        skating: false,
+        return_before: None,
+        max_difficulty: None,
+    };
+    let mut g = group_default(lang).unwrap();
+    assert_eq!(g.learned, "a priori, aucune sortie apprise");
+    let prior = planner
+        .morning(req.clone(), Some(g.model_json.clone()))
+        .unwrap();
+    let l0 = prior.loops[0].clone();
+    println!(
+        "{} · {}: {:.1} km, model {:.0} min; a priori: {} · {}",
+        site.id, l0.label, l0.length_km, l0.model_min, l0.time_text, l0.back_text
+    );
+    assert!(l0.range, "{l0:?}");
+    let (lo0, hi0, _) = range_and_median(&l0);
+    // The family is half again as slow as the model when moving, every outing alike, with
+    // four stops of 5 min.
+    let slow = 1.5;
+    let shown = l0.model_min.mul_add(slow, 20.0);
+    let mut width = hi0 - lo0;
+    let mut last = (0, l0.clone());
+    for n in 1..=3u32 {
+        g = group_learn(
+            g.model_json,
+            outing_observation(l0.model_min, l0.length_km, slow),
+            lang,
+        )
+        .unwrap();
+        assert_eq!(g.outings, n);
+        let m = planner
+            .morning(req.clone(), Some(g.model_json.clone()))
+            .unwrap();
+        let i = m
+            .loops
+            .iter()
+            .position(|l| l.label == l0.label)
+            .expect("the same loop");
+        let l = m.loops[i].clone();
+        let (lo, hi, _) = range_and_median(&l);
+        println!(
+            "  {}: {} · {} (width {:.0} min)",
+            g.learned,
+            l.time_text,
+            l.back_text,
+            hi - lo
+        );
+        assert!(hi - lo < width, "the range narrows: {l:?}");
+        assert!(lo <= shown && shown <= hi, "{shown} min in {l:?}");
+        width = hi - lo;
+        last = (i, l);
+    }
+    assert_eq!(g.learned, "3 sorties apprises");
+    let (i, after) = last;
+    let (_, _, median) = range_and_median(&after);
+    println!(
+        "  width {:.0} min a priori, {width:.0} min after 3 outings; outings {shown:.0} min, median {median:.0} min",
+        hi0 - lo0
+    );
+    assert!(width <= 0.65 * (hi0 - lo0), "{width} vs {}", hi0 - lo0);
+    assert!(
+        (median - shown).abs() <= 0.1 * shown,
+        "median {median} min, outings {shown:.0} min"
+    );
+    assert!(
+        after.range,
+        "no figure claimed at ±{:.0} %",
+        50.0 * width / median
+    );
+    // The validated plan (the last morning, the group's) says it too.
+    let v = planner
+        .validate(
+            u32::try_from(i).unwrap(),
+            Some(g.model_json.clone()),
+            work.path().join("plan").display().to_string(),
+        )
+        .unwrap();
+    let pace = v.pace_text.unwrap_or_default();
+    println!("  plan: {pace}");
+    assert!(pace.contains("(3 sorties apprises)"), "{pace}");
+    assert_eq!(v.label, l0.label);
+}
+
+#[test]
+#[ignore = "full-data: needs data/out/<site>/pack"]
+fn full_data_calibration_visible_after_three_outings_cervieres() {
+    calibration_visible_after_three_outings(&CERVIERES, "2026-11-16", 180.0);
+}
+
+#[test]
+#[ignore = "full-data: needs data/out/<site>/pack"]
+fn full_data_calibration_visible_after_three_outings_chapelle() {
+    calibration_visible_after_three_outings(&CHAPELLE_DES_BOIS, "2026-11-16", 120.0);
 }

@@ -10,6 +10,7 @@ import fr.skimap.app.day.DayStore
 import fr.skimap.app.day.DayUi
 import fr.skimap.app.day.DayViewModel
 import fr.skimap.app.day.earliestStart
+import fr.skimap.app.day.group
 import fr.skimap.core.DayOuting
 import fr.skimap.core.DayPlanView
 import fr.skimap.core.DayRequest
@@ -19,6 +20,7 @@ import fr.skimap.core.Lang
 import fr.skimap.core.MorningView
 import fr.skimap.core.dayDefaultOuting
 import fr.skimap.core.groupNew
+import fr.skimap.core.groupRead
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -276,4 +278,45 @@ class DayViewModelTest {
         )
         assertEquals("Seul", ChosenProfile.group(st, dir2)?.spec?.name)
     }
+
+    @Test
+    fun calibrationVisibleAfterThreeOutings() =
+        runTest {
+            // V2 (#65), real core: the family the app offers first ends three outings, each
+            // learned once at its end; the next morning shows « 3 sorties apprises » and sends
+            // the learned model with the request, so the times are the group's.
+            ctx
+                .getSharedPreferences("day-test", Context.MODE_PRIVATE)
+                .edit()
+                .clear()
+                .commit()
+            val st = store()
+            val family = st.groups().first()
+            assertEquals("a priori, aucune sortie apprise", family.learned)
+            val learned =
+                (1..3).map { n ->
+                    val dir = tmp.newFolder("outing-$n")
+                    st.setPlanGroup(dir.absolutePath, family.spec.name)
+                    File(dir, DayStore.OBSERVATION_FILE).writeText(
+                        """{"model_s":[1200.0,1050.0,750.0],"moving_s":[1800.0,1575.0,1125.0],"progress_m":5400.0,""" +
+                            """"travelled_m":5670.0,"stops_s":[300.0,300.0,300.0,300.0],"elapsed_s":5700.0}""",
+                    )
+                    st.learnFrom(dir.absolutePath)!!.learned
+                }
+            assertEquals(listOf("une sortie apprise", "2 sorties apprises", "3 sorties apprises"), learned)
+            // Learning keeps the group's rank: with no group ever chosen, the group of the
+            // next plans (morning, evening preparation, guided outings) is still the family.
+            assertEquals(listOf(family.spec.name, "Seul"), st.groups().map { it.spec.name })
+            assertNull(st.selectedGroup())
+            assertEquals(3u, st.group()!!.outings)
+            val b = FakeDayBackend()
+            val s = vm(b, st).state.value as DayUi.Ready
+            assertEquals(family.spec.name, s.group!!.spec.name)
+            assertEquals(3u, s.group.outings)
+            assertEquals("3 sorties apprises", s.group.learned)
+            val sent = b.requests.single().second!!
+            assertEquals(s.group.modelJson, sent)
+            assertEquals(3u, groupRead(sent, Lang.FR).outings)
+            assertTrue(groupRead(sent, Lang.FR).modelJson != family.modelJson)
+        }
 }

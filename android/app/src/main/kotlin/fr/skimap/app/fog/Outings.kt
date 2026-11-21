@@ -4,6 +4,7 @@ import android.content.Context
 import fr.skimap.app.MainActivity
 import fr.skimap.app.appLang
 import fr.skimap.app.day.DayStore
+import fr.skimap.app.day.group
 import fr.skimap.core.Lang
 import java.io.File
 import java.time.LocalDate
@@ -29,12 +30,11 @@ object Outings {
         site: String?,
     ): File? = packDirs(context).let { all -> all.firstOrNull { it.name == site } ?: all.firstOrNull() }
 
-    /** The group chosen in the morning (C11), its model as JSON; `null` if none. */
-    fun groupJson(context: Context): String? {
-        val store = DayStore(context)
-        val name = store.selectedGroup() ?: return null
-        return store.groups().firstOrNull { it.spec.name == name }?.modelJson
-    }
+    /**
+     * The group of the morning (C11, [DayStore.group]: the one chosen, else the one the
+     * morning offers first), its model as JSON; `null` if none.
+     */
+    fun groupJson(context: Context): String? = DayStore(context).group()?.modelJson
 
     /** Where the outings are kept (the day plans and the guided outings). */
     fun plansRoot(context: Context): File = File(context.filesDir, "plans")

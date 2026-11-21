@@ -35,6 +35,9 @@ import fr.skimap.app.day.groupSpec
 import fr.skimap.app.guidance.GuidanceOverlayContent
 import fr.skimap.app.guidance.GuidanceTags
 import fr.skimap.core.GroupSpec
+import fr.skimap.core.Lang
+import fr.skimap.core.groupDefault
+import fr.skimap.core.groupLearn
 import fr.skimap.tracking.Phase
 import fr.skimap.tracking.TrackingState
 import org.junit.Assert.assertEquals
@@ -114,6 +117,28 @@ class DayScreenTest {
         assertEquals(listOf<Byte>(4, 11, 16), g.children.toList())
         assertEquals(listOf<Byte>(17), groupSpec("x", "0", "40", "expert").children.toList())
         assertEquals(1u.toUByte(), groupSpec("x", "", "", "expert").adults)
+    }
+
+    @Test
+    fun calibrationVisibleAfterThreeOutings() {
+        // V2 (#65), real core: the family the app offers first learns three outings; the
+        // morning shows who the group is and that its times come from three outings.
+        var g = groupDefault(Lang.FR)
+        repeat(3) {
+            g =
+                groupLearn(
+                    g.modelJson,
+                    """{"model_s":[1200.0,1050.0,750.0],"moving_s":[1800.0,1575.0,1125.0],"progress_m":5400.0,""" +
+                        """"travelled_m":5670.0,"stops_s":[300.0,300.0,300.0,300.0],"elapsed_s":5700.0}""",
+                    Lang.FR,
+                )
+        }
+        val state = DayFixtures.ready().copy(groups = listOf(g), group = g)
+        rule.setContent { Themed { DayScreen(state, DayActions()) } }
+        rule
+            .onNodeWithText("2 adultes, enfants de 10 et 14 ans · 3 sorties apprises", useUnmergedTree = true)
+            .performScrollTo()
+            .assertIsDisplayed()
     }
 
     @Test
