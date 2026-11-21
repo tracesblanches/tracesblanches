@@ -542,6 +542,28 @@ impl Texts for En {
         format!("Time to head back. Be guided {to}?")
     }
 
+    fn fog_kind(&self, kind: &str) -> &'static str {
+        match kind {
+            "refuge" => "Refuge",
+            "parking" => "Car park",
+            "start" => "Start",
+            _ => "Point",
+        }
+    }
+
+    fn fog_near(&self, what: &str, place: &str) -> String {
+        format!("{what} near {place}")
+    }
+
+    fn fog_off(&self, what: &str, distance: &str, bearing_deg: f64, place: &str) -> String {
+        let side = crate::fog::cardinal(bearing_deg, crate::card::Lang::En);
+        format!("{what} {distance} {side} of {place}")
+    }
+
+    fn fog_rank(&self, label: &str, rank: usize) -> String {
+        format!("{label} ({rank})")
+    }
+
     fn all_domains(&self) -> &'static str {
         "All installed areas"
     }

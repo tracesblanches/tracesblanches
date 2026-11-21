@@ -208,6 +208,17 @@ pub trait Texts: Sync {
     /// The written proposal of « ramène-moi ».
     fn back_proposal(&self, target: Option<&crate::tracking_back::Target>) -> String;
 
+    // ---- Points to go to on a bearing (K7, #181).
+    /// Word of a kind of point: `refuge`, `parking`, `start`, `point`.
+    fn fog_kind(&self, kind: &str) -> &'static str;
+    /// A point without a name by a named place: « Parking près du foyer ».
+    fn fog_near(&self, what: &str, place: &str) -> String;
+    /// A point without a name off a named place, `bearing_deg` from the place to the point:
+    /// « Parking à 300 mètres au sud du Plan ».
+    fn fog_off(&self, what: &str, distance: &str, bearing_deg: f64, place: &str) -> String;
+    /// A label shared by several points, with the rank of this one: « Parking (2) ».
+    fn fog_rank(&self, label: &str, rank: usize) -> String;
+
     // ---- Packs shown together (free mode).
     /// Name of the merged packs.
     fn all_domains(&self) -> &'static str;
