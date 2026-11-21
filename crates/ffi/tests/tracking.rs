@@ -1067,110 +1067,6 @@ fn full_data_bring_me_back_on_every_pack() {
     assert!(ok >= 10, "{ok} packs brought back only");
 }
 
-/// K6 (#56): Cervières, the 3 h loop, the skier leaves it for steep terrain away from the
-/// trails and comes back. `open_tracking` gives the tracker the pack's terrain slope: the
-/// session raises the slope alert once (the vibration of safety on the phone) and says it
-/// as safety, as the core with the same slope does call for call.
-#[test]
-#[ignore = "full-data: needs data/out/cervieres/ and the archived day"]
-fn full_data_steep_terrain_said_through_the_session() {
-    let layout = DataLayout::new(data());
-    let (mut d, ctx) = presets::load(&layout, &CERVIERES).unwrap();
-    let req = presets::requests(&CERVIERES, presets::past_day(&CERVIERES))[0].clone();
-    let m = skimap_plan::plan::morning(&d, &req);
-    let plan = skimap_plan::plan::build(&mut d, &m, 0, &ctx).unwrap();
-    let g = d.graph.take().unwrap();
-    let trk = skimap_plan::plan::track(&plan, &g).unwrap().to_bytes();
-    let work = tempfile::tempdir().unwrap();
-    std::fs::write(work.path().join("plan.json"), plan.to_json().unwrap()).unwrap();
-    std::fs::write(work.path().join("plan.trk"), &trk).unwrap();
-    std::fs::write(
-        work.path().join("pack.txt"),
-        pack(&CERVIERES).display().to_string(),
-    )
-    .unwrap();
-    let slope =
-        skimap_ffi::offpiste::load_slope(&pack(&CERVIERES), &work.path().join("direct")).unwrap();
-    let (at_s, to, far) = scenario::steep_excursion(&plan, &g, &slope)
-        .unwrap()
-        .expect("steep terrain off the trails near the loop");
-    println!("sortie de la boucle à {at_s:.0} m, jusqu'à {far:.0} m de la boucle");
-    let sc = Scenario {
-        name: "k6 pente session".into(),
-        start: scenario::departure_utc(&plan),
-        slowdown: 1.0,
-        steps: vec![
-            Step::WaitAtStart { secs: 60.0 },
-            Step::Excursion {
-                at_s,
-                to,
-                speed_mps: 0.8,
-            },
-        ],
-        sigma_m: 10.0,
-        forest: true,
-        seed: 7,
-        tail_s: 300.0,
-        behaviour: None,
-        step_counter: false,
-    };
-    let run = scenario::run_with(
-        &sc,
-        &plan,
-        TrackView::new(&trk).unwrap(),
-        &g,
-        TrackerParams::default(),
-        None,
-        Some(&slope),
-    )
-    .unwrap();
-    let s = open_tracking(work.path().display().to_string(), None, "fr".into()).unwrap();
-    println!("session: {:?}", s.layers());
-    assert!(s.layers().iter().any(|l| l == "slope"), "{:?}", s.layers());
-    let pack_layers = load_layers(&pack(&CERVIERES), &work.path().join("direct")).unwrap();
-    let manifest = VoiceManifest::read(&pack(&CERVIERES).join("voice")).unwrap();
-    let voice = Voice::new(&manifest, "pack");
-    let mut direct = Tracker::new(
-        &plan,
-        TrackView::new(&trk).unwrap(),
-        &g,
-        Some(&voice),
-        TrackerParams::default(),
-    )
-    .unwrap()
-    .with_layers(&pack_layers)
-    .with_slope(&slope);
-    let results = follow_batched(&s, &mut direct, &run.inputs);
-    let alerts: Vec<skimap_ffi::tracking::AlertKind> = results
-        .iter()
-        .flat_map(|b| b.alerts.iter().map(|a| a.kind))
-        .collect();
-    println!("alertes : {alerts:?}");
-    let slope_alerts = alerts
-        .iter()
-        .filter(|k| **k == skimap_ffi::tracking::AlertKind::Slope)
-        .count();
-    assert_eq!(slope_alerts, 1, "{alerts:?}");
-    let said: Vec<&skimap_ffi::tracking::SpokenView> = results
-        .iter()
-        .flat_map(|b| b.spoken.iter())
-        .filter(|x| x.kinds.iter().any(|k| k == "slope"))
-        .collect();
-    assert_eq!(said.len(), 1);
-    println!("« {} » {:?}", said[0].text, said[0].priority);
-    assert!(said[0].text.contains("pente de"), "{}", said[0].text);
-    assert_eq!(
-        said[0].priority,
-        skimap_ffi::tracking::SpeechPriority::Safety
-    );
-    assert!(
-        said[0].all_clips,
-        "clips of the pack: {:?}",
-        said[0].segments
-    );
-    assert!(never_safe(&said[0].text));
-    assert!(results.iter().any(|b| b.recap.is_some()));
-
 /// One outing of a group on a loop of `model_min` minutes of model time, `slow` times the
 /// model's pace when moving, four stops of five minutes: the observation the tracking
 /// session writes at the end (`TrackingSession::observation`).
@@ -1329,4 +1225,109 @@ fn full_data_calibration_visible_after_three_outings_cervieres() {
 #[ignore = "full-data: needs data/out/<site>/pack"]
 fn full_data_calibration_visible_after_three_outings_chapelle() {
     calibration_visible_after_three_outings(&CHAPELLE_DES_BOIS, "2026-11-16", 120.0);
+}
+
+/// K6 (#56): Cervières, the 3 h loop, the skier leaves it for steep terrain away from the
+/// trails and comes back. `open_tracking` gives the tracker the pack's terrain slope: the
+/// session raises the slope alert once (the vibration of safety on the phone) and says it
+/// as safety, as the core with the same slope does call for call.
+#[test]
+#[ignore = "full-data: needs data/out/cervieres/ and the archived day"]
+fn full_data_steep_terrain_said_through_the_session() {
+    let layout = DataLayout::new(data());
+    let (mut d, ctx) = presets::load(&layout, &CERVIERES).unwrap();
+    let req = presets::requests(&CERVIERES, presets::past_day(&CERVIERES))[0].clone();
+    let m = skimap_plan::plan::morning(&d, &req);
+    let plan = skimap_plan::plan::build(&mut d, &m, 0, &ctx).unwrap();
+    let g = d.graph.take().unwrap();
+    let trk = skimap_plan::plan::track(&plan, &g).unwrap().to_bytes();
+    let work = tempfile::tempdir().unwrap();
+    std::fs::write(work.path().join("plan.json"), plan.to_json().unwrap()).unwrap();
+    std::fs::write(work.path().join("plan.trk"), &trk).unwrap();
+    std::fs::write(
+        work.path().join("pack.txt"),
+        pack(&CERVIERES).display().to_string(),
+    )
+    .unwrap();
+    let slope =
+        skimap_ffi::offpiste::load_slope(&pack(&CERVIERES), &work.path().join("direct")).unwrap();
+    let (at_s, to, far) = scenario::steep_excursion(&plan, &g, &slope)
+        .unwrap()
+        .expect("steep terrain off the trails near the loop");
+    println!("sortie de la boucle à {at_s:.0} m, jusqu'à {far:.0} m de la boucle");
+    let sc = Scenario {
+        name: "k6 pente session".into(),
+        start: scenario::departure_utc(&plan),
+        slowdown: 1.0,
+        steps: vec![
+            Step::WaitAtStart { secs: 60.0 },
+            Step::Excursion {
+                at_s,
+                to,
+                speed_mps: 0.8,
+            },
+        ],
+        sigma_m: 10.0,
+        forest: true,
+        seed: 7,
+        tail_s: 300.0,
+        behaviour: None,
+        step_counter: false,
+    };
+    let run = scenario::run_with(
+        &sc,
+        &plan,
+        TrackView::new(&trk).unwrap(),
+        &g,
+        TrackerParams::default(),
+        None,
+        Some(&slope),
+    )
+    .unwrap();
+    let s = open_tracking(work.path().display().to_string(), None, "fr".into()).unwrap();
+    println!("session: {:?}", s.layers());
+    assert!(s.layers().iter().any(|l| l == "slope"), "{:?}", s.layers());
+    let pack_layers = load_layers(&pack(&CERVIERES), &work.path().join("direct")).unwrap();
+    let manifest = VoiceManifest::read(&pack(&CERVIERES).join("voice")).unwrap();
+    let voice = Voice::new(&manifest, "pack");
+    let mut direct = Tracker::new(
+        &plan,
+        TrackView::new(&trk).unwrap(),
+        &g,
+        Some(&voice),
+        TrackerParams::default(),
+    )
+    .unwrap()
+    .with_layers(&pack_layers)
+    .with_slope(&slope);
+    let results = follow_batched(&s, &mut direct, &run.inputs);
+    let alerts: Vec<skimap_ffi::tracking::AlertKind> = results
+        .iter()
+        .flat_map(|b| b.alerts.iter().map(|a| a.kind))
+        .collect();
+    println!("alertes : {alerts:?}");
+    let slope_alerts = alerts
+        .iter()
+        .filter(|k| **k == skimap_ffi::tracking::AlertKind::Slope)
+        .count();
+    assert_eq!(slope_alerts, 1, "{alerts:?}");
+    let said: Vec<&skimap_ffi::tracking::SpokenView> = results
+        .iter()
+        .flat_map(|b| b.spoken.iter())
+        .filter(|x| x.kinds.iter().any(|k| k == "slope"))
+        .collect();
+    assert_eq!(said.len(), 1);
+    println!("« {} » {:?}", said[0].text, said[0].priority);
+    assert!(said[0].text.contains("pente de"), "{}", said[0].text);
+    assert_eq!(
+        said[0].priority,
+        skimap_ffi::tracking::SpeechPriority::Safety
+    );
+    assert!(
+        said[0].all_clips,
+        "clips of the pack: {:?}",
+        said[0].segments
+    );
+    assert!(never_safe(&said[0].text));
+    assert!(results.iter().any(|b| b.recap.is_some()));
 }
