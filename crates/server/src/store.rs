@@ -677,8 +677,8 @@ impl Store {
     }
 
     /// Removes the voice packs of a store published before the voice was the phone's
-    /// ([`LEGACY_VOICE_DIR`] of every site, served and internal); their bundles and contents
-    /// go with the next [`Store::collect_garbage`]. Returns the directories removed.
+    /// (the `voice/` directory of every site, served and internal); their bundles and
+    /// contents go with the next garbage collection. Returns the directories removed.
     pub fn remove_voice_packs(&self) -> Result<u64> {
         let mut n = 0;
         for parent in [self.public().join("sites"), self.root.join("sites")] {
