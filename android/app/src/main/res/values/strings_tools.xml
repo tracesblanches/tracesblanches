@@ -17,6 +17,11 @@
     <string name="fog_kind_start">Start</string>
     <string name="fog_kind_point">Point on the map</string>
     <string name="fog_waiting_fix">Waiting for the position…</string>
+    <string name="fog_fix_gps">GPS position ± %1$s</string>
+    <string name="fog_fix_gps_plain">GPS position</string>
+    <string name="fog_fix_quick">Quick position ± %1$s, waiting for the GPS</string>
+    <string name="fog_fix_quick_plain">Quick position, waiting for the GPS</string>
+    <string name="fog_fix_age">%1$s, %2$d min ago</string>
     <string name="fog_compass_ok">Compass calibrated</string>
     <string name="fog_compass_low">Compass not calibrated: move the phone in a figure of eight, away from metal</string>
     <string name="fog_compass_none">No compass on this phone: the direction comes from your movement</string>

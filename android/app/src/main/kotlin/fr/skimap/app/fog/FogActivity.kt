@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationManager
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -38,6 +39,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,6 +65,7 @@ import fr.skimap.app.ui.theme.SkimapTheme
 import fr.skimap.core.BearingView
 import fr.skimap.core.FogTarget
 import fr.skimap.core.fogBearing
+import fr.skimap.core.fogPoint
 import fr.skimap.core.fogTargets
 import fr.skimap.core.guidedBearing
 import fr.skimap.tracking.Tracking
@@ -70,12 +73,16 @@ import fr.skimap.tracking.TrackingState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.round
 
 /** Test tags of the bearing screen. */
 object FogTags {
     const val ARROW = "fog_arrow"
     const val VOICE = "fog_voice"
     const val CALIBRATION = "fog_calibration"
+
+    /** Where the position comes from and how precise it is (#181). */
+    const val FIX = "fog_fix"
 
     /** The arrow of « ramène-moi » over the map ([BackArrow]). */
     const val BACK_HINT = "back_arrow_hint"
@@ -89,6 +96,10 @@ data class FogUi(
     val bearing: BearingView? = null,
     val compass: CompassReading = CompassReading(null, Calibration.NONE),
     val guiding: Boolean = false,
+    /** The position the bearing is measured from, quick or GPS (#181). */
+    val fix: Fix? = null,
+    /** Now, ms since the epoch: the age of [fix]. */
+    val nowMs: Long = 0L,
 )
 
 /**
@@ -101,8 +112,11 @@ class FogActivity : ComponentActivity() {
     private var ui by mutableStateOf(FogUi())
     private lateinit var compass: Compass
     private var hasCompass = false
-    private var here: Location? = null
+    private var here: Fix? = null
     private val listener = LocationListenerCompat { onFix(it) }
+
+    /** The fused or network provider, until the GPS has a fix (#181). */
+    private val quickListener = LocationListenerCompat { onFix(it) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -129,7 +143,15 @@ class FogActivity : ComponentActivity() {
                         Dispatchers.IO,
                     ) { runCatching { fogTargets(p.path, null, null, Outings.lang(), 0u) }.getOrDefault(emptyList()) }
                 } ?: emptyList()
-            ui = ui.copy(targets = listOfNotNull(point) + list, target = ui.target ?: list.firstOrNull())
+            // The point of the map named by the nearest place of the pack (#181).
+            val named =
+                point?.let { pt ->
+                    pack?.let { p ->
+                        withContext(Dispatchers.IO) { runCatching { fogPoint(p.path, pt.lon, pt.lat, Outings.lang()) }.getOrNull() }
+                    } ?: pt
+                }
+            val target = if (ui.target == point) named else ui.target
+            ui = ui.copy(targets = listOfNotNull(named) + list, target = target ?: list.firstOrNull()).withBearing()
         }
         lifecycleScope.launch { compass.reading.collect { r -> ui = ui.copy(compass = r).withBearing() } }
         setContent {
@@ -174,31 +196,73 @@ class FogActivity : ComponentActivity() {
     @SuppressLint("MissingPermission")
     override fun onStop() {
         compass.stop()
-        getSystemService(LocationManager::class.java)?.let { LocationManagerCompat.removeUpdates(it, listener) }
+        getSystemService(LocationManager::class.java)?.let {
+            LocationManagerCompat.removeUpdates(it, listener)
+            LocationManagerCompat.removeUpdates(it, quickListener)
+        }
         super.onStop()
     }
 
-    /** Fixes every second while the screen is shown (interaction), none otherwise. */
+    /**
+     * Fixes every second while the screen is shown (interaction), none otherwise: the GPS,
+     * and until it has a fix the last known position and the fused (else network)
+     * provider, so that the bearing shows in a few seconds rather than after the first GPS
+     * fix (#181).
+     */
     @SuppressLint("MissingPermission")
     private fun listen() {
         val lm = getSystemService(LocationManager::class.java) ?: return
         if (!granted(this)) return
         val req = LocationRequestCompat.Builder(FIX_MS).setQuality(LocationRequestCompat.QUALITY_HIGH_ACCURACY).build()
         LocationManagerCompat.requestLocationUpdates(lm, LocationManager.GPS_PROVIDER, req, listener, mainLooper)
+        // A last known position, even of the GPS, is not a fix of now: quick, with its time.
+        val known =
+            listOfNotNull(LocationManager.GPS_PROVIDER, quickProvider(lm), LocationManager.NETWORK_PROVIDER)
+                .distinct()
+                .mapNotNull { p -> runCatching { lm.getLastKnownLocation(p) }.getOrNull()?.let { Fix.of(it).copy(gps = false) } }
+        QuickFix.freshest(known, System.currentTimeMillis())?.let(::onFix)
+        quickProvider(lm)?.let { p ->
+            val quick = LocationRequestCompat.Builder(FIX_MS).setQuality(LocationRequestCompat.QUALITY_BALANCED_POWER_ACCURACY).build()
+            LocationManagerCompat.requestLocationUpdates(lm, p, quick, quickListener, mainLooper)
+        }
     }
 
-    private fun onFix(l: Location) {
-        here = l
-        compass.setPlace(l.latitude, l.longitude, l.altitude, l.time)
-        ui = ui.withBearing()
+    private fun quickProvider(lm: LocationManager): String? =
+        when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && lm.hasProvider(LocationManager.FUSED_PROVIDER) -> {
+                LocationManager.FUSED_PROVIDER
+            }
+
+            lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER) -> {
+                LocationManager.NETWORK_PROVIDER
+            }
+
+            else -> {
+                null
+            }
+        }
+
+    private fun onFix(l: Location) = onFix(Fix.of(l))
+
+    @SuppressLint("MissingPermission") // removing updates, as in onStop
+    private fun onFix(f: Fix) {
+        val now = System.currentTimeMillis()
+        if (!QuickFix.replaces(here, f, now)) return
+        here = f
+        if (f.gps) {
+            // The GPS has its fix: the quick provider is no longer needed.
+            getSystemService(LocationManager::class.java)?.let { LocationManagerCompat.removeUpdates(it, quickListener) }
+        }
+        compass.setPlace(f.lat, f.lon, f.altitudeM, f.timeMs)
+        ui = ui.copy(fix = f, nowMs = now).withBearing()
     }
 
     @Suppress("ReturnCount")
     private fun FogUi.withBearing(): FogUi {
         val h = here ?: return copy(bearing = null)
         val t = target ?: return copy(bearing = null)
-        val heading = compass.headingDeg ?: if (h.hasBearing() && h.speed > MOVING_MPS) h.bearing.toDouble() else null
-        return copy(bearing = fogBearing(h.longitude, h.latitude, t.lon, t.lat, heading, Outings.lang()))
+        val heading = compass.headingDeg ?: h.courseDeg
+        return copy(bearing = fogBearing(h.lon, h.lat, t.lon, t.lat, heading, Outings.lang()))
     }
 
     private fun startVoice() {
@@ -284,7 +348,7 @@ fun FogScreen(
             )
         }
         items(ui.targets, key = { "${it.kind}:${it.name}:${it.lon}" }) { t ->
-            TargetRow(t, selected = t == ui.target) { onPick(t) }
+            TargetRow(t, ui.fix, selected = t == ui.target) { onPick(t) }
         }
     }
 }
@@ -308,6 +372,7 @@ private fun BearingPanel(
             Text(b.bearingText, style = MaterialTheme.typography.titleMedium)
             b.turnText?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
         }
+        ui.fix?.let { FixLine(it, ui.nowMs) }
         val cal =
             when {
                 !hasCompass -> R.string.fog_compass_none
@@ -362,9 +427,35 @@ internal fun BearingArrow(
     }
 }
 
+/**
+ * Where the position comes from and how precise it is (#181): « Position GPS ± 5 m », or
+ * « Position rapide ± 800 m, en attente du GPS » until the GPS has a fix; its age beyond a
+ * minute.
+ */
+@Composable
+private fun FixLine(
+    f: Fix,
+    nowMs: Long,
+) {
+    val precise =
+        when (val a = f.accuracyM) {
+            null -> stringResource(if (f.gps) R.string.fog_fix_gps_plain else R.string.fog_fix_quick_plain)
+            else -> stringResource(if (f.gps) R.string.fog_fix_gps else R.string.fog_fix_quick, accuracyText(a))
+        }
+    val ageMin = (nowMs - f.timeMs) / MINUTE_MS
+    val text = if (ageMin >= 1) stringResource(R.string.fog_fix_age, precise, ageMin.toInt()) else precise
+    Text(
+        text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = if (f.gps) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.tertiary,
+        modifier = Modifier.testTag(FogTags.FIX),
+    )
+}
+
 @Composable
 private fun TargetRow(
     t: FogTarget,
+    from: Fix?,
     selected: Boolean,
     onClick: () -> Unit,
 ) {
@@ -377,18 +468,42 @@ private fun TargetRow(
                 else -> R.string.fog_kind_point
             },
         )
+    // From here: distance and direction, which tell apart two points of one name (#181).
+    val away =
+        from?.let { f ->
+            val b = remember(t.lon, t.lat, f.lon, f.lat) { fogBearing(f.lon, f.lat, t.lon, t.lat, null, Outings.lang()) }
+            "${b.distanceText} · ${b.cardinal}"
+        }
+    // The kind once: « Parking à 300 mètres au sud du Plan », not « … · Parking ».
+    val detail = listOfNotNull(kind.takeUnless { t.name.startsWith(it, ignoreCase = true) }, away).joinToString(" · ")
     Row(
         Modifier.fillMaxWidth().heightIn(min = GloveTarget).selectable(selected, role = Role.RadioButton, onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         RadioButton(selected = selected, onClick = null)
-        Text("${t.name} · $kind", style = MaterialTheme.typography.bodyLarge)
+        Column(Modifier.padding(start = 8.dp)) {
+            Text(t.name, style = MaterialTheme.typography.bodyLarge)
+            if (detail.isNotEmpty()) {
+                Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }
 }
 
+/** « 4 m », « 850 m », « 1.2 km »: the accuracy of a position, to the metre below 1 km. */
+internal fun accuracyText(
+    m: Float,
+    locale: java.util.Locale = java.util.Locale.getDefault(),
+): String {
+    val metres = maxOf(1, round(m).toInt())
+    return if (m >= KM_M) distanceText(m.toDouble(), locale) else String.format(locale, "%d m", metres)
+}
+
+private const val MINUTE_MS = 60_000L
+private const val KM_M = 1000f
+
 private const val ARROW_TIP = 0.85f
 private const val RING_PX = 4f
-private const val MOVING_MPS = 0.6f
 private const val ARROW_HALF = 0.45f
 private const val ARROW_BACK = 0.6f
 private const val ARROW_NOTCH = 0.3f

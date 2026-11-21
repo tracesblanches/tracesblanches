@@ -15,6 +15,11 @@
     <string name="fog_kind_start">Départ</string>
     <string name="fog_kind_point">Point de la carte</string>
     <string name="fog_waiting_fix">En attente de la position…</string>
+    <string name="fog_fix_gps">Position GPS ± %1$s</string>
+    <string name="fog_fix_gps_plain">Position GPS</string>
+    <string name="fog_fix_quick">Position rapide ± %1$s, en attente du GPS</string>
+    <string name="fog_fix_quick_plain">Position rapide, en attente du GPS</string>
+    <string name="fog_fix_age">%1$s, il y a %2$d min</string>
     <string name="fog_compass_ok">Boussole calibrée</string>
     <string name="fog_compass_low">Boussole non calibrée : décris un huit avec le téléphone, loin du métal</string>
     <string name="fog_compass_none">Pas de boussole sur ce téléphone : la direction vient de ton déplacement</string>
