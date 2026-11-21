@@ -160,6 +160,10 @@ tasks.withType<Test>().configureEach {
     val lib = host.map { it.asFile.resolve("lib").absolutePath }
     jvmArgumentProviders.add(CommandLineArgumentProvider { listOf("-Djava.library.path=${lib.get()}") })
     doFirst { environment("LD_LIBRARY_PATH", lib.get()) }
+    // The end-to-end measurement (VoiceCommandAudioTest): its switches, from the command line.
+    for (k in listOf("audio", "dir", "snr", "lang", "config")) {
+        System.getProperty("skimap.voicecmd.$k")?.let { systemProperty("skimap.voicecmd.$k", it) }
+    }
 }
 
 detekt {

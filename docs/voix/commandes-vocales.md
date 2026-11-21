@@ -22,3 +22,17 @@ Bout en bout (questions de `test.tsv` dites par Pocket TTS, deux voix par langue
 | Questions hors liste refusées | 97,7 % | 95,5 % | 97,7 % | 97,7 % | 93,2 % |
 
 Les erreurs françaises sont de la transcription, pas de la classification : les questions courtes sortent dans une autre langue (« Tämpsäistä » pour « Temps restant », « Him and more » pour « Ramène-moi ») ; la voix `marius` est mal reconnue même sans vent. Le biais par hotwords n'apporte que 3 points (61,2 → 64,6 % en français propre). Sur le Pixel, ni mesuré ni testé (consigne) : chargement 1,3 à 4,3 s sur le poste (speak : 2,9 à 3,7 s sur le Pixel).
+
+## Français corrigé (VO5 #87, 21/11/2026)
+
+Parakeet v3 devine la langue au son : les questions françaises courtes sortaient dans une autre langue. Sur le téléphone de langue française, « Bonjour. » (voix `estelle` des packs, `android/voicecmd/src/main/resources/fr/skimap/voicecmd/greeting-fr.wav`, 0,44 s) est dit avant la question, puis 0,5 s de silence ; les mots datés avant le milieu de ce silence sont retirés (`GreetingContext`). La question est mise à mi-échelle (`Level`), et les hotwords sont les questions françaises seules. Anglais inchangé (« Hello. » devant perdait 7 points).
+
+Chemin du téléphone sur le poste (`VoiceCommandAudioTest`, `-Dskimap.voicecmd.audio=1`, puis `cargo run --release -p skimap-intent --example rate_heard`), questions françaises du jeu tenu à l’écart (154 commandes, `estelle` et `marius`), bonne commande avant → après :
+
+| | propre | 10 dB | 0 dB | −5 dB |
+|---|---|---|---|---|
+| Commandes françaises | 61,7 → 70,1 % | 53,9 → 64,9 % | 31,8 → 50,6 % | 17,5 → 35,1 % |
+| dont `marius` (autre locuteur que le « Bonjour ») | 47,2 → 55,1 % | 43,8 → 53,9 % | 29,2 → 47,2 % | 23,6 → 38,2 % |
+| Hors liste refusées (FR) | 95,8 → 95,8 % | 91,7 → 100 % | 95,8 → 100 % | 100 → 95,8 % |
+
+Anglais identique avant et après (même chemin). Le moteur gardé chargé d’une question à l’autre dans ce test rend les taux dépendants de l’ordre des fichiers (jusqu’à 9 points en anglais à 0 dB) : seules des mesures du même ordre se comparent. Voix de synthèse, vent synthétique ; vraie voix et vrai vent : à faire (Pierre).
