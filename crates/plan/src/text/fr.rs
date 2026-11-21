@@ -99,7 +99,7 @@ impl Texts for Fr {
         score: f64,
     ) -> String {
         format!(
-            "Boucle n° {rank} : {label} — {} km, D+ {gain_m} m, environ {} min (modèle C5, {}), score {}",
+            "Boucle n° {rank} : {label} — {} km, D+ {gain_m} m, environ {} min (rythme d'un skieur moyen, {}), score {}",
             format!("{km:.1}").replace('.', ","),
             minutes.round(),
             self.assist().style(style),
@@ -123,7 +123,7 @@ impl Texts for Fr {
             hhmm(arrival),
             hhmm(with_margin),
             deadline
-                .map(|d| format!(" ; limite de lumière moins 30 min (C7) : {}", hhmm(d)))
+                .map(|d| format!(" ; limite de lumière moins 30 min : {}", hhmm(d)))
                 .unwrap_or_default(),
             return_before
                 .map(|d| format!(" ; retour demandé avant {}", hhmm(d)))
@@ -134,10 +134,10 @@ impl Texts for Fr {
     fn p_turnaround(&self, at: Option<NaiveDateTime>, group: bool) -> String {
         match at {
             Some(x) if group => format!(
-                "Demi-tour au plus tard à {} au rythme prévu du groupe (A8, C11)",
+                "Demi-tour au plus tard à {} au rythme prévu du groupe",
                 hhmm(x)
             ),
-            Some(x) => format!("Demi-tour au plus tard à {} au rythme prévu (A8)", hhmm(x)),
+            Some(x) => format!("Demi-tour au plus tard à {} au rythme prévu", hhmm(x)),
             None => "La boucle finit avant la limite de lumière au rythme prévu : pas d'heure de demi-tour imposée".into(),
         }
     }
@@ -277,7 +277,7 @@ impl Texts for Fr {
 
     fn fb_exit(&self, at: &str, length_m: f64, loop_m: f64, saves_s: f64, names: &str) -> String {
         format!(
-            "Sortie {at} : {} km au total au lieu de {}, {} de moins (modèle C5), par {names}",
+            "Sortie {at} : {} km au total au lieu de {}, {} de moins au rythme d'un skieur moyen, par {names}",
             km(length_m),
             km(loop_m),
             minutes(saves_s),
@@ -298,7 +298,7 @@ impl Texts for Fr {
         names: &str,
     ) -> String {
         format!(
-            "{closed} : contournement {at}{}, {} km au total, {} {} (modèle C5), par {names}",
+            "{closed} : contournement {at}{}, {} km au total, {} {} au rythme d'un skieur moyen, par {names}",
             match rejoin_m {
                 Some(s) => format!(", retour sur la boucle à {} km", km(s)),
                 None => ", puis directement vers l'arrivée".into(),
@@ -376,7 +376,7 @@ impl Texts for Fr {
         c5_s: f64,
     ) -> String {
         format!(
-            "Temps estimé pour {group} ({learned}) : {duration}, {back} ; en mouvement {} au rythme du groupe, arrêts {} ; modèle C5 seul : {}",
+            "Temps estimé pour {group} ({learned}) : {duration}, {back} ; en mouvement {} au rythme du groupe, arrêts {} ; skieur moyen sans arrêt : {}",
             self.duration5(moving_s),
             self.duration5(stops_s),
             self.duration5(c5_s)

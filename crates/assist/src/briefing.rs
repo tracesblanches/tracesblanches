@@ -890,7 +890,7 @@ fn briefing_text(data: &SiteData, b: &DayBriefing, t: &dyn Texts) -> Vec<String>
         }
     }
     for q in &b.snow_quality {
-        out.push(t.briefing_snow_quality(&q.point, &q.summary));
+        out.push(t.briefing_snow_quality(&q.point_name, &q.summary));
     }
     if let Some(s) = b.sunset {
         out.push(t.briefing_sunset(s));

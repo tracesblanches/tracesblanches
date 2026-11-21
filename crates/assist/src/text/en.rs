@@ -329,6 +329,9 @@ impl Texts for En {
     }
 
     fn briefing_snow_quality(&self, point: &str, summary: &[String]) -> String {
+        if point.is_empty() {
+            return format!("Snow quality: {}", summary.join(" "));
+        }
         format!("Snow quality ({point}): {}", summary.join(" "))
     }
 
@@ -528,7 +531,7 @@ impl Texts for En {
     ) -> String {
         format!(
             "about {median} for {group} ({lo} to {hi}, {learned}; planned on {plan}, the slow side: 8 chances out of 10 \
-             to have finished; C5 model, {style}: {model})"
+             to have finished; average skier, {style}: {model})"
         )
     }
 
@@ -542,11 +545,21 @@ impl Texts for En {
         style: &str,
         model: &str,
     ) -> String {
-        format!("about {median} for {group} ({lo} to {hi}, {learned}; C5 model, {style}: {model})")
+        format!(
+            "about {median} for {group} ({lo} to {hi}, {learned}; average skier, {style}: {model})"
+        )
     }
 
     fn s_time_model(&self, model: &str, style: &str) -> String {
-        format!("about {model} (C5 model, {style})")
+        format!("about {model} {style} (average skier's pace)")
+    }
+
+    fn s_label_km(&self, label: &str, km: f64) -> String {
+        format!("{label} ({} km)", self.num(km, 1))
+    }
+
+    fn s_label_rank(&self, label: &str, rank: usize) -> String {
+        format!("{label} (loop no. {rank})")
     }
 
     fn s_loop(&self, km: f64, gain: f64, time: &str, back: NaiveDateTime) -> String {
@@ -616,7 +629,7 @@ impl Texts for En {
     }
 
     fn s_no_way_back(&self, n: usize) -> String {
-        format!("{n} turning points with no way back to the start (one-way trails of the C1 graph)")
+        format!("{n} turning points with no way back to the start (one-way trails)")
     }
 
     fn s_evaluated(
@@ -693,7 +706,7 @@ impl Texts for En {
             self.date(date),
             self.clock(at),
             deadline
-                .map(|d| format!(" (C7 return limit: {})", self.clock(d)))
+                .map(|d| format!(" (return limit: {})", self.clock(d)))
                 .unwrap_or_default(),
             group
                 .map(|l| format!(", group time: {l}"))
@@ -724,7 +737,7 @@ impl Texts for En {
     fn s_unreachable(&self, nodes: usize, of: usize, km: f64, start: &str) -> String {
         format!(
             "{nodes} nodes out of {of} ({} km of trails) cannot be reached from {start}: separate \
-             network or one-way trails in the trail graph (C1)",
+             network or one-way trails",
             self.num(km, 1)
         )
     }
@@ -875,7 +888,7 @@ impl Texts for En {
 
     fn wax_model(&self, snow_type: SnowType, mean: f64, min: f64, max: f64) -> String {
         format!(
-            "{} (A3 snow quality model, flat), air {mean:+.1} °C on average ({min:+.1} to {max:+.1})",
+            "{} (estimated snow quality, flat ground), air {mean:+.1} °C on average ({min:+.1} to {max:+.1})",
             self.wax_snow_type(snow_type),
         )
     }
@@ -1008,7 +1021,7 @@ impl Texts for En {
     }
 
     fn eq_kick_unreliable(&self) -> &'static str {
-        "grip wax uncertain that day (A2 wax)"
+        "grip wax uncertain that day"
     }
 
     fn eq_nothing(&self, outing: &str) -> String {

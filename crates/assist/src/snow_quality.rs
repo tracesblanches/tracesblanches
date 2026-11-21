@@ -496,6 +496,8 @@ pub struct DayQuality {
     pub date: NaiveDate,
     /// Forecast point.
     pub point: String,
+    /// Name of the forecast point, as shown to the skier (empty when the point has none).
+    pub point_name: String,
     /// Elevation of the weather of the point, m.
     pub elevation_m: f64,
     /// Daylight window used (local).
@@ -601,6 +603,7 @@ pub fn day_quality(
     let mut q = DayQuality {
         date,
         point: point.id.clone(),
+        point_name: point.name.clone(),
         elevation_m: point.elevation_m,
         daylight: (day_start, day_end),
         classes: days,
