@@ -5,6 +5,8 @@
 //!
 //! - [`site`]: sites (registry of every domain of France, evaluation sites, data tables).
 //! - [`geom`]: WGS84 positions and bounding boxes.
+//! - [`dates`]: jiff calendar values from the workspace integer fields, UTC conversions,
+//!   the timestamp texts of the files (#106).
 //! - [`crs`]: WGS84 / Lambert-93 / Web Mercator conversions (pure Rust) and XYZ tiles.
 //! - [`grid`]: georeferenced raster grid.
 //! - [`layout`]: data directory layout (`data/cache`, `data/out`).
@@ -23,6 +25,7 @@
 
 pub mod config;
 pub mod crs;
+pub mod dates;
 #[cfg(feature = "download")]
 pub mod download;
 pub mod error;
