@@ -43,9 +43,9 @@ pub mod files {
 /// Disclaimers shown with the layer (French). Never « sûr », never « sans danger ».
 pub const DISCLAIMERS: &[&str] = &[
     "Calcul automatique, non vérifié sur le terrain, indépendant de la neige du jour : consultez le BERA du massif avant de partir (il n'y a pas de BERA dans le Jura).",
-    "« Terrain peu exposé (modèle) » : aucune avalanche modélisée, même dans le scénario rare (angle d'arrêt de 18°), n'atteint ce terrain à 10 m près, d'après le relief LiDAR et la forêt LiDAR de l'IGN. Ce n'est ni une garantie ni une absence de danger.",
+    "« Terrain peu exposé (modèle) » : aucune avalanche modélisée, même dans le scénario rare (angle d'arrêt de 18°), n'atteint ce terrain à 20 m près, d'après le relief LiDAR et la forêt LiDAR de l'IGN. Ce n'est ni une garantie ni une absence de danger.",
     "Les pièges de terrain (ravines, ruisseaux, bords de route), les corniches, les avalanches venues de pentes hors de l'emprise calculée et les coupes de forêt postérieures au vol LiDAR ne sont pas pris en compte.",
-    "Méthode : portage de la recherche AutoATES v3.0 (ISSW 2026), que ses auteurs présentent comme « a research/tutorial product, not an operational ATES map ».",
+    "Méthode : portage de la recherche AutoATES v3.0 (ISSW 2026), que ses auteurs présentent comme « a research/tutorial product, not an operational ATES map », avec un frottement de la forêt du scénario rare recalé sur les avalanches connues des Hautes-Alpes.",
 ];
 
 /// Length of the piste network per class, km.
@@ -113,6 +113,8 @@ pub struct ExposureSummary {
     pub ates_shares: [f64; 5],
     /// Release cells and paths routed (typical, infrequent).
     pub paths: (usize, usize),
+    /// Cell visits of the runouts (typical, infrequent), the unit of work.
+    pub visits: (u64, u64),
     /// Every line of the pistes layer.
     pub all_lines: NetworkExposure,
     /// Nordic lines whose vertex mean is in the commune (rule of `historic`).
@@ -481,6 +483,7 @@ fn write_layer(
         class_shares: cs,
         ates_shares: ates,
         paths: m.paths,
+        visits: m.visits,
         all_lines: network_exposure(&all_refs),
         nordic_in_commune: network_exposure(&nordic_refs),
         report07,
@@ -586,5 +589,8 @@ mod tests {
             let l = d.to_lowercase();
             assert!(!l.contains(" sûr") && !l.contains("sans danger »"), "{d}");
         }
+        // The disclaimer states the margin of the classes.
+        let margin = format!("à {LOW_MARGIN_M} m près");
+        assert!(DISCLAIMERS.iter().any(|d| d.contains(&margin)), "{margin}");
     }
 }

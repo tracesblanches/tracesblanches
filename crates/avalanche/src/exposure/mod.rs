@@ -99,8 +99,12 @@ pub mod class {
 }
 
 /// Margin around the modelled runout and release areas inside which a cell is never
-/// « peu exposé », m (position uncertainty of the 5 m model and of OSM tracks).
-pub const LOW_MARGIN_M: f64 = 10.0;
+/// « peu exposé », m: position uncertainty of the 5 m model, of OSM tracks and of the
+/// edges of real runouts. Calibrated with [`flowpy::EXTREME_FOREST`] on the CLPA and the
+/// EPA (#31): the misses of the model concentrate on the edges of its runouts, 10 m left
+/// 2.10 % of the CLPA area of the three Hautes-Alpes sites « peu exposé », 20 m 1.04 %
+/// with the AutoATES forest and 0.64 % with the recalibrated one.
+pub const LOW_MARGIN_M: f64 = 20.0;
 
 /// Three exposure classes from the ATES-like classes and the raw infrequent scenario:
 ///
@@ -218,12 +222,41 @@ pub fn forest_index(canopy: &Raster<f32>) -> Raster<f32> {
     )
 }
 
-/// Runs the whole model (AutoATES v3.0 ISSW defaults, ported) on one grid.
-pub fn model(inputs: &Inputs) -> Model {
-    model_with(inputs, &flowpy::FREQUENT, &flowpy::EXTREME)
+/// Runout parameters of the two scenarios.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+pub struct ModelParams {
+    /// Typical scenario.
+    pub frequent: flowpy::FlowParams,
+    /// Infrequent scenario.
+    pub extreme: flowpy::FlowParams,
 }
 
-/// Same with other runout parameters (sensitivity studies; the layer uses [`model`]).
+/// AutoATES v3.0 ISSW defaults, ported: what the oracle comparisons run.
+pub const AUTOATES_PARAMS: ModelParams = ModelParams {
+    frequent: flowpy::FREQUENT,
+    extreme: flowpy::AUTOATES_EXTREME,
+};
+
+/// Parameters of the layer: the AutoATES defaults with the infrequent runout
+/// recalibrated on the known avalanches ([`flowpy::EXTREME`], #31).
+pub const LAYER_PARAMS: ModelParams = ModelParams {
+    frequent: flowpy::FREQUENT,
+    extreme: flowpy::EXTREME,
+};
+
+/// Runs the whole model with the layer parameters ([`LAYER_PARAMS`]) on one grid.
+pub fn model(inputs: &Inputs) -> Model {
+    model_with(inputs, &LAYER_PARAMS.frequent, &LAYER_PARAMS.extreme)
+}
+
+/// Runs the whole model with the AutoATES v3.0 ISSW defaults ([`AUTOATES_PARAMS`]), as
+/// the reference implementation: the oracle comparisons.
+pub fn model_autoates(inputs: &Inputs) -> Model {
+    model_with(inputs, &AUTOATES_PARAMS.frequent, &AUTOATES_PARAMS.extreme)
+}
+
+/// Same with other runout parameters (oracle, sensitivity studies; the layer uses
+/// [`model`]).
 pub fn model_with(
     inputs: &Inputs,
     flow_frequent: &flowpy::FlowParams,
@@ -286,6 +319,7 @@ impl Model {
             reached_extreme: (0..n).map(|i| self.runout_extreme.reached(i)).collect(),
             reached_frequent: (0..n).map(|i| self.runout_frequent.reached(i)).collect(),
             paths: (self.runout_frequent.paths, self.runout_extreme.paths),
+            visits: (self.runout_frequent.visits, self.runout_extreme.visits),
             timings: self.timings.clone(),
         }
     }
@@ -304,6 +338,8 @@ pub struct LayerModel {
     pub reached_frequent: Vec<bool>,
     /// Release cells routed (typical, infrequent).
     pub paths: (usize, usize),
+    /// Cell visits of the runouts (typical, infrequent), the unit of work.
+    pub visits: (u64, u64),
     /// Stage timings.
     pub timings: Timings,
 }
@@ -314,6 +350,11 @@ pub struct LayerModel {
 /// routed (the typical one before the infrequent one is routed), and the classifier keeps
 /// none of its intermediate layers. [`model`] keeps every layer for the diagnostics.
 pub fn layer_model(inputs: &Inputs) -> LayerModel {
+    layer_model_with(inputs, &LAYER_PARAMS)
+}
+
+/// [`layer_model`] with other runout parameters (calibration studies).
+pub fn layer_model_with(inputs: &Inputs, params: &ModelParams) -> LayerModel {
     use std::time::Instant;
     let t_all = Instant::now();
     let mut t = Timings::default();
@@ -331,21 +372,21 @@ pub fn layer_model(inputs: &Inputs) -> LayerModel {
     t.pra = t0.elapsed().as_secs_f64();
     let fsi = forest_index(&inputs.canopy);
     let t0 = Instant::now();
-    let (ff, fe) = (&flowpy::FREQUENT, &flowpy::EXTREME);
+    let (ff, fe) = (&params.frequent, &params.extreme);
     let mut wf = flowpy::Weights::new(&inputs.dem, &fsi, ff.exp);
     let mut we = (fe.exp.to_bits() != ff.exp.to_bits())
         .then(|| flowpy::Weights::new(&inputs.dem, &fsi, fe.exp));
     let rf = flowpy::run_with(&mut wf, &release_f, ff);
     drop(release_f);
     let runout_frequent = ates::runout_bits(&rf, inputs.dem.cell, ates::Scenario::Frequent);
-    let paths_f = rf.paths;
+    let (paths_f, visits_f) = (rf.paths, rf.visits);
     drop(rf);
     t.runout_frequent = t0.elapsed().as_secs_f64();
     let t0 = Instant::now();
     let re = flowpy::run_with(we.as_mut().unwrap_or(&mut wf), &release_e, fe);
     drop(release_e);
     let runout_extreme = ates::runout_bits(&re, inputs.dem.cell, ates::Scenario::Extreme);
-    let paths_e = re.paths;
+    let (paths_e, visits_e) = (re.paths, re.visits);
     drop(re);
     t.runout_extreme = t0.elapsed().as_secs_f64();
     drop((wf, we));
@@ -373,6 +414,7 @@ pub fn layer_model(inputs: &Inputs) -> LayerModel {
         reached_extreme,
         reached_frequent,
         paths: (paths_f, paths_e),
+        visits: (visits_f, visits_e),
         timings: t,
     }
 }
@@ -396,47 +438,28 @@ mod tests {
 
     #[test]
     fn three_classes_never_low_near_a_runout() {
-        // 8 cells in a row at 5 m: ATES 0, 0, 0, 1, 1, 3, 4, invalid; the infrequent
+        // 11 cells in a row at 5 m: ATES 0 × 6, 1, 1, 3, 4, invalid; the infrequent
         // runout reaches cell 0 only.
         let ates = Raster {
-            w: 8,
+            w: 11,
             h: 1,
             cell: 5.0,
             origin_x: 0.0,
             origin_y: 0.0,
-            data: vec![0u8, 0, 0, 1, 1, 3, 4, 255],
+            data: vec![0u8, 0, 0, 0, 0, 0, 1, 1, 3, 4, 255],
         };
-        let mut reached = vec![false; 8];
+        let mut reached = vec![false; 11];
         reached[0] = true;
-        let e = exposure_classes(&ates, &reached, &[0u8; 8]);
-        // Cells 1 and 2 are 5 and 10 m from the runout: within the 10 m margin.
-        assert_eq!(
-            e.data,
-            vec![
-                class::EXPOSED,
-                class::EXPOSED,
-                class::EXPOSED,
-                class::LOW,
-                class::LOW,
-                class::HIGH,
-                class::HIGH,
-                class::NODATA
-            ]
-        );
+        let e = exposure_classes(&ates, &reached, &[0u8; 11]);
+        // Cells 1 to 4 are 5 to 20 m from the runout: within the 20 m margin (#31: the
+        // CLPA misses of the model sit on the edges of its runouts).
+        let (l, x, h) = (class::LOW, class::EXPOSED, class::HIGH);
+        assert_eq!(e.data, vec![x, x, x, x, x, l, l, l, h, h, class::NODATA]);
         // A release cell (before the sieve) has the same effect.
-        let mut pra = vec![0u8; 8];
-        pra[4] = 1;
-        let e = exposure_classes(&ates, &[false; 8], &pra);
-        assert_eq!(
-            &e.data[..5],
-            &[
-                class::LOW,
-                class::LOW,
-                class::EXPOSED,
-                class::EXPOSED,
-                class::EXPOSED
-            ]
-        );
+        let mut pra = vec![0u8; 11];
+        pra[7] = 1;
+        let e = exposure_classes(&ates, &[false; 11], &pra);
+        assert_eq!(&e.data[..8], &[l, l, l, x, x, x, x, x]);
         for c in [class::LOW, class::EXPOSED, class::HIGH, class::NODATA] {
             let l = class::label(c).to_lowercase();
             assert!(!l.contains("sûr") && !l.contains("sans danger"), "{l}");

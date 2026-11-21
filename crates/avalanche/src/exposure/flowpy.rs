@@ -94,11 +94,37 @@ pub const FREQUENT: FlowParams = FlowParams {
     forest: Some(AUTOATES_FOREST),
 };
 
-/// Infrequent scenario: α = 18° (`extreme_alpha`).
-pub const EXTREME: FlowParams = FlowParams {
+/// Infrequent scenario of AutoATES v3.0: α = 18° (`extreme_alpha`), the forest
+/// parameters of the typical scenario. The reference the port is compared with.
+pub const AUTOATES_EXTREME: FlowParams = FlowParams {
     name: "extreme",
     alpha: 18.0,
     ..FREQUENT
+};
+
+/// Forest interaction of the infrequent scenario of the layer: [`AUTOATES_FOREST`] with
+/// velocity thresholds of 50 instead of 270, i.e. an energy-line height of
+/// 50² / (√2 g) = 180 m instead of 5 256 m (never reached under the 270 m cap). Large
+/// infrequent avalanches break through forest: above that height only the minimum added
+/// friction (5°) applies, below it the friction falls linearly from 52° × cover as in
+/// the reference. Calibrated on the CLPA (DDT 05) and the EPA paths (INRAE) of the three
+/// Hautes-Alpes sites with data, as test truth only (example `exposure_calibration`,
+/// #31): with the margin [`super::LOW_MARGIN_M`], the CLPA area classed « peu exposé »
+/// by the model alone falls from 2.10 % to 0.64 % (the P18 site: 1.68 % to 0.45 %), and
+/// the EPA path length from 2.88 % to 0.77 %, for 7 % more cell visits in the runouts.
+/// Lower thresholds or no forest miss less but cost 16 % (velocity 30) to 61 % (no
+/// forest, one site) more visits.
+pub const EXTREME_FOREST: ForestParams = ForestParams {
+    vel_th_friction: 50.0,
+    vel_th_detrainment: 50.0,
+    ..AUTOATES_FOREST
+};
+
+/// Infrequent scenario of the layer: [`AUTOATES_EXTREME`] with the forest
+/// [`EXTREME_FOREST`] recalibrated on the known avalanches (#31, #142).
+pub const EXTREME: FlowParams = FlowParams {
+    forest: Some(EXTREME_FOREST),
+    ..AUTOATES_EXTREME
 };
 
 /// Aggregated runout of one scenario.
@@ -1246,11 +1272,50 @@ mod tests {
                 .max()
                 .unwrap()
         };
-        let a = run(&dem, &rel, &open, &EXTREME);
-        let b = run(&dem, &rel, &forest, &EXTREME);
+        let a = run(&dem, &rel, &open, &AUTOATES_EXTREME);
+        let b = run(&dem, &rel, &forest, &AUTOATES_EXTREME);
         // On a 35° plane α = 18° never stops in the open (until the max_z cap and the
         // raster edge); the forest friction (+≈42° at FSI 0.8) stops it soon after row 20.
         assert!(far(&a) >= h - 3, "open runout {}", far(&a));
         assert!(far(&b) < 40, "forested runout {}", far(&b));
+    }
+
+    /// Known avalanches run through forest (#31): 1.68 % of the CLPA area of a test site
+    /// was « peu exposé » because the AutoATES forest friction (+52° × cover, whatever
+    /// the speed) stopped the infrequent runout at the first trees. A fast infrequent
+    /// avalanche (energy-line height above [`EXTREME_FOREST`]'s threshold) crosses the
+    /// forest with the minimum added friction only; a slow one is still stopped.
+    #[test]
+    fn infrequent_runout_crosses_forest_when_fast() {
+        let (w, h, cell) = (21usize, 300usize, 5.0f64);
+        let dem = plane(w, h, cell, 40.0);
+        let mut rel = Raster::filled_like(&dem, 0u8);
+        rel.data[2 * w + 10] = 1;
+        let mut forest = Raster::filled_like(&dem, 0f32);
+        for r in 90..h {
+            for c in 0..w {
+                forest.data[r * w + c] = 0.8;
+            }
+        }
+        let far = |o: &Runout| {
+            (0..h)
+                .filter(|r| (0..w).any(|c| o.reached(r * w + c)))
+                .max()
+                .unwrap()
+        };
+        // 88 rows of open 40° slope: the energy line is about 200 m high at the trees.
+        let reference = run(&dem, &rel, &forest, &AUTOATES_EXTREME);
+        let layer = run(&dem, &rel, &forest, &EXTREME);
+        assert!(far(&reference) < 100, "AutoATES runout {}", far(&reference));
+        assert!(far(&layer) >= h - 3, "layer runout {}", far(&layer));
+        // Slow flow (forest after 12 rows, energy line about 25 m high): still stopped.
+        let mut early = Raster::filled_like(&dem, 0f32);
+        for r in 14..h {
+            for c in 0..w {
+                early.data[r * w + c] = 0.8;
+            }
+        }
+        let slow = run(&dem, &rel, &early, &EXTREME);
+        assert!(far(&slow) < 40, "slow runout {}", far(&slow));
     }
 }
