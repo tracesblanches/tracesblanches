@@ -10,6 +10,7 @@ import android.location.Location
 import android.location.LocationManager
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -98,7 +99,7 @@ data class FogUi(
     val guiding: Boolean = false,
     /** The position the bearing is measured from, quick or GPS (#181). */
     val fix: Fix? = null,
-    /** Now, ms since the epoch: the age of [fix]. */
+    /** Now, ms since boot ([Fix.elapsedMs]): the age of [fix]. */
     val nowMs: Long = 0L,
 )
 
@@ -220,7 +221,7 @@ class FogActivity : ComponentActivity() {
             listOfNotNull(LocationManager.GPS_PROVIDER, quickProvider(lm), LocationManager.NETWORK_PROVIDER)
                 .distinct()
                 .mapNotNull { p -> runCatching { lm.getLastKnownLocation(p) }.getOrNull()?.let { Fix.of(it).copy(gps = false) } }
-        QuickFix.freshest(known, System.currentTimeMillis())?.let(::onFix)
+        QuickFix.freshest(known, SystemClock.elapsedRealtime())?.let(::onFix)
         quickProvider(lm)?.let { p ->
             val quick = LocationRequestCompat.Builder(FIX_MS).setQuality(LocationRequestCompat.QUALITY_BALANCED_POWER_ACCURACY).build()
             LocationManagerCompat.requestLocationUpdates(lm, p, quick, quickListener, mainLooper)
@@ -246,7 +247,7 @@ class FogActivity : ComponentActivity() {
 
     @SuppressLint("MissingPermission") // removing updates, as in onStop
     private fun onFix(f: Fix) {
-        val now = System.currentTimeMillis()
+        val now = SystemClock.elapsedRealtime()
         if (!QuickFix.replaces(here, f, now)) return
         here = f
         if (f.gps) {
@@ -442,7 +443,7 @@ private fun FixLine(
             null -> stringResource(if (f.gps) R.string.fog_fix_gps_plain else R.string.fog_fix_quick_plain)
             else -> stringResource(if (f.gps) R.string.fog_fix_gps else R.string.fog_fix_quick, accuracyText(a))
         }
-    val ageMin = (nowMs - f.timeMs) / MINUTE_MS
+    val ageMin = (nowMs - f.elapsedMs) / MINUTE_MS
     val text = if (ageMin >= 1) stringResource(R.string.fog_fix_age, precise, ageMin.toInt()) else precise
     Text(
         text,

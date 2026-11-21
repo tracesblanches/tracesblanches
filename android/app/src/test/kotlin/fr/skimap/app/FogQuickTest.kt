@@ -47,7 +47,9 @@ import org.junit.runner.RunWith
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowSystemClock
 import java.io.File
+import java.time.Duration
 import java.util.Locale
 
 /**
@@ -62,10 +64,12 @@ class FogQuickTest {
     @get:Rule
     val rule = createEmptyComposeRule()
 
+    /** A fix measured at [t], ms since boot, stamped [wall] (GPS time or phone clock). */
     private fun fix(
         gps: Boolean,
         t: Long,
-    ) = Fix(6.0, 45.0, if (gps) 5f else 800f, gps, t, 0.0)
+        wall: Long = t,
+    ) = Fix(6.0, 45.0, if (gps) 5f else 800f, gps, wall, t, 0.0)
 
     @Test
     fun quickFixGivesWayToTheGps() {
@@ -90,6 +94,24 @@ class FogQuickTest {
         assertEquals("1,2 km", accuracyText(1200f, Locale.FRANCE))
     }
 
+    /**
+     * The phone clock ahead of the GPS time (no network in the mountains to set it): the
+     * fused provider stamps its fixes with the phone clock, the GPS with its own time. The
+     * first GPS fix still replaces the quick position, and a later quick one still waits
+     * 30 s after it: the order is that of arrival on the phone, not of the stamps.
+     */
+    @Test
+    fun theGpsWinsWhateverThePhoneClock() {
+        val now = 1_000_000_000L
+        val skew = 10 * 60_000L
+        // Quick fix stamped by a clock 10 min ahead, GPS fix 1 s later on the phone.
+        assertTrue(QuickFix.replaces(fix(gps = false, now, wall = now + skew), fix(gps = true, now + 1000), now + 1000))
+        // A quick fix 1 s after the GPS one, stamped by the clock ahead: kept out.
+        assertFalse(QuickFix.replaces(fix(gps = true, now), fix(gps = false, now + 1000, wall = now + 1000 + skew), now + 1000))
+        // The GPS fix 31 s old on the phone, whatever its stamp: a quick one may replace it.
+        assertTrue(QuickFix.replaces(fix(gps = true, now, wall = now - skew), fix(gps = false, now + 31_000), now + 31_000))
+    }
+
     private fun location(
         provider: String,
         lon: Double,
@@ -101,7 +123,8 @@ class FogQuickTest {
         latitude = lat
         this.accuracy = accuracy
         time = timeMs
-        elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
+        // Measured as long ago on the phone as its stamp says.
+        elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos() - (System.currentTimeMillis() - timeMs) * 1_000_000L
     }
 
     /**
@@ -122,6 +145,8 @@ class FogQuickTest {
         val slm = shadowOf(lm)
         slm.setProviderEnabled(LocationManager.FUSED_PROVIDER, true)
         slm.setProviderEnabled(LocationManager.NETWORK_PROVIDER, true)
+        // Up for an hour: a last known position 2 min old has its time since boot.
+        ShadowSystemClock.advanceBy(Duration.ofHours(1))
         val now = System.currentTimeMillis()
         val targets = fogTargets(File(packs, "test").path, null, null, Lang.FR, 0u)
         val refuge = targets.first { it.kind == "refuge" }
@@ -177,7 +202,7 @@ class FogTargetsTest {
 
     @Test
     fun unnamedTargetsAreToldApart() {
-        val here = Fix(6.7270, 44.8560, 6f, true, 0L, 0.0)
+        val here = Fix(6.7270, 44.8560, 6f, true, 0L, 0L, 0.0)
         val targets =
             listOf(
                 FogTarget("parking", "Parking près du Laus", 6.7256, 44.8577, null),
