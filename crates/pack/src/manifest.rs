@@ -37,8 +37,6 @@ pub struct Manifest {
     pub basemaps: Vec<Basemap>,
     /// Data layers, in display order.
     pub layers: Vec<Layer>,
-    /// Voice clips slot (crate `voice`, VO3).
-    pub voice: VoiceSlot,
     /// Layers looked for but absent from the pipeline outputs, with the reason.
     #[serde(default)]
     pub missing: Vec<Missing>,
@@ -378,32 +376,6 @@ pub struct LegendEntry {
     pub label: String,
     /// Colour `#rrggbbaa` (alpha 00: not drawn).
     pub color: String,
-}
-
-/// Voice clips slot.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct VoiceSlot {
-    /// `present` or `absent`.
-    pub status: String,
-    /// Language of the clips (`fr`, `en`) in a voice pack apart from the base pack (VO6);
-    /// `None` in a site pack (whose clips, if any, are French).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub lang: Option<String>,
-    /// Clip manifest of the voice crate (`voice/manifest.json`).
-    #[serde(default)]
-    pub manifest: Option<String>,
-    /// Directory of the clips.
-    #[serde(default)]
-    pub clips_dir: Option<String>,
-    /// Number of clip files.
-    pub clips: u64,
-    /// Size of the clips and their manifest.
-    pub bytes: u64,
-    /// Sources (TTS model, voice, names).
-    #[serde(default)]
-    pub sources: Vec<Source>,
-    /// Note, French.
-    pub note: String,
 }
 
 /// A layer that was looked for and not included.

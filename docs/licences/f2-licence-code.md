@@ -12,10 +12,6 @@ Ticket #2. Retour au [sommaire](../licences-donnees.md). Vérifié le 15/11/2026
 | snowtools (`UMR-CNRM/snowtools`) | CeCILL-C v1 (`LICENCE.txt`) | ni code ni fichier dans le dépôt : `massifs.shp` téléchargé au commit `c84a1609` ; seul `snow/massif.tif` en dérive | CeCILL-C 5.3.3 : « ce Logiciel Dérivé peut être distribué sous un contrat de licence autre que le présent Contrat à condition de respecter les obligations de mention des droits » (art. 6.4) : citer snowtools, CNRM et la licence |
 | `vendor/pmtiles` 0.28.1 | « MIT OR Apache-2.0 » (`Cargo.toml`, `LICENSE-MIT`, `LICENSE-APACHE` ; amont `stadiamaps/pmtiles-rs`) | copie corrigée (`src/writer/mod.rs`) | choisir MIT (avis à garder) ; sous Apache-2.0, le fichier modifié devrait porter un avis de modification (absent aujourd'hui, seulement dans `VENDOR.md`) |
 | 320 paquets tiers de `cargo metadata` (toutes cibles) | tous permissifs (MIT, Apache-2.0, BSD, ISC, Zlib, Unicode-3.0, CDLA-Permissive-2.0, bzip2-1.0.6) ; une seule propose aussi LGPL en option | dépendances | avis de licence dans l'app (écran « Licences ») |
-| Pocket TTS, modèle (`kyutai/pocket-tts-without-voice-cloning`) | CC-BY-4.0, plus « Prohibited use » (pas de clonage sans consentement, pas de tromperie) (https://huggingface.co/kyutai/pocket-tts-without-voice-cloning) | clips générés sur le poste ; modèle embarqué seulement en option (VO4) | si le modèle est livré : attribution Kyutai, lien CC BY 4.0, mention des modifications (conversion GGUF, Q8_0) |
-| Voix `estelle` | CC0 : `unmute-prod-website/developpeuse-3.wav`, « The others are our own recordings and you may use them as CC0 » (https://huggingface.co/kyutai/tts-voices) | voix par défaut | aucune ; crédit de courtoisie |
-| pockettts.cpp (`ServeurpersoCom/pockettts.cpp`) | MIT, « Copyright (c) 2023-2026 The pockettts.cpp authors » | outil du poste (et du téléphone en VO4) | avis MIT si livré |
-| ggml (`ggml-org/ggml`), pocket-tts (`kyutai-labs/pocket-tts`) | MIT | idem | avis MIT si livré |
 
 ## EUPL-1.2 : ce qu'elle impose et ce qu'elle permet
 

@@ -2,6 +2,18 @@
 
 Partie de [Format du pack](../format.md).
 
+## Sans voix pré-générée (21/11/2026)
+
+Les annonces sont dites par la synthèse vocale du téléphone : plus de paquet de voix par site et par langue. Mesure sur une copie de travail hors dépôt des sorties publiques de trois sites (mêmes entrées), pack construit par `skimap build-pack` avant (binaire du 21/11 à 11 h 20, avec le paquet de voix français construit par `skimap voice` puis `build-pack`) et après ce changement ; octets des répertoires :
+
+| Site | Pack de base avant | Paquet de voix fr avant | Téléchargé avant (pack + voix fr) | Pack après | Écart |
+|---|---|---|---|---|---|
+| Jeu de test alpin | 19 144 204 o | 4 218 173 o (893 fichiers) | 23 362 377 o | 19 144 020 o | −4,22 Mo (−18,1 %) |
+| Jeu de test jurassien | 21 698 620 o | 5 241 587 o (1 134 fichiers) | 26 940 207 o | 21 698 436 o | −5,24 Mo (−19,5 %) |
+| Site du Vercors | 18 895 520 o | 5 749 643 o (1 100 fichiers) | 24 645 163 o | 18 895 336 o | −5,75 Mo (−23,3 %) |
+
+Le pack de base perd seulement l'emplacement `voice` de son manifeste (184 o) ; le serveur ne publie plus non plus le paquet anglais (de même ordre de taille), et 899 à 1 134 fichiers de moins par paquet et par langue.
+
 ## Tailles des packs (15/11/2026, 10 h 36, pente et exposition en vecteur)
 
 Packs construits avec `personal_sources` (usage personnel de l'auteur) et sans les tuiles IGN de comparaison ; entre parenthèses, les mêmes sorties construites à 9 h 39 avec la pente et l'exposition en rasters PNG :
@@ -14,7 +26,7 @@ Packs construits avec `personal_sources` (usage personnel de l'auteur) et sans l
 | dont rasters hors piste de core (gzip) : altitude / pente | 8,53 / 5,73 Mo | 5,67 / 4,25 Mo |
 | dont pente et exposition en polygones (MVT) | 4,74 Mo | 1,15 Mo |
 | Rasters en tuiles (neige z9-13 ; avant : + pente et exposition z10-15) | 0,22 Mo (4,35) | 0,10 Mo (1,38) |
-| Voix (clips Opus) | 4,07 Mo | 5,07 Mo |
+| Voix (clips Opus, retirés le 21/11/2026) | 4,07 Mo | 5,07 Mo |
 | **Total** | **45,79 Mo** (45,14), 986 fichiers | **41,82 Mo** (41,79), 1 225 fichiers |
 | Couches à usage personnel incluses (zones avec Biodiv'sports, exposition avec la CLPA et ce qui en dérive, état, plan, météo, assistant) | 18,79 Mo | 13,19 Mo |
 | Option tuiles IGN des pentes (z11-15, RGBA) | +22,63 Mo | +13,17 Mo |

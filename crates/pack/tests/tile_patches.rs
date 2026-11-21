@@ -171,8 +171,7 @@ fn make_pack(dir: &Path, version: &str, files: &[(&str, &[u8])]) -> Vec<u8> {
                  "bbox": [6.66, 44.77, 6.86, 44.92], "center": [6.77, 44.85]},
         "valid_for": {"until": "2026-11-16", "until_layer": null, "note": "n"},
         "personal_sources": false, "basemaps": [], "layers": [],
-        "voice": {"status": "absent", "clips": 0, "bytes": 0, "note": "n"},
-        "attributions": [], "files": entries, "total_bytes": total
+                "attributions": [], "files": entries, "total_bytes": total
     });
     let bytes = serde_json::to_vec_pretty(&m).unwrap();
     fs::write(dir.join("manifest.json"), &bytes).unwrap();

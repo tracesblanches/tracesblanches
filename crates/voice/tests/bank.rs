@@ -1,19 +1,19 @@
-//! One announcement per core event, and coverage of the pack clip set.
+//! One announcement per core event, and coverage of the vocabulary.
 
 use skimap_voice::bank::{
     Briefing, Change, Crowd, Event, Glide, Item, Kick, Name, Side, Snow, ZoneRule,
 };
 use skimap_voice::clips::{DayMonth, Direction, Fixed};
-use skimap_voice::manifest::{ClipKind, PackNames, manifest, manifest_split};
 use skimap_voice::names::{Colour, PisteName};
 use skimap_voice::quantity::Clock;
+use skimap_voice::vocabulary::{ClipKind, SiteNames, vocabulary};
 
 fn greffier() -> PisteName {
     PisteName::new("Greffier", Some(Colour::Black))
 }
 
-fn names() -> PackNames {
-    PackNames {
+fn names() -> SiteNames {
+    SiteNames {
         site: "Chapelle-des-Bois".into(),
         pistes: vec![
             greffier(),
@@ -341,10 +341,10 @@ fn one_phrase_per_event() {
 }
 
 #[test]
-fn pack_clip_set_covers_every_in_range_event() {
-    let m = manifest(&names());
+fn vocabulary_covers_every_in_range_event() {
+    let m = vocabulary(&names());
     // Everything in `cases` is covered, except the avalanche segment on "Le Cancel" (not
-    // a name of this pack): it goes to the fallback voice.
+    // a name of this site): its text is still said.
     for (e, _) in cases() {
         let a = e.announce();
         let foreign = matches!(e, Event::AvalancheSegment { .. });
@@ -432,7 +432,7 @@ fn pack_clip_set_covers_every_in_range_event() {
         let a = Event::Briefing(Briefing::PistesOpen { open, total: 30 }).announce();
         assert!(m.covers(&a));
     }
-    // Out of range: correct text, fallback voice.
+    // Out of range: correct text.
     let cold = Event::Briefing(Briefing::Weather {
         temperature_c: -41.0,
         wind_kmh: 0.0,
@@ -453,7 +453,7 @@ fn pack_clip_set_covers_every_in_range_event() {
 
 #[test]
 fn clip_set_size_and_ids() {
-    let m = manifest(&names());
+    let m = vocabulary(&names());
     assert_eq!(m.count(ClipKind::Name), 5);
     let fixed = m.count(ClipKind::Fixed);
     let value = m.count(ClipKind::Value);
@@ -486,93 +486,4 @@ fn clip_set_size_and_ids() {
             "{id}: {text}"
         );
     }
-}
-
-#[test]
-fn chunks_are_cut_at_clip_ends() {
-    // A whole briefing, with an additive counter (words) and a 20-token budget.
-    let count = |s: &str| s.split_whitespace().count();
-    let b = [
-        Event::Briefing(Briefing::Intro {
-            site: "Cervières".into(),
-        }),
-        Event::Briefing(Briefing::Avalanche { level: Some(2) }),
-        Event::Briefing(Briefing::Weather {
-            temperature_c: -12.0,
-            wind_kmh: 55.0,
-            fog: true,
-            snowfall: true,
-        }),
-        Event::Briefing(Briefing::Sunset {
-            at: Clock {
-                hour: 17,
-                minute: 15,
-            },
-        }),
-        Event::Equipment {
-            items: vec![
-                Item::AvalancheKit,
-                Item::Headlamp,
-                Item::PowerBank,
-                Item::Compass,
-            ],
-        },
-    ]
-    .iter()
-    .map(Event::announce)
-    .reduce(|a, b| a.then(b))
-    .unwrap();
-    let chunks = b.chunks(20, count).unwrap();
-    assert!(chunks.len() >= 4, "{chunks:?}");
-    assert_eq!(chunks.join(" "), b.text());
-    for (i, c) in chunks.iter().enumerate() {
-        assert!(count(c) <= 20, "{c}");
-        assert!(c.ends_with('.'), "{c}");
-        // Greedy: the next clip would not have fitted.
-        if let Some(next) = chunks.get(i + 1) {
-            let first = b
-                .segments
-                .iter()
-                .find(|s| next.starts_with(&s.clip.text))
-                .unwrap();
-            assert!(count(c) + count(&first.clip.text) > 20, "{c} | {next}");
-        }
-    }
-    let long = Event::Equipment {
-        items: vec![Item::TellSomeone],
-    }
-    .announce();
-    assert!(long.chunks(5, count).is_err());
-}
-
-#[test]
-fn personal_names_are_marked_unless_public() {
-    let public = names();
-    let personal = PackNames {
-        pistes: vec![
-            greffier(),
-            PisteName::new("La Pinatelle", Some(Colour::Black)),
-        ],
-        places: vec!["Aigle royal".into(), "Refuge du Pré à la Dame".into()],
-        dates: vec![
-            DayMonth { day: 30, month: 4 },
-            DayMonth { day: 30, month: 6 },
-        ],
-        ..PackNames::default()
-    };
-    let m = manifest_split(&public, &personal);
-    let base = manifest(&public);
-    // The public clip set is unchanged; only the names read from personal sources alone
-    // are added, and marked.
-    for (id, c) in &base.clips {
-        assert_eq!(m.clips.get(id), Some(c), "{id}");
-        assert!(!m.is_personal(id), "{id}");
-    }
-    let marked: Vec<&str> = m.personal.iter().map(String::as_str).collect();
-    assert_eq!(
-        marked,
-        ["name.aigle-royal", "piste.la-pinatelle.noire", "until.0430"]
-    );
-    assert_eq!(m.clips.len(), base.clips.len() + 3);
-    assert!(base.personal.is_empty());
 }

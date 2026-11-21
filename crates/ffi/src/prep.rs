@@ -5,8 +5,7 @@
 //! the morning of the area (loops with the group's time, C11) and the day plan of the best
 //! loop with its plans B, written ready to follow (`plan.json`, `plan.trk`, `pack.txt`:
 //! the location service opens them as a validated day). A day without forecast in the pack
-//! is listed as such, never planned on another day's weather. The clips the announcements
-//! of a prepared plan need and the pack lacks are listed (said by the phone's voice).
+//! is listed as such, never planned on another day's weather.
 //!
 //! Ski mode (several days, possibly without network): nothing heavy runs; the prepared
 //! plans are read back ([`prep_read`]) with the date of their preparation and the date of
@@ -94,8 +93,6 @@ pub struct PreparedDay {
     pub expected_back: Option<String>,
     /// Plans B of that plan.
     pub plans_b: Vec<String>,
-    /// Clips its announcements need that the pack lacks (said by the phone's voice).
-    pub missing_clips: Vec<String>,
     /// Group the times are for.
     pub group: Option<String>,
     /// Prepared at, epoch ms.
@@ -231,7 +228,6 @@ pub fn prep_run(
             plan_dir: None,
             expected_back: None,
             plans_b: Vec::new(),
-            missing_clips: Vec::new(),
             group: model
                 .as_ref()
                 .map(|md| tx.assist().group_label(&md.profile)),
@@ -267,7 +263,6 @@ pub fn prep_run(
                 .filter(|b| b.fallback.exists())
                 .map(|b| b.fallback.text.clone())
                 .collect();
-            day.missing_clips = p.clips.missing.iter().cloned().collect();
             let _ = epoch_ms(back);
         }
         skimap_common::output::write_text(
@@ -547,12 +542,11 @@ mod tests {
         eprintln!("{} ms, skipped {:?}", r.compute_ms, r.skipped);
         for d in &r.days {
             eprintln!(
-                "{} {:?} {:?} back {:?} missing clips {}",
+                "{} {:?} {:?} back {:?}",
                 d.day_text,
                 d.loops.first(),
                 d.best_time,
                 d.expected_back,
-                d.missing_clips.len()
             );
         }
         assert_eq!(r.days.len() + r.skipped.len(), 3);
@@ -567,8 +561,7 @@ mod tests {
             crate::tracking_day::read_day_plan(taken.display().to_string(), crate::card::Lang::Fr)
                 .unwrap();
         assert!(v.pace_text.is_some());
-        let s =
-            crate::tracking::open_tracking(taken.display().to_string(), None, "fr".into()).unwrap();
+        let s = crate::tracking::open_tracking(taken.display().to_string(), "fr".into()).unwrap();
         assert_eq!(s.replayed(), 0);
         let st = prep_read(
             out.path().display().to_string(),

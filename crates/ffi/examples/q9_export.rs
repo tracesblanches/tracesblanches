@@ -11,8 +11,7 @@
 //!
 //! Per scenario, `OUT_DIR/<name>/`: `plan.json`, `plan.trk` (the plan and its flat table),
 //! `scenario.jsonl` (the inputs, `skimap_plan::tracker::Input` per line) and
-//! `expected.json` (spoken texts with their kinds and whether every clip is in the pack,
-//! alerts, switches, proposals, session decisions, GPS requests, each with its time).
+//! `expected.json` (spoken texts with their kinds, alerts, switches, proposals, session decisions, GPS requests, each with its time).
 //! SITE: an evaluation site (archived day and plan requests in `data/sites.json`), default
 //! the first one. Reads `data/out/<site>/` (pipeline outputs, archived day, pack).
 
@@ -30,7 +29,6 @@ use skimap_plan::presets;
 use skimap_plan::scenario::{self, Behaviour, Scenario, Step};
 use skimap_plan::track::TrackView;
 use skimap_plan::tracker::{Output, Tracker, TrackerParams};
-use skimap_voice::pack::VoiceManifest;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out = PathBuf::from(
@@ -45,10 +43,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let root = std::env::var("SKIMAP_DATA_DIR")
         .unwrap_or_else(|_| format!("{}/../../data", env!("CARGO_MANIFEST_DIR")));
     let layout = DataLayout::new(&root);
-    let pack = layout.out_dir(site).join("pack");
-    let vdir = pack.join("voice");
-    let manifest = VoiceManifest::read(&vdir)?;
-    let voice = skimap_plan::phrases::Voice::new(&manifest, "pack");
     let (mut data, ctx) = presets::load(&layout, site)?;
     let date = presets::past_day(site);
     let base = presets::requests(site, date).remove(0);
@@ -132,14 +126,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             let run = scenario::run(&sc, &p, TrackView::new(&trk)?, g, TrackerParams::default())?;
-            // What the phone's tracker says: the same tracker with the pack's clips.
-            let mut tr = Tracker::new(
-                &p,
-                TrackView::new(&trk)?,
-                g,
-                Some(&voice),
-                TrackerParams::default(),
-            )?;
+            // What the phone's tracker says: the same tracker.
+            let mut tr = Tracker::new(&p, TrackView::new(&trk)?, g, TrackerParams::default())?;
             let mut outs = Vec::new();
             for i in &run.inputs {
                 tr.push(i, &mut outs);
@@ -154,7 +142,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map(serde_json::to_string)
                 .collect::<Result<_, _>>()?;
             std::fs::write(dir.join("scenario.jsonl"), lines.join("\n") + "\n")?;
-            let expected = expected(&outs, &manifest);
+            let expected = expected(&outs);
             std::fs::write(
                 dir.join("expected.json"),
                 serde_json::to_string_pretty(&expected)?,
@@ -179,8 +167,7 @@ fn ms(t: jiff::Timestamp) -> i64 {
     t.as_millisecond()
 }
 
-fn expected(outs: &[Output], m: &VoiceManifest) -> Value {
-    let has = |id: &str, text: &str| m.get(id).is_some_and(|e| e.text == text);
+fn expected(outs: &[Output]) -> Value {
     let mut spoken = Vec::new();
     let mut alerts = Vec::new();
     let mut switches = Vec::new();
@@ -193,7 +180,6 @@ fn expected(outs: &[Output], m: &VoiceManifest) -> Value {
                 "t_ms": ms(*t),
                 "text": s.announcement.text(),
                 "kinds": s.items.iter().map(|c| c.kind.clone()).collect::<Vec<_>>(),
-                "all_clips": s.announcement.segments.iter().all(|x| has(&x.clip.id, &x.clip.text)),
             })),
             Output::Alert { t, alert } => alerts.push(json!({"t_ms": ms(*t), "alert": alert})),
             Output::Switched { t, to, .. } => {

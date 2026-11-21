@@ -1,7 +1,7 @@
 //! Announcements and clips at their thresholds (Q4, #104: survivors of `cargo mutants -p
-//! skimap-voice` in `bank.rs`, `clips.rs`, `quantity.rs`): pauses, clip lists, chunking
-//! at the token limit, remaining distance and turnaround thresholds, all-open pistes,
-//! calm wind, temperature unit, BERA level names, rounding grids.
+//! skimap-voice` in `bank.rs`, `clips.rs`, `quantity.rs`): pauses, clip lists, remaining
+//! distance and turnaround thresholds, all-open pistes, calm wind, temperature unit, BERA
+//! level names, rounding grids.
 
 use skimap_voice::bank::{Briefing, Event, Pause};
 use skimap_voice::clips::bera;
@@ -30,26 +30,6 @@ fn pauses_and_clip_ids() {
     );
     assert!(ids.iter().all(|id| !id.is_empty()));
     assert!(ids[0].starts_with("remain"), "{ids:?}");
-}
-
-#[test]
-fn chunks_fill_up_to_the_limit() {
-    let a = Event::Remaining {
-        metres: 1200.0,
-        seconds: 600.0,
-    }
-    .announce();
-    let n = a.segments.len();
-    assert!(n >= 2);
-    // Ten tokens per clip: a limit of exactly 10·n keeps one chunk; 10·n − 1 splits.
-    let ten = |_: &str| 10usize;
-    assert_eq!(a.chunks(10 * n, ten).unwrap().len(), 1);
-    assert_eq!(a.chunks(10 * n - 1, ten).unwrap().len(), 2);
-    // A clip of exactly the limit fits; one more token does not.
-    assert_eq!(a.chunks(10, ten).unwrap().len(), n);
-    assert!(a.chunks(9, ten).is_err());
-    let joined = a.chunks(10 * n, ten).unwrap().join(" ");
-    assert_eq!(joined, a.text());
 }
 
 #[test]

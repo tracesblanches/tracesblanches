@@ -193,9 +193,9 @@ pub fn evaluate(c: &Case<'_>) -> Result<Vec<Day>> {
             unknown_in: false,
         }];
         // Online, both variants on the same inputs.
-        let mut a = Tracker::new(&plan_prior, view, c.graph, None, quiet())?;
-        let mut b = Tracker::new(&plan_learned, view, c.graph, None, quiet())?;
-        let mut u = Tracker::new(c.plan, view, c.graph, None, quiet())?;
+        let mut a = Tracker::new(&plan_prior, view, c.graph, quiet())?;
+        let mut b = Tracker::new(&plan_learned, view, c.graph, quiet())?;
+        let mut u = Tracker::new(c.plan, view, c.graph, quiet())?;
         let mut out = Vec::new();
         let mut next = 0;
         let fracs = [0.25, 0.5, 0.75];

@@ -228,7 +228,6 @@ fn closed_lists_in_english() {
         t.p_when(Some(1500.0), false),
         t.p_latest_exit(1500.0, at),
         t.p_unnamed_shelter("X"),
-        t.p_clips(4, &["X".into()]),
         t.fb_exit(&t.fb_at(Some(1500.0)), 8000.0, 12000.0, 1800.0, "X"),
         t.fb_no_detour(&closed),
         t.fb_detour(&closed, &t.fb_at(None), Some(3000.0), 9000.0, -300.0, "X"),

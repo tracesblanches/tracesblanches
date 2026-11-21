@@ -57,15 +57,6 @@ impl Lang {
             _ => Lang::En,
         }
     }
-
-    /// Name of the voice layer of a site in the pipeline outputs: `voice` (French, the
-    /// first layer, kept where it was) and `voice-<code>` for the others.
-    pub fn layer(self) -> String {
-        match self {
-            Lang::Fr => "voice".to_owned(),
-            l => format!("voice-{}", l.code()),
-        }
-    }
 }
 
 #[cfg(test)]
@@ -81,8 +72,6 @@ mod tests {
         assert_eq!(Lang::of_phone("fr-CA"), Lang::Fr);
         assert_eq!(Lang::of_phone(""), Lang::En);
         assert_eq!(Lang::default(), Lang::En);
-        assert_eq!(Lang::Fr.layer(), "voice");
-        assert_eq!(Lang::En.layer(), "voice-en");
         for l in Lang::ALL {
             assert_eq!(Lang::from_code(l.code()), Some(l));
         }

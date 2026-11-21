@@ -307,15 +307,9 @@ fn end_attempt(dir: &Path) -> Result<()> {
     }
 }
 
-/// Pack directories of a site to publish: its pack, then its voice packs (VO6), those
-/// holding a `manifest.json`.
+/// Pack directories of a site to publish: its pack, when it holds a `manifest.json`.
 pub fn pack_dirs(site_dir: &Path) -> Vec<PathBuf> {
     let mut v = vec![site_dir.join("pack")];
-    if let Ok(rd) = std::fs::read_dir(site_dir.join("voice-pack")) {
-        let mut voices: Vec<PathBuf> = rd.flatten().map(|e| e.path()).collect();
-        voices.sort();
-        v.extend(voices);
-    }
     v.retain(|d| d.join("manifest.json").is_file());
     v
 }
@@ -1374,9 +1368,9 @@ fn stations_step(ctx: &Ctx, france: &France<'_>, force: bool) -> StepRecord {
 fn dependents(step: &str) -> &'static [&'static str] {
     match step {
         "snow" => &["offpiste-prepare", "build-pack", "export"],
-        "offpiste-prepare" | "bera" | "status-poll" | "meteo" => &["build-pack", "export"],
-        // The voice says the names of the refuges (#129).
-        "refuges" => &["voice", "voice-en", "build-pack", "export"],
+        "offpiste-prepare" | "bera" | "status-poll" | "meteo" | "refuges" => {
+            &["build-pack", "export"]
+        }
         "build-pack" => &["export"],
         _ => &[],
     }

@@ -344,40 +344,6 @@ impl Ctx {
         )?)
     }
 
-    /// VO3: voice clips of the pack with the names of the built layers (`pistes`,
-    /// `refuges`, `zones`, `plan_pistes`), split by provenance by `skimap_voice` (the clips
-    /// of personal-use names are listed in `personal.json`, left out of a published pack);
-    /// Pocket TTS on this workstation (`VoiceConfig::from_env_lang`), in `lang` (VO6).
-    pub fn voice(
-        &self,
-        site: &Site,
-        lang: skimap_voice::Lang,
-    ) -> Result<(skimap_voice::pack::VoiceBuild, skimap_voice::SiteNames)> {
-        let names = skimap_voice::site_names(&self.layout, site)?;
-        let cfg = skimap_voice::VoiceConfig::from_env_lang(lang)?;
-        let b = skimap_voice::build_site(site, &self.layout, &names, &cfg)?;
-        Ok((b, names))
-    }
-
-    /// Step `voice` / `voice-en` of `build-all` (#129): [`Ctx::voice`] and its line.
-    fn voice_line(&self, site: &Site, lang: skimap_voice::Lang) -> Result<String> {
-        let (b, names) = self.voice(site, lang)?;
-        Ok(format!(
-            "{} : {} clips, {} synthétisés, {} repris du cache ; {:.2} Mo, {:.0} s de parole ; noms publics : {} pistes, {} lieux, {} dates ; usage personnel : {} clips ; synthèse {:.1} s",
-            lang.code(),
-            b.made_clips + b.reused_clips,
-            b.made_clips,
-            b.reused_clips,
-            b.total_bytes as f64 / 1e6,
-            b.total_audio_s,
-            names.public.pistes.len(),
-            names.public.places.len(),
-            names.public.dates.len(),
-            b.personal.0,
-            b.tts_wall_s
-        ))
-    }
-
     /// P14: offline pack of the site from the pipeline outputs, `data/out/<site>/pack/`
     /// (options from the configuration: personal sources).
     pub fn build_pack(&self, site: &Site) -> Result<skimap_pack::build::BuildReport> {
@@ -388,42 +354,6 @@ impl Ctx {
             &self.dl,
             &opts,
         )?)
-    }
-
-    /// VO6: the voice packs of the site, one per language whose voice layer is built
-    /// (`voice/`, `voice-en/`), in `data/out/<site>/voice-pack/<lang>/`, each checked;
-    /// published apart from the base pack.
-    pub fn build_voice_packs(&self, site: &Site) -> Result<Vec<skimap_pack::build::BuildReport>> {
-        let mut out = Vec::new();
-        for lang in skimap_voice::Lang::ALL {
-            let layer = lang.layer();
-            if !self
-                .layout
-                .out_dir(site)
-                .join(&layer)
-                .join("manifest.json")
-                .is_file()
-            {
-                continue;
-            }
-            let r = skimap_pack::build::build_voice_pack(
-                site,
-                &self.layout,
-                &layer,
-                lang.code(),
-                self.cfg.personal_sources,
-            )?;
-            let problems = skimap_pack::Pack::open(&r.pack_dir)?.verify()?;
-            if !problems.is_empty() {
-                bail!(
-                    "relecture du pack de voix {} : {}",
-                    lang.code(),
-                    problems.join(" ; ")
-                );
-            }
-            out.push(r);
-        }
-        Ok(out)
     }
 
     /// P21: export of the pack for Locus Map and OsmAnd, `data/out/<site>/export/`.
@@ -830,16 +760,6 @@ impl Ctx {
                 nets.join(" ; ")
             ))
         });
-        // #129: the voice of the site in French and in English, from the names of the
-        // pistes, refuges and zones on disk (`watches`: made again when they change, not
-        // blocked when one of them failed); only the phrases absent from the clip cache
-        // are synthesised. Taken into the voice packs by `build-pack`.
-        run.step("voice", &[], |site| {
-            self.voice_line(site, skimap_voice::Lang::Fr)
-        });
-        run.step("voice-en", &[], |site| {
-            self.voice_line(site, skimap_voice::Lang::En)
-        });
         // The assistant reads every layer above (a missing one is said in its outputs).
         run.step("assist", &[], |site| {
             let (out, lines) = crate::assist::assist(
@@ -866,7 +786,7 @@ impl Ctx {
             ))
         });
         // Day plans of the preset requests (J1, J2) on the archived day of the site: the
-        // trail graph, the refuges, the voice clips and `assist/history/`. Not in the pack
+        // trail graph, the refuges and `assist/history/`. Not in the pack
         // (computed in the morning, on the phone eventually: E2).
         run.step("plan", &["routing"], |site| {
             if skimap_plan::presets::archived_day(site).is_none() {
@@ -882,14 +802,12 @@ impl Ctx {
                 ));
             }
             let r = crate::plan::plan(&self.layout, site, &crate::plan::PlanArgs::default())?;
-            let missing: usize = r.plans.iter().map(|p| p.clips.missing.len()).sum();
             Ok(format!(
-                "{} plans ({}), {} plans B, {} annonces prévues, {} clips absents du pack, {} fichiers",
+                "{} plans ({}), {} plans B, {} annonces prévues, {} fichiers",
                 r.plans.len(),
                 r.plans.first().map(|p| p.date.to_string()).unwrap_or_default(),
                 r.plans.iter().map(|p| p.plans_b.len()).sum::<usize>(),
                 r.plans.iter().map(|p| p.announcements.len()).sum::<usize>(),
-                missing,
                 r.files.len()
             ))
         });
@@ -902,7 +820,6 @@ impl Ctx {
             if !problems.is_empty() {
                 bail!("relecture du pack : {}", problems.join(" ; "));
             }
-            self.build_voice_packs(site)?;
             let mut slow: Vec<&(String, f64)> = r.timings.iter().filter(|t| t.1 >= 1.0).collect();
             slow.sort_by(|a, b| b.1.total_cmp(&a.1));
             let slow: Vec<String> = slow.iter().map(|(k, s)| format!("{k} {s:.1} s")).collect();
@@ -1246,8 +1163,6 @@ pub const READS: &[(&str, &[Field])] = &[
     ("pistes-estimees", PLACE),
     ("avalanche-historic", PLACE),
     ("assist", PLACE_STARTS),
-    ("voice", PLACE),
-    ("voice-en", PLACE),
     ("plan", PLACE_STARTS),
     ("build-pack", PLACE_STARTS),
     ("export", PLACE_STARTS),
@@ -1347,44 +1262,7 @@ pub fn step_code(step: &str) -> Option<String> {
                 .get_or_init(skimap_pack::export::code_revision)
                 .clone(),
         ),
-        // #129: the phrases of the bank, how names are spoken, the cache format and the
-        // engines (models) of the language.
-        "voice" | "voice-en" => {
-            static VOICE: std::sync::OnceLock<[String; 2]> = std::sync::OnceLock::new();
-            let [fr, en] = VOICE.get_or_init(|| {
-                skimap_voice::Lang::ALL.map(|l| {
-                    let cfg = skimap_voice::VoiceConfig::from_env_lang(l).ok();
-                    skimap_voice::pack::code_revision(l, cfg.as_ref())
-                })
-            });
-            Some(
-                if step == voice_step(skimap_voice::Lang::Fr) {
-                    fr
-                } else {
-                    en
-                }
-                .clone(),
-            )
-        }
         _ => None,
-    }
-}
-
-/// Step of `build-all` that builds the voice layer of `lang` (`voice`, `voice-en`).
-pub fn voice_step(lang: skimap_voice::Lang) -> &'static str {
-    match lang {
-        skimap_voice::Lang::Fr => "voice",
-        skimap_voice::Lang::En => "voice-en",
-    }
-}
-
-/// Steps whose change runs `step` again although `step` does not depend on them: it
-/// is not blocked by their failure, it reads whatever outputs they left (#129: the voice
-/// says the names of the pistes, refuges and zones on disk, with their date).
-pub fn watches(step: &str) -> &'static [&'static str] {
-    match step {
-        "voice" | "voice-en" => &["pistes", "refuges", "zones"],
-        _ => &[],
     }
 }
 
@@ -1433,10 +1311,10 @@ pub fn missing_steps(steps: &[StepRecord]) -> Vec<&'static str> {
 /// | `refuges`, `zones`, `coverage`, `avalanche-historic` | yes | refuges.info / OSM / Camptocamp, protected areas, ARCEP release, CLPA |
 /// | `build-pack` | yes | Protomaps basemap and Plan IGN (renewed at most weekly inside the pack) |
 /// | `avalanche-exposure` | personal sources only | LiDAR HD canopy tiles of the terrain tiles (follow `terrain`), CLPA (personal use) |
-/// | `routing`, `offpiste-prepare`, `export`, `voice`, `voice-en` | no | local outputs only (the voice: names of `pistes`, `refuges`, `zones`, [`watches`]) |
+/// | `routing`, `offpiste-prepare`, `export` | no | local outputs only |
 pub fn ages(step: &str, personal_sources: bool) -> bool {
     match step {
-        "routing" | "offpiste-prepare" | "export" | "voice" | "voice-en" => false,
+        "routing" | "offpiste-prepare" | "export" => false,
         "avalanche-exposure" => personal_sources,
         _ => true,
     }
@@ -1460,8 +1338,6 @@ pub fn step_dir(step: &str) -> Option<&'static str> {
         "bera" => "bera",
         "meteo" => "meteo-hourly",
         "avalanche-historic" => "avalanche-historic",
-        "voice" => "voice",
-        "voice-en" => "voice-en",
         "pistes-estimees" => "pistes_estimees",
         "build-pack" => "pack",
         "export" => "export",
@@ -1783,9 +1659,7 @@ impl<'a> Run<'a> {
         let deps_changed = if matches!(name, "build-pack" | "export") {
             !self.changed.is_empty()
         } else {
-            deps.iter()
-                .chain(watches(name))
-                .any(|d| self.changed.contains(d))
+            deps.iter().any(|d| self.changed.contains(d))
         };
         if deps_changed {
             return None;
@@ -2448,77 +2322,6 @@ mod resume_tests {
         }
         let (_, ran) = every_step(dir, site, Some(resume(&old)));
         assert_eq!(ran.len(), READS.len());
-    }
-
-    /// #129: the voice of every site is built by `build-all` (so by the catch-up), in
-    /// French and in English, before the pack that takes it into the voice packs; done
-    /// again when the names it says change (pistes, refuges, zones), even when one of
-    /// those steps failed (its previous outputs, with their date, give the names), and
-    /// taken over otherwise.
-    #[test]
-    fn voice_of_both_languages_is_a_step_of_build_all() {
-        let src = include_str!("build.rs");
-        let body = &src[src
-            .find("    fn steps(&self, run: &mut Run<'_>")
-            .expect("Ctx::steps")..];
-        let at = |n: &str| {
-            body.find(&format!("run.step(\"{n}\""))
-                .unwrap_or_else(|| panic!("no step {n} in build-all"))
-        };
-        for lang in skimap_voice::Lang::ALL {
-            let step = voice_step(lang);
-            assert!(at(step) < at("build-pack"), "{step}");
-            assert_eq!(step_dir(step), Some(lang.layer().as_str()));
-            assert!(!ages(step, true), "{step}: local outputs only");
-            assert_eq!(watches(step), ["pistes", "refuges", "zones"]);
-        }
-        // Resume: refuges changed (or failed), the voice is made again; else taken over.
-        let tmp = tempfile::tempdir().unwrap();
-        let dir = tmp.path();
-        let site = skimap_common::site::site("cervieres").expect("evaluation site");
-        let run = |resume: Option<Resume<'_>>, refuges: &str, fail: bool| {
-            let shared = Shared {
-                resume,
-                ..Shared::default()
-            };
-            let mut log = Vec::new();
-            let ran = std::cell::Cell::new(false);
-            let mut r = Run::new(site, dir.to_path_buf(), &shared, &mut log);
-            r.step("refuges", &[], |_| {
-                std::fs::create_dir_all(dir.join("refuges"))?;
-                std::fs::write(dir.join("refuges/osm.geojson"), refuges)?;
-                if fail {
-                    bail!("source en défaut");
-                }
-                Ok(String::new())
-            });
-            r.step("voice", &[], |_| {
-                ran.set(true);
-                std::fs::create_dir_all(dir.join("voice"))?;
-                std::fs::write(dir.join("voice/manifest.json"), refuges)?;
-                Ok(String::new())
-            });
-            (r.finish(), ran.get())
-        };
-        let (o1, ran) = run(None, "a", false);
-        assert!(ran && o1.ok());
-        let (o2, ran) = run(Some(resume(&o1.steps)), "a", false);
-        assert!(!ran, "nothing changed: taken over");
-        // New refuges on disk (as a run of `skimap refuges` would leave them): the step
-        // runs again, its outputs change.
-        std::fs::write(dir.join("refuges/osm.geojson"), "b").unwrap();
-        let (o3, ran) = run(Some(resume(&o2.steps)), "b", false);
-        assert!(ran, "refuges changed: the voice is made again");
-        std::fs::write(dir.join("refuges/osm.geojson"), "c").unwrap();
-        let (o4, ran) = run(Some(resume(&o3.steps)), "c", true);
-        assert!(
-            ran,
-            "refuges failed: the voice is made from the names on disk"
-        );
-        assert_eq!(
-            o4.steps.iter().find(|s| s.name == "voice").unwrap().state,
-            StepState::Ok
-        );
     }
 
     /// Every step of [`Ctx::build_all_with`] declares the fields of the site record it

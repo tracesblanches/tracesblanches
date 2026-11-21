@@ -1,8 +1,7 @@
 //! Phrase bank: one announcement per event of the core (guidance, alerts, briefing).
 //!
 //! [`Event::announce`] turns an event into an [`Announcement`]: a list of clips with the
-//! pause after each. The same announcement gives the text for the fallback voice
-//! ([`Announcement::text`]) and the clips to concatenate ([`Announcement::segments`]).
+//! pause after each. The phone's speech synthesis reads [`Announcement::text`].
 
 use serde::{Deserialize, Serialize};
 
@@ -46,20 +45,6 @@ pub struct Announcement {
     pub segments: Vec<Segment>,
 }
 
-/// A clip whose text is longer than the chunk budget.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("clip `{id}` has {tokens} tokens, more than {max}: {text}")]
-pub struct TooLong {
-    /// Clip id.
-    pub id: String,
-    /// Clip text.
-    pub text: String,
-    /// Its token count.
-    pub tokens: usize,
-    /// Budget.
-    pub max: usize,
-}
-
 impl Announcement {
     fn push(&mut self, clip: Clip, pause: Pause) {
         self.segments.push(Segment { clip, pause });
@@ -74,7 +59,7 @@ impl Announcement {
         self
     }
 
-    /// Text for the fallback voice: the clip texts in order.
+    /// Text the speech synthesis reads: the clip texts in order.
     pub fn text(&self) -> String {
         self.segments
             .iter()
@@ -86,42 +71,6 @@ impl Announcement {
     /// Ids of the clips, in order.
     pub fn clip_ids(&self) -> Vec<&str> {
         self.segments.iter().map(|s| s.clip.id.as_str()).collect()
-    }
-
-    /// Text chunks of at most `max_tokens` tokens (`tokens` counts them, e.g.
-    /// [`crate::tokenizer::PocketText::count`]), cut at sentence ends: every clip ends a
-    /// sentence, and consecutive clips are grouped greedily, as pockettts.cpp does.
-    pub fn chunks(
-        &self,
-        max_tokens: usize,
-        tokens: impl Fn(&str) -> usize,
-    ) -> Result<Vec<String>, TooLong> {
-        let mut out: Vec<String> = Vec::new();
-        let (mut cur, mut cur_n) = (String::new(), 0usize);
-        for s in &self.segments {
-            let n = tokens(&s.clip.text);
-            if n > max_tokens {
-                return Err(TooLong {
-                    id: s.clip.id.clone(),
-                    text: s.clip.text.clone(),
-                    tokens: n,
-                    max: max_tokens,
-                });
-            }
-            if !cur.is_empty() && cur_n + n > max_tokens {
-                out.push(std::mem::take(&mut cur));
-                cur_n = 0;
-            }
-            if !cur.is_empty() {
-                cur.push(' ');
-            }
-            cur.push_str(&s.clip.text);
-            cur_n += n;
-        }
-        if !cur.is_empty() {
-            out.push(cur);
-        }
-        Ok(out)
     }
 }
 
@@ -522,7 +471,7 @@ impl Event {
                 piste,
             } => {
                 match round_distance(*metres) {
-                    Some(m) if m <= crate::manifest::TURN_MAX_M => {
+                    Some(m) if m <= crate::vocabulary::TURN_MAX_M => {
                         a.push(clips::turn(*direction, Some(m)), Short)
                     }
                     Some(m) => {
@@ -639,7 +588,7 @@ impl Event {
                 };
                 a.push(side.clip(), Short);
                 match round_distance(*metres) {
-                    Some(m) if m <= crate::manifest::AT_MAX_M => a.push(clips::at(m), Short),
+                    Some(m) if m <= crate::vocabulary::AT_MAX_M => a.push(clips::at(m), Short),
                     Some(_) => a.push(Fixed::RouteFar.clip(), Short),
                     None => {}
                 }

@@ -1,7 +1,7 @@
 //! Natural rounding of distances, durations and clock times, and their French words.
 //!
-//! Every rounded value belongs to a finite grid, so that each one can be a pre-generated
-//! clip: "deux cents mètres", "un kilomètre et demi", "environ une heure et quart".
+//! Every rounded value belongs to a finite grid, the way a person says it: "deux cents
+//! mètres", "un kilomètre et demi", "environ une heure et quart".
 
 use serde::{Deserialize, Serialize};
 

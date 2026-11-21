@@ -356,12 +356,12 @@ mod tests {
         );
     }
 
-    /// Every clip of a pack parses back to its phrase: the French text is unchanged, the
+    /// Every phrase of the vocabulary parses back to its phrase: the French text is unchanged, the
     /// English one has the same id, its own words and the same name.
     #[test]
-    fn every_pack_clip_in_both_languages() {
-        use crate::manifest::{PackNames, manifest, manifest_in};
-        let names = PackNames {
+    fn every_phrase_in_both_languages() {
+        use crate::vocabulary::{SiteNames, vocabulary, vocabulary_in};
+        let names = SiteNames {
             site: "Chapelle-des-Bois".into(),
             pistes: vec![
                 PisteName::new("Greffier", Some(Colour::Black)),
@@ -378,8 +378,8 @@ mod tests {
             ],
             status_pistes: 25,
         };
-        let fr = manifest(&names);
-        let en = manifest_in(&names, Lang::En);
+        let fr = vocabulary(&names);
+        let en = vocabulary_in(&names, Lang::En);
         assert_eq!(fr.clips.len(), en.clips.len());
         for (id, (kind, text)) in &fr.clips {
             let c = Clip {
@@ -405,7 +405,7 @@ mod tests {
                 c,
                 "English back to French"
             );
-            if *kind != crate::manifest::ClipKind::Name {
+            if *kind != crate::vocabulary::ClipKind::Name {
                 assert!(etext.is_ascii(), "{id}: {etext}");
             }
             assert!(

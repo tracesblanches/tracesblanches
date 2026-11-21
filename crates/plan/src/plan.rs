@@ -59,16 +59,14 @@ use skimap_core::huts;
 use skimap_core::routing::Style;
 use skimap_core::turnaround::{self, TurnaroundParams};
 use skimap_voice::Event;
-use skimap_voice::bank::{Announcement, Change, Side, ZoneRule};
+use skimap_voice::bank::{Announcement, ZoneRule};
 use skimap_voice::clips::{DayMonth, Fixed};
-use skimap_voice::pack::VoiceManifest;
-use skimap_voice::quantity::Clock;
 
 use crate::course::{Course, PlanLeg};
 use crate::error::{Error, Result};
 use crate::fallback::{self, Fallback, FallbackKind, MIN_EXIT_SAVING_S};
 use crate::guidance::{self, Junction};
-use crate::phrases::{self, ClipCheck, PLAN_PHRASES, Voice, never_safe};
+use crate::phrases::{self, never_safe};
 use crate::speech::Priority;
 
 /// Format of the plan file.
@@ -281,14 +279,11 @@ pub struct Waypoint {
     pub pos: LonLat,
 }
 
-/// Inputs of the plan besides the assistant's layers: the refuges and the clips of the
-/// pack.
+/// Inputs of the plan besides the assistant's layers: the refuges.
 #[derive(Debug, Clone, Default)]
 pub struct Context {
     /// Refuges, huts and shelters of the site (`refuges` layer, P11).
     pub refuges: Vec<Waypoint>,
-    /// Clips of the pack (`voice` layer, VO3).
-    pub voice: Option<Voice>,
     /// What could not be read.
     pub missing: Vec<String>,
 }
@@ -306,8 +301,8 @@ fn read_value(path: &Path) -> Result<Value> {
 
 impl Context {
     /// Reads `refuges/refuges_info.geojson` (refuges gardés, cabanes non gardées, gîtes),
-    /// `refuges/osm.geojson` (alpine huts, wilderness huts, shelters) and
-    /// `voice/manifest.json` of a site; what is missing is noted, not fatal. The refuges
+    /// `refuges/osm.geojson` (alpine huts, wilderness huts, shelters) of a site; what is
+    /// missing is noted, not fatal. The refuges
     /// are the features flagged by the pack ([`huts::PLAN_FLAG`], X21 #155), read as they
     /// are; layers without the flag (the pipeline's own files) are flagged here first
     /// ([`huts::mark`]).
@@ -347,16 +342,6 @@ impl Context {
                 kind: p["kind"].as_str().unwrap_or_default().to_owned(),
                 pos,
             });
-        }
-        let vdir = layout.layer_dir(site, "voice")?;
-        match VoiceManifest::read(&vdir) {
-            Ok(m) => {
-                ctx.voice = Some(Voice::new(
-                    &m,
-                    vdir.join("manifest.json").display().to_string(),
-                ))
-            }
-            Err(e) => ctx.missing.push(format!("clips de la voix : {e}")),
         }
         Ok(ctx)
     }
@@ -614,8 +599,6 @@ pub struct DayPlan {
     pub eta: EtaModel,
     /// Weather hours of the day at the forecast point (A8 on the phone).
     pub weather: Option<WeatherPoint>,
-    /// Clips needed by the announcements and whether the pack has them.
-    pub clips: ClipCheck,
     /// Missing inputs and limits.
     pub notes: Vec<String>,
     /// [`NEVER_SAFE`].
@@ -978,7 +961,6 @@ pub fn announcements(
     g: &PisteGraph,
     c: &Course,
     junctions: &[Junction],
-    voice: Option<&Voice>,
     hazards: Option<&Hazards<'_>>,
     departure: DateTime,
 ) -> Vec<PlannedAnnouncement> {
@@ -997,15 +979,7 @@ pub fn announcements(
     // droite. Dans deux cents mètres, tournez à gauche. »).
     let turn_of = |j: &Junction, at: f64| {
         let attrs = &g.edge(j.edge_out).attrs;
-        let piste = match voice {
-            Some(v) => v.piste(attrs),
-            None => attrs.name.as_ref().map(|n| {
-                skimap_voice::names::PisteName::new(
-                    n.split(" / ").next().unwrap_or(n).trim(),
-                    crate::phrases::colour(attrs.difficulty),
-                )
-            }),
-        };
+        let piste = phrases::piste(attrs);
         Event::Turn {
             metres: j.s - at,
             direction: j
@@ -1108,7 +1082,7 @@ pub fn announcements(
                     Priority::Safety,
                     Event::AvalancheSegment {
                         bera_level: level,
-                        piste: voice.and_then(|v| v.piste(attrs)),
+                        piste: phrases::piste(attrs),
                     },
                 ));
             }
@@ -1200,7 +1174,6 @@ pub fn turn_at(
     junctions: &[Junction],
     s_div: f64,
     metres: Option<f64>,
-    voice: Option<&Voice>,
 ) -> Option<Event> {
     let j = junctions.iter().find(|j| {
         (j.s - s_div).abs() < guidance::CLUSTER_M || (j.s <= s_div && s_div <= j.s_end)
@@ -1211,7 +1184,7 @@ pub fn turn_at(
         direction: j
             .direction
             .unwrap_or(skimap_voice::clips::Direction::Straight),
-        piste: voice.and_then(|v| v.piste(attrs)),
+        piste: phrases::piste(attrs),
     })
 }
 
@@ -1233,7 +1206,6 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
     let date = m.request.date;
     let departure = m.start_time;
     let eta = s.eta;
-    let voice = ctx.voice.as_ref();
     // Synthesis (A7) on the loop.
     let previous = data.route.replace(AssistRoute {
         name: s.label.clone(),
@@ -1255,7 +1227,7 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
         zones_told: None,
         zones_range: (0.0, f64::INFINITY),
     };
-    let anns = announcements(g, &course, &junctions, voice, Some(&hazards), departure);
+    let anns = announcements(g, &course, &junctions, Some(&hazards), departure);
     // The plans B say the protected zones the loop does not cross (the morning says the
     // loop's, A7).
     let loop_zones: BTreeSet<String> =
@@ -1311,7 +1283,7 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
                 FallbackKind::Exit => Fixed::PlanShortcut,
                 FallbackKind::Detour { .. } => Fixed::PlanClosedAhead,
             };
-            let first = turn_at(g, &jb, f.s_div, None, voice);
+            let first = turn_at(g, &jb, f.s_div, None);
             if f.kind == FallbackKind::Exit
                 && let (Some(l), Some(j)) = (limit, f.junction)
             {
@@ -1331,7 +1303,7 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
                 zones_told: Some(&loop_zones),
                 zones_range: (f.s_div, back),
             };
-            let mut after = announcements(g, &cb, &jb, voice, Some(&hazards_b), departure);
+            let mut after = announcements(g, &cb, &jb, Some(&hazards_b), departure);
             after.retain(|a| match a.trigger {
                 Trigger::Departure => false,
                 Trigger::At { s, .. } => s >= f.s_div - TURN_LEAD_M,
@@ -1439,67 +1411,6 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
         at: arrival,
     });
     keys.sort_by(|a, b| a.s.total_cmp(&b.s));
-    // Clips: every planned announcement, every switch, and the fixed phrases the tracker
-    // may say during the outing (alerts, deviation, end).
-    let mut clips = ClipCheck::default();
-    let mut check = |a: &Announcement| {
-        if let Some(v) = voice {
-            v.check(a, &mut clips);
-        } else {
-            for s in &a.segments {
-                clips.required.insert(s.clip.id.clone());
-                clips.missing.insert(s.clip.id.clone());
-            }
-        }
-    };
-    for a in &anns {
-        check(&a.announcement);
-    }
-    for b in &plans_b {
-        check(&b.switch);
-        for a in &b.announcements {
-            check(&a.announcement);
-        }
-    }
-    let clock = |t: DateTime| Clock::floor_quarter(t.hour() as u8, t.minute() as u8);
-    let mut runtime: Vec<Announcement> = [
-        Change::WindRising,
-        Change::Fog,
-        Change::Snow,
-        Change::TemperatureDrop,
-    ]
-    .into_iter()
-    .map(|c| Event::ConditionChange(c).announce())
-    .collect();
-    for side in [Side::Left, Side::Right, Side::Behind, Side::Ahead] {
-        runtime.push(
-            Event::OffRoute {
-                side,
-                metres: 100.0,
-            }
-            .announce(),
-        );
-    }
-    runtime.push(Event::BackOnRoute { piste: None }.announce());
-    runtime.push(Fixed::TurnaroundNow.clip_announcement());
-    if let Some(d) = deadline {
-        runtime.push(
-            Event::TurnaroundAdvanced {
-                deadline: clock(d - SignedDuration::from_hours(1)),
-            }
-            .announce(),
-        );
-    }
-    for p in PLAN_PHRASES {
-        runtime.push(phrases::announce(p));
-    }
-    // Proposals (C11).
-    for p in crate::pace::PROPOSAL_PHRASES {
-        runtime.push(phrases::announce(p));
-    }
-    for a in &runtime {
-        check(a);
-    }
     // Morning parts.
     let mut morning_parts = vec![(
         "briefing".to_owned(),
@@ -1593,11 +1504,6 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
     });
     let mut notes: Vec<String> = m.notes.clone();
     notes.extend(ctx.missing.iter().cloned());
-    if !clips.missing.is_empty() {
-        notes.push(
-            crate::text::of(m.lang).p_clips_fallback(clips.missing.len(), clips.required.len()),
-        );
-    }
     let mut plan = DayPlan {
         format: FORMAT.into(),
         version: VERSION,
@@ -1642,7 +1548,6 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
         morning: morning_parts,
         eta,
         weather,
-        clips,
         notes,
         never_safe: crate::text::of(m.lang).never_safe().into(),
         pace: None,
@@ -1654,21 +1559,6 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
     }
     debug_assert!(never_safe(&plan.text()));
     Ok(plan)
-}
-
-trait ClipAnnouncement {
-    fn clip_announcement(self) -> Announcement;
-}
-
-impl ClipAnnouncement for Fixed {
-    fn clip_announcement(self) -> Announcement {
-        Announcement {
-            segments: vec![skimap_voice::bank::Segment {
-                clip: self.clip(),
-                pause: skimap_voice::bank::Pause::Short,
-            }],
-        }
-    }
 }
 
 impl DayPlan {
@@ -1805,8 +1695,6 @@ impl DayPlan {
                 .collect();
             t.push(tx.p_refuges(REFUGE_NEAR_M, &names));
         }
-        let missing: Vec<String> = self.clips.missing.iter().cloned().collect();
-        t.push(tx.p_clips(self.clips.required.len(), &missing));
         for n in &self.notes {
             t.push(tx.p_limit(n));
         }

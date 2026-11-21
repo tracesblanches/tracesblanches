@@ -58,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map(|i| view.route(i).map_or(0, |r| r.points()))
                 .sum();
             println!(
-                "{} {} : lecture des couches {:.2} s, matin (A1, A2, A9, A5, A6) {:.3} s, plan {:.3} s ; {} plans B, {} annonces prévues, {} clips dont {} absents ; JSON {} Ko, table {} Ko ({} itinéraires, {} sommets) ; {}",
+                "{} {} : lecture des couches {:.2} s, matin (A1, A2, A9, A5, A6) {:.3} s, plan {:.3} s ; {} plans B, {} annonces prévues ; JSON {} Ko, table {} Ko ({} itinéraires, {} sommets) ; {}",
                 site.id,
                 req.label,
                 load,
@@ -66,8 +66,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 build,
                 p.plans_b.len(),
                 p.announcements.len(),
-                p.clips.required.len(),
-                p.clips.missing.len(),
                 json.len() / 1024,
                 trk.len() / 1024,
                 view.len(),

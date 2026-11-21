@@ -28,7 +28,6 @@ pub fn content_type(path: &Path) -> &'static str {
         "pbf" => "application/x-protobuf",
         "md" | "txt" => "text/plain; charset=utf-8",
         "gpx" | "kml" => "application/xml",
-        "opus" => "audio/ogg",
         _ => "application/octet-stream",
     }
 }

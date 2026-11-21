@@ -125,7 +125,7 @@ fn site_counts(site: &'static Site, family: bool, zone: bool) -> (usize, usize, 
         Some(&slope),
     )
     .expect("run");
-    let mut tr = Tracker::new(&p, view, &g, None, TrackerParams::default())
+    let mut tr = Tracker::new(&p, view, &g, TrackerParams::default())
         .unwrap()
         .with_layers(&data)
         .with_slope(&slope);

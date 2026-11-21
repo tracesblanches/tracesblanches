@@ -484,7 +484,7 @@ pub fn run_with(
     layers: Option<&SiteData>,
     slope: Option<&Grid<u8>>,
 ) -> Result<Run> {
-    let mut tr = Tracker::new(plan, track, g, None, params)?;
+    let mut tr = Tracker::new(plan, track, g, params)?;
     if let Some(d) = layers {
         tr = tr.with_layers(d);
     }
@@ -947,7 +947,7 @@ pub fn replay_with(
     layers: Option<&SiteData>,
     slope: Option<&Grid<u8>>,
 ) -> Result<Vec<Output>> {
-    let mut tr = Tracker::new(plan, track, g, None, params)?;
+    let mut tr = Tracker::new(plan, track, g, params)?;
     if let Some(d) = layers {
         tr = tr.with_layers(d);
     }

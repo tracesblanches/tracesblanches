@@ -92,7 +92,7 @@ pub struct SiteIndex {
     /// Ignored by an app of format 2 (an unknown field), so the index stays at version 1.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub patched_deltas: Vec<BundleRef>,
-    /// Layers, basemaps and voice of the latest version with their change since the
+    /// Layers and basemaps of the latest version with their change since the
     /// previous version and their validity.
     pub changes: Vec<ItemChange>,
 }

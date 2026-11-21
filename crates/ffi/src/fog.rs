@@ -954,8 +954,6 @@ fn spoken(t_ms: i64, text: String, priority: SpeechPriority, kind: &str) -> Spok
     SpokenView {
         t_ms,
         text,
-        segments: Vec::new(),
-        all_clips: false,
         priority,
         kinds: vec![kind.to_owned()],
     }

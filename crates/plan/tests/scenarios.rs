@@ -683,14 +683,7 @@ fn x11_protected_zones_of_a_route_said_by_the_common_function() {
             zones_range: (0.0, f64::INFINITY),
         };
         let j = skimap_plan::guidance::junctions(&b.graph, &c);
-        plan::announcements(
-            &b.graph,
-            &c,
-            &j,
-            b.layers.1.voice.as_ref(),
-            Some(&h),
-            b.plan.departure,
-        )
+        plan::announcements(&b.graph, &c, &j, Some(&h), b.plan.departure)
     };
     let all: std::collections::BTreeSet<String> = zones.iter().map(|z| z.id.clone()).collect();
     assert!(anns(&all).iter().all(|a| a.kind != "protected_zone"));
@@ -717,14 +710,6 @@ fn x11_protected_zones_of_a_route_said_by_the_common_function() {
         "{}",
         a.text
     );
-    let mut check = skimap_plan::phrases::ClipCheck::default();
-    b.layers
-        .1
-        .voice
-        .as_ref()
-        .expect("voice of the pack")
-        .check(&a.announcement, &mut check);
-    assert!(check.missing.is_empty(), "{check:?}");
 }
 
 // ---------------------------------------------------------------------------------------

@@ -156,7 +156,7 @@ fn crossing(primary: &str, neighbour: &str) -> bool {
     );
     assert!(plan_dir.join(NEIGHBOURS_FILE).is_file());
     // The outing opens on the merged graph (the plan's fingerprint and edges checked).
-    let session = open_tracking(plan_dir.display().to_string(), None, "fr".into())
+    let session = open_tracking(plan_dir.display().to_string(), "fr".into())
         .unwrap_or_else(|e| panic!("{primary}: tracking: {e}"));
     drop(session);
     true
@@ -388,7 +388,7 @@ fn jura_evening_over_two_packs() {
     {
         println!("  key point: km {:.2} {:?}", k.s / 1000.0, k.name);
     }
-    let session = open_tracking(plan_dir.display().to_string(), None, "fr".into())
+    let session = open_tracking(plan_dir.display().to_string(), "fr".into())
         .unwrap_or_else(|e| panic!("tracking the prepared plan: {e}"));
     drop(session);
 }

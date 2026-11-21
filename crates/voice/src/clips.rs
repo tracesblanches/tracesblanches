@@ -1,15 +1,14 @@
-//! The clip vocabulary: every clip is an id and the French text spoken for it.
+//! The phrase vocabulary: every phrase ("clip") is an id and the French text spoken for it.
 //!
 //! An announcement is a sequence of clips. Each clip is a complete spoken unit ending with
-//! a period (the text-to-speech engine gives every clip a final intonation), so clips are
-//! cut where a speaker pauses: "Dans deux cents mètres, tournez à gauche." | "Greffier,
-//! piste bleue." Values are rounded onto finite grids (see [`crate::quantity`]), so the
-//! whole vocabulary of a pack is finite: fixed phrases, value phrases, and the pack names.
+//! a period (the speech synthesis gives every clip a final intonation), so clips are cut
+//! where a speaker pauses: "Dans deux cents mètres, tournez à gauche." | "Greffier, piste
+//! bleue." Values are rounded onto finite grids (see [`crate::quantity`]), the way a
+//! person says them, and written in words: the synthesis reads them as written, in both
+//! languages, whatever its own rules for digits.
 //!
-//! The functions of this module build the id and text of a clip for any value; the value
-//! ranges pre-generated in a pack are listed in [`mod@crate::manifest`]. A value outside them
-//! still has a correct text, and its id is simply absent from the pack, which sends the
-//! announcement to the fallback voice.
+//! The functions of this module build the id and text of a clip for any value; the grids
+//! are listed in [`mod@crate::vocabulary`]. A value outside them still has a correct text.
 
 use serde::{Deserialize, Serialize};
 
@@ -17,7 +16,7 @@ use crate::names::Colour;
 use crate::numbers::{Gender, cardinal, day_of_month, month_name, signed};
 use crate::quantity::{Clock, distance_words, duration_words};
 
-/// One clip: stable id (also its file name) and text.
+/// One clip: stable id (names the phrase and its values, for the translation) and text.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Clip {
     /// Stable id, ASCII, `[a-z0-9.-]`, e.g. `turn.left.200`.

@@ -44,7 +44,6 @@ fn make_pack(dir: &Path, version: &str, files: &[(&str, &[u8])]) -> Vec<u8> {
         "personal_sources": false, "basemaps": [],
         "layers": [layer("pistes", "layers/pistes.json", "2026-12-31"),
                    layer("bera", "layers/bera.json", "2026-11-16")],
-        "voice": {"status": "absent", "clips": 0, "bytes": 0, "note": "n"},
         "attributions": [], "files": entries, "total_bytes": total
     });
     let bytes = serde_json::to_vec_pretty(&m).unwrap();
@@ -89,6 +88,20 @@ fn read_tree(dir: &Path) -> Vec<(String, Vec<u8>)> {
 }
 
 const BASEMAP: &[u8] = &[7u8; 50_000];
+
+/// A pack of an earlier version, with the slot of its pre-generated voice clips, still
+/// reads (the phone keeps it until its next update).
+#[test]
+fn a_manifest_with_the_voice_slot_of_an_earlier_version_reads() {
+    let dir = tempfile::tempdir().unwrap();
+    let bytes = make_pack(&dir.path().join("p"), "1", &[("layers/bera.json", b"{}")]);
+    let mut m: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    m["voice"] = json!({"status": "present", "manifest": "voice/manifest.json",
+                        "clips_dir": "voice/clips", "clips": 899, "bytes": 3_759_462,
+                        "sources": [], "note": "n"});
+    let old = manifest(&serde_json::to_vec(&m).unwrap());
+    assert_eq!(old, manifest(&bytes));
+}
 
 #[test]
 fn first_install_then_daily_delta() {

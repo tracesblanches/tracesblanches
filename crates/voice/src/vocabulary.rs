@@ -1,7 +1,9 @@
-//! The finite clip set of a pack: fixed phrases, value phrases on their grids, and the
-//! names of the pack.
+//! The finite vocabulary of the announcements: fixed phrases, value phrases on the grids
+//! the bank rounds to, and the names of a site. The phone's speech synthesis reads any
+//! text; this list serves the tests (every phrase in both languages, every rounded value
+//! said with the grid's words) and the limits the bank phrases with.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
@@ -26,16 +28,16 @@ pub const TEMPERATURES: (i32, i32) = (-35, 30);
 /// Wind, km/h, by 10.
 pub const WINDS: (u32, u32) = (10, 150);
 
-/// Names of a pack, from its layers (pistes, refuges, places, zones).
+/// Names of a site, from its layers (pistes, refuges, places, zones).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PackNames {
+pub struct SiteNames {
     /// Site name ("Les Saisies").
     pub site: String,
     /// Pistes with their colours.
     pub pistes: Vec<PisteName>,
     /// Refuges, shelters, places, protected zones.
     pub places: Vec<String>,
-    /// End dates of the seasonal protection periods of the pack's zones.
+    /// End dates of the seasonal protection periods of the site's zones.
     pub dates: Vec<DayMonth>,
     /// Number of pistes whose open status is announced (0..=this many open).
     pub status_pistes: u32,
@@ -49,42 +51,24 @@ pub enum ClipKind {
     Fixed,
     /// Value on a grid (distance, duration, time, slope, temperature...).
     Value,
-    /// Name of the pack.
+    /// Name of the site.
     Name,
 }
 
-/// Clip id → (kind, text) for one pack.
+/// Phrase id → (kind, text).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Manifest {
+pub struct Vocabulary {
     /// Clips by id.
     pub clips: BTreeMap<String, (ClipKind, String)>,
-    /// Clips of names read only from personal-use sources ([`manifest_split`]): left out
-    /// of a published pack.
-    #[serde(default)]
-    pub personal: BTreeSet<String>,
 }
 
-impl Manifest {
+impl Vocabulary {
     fn add(&mut self, kind: ClipKind, c: Clip) {
         // Names that differ only by case or accents share an id: the first text is kept.
         self.clips.entry(c.id).or_insert((kind, c.text));
     }
 
-    /// Adds a clip of a personal name, unless a public clip has its id.
-    fn add_personal(&mut self, kind: ClipKind, c: Clip) {
-        if !self.clips.contains_key(&c.id) {
-            self.personal.insert(c.id.clone());
-            self.clips.insert(c.id, (kind, c.text));
-        }
-    }
-
-    /// Whether a clip is only for personal packs.
-    pub fn is_personal(&self, id: &str) -> bool {
-        self.personal.contains(id)
-    }
-
-    /// Whether every clip of `a` is in the manifest with the same text (if not, the
-    /// announcement goes to the fallback voice).
+    /// Whether every phrase of `a` is in the vocabulary with the same text.
     pub fn covers(&self, a: &crate::bank::Announcement) -> bool {
         a.segments.iter().all(|s| {
             self.clips
@@ -99,9 +83,9 @@ impl Manifest {
     }
 }
 
-/// The clip set of a pack with these names.
-pub fn manifest(names: &PackNames) -> Manifest {
-    let mut m = Manifest::default();
+/// The vocabulary of a site with these names.
+pub fn vocabulary(names: &SiteNames) -> Vocabulary {
+    let mut m = Vocabulary::default();
     for f in Fixed::ALL {
         m.add(ClipKind::Fixed, f.clip());
     }
@@ -196,18 +180,13 @@ pub fn manifest(names: &PackNames) -> Manifest {
     m
 }
 
-/// The clip set of a pack in `lang` (VO6): the clips of [`manifest`], same ids, with the
+/// The vocabulary in `lang` (VO6): the phrases of [`vocabulary`], same ids, with the
 /// texts of `lang`.
-pub fn manifest_in(names: &PackNames, lang: Lang) -> Manifest {
-    in_lang(manifest(names), lang)
+pub fn vocabulary_in(names: &SiteNames, lang: Lang) -> Vocabulary {
+    in_lang(vocabulary(names), lang)
 }
 
-/// [`manifest_split`] in `lang`.
-pub fn manifest_split_in(public: &PackNames, personal: &PackNames, lang: Lang) -> Manifest {
-    in_lang(manifest_split(public, personal), lang)
-}
-
-fn in_lang(mut m: Manifest, lang: Lang) -> Manifest {
+fn in_lang(mut m: Vocabulary, lang: Lang) -> Vocabulary {
     if lang == Lang::Fr {
         return m;
     }
@@ -217,36 +196,6 @@ fn in_lang(mut m: Manifest, lang: Lang) -> Manifest {
             text: std::mem::take(text),
         };
         *text = localise(&c, Lang::Fr, lang).text;
-    }
-    m
-}
-
-/// The clip set of a pack with publishable names `public` and names read only from
-/// personal-use sources `personal` (pistes, places and dates; its `site` and
-/// `status_pistes` are not used): the clips of `personal` that `public` has not are
-/// marked ([`Manifest::personal`]).
-pub fn manifest_split(public: &PackNames, personal: &PackNames) -> Manifest {
-    let mut m = manifest(public);
-    for d in &personal.dates {
-        m.add_personal(ClipKind::Value, clips::until(*d));
-    }
-    for p in &personal.pistes {
-        m.add_personal(
-            ClipKind::Name,
-            Clip {
-                id: p.clip_id(),
-                text: p.clip_text(),
-            },
-        );
-    }
-    for n in &personal.places {
-        m.add_personal(
-            ClipKind::Name,
-            Clip {
-                id: name_clip_id(n),
-                text: name_clip_text(n),
-            },
-        );
     }
     m
 }

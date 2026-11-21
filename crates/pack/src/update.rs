@@ -73,7 +73,7 @@ pub struct Update {
     pub total_bytes: u64,
     /// Validity of the new version as a whole.
     pub valid_for: PackValidity,
-    /// Every basemap, layer and the voice clips of either version, with their change.
+    /// Every basemap and layer of either version, with their change.
     pub changes: Vec<ItemChange>,
     /// In a bundle only: the manifest is stored gzip-compressed, this many bytes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -131,12 +131,12 @@ pub enum Change {
     Removed,
 }
 
-/// Change of one basemap, layer or of the voice clips.
+/// Change of one basemap or layer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ItemChange {
-    /// `basemap`, `vector`, `raster`, `data` (layer kinds) or `voice`.
+    /// `basemap`, `vector`, `raster`, `data` (layer kinds).
     pub kind: String,
-    /// Basemap or layer identifier; `voice` for the clips.
+    /// Basemap or layer identifier.
     pub id: String,
     /// Change.
     pub change: Change,
@@ -176,7 +176,7 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
 
-/// One basemap, layer or the voice clips of a manifest, with its main file.
+/// One basemap or layer of a manifest, with its main file.
 struct Item {
     kind: String,
     id: String,
@@ -185,7 +185,7 @@ struct Item {
     bytes: u64,
 }
 
-/// Basemaps, layers and voice clips of a manifest, in manifest order.
+/// Basemaps and layers of a manifest, in manifest order.
 fn items(m: &Manifest) -> Vec<Item> {
     let files: HashMap<&str, (&str, u64)> = m
         .files
@@ -215,9 +215,6 @@ fn items(m: &Manifest) -> Vec<Item> {
             .and_then(|v| v.as_str().map(str::to_owned))
             .unwrap_or_default();
         out.push(item(kind, &l.id, &l.file));
-    }
-    if let Some(vm) = &m.voice.manifest {
-        out.push(item("voice".to_owned(), "voice", vm));
     }
     out
 }
@@ -325,7 +322,7 @@ fn item_change<'a>(
     bytes: u64,
     layer: impl Fn(&str) -> Option<&'a crate::manifest::Layer>,
 ) -> ItemChange {
-    let l = if i.kind == "basemap" || i.kind == "voice" {
+    let l = if i.kind == "basemap" {
         None
     } else {
         layer(&i.id)
@@ -830,7 +827,7 @@ pub fn bundle_blobs(update: &Update) -> Vec<(&str, u64)> {
 
 /// Extensions of the pack files stored gzip-compressed in a bundle: text (JSON, GeoJSON,
 /// TSV) and the font glyphs (protobuf), which the transport does not compress (a bundle is
-/// served as binary). PMTiles, gzip rasters, PNG and Opus are compressed already.
+/// served as binary). PMTiles, gzip rasters and PNG are compressed already.
 pub const COMPRESSIBLE_EXTENSIONS: &[&str] = &["json", "geojson", "tsv", "txt", "csv", "pbf"];
 
 /// Whether a blob is stored gzip-compressed in a bundle (when that makes it smaller):
@@ -968,7 +965,7 @@ pub fn write_bundle<W: std::io::Write, R: std::io::Read>(
 /// few hundred; the phone inflates it once), the files of `patches` as their patch, the
 /// text blobs ([`compressible`]: weather, assistant, vector layers) gzip-compressed when
 /// that makes them smaller, every other blob as is (the heavy ones are compressed already:
-/// PMTiles, SKR gzip, Opus). `open(sha)` gives the contents of a blob. Returns the bundle
+/// PMTiles, SKR gzip, PNG). `open(sha)` gives the contents of a blob. Returns the bundle
 /// length.
 pub fn write_bundle_patched<W: std::io::Write, R: std::io::Read>(
     w: &mut W,

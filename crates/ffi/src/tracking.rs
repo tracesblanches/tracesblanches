@@ -1,11 +1,11 @@
 //! Following the day plan on the phone (K4 #54, K5 #55, K6 #56, K8 #58, K13 #116, E1
 //! #125, C11 #130): the app's single location service feeds the core's tracker
-//! (`skimap_plan::tracker`) with its batches of fixes and gets back what to say (clips of
-//! the pack, assembled), the alerts, the switches and proposals to show, the GPS request
+//! (`skimap_plan::tracker`) with its batches of fixes and gets back what to say (the text
+//! the phone's speech synthesis reads, in the app's language), the alerts, the switches and proposals to show, the GPS request
 //! to apply, and the guidance of the thin banner and of the lock-screen notification
 //! (next direction and distance, time left, arrival).
 //!
-//! The tracker borrows the plan, its flat table, the trail graph and the pack's clips. A
+//! The tracker borrows the plan, its flat table and the trail graph. A
 //! [`TrackingSession`] owns them on a thread of its own, where the tracker lives for the
 //! whole outing; every call is a message to that thread and its answer (no `unsafe`, no
 //! copy of the plan per call). The thread sleeps on its channel between batches: nothing
@@ -41,7 +41,6 @@ use skimap_plan::course::Course;
 use skimap_plan::gps::{GpsInput, GpsMode, GpsParams, GpsRequest, GpsState};
 use skimap_plan::guidance::{self, Junction};
 use skimap_plan::pace::ProposalKind;
-use skimap_plan::phrases::Voice;
 use skimap_plan::plan::{DayPlan, KeyKind};
 use skimap_plan::session::{Activity, End, Phase, SessionEvent};
 use skimap_plan::speech::{Priority, Spoken};
@@ -52,7 +51,6 @@ use skimap_plan::tracker::{
 use skimap_voice::Event;
 use skimap_voice::bank::Announcement;
 use skimap_voice::clips::Direction;
-use skimap_voice::pack::VoiceManifest;
 
 use crate::tracking_back::{
     Backtrack, Car, CarSpotter, Network, Parking, Target, TargetKind, WayKind, choose_target,
@@ -344,30 +342,13 @@ fn priority_view(p: Priority) -> SpeechPriority {
     }
 }
 
-/// One clip of an announcement.
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
-pub struct ClipSegment {
-    /// Clip id.
-    pub id: String,
-    /// Text.
-    pub text: String,
-    /// Ogg/Opus file of the pack, when the pack has this clip with this text.
-    pub file: Option<String>,
-    /// Silence after it, milliseconds (none after the last).
-    pub pause_ms: u32,
-}
-
 /// Something to say.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct SpokenView {
     /// Epoch milliseconds.
     pub t_ms: i64,
-    /// Text (the fallback voice reads it when a clip is missing).
+    /// Text the phone's speech synthesis reads, in the language of the announcements.
     pub text: String,
-    /// Clips in order.
-    pub segments: Vec<ClipSegment>,
-    /// Every clip is in the pack.
-    pub all_clips: bool,
     /// Highest priority of the items said.
     pub priority: SpeechPriority,
     /// What each item is (`turn`, `off_route`, `fog`, `proposal`…).
@@ -692,44 +673,12 @@ pub struct BatchOut {
     pub guidance: GuidanceView,
 }
 
-/// Clips of the pack: id → file, with the text the pack says.
-struct Clips {
-    manifest: Option<VoiceManifest>,
-    dir: PathBuf,
-    /// Language spoken: the clips' (VO6), else the phone's for the Android voice.
+/// The language the announcements are said in: the app's (VO6).
+struct Speech {
     lang: skimap_voice::Lang,
 }
 
-impl Clips {
-    fn segment(&self, a: &Announcement) -> (Vec<ClipSegment>, bool) {
-        let n = a.segments.len();
-        // The bank speaks French; the same announcement in the language of the clips.
-        let localised = a.in_lang(self.lang);
-        let a = &localised;
-        let mut all = true;
-        let segs = a
-            .segments
-            .iter()
-            .enumerate()
-            .map(|(i, s)| {
-                let file = self
-                    .manifest
-                    .as_ref()
-                    .and_then(|m| m.get(&s.clip.id))
-                    .filter(|e| e.text == s.clip.text)
-                    .map(|e| self.dir.join(&e.file).display().to_string());
-                all &= file.is_some();
-                ClipSegment {
-                    id: s.clip.id.clone(),
-                    text: s.clip.text.clone(),
-                    file,
-                    pause_ms: if i + 1 < n { s.pause.ms() } else { 0 },
-                }
-            })
-            .collect();
-        (segs, all)
-    }
-
+impl Speech {
     fn spoken(
         &self,
         t_ms: i64,
@@ -737,12 +686,9 @@ impl Clips {
         priority: Priority,
         kinds: Vec<String>,
     ) -> SpokenView {
-        let (segments, all_clips) = self.segment(a);
         SpokenView {
             t_ms,
             text: a.in_lang(self.lang).text(),
-            segments,
-            all_clips,
             priority: priority_view(priority),
             kinds,
         }
@@ -779,8 +725,7 @@ struct Owned {
     plan: DayPlan,
     trk: Vec<u8>,
     graph: PisteGraph,
-    voice: Option<Voice>,
-    clips: Clips,
+    speech: Speech,
     /// The pack's layers of the day (X11): a route computed during the outing announces
     /// zones without network, avalanche paths and protected zones.
     layers: Option<SiteData>,
@@ -789,7 +734,7 @@ struct Owned {
     log: PathBuf,
     /// Car parks of the pack.
     parkings: Vec<Parking>,
-    /// Language of the written texts: the phone's (VO6), whatever the voice speaks.
+    /// Language of the written texts: the app's (VO6), the same as the announcements'.
     text_lang: skimap_voice::Lang,
     /// Where the car set by the skier is kept.
     car_file: PathBuf,
@@ -852,15 +797,11 @@ fn read_inputs(path: &Path) -> Result<Vec<Input>, TrackingError> {
 
 /// Opens the tracking of the plan in `plan_dir` (written by « Valider la journée »).
 /// Inputs already recorded there (the process was restarted during the outing) are
-/// replayed first. The voice (VO6) is the voice pack of the site in the phone's
-/// language `phone_lang` (`fr`, `en-GB`…) under `voice_root` (`<root>/<site>/<lang>/`,
-/// [`voice_choice`]); without it, an installed voice of another language (a change of
-/// language not yet downloaded keeps the installed voice); without any, the Android voice
-/// in the phone's language.
+/// replayed first. The announcements are said in the app's language for `phone_lang`
+/// (`fr`, `en-GB`…: French on a French phone, else English, VO6).
 #[uniffi::export]
 pub fn open_tracking(
     plan_dir: String,
-    voice_root: Option<String>,
     phone_lang: String,
 ) -> Result<Arc<TrackingSession>, TrackingError> {
     let dir = PathBuf::from(&plan_dir);
@@ -874,21 +815,11 @@ pub fn open_tracking(
     let graph = crate::neighbours::load_graph_set(&pack_dir, &neighbours)?;
     let layers = load_layers_with(&pack_dir, &neighbours, &dir.join(LAYERS_DIR));
     let slope = crate::offpiste::load_slope(&pack_dir, &dir.join(LAYERS_DIR));
-    let site = Pack::open(pack_dir.clone())
-        .map(|p| p.manifest().site.id.clone())
-        .unwrap_or_default();
-    let choice = voice_choice(voice_root.unwrap_or_default(), site, phone_lang.clone());
-    let voice_dir = choice
-        .dir
-        .map(|d| PathBuf::from(d).join("voice"))
-        // A pack built before VO6 has its French clips inside.
-        .or_else(|| Some(pack_dir.join("voice")).filter(|v| v.join("manifest.json").is_file()));
     let parkings = pack_parkings(&pack_dir);
     TrackingSession::start_lang(
         plan,
         trk,
         graph,
-        voice_dir,
         layers,
         slope,
         parkings,
@@ -934,53 +865,6 @@ fn back_announcement(target: Option<&Target>) -> Announcement {
                 pause: Pause::Short,
             })
             .collect(),
-    }
-}
-
-/// The voice of a site for a phone language (VO6).
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
-pub struct VoiceChoice {
-    /// Language the phone asks for (`fr` on a French phone, else `en`).
-    pub wanted: String,
-    /// Language of the voice used: `wanted` when its pack is installed, else the
-    /// installed one, else `wanted` (Android voice).
-    pub lang: String,
-    /// Voice pack used (`<root>/<site>/<lang>`), if any is installed.
-    pub dir: Option<String>,
-    /// Whether the voice of `wanted` still has to be downloaded.
-    pub download_needed: bool,
-}
-
-/// Which voice pack of `site` under `voice_root` speaks for a phone in `phone_lang`:
-/// the pack of its language if installed (`<root>/<site>/<lang>/voice/manifest.json`),
-/// else an installed pack of another language, kept until the new one is downloaded
-/// (offline, a change of language keeps the installed voice).
-#[uniffi::export]
-pub fn voice_choice(voice_root: String, site: String, phone_lang: String) -> VoiceChoice {
-    let wanted = skimap_voice::Lang::of_phone(&phone_lang);
-    let site_dir = Path::new(&voice_root).join(&site);
-    let installed = |l: skimap_voice::Lang| {
-        let d = site_dir.join(l.code());
-        (!voice_root.is_empty() && !site.is_empty() && d.join("voice/manifest.json").is_file())
-            .then(|| d.display().to_string())
-    };
-    if let Some(d) = installed(wanted) {
-        return VoiceChoice {
-            wanted: wanted.code().into(),
-            lang: wanted.code().into(),
-            dir: Some(d),
-            download_needed: false,
-        };
-    }
-    let other = skimap_voice::Lang::ALL
-        .into_iter()
-        .filter(|l| *l != wanted)
-        .find_map(|l| installed(l).map(|d| (l, d)));
-    VoiceChoice {
-        wanted: wanted.code().into(),
-        lang: other.as_ref().map_or(wanted, |o| o.0).code().into(),
-        dir: other.map(|o| o.1),
-        download_needed: true,
     }
 }
 
@@ -1036,24 +920,15 @@ fn layers_note(l: &Result<SiteData, String>) -> Vec<String> {
 }
 
 impl TrackingSession {
-    /// A session on a plan, its table and graph, with the clips of the voice layer in
-    /// `voice_dir` (`None`: the Android voice says everything); inputs are recorded in
+    /// A session on a plan, its table and graph, said in French; inputs are recorded in
     /// `plan_dir` and those already there are replayed first.
     pub fn start(
         plan: DayPlan,
         trk: Vec<u8>,
         graph: PisteGraph,
-        voice_dir: Option<PathBuf>,
         plan_dir: PathBuf,
     ) -> Result<Arc<Self>, TrackingError> {
-        Self::start_with(
-            plan,
-            trk,
-            graph,
-            voice_dir,
-            Err("not requested".into()),
-            plan_dir,
-        )
+        Self::start_with(plan, trk, graph, Err("not requested".into()), plan_dir)
     }
 
     /// [`TrackingSession::start`] with the layers of the day for the tracker
@@ -1062,11 +937,10 @@ impl TrackingSession {
         plan: DayPlan,
         trk: Vec<u8>,
         graph: PisteGraph,
-        voice_dir: Option<PathBuf>,
         layers: Result<SiteData, String>,
         plan_dir: PathBuf,
     ) -> Result<Arc<Self>, TrackingError> {
-        Self::start_full(plan, trk, graph, voice_dir, layers, Vec::new(), plan_dir)
+        Self::start_full(plan, trk, graph, layers, Vec::new(), plan_dir)
     }
 
     /// [`TrackingSession::start_with`] with the car parks of the pack: the car recorded at
@@ -1075,7 +949,6 @@ impl TrackingSession {
         plan: DayPlan,
         trk: Vec<u8>,
         graph: PisteGraph,
-        voice_dir: Option<PathBuf>,
         layers: Result<SiteData, String>,
         parkings: Vec<Parking>,
         plan_dir: PathBuf,
@@ -1084,7 +957,6 @@ impl TrackingSession {
             plan,
             trk,
             graph,
-            voice_dir,
             layers,
             Err("not requested".into()),
             parkings,
@@ -1093,16 +965,14 @@ impl TrackingSession {
         )
     }
 
-    /// [`TrackingSession::start_full`] for a phone in `phone_lang` (VO6): the clips speak
-    /// their own language; without clips, the Android voice reads `phone_lang`. With the
-    /// terrain slope of the pack (or why there is none), steep terrain off the trails is
+    /// [`TrackingSession::start_full`] for a phone in `phone_lang` (VO6): announcements and
+    /// texts in that language. With the terrain slope of the pack (or why there is none), steep terrain off the trails is
     /// said (K6 #56).
     #[allow(clippy::too_many_arguments)]
     pub fn start_lang(
         plan: DayPlan,
         trk: Vec<u8>,
         graph: PisteGraph,
-        voice_dir: Option<PathBuf>,
         layers: Result<SiteData, String>,
         slope: Result<Grid<u8>, String>,
         parkings: Vec<Parking>,
@@ -1111,21 +981,7 @@ impl TrackingSession {
     ) -> Result<Arc<Self>, TrackingError> {
         let mut note = layers_note(&layers);
         note.push(if slope.is_ok() { "slope" } else { "-slope" }.into());
-        let manifest = voice_dir.as_ref().and_then(|v| VoiceManifest::read(v).ok());
-        let lang = manifest.as_ref().map_or(phone_lang, |m| m.lang);
-        // The plan names the pistes as the pack does, in French: the clips of another
-        // language are read back in French (same ids).
-        let voice = manifest.as_ref().zip(voice_dir.as_ref()).map(|(m, v)| {
-            let mut fr = m.clone();
-            for c in &mut fr.clips {
-                let clip = skimap_voice::clips::Clip {
-                    id: c.id.clone(),
-                    text: c.text.clone(),
-                };
-                c.text = skimap_voice::phrase::localise(&clip, m.lang, skimap_voice::Lang::Fr).text;
-            }
-            Voice::new(&fr, v.join("manifest.json").display().to_string())
-        });
+        let lang = phone_lang;
         let log = plan_dir.join(INPUTS_FILE);
         let past = read_inputs(&log)?;
         let replayed = u32::try_from(past.len()).unwrap_or(u32::MAX);
@@ -1133,12 +989,7 @@ impl TrackingSession {
             plan,
             trk,
             graph,
-            voice,
-            clips: Clips {
-                manifest,
-                dir: voice_dir.unwrap_or_default(),
-                lang,
-            },
+            speech: Speech { lang },
             layers: layers.ok(),
             slope: slope.ok(),
             log,
@@ -1202,8 +1053,8 @@ impl TrackingSession {
 
 #[uniffi::export]
 impl TrackingSession {
-    /// Language of the announcements (`fr`, `en`, VO6): that of the clips, else the
-    /// phone's; the Android voice reads the missing clips in it.
+    /// Language of the announcements (`fr`, `en`, VO6): the app's; the phone's speech
+    /// synthesis reads them in it.
     pub fn speech_lang(&self) -> String {
         self.lang.code().to_owned()
     }
@@ -1314,13 +1165,7 @@ fn serve(
             return;
         }
     };
-    let tracker = match Tracker::new(
-        &owned.plan,
-        view,
-        &owned.graph,
-        owned.voice.as_ref(),
-        TrackerParams::default(),
-    ) {
+    let tracker = match Tracker::new(&owned.plan, view, &owned.graph, TrackerParams::default()) {
         Ok(t) => {
             let t = match &owned.layers {
                 Some(l) => t.with_layers(l),
@@ -1631,7 +1476,7 @@ impl<'a> Engine<'a> {
                 Output::Spoken { t, spoken } => {
                     // Going back, only safety is said from the tracker.
                     if !backing || spoken.items.iter().any(|c| c.priority == Priority::Safety) {
-                        b.spoken.push(self.o.clips.of(ms(t), &spoken));
+                        b.spoken.push(self.o.speech.of(ms(t), &spoken));
                     }
                 }
                 Output::Alert { t, alert } => {
@@ -1800,7 +1645,7 @@ impl<'a> Engine<'a> {
                     Priority::Direction
                 };
                 b.spoken
-                    .push(self.o.clips.spoken(t_ms, &a, pr, vec![kind.to_owned()]));
+                    .push(self.o.speech.spoken(t_ms, &a, pr, vec![kind.to_owned()]));
             }
             arrived |= step.arrived;
         }
@@ -1996,7 +1841,7 @@ impl<'a> Engine<'a> {
         let t = t_ms as f64 / 1000.0;
         if let Some(b) = self.back.as_mut() {
             let a = b.start_announcement();
-            out.spoken.push(self.o.clips.spoken(
+            out.spoken.push(self.o.speech.spoken(
                 t_ms,
                 &a,
                 Priority::Direction,
@@ -2023,9 +1868,9 @@ impl<'a> Engine<'a> {
             kind: "back".into(),
             text: crate::tracking_back::proposal_text(self.target().as_ref(), self.o.text_lang),
         };
-        // Said with the clips of the bank, in the language of the voice (VO6).
+        // Said with the phrases of the bank, in the language of the app (VO6).
         let a = back_announcement(self.target().as_ref());
-        b.spoken.push(self.o.clips.spoken(
+        b.spoken.push(self.o.speech.spoken(
             t_ms,
             &a,
             Priority::Safety,
@@ -2056,7 +1901,7 @@ impl<'a> Engine<'a> {
                 metres: Some(g.remaining_m),
             },
         };
-        Some(self.o.clips.spoken(
+        Some(self.o.speech.spoken(
             t_ms,
             &ev.announce(),
             Priority::Direction,
@@ -2073,7 +1918,7 @@ impl<'a> Engine<'a> {
         .announce();
         Some(
             self.o
-                .clips
+                .speech
                 .spoken(t_ms, &a, Priority::Schedule, vec!["remaining".into()]),
         )
     }
@@ -2178,99 +2023,16 @@ mod lang_tests {
     use super::*;
     use skimap_voice::Lang;
     use skimap_voice::clips::Fixed;
-    use skimap_voice::pack::ClipEntry;
-
-    fn voice_pack(root: &Path, site: &str, lang: Lang) {
-        let d = root.join(site).join(lang.code()).join("voice");
-        std::fs::create_dir_all(&d).unwrap();
-        std::fs::write(d.join("manifest.json"), "{}").unwrap();
-    }
 
     #[test]
-    fn voice_follows_the_phone_and_keeps_the_installed_one() {
-        let t = tempfile::tempdir().unwrap();
-        let root = t.path().display().to_string();
-        let c = voice_choice(root.clone(), "cervieres".into(), "de-DE".into());
-        assert_eq!((c.wanted.as_str(), c.lang.as_str()), ("en", "en"));
-        assert!(c.download_needed && c.dir.is_none());
-        // French installed, phone switched to English while offline: French kept.
-        voice_pack(t.path(), "cervieres", Lang::Fr);
-        let c = voice_choice(root.clone(), "cervieres".into(), "en-GB".into());
-        assert_eq!((c.wanted.as_str(), c.lang.as_str()), ("en", "fr"));
-        assert!(c.download_needed);
-        assert!(c.dir.unwrap().ends_with("cervieres/fr"));
-        // Once the English pack is there, it speaks.
-        voice_pack(t.path(), "cervieres", Lang::En);
-        let c = voice_choice(root.clone(), "cervieres".into(), "en-GB".into());
-        assert_eq!(c.lang, "en");
-        assert!(!c.download_needed);
-        let c = voice_choice(root, "cervieres".into(), "fr-FR".into());
-        assert_eq!(c.lang, "fr");
-    }
-
-    #[test]
-    fn announcements_in_the_language_of_the_clips() {
-        let entry = |id: &str, text: &str| ClipEntry {
-            id: id.into(),
-            kind: skimap_voice::manifest::ClipKind::Fixed,
-            text: text.into(),
-            file: format!("clips/{id}.opus"),
-            duration_ms: 1000,
-            bytes: 1,
-            tokens: 1,
-            lead_trim_ms: 0,
-            tail_trim_ms: 0,
-            gain_db: 0.0,
-            end_burst: false,
-            seed: 42,
-            onset_clipped: false,
-            loudness_lufs: None,
-            true_peak_dbtp: None,
-            limiter_db: None,
-            loudness_capped: false,
-        };
-        let manifest = |lang: Lang, text: &str| VoiceManifest {
-            format: 1,
-            lang,
-            voice: "estelle".into(),
-            model: "m".into(),
-            model_sha256: "s".into(),
-            seed: 42,
-            sample_rate: 24_000,
-            opus_kbps: 24,
-            loudness_target: None,
-            pauses_ms: (150, 400),
-            clips: vec![entry("fix.arrive", text)],
-        };
+    fn announcements_in_the_language_of_the_app() {
         let a = skimap_voice::Event::Arrive { metres: None }.announce();
         assert_eq!(a.clip_ids(), [Fixed::Arrive.clip().id]);
-        let en = Clips {
-            manifest: Some(manifest(Lang::En, "You have arrived at your destination.")),
-            dir: PathBuf::from("/v"),
-            lang: Lang::En,
-        };
+        let en = Speech { lang: Lang::En };
         let s = en.spoken(0, &a, Priority::Direction, vec![]);
         assert_eq!(s.text, "You have arrived at your destination.");
-        assert!(s.all_clips);
-        assert_eq!(
-            s.segments[0].file.as_deref(),
-            Some("/v/clips/fix.arrive.opus")
-        );
-        // French clips for an English phone without its voice: French spoken, French clips.
-        let fr = Clips {
-            manifest: Some(manifest(Lang::Fr, &Fixed::Arrive.clip().text)),
-            dir: PathBuf::from("/v"),
-            lang: Lang::Fr,
-        };
-        assert!(fr.spoken(0, &a, Priority::Direction, vec![]).all_clips);
-        // No clips: the Android voice reads the English text.
-        let none = Clips {
-            manifest: None,
-            dir: PathBuf::new(),
-            lang: Lang::En,
-        };
-        let s = none.spoken(0, &a, Priority::Direction, vec![]);
-        assert!(!s.all_clips);
-        assert_eq!(s.text, "You have arrived at your destination.");
+        let fr = Speech { lang: Lang::Fr };
+        let s = fr.spoken(0, &a, Priority::Direction, vec![]);
+        assert_eq!(s.text, Fixed::Arrive.clip().text);
     }
 }

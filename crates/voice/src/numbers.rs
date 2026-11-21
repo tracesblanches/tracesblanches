@@ -31,8 +31,7 @@ const TENS: [&str; 7] = [
 ///
 /// Every `u32` is spoken ("quatre milliards deux cent quatre-vingt-quatorze millions…"):
 /// the values come from downloaded data (a corrupt pack, a sensor glitch), and the voice
-/// must say something rather than abort; such values are outside the pack clips and go to
-/// the fallback voice.
+/// must say something rather than abort.
 pub fn cardinal(n: u32, gender: Gender) -> String {
     if n == 0 {
         return UNITS[0].to_owned();

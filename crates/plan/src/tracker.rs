@@ -71,7 +71,7 @@ use crate::pace::{
     self, PaceReason, PaceRoute, ProfileFitParams, ProfileProposal, Proposal, ProposalKind,
     ProposeParams, proposal_announcement, proposal_text_in,
 };
-use crate::phrases::{self, Voice};
+use crate::phrases;
 use crate::plan::{self, DayPlan, PlannedAnnouncement, Trigger};
 use crate::session::{Activity, End, Phase, Session, SessionEvent, SessionParams};
 use crate::speech::{Candidate, Priority, Speech, SpeechParams, Spoken};
@@ -714,7 +714,6 @@ pub struct Tracker<'a> {
     plan: &'a DayPlan,
     track: TrackView<'a>,
     g: &'a PisteGraph,
-    voice: Option<&'a Voice>,
     p: TrackerParams,
     plane: LocalPlane,
     active: Active<'a>,
@@ -794,14 +793,11 @@ pub struct Tracker<'a> {
 }
 
 impl<'a> Tracker<'a> {
-    /// Tracker of a plan, its flat table (`plan_<…>.trk`, [`plan::track`]) and its graph;
-    /// `voice` (the pack's clips) names the pistes of the routes computed during the
-    /// outing as the pack does.
+    /// Tracker of a plan, its flat table (`plan_<…>.trk`, [`plan::track`]) and its graph.
     pub fn new(
         plan: &'a DayPlan,
         track: TrackView<'a>,
         g: &'a PisteGraph,
-        voice: Option<&'a Voice>,
         p: TrackerParams,
     ) -> Result<Self> {
         plan.check_graph(g)?;
@@ -845,7 +841,6 @@ impl<'a> Tracker<'a> {
             plan,
             track,
             g,
-            voice,
             plane: LocalPlane::new(track.origin),
             active: Active {
                 rf: RouteRef::Plan,
@@ -1782,15 +1777,7 @@ impl<'a> Tracker<'a> {
     fn piste_at(&self, s: f64) -> Option<skimap_voice::names::PisteName> {
         let course = Course::new(self.g, &self.active.legs, &self.plan.eta).ok()?;
         let attrs = &self.g.edge(course.legs()[course.leg_at(s)].edge).attrs;
-        match self.voice {
-            Some(v) => v.piste(attrs),
-            None => attrs.name.as_ref().map(|n| {
-                skimap_voice::names::PisteName::new(
-                    n.split(" / ").next().unwrap_or(n).trim(),
-                    crate::phrases::colour(attrs.difficulty),
-                )
-            }),
-        }
+        phrases::piste(attrs)
     }
 
     fn off_route_event(&self, q: [f32; 2]) -> Event {
@@ -2140,7 +2127,7 @@ impl<'a> Tracker<'a> {
         Some(Event::Turn {
             metres,
             direction: j.direction.unwrap_or(Direction::Straight),
-            piste: self.voice.and_then(|v| v.piste(attrs)),
+            piste: phrases::piste(attrs),
         })
     }
 
@@ -2438,7 +2425,6 @@ impl<'a> Tracker<'a> {
             self.g,
             &course,
             &junctions,
-            self.voice,
             hazards.as_ref(),
             self.plan.departure,
         );

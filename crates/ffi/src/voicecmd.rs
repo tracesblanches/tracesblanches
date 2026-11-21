@@ -6,14 +6,14 @@
 //! « Prochaine direction ? », « Temps restant ? » and « Ramène-moi » are answered by
 //! [`crate::tracking::TrackingSession::say_next`], `say_remaining` and `back_start`;
 //! « Répète » by the app (the last thing said). The others are made here from the events
-//! of the voice bank (`skimap_voice::Event`), with the clips of the pack: « Où suis-je ? »
+//! of the voice bank (`skimap_voice::Event`), read by the phone's speech synthesis: « Où suis-je ? »
 //! (on or off the route, distance and time left, from the guidance), « Heure de
 //! demi-tour ? » (the countdown to the latest turnaround of the plan), « Combien de
 //! batterie ? ». The replies of the command itself (« je n'ai pas compris » and the
-//! questions understood, the outcome of a report, nothing to repeat, no outing) are new
-//! phrases without clips yet: the Android voice reads them.
+//! questions understood, the outcome of a report, nothing to repeat, no outing) are
+//! phrases of their own (ids `cmd.*`).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use jiff::civil::DateTime;
 use skimap_intent::{Intent, Lang as IntentLang};
@@ -24,11 +24,10 @@ use skimap_plan::tracker::TrackerParams;
 use skimap_voice::Event;
 use skimap_voice::bank::{Announcement, Pause, Segment};
 use skimap_voice::clips::{self, Clip, Fixed};
-use skimap_voice::pack::VoiceManifest;
 use skimap_voice::quantity::Clock;
 
 use crate::tracking::{
-    ClipSegment, GuidanceView, PhaseView, SpeechPriority, SpokenView, TrackingError, epoch_ms,
+    GuidanceView, PhaseView, SpeechPriority, SpokenView, TrackingError, epoch_ms,
 };
 use crate::tracking_day::PLAN_FILE;
 
@@ -141,23 +140,11 @@ pub enum ReportOutcome {
     Unavailable,
 }
 
-/// The answers of the voice commands said with the clips of the pack's voice layer.
-#[derive(uniffi::Object)]
-pub struct VoiceAnswers {
-    manifest: Option<VoiceManifest>,
-    dir: PathBuf,
-}
+/// The answers of the voice commands, read by the phone's speech synthesis.
+#[derive(Debug, Default, uniffi::Object)]
+pub struct VoiceAnswers;
 
-impl std::fmt::Debug for VoiceAnswers {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("VoiceAnswers")
-            .field("dir", &self.dir)
-            .field("clips", &self.manifest.is_some())
-            .finish()
-    }
-}
-
-/// A clip of a reply of the command (no clip in the packs yet: the Android voice).
+/// A phrase of a reply of the command.
 fn reply(id: &str, text: &str) -> Clip {
     Clip {
         id: format!("cmd.{id}"),
@@ -181,13 +168,9 @@ fn off_route_m() -> f64 {
 }
 
 impl VoiceAnswers {
-    /// Answers with the clips of the voice layer in `voice_dir` (`None` or unreadable: every
-    /// answer is read by the Android voice).
-    pub fn open(voice_dir: Option<&Path>) -> Self {
-        Self {
-            manifest: voice_dir.and_then(|v| VoiceManifest::read(v).ok()),
-            dir: voice_dir.map(Path::to_path_buf).unwrap_or_default(),
-        }
+    /// The answers.
+    pub fn open() -> Self {
+        Self
     }
 
     fn spoken(
@@ -197,33 +180,9 @@ impl VoiceAnswers {
         priority: SpeechPriority,
         kind: &str,
     ) -> SpokenView {
-        let n = a.segments.len();
-        let mut all = true;
-        let segments = a
-            .segments
-            .iter()
-            .enumerate()
-            .map(|(i, s)| {
-                let file = self
-                    .manifest
-                    .as_ref()
-                    .and_then(|m| m.get(&s.clip.id))
-                    .filter(|e| e.text == s.clip.text)
-                    .map(|e| self.dir.join(&e.file).display().to_string());
-                all &= file.is_some();
-                ClipSegment {
-                    id: s.clip.id.clone(),
-                    text: s.clip.text.clone(),
-                    file,
-                    pause_ms: if i + 1 < n { s.pause.ms() } else { 0 },
-                }
-            })
-            .collect();
         SpokenView {
             t_ms,
             text: a.text(),
-            segments,
-            all_clips: all,
             priority,
             kinds: vec![kind.into()],
         }
@@ -246,7 +205,7 @@ impl VoiceAnswers {
             let at = skimap_voice::quantity::round_distance(g.off_route_m);
             a.segments.push(Segment {
                 clip: match at {
-                    Some(m) if m <= skimap_voice::manifest::AT_MAX_M => clips::at(m),
+                    Some(m) if m <= skimap_voice::vocabulary::AT_MAX_M => clips::at(m),
                     _ => Fixed::RouteFar.clip(),
                 },
                 pause: Pause::Short,
@@ -312,15 +271,10 @@ fn code(lang: IntentLang) -> &'static str {
 
 #[uniffi::export]
 impl VoiceAnswers {
-    /// Answers with the clips of the voice layer in `voice_dir`.
+    /// The answers.
     #[uniffi::constructor]
-    pub fn new(voice_dir: Option<String>) -> std::sync::Arc<Self> {
-        std::sync::Arc::new(Self::open(voice_dir.as_deref().map(Path::new)))
-    }
-
-    /// The voice layer has clips (a manifest was read).
-    pub fn has_clips(&self) -> bool {
-        self.manifest.is_some()
+    pub fn new() -> std::sync::Arc<Self> {
+        std::sync::Arc::new(Self::open())
     }
 
     /// « Où suis-je ? » from the guidance of the tracking session.
@@ -514,13 +468,12 @@ mod tests {
 
     #[test]
     fn where_am_i_on_and_off_the_route() {
-        let v = VoiceAnswers::open(None);
+        let v = VoiceAnswers::open();
         let on = v.where_am_i_at(&guidance(5.0, PhaseView::Moving), 0);
         assert_eq!(
             on.text,
             "Toujours sur l'itinéraire. Il reste six kilomètres. Environ une heure."
         );
-        assert!(!on.all_clips);
         let off = v.where_am_i_at(&guidance(320.0, PhaseView::Moving), 0);
         assert!(
             off.text
@@ -528,7 +481,6 @@ mod tests {
             "{}",
             off.text
         );
-        assert_eq!(off.segments[0].pause_ms, 400);
         let far = v.where_am_i_at(&guidance(9000.0, PhaseView::Moving), 0);
         assert!(
             far.text.contains("Il est à plus de deux kilomètres."),
@@ -547,7 +499,7 @@ mod tests {
 
     #[test]
     fn battery_rounds_down_and_says_autonomy_when_known() {
-        let v = VoiceAnswers::open(None);
+        let v = VoiceAnswers::open();
         assert_eq!(
             v.battery(47.9, None, 0).text,
             "Batterie à quarante pour cent."
@@ -567,7 +519,7 @@ mod tests {
 
     #[test]
     fn not_understood_lists_every_question() {
-        let v = VoiceAnswers::open(None);
+        let v = VoiceAnswers::open();
         let s = v.not_understood(Lang::Fr, 0);
         assert!(
             s.text
@@ -578,22 +530,11 @@ mod tests {
         }
         let e = v.not_understood(Lang::En, 0);
         assert!(e.text.contains("Where am I?"));
-        // Clip ids are valid file names.
-        for seg in s.segments.iter().chain(&e.segments) {
-            assert!(
-                seg.id.bytes().all(|b| b.is_ascii_lowercase()
-                    || b.is_ascii_digit()
-                    || b == b'.'
-                    || b == b'-'),
-                "{}",
-                seg.id
-            );
-        }
     }
 
     #[test]
     fn replies_of_reports_repeat_and_no_outing() {
-        let v = VoiceAnswers::open(None);
+        let v = VoiceAnswers::open();
         assert_eq!(
             v.report(ReportKind::Groomed, ReportOutcome::Recorded, Lang::Fr, 0)
                 .text,

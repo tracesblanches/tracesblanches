@@ -12,9 +12,8 @@
 //! The optional `2` writes version 2 of the same pack (another piste status, another
 //! refuge capacity, the basemap tile of the village gzip-compressed otherwise: same map,
 //! other bytes, a later `pack_version`): the server publishes both, the app updates from
-//! one to the other by a delta (K2), the basemap as a patch of one tile (#160). `voice-en` writes a voice language pack apart
-//! (VO6): site `test`, voice slot `en`, a clip manifest and two clips, nothing else. Deterministic apart from the build times written
-//! in the manifest. About 40 kB.
+//! one to the other by a delta (K2), the basemap as a patch of one tile (#160).
+//! Deterministic apart from the build times written in the manifest. About 40 kB.
 
 #![allow(
     clippy::disallowed_methods,
@@ -48,7 +47,6 @@ fn main() -> Res<()> {
     let report = match std::env::args().nth(2).as_deref() {
         None | Some("1") => write_test_pack(&out, 1)?,
         Some("2") => write_test_pack(&out, 2)?,
-        Some("voice-en") => write_voice_pack(&out, "en")?,
         Some(v) => return Err(format!("unknown variant {v}").into()),
     };
     println!("{report}");
@@ -79,7 +77,6 @@ pub(crate) fn write_test_pack(out: &Path, variant: u8) -> Res<String> {
         plan_ign: false,
         osm: false,
         ign_slopes: false,
-        voice: false,
         offpiste: false,
         personal_sources: true,
         ..BuildOptions::default()
@@ -141,67 +138,6 @@ fn add_fee_zones(pack: &Path, m: &mut Manifest) -> Res<()> {
     layer["visible"] = json!(false);
     m.layers.push(serde_json::from_value(layer)?);
     Ok(())
-}
-
-/// Writes a voice language pack of the test site into `out` (replaced if it exists), as
-/// `skimap_pack::build::build_voice_pack` does (VO6): the clips (`voice/manifest.json`,
-/// `voice/clips/*.opus`) in a pack of its own, site `test`, no basemap, no layer, its
-/// voice slot naming the language; the server lists it in the `voice` field of the site.
-/// The clips are not real Opus files.
-pub(crate) fn write_voice_pack(out: &Path, lang: &str) -> Res<String> {
-    if out.exists() {
-        std::fs::remove_dir_all(out)?;
-    }
-    let clips = out.join("voice/clips");
-    std::fs::create_dir_all(&clips)?;
-    let texts = [
-        ("turn.right.now", "Turn right."),
-        ("name.refuge-du-test", "Refuge du test."),
-    ];
-    for (id, _) in texts {
-        std::fs::write(
-            clips.join(format!("{id}.opus")),
-            format!("OggS fake clip {id} {lang}"),
-        )?;
-    }
-    write_json(
-        &out.join("voice/manifest.json"),
-        &json!({"format": 1, "lang": lang, "voice": "estelle", "model": "test", "model_sha256": "",
-                "seed": 42, "sample_rate": 24000, "opus_kbps": 24, "pauses_ms": [150, 400],
-                "clips": texts.iter().map(|(id, t)| json!({"id": id, "kind": "fixed", "text": t,
-                    "file": format!("clips/{id}.opus"), "duration_ms": 500, "bytes": 1, "tokens": 3,
-                    "lead_trim_ms": 0, "tail_trim_ms": 0, "gain_db": 0.0, "end_burst": false,
-                    "seed": 42, "onset_clipped": false}))
-                .collect::<Vec<_>>()}),
-    )?;
-    let files = list_files(out)?;
-    let bytes: u64 = files.iter().map(|f| f.bytes).sum();
-    let mut m: Manifest = serde_json::from_value(json!({
-        "format": skimap_pack::manifest::FORMAT,
-        "format_version": skimap_pack::manifest::FORMAT_VERSION,
-        "pack_version": VERSIONS[0], "generator": "skimap-ffi test_pack", "generated_at": "2026-11-15T06:00:00Z",
-        "site": {"id": "test", "name": "Pack de test", "department": "05",
-                 "bbox": [TEST_SITE.bbox.west, TEST_SITE.bbox.south, TEST_SITE.bbox.east, TEST_SITE.bbox.north],
-                 "center": [TEST_SITE.commune_center.lon, TEST_SITE.commune_center.lat]},
-        "valid_for": {"until": null, "until_layer": null, "note": "voix"},
-        "personal_sources": false, "basemaps": [], "layers": [],
-        "voice": {"status": "present", "lang": lang, "manifest": "voice/manifest.json", "clips_dir": "voice/clips",
-                  "clips": texts.len(), "bytes": bytes, "sources": [], "note": format!("voix de test, {lang}")},
-        "missing": [], "attributions": [], "files": [], "total_bytes": 0
-    }))?;
-    m.files = files;
-    m.total_bytes = bytes;
-    write_json(&out.join(MANIFEST_FILE), &serde_json::to_value(&m)?)?;
-    let p = skimap_pack::Pack::open(out)?;
-    let problems = p.verify()?;
-    if !problems.is_empty() {
-        return Err(format!("voice pack does not verify: {problems:?}").into());
-    }
-    Ok(format!(
-        "voice pack {}: {} files, {bytes} bytes",
-        out.display(),
-        m.files.len()
-    ))
 }
 
 fn write_json(path: &Path, v: &Value) -> Res<()> {
@@ -648,12 +584,5 @@ mod tests {
             std::fs::read(out.join("layers/status.geojson")).unwrap(),
             std::fs::read(v2.join("layers/status.geojson")).unwrap()
         );
-        let voice = tmp.path().join("packs/test-voice-en");
-        write_voice_pack(&voice, "en").unwrap();
-        let pv = skimap_pack::Pack::open(&voice).unwrap();
-        assert_eq!(pv.manifest().site.id, "test");
-        assert_eq!(pv.manifest().voice.lang.as_deref(), Some("en"));
-        skimap_voice::pack::VoiceManifest::read(&voice.join("voice")).unwrap();
-        assert_eq!(pv.manifest().files.len(), 3);
     }
 }

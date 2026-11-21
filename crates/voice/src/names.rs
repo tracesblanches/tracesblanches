@@ -1,4 +1,4 @@
-//! Names of a pack (pistes, refuges, places, zones) as spoken, and their clip ids.
+//! Names of a site (pistes, refuges, places, zones) as spoken, and their phrase ids.
 
 use serde::{Deserialize, Serialize};
 

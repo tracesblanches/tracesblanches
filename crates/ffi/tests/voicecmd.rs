@@ -1,15 +1,15 @@
 //! Voice commands (V3 #66, VO5 #87, A11 #98) on the real packs of both sites
 //! (`--ignored`: needs `data/out/<site>/pack/`): a plan validated as the app does, an
 //! outing simulated by the core's bench and fed to the tracking session, then every
-//! command of the closed list asked by its question, classified and answered with the
-//! pack's clips.
+//! command of the closed list asked by its question, classified and answered (the texts
+//! the phone's speech synthesis reads).
 //!
 //! ```sh
 //! SKIMAP_DATA_DIR=~/projects/skimap/data \
 //!   cargo test --release -p skimap-ffi --test voicecmd -- --ignored --nocapture
 //! ```
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use skimap_common::site::Site;
 /// Evaluation site of `data/sites.json`, test data.
@@ -47,53 +47,9 @@ fn pack(site: &Site) -> PathBuf {
     data().join("out").join(site.id).join("pack")
 }
 
-/// Root of the voice packs of the complete data laid out as the phone installs them
-/// (`<root>/<site>/<lang>/voice/`, read by `open_tracking` through `voice_choice`): a
-/// link to `out/<site>/voice-pack/` of every site that has one (VO6: the clips are in a
-/// voice pack per language, not in the base pack). `None` for data built before VO6: the
-/// session then reads the French clips inside the pack, as on a phone with such a pack.
-fn voice_root() -> Option<String> {
-    static ROOT: std::sync::OnceLock<Option<tempfile::TempDir>> = std::sync::OnceLock::new();
-    ROOT.get_or_init(|| {
-        let out = data().join("out");
-        let tmp = tempfile::tempdir().unwrap();
-        let mut any = false;
-        for e in std::fs::read_dir(&out).unwrap().flatten() {
-            let packs = e.path().join("voice-pack");
-            if packs.is_dir() {
-                std::os::unix::fs::symlink(&packs, tmp.path().join(e.file_name())).unwrap();
-                any = true;
-            }
-        }
-        any.then_some(tmp)
-    })
-    .as_ref()
-    .map(|t| t.path().display().to_string())
-}
-
-/// The French clips of `site`: its voice pack (VO6), or inside the pack for data built
-/// before VO6 (the same choice as `open_tracking`).
-fn voice_dir(site: &Site) -> PathBuf {
-    let v = data().join("out").join(site.id).join("voice-pack/fr/voice");
-    if v.join("manifest.json").is_file() {
-        v
-    } else {
-        pack(site).join("voice")
-    }
-}
-
 fn show(what: &str, s: &SpokenView) {
-    let clips = s.segments.iter().filter(|c| c.file.is_some()).count();
-    println!(
-        "  {what}: « {} » ({clips}/{} clips of the pack)",
-        s.text,
-        s.segments.len()
-    );
-    for c in &s.segments {
-        if let Some(f) = &c.file {
-            assert!(Path::new(f).is_file(), "{f}");
-        }
-    }
+    println!("  {what}: « {} »", s.text);
+    assert!(!s.text.is_empty());
 }
 
 fn commands_on(site: &'static Site, budget_min: f64, return_before: Option<&str>) {
@@ -150,7 +106,7 @@ fn commands_on(site: &'static Site, budget_min: f64, return_before: Option<&str>
     );
 
     // A third of the outing, fixes in batches of ten as the phone sends them.
-    let s = open_tracking(v.plan_dir.clone(), voice_root(), "fr".into()).unwrap();
+    let s = open_tracking(v.plan_dir.clone(), "fr".into()).unwrap();
     let fixes: Vec<(i64, f64, f64)> = run
         .inputs
         .iter()
@@ -167,8 +123,7 @@ fn commands_on(site: &'static Site, budget_min: f64, return_before: Option<&str>
     let g1 = s.guidance().unwrap();
     assert_eq!(g1.phase, PhaseView::Moving, "{g1:?}");
 
-    let answers = VoiceAnswers::new(Some(voice_dir(site).display().to_string()));
-    assert!(answers.has_clips());
+    let answers = VoiceAnswers::new();
     for lang in [Lang::Fr, Lang::En] {
         for (q, want) in command_questions(lang).iter().zip([
             VoiceCommand::WhereAmI,
@@ -193,7 +148,6 @@ fn commands_on(site: &'static Site, budget_min: f64, return_before: Option<&str>
         "{}",
         w.text
     );
-    assert!(w.all_clips, "{w:?}");
     let r = s.say_remaining(t_ms).unwrap().expect("time left");
     show("Temps restant ?", &r);
     // « Où suis-je ? » says the same distance and time left as « Temps restant ? ».
@@ -205,9 +159,6 @@ fn commands_on(site: &'static Site, budget_min: f64, return_before: Option<&str>
         .turnaround(v.plan_dir.clone(), t_ms, Lang::Fr)
         .unwrap();
     show("Heure de demi-tour ?", &ta);
-    if plan.turnaround.latest_turnaround.is_some() {
-        assert!(ta.all_clips, "{ta:?}");
-    }
     // The countdown, the time and « now », on the plan with a latest turnaround set
     // (none of the loops of the day needs one).
     let now = skimap_ffi::tracking::epoch_ms;
@@ -219,15 +170,11 @@ fn commands_on(site: &'static Site, budget_min: f64, return_before: Option<&str>
     };
     let soon = at(20);
     show("Heure de demi-tour ? (dans 20 min)", &soon);
-    assert!(
-        soon.all_clips && soon.text.contains("vingt minutes"),
-        "{}",
-        soon.text
-    );
+    assert!(soon.text.contains("vingt minutes"), "{}", soon.text);
     let late = at(200);
     show("Heure de demi-tour ? (dans 3 h 20)", &late);
     assert!(
-        late.all_clips && late.text.starts_with("Heure limite de demi-tour."),
+        late.text.starts_with("Heure limite de demi-tour."),
         "{}",
         late.text
     );
@@ -240,7 +187,6 @@ fn commands_on(site: &'static Site, budget_min: f64, return_before: Option<&str>
     );
     let b = answers.battery(63.0, Some(4.0 * 3600.0), t_ms);
     show("Combien de batterie ?", &b);
-    assert!(b.all_clips, "{b:?}");
     assert!(b.text.starts_with("Batterie à soixante pour cent."));
     show(
         "Signale : trace faite",
@@ -305,7 +251,6 @@ fn commands_on(site: &'static Site, budget_min: f64, return_before: Option<&str>
         "{}",
         w2.text
     );
-    assert!(w2.all_clips, "{w2:?}");
 
     // « Ramène-moi »: the way back starts.
     let back = s.back_start(off.last().unwrap().0).unwrap();

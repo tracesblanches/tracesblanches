@@ -300,8 +300,8 @@ pub fn offpiste_grid(data: &[u8]) {
 }
 
 /// A whole pack directory: opening, verifying, reading every layer as the phone does
-/// (JSON, GeoJSON, tiles and raster values, gzipped SKR1, zone classes), `pack.meta.json`
-/// and the voice manifest.
+/// (JSON, GeoJSON, tiles and raster values, gzipped SKR1, zone classes) and
+/// `pack.meta.json`.
 pub fn pack(data: &[u8]) {
     use skimap_pack::Pack;
     let files = parse_archive(data);
@@ -361,14 +361,6 @@ pub fn pack(data: &[u8]) {
             read_archive(&t);
         }
         let _ = p.read_file(&b.style);
-    }
-    if let Some(rel) = &m.voice.manifest
-        && let Ok(path) = p.path(rel)
-        && let Some(parent) = path.parent()
-        && path.file_name().is_some_and(|n| n == "manifest.json")
-        && let Ok(v) = skimap_voice::pack::VoiceManifest::read(parent)
-    {
-        let _ = v.get("fixed.reassurance");
     }
 }
 

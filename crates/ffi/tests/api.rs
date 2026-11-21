@@ -647,7 +647,7 @@ fn copy_dir(from: &Path, to: &Path) {
     }
 }
 
-/// The server catalog, with and without voice packs.
+/// The server catalog; the `voice` field of an older server (voice packs, VO6) is ignored.
 #[test]
 fn server_catalog() {
     let c = json!({"format": "skimap-catalog", "format_version": 1, "sites": [
@@ -668,16 +668,14 @@ fn server_catalog() {
     assert_eq!(sites[0].site_id, "test");
     assert_eq!(sites[0].bbox, [6.66, 44.77, 6.86, 44.92]);
     assert_eq!(sites[0].first_download_bytes, 25000);
-    assert_eq!(sites[0].voice[0].lang, "en");
     let mut no_voice = c.clone();
     no_voice["sites"][0]
         .as_object_mut()
         .unwrap()
         .remove("voice");
-    assert!(
-        skimap_ffi::sync::parse_server_catalog(no_voice.to_string()).unwrap()[0]
-            .voice
-            .is_empty()
+    assert_eq!(
+        skimap_ffi::sync::parse_server_catalog(no_voice.to_string()).unwrap(),
+        sites
     );
     assert!(skimap_ffi::sync::parse_server_catalog("{\"format\": \"x\"}".into()).is_err());
 }

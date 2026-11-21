@@ -1,5 +1,5 @@
 # Fuzz targets (Q3, #103) of everything the phone reads from a downloaded file: pack
-# (manifest, pack.meta.json, layers, voice manifest), pack updates (bundle, site index), SKR1 rasters, zone classes, trail
+# (manifest, pack.meta.json, layers), pack updates (bundle, site index), SKR1 rasters, zone classes, trail
 # graph, PMTiles (the patched vendor reader and the pack's TileArchive), palette PNG tiles,
 # vector tiles of the class layers,
 # GeoTIFF (common::geotiff), BERA XML. Outside the main workspace (cargo-fuzz needs
@@ -24,7 +24,6 @@ skimap-common = { path = "../crates/common", features = ["geotiff"] }
 skimap-core = { path = "../crates/core" }
 skimap-meteo = { path = "../crates/meteo" }
 skimap-pack = { path = "../crates/pack" }
-skimap-voice = { path = "../crates/voice" }
 bytes = "1.10"
 flate2 = "1.1.11"
 pmtiles = { version = "0.28.1", default-features = false, features = ["iter", "write"] }

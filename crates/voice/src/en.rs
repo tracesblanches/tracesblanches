@@ -2,8 +2,8 @@
 //! texts of the value clips, on the same grids and with the same ids as the French ones.
 //!
 //! British spelling (metres, kilometres), metric units, times on the 12-hour clock with
-//! the part of the day ("four thirty in the afternoon"). The texts are written for the
-//! English Pocket TTS model, which reads them as written.
+//! the part of the day ("four thirty in the afternoon"), all in words: the speech
+//! synthesis reads them as written.
 
 use crate::clips::{DayMonth, Direction};
 use crate::names::Colour;

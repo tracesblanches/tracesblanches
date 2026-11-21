@@ -521,7 +521,7 @@ pub fn digest(
         },
         ..TrackerParams::default()
     };
-    let mut tr = Tracker::new(plan, track, g, None, params)?;
+    let mut tr = Tracker::new(plan, track, g, params)?;
     let mut out = Vec::new();
     for i in inputs {
         tr.push(i, &mut out);

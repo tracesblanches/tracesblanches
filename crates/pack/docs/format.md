@@ -20,7 +20,6 @@ layers/slope.pmtiles            polygones des classes de pente (tuiles vectoriel
 layers/avalanche-exposure.pmtiles  polygones des classes d'exposition aux avalanches (MVT)
 layers/meta/<couche>/<couche>.meta.json   copies des métadonnées des couches, JSON compact
 layers/snow-*.pmtiles           polygones des classes de neige (MVT)
-voice/manifest.json, voice/clips/*.opus, voice/voice.meta.json
 ```
 
 Les JSON du pipeline (données et métadonnées des couches) sont écrits indentés pour la lecture ; le pack les recopie en JSON compact, mêmes valeurs (`build::copy_data`, #160) : le téléphone ne fait que les analyser. Sur un site alpin (Bessans, run AROME du 17/11/2026 09 h UTC, trois points de prévision) : briefing de l'assistant 614 → 265 ko, qualité de neige 499 → 254 ko, météo heure par heure 143 → 90 ko. Les GeoJSON sont déjà compacts, coordonnées arrondies. Dans un paquet de mise à jour, ces fichiers texte voyagent en plus compressés gzip ([mise-a-jour.md](mise-a-jour.md#paquet-skb)).
@@ -42,7 +41,6 @@ Les JSON du pipeline (données et métadonnées des couches) sont écrits indent
 | `layers[]` | `id`, titre, `kind` (`vector`, `raster`, `data`), `format` (`geojson`, `json`, `pmtiles`, `skr+gzip`, `tsv`), `file`, `meta`, `origin` (fichier du pipeline), `generated_at`, `valid_from`, `valid_until`, `validity`, `sources` (`common::meta::SourceRef` tels quels), `personal_use_only`, taille, nombre d'entités et types de géométrie, `visible`, `raster`, `classes` (couches de classes en vecteur), notes |
 | `layers[].classes` | zooms, `extent`, nombre de tuiles, `source_layer`, `property` (`class`), légende (`value`, `label`, couleur de référence du thème clair), raster source, méthode, seuils des petites taches, tolérance et sommets par zoom, nombre de polygones, surfaces par classe (`classes` : raster, après lissage, polygones par zoom) et par seuil (`levels` : surface perdue, gagnée, polygones, zones significatives conservées) |
 | `layers[].raster` | zooms, taille de tuile, nombre de tuiles, `encoding` (`palette_index` : l'indice de palette est la classe ; `rgba_legend` : tuiles tierces), `nodata_index`, légende (`value`, `label`, `color` `#rrggbbaa`), raster source, méthode de sous-échantillonnage |
-| `voice` | emplacement des clips (VO3) : `status` (`present`, `absent`), `manifest`, `clips_dir`, nombre, taille, sources |
 | `missing[]` | couches cherchées et absentes, avec la raison (absente du pipeline, source à usage personnel sans l'option, outil manquant) |
 | `attributions[]` | attributions à afficher, sans doublon |
 | `files[]`, `total_bytes` | chaque fichier (sauf le manifeste) avec taille et SHA-256 ; `Pack::verify` les recontrôle |

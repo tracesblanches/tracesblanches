@@ -83,7 +83,7 @@ fn bench(
     let reps = 20;
     let t = Instant::now();
     for _ in 0..reps {
-        let mut tr = Tracker::new(p, view, g, None, TrackerParams::default())?;
+        let mut tr = Tracker::new(p, view, g, TrackerParams::default())?;
         for i in &run.inputs {
             out.clear();
             let t0 = Instant::now();
@@ -101,7 +101,7 @@ fn bench(
     let mut best = f64::INFINITY;
     for _ in 0..reps {
         let t1 = Instant::now();
-        let mut tr = Tracker::new(p, view, g, None, TrackerParams::default())?;
+        let mut tr = Tracker::new(p, view, g, TrackerParams::default())?;
         for chunk in run.inputs.chunks(12) {
             out.clear();
             tr.push_batch(chunk, &mut out);

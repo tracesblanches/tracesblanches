@@ -33,7 +33,7 @@ use skimap_common::site::Site;
 use crate::error::{Error, Result};
 use crate::manifest::{
     Basemap, FORMAT, FORMAT_VERSION, FileEntry, Layer, MANIFEST_FILE, Manifest, Missing,
-    PackValidity, SiteInfo, Source, VoiceSlot,
+    PackValidity, SiteInfo, Source,
 };
 use crate::reader::sha256_file;
 use skimap_common::meta::{FileMeta, LayerMeta};
@@ -50,7 +50,7 @@ pub const OSM_MAXZOOM: u8 = 15;
 /// rasters, manifest): bump it when a change of that code makes different bytes from the
 /// same layers, so that every pack is built again once (its parts taken over while their
 /// own code is unchanged). Part of [`code_revision`].
-pub const PACK_REVISION: u32 = 1;
+pub const PACK_REVISION: u32 = 2;
 
 /// Fingerprint of the code that makes a pack with `opts` (#174): [`PACK_REVISION`], the
 /// crate version and [`parts::PARTS_REVISION`] ([`parts::Key::new`]), and the code each
@@ -92,10 +92,6 @@ pub struct BuildOptions {
     /// comparison in the viewer. Off by default: about 20 MB for a mountain site, offline licence
     /// unconfirmed (features.md n° 5).
     pub ign_slopes: bool,
-    /// Include the voice clips when the voice crate produced them. Off by default (VO6):
-    /// the clips go to a voice pack per language ([`build_voice_pack`]), downloaded only for
-    /// the language of the phone; the base pack has none.
-    pub voice: bool,
     /// Include the off-piste rasters of the core (`data/out/<site>/offpiste/`, gzipped).
     pub offpiste: bool,
     /// Vectorisation of the slope and avalanche exposure classes.
@@ -113,7 +109,6 @@ impl Default for BuildOptions {
             protomaps_build: None,
             personal_sources: false,
             ign_slopes: false,
-            voice: false,
             offpiste: true,
             class_params: class_tiles::Params::default(),
         }
@@ -129,7 +124,7 @@ pub struct BuildReport {
     pub pack_version: String,
     /// Total size.
     pub total_bytes: u64,
-    /// Size by group (`basemap/plan-ign`, `layers`, `rasters`, `voice`...).
+    /// Size by group (`basemap/plan-ign`, `layers`, `rasters`...).
     pub bytes_by_group: Vec<(String, u64)>,
     /// Layers written.
     pub layers: Vec<String>,
@@ -332,20 +327,13 @@ fn build_into(
         timings.push(("ign slope tiles".to_owned(), t.elapsed().as_secs_f64()));
     }
 
-    let voice = if opts.voice {
-        voice_slot(&out.join("voice"), root, opts.personal_sources)?
-    } else {
-        absent_voice("voix non demandée pour ce pack")
-    };
-
     // Attributions, in display order, deduplicated.
     let mut seen = BTreeSet::new();
     let mut attributions = Vec::new();
     let all_sources = basemaps
         .iter()
         .flat_map(|b| b.sources.iter())
-        .chain(layers.iter().flat_map(|l| l.sources.iter()))
-        .chain(voice.sources.iter());
+        .chain(layers.iter().flat_map(|l| l.sources.iter()));
     for s in all_sources {
         let a = &s.attribution;
         if !a.is_empty() && seen.insert(a.clone()) {
@@ -371,7 +359,6 @@ fn build_into(
         personal_sources: opts.personal_sources,
         basemaps,
         layers,
-        voice,
         missing: missing.clone(),
         attributions,
         files,
@@ -522,124 +509,6 @@ fn leading_date(s: &str) -> Option<String> {
     Some(d.to_owned())
 }
 
-fn absent_voice(note: &str) -> VoiceSlot {
-    VoiceSlot {
-        status: "absent".to_owned(),
-        lang: None,
-        manifest: None,
-        clips_dir: None,
-        clips: 0,
-        bytes: 0,
-        sources: Vec::new(),
-        note: note.to_owned(),
-    }
-}
-
-/// File of the voice layer that lists the clips of names read only from personal-use
-/// sources (`clips`: ids; `skimap_voice::pack::PERSONAL_FILE`).
-pub const VOICE_PERSONAL_FILE: &str = "personal.json";
-
-/// Directory of the voice pack of a site in a language: `data/out/<site>/voice-pack/<lang>/`.
-pub fn voice_pack_dir(site: &Site, layout: &DataLayout, lang: &str) -> Result<PathBuf> {
-    Ok(layout.layer_dir(site, VOICE_PACK_LAYER)?.join(lang))
-}
-
-/// Layer of the voice packs of a site in `data/out/<site>/` (one directory per language).
-pub const VOICE_PACK_LAYER: &str = "voice-pack";
-
-/// Builds the voice pack of `site` in `lang` (VO6): a pack of its own, without basemaps
-/// or layers, whose voice slot holds the clips of the voice layer `voice_layer`
-/// (`voice` for French, `voice-en` for English) and names its language; written to
-/// [`voice_pack_dir`] and published apart from the base pack (one index per site and
-/// language). Its version is the build time, like a site pack.
-pub fn build_voice_pack(
-    site: &Site,
-    layout: &DataLayout,
-    voice_layer: &str,
-    lang: &str,
-    personal_sources: bool,
-) -> Result<BuildReport> {
-    let now = jiff::Timestamp::now();
-    let pack_version = now.strftime("%Y%m%dT%H%M%SZ").to_string();
-    let final_dir = voice_pack_dir(site, layout, lang)?;
-    let parent = final_dir
-        .parent()
-        .ok_or_else(|| Error::Pack("voice pack directory without parent".into()))?;
-    create_dir(parent)?;
-    let tmp = parent.join(format!(".{lang}-build-{pack_version}"));
-    if tmp.exists() {
-        remove_dir(&tmp)?;
-    }
-    create_dir(&tmp)?;
-    let built = (|| -> Result<BuildReport> {
-        let mut voice = voice_slot(
-            &layout.out_dir(site).join(voice_layer),
-            &tmp,
-            personal_sources,
-        )?;
-        if voice.status != "present" {
-            return Err(Error::Pack(format!(
-                "{} {lang}: no voice to pack ({})",
-                site.id, voice.note
-            )));
-        }
-        voice.lang = Some(lang.to_owned());
-        let files = list_files(&tmp)?;
-        let total_bytes = files.iter().map(|f| f.bytes).sum();
-        let mut attributions = Vec::new();
-        for s in &voice.sources {
-            if !s.attribution.is_empty() && !attributions.contains(&s.attribution) {
-                attributions.push(s.attribution.clone());
-            }
-        }
-        let manifest = Manifest {
-            format: FORMAT.to_owned(),
-            format_version: FORMAT_VERSION,
-            pack_version: pack_version.clone(),
-            generator: format!("{} {}", crate::CRATE, env!("CARGO_PKG_VERSION")),
-            generated_at: now.strftime("%Y-%m-%dT%H:%M:%SZ").to_string(),
-            site: site_info(site, layout, personal_sources),
-            valid_for: PackValidity {
-                until: None,
-                until_layer: None,
-                note: "Voix : à refaire quand les noms du pack changent.".to_owned(),
-            },
-            personal_sources,
-            basemaps: Vec::new(),
-            layers: Vec::new(),
-            voice,
-            missing: Vec::new(),
-            attributions,
-            files,
-            total_bytes,
-        };
-        write_json(&tmp.join(MANIFEST_FILE), &manifest)?;
-        Ok(BuildReport {
-            pack_dir: final_dir.clone(),
-            pack_version: pack_version.clone(),
-            total_bytes,
-            bytes_by_group: group_sizes(&manifest.files),
-            layers: Vec::new(),
-            missing: Vec::new(),
-            timings: Vec::new(),
-            reused: Vec::new(),
-        })
-    })();
-    match built {
-        Ok(r) => {
-            if final_dir.exists() {
-                remove_dir(&final_dir)?;
-            }
-            std::fs::rename(&tmp, &final_dir).map_err(|e| Error::io(&tmp, e))?;
-            Ok(r)
-        }
-        Err(e) => {
-            let _ = std::fs::remove_dir_all(&tmp);
-            Err(e)
-        }
-    }
-}
-
 fn site_info(site: &Site, layout: &DataLayout, personal_sources: bool) -> SiteInfo {
     SiteInfo {
         id: site.id.to_owned(),
@@ -655,205 +524,6 @@ fn site_info(site: &Site, layout: &DataLayout, personal_sources: bool) -> SiteIn
         record: Some(starts::record(site, layout, personal_sources)),
         start_ranking: None,
     }
-}
-
-/// Copies the voice clips (`<voice layer>/manifest.json` and `clips/`) if present.
-///
-/// The clips speak names read from the layers (pistes, refuges, zones, piste plans). With
-/// `personal_sources` every clip is copied. Without, a layer with its list of personal
-/// clips ([`VOICE_PERSONAL_FILE`]) is copied without them (names read only from
-/// personal-use sources: Biodiv'sports, piste plans), with a manifest without them and
-/// `voice.meta.json` without the personal-use sources; a layer without that list (built
-/// before it) is left out whole when one of its sources is personal use.
-fn voice_slot(src: &Path, root: &Path, personal_sources: bool) -> Result<VoiceSlot> {
-    let src = src.to_path_buf();
-    let meta_path = src.join("voice.meta.json");
-    let restricted = layers::read_meta(&meta_path)?
-        .as_ref()
-        .is_some_and(|m| layers::restricted(&m.meta.sources));
-    let manifest = src.join("manifest.json");
-    let clips = src.join("clips");
-    let marked = src.join(VOICE_PERSONAL_FILE).is_file();
-    if restricted && !personal_sources && !marked {
-        return Ok(absent_voice(
-            "clips écartés : couche sans liste des noms à usage personnel (personal.json), et une source de la voix est à usage personnel (option personal_sources désactivée) ; reconstruire la voix",
-        ));
-    }
-    if !manifest.is_file() || !clips.is_dir() {
-        return Ok(absent_voice(
-            "emplacement réservé : la crate voice (VO3) n'a pas encore produit de clips pour ce site",
-        ));
-    }
-    let dst = root.join("voice");
-    create_dir(&dst.join("clips"))?;
-    if !personal_sources && marked {
-        return public_voice(&src, &dst);
-    }
-    let mut bytes = copy_file(&manifest, &dst.join("manifest.json"))?;
-    let mut n = 0u64;
-    let mut entries: Vec<_> = read_dir_sorted(&clips)?;
-    entries.retain(|p| p.is_file());
-    for p in entries {
-        let name = p
-            .file_name()
-            .ok_or_else(|| Error::Pack(format!("bad clip path {}", p.display())))?;
-        bytes += copy_file(&p, &dst.join("clips").join(name))?;
-        n += 1;
-    }
-    let sources = match layers::read_meta(&meta_path)? {
-        Some(m) => {
-            bytes += copy_file(&meta_path, &dst.join("voice.meta.json"))?;
-            m.meta.sources
-        }
-        None => Vec::new(),
-    };
-    Ok(VoiceSlot {
-        status: "present".to_owned(),
-        lang: None,
-        manifest: Some("voice/manifest.json".to_owned()),
-        clips_dir: Some("voice/clips".to_owned()),
-        clips: n,
-        bytes,
-        sources,
-        note: "clips Ogg/Opus de la crate voice ; format du manifeste des clips défini par VO3"
-            .to_owned(),
-    })
-}
-
-fn read_value(path: &Path) -> Result<Value> {
-    let b = std::fs::read(path).map_err(|e| Error::io(path, e))?;
-    serde_json::from_slice(&b).map_err(|e| Error::json(path.display().to_string(), e))
-}
-
-/// The voice of a published pack: the clips not listed in [`VOICE_PERSONAL_FILE`], the
-/// manifest without the others, `voice.meta.json` without the personal-use sources and
-/// with its counts redone.
-fn public_voice(src: &Path, dst: &Path) -> Result<VoiceSlot> {
-    let manifest = src.join("manifest.json");
-    let personal_path = src.join(VOICE_PERSONAL_FILE);
-    let personal: BTreeSet<String> = read_value(&personal_path)?
-        .get("clips")
-        .and_then(Value::as_array)
-        .ok_or_else(|| Error::Pack(format!("{}: no clips list", personal_path.display())))?
-        .iter()
-        .map(|c| {
-            c.as_str().map(str::to_owned).ok_or_else(|| {
-                Error::Pack(format!("{}: clip id not a string", personal_path.display()))
-            })
-        })
-        .collect::<Result<_>>()?;
-    let mut vm = read_value(&manifest)?;
-    let all = vm
-        .get("clips")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    let (kept, dropped): (Vec<Value>, Vec<Value>) = all.into_iter().partition(|c| {
-        c.get("id")
-            .and_then(Value::as_str)
-            .is_none_or(|id| !personal.contains(id))
-    });
-    let mut bytes = 0;
-    let mut clip_bytes = 0;
-    for c in &kept {
-        let file = c.get("file").and_then(Value::as_str).unwrap_or_default();
-        let name = file
-            .strip_prefix("clips/")
-            .filter(|f| !f.is_empty() && !f.contains('/') && !f.contains(".."))
-            .ok_or_else(|| {
-                Error::Pack(format!(
-                    "clip file {file:?} outside clips/ in {}",
-                    manifest.display()
-                ))
-            })?;
-        let b = copy_file(&src.join("clips").join(name), &dst.join("clips").join(name))?;
-        bytes += b;
-        clip_bytes += b;
-    }
-    let n = kept.len() as u64;
-    let kind_count = |k: &str| kept.iter().filter(|c| c["kind"] == k).count();
-    let audio_ms: u64 = kept.iter().filter_map(|c| c["duration_ms"].as_u64()).sum();
-    let counts = (kind_count("fixed"), kind_count("value"), kind_count("name"));
-    vm["clips"] = Value::Array(kept);
-    bytes += write_json(&dst.join("manifest.json"), &vm)?;
-    let meta_path = src.join("voice.meta.json");
-    let mut sources = Vec::new();
-    if meta_path.is_file() {
-        let mut mv = read_value(&meta_path)?;
-        let keep: Vec<bool> = layers::lenient_meta(&mv)
-            .sources
-            .iter()
-            .map(|s| !layers::unauthorised(s))
-            .collect();
-        if let Some(arr) = mv.get_mut("sources").and_then(Value::as_array_mut) {
-            let mut i = 0;
-            arr.retain(|_| {
-                let k = keep.get(i).copied().unwrap_or(false);
-                i += 1;
-                k
-            });
-        }
-        if let Some(files) = mv.get_mut("files").and_then(Value::as_array_mut) {
-            // The list of personal clips stays out of the published pack.
-            files.retain(|f| f["name"] != VOICE_PERSONAL_FILE);
-            for f in files {
-                if f.get("count").is_some() {
-                    f["count"] = n.into();
-                }
-                if f["name"] == "clips/<id>.opus" {
-                    f["bytes"] = clip_bytes.into();
-                }
-            }
-        }
-        if let Some(st) = mv.get_mut("stats").and_then(Value::as_object_mut) {
-            st.insert("clips".into(), n.into());
-            st.insert("clips_fixed".into(), counts.0.into());
-            st.insert("clips_value".into(), counts.1.into());
-            st.insert("clips_name".into(), counts.2.into());
-            st.insert("clips_personal".into(), 0.into());
-            st.insert("bytes_personal".into(), 0.into());
-            st.insert("bytes".into(), clip_bytes.into());
-            st.insert(
-                "audio_s".into(),
-                ((audio_ms as f64 / 100.0).round() / 10.0).into(),
-            );
-            st.remove("names_personal");
-            st.insert("public_pack_clips_removed".into(), dropped.len().into());
-        }
-        if let Some(notes) = mv.get_mut("notes").and_then(Value::as_array_mut) {
-            notes.push(
-                format!(
-                    "Pack publié : {} clips de noms lus seulement dans des sources à usage personnel écartés, avec ces sources.",
-                    dropped.len()
-                )
-                .into(),
-            );
-        }
-        let path = dst.join("voice.meta.json");
-        bytes += write_json(&path, &mv)?;
-        let m = layers::read_meta(&path)?
-            .ok_or_else(|| Error::Pack(format!("{} not written", path.display())))?;
-        if layers::restricted(&m.meta.sources) {
-            return Err(Error::Pack(format!(
-                "{}: a personal-use source is left in the published voice",
-                path.display()
-            )));
-        }
-        sources = m.meta.sources;
-    }
-    Ok(VoiceSlot {
-        status: "present".to_owned(),
-        lang: None,
-        manifest: Some("voice/manifest.json".to_owned()),
-        clips_dir: Some("voice/clips".to_owned()),
-        clips: n,
-        bytes,
-        sources,
-        note: format!(
-            "clips Ogg/Opus de la crate voice ; format du manifeste des clips défini par VO3 ; pack publié : {} clips de noms à usage personnel écartés",
-            dropped.len()
-        ),
-    })
 }
 
 /// Every file under `root` except the manifest, sorted, with size and SHA-256.
@@ -1054,7 +724,6 @@ fn group_description(group: &str) -> &'static str {
             "couches GeoJSON, données JSON et rasters du noyau (gzip), métadonnées des couches"
         }
         "rasters" => "rasters en tuiles PNG à palette (PMTiles)",
-        "voice" => "clips de voix et leur manifeste",
         _ => "fichier du pack",
     }
 }

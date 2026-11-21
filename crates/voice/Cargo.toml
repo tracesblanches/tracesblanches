@@ -1,6 +1,6 @@
 [package]
 name = "skimap-voice"
-description = "Voix : banque de phrases françaises et clips pré-générés pour les packs."
+description = "Voix : phrases françaises et anglaises des annonces, lues par la synthèse vocale du téléphone."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,17 +9,10 @@ license.workspace = true
 
 [dependencies]
 skimap-common = { workspace = true }
-thiserror.workspace = true
 serde.workspace = true
-serde_json.workspace = true
-rayon.workspace = true
-sha2.workspace = true
-hex.workspace = true
-ebur128.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
-tempfile.workspace = true
 
 [lints]
 workspace = true

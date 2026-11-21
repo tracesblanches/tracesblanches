@@ -365,16 +365,13 @@ fn sha(b: &[u8]) -> String {
     h
 }
 
-/// A small synthetic pack built from the crate types (manifest, `pack.meta.json`, voice
-/// manifest): no data of the real packs, so nothing of a source that may not be published.
+/// A small synthetic pack built from the crate types (manifest, `pack.meta.json`): no data of the real packs, so nothing of a source that may not be published.
 fn pack_seed() -> Vec<u8> {
     use skimap_common::meta::{LayerMeta, SourceRef};
     use skimap_pack::manifest::{
         Basemap, FileEntry, Layer, LayerKind, LegendEntry, Manifest, PackValidity, RasterInfo,
-        SiteInfo, ValueEncoding, VoiceSlot,
+        SiteInfo, ValueEncoding,
     };
-    use skimap_voice::manifest::ClipKind;
-    use skimap_voice::pack::{ClipEntry, VoiceManifest};
     let source = || SourceRef {
         name: "seed".into(),
         producer: None,
@@ -389,42 +386,6 @@ fn pack_seed() -> Vec<u8> {
         etag: None,
         sha256: None,
     };
-    let clip = |id: &str, text: &str| ClipEntry {
-        id: id.into(),
-        kind: ClipKind::Fixed,
-        text: text.into(),
-        file: format!("clips/{id}.opus"),
-        duration_ms: 900,
-        bytes: 10,
-        tokens: 8,
-        lead_trim_ms: 0,
-        tail_trim_ms: 0,
-        gain_db: 0.0,
-        end_burst: false,
-        seed: 1,
-        onset_clipped: false,
-        loudness_lufs: Some(-14.0),
-        true_peak_dbtp: Some(-1.5),
-        limiter_db: Some(0.0),
-        loudness_capped: false,
-    };
-    let voice = VoiceManifest {
-        format: 1,
-        lang: skimap_voice::Lang::Fr,
-        voice: "seed".into(),
-        model: "seed".into(),
-        model_sha256: "0".repeat(64),
-        seed: 1,
-        sample_rate: 24_000,
-        opus_kbps: 24,
-        loudness_target: Some((-14.0, -1.0)),
-        pauses_ms: (200, 500),
-        clips: vec![
-            clip("fixed.reassurance", "Vous êtes sur l'itinéraire."),
-            clip("fixed.sunset", "Coucher du soleil."),
-        ],
-    };
-    let voice = serde_json::to_vec(&voice).expect("voice manifest");
     let mut meta = LayerMeta::new("pack", "seed");
     meta.generated_at = "2026-11-15T00:00:00Z".into();
     meta.sources.push(source());
@@ -451,7 +412,6 @@ fn pack_seed() -> Vec<u8> {
             "basemap/osm/style.json",
             br#"{"version":8,"sources":{},"layers":[]}"#.to_vec(),
         ),
-        ("voice/manifest.json", voice),
     ];
     let bytes = |path: &str| {
         files
@@ -571,16 +531,6 @@ fn pack_seed() -> Vec<u8> {
                 None,
             ),
         ],
-        voice: VoiceSlot {
-            status: "present".into(),
-            lang: None,
-            manifest: Some("voice/manifest.json".into()),
-            clips_dir: Some("voice/clips".into()),
-            clips: 2,
-            bytes: bytes("voice/manifest.json"),
-            sources: vec![source()],
-            note: "seed".into(),
-        },
         missing: vec![],
         attributions: vec!["seed".into()],
         files: files
@@ -744,7 +694,6 @@ fn pack_seed_is_valid() {
             .expect("value")
             .is_some()
     );
-    assert!(skimap_voice::pack::VoiceManifest::read(&dir.join("voice")).is_ok());
 }
 
 /// Writes the hand-made seeds and the regression inputs of every target.

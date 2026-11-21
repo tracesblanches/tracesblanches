@@ -5,7 +5,7 @@
 //! (`sync::plan`, `update::apply_bundle`, `sync::write_state`), so that the phone runs
 //! exactly what the server's tests and `crates/server/examples/phone_sync.rs` run:
 //!
-//! 1. [`parse_server_catalog`] reads `/v1/catalog.json` (sites, sizes, voice packs).
+//! 1. [`parse_server_catalog`] reads `/v1/catalog.json` (sites, sizes).
 //! 2. `GET <index_url>` with `If-None-Match` = [`SyncStateInfo::index_etag`]; 304: done.
 //! 3. [`sync_plan`]: the bundles to fetch (none, one delta, or the base then a delta).
 //! 4. Each bundle is downloaded (resumed with `Range` / `If-Range`), checked whole with
@@ -15,10 +15,6 @@
 //!    tiles differs from the server's, #160): start again with [`sync_plan_whole_files`];
 //!    [`SyncError::MissingContents`]: start again with [`sync_plan_full`].
 //! 5. [`record_sync`] keeps the version, base and `ETag` next to the pack.
-//!
-//! A voice language pack (VO6 #129) is a pack of its own (manifest and clips), published
-//! with the same index and bundles; it syncs exactly like a site pack, into its own
-//! directory.
 
 use std::path::Path;
 
@@ -100,7 +96,7 @@ pub struct SyncPlan {
     pub download_bytes: u64,
     /// Size of the pack once installed.
     pub pack_bytes: u64,
-    /// Layers, basemaps and voice changed since the previous version (`id`).
+    /// Layers and basemaps changed since the previous version (`id`).
     pub changed: Vec<String>,
 }
 
@@ -128,19 +124,6 @@ pub struct InstallReport {
     pub removed_files: u64,
 }
 
-/// A voice language pack of a site (VO6), listed by the server catalog.
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
-pub struct VoicePackInfo {
-    /// Language (`fr`, `en`).
-    pub lang: String,
-    /// Index URL, relative to the server.
-    pub index_url: String,
-    /// Latest version.
-    pub latest_version: String,
-    /// Size of a first download.
-    pub first_download_bytes: u64,
-}
-
 /// A site published by the server (`/v1/catalog.json`).
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct ServerSite {
@@ -160,8 +143,6 @@ pub struct ServerSite {
     pub first_download_bytes: u64,
     /// Size of the pack once installed.
     pub pack_bytes: u64,
-    /// Voice language packs, when the server publishes them apart (VO6).
-    pub voice: Vec<VoicePackInfo>,
 }
 
 #[derive(Deserialize)]
@@ -174,16 +155,6 @@ struct CatalogFile {
 #[derive(Deserialize)]
 struct CatalogSite {
     site: SiteInfo,
-    index_url: String,
-    latest: LatestVersion,
-    first_download_bytes: u64,
-    #[serde(default)]
-    voice: Vec<CatalogVoice>,
-}
-
-#[derive(Deserialize)]
-struct CatalogVoice {
-    lang: String,
     index_url: String,
     latest: LatestVersion,
     first_download_bytes: u64,
@@ -215,16 +186,6 @@ pub fn parse_server_catalog(json: String) -> Result<Vec<ServerSite>, SyncError> 
             published_at: s.latest.published_at,
             first_download_bytes: s.first_download_bytes,
             pack_bytes: s.latest.total_bytes,
-            voice: s
-                .voice
-                .into_iter()
-                .map(|v| VoicePackInfo {
-                    lang: v.lang,
-                    index_url: v.index_url,
-                    latest_version: v.latest.version,
-                    first_download_bytes: v.first_download_bytes,
-                })
-                .collect(),
         })
         .collect();
     sites.sort_by(|a, b| a.name.cmp(&b.name).then(a.site_id.cmp(&b.site_id)));

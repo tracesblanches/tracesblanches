@@ -41,7 +41,7 @@ const REPORTS: [&str; 1] = ["crates/srndiff/docs/relecture.md"];
 /// Examples that are evaluations against hand-made references on the test sets: the value
 /// is the reference itself (a place, a piste, an OSM way or a route of that site), not a
 /// choice of site.
-const GOLDS: [&str; 7] = [
+const GOLDS: [&str; 6] = [
     // Off-piste bench cases: endpoints chosen on the map of each test set.
     "crates/core/examples/offpiste_bench.rs",
     // Route and matching benches: hut destinations of each test set.
@@ -53,8 +53,6 @@ const GOLDS: [&str; 7] = [
     "crates/pisteplan/examples/ocr_gold.rs",
     // SR1 review list: published itineraries and the off-piste routes of the test sets.
     "crates/srndiff/examples/srndiff.rs",
-    // Voice samples: piste and place names of each test pack.
-    "crates/voice/examples/voice_pack.rs",
 ];
 
 fn root() -> PathBuf {

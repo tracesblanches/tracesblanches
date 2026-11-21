@@ -71,14 +71,12 @@ pub fn plan(layout: &DataLayout, site: &Site, a: &PlanArgs) -> Result<PlanRun> {
         let build = t2.elapsed().as_secs_f64();
         let files = plan::write(layout, site, &p, &data)?;
         run.lines.push(format!(
-            "{} {} {} : lecture des couches {load:.2} s, matin (A1, A2, A9, A5, A6) {morning:.3} s, plan {build:.3} s ; {} plans B, {} annonces prévues, {} clips dont {} absents du pack",
+            "{} {} {} : lecture des couches {load:.2} s, matin (A1, A2, A9, A5, A6) {morning:.3} s, plan {build:.3} s ; {} plans B, {} annonces prévues",
             site.id,
             date,
             req.label,
             p.plans_b.len(),
             p.announcements.len(),
-            p.clips.required.len(),
-            p.clips.missing.len(),
         ));
         run.lines.push(p.text_fr());
         run.lines

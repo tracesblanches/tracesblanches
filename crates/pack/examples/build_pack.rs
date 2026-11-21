@@ -8,7 +8,7 @@
 //! (include personal-use-only layers: trail status, hourly weather),
 //! `SKIMAP_PLAN_IGN_MAXZOOM`, `SKIMAP_PROTOMAPS_BUILD` (`AAAAMMJJ`),
 //! `SKIMAP_PACK_IGN_SLOPES=1` (IGN slope tiles for comparison),
-//! `SKIMAP_PACK_SKIP=plan-ign,osm,voice` (development).
+//! `SKIMAP_PACK_SKIP=plan-ign,osm` (development).
 
 use std::time::Instant;
 
@@ -43,13 +43,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Ok(z) = std::env::var("SKIMAP_PLAN_IGN_MAXZOOM") {
         opts.plan_ign_maxzoom = z.parse()?;
     }
-    // Development: SKIMAP_PACK_SKIP=plan-ign,osm,voice
+    // Development: SKIMAP_PACK_SKIP=plan-ign,osm
     let skip = std::env::var("SKIMAP_PACK_SKIP").unwrap_or_default();
     let skip: Vec<&str> = skip.split(',').map(str::trim).collect();
     opts.plan_ign &= !skip.contains(&"plan-ign");
     opts.osm &= !skip.contains(&"osm");
     opts.ign_slopes = std::env::var("SKIMAP_PACK_IGN_SLOPES").is_ok_and(|v| v == "1");
-    opts.voice &= !skip.contains(&"voice");
     for s in sites {
         let t = Instant::now();
         let r = build(s, &layout, &dl, &opts)?;

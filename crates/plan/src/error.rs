@@ -44,9 +44,6 @@ pub enum Error {
     /// Error of the core (routing).
     #[error(transparent)]
     Core(#[from] skimap_core::error::Error),
-    /// Error of the voice layer (manifest).
-    #[error(transparent)]
-    Voice(#[from] skimap_voice::Error),
     /// Error of the common crate (layout, output).
     #[error(transparent)]
     Common(#[from] skimap_common::Error),

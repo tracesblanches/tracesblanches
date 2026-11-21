@@ -241,24 +241,6 @@ impl Texts for Fr {
         format!("abri sans nom ({kind})")
     }
 
-    fn p_clips(&self, required: usize, missing: &[String]) -> String {
-        format!(
-            "Clips : {required} nécessaires, {} absents du pack{}",
-            missing.len(),
-            if missing.is_empty() {
-                String::new()
-            } else {
-                format!(" ({})", missing.join(", "))
-            }
-        )
-    }
-
-    fn p_clips_fallback(&self, missing: usize, required: usize) -> String {
-        format!(
-            "{missing} clips sur {required} absents du pack : ces annonces passent par la voix de secours du téléphone"
-        )
-    }
-
     fn p_limit(&self, note: &str) -> String {
         format!("Limite : {note}")
     }

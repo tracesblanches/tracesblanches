@@ -1,7 +1,7 @@
 //! Checks on the real packs of both sites against the pipeline outputs they come from.
 //!
 //! By default the packs are built from the versioned reference layers (`fixtures/`,
-//! without basemaps, voice or off-piste rasters; the slope raster is the Horn slope of the
+//! without basemaps or off-piste rasters; the slope raster is the Horn slope of the
 //! 1 km terrain window) into a temporary directory, then read back. The `full_data_`
 //! variants read the packs of the complete local data, basemaps included (weekly job):
 //!
@@ -65,7 +65,6 @@ fn fixture_packs() -> FixturePacks {
             plan_ign: false,
             osm: false,
             ign_slopes: false,
-            voice: false,
             offpiste: false,
             ..BuildOptions::default()
         };
@@ -649,7 +648,7 @@ fn full_data_public_pack_from_real_outputs_has_no_restricted_source() {
         for e in std::fs::read_dir(real.out_dir(site)).unwrap() {
             let e = e.unwrap();
             // The outputs of the packs are rebuilt here, never written through a link.
-            if ["pack", "export", "voice-pack"].contains(&e.file_name().to_str().unwrap()) {
+            if ["pack", "export"].contains(&e.file_name().to_str().unwrap()) {
                 continue;
             }
             std::os::unix::fs::symlink(e.path(), out.join(e.file_name())).unwrap();
@@ -678,157 +677,7 @@ fn full_data_public_pack_from_real_outputs_has_no_restricted_source() {
             println!("   left out {} : {}", m.id, m.reason);
         }
         assert_restricted_free(&pack);
-        // VO6: the clips are in a voice pack per language, published apart from the base
-        // pack, which has none.
-        assert_eq!(pack.manifest().voice.status, "absent");
-        let v = skimap_pack::build::build_voice_pack(site, &l, "voice", "fr", false).unwrap();
-        let voice = Pack::open(&v.pack_dir).unwrap();
-        assert_eq!(voice.verify().unwrap(), Vec::<String>::new());
-        assert_restricted_free(&voice);
-        assert_public_voice(&voice, &real, site);
     }
-}
-
-/// The voice of a published pack is there (VO3) and says no name read only from a
-/// personal-use source: the Biodiv'sports zones that no publishable source names (species,
-/// « APPB … » as Biodiv'sports spells them), their end dates, the piste-plan names that OSM
-/// does not have. Fails as soon as one such clip is in the published voice.
-fn assert_public_voice(pack: &Pack, real: &DataLayout, site: &Site) {
-    use skimap_voice::names::{PisteName, name_clip_id, name_clip_text, slug};
-    let m = pack.manifest();
-    assert_eq!(m.voice.status, "present", "{}", m.voice.note);
-    let vm = json(&pack.path("voice/manifest.json").unwrap());
-    let clips = vm["clips"].as_array().unwrap();
-    assert_eq!(clips.len() as u64, m.voice.clips);
-    // None of the clips the voice layer lists as personal.
-    let listed_personal = json(&real.out_dir(site).join("voice/personal.json"));
-    let listed_personal: BTreeSet<&str> = listed_personal["clips"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|c| c.as_str().unwrap())
-        .collect();
-    assert!(!listed_personal.is_empty());
-    assert!(
-        clips
-            .iter()
-            .all(|c| !listed_personal.contains(c["id"].as_str().unwrap()))
-    );
-    let ids: BTreeSet<&str> = clips.iter().map(|c| c["id"].as_str().unwrap()).collect();
-    let texts: BTreeSet<&str> = clips.iter().map(|c| c["text"].as_str().unwrap()).collect();
-    let files: BTreeSet<String> = std::fs::read_dir(pack.path("voice/clips").unwrap())
-        .unwrap()
-        .map(|e| format!("clips/{}", e.unwrap().file_name().to_string_lossy()))
-        .collect();
-    let listed: BTreeSet<String> = clips
-        .iter()
-        .map(|c| c["file"].as_str().unwrap().to_owned())
-        .collect();
-    assert_eq!(files, listed, "clip files = manifest entries");
-
-    let out = real.out_dir(site);
-    let feats = |v: &Value| v["features"].as_array().cloned().unwrap_or_default();
-    // Names a publishable layer has: every zone not from Biodiv'sports, refuges, OSM pistes.
-    let mut public = BTreeSet::new();
-    let mut biodiv = BTreeSet::new();
-    let (mut biodiv_dates, mut other_dates) = (BTreeSet::new(), BTreeSet::new());
-    for f in feats(&json(&out.join("zones/zones.geojson"))) {
-        let p = &f["properties"];
-        let months: Vec<u8> = p["months"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|m| m.as_u64().map(|m| m as u8))
-            .collect();
-        let dates = skimap_voice::sources::period_ends(&months);
-        let Some(n) = p["name"].as_str() else {
-            continue;
-        };
-        if p["source"] == "biodiv-sports" {
-            biodiv.insert(n.trim().to_owned());
-            biodiv_dates.extend(dates);
-        } else {
-            public.insert(name_clip_id(n.trim()));
-            other_dates.extend(dates);
-        }
-    }
-    for f in feats(&json(&out.join("refuges/refuges_info.geojson"))) {
-        if let Some(n) = f["properties"]["name"].as_str() {
-            public.insert(name_clip_id(n.trim()));
-        }
-    }
-    for f in feats(&json(&out.join("refuges/osm.geojson"))) {
-        if let Some(n) = f["properties"]["tags"]["name"].as_str() {
-            public.insert(name_clip_id(n.trim()));
-        }
-    }
-    let mut osm_pistes = BTreeSet::new();
-    for f in feats(&json(&out.join("pistes/pistes.geojson"))) {
-        let p = &f["properties"];
-        if let Some(n) = p["way_name"].as_str() {
-            osm_pistes.insert(slug(n.trim()));
-        }
-        for r in p["relations"].as_array().into_iter().flatten() {
-            if let Some(n) = r["name"].as_str() {
-                osm_pistes.insert(slug(n.trim()));
-            }
-        }
-    }
-    let personal_only: Vec<&String> = biodiv
-        .iter()
-        .filter(|n| !public.contains(&name_clip_id(n)))
-        .collect();
-    // Biodiv'sports names to keep out of the voice: some in data built with the personal
-    // sources, none in data built without (the weekly build has no Biodiv'sports zone).
-    assert_eq!(
-        !personal_only.is_empty(),
-        fixtures::full_data_personal(site.id),
-        "{}: Biodiv'sports names {personal_only:?}",
-        site.id
-    );
-    for n in &personal_only {
-        assert!(!ids.contains(name_clip_id(n).as_str()), "{}: {n}", site.id);
-        assert!(
-            !texts.contains(name_clip_text(n).as_str()),
-            "{}: {n}",
-            site.id
-        );
-    }
-    let personal_dates: Vec<_> = biodiv_dates.difference(&other_dates).collect();
-    for d in &personal_dates {
-        let id = skimap_voice::clips::until(**d).id;
-        assert!(!ids.contains(id.as_str()), "{}: {id}", site.id);
-    }
-    let mut plan_only = Vec::new();
-    let plan = out.join("plan_pistes/plan_pistes.geojson");
-    if plan.is_file() {
-        for f in feats(&json(&plan)) {
-            let Some(n) = f["properties"]["name"].as_str() else {
-                continue;
-            };
-            let s = slug(n.trim());
-            if osm_pistes.contains(&s) {
-                continue;
-            }
-            let id = PisteName::new(n.trim(), None).clip_id();
-            assert!(
-                !ids.iter()
-                    .any(|i| *i == id || i.starts_with(&format!("{id}."))),
-                "{}: plan name {n}",
-                site.id
-            );
-            plan_only.push(n.to_owned());
-        }
-    }
-    // The publishable names are back in the published voice.
-    let inpn = public.iter().filter(|id| ids.contains(id.as_str())).count();
-    assert!(inpn > 10, "{}: {inpn} public names spoken", site.id);
-    println!(
-        "   voice: {} clips, {} o ; absent: {} Biodiv'sports names {personal_only:?}, dates {personal_dates:?}, plan names {plan_only:?} ; {inpn} public names",
-        m.voice.clips,
-        m.voice.bytes,
-        personal_only.len()
-    );
 }
 
 fn assert_restricted_free(pack: &Pack) {
@@ -845,12 +694,6 @@ fn assert_restricted_free(pack: &Pack) {
             );
         }
     }
-    assert!(
-        m.voice
-            .sources
-            .iter()
-            .all(|s| !skimap_pack::build::layers::unauthorised(s))
-    );
     for a in &m.attributions {
         let a = a.to_lowercase();
         for bad in [

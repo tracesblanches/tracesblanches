@@ -115,7 +115,7 @@ fn ski(pack: &Path, plan_dir: &Path, seed: u64) -> (RecapView, usize, String) {
         TrackerParams::default(),
     )
     .unwrap();
-    let s = open_tracking(plan_dir.display().to_string(), None, "fr".into()).unwrap();
+    let s = open_tracking(plan_dir.display().to_string(), "fr".into()).unwrap();
     let mut delay_ms: i64 = 0;
     let mut recap = None;
     let mut fixes = Vec::new();

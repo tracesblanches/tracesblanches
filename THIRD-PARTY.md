@@ -17,8 +17,6 @@ des données produites (packs, couches), par source, dans
 | pmtiles 0.28.1 (`vendor/pmtiles`) | MIT OR Apache-2.0 | copie corrigée, utilisée sous MIT ; textes dans `vendor/pmtiles/LICENSE-MIT` et `LICENSE-APACHE`, modification décrite dans `vendor/pmtiles/VENDOR.md` |
 | Protomaps basemaps | BSD-3-Clause | style de départ de `crates/pack/assets/protomaps/style-light-fr.json` |
 | snowtools (CNRM) | CeCILL-C v1 | aucun fichier dans le dépôt ; contours des massifs lus par le pipeline, cités dans la couche qui en dérive |
-| Pocket TTS (Kyutai), modèle | CC-BY-4.0 et conditions d'usage du modèle | génère les clips de voix sur le poste ; non livré dans l'app |
-| pockettts.cpp, ggml | MIT | outil du poste pour la voix ; non livré dans l'app |
 
 ## Crates Rust
 

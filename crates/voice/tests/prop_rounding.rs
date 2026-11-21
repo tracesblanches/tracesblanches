@@ -1,16 +1,16 @@
 //! Property tests of the spoken quantities (Q3, #103): natural rounding of distances,
 //! durations and clock times, French number words (parsed back by an independent reader),
-//! announcements of any value (never a panic; in range, every clip in the pack).
+//! announcements of any value (never a panic; in range, every phrase in the vocabulary).
 
 use proptest::prelude::*;
 use skimap_voice::bank::{Briefing, Event, Side};
 use skimap_voice::clips::Direction;
-use skimap_voice::manifest::{PackNames, manifest};
 use skimap_voice::numbers::{Gender, cardinal, signed};
 use skimap_voice::quantity::{
     Clock, distance_grid, distance_words, duration_grid, duration_words, floor_duration,
     round_distance, round_duration,
 };
+use skimap_voice::vocabulary::{SiteNames, vocabulary};
 
 /// Independent reader of French number words (traditional spelling, hyphens or spaces).
 fn parse_french(s: &str) -> Option<u64> {
@@ -86,8 +86,8 @@ fn parse_french(s: &str) -> Option<u64> {
     Some(total + group + small)
 }
 
-fn names() -> PackNames {
-    PackNames {
+fn names() -> SiteNames {
+    SiteNames {
         site: "Cervières".into(),
         pistes: vec![],
         places: vec![],
@@ -189,7 +189,7 @@ proptest! {
     }
 
     /// Every announcement built from any value (NaN, infinities, huge or negative values
-    /// from a corrupt pack) has a text, without panicking.
+    /// from corrupt data) has a text, without panicking.
     #[test]
     fn announcements_never_panic(
         x in any_f64(),
@@ -218,7 +218,7 @@ proptest! {
         }
     }
 
-    /// In the ranges the pack provides for, every clip of the announcement is in the pack.
+    /// In the ranges of the grids, every phrase of the announcement is in the vocabulary.
     #[test]
     fn in_range_values_have_clips(
         metres in 0.0f64..20_000.0,
@@ -229,7 +229,7 @@ proptest! {
         wind in 0.0f64..150.0,
         percent in 0.0f64..=100.0,
     ) {
-        let m = manifest(&names());
+        let m = vocabulary(&names());
         let deadline = Clock::floor_quarter(14, 50);
         let events = vec![
             Event::Turn { metres, direction: Direction::Right, piste: None },

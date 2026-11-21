@@ -85,23 +85,15 @@ fn session_follows_the_core_on_the_fixtures() {
         &p,
         TrackView::new(&trk).unwrap(),
         &g,
-        None,
         TrackerParams::default(),
     )
     .unwrap();
     let dir = tempfile::tempdir().unwrap();
     let open = || {
-        TrackingSession::start(
-            p.clone(),
-            trk.clone(),
-            g.clone(),
-            None,
-            dir.path().to_path_buf(),
-        )
-        .unwrap()
+        TrackingSession::start(p.clone(), trk.clone(), g.clone(), dir.path().to_path_buf()).unwrap()
     };
     let mut session = open();
-    let mut spoken = (0, 0);
+    let mut spoken = 0;
     let mut modes = std::collections::BTreeSet::new();
     let mut delay = 0i64;
     let mut i = 0;
@@ -208,16 +200,14 @@ fn session_follows_the_core_on_the_fixtures() {
             delay = gq.max_delay_ms;
             modes.insert(format!("{:?}", gq.mode));
         }
-        spoken.0 += got.len();
-        // Without the pack's clips, every announcement goes to the Android voice.
-        spoken.1 += b.spoken.iter().filter(|s| s.all_clips).count();
+        spoken += got.len();
         finished |= b.recap.is_some();
         // The banner always has its texts.
         assert!(!b.guidance.remaining_text.is_empty());
         assert!(b.guidance.arrival.contains(" h "));
     }
     assert!(restarted && finished, "{} inputs", run.inputs.len());
-    assert!(spoken.0 > 3 && spoken.1 == 0, "{spoken:?}");
+    assert!(spoken > 3, "{spoken}");
     for m in ["Pocket", "Approach", "Pause", "Waking"] {
         assert!(modes.contains(m), "{m} not in {modes:?}");
     }
@@ -237,7 +227,7 @@ fn session_follows_the_core_on_the_fixtures() {
     println!(
         "{} inputs, {calls} calls, {} said, GPS modes {modes:?}",
         run.inputs.len(),
-        spoken.0
+        spoken
     );
 }
 
@@ -273,7 +263,7 @@ fn bring_me_back_on_the_fixtures() {
     )
     .unwrap();
     let dir = tempfile::tempdir().unwrap();
-    let s = TrackingSession::start(p, trk, g, None, dir.path().to_path_buf()).unwrap();
+    let s = TrackingSession::start(p, trk, g, dir.path().to_path_buf()).unwrap();
     let t0 = run.inputs[0].t();
     let out: Vec<(i64, f64, f64)> = run
         .inputs
@@ -415,14 +405,7 @@ fn the_car_set_on_the_map_is_where_bring_me_back_goes() {
     .unwrap();
     let dir = tempfile::tempdir().unwrap();
     let open = || {
-        TrackingSession::start(
-            p.clone(),
-            trk.clone(),
-            g.clone(),
-            None,
-            dir.path().to_path_buf(),
-        )
-        .unwrap()
+        TrackingSession::start(p.clone(), trk.clone(), g.clone(), dir.path().to_path_buf()).unwrap()
     };
     let s = open();
     let t0 = run.inputs[0].t();

@@ -336,7 +336,6 @@ mod tests {
             published_at: String::new(),
             first_download_bytes: bytes,
             pack_bytes: bytes,
-            voice: Vec::new(),
         }
     }
 

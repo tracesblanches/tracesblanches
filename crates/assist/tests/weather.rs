@@ -413,8 +413,8 @@ fn golden_outputs_of_every_set() {
 
 /// The same outputs in English (VO6): golden fingerprints
 /// (`fixtures/golden/assist/weather-<set>.en.json`) and no French left in the texts (the
-/// voice stays the French bank, said in English by the voice pack; names of the data and
-/// the snow quality table aside).
+/// voice stays the French bank, said in English by the phone; names of the data and the
+/// snow quality table aside).
 #[test]
 fn golden_outputs_of_every_set_in_english() {
     for s in &SETS {

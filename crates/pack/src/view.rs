@@ -26,7 +26,7 @@ pub struct PackView {
 }
 
 impl PackView {
-    /// Links every file of `pack` (layers, their metadata, the voice layer) under `root`
+    /// Links every file of `pack` (layers and their metadata) under `root`
     /// at the place it comes from in the pipeline (`out/<site>/<origin>`). `root` is
     /// emptied first: a view is rebuilt from the pack it shows.
     pub fn build(pack: &Pack, root: &Path) -> Result<Self> {
@@ -63,10 +63,6 @@ impl PackView {
                     link(src.clone(), dir.join(name))?;
                 }
             }
-        }
-        let voice = pack.root().join("voice");
-        if voice.join("manifest.json").is_file() {
-            link(voice, base.join("voice"))?;
         }
         Ok(Self {
             layout: DataLayout::new(root),

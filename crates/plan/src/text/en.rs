@@ -243,24 +243,6 @@ impl Texts for En {
         format!("shelter without a name ({kind})")
     }
 
-    fn p_clips(&self, required: usize, missing: &[String]) -> String {
-        format!(
-            "Clips: {required} needed, {} missing from the pack{}",
-            missing.len(),
-            if missing.is_empty() {
-                String::new()
-            } else {
-                format!(" ({})", missing.join(", "))
-            }
-        )
-    }
-
-    fn p_clips_fallback(&self, missing: usize, required: usize) -> String {
-        format!(
-            "{missing} of {required} clips missing from the pack: these announcements use the phone's fallback voice"
-        )
-    }
-
     fn p_limit(&self, note: &str) -> String {
         format!("Limit: {note}")
     }

@@ -22,7 +22,6 @@ mod route;
 #[cfg(test)]
 #[path = "../../../fixtures/support/mod.rs"]
 mod test_fixtures;
-mod voice;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -277,16 +276,6 @@ enum Command {
         #[arg(long, default_value = "route.geojson")]
         out: PathBuf,
     },
-    /// Voice clips of the pack of a site (VO3, #85) with the names of its built layers
-    /// (`pistes`, `refuges`, `zones`); Pocket TTS on this workstation. One layer per
-    /// language (VO6): `voice/` (fr), `voice-en/` (en).
-    Voice {
-        /// Site identifier.
-        site: String,
-        /// Language of the clips: `fr` or `en`.
-        #[arg(long, default_value = "fr")]
-        lang: String,
-    },
     /// Assistant of a site (A1 to A9): briefing, wax, snow quality, synthesis, suggested
     /// loops, equipment, alerts, best time; `data/out/<site>/assist/`.
     Assist {
@@ -348,9 +337,6 @@ enum Command {
     Fetch(Placeholder),
     /// Build the offline pack of a site from the pipeline outputs (P14, #27).
     BuildPack(SiteArg),
-    /// Voice packs of a site only (VO6): one per language whose voice layer is built,
-    /// `data/out/<site>/voice-pack/<lang>/`, published apart from the base pack.
-    VoicePack(SiteArg),
     /// Serve a directory over HTTP with range requests, for the pack viewer (P15, #28).
     Serve {
         /// Root directory (the repository root for `tools/viewer/`).
@@ -1050,24 +1036,6 @@ fn run(cli: Cli) -> Result<()> {
             }
             Ok(())
         }
-        Command::Voice { site: id, lang } => {
-            let s = site(&id)?;
-            let lang = skimap_voice::Lang::from_code(&lang)
-                .ok_or_else(|| anyhow::anyhow!("langue {lang:?} : fr ou en"))?;
-            let (b, names) = ctx()?.voice(s, lang)?;
-            for (what, n) in [
-                ("publiables", &names.public),
-                ("usage personnel", &names.personal),
-            ] {
-                println!(
-                    "noms {what} : {} pistes, {} lieux, {} dates",
-                    n.pistes.len(),
-                    n.places.len(),
-                    n.dates.len()
-                );
-            }
-            print_json(&b)
-        }
         Command::Assist {
             site: s,
             date,
@@ -1134,17 +1102,6 @@ fn run(cli: Cli) -> Result<()> {
                     r.total_bytes as f64 / 1e6
                 ),
             );
-            // VO6: the voice packs apart, one per built language.
-            for v in c.build_voice_packs(s)? {
-                print_json(&v)?;
-            }
-            Ok(())
-        }
-        Command::VoicePack(a) => {
-            let s = site(&a.site)?;
-            for v in ctx()?.build_voice_packs(s)? {
-                print_json(&v)?;
-            }
             Ok(())
         }
         Command::Serve { root, addr } => {
@@ -1286,7 +1243,6 @@ mod tests {
         );
         for cmd in [
             "routing",
-            "voice",
             "avalanche-exposure",
             "build-pack",
             "export",

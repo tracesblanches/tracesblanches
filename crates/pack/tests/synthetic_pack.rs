@@ -129,7 +129,6 @@ fn build_read_export() {
     let m = pack.manifest();
     assert_eq!(m.format_version, 1);
     assert_eq!(m.valid_for.until.as_deref(), Some("2026-12-14"));
-    assert_eq!(m.voice.status, "absent");
     assert!(m.attributions.contains(&"Attr A".to_owned()));
     assert_eq!(m.total_bytes, m.files.iter().map(|f| f.bytes).sum::<u64>());
 
@@ -290,18 +289,6 @@ fn public_pack_has_no_restricted_source() {
         &json!({"type": "FeatureCollection", "features": [{"type": "Feature",
             "properties": {"source": "CLPA"}, "geometry": {"type": "Point", "coordinates": [6.75, 44.85]}}]}),
     );
-    // Voice clips with a Biodiv'sports zone name.
-    std::fs::create_dir_all(out.join("voice/clips")).unwrap();
-    std::fs::write(out.join("voice/clips/z.opus"), b"x").unwrap();
-    write(
-        &out.join("voice/manifest.json"),
-        &json!({"clips": [{"text": "Aigle royal"}]}),
-    );
-    write(
-        &out.join("voice/voice.meta.json"),
-        &json!({"sources": [{"name": "Biodiv'sports", "url": "https://biodiv-sports.fr", "licence": "?", "attribution": "B"}]}),
-    );
-
     let layout = DataLayout::new(tmp.path());
     let dl = Downloader::builder(layout.cache_root())
         .offline(true)
@@ -312,8 +299,6 @@ fn public_pack_has_no_restricted_source() {
             plan_ign: false,
             osm: false,
             personal_sources: personal,
-            // The voice inside the site pack, as before VO6 (still possible).
-            voice: true,
             ..BuildOptions::default()
         };
         let report = build(&CERVIERES, &layout, &dl, &opts).unwrap();
@@ -332,7 +317,6 @@ fn public_pack_has_no_restricted_source() {
                 let l = m.layer(id).unwrap_or_else(|| panic!("{id} in {ids:?}"));
                 assert!(l.personal_use_only, "{id}");
             }
-            assert_eq!(m.voice.status, "present");
             continue;
         }
         for id in [
@@ -344,177 +328,7 @@ fn public_pack_has_no_restricted_source() {
         ] {
             assert!(!ids.contains(&id), "{id} in the public pack");
         }
-        assert_eq!(m.voice.status, "absent");
         assert_restricted_free(&pack);
-    }
-}
-
-/// The voice crate marks names as personal by the same source list as the pack.
-#[test]
-fn voice_and_pack_agree_on_personal_sources() {
-    assert_eq!(
-        skimap_voice::sources::PERSONAL_SOURCES,
-        skimap_pack::build::layers::UNAUTHORISED_SOURCES
-    );
-    assert_eq!(
-        skimap_voice::pack::PERSONAL_FILE,
-        skimap_pack::build::VOICE_PERSONAL_FILE
-    );
-}
-
-/// A voice layer with its list of personal clips (`personal.json`) goes into the published
-/// pack without the clips of names read only from personal-use sources, and without those
-/// sources; the personal pack has them all.
-#[test]
-fn public_pack_voice_leaves_out_personal_names() {
-    let tmp = tempfile::tempdir().unwrap();
-    fixture(tmp.path());
-    let out = tmp.path().join("out/cervieres");
-    let clip = |id: &str, kind: &str, text: &str| {
-        json!({"id": id, "kind": kind, "text": text, "file": format!("clips/{id}.opus"),
-               "duration_ms": 700, "bytes": 3, "tokens": 4, "lead_trim_ms": 90, "tail_trim_ms": 40,
-               "gain_db": 1.0, "end_burst": false, "seed": 42, "onset_clipped": false})
-    };
-    let clips = [
-        clip("fix.arrive", "fixed", "Vous arrivez à destination."),
-        clip("name.casse-deserte", "name", "Casse Déserte."),
-        clip("name.aigle-royal", "name", "Aigle royal."),
-        clip(
-            "piste.la-pinatelle.noire",
-            "name",
-            "La Pinatelle, piste noire.",
-        ),
-        clip("until.0430", "value", "En vigueur jusqu'au trente avril."),
-    ];
-    std::fs::create_dir_all(out.join("voice/clips")).unwrap();
-    for c in &clips {
-        let f = c["file"].as_str().unwrap();
-        std::fs::write(out.join("voice").join(f), c["text"].as_str().unwrap()).unwrap();
-    }
-    write(
-        &out.join("voice/manifest.json"),
-        &json!({"format": 1, "voice": "estelle", "model": "m.gguf", "model_sha256": "e7", "seed": 42,
-                "sample_rate": 24000, "opus_kbps": 24, "pauses_ms": [150, 400], "clips": clips}),
-    );
-    write(
-        &out.join("voice/personal.json"),
-        &json!({"note": "n", "sources": ["Biodiv'sports", "Plan des pistes - Cervières"],
-                "clips": ["name.aigle-royal", "piste.la-pinatelle.noire", "until.0430"]}),
-    );
-    write(
-        &out.join("voice/voice.meta.json"),
-        &json!({"layer": "voice", "site": "cervieres", "generated_at": "2026-11-15T10:00:00Z",
-                "sources": [
-                    {"name": "Pocket TTS", "url": "https://huggingface.co/kyutai", "licence": "CC-BY-4.0", "attribution": "Kyutai"},
-                    {"name": "INPN espaces protégés (PatriNat)", "url": "https://data.geopf.fr/wfs/ows", "licence": "Licence Ouverte 2.0", "attribution": "PatriNat"},
-                    // Not marked, recognised by name (older metadata).
-                    {"name": "Biodiv'sports", "url": "https://biodiv-sports.fr", "licence": "?", "attribution": "Biodiv'sports"},
-                    {"name": "Plan des pistes - Cervières", "url": "https://example.org/plan.pdf", "licence": "?", "attribution": "OT", "personal_use_only": true}],
-                "files": [{"name": "manifest.json", "description": "m", "count": 5},
-                          {"name": "clips/<id>.opus", "description": "c", "count": 5, "bytes": 15},
-                          {"name": "personal.json", "description": "p", "count": 3}],
-                "stats": {"clips": 5, "clips_personal": 3, "names_personal": {"places": 1}},
-                "notes": []}),
-    );
-    let layout = DataLayout::new(tmp.path());
-    let dl = Downloader::builder(layout.cache_root())
-        .offline(true)
-        .build()
-        .unwrap();
-    // VO6: the base pack has no voice; the clips go to the voice pack of their language.
-    let base = BuildOptions {
-        plan_ign: false,
-        osm: false,
-        ..BuildOptions::default()
-    };
-    let report = build(&CERVIERES, &layout, &dl, &base).unwrap();
-    let pack = Pack::open(&report.pack_dir).unwrap();
-    assert_eq!(pack.manifest().voice.status, "absent");
-    assert!(
-        !pack
-            .manifest()
-            .files
-            .iter()
-            .any(|f| f.path.starts_with("voice/"))
-    );
-    for personal in [false, true] {
-        let report =
-            skimap_pack::build::build_voice_pack(&CERVIERES, &layout, "voice", "fr", personal)
-                .unwrap();
-        assert!(report.pack_dir.ends_with("voice-pack/fr"));
-        let pack = Pack::open(&report.pack_dir).unwrap();
-        assert!(pack.verify().unwrap().is_empty());
-        let m = pack.manifest();
-        assert_eq!(m.voice.status, "present", "{:?}", m.voice);
-        assert_eq!(m.voice.lang.as_deref(), Some("fr"));
-        assert!(m.layers.is_empty() && m.basemaps.is_empty());
-        let vm: Value = serde_json::from_slice(
-            &std::fs::read(pack.path("voice/manifest.json").unwrap()).unwrap(),
-        )
-        .unwrap();
-        let ids: Vec<&str> = vm["clips"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|c| c["id"].as_str().unwrap())
-            .collect();
-        let files: Vec<String> = std::fs::read_dir(pack.path("voice/clips").unwrap())
-            .unwrap()
-            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
-            .collect();
-        if personal {
-            assert_eq!(m.voice.clips, 5);
-            assert_eq!(ids.len(), 5);
-            assert!(
-                m.voice
-                    .sources
-                    .iter()
-                    .any(skimap_pack::build::layers::unauthorised)
-            );
-            continue;
-        }
-        assert_eq!(m.voice.clips, 2, "{:?}", m.voice);
-        assert_eq!(ids, ["fix.arrive", "name.casse-deserte"]);
-        let mut files = files;
-        files.sort();
-        assert_eq!(files, ["fix.arrive.opus", "name.casse-deserte.opus"]);
-        let names: Vec<&str> = m.voice.sources.iter().map(|s| s.name.as_str()).collect();
-        assert_eq!(names, ["Pocket TTS", "INPN espaces protégés (PatriNat)"]);
-        let meta: Value = serde_json::from_slice(
-            &std::fs::read(pack.path("voice/voice.meta.json").unwrap()).unwrap(),
-        )
-        .unwrap();
-        assert_eq!(meta["stats"]["clips"], 2);
-        assert_eq!(meta["stats"]["clips_personal"], 0);
-        assert_eq!(meta["stats"]["public_pack_clips_removed"], 3);
-        assert_eq!(meta["files"][1]["count"], 2);
-        assert_eq!(
-            meta["files"].as_array().unwrap().len(),
-            2,
-            "no personal.json"
-        );
-        assert!(m.files.iter().all(|f| !f.path.ends_with("personal.json")));
-        // Nothing of the personal names anywhere in the published voice.
-        for f in m.files.iter().filter(|f| f.path.starts_with("voice/")) {
-            let text =
-                String::from_utf8_lossy(&std::fs::read(pack.path(&f.path).unwrap()).unwrap())
-                    .to_lowercase();
-            for bad in [
-                "aigle",
-                "pinatelle",
-                "biodiv",
-                "plan des pistes",
-                "until.0430",
-            ] {
-                assert!(!text.contains(bad), "{} contains {bad}", f.path);
-            }
-        }
-        assert!(
-            !m.voice
-                .sources
-                .iter()
-                .any(skimap_pack::build::layers::unauthorised)
-        );
     }
 }
 
