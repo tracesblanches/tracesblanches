@@ -120,6 +120,8 @@ fn fixture_packs_match_their_sources_and_geotiffs() {
         sources(&p.layout, site);
         let classes = rasters(&p.layout, site);
         let pack = Pack::open(pack_dir(site, &p.layout).unwrap()).unwrap();
+        // A published pack: nothing from a personal-use source, whatever file it is in.
+        assert_restricted_free(&pack);
         let m = pack.manifest();
         let mut k = fixtures::golden::Golden::new(&format!("pack/{}", site.id));
         k.count("files", m.files.len())

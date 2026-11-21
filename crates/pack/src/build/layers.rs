@@ -27,8 +27,15 @@ pub enum Transform {
     Gzip,
     /// GeoJSON, compact, rounded coordinates.
     GeoJson,
-    /// GeoJSON zones annotated with the rules of `rules.json` in the same directory.
+    /// GeoJSON zones annotated with the rules of `rules.json` in the same directory
+    /// (without the rules of personal-use sources in a published pack, [`ZonesRules`]).
+    ///
+    /// [`ZonesRules`]: Transform::ZonesRules
     Zones,
+    /// The rule file of the zones (`rules.json`), compact; in a published pack without
+    /// the rules and sources of personal-use sources
+    /// ([`skimap_zones::RuleSet::without_personal_sources`]: the Biodiv'sports zones).
+    ZonesRules,
     /// GeoJSON pistes enriched with the trail state and the piste plan
     /// ([`crate::build::pistes`]).
     Pistes,
@@ -227,13 +234,16 @@ fn catalog_without_srn() -> Vec<Spec> {
                 true,
             )
         },
-        data(
-            "zones-rules",
-            "Règles de bivouac, feu et accès",
-            "zones",
-            "rules.json",
-            "zones.meta.json",
-        ),
+        Spec {
+            transform: Transform::ZonesRules,
+            ..data(
+                "zones-rules",
+                "Règles de bivouac, feu et accès",
+                "zones",
+                "rules.json",
+                "zones.meta.json",
+            )
+        },
         vector(
             "no-network",
             "Zones sans aucun réseau (même le 112)",
@@ -775,7 +785,9 @@ pub fn include(spec: &Spec, out: &Path, root: &Path, personal_sources: bool) -> 
     }
     let ext = ext_of(&spec.file);
     let (file, format) = match spec.transform {
-        Transform::Copy => (format!("layers/{}.{ext}", spec.id), ext.clone()),
+        Transform::Copy | Transform::ZonesRules => {
+            (format!("layers/{}.{ext}", spec.id), ext.clone())
+        }
         Transform::Gzip => (
             format!("layers/{}.{ext}.gz", spec.id),
             format!("{ext}+gzip"),
@@ -792,6 +804,14 @@ pub fn include(spec: &Spec, out: &Path, root: &Path, personal_sources: bool) -> 
     let mut joined: Option<crate::build::pistes::PistesReport> = None;
     let bytes = match spec.transform {
         Transform::Copy => copy_data(&src, &dst)?,
+        Transform::ZonesRules => {
+            let text = std::fs::read_to_string(&src).map_err(|e| Error::io(&src, e))?;
+            let rules = RuleSet::file_for(&text, personal_sources)?;
+            let v: Value = serde_json::from_str(&rules)
+                .map_err(|e| Error::json(src.display().to_string(), e))?;
+            let out = serde_json::to_vec(&v).map_err(|e| Error::json(&file, e))?;
+            write_bytes(&dst, &out)?
+        }
         Transform::Gzip => gzip_file(&src, &dst)?,
         Transform::GeoJson
         | Transform::Zones
@@ -803,8 +823,10 @@ pub fn include(spec: &Spec, out: &Path, root: &Path, personal_sources: bool) -> 
                 .map_err(|e| Error::json(src.display().to_string(), e))?;
             if spec.transform == Transform::Zones {
                 let rules_path = dir.join("rules.json");
-                let rules_text =
-                    std::fs::read_to_string(&rules_path).map_err(|e| Error::io(&rules_path, e))?;
+                let rules_text = RuleSet::file_for(
+                    &std::fs::read_to_string(&rules_path).map_err(|e| Error::io(&rules_path, e))?,
+                    personal_sources,
+                )?;
                 annotate_zones(&mut v, &text, &rules_text, chrono::Utc::now().date_naive())?;
             }
             if spec.transform == Transform::Pistes {
