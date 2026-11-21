@@ -819,8 +819,11 @@ impl DayPlanner {
                 detail: "graphe".into(),
             })?;
         // The morning's group gives its time to the plan (`plan::build`); a group given
-        // only now (a morning computed without one) is applied here.
-        if let (Some(md), None) = (&model, &m.group) {
+        // now that is not the morning's (a morning computed without one, or with the
+        // group before it learned its last outing) is applied here.
+        if let Some(md) = &model
+            && m.group.as_ref() != Some(md)
+        {
             pace::with_pace(&mut p, g, md)?;
         }
         let track = plan::track(&p, g)?;
