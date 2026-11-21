@@ -1,6 +1,8 @@
 //! The morning, the validated plan and the tracking session on the real packs of both
 //! sites (`full_data_*`, `--ignored`: needs `data/out/<site>/pack/` and the pipeline
-//! outputs), against the core's tracker run directly on the same inputs.
+//! outputs), against the core's tracker run directly on the same inputs. The
+//! `full_data_personal_*` ones replay the archived day (`assist/history`, weather for
+//! personal use only): not run by the weekly build (fixtures/support/mod.rs).
 //!
 //! ```sh
 //! cargo test --release -p skimap-ffi --test tracking -- --ignored --nocapture
@@ -10,6 +12,9 @@
     clippy::disallowed_methods,
     reason = "tests write their inputs directly"
 )]
+#[path = "../../../fixtures/support/mod.rs"]
+mod fixtures;
+
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -56,6 +61,41 @@ fn data() -> PathBuf {
 
 fn pack(site: &Site) -> PathBuf {
     data().join("out").join(site.id).join("pack")
+}
+
+/// Root of the voice packs of the complete data laid out as the phone installs them
+/// (`<root>/<site>/<lang>/voice/`, read by `open_tracking` through `voice_choice`): a
+/// link to `out/<site>/voice-pack/` of every site that has one (VO6: the clips are in a
+/// voice pack per language, not in the base pack). `None` for data built before VO6: the
+/// session then reads the French clips inside the pack, as on a phone with such a pack.
+fn voice_root() -> Option<String> {
+    static ROOT: std::sync::OnceLock<Option<tempfile::TempDir>> = std::sync::OnceLock::new();
+    ROOT.get_or_init(|| {
+        let out = data().join("out");
+        let tmp = tempfile::tempdir().unwrap();
+        let mut any = false;
+        for e in std::fs::read_dir(&out).unwrap().flatten() {
+            let packs = e.path().join("voice-pack");
+            if packs.is_dir() {
+                std::os::unix::fs::symlink(&packs, tmp.path().join(e.file_name())).unwrap();
+                any = true;
+            }
+        }
+        any.then_some(tmp)
+    })
+    .as_ref()
+    .map(|t| t.path().display().to_string())
+}
+
+/// The French clips of `site`: its voice pack (VO6), or inside the pack for data built
+/// before VO6 (the same choice as `open_tracking`).
+fn voice_dir(site: &Site) -> PathBuf {
+    let v = data().join("out").join(site.id).join("voice-pack/fr/voice");
+    if v.join("manifest.json").is_file() {
+        v
+    } else {
+        pack(site).join("voice")
+    }
 }
 
 fn event(i: &Input) -> Option<TrackEvent> {
@@ -316,7 +356,7 @@ fn morning_to_recap(site: &'static Site, date: &str, budget_min: f64, return_bef
         TrackerParams::default(),
     )
     .unwrap();
-    let vdir = pack(site).join("voice");
+    let vdir = voice_dir(site);
     let manifest = VoiceManifest::read(&vdir).unwrap();
     let voice = Voice::new(&manifest, "pack");
     let mut direct = Tracker::new(
@@ -330,13 +370,13 @@ fn morning_to_recap(site: &'static Site, date: &str, budget_min: f64, return_bef
 
     // First half, then the process « dies »: a new session replays the recorded inputs.
     let half = run.inputs.len() / 2;
-    let s1 = open_tracking(v.plan_dir.clone(), None, "fr".into()).unwrap();
+    let s1 = open_tracking(v.plan_dir.clone(), voice_root(), "fr".into()).unwrap();
     assert_eq!(s1.replayed(), 0);
     let ta = Instant::now();
     let (calls1, _) = follow(&s1, &mut direct, &run.inputs[..half]);
     let g1 = s1.guidance().unwrap();
     drop(s1);
-    let s2 = open_tracking(v.plan_dir.clone(), None, "fr".into()).unwrap();
+    let s2 = open_tracking(v.plan_dir.clone(), voice_root(), "fr".into()).unwrap();
     assert_eq!(s2.replayed() as usize, half);
     assert_eq!(s2.guidance().unwrap(), g1, "state restored by the replay");
     let (calls2, results) = follow(&s2, &mut direct, &run.inputs[half..]);
@@ -393,7 +433,8 @@ fn full_data_morning_to_recap_chapelle() {
 /// graph and clips): the session says, switches and sets the GPS as the core.
 #[test]
 #[ignore = "full-data: needs data/out/<site>/ and the archived day"]
-fn full_data_q9_through_the_session() {
+fn full_data_personal_q9_through_the_session() {
+    fixtures::require_full_data_personal(CERVIERES.id);
     let layout = DataLayout::new(data());
     let (mut d, ctx) = presets::load(&layout, &CERVIERES).unwrap();
     let mut req = presets::requests(&CERVIERES, presets::past_day(&CERVIERES)).remove(0);
@@ -410,7 +451,7 @@ fn full_data_q9_through_the_session() {
         pack(&CERVIERES).display().to_string(),
     )
     .unwrap();
-    let manifest = VoiceManifest::read(&pack(&CERVIERES).join("voice")).unwrap();
+    let manifest = VoiceManifest::read(&voice_dir(&CERVIERES)).unwrap();
     let voice = Voice::new(&manifest, "pack");
     let refuge = plan
         .key_points
@@ -462,7 +503,8 @@ fn full_data_q9_through_the_session() {
             TrackerParams::default(),
         )
         .unwrap();
-        let s = open_tracking(work.path().display().to_string(), None, "fr".into()).unwrap();
+        let s =
+            open_tracking(work.path().display().to_string(), voice_root(), "fr".into()).unwrap();
         let (calls, results) = follow(&s, &mut direct, &run.inputs);
         let modes: std::collections::BTreeSet<String> = results
             .iter()
@@ -544,7 +586,8 @@ fn follow_batched(
 /// layers does call for call; the steps go with the fixes in one call per batch.
 #[test]
 #[ignore = "full-data: needs data/out/cervieres/ and the archived day"]
-fn full_data_rerouted_route_says_the_hazards_through_the_session() {
+fn full_data_personal_rerouted_route_says_the_hazards_through_the_session() {
+    fixtures::require_full_data_personal(CERVIERES.id);
     let layout = DataLayout::new(data());
     let (mut d, ctx) = presets::load(&layout, &CERVIERES).unwrap();
     let req = presets::requests(&CERVIERES, presets::past_day(&CERVIERES))[1].clone();
@@ -595,7 +638,7 @@ fn full_data_rerouted_route_says_the_hazards_through_the_session() {
         .count();
     assert!(n_steps > 100, "{n_steps} step reports");
     let t0 = Instant::now();
-    let s = open_tracking(work.path().display().to_string(), None, "fr".into()).unwrap();
+    let s = open_tracking(work.path().display().to_string(), voice_root(), "fr".into()).unwrap();
     println!(
         "session opened with the pack's layers in {} ms: {:?}",
         t0.elapsed().as_millis(),
@@ -606,7 +649,7 @@ fn full_data_rerouted_route_says_the_hazards_through_the_session() {
         vec!["no_network", "avalanche_paths", "zones", "slope"]
     );
     let pack_layers = load_layers(&pack(&CERVIERES), &work.path().join("direct")).unwrap();
-    let manifest = VoiceManifest::read(&pack(&CERVIERES).join("voice")).unwrap();
+    let manifest = VoiceManifest::read(&voice_dir(&CERVIERES)).unwrap();
     let voice = Voice::new(&manifest, "pack");
     let mut direct = Tracker::new(
         &plan,
@@ -709,7 +752,7 @@ fn full_data_bring_me_back() {
         TrackerParams::default(),
     )
     .unwrap();
-    let s = open_tracking(v.plan_dir.clone(), None, "fr".into()).unwrap();
+    let s = open_tracking(v.plan_dir.clone(), voice_root(), "fr".into()).unwrap();
     // The first 40 minutes of the outing.
     let t_start = run.inputs[0].t();
     let out: Vec<(i64, f64, f64)> = run
@@ -882,7 +925,7 @@ fn bring_me_back_on(pack_dir: &Path) -> Result<String, String> {
         TrackerParams::default(),
     )
     .unwrap();
-    let s = open_tracking(v.plan_dir.clone(), None, "fr".into()).unwrap();
+    let s = open_tracking(v.plan_dir.clone(), voice_root(), "fr".into()).unwrap();
     let t_start = run.inputs[0].t();
     let out: Vec<(i64, f64, f64)> = run
         .inputs
@@ -952,7 +995,7 @@ fn bring_me_back_on(pack_dir: &Path) -> Result<String, String> {
     })?;
     // The same outing again, then the arrow of the screen followed (the next useful point
     // of the way, 6 m a fix every 2 s): it leads to the target.
-    let s = open_tracking(v.plan_dir.clone(), None, "fr".into()).unwrap();
+    let s = open_tracking(v.plan_dir.clone(), voice_root(), "fr".into()).unwrap();
     for c in out.chunks(12) {
         s.push_fixes(pack_fixes(c)).unwrap();
     }
@@ -1064,7 +1107,9 @@ fn full_data_bring_me_back_on_every_pack() {
         no_plan.len()
     );
     assert!(failed.is_empty(), "{failed:?}");
-    assert!(ok >= 10, "{ok} packs brought back only");
+    // Every pack of a small data set (the weekly build: the test sites), at least ten of
+    // a large one (some sites have no loop to plan).
+    assert!(ok >= packs.len().min(10), "{ok} packs brought back only");
 }
 
 /// One outing of a group on a loop of `model_min` minutes of model time, `slow` times the
@@ -1233,7 +1278,8 @@ fn full_data_calibration_visible_after_three_outings_chapelle() {
 /// as safety, as the core with the same slope does call for call.
 #[test]
 #[ignore = "full-data: needs data/out/cervieres/ and the archived day"]
-fn full_data_steep_terrain_said_through_the_session() {
+fn full_data_personal_steep_terrain_said_through_the_session() {
+    fixtures::require_full_data_personal(CERVIERES.id);
     let layout = DataLayout::new(data());
     let (mut d, ctx) = presets::load(&layout, &CERVIERES).unwrap();
     let req = presets::requests(&CERVIERES, presets::past_day(&CERVIERES))[0].clone();
@@ -1284,11 +1330,11 @@ fn full_data_steep_terrain_said_through_the_session() {
         Some(&slope),
     )
     .unwrap();
-    let s = open_tracking(work.path().display().to_string(), None, "fr".into()).unwrap();
+    let s = open_tracking(work.path().display().to_string(), voice_root(), "fr".into()).unwrap();
     println!("session: {:?}", s.layers());
     assert!(s.layers().iter().any(|l| l == "slope"), "{:?}", s.layers());
     let pack_layers = load_layers(&pack(&CERVIERES), &work.path().join("direct")).unwrap();
-    let manifest = VoiceManifest::read(&pack(&CERVIERES).join("voice")).unwrap();
+    let manifest = VoiceManifest::read(&voice_dir(&CERVIERES)).unwrap();
     let voice = Voice::new(&manifest, "pack");
     let mut direct = Tracker::new(
         &plan,

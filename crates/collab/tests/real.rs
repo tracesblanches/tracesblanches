@@ -64,14 +64,18 @@ fn full_data_domain_challenge_on_both_sites() {
         let layers = data().join(site).join("pack/layers");
         let pistes = read(&layers.join("pistes.geojson"));
         let lines = geojson_lines(&pistes, |_| true).unwrap();
-        let routes = read(&layers.join("routes.geojson"));
+        // The loops the assistant suggests for the day (`assist-suggestions`, built by
+        // every `build-all`; the proof routes of `routes.geojson` come only from the
+        // `route` command run by hand).
+        let routes = read(&layers.join("assist-suggestions.geojson"));
         let route_lines = geojson_lines(&routes, |_| true).unwrap();
+        assert!(!route_lines.is_empty(), "{site}: no suggested loop");
         let t = std::time::Instant::now();
         let none = coverage(&lines, &[]);
         let by_routes = coverage(&lines, &[skied("routes", &route_lines)]);
         let itself = coverage(&lines, &[skied("all", &lines)]);
         eprintln!(
-            "{site}: {} lines, {:.1} km of pistes; the {} ready-made routes of the pack cover \
+            "{site}: {} lines, {:.1} km of pistes; the {} loops suggested by the pack cover \
              {:.1} km ({:.0} %); skiing every piste: {:.1} %; three coverages in {:?}",
             lines.len(),
             none.total_m / 1000.0,

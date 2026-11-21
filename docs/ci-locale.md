@@ -9,14 +9,18 @@ scripts/ci                 # tout : fmt, clippy, tests, scénarios, doc, cargo d
                            # publiables, shellcheck, propriétés, fuzz, bancs, Android
 scripts/ci --quick         # fmt, clippy -D warnings, cargo test --workspace (le hook pre-push)
 scripts/ci --weekly        # tout, puis le build-all réel des sites de test (téléchargements
-                           # compris) et les tests full_data_ sur ce qu'il a construit
-scripts/ci --only full-data  # les tests full_data_ sur data/ tel qu'il est
+                           # compris, sans sources personnelles) et les tests full_data_
+                           # sur ce qu'il a construit (pas les full_data_personal_)
+scripts/ci --only full-data  # les tests full_data_ sur data/ tel qu'il est, et les
+                           # full_data_personal_ s'il a été construit avec les sources
+                           # personnelles
 scripts/ci --only fuzz,bench --fuzz-secs 600
 scripts/ci --list          # les étapes et ce qu'elles lancent
 ```
 
 - Résumé lisible à la fin (étape, état, durée, tests réussis ou échoués) et code de retour 0 seulement si tout passe ; un journal par étape dans `~/.cache/skimap-ci/<date>/` (`latest` pointe sur le dernier).
 - Données complètes : `SKIMAP_DATA_DIR`, sinon `data/` du dépôt ou du dépôt principal (worktrees) ; les tests de `skimap-plan` (scénarios Q9, allocations, allure) les lisent. Les tests `full_data_` comparent le code aux sorties de `build-all` : ils tournent dans la tâche hebdomadaire, qui reconstruit avec le code courant dans `~/.cache/skimap-ci/weekly/data` (jamais dans `data/`, qui peut dater d'un code plus ancien).
+- Deux parties (`fixtures/support/mod.rs`) : la tâche hebdomadaire construit **sans** les sources à usage personnel (`SKIMAP_PERSONAL_SOURCES` absent), comme un pack publié. Les tests `full_data_*` passent sur des données publiques comme personnelles et vérifient ce que la construction dit d'elle-même (`personal_sources` de `build-all.json`, sinon une source `personal_use_only` dans les métadonnées des couches) : sans sources personnelles, aucune zone Biodiv'sports, empreintes `fixtures/golden/full-public/` ; avec, les zones Biodiv'sports des rapports et `fixtures/golden/full/`. Les tests `full_data_personal_*` (jours archivés et météo Open-Meteo, CLPA, fixtures découpées dans `data/`) échouent sur une construction publique et ne tournent qu'à la main : `scripts/ci --only full-data` sur `data/` construit avec `SKIMAP_PERSONAL_SOURCES=1`.
 - Bancs : instructions comptées sur la base (`--bench-base`, par défaut la base de fusion avec `main`) et sur l'arbre de travail, échec au-delà de +5 % (`--bench-limit`).
 - Outils épinglés installés dans `~/.cargo/bin` s'ils manquent : cargo-deny 0.20.2, cargo-fuzz 0.13.2, cargo-ndk 4.1.2, gungraun-runner 0.20.0 ; il faut aussi valgrind, shellcheck, le JDK 21, le SDK et le NDK Android (`android/README.md`).
 - Aucun test sur un appareil : les tests instrumentés Android restent manuels ([android/docs/verifier.md](android/docs/verifier.md)).

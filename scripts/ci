@@ -11,6 +11,7 @@
 #   scripts/ci --quick             fmt, clippy, test (the pre-push hook)
 #   scripts/ci --weekly            every stage, then the weekly real build-all
 #   scripts/ci --only full-data    full_data_ tests on the complete local data as it is
+#                                  (and full_data_personal_ when built with the personal sources)
 #   scripts/ci --only fuzz,bench   these stages only (names below)
 #   scripts/ci --skip android      every stage except these
 #   scripts/ci --list              the stages and what they run
@@ -52,7 +53,7 @@ describe() {
     fmt) echo "rustfmt --check, workspace and fuzz crate" ;;
     clippy) echo "clippy -D warnings, all targets: workspace, core and pack with pipeline, fuzz crate" ;;
     test) echo "cargo test --workspace; phone crates alone; no HTTP/SQLite on the phone; geotiff and pipeline variants" ;;
-    full-data) echo "on demand: full_data_ tests on the complete local data as it is (SKIMAP_DATA_DIR), release" ;;
+    full-data) echo "on demand: full_data_ tests on the complete local data as it is (SKIMAP_DATA_DIR), release; full_data_personal_ too when it was built with the personal sources" ;;
     scenarios) echo "Q9 outing scenarios replayed in the kernel (skimap-plan --test scenarios), at least 15" ;;
     doc) echo "cargo doc -D warnings (workspace, pipeline variants) and doctests" ;;
     deny) echo "cargo deny check: licences, RustSec advisories, bans, sources (deny.toml)" ;;
@@ -63,7 +64,7 @@ describe() {
     bench) echo "instruction counts (gungraun/Callgrind), base vs working tree, fails above the limit" ;;
     android-rust) echo "skimap-cli for aarch64-linux-android (cargo ndk, platform 34)" ;;
     android) echo "Gradle: build (assemble, JVM/Compose tests, lint), verifyRoborazziDebug, detekt, ktlint, instrumented APK compiled" ;;
-    weekly) echo "real build-all of the test sites with fresh downloads, full_data_ tests on it, layer metadata" ;;
+    weekly) echo "real build-all of the test sites with fresh downloads, without the personal sources; full_data_ tests on it (not full_data_personal_), layer metadata" ;;
     *) return 1 ;;
   esac
 }
@@ -221,12 +222,37 @@ stage_test() {
   run cargo test --no-fail-fast -p skimap-pack --features pipeline --locked
 }
 
+# Whether the complete data $1 was built with the sources for personal use only, as the
+# tests decide it (fixtures/support/mod.rs, full_data_personal): `personal_sources` of the
+# build-all record of each test site, or, without a record, a layer metadata file with a
+# source marked personal_use_only.
+data_personal() {
+  local d=$1 site rec
+  for site in "${test_sites[@]}"; do
+    rec=$d/out/$site/build-all.json
+    if [[ -f $rec ]]; then
+      grep -qE '"personal_sources": *true' "$rec" || return 1
+    else
+      grep -qsE '"personal_use_only": *true' "$d/out/$site"/*/*.meta.json || return 1
+    fi
+  done
+}
+
 full_data_tests() {
   # The `full_data_` category (fixtures/support/mod.rs): ignored by default, they read the
-  # complete data of $SKIMAP_DATA_DIR; a missing directory fails the test.
+  # complete data of $SKIMAP_DATA_DIR; a missing directory fails the test. The
+  # `full_data_personal_` part needs the sources for personal use only: run only on data
+  # built with them (never by the weekly build, which leaves them out).
+  local filter=(--ignored full_data_)
+  if data_personal "$SKIMAP_DATA_DIR"; then
+    echo "data built with the personal sources: full_data_ and full_data_personal_ tests"
+  else
+    echo "data built without the personal sources: full_data_ tests, full_data_personal_ skipped"
+    filter+=(--skip full_data_personal_)
+  fi
   run cargo test --no-fail-fast --release --locked --workspace \
     --features skimap-core/pipeline,skimap-pack/pipeline,skimap-collab/phone \
-    -- --ignored full_data_
+    -- "${filter[@]}"
 }
 
 stage_full-data() {

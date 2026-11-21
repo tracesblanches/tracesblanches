@@ -23,7 +23,7 @@ Temps : 0,78 s pour trois demandes sur le jeu de test jurassien (649 nœuds : un
 
 Avant X16, la part d'aller-retour était comptée par way OSM : un way découpé en plusieurs arêtes du graphe et parcouru une seule fois comptait comme parcouru deux fois (« 17 % » pour une boucle du jeu de test jurassien qui ne repasse nulle part), et le classement ne la pénalisait que de −2 × part. Elle est maintenant mesurée par tronçon (recouvrement des intervalles parcourus sur chaque arête), pénalisée de −4 × part, et les vraies boucles passent avant les allers-retours.
 
-Mesure (`full_data_out_and_back_share_of_the_loops`, météo archivée du 09/01/2026 sur le jeu de test alpin et du 22/02/2026 sur le jeu de test jurassien ; les trois demandes de `presets` et, depuis chaque départ, 60, 90, 120, 180 et 240 min en classique et en skating ; part mesurée dans le test sur les tronçons, indépendamment de l'assistant) :
+Mesure (`full_data_personal_out_and_back_share_of_the_loops`, météo archivée du 09/01/2026 sur le jeu de test alpin et du 22/02/2026 sur le jeu de test jurassien ; les trois demandes de `presets` et, depuis chaque départ, 60, 90, 120, 180 et 240 min en classique et en skating ; part mesurée dans le test sur les tronçons, indépendamment de l'assistant) :
 
 | Site (demandes) | Avant : sans boucle | Avant : 1re boucle, toutes | Après : sans boucle | Après : 1re boucle, toutes | Boucles ≥ 25 % avant → après |
 |---|---|---|---|---|---|

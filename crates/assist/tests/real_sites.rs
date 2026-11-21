@@ -6,13 +6,14 @@
 //! - fixtures (default): the redistributable layers of `fixtures/` (graph, pistes, zones,
 //!   coverage, huts, snow, exposure of Chapelle-des-Bois), without any weather: the
 //!   suggestions (A5) and the equipment list (A6) do not need it;
-//! - full data (`full_data_`, weekly job): the archived past days of
-//!   `data/out/<site>/assist/history/` (Open-Meteo historical forecasts, personal use
-//!   only, never versioned), the BERA archive and the status sources.
+//! - full data with the personal sources (`full_data_personal_`, run by hand, not by the
+//!   weekly build): the archived past days of `data/out/<site>/assist/history/`
+//!   (Open-Meteo historical forecasts, personal use only, never versioned), the BERA
+//!   archive and the status sources.
 //!
 //! ```sh
 //! cargo test -p skimap-assist --test real_sites
-//! cargo test -p skimap-assist --test real_sites -- --ignored full_data_
+//! cargo test -p skimap-assist --test real_sites -- --ignored full_data_personal_
 //! ```
 
 #![allow(
@@ -59,6 +60,7 @@ fn fixture_data(site: &Site) -> SiteData {
 }
 
 fn history(site: &Site, forecast: bool, route: &str) -> SiteData {
+    fixtures::require_full_data_personal(site.id);
     let l = layout();
     let h = l.layer_dir(site, "assist").unwrap().join("history");
     let mut paths = Paths::default();
@@ -95,7 +97,7 @@ fn date(s: &str) -> NaiveDate {
 
 #[test]
 #[ignore = "full-data: data/out/<site>/assist/history (Open-Meteo, personal use)"]
-fn full_data_cervieres_january_2026_snowfall_and_cold() {
+fn full_data_personal_cervieres_january_2026_snowfall_and_cold() {
     let d = history(&CERVIERES, false, "routes.geojson");
     assert!(d.missing.is_empty(), "{:?}", d.missing);
     let opts = briefing::Options::default();
@@ -137,7 +139,7 @@ fn full_data_cervieres_january_2026_snowfall_and_cold() {
 
 #[test]
 #[ignore = "full-data: data/out/<site>/assist/history (Open-Meteo, personal use)"]
-fn full_data_cervieres_spring_2023_bera_and_softening() {
+fn full_data_personal_cervieres_spring_2023_bera_and_softening() {
     let d = history(&CERVIERES, false, "offpiste_laus_izoard.geojson");
     let b = briefing::day(&d, date("2023-04-15"), &briefing::Options::default());
     assert_eq!(b.bera_level, Some(2));
@@ -158,7 +160,7 @@ fn full_data_cervieres_spring_2023_bera_and_softening() {
 
 #[test]
 #[ignore = "full-data: data/out/<site>/assist/history (Open-Meteo, personal use)"]
-fn full_data_chapelle_february_2026_thaw() {
+fn full_data_personal_chapelle_february_2026_thaw() {
     let d = history(&CHAPELLE_DES_BOIS, false, "offpiste_risoux_fevrier.geojson");
     let day = date("2026-02-24");
     let b = briefing::day(&d, day, &briefing::Options::default());
@@ -184,7 +186,7 @@ fn full_data_chapelle_february_2026_thaw() {
 
 #[test]
 #[ignore = "full-data: data/out/<site>/assist/history (Open-Meteo, personal use)"]
-fn full_data_today_both_sites() {
+fn full_data_personal_today_both_sites() {
     let t = date("2026-11-15");
     let d = history(&CERVIERES, true, "routes.geojson");
     let b = briefing::day(&d, t, &briefing::Options::default());
@@ -223,7 +225,7 @@ fn request(
 
 #[test]
 #[ignore = "full-data: data/out/<site>/assist/history (Open-Meteo, personal use)"]
-fn full_data_suggestions_respect_time_and_report_graph_limits() {
+fn full_data_personal_suggestions_respect_time_and_report_graph_limits() {
     let d = history(&CHAPELLE_DES_BOIS, false, "offpiste_risoux_fevrier.geojson");
     let village = LonLat::new(6.1125, 46.6032);
     let r = request(
@@ -440,7 +442,7 @@ fn suggestions_and_turnaround_for_a_family() {
 
 #[test]
 #[ignore = "full-data: data/out/<site>/assist/history (Open-Meteo, personal use)"]
-fn full_data_best_time_equipment_and_weather_replay() {
+fn full_data_personal_best_time_equipment_and_weather_replay() {
     let d = history(&CERVIERES, false, "routes.geojson");
     let p = d.weather.as_ref().unwrap().point("le-laus").unwrap();
     // 8 January 2026: fog from late morning at Le Laus.
@@ -648,7 +650,7 @@ fn travelled_twice_m(legs: &[skimap_core::routing::Leg]) -> (f64, f64) {
 /// the one the assistant gives (`out_and_back_share`, printed second).
 #[test]
 #[ignore = "full-data: data/out/<site>/assist/history (Open-Meteo, personal use)"]
-fn full_data_out_and_back_share_of_the_loops() {
+fn full_data_personal_out_and_back_share_of_the_loops() {
     let grid = [60.0, 90.0, 120.0, 180.0, 240.0];
     for (site, day, route, starts) in [
         (

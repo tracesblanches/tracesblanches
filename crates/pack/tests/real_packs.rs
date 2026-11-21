@@ -640,7 +640,8 @@ fn full_data_public_pack_from_real_outputs_has_no_restricted_source() {
         std::fs::create_dir_all(&out).unwrap();
         for e in std::fs::read_dir(real.out_dir(site)).unwrap() {
             let e = e.unwrap();
-            if e.file_name() == "pack" || e.file_name() == "export" {
+            // The outputs of the packs are rebuilt here, never written through a link.
+            if ["pack", "export", "voice-pack"].contains(&e.file_name().to_str().unwrap()) {
                 continue;
             }
             std::os::unix::fs::symlink(e.path(), out.join(e.file_name())).unwrap();
@@ -669,7 +670,14 @@ fn full_data_public_pack_from_real_outputs_has_no_restricted_source() {
             println!("   left out {} : {}", m.id, m.reason);
         }
         assert_restricted_free(&pack);
-        assert_public_voice(&pack, &real, site);
+        // VO6: the clips are in a voice pack per language, published apart from the base
+        // pack, which has none.
+        assert_eq!(pack.manifest().voice.status, "absent");
+        let v = skimap_pack::build::build_voice_pack(site, &l, "voice", "fr", false).unwrap();
+        let voice = Pack::open(&v.pack_dir).unwrap();
+        assert_eq!(voice.verify().unwrap(), Vec::<String>::new());
+        assert_restricted_free(&voice);
+        assert_public_voice(&voice, &real, site);
     }
 }
 
@@ -762,9 +770,12 @@ fn assert_public_voice(pack: &Pack, real: &DataLayout, site: &Site) {
         .iter()
         .filter(|n| !public.contains(&name_clip_id(n)))
         .collect();
-    assert!(
+    // Biodiv'sports names to keep out of the voice: some in data built with the personal
+    // sources, none in data built without (the weekly build has no Biodiv'sports zone).
+    assert_eq!(
         !personal_only.is_empty(),
-        "{}: Biodiv'sports names",
+        fixtures::full_data_personal(site.id),
+        "{}: Biodiv'sports names {personal_only:?}",
         site.id
     );
     for n in &personal_only {

@@ -880,7 +880,10 @@ mod tests {
         Full,
     }
 
-    fn real(site: &str, data: Data) -> (ZoneLayer, RuleSet) {
+    /// Real zones and rules of `site`, and whether the layer was built with the personal
+    /// sources (a source of `zones.meta.json` marked `personal_use_only`: Biodiv'sports);
+    /// built without (the fixtures, the weekly build), it has no Biodiv'sports area.
+    fn real(site: &str, data: Data) -> (ZoneLayer, RuleSet, bool) {
         let here = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let root = match data {
             Data::Fixtures => here.join("../../fixtures/data"),
@@ -899,16 +902,30 @@ mod tests {
             })
         };
         let layer = ZoneLayer::from_geojson_str(&read("zones.geojson")).unwrap();
-        if data == Data::Fixtures {
+        let meta: serde_json::Value = serde_json::from_str(&read("zones.meta.json")).unwrap();
+        let personal = meta["sources"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|s| s["personal_use_only"] == true);
+        assert!(
+            data == Data::Full || !personal,
+            "personal sources in the fixtures"
+        );
+        if !personal {
             assert!(
                 layer
                     .zones
                     .iter()
                     .all(|z| z.kind() != ZoneKind::BiodivSports),
-                "Biodiv'sports areas in the fixtures"
+                "{site}: Biodiv'sports areas in a layer built without the personal sources"
             );
         }
-        (layer, RuleSet::from_json_str(&read("rules.json")).unwrap())
+        (
+            layer,
+            RuleSet::from_json_str(&read("rules.json")).unwrap(),
+            personal,
+        )
     }
 
     #[test]
@@ -923,7 +940,7 @@ mod tests {
     }
 
     fn real_risoux_check(data: Data) {
-        let (layer, rules) = real("chapelle-des-bois", data);
+        let (layer, rules, personal) = real("chapelle-des-bois", data);
         let feb = evaluate(&layer, &rules, RISOUX, utc("2027-02-10T10:00:00Z"));
         println!("{}", feb.describe_fr());
         let ids: Vec<_> = feb.zones.iter().map(|z| z.id.as_str()).collect();
@@ -935,7 +952,7 @@ mod tests {
             ["appb-haut-jura-leave-routes"]
         );
         assert_eq!(feb.verdict(Topic::Bivouac).verdict, Verdict::Forbidden);
-        if data == Data::Full {
+        if personal {
             // Biodiv'sports « Grand tétras - hiver »: avoid the area in winter.
             assert!(ids.contains(&"biodiv:1183"), "{ids:?}");
             assert_eq!(
@@ -969,7 +986,7 @@ mod tests {
     }
 
     fn chapelle_site_inscrit_and_swiss_side(data: Data) {
-        let (layer, rules) = real("chapelle-des-bois", data);
+        let (layer, rules, _) = real("chapelle-des-bois", data);
         // Lac des Mortes, in the site inscrit.
         let e = evaluate(
             &layer,
@@ -1018,7 +1035,7 @@ mod tests {
     }
 
     fn cervieres_village_and_casse_deserte(data: Data) {
-        let (layer, rules) = real("cervieres", data);
+        let (layer, rules, _) = real("cervieres", data);
         let village = evaluate(
             &layer,
             &rules,
