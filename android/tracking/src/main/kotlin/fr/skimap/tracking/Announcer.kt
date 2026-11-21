@@ -9,14 +9,18 @@ import android.media.AudioTrack
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
+import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import java.util.Locale
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /** Decoded clip: mono or interleaved 16-bit samples at [rate]. */
 class Pcm(
@@ -137,28 +141,59 @@ object OpusDecoder {
     }
 }
 
+/** Plays one buffer to its end on the guidance stream; the test harness gives a fake one. */
+fun interface PcmOutput {
+    fun play(pcm: Pcm)
+}
+
 /**
  * Says the core's announcements (K5, J4): the pack's clips assembled and played in one
- * go, with a transient audio focus that ducks the music and is given back at once
- * (report 09: short playbacks, no session kept open); the Android voice reads the whole
- * text when a clip is missing (`docs/voix.md`), in the language of the announcements
- * (VO6: the phone's, English by default, or that of the voice pack in use, [language]).
- * One announcement at a time, in order, on its own thread; the text-to-speech engine
- * starts only when first needed.
+ * go, with a transient audio focus that ducks the music, held from the first sound queued
+ * to the last (a turn's sound and its words: no rise of the music between them) and given
+ * back at once (report 09: short playbacks, no session kept open); the Android voice reads
+ * the whole text when a clip is missing (`docs/voix.md`), in the language of the
+ * announcements (VO6: the phone's, English by default, or that of the voice pack in use,
+ * [language]). One announcement at a time, in order, on its own thread; the clips of an
+ * announcement are decoded as soon as it is queued, in parallel, while the sounds before
+ * it play (#179: decoding them one after the other once the turn's sound was over left
+ * 0.35 to 1.1 s of silence before the words). Everything plays on the guidance stream
+ * (usage navigation guidance, content speech) at full player volume: the level is that of
+ * the clips (-14 LUFS, `docs/voix/banque-et-clips.md`) and of the phone's volume, never
+ * lowered by the app. The text-to-speech engine starts only when first needed.
  */
 @Suppress("TooManyFunctions")
 class Announcer(
     private val context: Context,
     @Volatile private var locale: Locale = localeOf(phoneLang()),
+    private val decoder: (String) -> Pcm = OpusDecoder::decode,
 ) : AutoCloseable {
     private val audio: ExecutorService = Executors.newSingleThreadExecutor { Thread(it, "skimap-voice") }
+    private val decoding: ExecutorService =
+        Executors.newFixedThreadPool(DECODERS) { Thread(it, "skimap-voice-decode").apply { isDaemon = true } }
     private val manager = context.getSystemService(AudioManager::class.java)
-    private val attributes =
+
+    /** Attributes of every sound and of the Android voice: guidance, speech. */
+    val attributes: AudioAttributes =
         AudioAttributes
             .Builder()
             .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
             .build()
+
+    /** Transient focus that ducks the other sounds while the queue plays. */
+    val focusRequest: AudioFocusRequest =
+        AudioFocusRequest
+            .Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+            .setAudioAttributes(attributes)
+            .build()
+
+    /** Sounds and announcements queued and not over yet; the focus is held while > 0. */
+    private val queued = AtomicInteger()
+    private var focused = false
+
+    /** Plays a buffer; the platform's [AudioTrack] unless a test gives its own. */
+    var output: PcmOutput = PcmOutput(::playTrack)
+
     private var tts: TextToSpeech? = null
 
     @Volatile private var ttsStatus = TextToSpeech.ERROR
@@ -191,11 +226,13 @@ class Announcer(
     val languageCode: String get() = locale.language
 
     fun say(u: Utterance) {
-        audio.execute {
+        // Decoding starts now, while what is queued before plays.
+        val pcm: List<Future<Pcm>>? = if (u.allClips) u.clips.map { c -> decoding.submit<Pcm> { decoder(c.file!!) } } else null
+        queue {
             // A clip that does not decode or play (codec, file): the Android voice says it all.
             val ok =
-                if (u.allClips) {
-                    runCatching { playClips(u) }.getOrElse {
+                if (pcm != null) {
+                    runCatching { playClips(u, pcm) }.getOrElse {
                         Log.w(TAG, "clips failed, Android voice instead: ${it.message}")
                         speak(u.text)
                     }
@@ -212,14 +249,14 @@ class Announcer(
 
     /**
      * Plays a short sound of K6 ([EarconSynth]) in turn with the announcements (a turn's
-     * sound just before its words), with the same transient focus that ducks the music.
+     * sound just before its words), under the same focus.
      */
     fun earcon(
         e: Earcon,
         volume: Float,
     ) {
-        audio.execute {
-            runCatching { play(Pcm(EarconSynth.pcm(e, volume), EarconSynth.RATE, 2)) }
+        queue {
+            runCatching { output.play(Pcm(EarconSynth.pcm(e, volume), EarconSynth.RATE, 2)) }
                 .onSuccess { earcons++ }
                 .onFailure { Log.w(TAG, "earcon $e: ${it.message}") }
         }
@@ -230,29 +267,46 @@ class Announcer(
         audio.execute(block)
     }
 
-    private fun focus(): AudioFocusRequest {
-        val req =
-            AudioFocusRequest
-                .Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-                .setAudioAttributes(attributes)
-                .build()
-        manager?.requestAudioFocus(req)
-        return req
+    /** Runs a sound on the voice thread with the focus held; given back after the last one. */
+    private fun queue(block: () -> Unit) {
+        queued.incrementAndGet()
+        audio.execute {
+            try {
+                if (!focused) {
+                    manager?.requestAudioFocus(focusRequest)
+                    focused = true
+                }
+                block()
+            } finally {
+                if (queued.decrementAndGet() == 0 && focused) {
+                    manager?.abandonAudioFocusRequest(focusRequest)
+                    focused = false
+                }
+            }
+        }
     }
 
-    private fun playClips(u: Utterance): Boolean {
-        val pcm =
-            PcmAssembler.assemble(u.clips.map { OpusDecoder.decode(it.file!!) }, u.clips.map { it.pauseMs })
-                ?: return false
-        play(pcm)
+    private fun playClips(
+        u: Utterance,
+        pcm: List<Future<Pcm>>,
+    ): Boolean {
+        val decoded =
+            pcm.map {
+                try {
+                    it.get(DECODE_MAX_S, TimeUnit.SECONDS)
+                } catch (e: ExecutionException) {
+                    throw e.cause ?: e
+                }
+            }
+        val assembled = PcmAssembler.assemble(decoded, u.clips.map { it.pauseMs }) ?: return false
+        output.play(assembled)
         played++
         return true
     }
 
-    /** Plays [pcm] in one go with a transient ducking focus, given back at once. */
-    private fun play(pcm: Pcm) {
+    /** The platform track of [pcm]: guidance stream, full player volume. */
+    fun track(pcm: Pcm): AudioTrack {
         val channelMask = if (pcm.channels == 2) AudioFormat.CHANNEL_OUT_STEREO else AudioFormat.CHANNEL_OUT_MONO
-        val bytes = pcm.samples.size * 2
         val track =
             AudioTrack
                 .Builder()
@@ -265,9 +319,16 @@ class Announcer(
                         .setChannelMask(channelMask)
                         .build(),
                 ).setTransferMode(AudioTrack.MODE_STATIC)
-                .setBufferSizeInBytes(bytes)
+                .setBufferSizeInBytes(pcm.samples.size * 2)
                 .build()
-        val req = focus()
+        // No software attenuation: the clips carry the level, the phone's volume the rest.
+        track.setVolume(AudioTrack.getMaxVolume())
+        return track
+    }
+
+    /** Plays [pcm] in one go on its own track, released at the end. */
+    private fun playTrack(pcm: Pcm) {
+        val track = track(pcm)
         try {
             track.write(pcm.samples, 0, pcm.samples.size)
             val frames = pcm.samples.size / pcm.channels
@@ -286,7 +347,6 @@ class Announcer(
             done.await(ms + MARGIN_MS, TimeUnit.MILLISECONDS)
         } finally {
             track.release()
-            manager?.abandonAudioFocusRequest(req)
         }
     }
 
@@ -345,15 +405,10 @@ class Announcer(
                 override fun onError(id: String?) = done.countDown()
             },
         )
-        val req = focus()
-        try {
-            t.speak(text, TextToSpeech.QUEUE_FLUSH, null, "skimap")
-            done.await(TTS_MAX_S, TimeUnit.SECONDS)
-            spokenByTts++
-            return true
-        } finally {
-            manager?.abandonAudioFocusRequest(req)
-        }
+        t.speak(text, TextToSpeech.QUEUE_FLUSH, ttsParams(), "skimap")
+        done.await(TTS_MAX_S, TimeUnit.SECONDS)
+        spokenByTts++
+        return true
     }
 
     override fun close() {
@@ -362,6 +417,7 @@ class Announcer(
             tts = null
         }
         audio.shutdown()
+        decoding.shutdown()
     }
 
     companion object {
@@ -370,6 +426,13 @@ class Announcer(
         private const val MS_PER_S = 1000L
         private const val TTS_INIT_S = 20L
         private const val TTS_MAX_S = 30L
+        private const val DECODE_MAX_S = 10L
+
+        /** Clips decoded at the same time: all those of an announcement (up to 7 measured). */
+        const val DECODERS = 8
+
+        /** Android voice at full volume, as the clips. */
+        fun ttsParams(): Bundle = Bundle().apply { putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1f) }
 
         /** Language of the app for the phone's: `fr` on a French phone, else `en` (VO6). */
         fun phoneLang(locale: Locale = Locale.getDefault()): String = if (locale.language == "fr") "fr" else "en"

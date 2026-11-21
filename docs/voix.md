@@ -12,6 +12,7 @@ Parties :
 - [Banque de phrases et clips des packs](voix/banque-et-clips.md)
   - [Banque de phrases (VO2)](voix/banque-et-clips.md#banque-de-phrases-vo2)
   - [Clips des packs (VO3), mesurés le 14/11/2026](voix/banque-et-clips.md#clips-des-packs-vo3-mesurés-le-14112026)
+  - [Sonie des clips (#179, 21/11/2026)](voix/banque-et-clips.md#sonie-des-clips-179-21112026)
 - [Propositions de C11, demi-tour avancé, voix publique](voix/propositions.md)
   - [Propositions de C11, demi-tour avancé, voix publique (15/11/2026)](voix/propositions.md#propositions-de-c11-demi-tour-avancé-voix-publique-15112026)
 - [Vouvoiement des propositions et « et quart » des heures](voix/vouvoiement.md)

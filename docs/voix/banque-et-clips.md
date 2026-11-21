@@ -13,7 +13,7 @@
 
 ## Clips des packs (VO3), mesurés le 14/11/2026
 
-Contrôle qualité : tokens identiques à ceux de pockettts.cpp ; fin de parole atteinte ; si la parole commence avant 60 ms (premier phonème coupé par la trame de démarrage que pockettts.cpp supprime, « Greffier » entendu « véhier »), nouvel essai avec la graine suivante (8 au plus) ; suppression du son coupé que la dernière trame commence après la fin de parole ; silence de début et de fin coupé (40 ms gardés avant, 80 ms après) ; niveau normalisé à −20 dBFS, crête ≤ −1 dBFS ; Opus 24 kbit/s, 24 kHz mono.
+Contrôle qualité : tokens identiques à ceux de pockettts.cpp ; fin de parole atteinte ; si la parole commence avant 60 ms (premier phonème coupé par la trame de démarrage que pockettts.cpp supprime, « Greffier » entendu « véhier »), nouvel essai avec la graine suivante (8 au plus) ; suppression du son coupé que la dernière trame commence après la fin de parole ; silence de début et de fin coupé (40 ms gardés avant, 80 ms après) ; niveau normalisé à −20 dBFS, crête ≤ −1 dBFS (remplacé le 21/11/2026 par la sonie à −14 LUFS, voir [Sonie des clips](#sonie-des-clips-179-21112026)) ; Opus 24 kbit/s, 24 kHz mono.
 
 | | Jeu de test alpin | Jeu de test jurassien |
 |---|---|---|
@@ -33,3 +33,25 @@ Travail complet (deux packs et 20 échantillons) : 50,8 s. Silence de début cou
 Échantillons à écouter (`.opus`, et `.wav` à côté), assemblés comme sur le téléphone (décodage des clips du pack, pauses) : `data/out/<site>/voice/samples/01-…` à `10-briefing`, liste et textes dans `samples.json`. Les noms sont ceux des packs ; distances, heures et météo sont des valeurs d'exemple.
 
 Contrôle par transcription (Parakeet v3, oracle Python hors dépôt, nombres réécrits en lettres) : WER 8,8 % (jeu de test alpin) et 5,8 % (jeu de test jurassien) sur les échantillons. Les erreurs restantes sont des homophones (« tournez » / « tourner », « fart » / « phare ») et des noms propres (« Gibera », « Sioux », « Thieulette »). Trois formulations ont été changées sur cette mesure : « afin de rentrer » (au lieu de « pour rentrer », entendu « pour entrer »), « Risque d'avalanche deux sur cinq, limité » (« avalanche limité » entendu « avalanche unité » 6 fois sur 6) et « Le vent sera faible ».
+
+## Sonie des clips (#179, 21/11/2026)
+
+Annonces entendues « beaucoup trop faibles » sur le téléphone. Cause côté clips : le niveau visé (−20 dBFS de valeur efficace sur les fenêtres de parole) donnait −21,1 LUFS intégrés en médiane, crête vraie −8,6 dBTP : 7 dB sous le niveau des voix de guidage des applications de navigation (environ −16 à −14 LUFS, crête ≤ −1 dBTP), avec 8 à 9 dB de marge de crête inutilisée. Le volume du téléphone n'est jamais touché.
+
+Cible (`skimap_voice::loudness::Target`) : −14 LUFS intégrés (UIT-R BS.1770-4 / EBU R128, crate `ebur128`, mesure en Rust ; clip de moins de 400 ms mesuré sur toute sa durée), crête vraie ≤ −1 dBTP sur le fichier Opus décodé à 48 kHz, ce que joue le téléphone. Chaîne : coupe et niveau des parties (inchangés), puis un gain unique vers −14 LUFS ; si une crête (suréchantillonnée 4 fois) dépasse −1,5 dBTP, un limiteur doux (anticipation 5 ms, relâchement 60 ms, gain lissé, pas d'écrêtage) l'abaisse, et le gain est affiné jusqu'à la cible. Le limiteur enlève au plus 6 dB : un clip dont la sonie tient à une syllabe bien plus forte que la suite (« Sept heures trente. », « sept » 15 dB au-dessus de « heures trente ») demanderait 15 dB de limitation ; il garde la borne et reste un peu sous la cible (`loudness_capped` dans le manifeste). Après encodage, le clip est décodé et mesuré ; hors cible (l'encodeur déplace la crête d'une sifflante jusqu'à +1,5 dB), il est refait avec la visée et le plafond corrigés de l'écart mesuré (6 essais au plus). Calcul en `f64` dans un ordre fixe : deux générations d'un même pack donnent les mêmes octets (896 clips et manifeste identiques mesurés), donc l'incrémental du pack ne republie un clip que si son texte, sa graine ou la cible change ; un clip déjà à la cible n'est pas retouché. Le manifeste donne pour chaque clip `loudness_lufs`, `true_peak_dbtp`, `limiter_db` et `loudness_capped`, et `loudness_target` ; `voice.meta.json` les bornes, le nombre de clips limités et bornés.
+
+Mesure (`cargo run --release -p skimap-voice --example loudness -- <couche voice>…`), clips décodés à 48 kHz, ancienne chaîne puis nouvelle, sur trois sites de massifs différents (Alpes du Sud, Jura, Vercors), mêmes noms, mêmes graines :
+
+| | Alpes du Sud (896 clips) | Jura (1 137 clips) | Vercors (1 116 clips) |
+|---|---|---|---|
+| Sonie médiane avant → après | −21,12 → −14,04 LUFS | −21,16 → −14,04 LUFS | −21,19 → −14,05 LUFS |
+| Sonie min / max après | −16,55 / −13,58 | −16,55 / −13,74 | −16,55 / −13,71 |
+| Gain médian par clip (min, max) | +7,08 dB (+3,76, +9,59) | +7,11 dB (+3,76, +9,68) | +7,14 dB (+3,76, +9,59) |
+| Écart-type de la sonie avant → après | 0,48 → 0,12 LU | 0,54 → 0,12 LU | 0,52 → 0,12 LU |
+| Crête vraie médiane / max après | −1,64 / −1,08 dBTP | −1,60 / −1,08 dBTP | −1,57 / −1,08 dBTP |
+| Clips limités (au plus 6 dB) | 446 | 606 | 621 |
+| Clips à la borne, sous −14,5 LUFS | 5 | 8 | 8 |
+
+Génération : 38 à 48 s par site (TTS GPU 26 à 33 s ; sonie, encodage et contrôle du fichier décodé 10 à 14 s, contre 4 à 13 s d’encodage seul avant, machine partagée).
+
+Téléphone (`android/tracking/.../Announcer.kt`) : l'app jouait déjà sur le flux de guidage (usage `USAGE_ASSISTANCE_NAVIGATION_GUIDANCE`, contenu `CONTENT_TYPE_SPEECH`, qui suit le volume « Multimédia ») avec un focus `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK` ; aucune atténuation logicielle n'était appliquée aux clips. Désormais le volume du lecteur est mis explicitement au maximum (`AudioTrack.getMaxVolume()`, 1,0) et la voix Android de secours lit avec `KEY_PARAM_VOLUME` 1,0 sur les mêmes attributs ; le focus est tenu du premier son en file au dernier (le bip d'un virage et ses paroles : la musique ne remonte pas entre les deux), puis rendu. Défaut voisin corrigé : chaque clip ouvrait son décodeur Opus l'un après l'autre une fois le bip fini, d'où 0,35 à 0,45 s de silence entre le bip et les paroles, jusqu'à 1,1 s pour 7 clips sous charge (mesure sur téléphone) ; les clips d'une annonce sont maintenant décodés dès sa mise en file, en parallèle (8 décodeurs, une annonce en a au plus 7), pendant que le bip joue. Test (`AnnouncerTest`, coûts de décodage du téléphone : 130 ms par clip, 157 ms sous charge) : 2,5 ms entre la fin du bip et le début des paroles pour 3 clips, 0,1 ms pour 7 clips.
