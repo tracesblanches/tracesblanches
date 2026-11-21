@@ -14,6 +14,7 @@
 #   scripts/ci --only fuzz,bench   these stages only (names below)
 #   scripts/ci --skip android      every stage except these
 #   scripts/ci --list              the stages and what they run
+#   scripts/ci --stages quick|full the stages of --quick or of a full run, one per line
 #
 # Options:
 #   --fuzz-secs N         fuzzing time per target (default 60)
@@ -33,7 +34,10 @@
 # FUZZ_TOOLCHAIN (default nightly-2026-10-15).
 #
 # Logs: $SKIMAP_CI_LOG_ROOT/<date>/<stage>.log and summary.txt; `latest` points to the last
-# run. Tools missing from ~/.cargo/bin (cargo-deny, cargo-fuzz, cargo-ndk, gungraun-runner)
+# run. Results by tree: a run on a clean checkout (no change, no untracked file, the same
+# tree at the end as at the start) appends every stage that passed to
+# $SKIMAP_CI_LOG_ROOT/validated/<tree sha> ("<stage> <commit> <date> <logs>"); the pre-push
+# hook accepts a push whose commits have their tree validated there, without running the CI. Tools missing from ~/.cargo/bin (cargo-deny, cargo-fuzz, cargo-ndk, gungraun-runner)
 # are installed there at the pinned versions. Nothing here runs on a phone or an emulator:
 # the instrumented Android tests stay manual (android/docs/verifier.md).
 set -euo pipefail
@@ -91,6 +95,14 @@ while (($#)); do
     --bench-limit) bench_limit=${2:?}; shift ;;
     --weekly-keep-cache) keep_cache=1 ;;
     --fail-fast) fail_fast=1 ;;
+    --stages)
+      case ${2:-} in
+        quick) printf '%s\n' "${quick_stages[@]}" ;;
+        full) printf '%s\n' "${all_stages[@]}" ;;
+        *) echo "--stages needs quick or full" >&2; exit 2 ;;
+      esac
+      exit 0
+      ;;
     --list)
       for s in "${all_stages[@]}" weekly full-data; do printf '  %-13s %s\n' "$s" "$(describe "$s")"; done
       exit 0
@@ -368,6 +380,13 @@ declare -A status duration detail
 start_all=$SECONDS
 started=$(date '+%Y-%m-%d %H:%M')
 revision="$(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo ' + working tree')"
+# The tree this run validates, when the checkout is clean (no change, no untracked file):
+# what the pre-push hook looks for (results by tree, above).
+clean_tree() {
+  [[ -z $(git status --porcelain=v1 --untracked-files=all) ]] && git rev-parse 'HEAD^{tree}'
+}
+start_tree=$(clean_tree || true)
+start_commit=$(git rev-parse HEAD)
 echo "skimap local CI ($mode) at $revision, logs in $logs"
 [[ -n $data_dir ]] && echo "complete local data: $data_dir" || echo "complete local data: none"
 failed_any=0
@@ -421,4 +440,17 @@ total=$((SECONDS - start_all))
   if ((failed_any)); then echo "RESULT: FAILED"; else echo "RESULT: OK"; fi
   echo "logs: $logs"
 } | tee "$logs/summary.txt"
+
+# Results by tree: only when the checkout was clean from start to end, on the same tree.
+end_tree=$(clean_tree || true)
+if [[ -n $start_tree && $start_tree == "$end_tree" ]]; then
+  mkdir -p "$log_root/validated"
+  for s in "${selected[@]}"; do
+    [[ ${status[$s]:-} == ok ]] || continue
+    printf '%s %s %s %s\n' "$s" "$start_commit" "$(date -Iseconds)" "$logs"
+  done >>"$log_root/validated/$start_tree"
+  echo "tree $start_tree: passed stages recorded in $log_root/validated/ (pre-push hook)"
+else
+  echo "not recorded for the pre-push hook: the checkout was not clean (git status) from start to end"
+fi
 exit "$failed_any"

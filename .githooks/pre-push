@@ -1,24 +1,61 @@
 #!/usr/bin/env bash
-# pre-push hook of skimap: the local CI before every push (the CI never runs on GitHub).
+# pre-push hook of skimap: refuses a push whose commits the local CI did not validate (the
+# CI never runs on GitHub).
 #
-# Enabled per repository with `git config core.hooksPath .githooks`. By default the quick
-# stages (fmt, clippy -D warnings, cargo test --workspace: scripts/ci --quick, a few
-# minutes); SKIMAP_PREPUSH=full runs the whole local CI (scripts/ci), SKIMAP_PREPUSH=<stages>
-# runs these (scripts/ci --only <stages>). A failed stage refuses the push; the summary and
-# the logs (~/.cache/skimap-ci/latest) say why. Nothing here touches the git configuration
+# Enabled per repository with `git config core.hooksPath .githooks`. The hook runs while git
+# holds the SSH connection to the remote, which GitHub closes after a few idle minutes: it
+# never runs the CI itself. scripts/ci records, by tree, the stages that passed on a clean
+# checkout (~/.cache/skimap-ci/validated/<tree sha>, or $SKIMAP_CI_LOG_ROOT); the push is
+# accepted at once when the tree of every commit pushed has the stages required there:
+# those of `scripts/ci --quick` by default (fmt, clippy, test; a full run includes them),
+# every stage with SKIMAP_PREPUSH=full, the listed ones with SKIMAP_PREPUSH=<stages>.
+# Otherwise it refuses and says what to run. Nothing here touches the git configuration
 # (commit signing stays as it is).
 set -euo pipefail
 root=$(git rev-parse --show-toplevel)
+validated=${SKIMAP_CI_LOG_ROOT:-$HOME/.cache/skimap-ci}/validated
 
-# Only deletions pushed (e.g. `git push origin :branch`): nothing to check.
-pushes_commits=0
-while read -r _local_ref local_sha _remote_ref _remote_sha; do
-  [[ $local_sha =~ ^0+$ ]] || pushes_commits=1
-done
-((pushes_commits)) || exit 0
-
-case ${SKIMAP_PREPUSH:-quick} in
-  quick) exec "$root/scripts/ci" --quick ;;
-  full) exec "$root/scripts/ci" ;;
-  *) exec "$root/scripts/ci" --only "$SKIMAP_PREPUSH" ;;
+want=${SKIMAP_PREPUSH:-quick}
+case $want in
+  quick)
+    mapfile -t required < <("$root/scripts/ci" --stages quick)
+    run_cmd="scripts/ci --quick"
+    ;;
+  full)
+    mapfile -t required < <("$root/scripts/ci" --stages full)
+    run_cmd="scripts/ci"
+    ;;
+  *)
+    IFS=, read -r -a required <<<"$want"
+    run_cmd="scripts/ci --only $want"
+    ;;
 esac
+
+refused=0
+while read -r local_ref local_sha _remote_ref _remote_sha; do
+  # A deletion (e.g. `git push origin :branch`): nothing to check.
+  [[ $local_sha =~ ^0+$ ]] && continue
+  tree=$(git rev-parse "$local_sha^{tree}")
+  missing=()
+  for s in "${required[@]}"; do
+    if ! [[ -f $validated/$tree ]] || ! grep -q "^$s " "$validated/$tree"; then
+      missing+=("$s")
+    fi
+  done
+  if ((${#missing[@]})); then
+    echo "pre-push : $local_ref ($(git rev-parse --short "$local_sha")) n'est pas validé par la CI locale (étapes manquantes : ${missing[*]})." >&2
+    refused=1
+  else
+    echo "pre-push : $local_ref ($(git rev-parse --short "$local_sha")) validé ($(grep -c . "$validated/$tree") résultats pour l'arbre ${tree:0:12})." >&2
+  fi
+done
+
+if ((refused)); then
+  cat >&2 <<MSG
+Poussée refusée. Sur le commit à pousser, arbre propre (git status vide, rien de non suivi),
+lancez d'abord :
+  $run_cmd
+puis poussez à nouveau (le hook ne lance pas la CI : GitHub couperait la connexion).
+MSG
+  exit 1
+fi
