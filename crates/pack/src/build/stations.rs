@@ -312,7 +312,7 @@ pub fn kind_of(scope: &str) -> &'static str {
     }
 }
 
-/// The fee zones of the domains `ids` (see [`include`]).
+/// The fee zones of the domains `ids` (see [`include()`]).
 pub fn fee_zones(titres: &Value, couverture: &Value, ids: &BTreeSet<String>, bbox: BBox) -> Value {
     // Passes valid on a domain of the site, and on which of its domains.
     let mut domains_of: BTreeMap<String, Vec<String>> = BTreeMap::new();

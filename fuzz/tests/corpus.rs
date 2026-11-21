@@ -3,6 +3,11 @@
 //! (`regressions/<target>/`) and the minimised campaign corpus (`corpus/<target>/`).
 //! `cargo test --release -- --ignored make_seeds` regenerates the seeds and regressions.
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests write their inputs directly"
+)]
+
 use std::io::{Cursor, Write};
 use std::path::{Path, PathBuf};
 
@@ -394,6 +399,7 @@ fn pack_seed() -> Vec<u8> {
     };
     let voice = VoiceManifest {
         format: 1,
+        lang: skimap_voice::Lang::Fr,
         voice: "seed".into(),
         model: "seed".into(),
         model_sha256: "0".repeat(64),
@@ -493,6 +499,8 @@ fn pack_seed() -> Vec<u8> {
             department: "05".into(),
             bbox: [6.74, 44.84, 6.76, 44.86],
             center: [6.75, 44.85],
+            record: None,
+            start_ranking: None,
         },
         valid_for: PackValidity {
             until: None,
@@ -553,6 +561,7 @@ fn pack_seed() -> Vec<u8> {
         ],
         voice: VoiceSlot {
             status: "present".into(),
+            lang: None,
             manifest: Some("voice/manifest.json".into()),
             clips_dir: Some("voice/clips".into()),
             clips: 2,

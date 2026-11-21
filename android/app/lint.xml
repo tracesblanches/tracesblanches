@@ -8,4 +8,11 @@
     <!-- Timber is only a transitive dependency of MapLibre; the app logs two timing lines
          with android.util.Log and does not use Timber. -->
     <issue id="LogNotTimber" severity="ignore" />
+    <!-- "A newer version of … is available": lint asks Google Maven and the Gradle site at
+         build time, so the verdict of the same commit changed with the date (red on
+         21/11/2026 after AGP 9.5.2, Gradle 9.9.2, Compose BOM 2026.11.01 were published).
+         The CI judges the commit, not the calendar: upgrades are a decision of their own. -->
+    <issue id="AndroidGradlePluginVersion" severity="ignore" />
+    <issue id="GradleDependency" severity="ignore" />
+    <issue id="NewerVersionAvailable" severity="ignore" />
 </lint>

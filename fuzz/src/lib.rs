@@ -117,7 +117,7 @@ fn write_files(dir: &Path, files: &[(String, Vec<u8>)]) {
             continue;
         }
         // A name may collide with a directory created for another entry.
-        let _ = std::fs::write(&p, data);
+        let _ = skimap_common::output::write_bytes(&p, data);
     }
 }
 
@@ -392,11 +392,11 @@ pub fn pack_update(data: &[u8]) {
     write_files(&pack_dir, &old);
     let get = |n: &str| files.iter().find(|f| f.0 == n).map(|f| f.1.as_slice());
     if let Some(st) = get("state") {
-        std::fs::write(state_path(&pack_dir), st).expect("sync state file");
+        skimap_common::output::write_bytes(&state_path(&pack_dir), st).expect("sync state file");
     }
     if let Some(b) = get("bundle") {
         let bundle = root.join("bundle.skb");
-        std::fs::write(&bundle, b).expect("bundle file");
+        skimap_common::output::write_bytes(&bundle, b).expect("bundle file");
         let _ = read_bundle(&bundle);
         if apply_bundle(&pack_dir, &bundle).is_ok()
             && let Ok(p) = skimap_pack::Pack::open(&pack_dir)
@@ -488,7 +488,7 @@ pub fn pmtiles_vendor(data: &[u8]) {
 pub fn tile_archive(data: &[u8]) {
     let dir = scratch("tiles");
     let p = dir.join("t.pmtiles");
-    std::fs::write(&p, data).expect("scratch file");
+    skimap_common::output::write_bytes(&p, data).expect("scratch file");
     if let Ok(t) = skimap_pack::TileArchive::open(&p) {
         read_archive(&t);
     }

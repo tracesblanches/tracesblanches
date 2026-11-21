@@ -1064,7 +1064,7 @@ pub struct DepartsOutput {
     pub srn_winter_closed: usize,
 }
 
-/// Starts of the SRN areas (X9b) given to [`write`].
+/// Starts of the SRN areas (X9b) given to [`write()`].
 #[derive(Debug, Clone, Default)]
 pub struct SrnStarts {
     /// Area id → starts, best first.

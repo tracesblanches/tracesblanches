@@ -35,7 +35,7 @@ skimap route <site> <lat,lon> <lat,lon> --date 2027-01-15 --start 13:00
 
 Registre des sites, `build-all --all` / `--domains`, catalogue, rafraîchissement planifié (`skimap refresh`) : [france.md](france.md).
 
-La version de Rust est figée dans `rust-toolchain.toml` (1.99.1, avec rustfmt, clippy et la cible Android) ; `rustup toolchain install` l'installe. La CI (`.github/workflows/ci.yml`) lance fmt, clippy, les tests (dont clippy et tests de `skimap-core` et `skimap-pack` avec la fonction `pipeline`) et la compilation Android.
+La version de Rust est figée dans `rust-toolchain.toml` (1.99.1, avec rustfmt, clippy et la cible Android) ; `rustup toolchain install` l'installe. La CI, locale (`scripts/ci`, jamais GitHub Actions : voir le README), lance fmt, clippy, les tests (dont clippy et tests de `skimap-core` et `skimap-pack` avec la fonction `pipeline`) et la compilation Android.
 
 ## Android (F4, #4)
 

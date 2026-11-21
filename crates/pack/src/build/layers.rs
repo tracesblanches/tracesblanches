@@ -20,7 +20,7 @@ use crate::manifest::{Layer, LayerKind, Missing, Source};
 /// How a layer file is copied.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Transform {
-    /// Copy: JSON data rewritten compact ([`crate::build::copy_data`]), other files byte
+    /// Copy: JSON data rewritten compact (`build::copy_data`), other files byte
     /// for byte.
     Copy,
     /// Gzip copy (binary rasters of the core, `*.skr` → `*.skr.gz`).

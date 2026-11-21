@@ -92,3 +92,7 @@ Sources, textes lus et décisions : [docs/licences-donnees.md](docs/licences-don
 ## Licence
 
 Le code de skimap est sous licence GPL-3.0-or-later ([LICENSE](LICENSE)), avec une permission additionnelle (section 7 de la GPLv3) qui autorise la diffusion par les boutiques d'applications ([LICENSE-EXCEPTION](LICENSE-EXCEPTION)). Exception : `crates/avalanche`, portage Rust de com4FlowPy (AvaFrame), reste sous EUPL-1.2 ([LICENSES/EUPL-1.2.txt](LICENSES/EUPL-1.2.txt)) ; seul le pipeline la lie (`skimap-cli`, et `skimap-srndiff` avec sa fonction `pipeline`), jamais l'app, ce que vérifie `deny-phone.toml`. Licences des composants tiers : [THIRD-PARTY.md](THIRD-PARTY.md), généré par `docs/licences/third-party.sh`. Choix et raisons : [docs/licences/f2-licence-code.md](docs/licences/f2-licence-code.md).
+
+## Contribuer : CI locale
+
+La CI tourne sur le poste, jamais sur GitHub Actions : `scripts/ci` (tout), `scripts/ci --quick` (le hook pre-push, à activer par `git config core.hooksPath .githooks`). Détails : [docs/ci-locale.md](docs/ci-locale.md).

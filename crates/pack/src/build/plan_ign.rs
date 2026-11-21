@@ -60,9 +60,11 @@ pub fn tile_url(z: u8, x: u32, y: u32) -> String {
         .replace("{y}", &y.to_string())
 }
 
-/// Attempts on a 404: the TMS answered 404 once for tile 16/33983/23609 on
+/// Attempts on a 404 or a 400: the TMS answered 404 once for tile 16/33983/23609 on
 /// 14/11/2026 and 200 to the three following identical requests (the IGN WMTS does the
-/// same, see `skimap_terrain::ign_slopes`), so a 404 is retried before failing.
+/// same, see `skimap_terrain::ign_slopes`), and 400 once for tile 16/33884/23148 on
+/// 21/11/2026 (weekly build, 200 right after): the tiles asked are those of the site box,
+/// valid requests, so these statuses are retried before failing.
 const NOT_FOUND_ATTEMPTS: u32 = 4;
 
 /// MVT bytes of one tile (cache, then network); gzip bodies are inflated.
@@ -94,10 +96,11 @@ fn fetch_tile_dated(
     let (body, fetched_at) = loop {
         match dl.fetch(&edition_request(&url, since)) {
             Ok(f) => break (f.bytes()?, f.meta.fetched_at_unix),
-            Err(skimap_common::Error::Status { status: 404, .. })
-                if attempt + 1 < NOT_FOUND_ATTEMPTS =>
-            {
-                tracing::warn!(%url, attempt, "TMS 404, retrying");
+            Err(skimap_common::Error::Status {
+                status: status @ (400 | 404),
+                ..
+            }) if attempt + 1 < NOT_FOUND_ATTEMPTS => {
+                tracing::warn!(%url, attempt, status, "TMS spurious error status, retrying");
                 std::thread::sleep(std::time::Duration::from_secs(1 << attempt));
                 attempt += 1;
             }

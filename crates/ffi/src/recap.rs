@@ -215,7 +215,7 @@ fn climb(z: &[f64]) -> (f64, f64) {
 
 /// Fuses the pressure of `dir` with the relief `dem` (altitude at a position) at the
 /// fixes: the barometer gives the short-term changes, the relief under the GPS positions
-/// the level and corrects the weather's drift (complementary filter, [`BARO_TAU_S`]).
+/// the level and corrects the weather's drift (complementary filter, `BARO_TAU_S`).
 pub fn altitude(
     dir: &Path,
     fixes: &[(i64, LonLat)],

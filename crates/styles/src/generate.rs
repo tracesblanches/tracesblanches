@@ -79,7 +79,7 @@ pub const FRANCE_DETAIL_UNTIL: f64 = 10.0;
 /// 22.5) and its roads stopped at its edge, the Greenwich meridian, over the France
 /// basemap (#178). Every other Plan IGN layer starts higher.
 const PACKS_FROM: f64 = FRANCE_DETAIL_UNTIL;
-/// Zoom from which the Plan IGN names the communes ([`localities`]): the France names stop.
+/// Zoom from which the Plan IGN names the communes (`localities`): the France names stop.
 pub const FRANCE_NAMES_UNTIL: f64 = 10.0;
 
 /// Empty GeoJSON, the initial data of runtime sources.
