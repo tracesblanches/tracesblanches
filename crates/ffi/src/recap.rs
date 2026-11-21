@@ -34,9 +34,9 @@ use crate::tracking_day::{PACK_FILE, PLAN_FILE};
 /// Pressure recorded during the outing (barometer, batched): `epoch_ms hPa` per line.
 pub const PRESSURE_FILE: &str = "pressure.txt";
 /// Above this speed a step between two fixes is a GPS jump, not skiing, m/s.
-const JUMP_MS: f64 = 15.0;
+pub(crate) const JUMP_MS: f64 = 15.0;
 /// Moving above this, m/s.
-const MOVING_MS: f64 = 0.6;
+pub(crate) const MOVING_MS: f64 = 0.6;
 /// Climb counted past this hysteresis, metres.
 const CLIMB_HYSTERESIS_M: f64 = 4.0;
 /// Time constant of the barometer drift corrected by the relief, seconds.
@@ -371,11 +371,11 @@ pub struct OutingRecap {
     pub spoken: String,
 }
 
-struct Loaded {
-    summary: OutingSummary,
+pub(crate) struct Loaded {
+    pub(crate) summary: OutingSummary,
     plan: Option<DayPlan>,
-    pack_dir: Option<PathBuf>,
-    fixes: Vec<(i64, LonLat)>,
+    pub(crate) pack_dir: Option<PathBuf>,
+    pub(crate) fixes: Vec<(i64, LonLat)>,
     /// Climb of an imported outing, as its `outing.json` says (no barometer, no pack).
     imported_gain_m: Option<f64>,
 }
@@ -430,7 +430,7 @@ fn when(ms: i64, lang: Lang) -> String {
     text::of(lang).when(skimap_core::ephemeris::local_time(utc(ms)))
 }
 
-fn load(dir: &Path, lang: Lang) -> Option<Loaded> {
+pub(crate) fn load(dir: &Path, lang: Lang) -> Option<Loaded> {
     if !dir.join(INPUTS_FILE).is_file()
         && let Some(l) = load_imported(dir, lang)
     {
