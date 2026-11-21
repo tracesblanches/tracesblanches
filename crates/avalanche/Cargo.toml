@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+license = "EUPL-1.2"
 
 [dependencies]
 skimap-common = { workspace = true, features = ["download", "geotiff"] }

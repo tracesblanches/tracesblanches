@@ -1,0 +1,63 @@
+# Supply chain check of the Android library alone (F2, #2): the graph of skimap-ffi with
+# its default features, for the Android targets, without dev-dependencies (not shipped).
+#
+#   cargo deny --locked --manifest-path crates/ffi/Cargo.toml --config deny-phone.toml check bans licenses
+#
+# deny.toml checks the whole workspace with every feature, where skimap-srndiff's
+# `pipeline` feature pulls skimap-avalanche (EUPL-1.2) into the pipeline binaries; here
+# the same crate fails: the app ships GPL-3.0-or-later code with the app store permission
+# of LICENSE-EXCEPTION, which EUPL-1.2 code cannot take.
+
+[graph]
+targets = ["aarch64-linux-android", "x86_64-linux-android"]
+exclude-dev = true
+
+[licenses]
+# Same permissive list as deny.toml; no EUPL-1.2 exception.
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+    "bzip2-1.0.6",
+]
+confidence-threshold = 0.93
+# Some of these licences belong to pipeline crates only.
+unused-allowed-license = "allow"
+private = { ignore = false }
+# The workspace crates linked into the app. A workspace crate that joins the app without
+# being listed here fails `licenses` until it is added on purpose.
+exceptions = [
+    { crate = "skimap-assist", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-collab", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-common", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-core", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-ffi", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-group", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-intent", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-pack", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-plan", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-srndiff", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-voice", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-zones", allow = ["GPL-3.0-or-later"] },
+]
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+allow-wildcard-paths = true
+deny = [
+    # No wrapper: not even through skimap-srndiff's `pipeline` feature.
+    { crate = "skimap-avalanche" },
+]

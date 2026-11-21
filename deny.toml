@@ -2,17 +2,24 @@
 #
 # - advisories: RustSec database, every advisory (vulnerability, unmaintained, unsound)
 #   and yanked crates are errors; an exception goes in `ignore` with its reason;
-# - licenses: only permissive licences, all compatible with the EUPL-1.2 considered for the
-#   code (docs/licences/f2-licence-code.md) and with distributing the Android binary; the
-#   workspace crates are unpublished (`publish = false`) and their own licence is still to
-#   be decided (F2, #2), so they are not checked;
+# - licenses: third-party crates under permissive licences only, all compatible with the
+#   GPL-3.0-or-later of the code (F2, #2, docs/licences/f2-licence-code.md) and with
+#   distributing the Android binary; the workspace crates are checked too (`private`
+#   below): each must declare its licence, GPL-3.0-or-later, except skimap-avalanche
+#   (EUPL-1.2, port of com4FlowPy);
 # - bans: no wildcard version requirements; duplicate versions are reported, not denied
-#   (the tree has several through geo / reqwest / zip);
+#   (the tree has several through geo / reqwest / zip); only skimap-cli and skimap-srndiff
+#   (its `pipeline` feature) may depend on skimap-avalanche, so its EUPL-1.2 code stays on
+#   the pipeline side;
 # - sources: crates.io only; the patched pmtiles (vendor/pmtiles, MIT OR Apache-2.0) is a
 #   path dependency.
 #
 # The licences of the data (ODbL, Licence Ouverte, CC BY-SA, EUPL / CeCILL-C of some
 # sources) are documented in docs/licences-donnees.md: they do not concern the crates.
+#
+# The Android library is checked on its own graph by deny-phone.toml (skimap-ffi with its
+# default features, Android targets): it must not contain skimap-avalanche at all, even
+# through skimap-srndiff, nor any crate under the EUPL-1.2.
 
 [graph]
 # Every feature of the workspace crates (pipeline, download, geotiff): the pipeline and
@@ -47,13 +54,49 @@ allow = [
     "bzip2-1.0.6",
 ]
 confidence-threshold = 0.93
-private = { ignore = true }
+# Workspace crates are unpublished (`publish = false`) but checked: a crate without a
+# `license` field fails here.
+private = { ignore = false }
+# The licences of the code itself, never allowed for a third-party crate.
+exceptions = [
+    { crate = "skimap-assist", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-avalanche", allow = ["EUPL-1.2"] },
+    { crate = "skimap-cli", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-collab", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-common", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-core", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-coverage", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-deps", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-ffi", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-group", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-intent", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-meteo", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-osm", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-pack", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-pisteplan", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-plan", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-refuges", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-server", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-snow", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-srn", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-srndiff", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-stations", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-status", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-styles", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-terrain", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-voice", allow = ["GPL-3.0-or-later"] },
+    { crate = "skimap-zones", allow = ["GPL-3.0-or-later"] },
+]
 
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
 # Path dependencies (`workspace = true`, vendor/pmtiles) have no version requirement.
 allow-wildcard-paths = true
+deny = [
+    # EUPL-1.2 code (port of com4FlowPy): pipeline side only (F2, #2).
+    { crate = "skimap-avalanche", wrappers = ["skimap-cli", "skimap-srndiff"] },
+]
 
 [sources]
 unknown-registry = "deny"
