@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -102,6 +103,27 @@ class DayScreenTest {
             .assertHeightIsAtLeast(72.dp)
             .performClick()
         assertEquals(1, validated)
+    }
+
+    /** #177: the state of the trails of a loop is said as known, never « 0,0 km ouverts · 0,0 km fermés ». */
+    @Test
+    fun trailStateIsSaidAsKnown() {
+        val state =
+            DayFixtures.ready(
+                DayFixtures.morning.copy(
+                    loops =
+                        listOf(
+                            DayFixtures.loops[0].copy(statusKm = listOf(10.1, 0.0, 2.7)),
+                            DayFixtures.loops[1].copy(statusKm = listOf(0.0, 0.0, 18.2)),
+                        ),
+                ),
+            )
+        rule.setContent { Themed { DayScreen(state, DayActions()) } }
+        rule.onNodeWithTag(DayTags.LIST).performScrollToNode(hasTestTag(DayTags.LOOP + 0))
+        rule.onNodeWithText("10,1 km ouverts · 2,7 km d'état inconnu", useUnmergedTree = true).assertIsDisplayed()
+        rule.onNodeWithTag(DayTags.LIST).performScrollToNode(hasTestTag(DayTags.LOOP + 1))
+        rule.onNodeWithText("État des pistes inconnu", useUnmergedTree = true).assertIsDisplayed()
+        rule.onAllNodes(hasText("0,0 km", substring = true), useUnmergedTree = true).assertCountEquals(0)
     }
 
     @Test

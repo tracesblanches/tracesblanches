@@ -86,11 +86,11 @@ object DayFixtures {
                 "Chapelle-des-Bois — lundi 16 novembre 2026",
                 "Domaines :",
                 "1. Site nordique de Morbier (score -3,37) : 1 itinéraire ouvert sur 3.",
-                "Qualité de neige (depart-des-pistes) : Au plat (1087 m) : neige humide et lourde entre 10 h et 15 h.",
+                "Qualité de neige (Départ des pistes de Chapelle-des-Bois) : Au plat (1087 m) : neige humide et lourde entre 10 h et 15 h.",
                 "Coucher du soleil 17 h 02.",
             ),
             listOf(
-                "Qualité de neige (depart-des-pistes) : Au plat (1087 m) : neige humide et lourde entre 10 h et 15 h.",
+                "Qualité de neige (Départ des pistes de Chapelle-des-Bois) : Au plat (1087 m) : neige humide et lourde entre 10 h et 15 h.",
                 "Coucher du soleil 17 h 02.",
             ),
             "Meilleur départ vers 12 h 30 (retour vers 16 h 06) : neige humide et lourde puis transformée.",
@@ -134,12 +134,12 @@ object DayFixtures {
                     "Chapelle-des-Bois — Monday 16 November 2026",
                     "Areas:",
                     "1. Site nordique de Morbier (score -3.37): 1 route open out of 3 (5 km out of 20).",
-                    "Snow quality (depart-des-pistes): On the flat (1087 m): wet heavy snow between 10:00 and 15:00.",
+                    "Snow quality (Départ des pistes de Chapelle-des-Bois): On the flat (1087 m): wet heavy snow between 10:00 and 15:00.",
                     "Sunset 17:02.",
                 ),
             briefingShort =
                 listOf(
-                    "Snow quality (depart-des-pistes): On the flat (1087 m): wet heavy snow between 10:00 and 15:00.",
+                    "Snow quality (Départ des pistes de Chapelle-des-Bois): On the flat (1087 m): wet heavy snow between 10:00 and 15:00.",
                     "Sunset 17:02.",
                 ),
             bestTime = "Best start around 12:30 (back around 16:06): wet heavy snow, then transformed.",

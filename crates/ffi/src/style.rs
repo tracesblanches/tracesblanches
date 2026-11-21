@@ -98,6 +98,9 @@ pub enum LegendKind {
     /// Wide band of [`LegendEntry::color`] with a thin core of [`LegendEntry::core`]
     /// (a piste whose state is unknown).
     Band,
+    /// Line of [`LegendEntry::color`] under a veil of [`LegendEntry::core`] and broken by
+    /// dashes of the same [`LegendEntry::core`] (a closed piste, as drawn on the map).
+    Veiled,
 }
 
 /// A legend row. The app words it from [`LegendEntry::key`] (French and English
@@ -115,7 +118,8 @@ pub struct LegendEntry {
     pub color: String,
     /// Line, dashes, dots, area or band.
     pub kind: LegendKind,
-    /// `#rrggbb` of the thin core of a [`LegendKind::Band`]; `None` for other kinds.
+    /// `#rrggbb` of the thin core of a [`LegendKind::Band`], of the veil and dashes of a
+    /// [`LegendKind::Veiled`]; `None` for other kinds.
     #[uniffi(default)]
     pub core: Option<String>,
 }
@@ -646,10 +650,19 @@ fn legend(layers: &[Value]) -> Vec<LegendEntry> {
                 Some(c.clone()),
             );
         }
-        if find("pistes-closed-dash").is_some()
+        // Closed (#177): the piste colour veiled and broken by dashes of the ground colour
+        // of `pistes-closed-dash`, as on the map; never the plain dashes of a marked
+        // off-piste trail.
+        if let Some(ground) = find("pistes-closed-dash").and_then(|l| colour(l, "line-color"))
             && let Some((_, c)) = pairs.iter().find(|(v, _)| v == "easy")
         {
-            push("pistes", "closed", c.clone(), LegendKind::Dashed, None);
+            push(
+                "pistes",
+                "closed",
+                c.clone(),
+                LegendKind::Veiled,
+                Some(ground),
+            );
         }
     }
     if let Some((pairs, _)) =

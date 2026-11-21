@@ -327,6 +327,22 @@ private fun Sample(
             }
             return@Canvas
         }
+        if (kind == LegendKind.VEILED) {
+            // Closed: the piste colour under a veil of the ground colour, broken by dashes
+            // of the ground colour, as on the map; never the plain dashes of off-piste.
+            val ground = core ?: casing
+            drawLine(casing, Offset(0f, y), Offset(size.width, y), strokeWidth = 14f, cap = StrokeCap.Round)
+            drawLine(color, Offset(0f, y), Offset(size.width, y), strokeWidth = 8f, cap = StrokeCap.Round)
+            drawLine(ground.copy(alpha = VEIL_ALPHA), Offset(0f, y), Offset(size.width, y), strokeWidth = VEIL, cap = StrokeCap.Round)
+            drawLine(
+                ground,
+                Offset(0f, y),
+                Offset(size.width, y),
+                strokeWidth = VEIL_DASH,
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(VEIL_DASH_ON, VEIL_DASH_OFF)),
+            )
+            return@Canvas
+        }
         val effect =
             when (kind) {
                 LegendKind.DASHED -> PathEffect.dashPathEffect(floatArrayOf(DASH_ON, DASH_OFF))
@@ -346,6 +362,11 @@ private const val AREA_ALPHA = 0.7f
 private const val BAND_OUTLINE = 18f
 private const val BAND = 16f
 private const val BAND_CORE = 4f
+private const val VEIL = 12f
+private const val VEIL_ALPHA = 0.4f
+private const val VEIL_DASH = 4f
+private const val VEIL_DASH_ON = 8f
+private const val VEIL_DASH_OFF = 8f
 
 /** Test tag of the group entry of the sheet. */
 const val GROUP_ENTRY = "sheet_group"

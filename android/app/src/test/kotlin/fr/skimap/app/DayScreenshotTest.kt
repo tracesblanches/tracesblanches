@@ -8,13 +8,17 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.takahirom.roborazzi.captureRoboImage
 import fr.skimap.app.day.DayActions
 import fr.skimap.app.day.DayScreen
+import fr.skimap.app.day.DayTags
 import fr.skimap.app.day.PlanActions
 import fr.skimap.app.day.PlanScreen
 import fr.skimap.app.guidance.GuidanceOverlayContent
@@ -72,6 +76,22 @@ class DayScreenshotTest {
             ) { Surface(Modifier.fillMaxSize()) { DayScreen(DayFixtures.ready(choice = 1), DayActions()) } }
         }
         capture("day_morning_dark")
+    }
+
+    /** The loops proposed (#177): the state of their trails as known, one of them unknown. */
+    @Test
+    fun morningLoops() {
+        val morning =
+            DayFixtures.morning.copy(
+                loops =
+                    listOf(
+                        DayFixtures.loops[0].copy(statusKm = listOf(10.1, 0.0, 2.7)),
+                        DayFixtures.loops[1].copy(statusKm = listOf(0.0, 0.0, 18.2)),
+                    ),
+            )
+        rule.setContent { Themed { Surface(Modifier.fillMaxSize()) { DayScreen(DayFixtures.ready(morning), DayActions()) } } }
+        rule.onNodeWithTag(DayTags.LIST).performScrollToNode(hasTestTag(DayTags.LOOP + 1))
+        capture("day_morning_loops")
     }
 
     @Test

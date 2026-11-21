@@ -56,8 +56,8 @@
     <string name="legend_advanced">Black: very difficult</string>
     <string name="legend_unknown">Grey: difficulty unknown</string>
     <string name="legend_state_unknown">Grey band, thin line: state unknown, neither open nor closed</string>
-    <string name="legend_closed">Closed: faded, white dashes</string>
-    <string name="legend_backcountry">Dashes: marked off-piste trail</string>
+    <string name="legend_closed">Closed: faded colour, broken by strokes of the background</string>
+    <string name="legend_backcountry">Bright dashes: marked off-piste trail</string>
     <string name="legend_hike">Dots: snowshoes and walkers</string>
     <string name="legend_slope_1">30 to 35°</string>
     <string name="legend_slope_2">35 to 40°</string>

@@ -33,7 +33,10 @@
     <string name="day_if_all_goes_well">If all goes well</string>
     <string name="day_no_loop">No loop for these choices. Change the time or the start.</string>
     <string name="day_loop_stats">%1$s km · %2$d m climb</string>
-    <string name="day_loop_status">%1$s km open · %2$s km closed</string>
+    <string name="day_loop_status_unknown">Trail status unknown</string>
+    <string name="day_loop_open">%1$s km open</string>
+    <string name="day_loop_closed">%1$s km closed</string>
+    <string name="day_loop_unknown_km">%1$s km of unknown status</string>
     <string name="day_equipment">To take</string>
     <string name="day_contact">Contact told</string>
     <string name="day_contact_none">No contact: touch to choose one</string>
