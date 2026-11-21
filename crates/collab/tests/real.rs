@@ -1,6 +1,7 @@
-//! Challenges on the real data of the two sites (V13 #76), when the pipeline outputs are
-//! on this machine: `cargo test -p skimap-collab --features phone --test real -- --ignored
-//! --nocapture`.
+//! Challenges on the real data of the two sites (V13 #76), in the `full_data_` category
+//! (fixtures/support/mod.rs): the pipeline outputs of `$SKIMAP_DATA_DIR` (default `data/`
+//! at the root of the repository), `cargo test -p skimap-collab --features phone --test
+//! real -- --ignored full_data_ --nocapture`; the local CI runs them (`scripts/ci`).
 
 #![cfg(feature = "phone")]
 
@@ -9,8 +10,19 @@ use std::path::PathBuf;
 use skimap_collab::challenges::{coverage, geojson_lines};
 use skimap_collab::track::{Outing, Point, thin};
 
+/// `out/` of the complete local data: `$SKIMAP_DATA_DIR`, as the pipeline and the other
+/// full-data tests read it (an agent worktree has no `data/` of its own).
 fn data() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/out")
+    std::env::var_os("SKIMAP_DATA_DIR")
+        .map_or_else(
+            || PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data"),
+            PathBuf::from,
+        )
+        .join("out")
+}
+
+fn read(path: &std::path::Path) -> String {
+    std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
 }
 
 /// An outing that skied these lines, one after the other (the jumps between lines are
@@ -46,13 +58,13 @@ fn skied(id: &str, lines: &[Vec<[f64; 2]>]) -> Outing {
 }
 
 #[test]
-#[ignore = "needs data/out of the pipeline"]
-fn domain_challenge_on_both_sites() {
+#[ignore = "full-data: data/out/<site>/pack"]
+fn full_data_domain_challenge_on_both_sites() {
     for site in ["cervieres", "chapelle-des-bois"] {
         let layers = data().join(site).join("pack/layers");
-        let pistes = std::fs::read_to_string(layers.join("pistes.geojson")).unwrap();
+        let pistes = read(&layers.join("pistes.geojson"));
         let lines = geojson_lines(&pistes, |_| true).unwrap();
-        let routes = std::fs::read_to_string(layers.join("routes.geojson")).unwrap();
+        let routes = read(&layers.join("routes.geojson"));
         let route_lines = geojson_lines(&routes, |_| true).unwrap();
         let t = std::time::Instant::now();
         let none = coverage(&lines, &[]);
@@ -75,9 +87,9 @@ fn domain_challenge_on_both_sites() {
 }
 
 #[test]
-#[ignore = "needs data/out of the pipeline"]
-fn gtj_challenge_from_the_srn_layer() {
-    let srn = std::fs::read_to_string(data().join("france/srn/srn_routes.geojson")).unwrap();
+#[ignore = "full-data: data/out/france/srn"]
+fn full_data_gtj_challenge_from_the_srn_layer() {
+    let srn = read(&data().join("france/srn/srn_routes.geojson"));
     let gtj = geojson_lines(&srn, |p| {
         p["name"]
             .as_str()
