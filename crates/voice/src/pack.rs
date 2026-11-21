@@ -371,6 +371,58 @@ pub fn clip_key(parts: &[(&EngineKey, &str)], cfg: &VoiceConfig) -> String {
     hex::encode(Sha256::digest(v.to_string().as_bytes()))
 }
 
+/// Fingerprint of what the voice layer of `lang` is made of besides the names of the
+/// site (#129, the code fingerprint of the `voice` steps of `build-all`): the cache
+/// format, every phrase of the bank and how sample names of each kind are spoken and cut
+/// in parts, and the engines of `cfg` (`None`: no engine configured). A change runs the
+/// voice of every site again; the clips that did not change come from the cache.
+pub fn code_revision(lang: Lang, cfg: Option<&VoiceConfig>) -> String {
+    use crate::names::{Colour, PisteName};
+    let sample = PackNames {
+        site: "Échantillon".into(),
+        pistes: vec![
+            PisteName::new("Échantillon", Some(Colour::Green)),
+            PisteName::new("Échantillon", Some(Colour::Blue)),
+            PisteName::new("Échantillon", Some(Colour::Red)),
+            PisteName::new("Échantillon", Some(Colour::Black)),
+            PisteName::new("Échantillon", None),
+        ],
+        places: vec!["Refuge de l'Échantillon".into()],
+        dates: vec![
+            crate::clips::DayMonth { day: 15, month: 1 },
+            crate::clips::DayMonth { day: 31, month: 12 },
+        ],
+        status_pistes: 3,
+    };
+    let m = manifest_split_in(&sample, &PackNames::default(), lang);
+    let mut h = Sha256::new();
+    h.update(CACHE_FORMAT.to_le_bytes());
+    h.update(lang.code().as_bytes());
+    for (id, (kind, text)) in &m.clips {
+        h.update(format!("{id}\0{kind:?}\0{text}\0").as_bytes());
+        if let Some(cfg) = cfg {
+            for (engine, part) in clip_parts(id, *kind, text, cfg) {
+                h.update(format!("{engine}\0{part}\0").as_bytes());
+            }
+        }
+    }
+    match cfg {
+        Some(cfg) => {
+            let mut engines = vec![&cfg.tts];
+            engines.extend(&cfg.names_tts);
+            for e in engines {
+                match EngineKey::of(e) {
+                    Ok(k) => h.update(format!("{k:?}").as_bytes()),
+                    Err(_) => h.update(b"engine files missing"),
+                }
+            }
+            h.update(format!("{:?}{}", cfg.shape, cfg.ffmpeg.kbps).as_bytes());
+        }
+        None => h.update(b"no engine"),
+    }
+    hex::encode(h.finalize())
+}
+
 /// A clip of the cache: what its manifest entry says of its audio.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CachedClip {
