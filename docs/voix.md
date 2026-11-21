@@ -22,3 +22,5 @@ Parties :
   - [Proposition de profil (X14, 15/11/2026)](voix/profil.md#proposition-de-profil-x14-15112026)
 - [Voix anglaise et paquets de voix par langue (VO6)](voix/anglais.md)
   - [Voix anglaise et paquets de voix par langue (VO6 #129, 17/11/2026)](voix/anglais.md#voix-anglaise-et-paquets-de-voix-par-langue-vo6-129-17112026)
+- [Voix de chaque site par le rattrapage (VO6)](voix/rattrapage.md)
+  - [Voix de chaque site par le rattrapage (VO6 #129, 21/11/2026)](voix/rattrapage.md#voix-de-chaque-site-par-le-rattrapage-vo6-129-21112026)

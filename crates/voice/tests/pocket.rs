@@ -71,3 +71,68 @@ fn synthesis_trim_and_opus_round_trip() {
         );
     }
 }
+
+/// #129: a voice layer is incremental. Built again with the same names, no clip is
+/// synthesised again; with one more piste, only the clip of that name is, and a second
+/// site sharing the fixed phrases and the values synthesises only its own names (clips
+/// shared through the cache of the data directory, `cache/voice/`).
+#[test]
+#[ignore = "needs pockettts.cpp, the French model and ffmpeg (docs/voix.md)"]
+fn rebuilt_voice_layer_synthesises_only_new_phrases() {
+    use skimap_common::layout::DataLayout;
+    use skimap_voice::SiteNames;
+    use skimap_voice::pack::{VoiceBuild, VoiceManifest};
+    let tmp = tempfile::tempdir().unwrap();
+    let layout = DataLayout::new(tmp.path());
+    let cfg = VoiceConfig::from_env().unwrap();
+    let names = |pistes: &[&str]| SiteNames {
+        public: PackNames {
+            site: "Testville".into(),
+            pistes: pistes
+                .iter()
+                .map(|p| PisteName::new(*p, Some(Colour::Blue)))
+                .collect(),
+            places: vec!["Refuge du Test".into()],
+            dates: vec![],
+            status_pistes: 1,
+        },
+        personal: PackNames::default(),
+        public_sources: vec![],
+        personal_sources: vec![],
+    };
+    let sites = skimap_common::site::SITES;
+    let (a, b) = (&sites[0], &sites[1]);
+    let synthesised = |r: &VoiceBuild| r.passes.first().copied().unwrap_or(0);
+    let clips = |site| VoiceManifest::read(&layout.layer_dir(site, "voice").unwrap()).unwrap();
+    let first = skimap_voice::build_site(a, &layout, &names(&["Greffier"]), &cfg).unwrap();
+    let before = clips(a);
+    let n = before.clips.len();
+    assert_eq!(synthesised(&first), n, "first build: every clip");
+    let again = skimap_voice::build_site(a, &layout, &names(&["Greffier"]), &cfg).unwrap();
+    assert_eq!(
+        synthesised(&again),
+        0,
+        "same names: nothing synthesised again"
+    );
+    assert_eq!(clips(a), before, "same clips");
+    let more = skimap_voice::build_site(a, &layout, &names(&["Greffier", "Combe des Cives"]), &cfg)
+        .unwrap();
+    assert_eq!(synthesised(&more), 1, "one more piste: its clip only");
+    assert_eq!(clips(a).clips.len(), n + 1);
+    let other = skimap_voice::build_site(b, &layout, &names(&["Bois de la Joux"]), &cfg).unwrap();
+    assert_eq!(synthesised(&other), 1, "another site: its own name only");
+    // Every clip of the layer is on disk, with the size of its manifest entry, and
+    // nothing else.
+    let dir = layout.layer_dir(b, "voice").unwrap();
+    let m = clips(b);
+    for c in &m.clips {
+        assert_eq!(
+            std::fs::metadata(dir.join(&c.file)).unwrap().len(),
+            c.bytes,
+            "{}",
+            c.id
+        );
+    }
+    let files = std::fs::read_dir(dir.join("clips")).unwrap().count();
+    assert_eq!(files, m.clips.len(), "no clip left from another build");
+}

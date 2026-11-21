@@ -1372,9 +1372,9 @@ fn stations_step(ctx: &Ctx, france: &France<'_>, force: bool) -> StepRecord {
 fn dependents(step: &str) -> &'static [&'static str] {
     match step {
         "snow" => &["offpiste-prepare", "build-pack", "export"],
-        "offpiste-prepare" | "bera" | "status-poll" | "meteo" | "refuges" => {
-            &["build-pack", "export"]
-        }
+        "offpiste-prepare" | "bera" | "status-poll" | "meteo" => &["build-pack", "export"],
+        // The voice says the names of the refuges (#129).
+        "refuges" => &["voice", "voice-en", "build-pack", "export"],
         "build-pack" => &["export"],
         _ => &[],
     }

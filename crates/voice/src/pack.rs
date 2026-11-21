@@ -95,9 +95,11 @@ impl VoiceConfig {
             Lang::En => "english",
         };
         let var = |v: &str| format!("{v}{suffix}");
+        // HOME only for the defaults of the workstation: the pipeline image sets every
+        // path (deploy/Dockerfile) and its user has no home.
         let home = std::env::var_os("HOME")
             .map(PathBuf::from)
-            .ok_or_else(|| Error::Config("HOME is not set".into()))?;
+            .unwrap_or_default();
         let tts_dir = home.join("projects/speak/app/models/tts");
         let num = |var: &str, default: u32| -> Result<u32> {
             match std::env::var(var) {
@@ -321,6 +323,218 @@ pub fn voice_sources(voice: &str, lang: Lang) -> Vec<SourceRef> {
     s
 }
 
+/// Source name of the clip cache in the data directory (`cache/voice/`, [`ClipCache`]).
+pub const CACHE_SOURCE: &str = "voice";
+/// Version of the cache format and of what a clip is made of: changed, every clip is
+/// made again.
+pub const CACHE_FORMAT: u32 = 1;
+
+/// What an engine is for the cache: its model, voices, voice and first seed (not the
+/// device: the same model gives the same speech on the GPU of the workstation and on the
+/// CPU of the server).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct EngineKey {
+    /// SHA-256 of the model file.
+    pub model_sha256: String,
+    /// SHA-256 of the voices file.
+    pub voices_sha256: String,
+    /// Voice name.
+    pub voice: String,
+    /// First noise seed.
+    pub seed: u32,
+}
+
+impl EngineKey {
+    /// Key of `tts` (the model files are hashed once per process while unchanged).
+    pub fn of(tts: &PocketTts) -> Result<Self> {
+        Ok(Self {
+            model_sha256: sha256_file_cached(&tts.model)?,
+            voices_sha256: sha256_file_cached(&tts.voices)?,
+            voice: tts.voice.clone(),
+            seed: tts.seed,
+        })
+    }
+}
+
+/// Cache key of a clip made of `parts` (engine, text), played in order with the short
+/// pause: every setting the audio depends on (seeds tried, onset threshold, trimming and
+/// level, sample rate, bitrate, pause).
+pub fn clip_key(parts: &[(&EngineKey, &str)], cfg: &VoiceConfig) -> String {
+    let v = serde_json::json!({
+        "format": CACHE_FORMAT,
+        "parts": parts,
+        "seed_attempts": SEED_ATTEMPTS,
+        "min_onset_ms": MIN_ONSET_MS,
+        "shape": format!("{:?}", cfg.shape),
+        "sample_rate": SAMPLE_RATE,
+        "opus_kbps": cfg.ffmpeg.kbps,
+        "gap_ms": crate::bank::Pause::Short.ms(),
+    });
+    hex::encode(Sha256::digest(v.to_string().as_bytes()))
+}
+
+/// Fingerprint of what the voice layer of `lang` is made of besides the names of the
+/// site (#129, the code fingerprint of the `voice` steps of `build-all`): the cache
+/// format, every phrase of the bank and how sample names of each kind are spoken and cut
+/// in parts, and the engines of `cfg` (`None`: no engine configured). A change runs the
+/// voice of every site again; the clips that did not change come from the cache.
+pub fn code_revision(lang: Lang, cfg: Option<&VoiceConfig>) -> String {
+    use crate::names::{Colour, PisteName};
+    let sample = PackNames {
+        site: "Échantillon".into(),
+        pistes: vec![
+            PisteName::new("Échantillon", Some(Colour::Green)),
+            PisteName::new("Échantillon", Some(Colour::Blue)),
+            PisteName::new("Échantillon", Some(Colour::Red)),
+            PisteName::new("Échantillon", Some(Colour::Black)),
+            PisteName::new("Échantillon", None),
+        ],
+        places: vec!["Refuge de l'Échantillon".into()],
+        dates: vec![
+            crate::clips::DayMonth { day: 15, month: 1 },
+            crate::clips::DayMonth { day: 31, month: 12 },
+        ],
+        status_pistes: 3,
+    };
+    let m = manifest_split_in(&sample, &PackNames::default(), lang);
+    let mut h = Sha256::new();
+    h.update(CACHE_FORMAT.to_le_bytes());
+    h.update(lang.code().as_bytes());
+    for (id, (kind, text)) in &m.clips {
+        h.update(format!("{id}\0{kind:?}\0{text}\0").as_bytes());
+        if let Some(cfg) = cfg {
+            for (engine, part) in clip_parts(id, *kind, text, cfg) {
+                h.update(format!("{engine}\0{part}\0").as_bytes());
+            }
+        }
+    }
+    match cfg {
+        Some(cfg) => {
+            let mut engines = vec![&cfg.tts];
+            engines.extend(&cfg.names_tts);
+            for e in engines {
+                match EngineKey::of(e) {
+                    Ok(k) => h.update(format!("{k:?}").as_bytes()),
+                    Err(_) => h.update(b"engine files missing"),
+                }
+            }
+            h.update(format!("{:?}{}", cfg.shape, cfg.ffmpeg.kbps).as_bytes());
+        }
+        None => h.update(b"no engine"),
+    }
+    hex::encode(h.finalize())
+}
+
+/// A clip of the cache: what its manifest entry says of its audio.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CachedClip {
+    /// Duration after trimming, ms.
+    pub duration_ms: u32,
+    /// Size of the Ogg/Opus file, bytes.
+    pub bytes: u64,
+    /// Pocket TTS tokens.
+    pub tokens: usize,
+    /// Leading silence removed, ms.
+    pub lead_trim_ms: u32,
+    /// Trailing silence removed, ms.
+    pub tail_trim_ms: u32,
+    /// Gain applied, dB.
+    pub gain_db: f64,
+    /// Whether a cut-off sound at the end was removed.
+    pub end_burst: bool,
+    /// Noise seed of the kept generation (of the first part).
+    pub seed: u32,
+    /// Onset maybe cut after every seed tried.
+    pub onset_clipped: bool,
+}
+
+/// Clips already made, shared by every site and language of the data directory
+/// (`cache/voice/clips/<k[..2]>/<k>.opus` and `<k>.json`, `k` = [`clip_key`]): the
+/// voice layer of a site synthesises only the phrases absent from it (#129). The JSON is
+/// written after the audio: a clip is in the cache once both are, with the size the JSON
+/// gives.
+#[derive(Debug, Clone)]
+pub struct ClipCache {
+    dir: PathBuf,
+}
+
+impl ClipCache {
+    /// The cache of `layout`.
+    pub fn new(layout: &DataLayout) -> Result<Self> {
+        Ok(Self {
+            dir: layout.cache_dir(CACHE_SOURCE)?,
+        })
+    }
+
+    fn paths(&self, key: &str) -> (PathBuf, PathBuf) {
+        let d = self.dir.join("clips").join(&key[..2]);
+        (d.join(format!("{key}.opus")), d.join(format!("{key}.json")))
+    }
+
+    /// Lock file taken while clips are synthesised for the cache.
+    pub fn lock_path(&self) -> PathBuf {
+        self.dir.join("synthesis.lock")
+    }
+
+    /// The clip of `key`, when it is in the cache whole.
+    pub fn get(&self, key: &str) -> Option<CachedClip> {
+        let (opus, json) = self.paths(key);
+        let c: CachedClip = serde_json::from_slice(&std::fs::read(json).ok()?).ok()?;
+        (std::fs::metadata(opus).ok()?.len() == c.bytes).then_some(c)
+    }
+
+    /// Encodes `samples` as the clip of `key` (described by `c`, its size set here).
+    pub fn put(
+        &self,
+        key: &str,
+        samples: &[i16],
+        mut c: CachedClip,
+        ffmpeg: &Ffmpeg,
+    ) -> Result<CachedClip> {
+        let (opus, json) = self.paths(key);
+        let f = skimap_common::output::AtomicFile::create(&opus)?;
+        ffmpeg.encode_opus(samples, SAMPLE_RATE, f.tmp())?;
+        c.bytes = f.commit()?;
+        write_json(&json, &c)?;
+        Ok(c)
+    }
+
+    /// Copies the clip of `key` to `to` (a file of a voice layer).
+    pub fn copy_to(&self, key: &str, c: &CachedClip, to: &Path) -> Result<()> {
+        let (opus, _) = self.paths(key);
+        let n = skimap_common::output::copy_file(&opus, to)?;
+        if n != c.bytes {
+            return Err(Error::Clip {
+                id: key.to_owned(),
+                message: format!("cached clip of {n} bytes, {} expected", c.bytes),
+            });
+        }
+        Ok(())
+    }
+}
+
+/// [`sha256_file`] once per process for a file whose size and modification time did not
+/// change (the 300 MB of a model, for each language of each site).
+fn sha256_file_cached(p: &Path) -> Result<String> {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    type Seen = HashMap<PathBuf, (u64, Option<std::time::SystemTime>, String)>;
+    static SEEN: OnceLock<Mutex<Seen>> = OnceLock::new();
+    let m = std::fs::metadata(p).map_err(|e| Error::io(p, e))?;
+    let stamp = (m.len(), m.modified().ok());
+    let seen = SEEN.get_or_init(Mutex::default);
+    if let Some((n, t, h)) = seen.lock().expect("hash memo").get(p)
+        && (*n, *t) == stamp
+    {
+        return Ok(h.clone());
+    }
+    let h = sha256_file(p)?;
+    seen.lock()
+        .expect("hash memo")
+        .insert(p.to_owned(), (stamp.0, stamp.1, h.clone()));
+    Ok(h)
+}
+
 /// Summary of a build.
 #[derive(Debug, Clone, Serialize)]
 pub struct VoiceBuild {
@@ -338,8 +552,13 @@ pub struct VoiceBuild {
     pub lead_trim_ms: (u32, u32, u32),
     /// Clips whose cut-off final sound was removed.
     pub end_bursts: usize,
-    /// Clips synthesised in each pass (pass k uses seed + k).
+    /// Units (distinct texts of an engine) synthesised in each pass (pass k uses seed +
+    /// k); empty when every clip came from the cache.
     pub passes: Vec<usize>,
+    /// Clips made by this build (#129: the others came from the cache, [`ClipCache`]).
+    pub made_clips: usize,
+    /// Clips taken from the cache, made before for this site or another one.
+    pub reused_clips: usize,
     /// Clips whose onset is still at the start after every seed.
     pub onset_clipped: usize,
     /// Clips of personal names (left out of a published pack): count, bytes.
@@ -399,9 +618,6 @@ pub fn build_site(
     let t0 = Instant::now();
     let dir = layout.layer_dir(site, &cfg.lang.layer())?;
     let clips_dir = dir.join("clips");
-    if clips_dir.exists() {
-        std::fs::remove_dir_all(&clips_dir).map_err(|e| Error::io(&clips_dir, e))?;
-    }
     DataLayout::ensure(&clips_dir)?;
 
     let m = manifest_split_in(&names.public, &names.personal, cfg.lang);
@@ -440,129 +656,206 @@ pub fn build_site(
         }
         clips.push((id.clone(), *kind, t.clone(), parts));
     }
-    // Generation with quality control: a unit whose speech is cut at the start (or opens
-    // on the cold-start click) or never reaches the end of speech is generated again with
-    // the next seed, up to SEED_ATTEMPTS seeds; failing that, the latest onset is kept and
-    // flagged.
-    let mut best: Vec<Option<(u32, Utterance, f64)>> = vec![None; units.len()];
-    let mut done = vec![false; units.len()];
+
+    // #129: the clips already made, for this site or another one, from the same parts by
+    // the same engines with the same settings, are taken from the cache of the data
+    // directory (`cache/voice/`): a phrase that did not change is never synthesised again,
+    // and the fixed phrases and values, the same on every site, are synthesised once.
+    let cache = ClipCache::new(layout)?;
+    let engine_keys: Vec<EngineKey> = engines.iter().map(EngineKey::of).collect::<Result<_>>()?;
+    let keys: Vec<String> = clips
+        .iter()
+        .map(|(_, _, _, parts)| {
+            let parts: Vec<(&EngineKey, &str)> = parts
+                .iter()
+                .map(|&p| (&engine_keys[units[p].0], units[p].1.as_str()))
+                .collect();
+            clip_key(&parts, cfg)
+        })
+        .collect();
+    let mut cached: Vec<Option<CachedClip>> = keys.iter().map(|k| cache.get(k)).collect();
     let (mut tts_wall_s, mut tts_load_ms, mut passes) = (0.0, f64::NAN, Vec::new());
-    for (engine, base) in engines.iter().enumerate() {
-        let mut pending: Vec<usize> = (0..units.len()).filter(|&i| units[i].0 == engine).collect();
-        for attempt in 0..SEED_ATTEMPTS {
-            if pending.is_empty() {
-                break;
+    let (mut encode_wall_s, mut made_clips) = (0.0, 0);
+    if cached.iter().any(Option::is_none) {
+        // One synthesis at a time on the data directory (memory: one Pocket TTS process,
+        // whatever the number of sites built at once), and what another build made while
+        // this one waited is taken.
+        let _lock = skimap_common::output::FileLock::lock(&cache.lock_path())?;
+        for (c, k) in cached.iter_mut().zip(&keys) {
+            if c.is_none() {
+                *c = cache.get(k);
             }
-            let tts = PocketTts {
-                seed: base.seed.wrapping_add(attempt),
-                ..base.clone()
-            };
-            let lines: Vec<String> = pending.iter().map(|&i| units[i].1.clone()).collect();
-            let (utts, stats) = tts.synthesize(&lines)?;
-            tts_wall_s += stats.wall_s;
-            if attempt == 0 && engine == 0 {
-                tts_load_ms = stats.load_ms;
+        }
+        let mut needed = vec![false; units.len()];
+        for ((_, _, _, parts), c) in clips.iter().zip(&cached) {
+            if c.is_none() {
+                for &p in parts {
+                    needed[p] = true;
+                }
             }
-            if passes.len() <= attempt as usize {
-                passes.push(0);
-            }
-            passes[attempt as usize] += pending.len();
-            for (&i, u) in pending.iter().zip(utts) {
-                let (_, t, n) = &units[i];
-                if u.chunk_tokens != [*n] {
-                    return Err(Error::Clip {
-                        id: t.clone(),
-                        message: format!(
-                            "pockettts.cpp read {:?} tokens, the Rust port counts {n}: {t}",
-                            u.chunk_tokens
-                        ),
+        }
+        // Generation with quality control: a unit whose speech is cut at the start (or
+        // opens on the cold-start click) or never reaches the end of speech is generated
+        // again with the next seed, up to SEED_ATTEMPTS seeds; failing that, the latest
+        // onset is kept and flagged.
+        let mut best: Vec<Option<(u32, Utterance, f64)>> = vec![None; units.len()];
+        let mut done = vec![false; units.len()];
+        for (engine, base) in engines.iter().enumerate() {
+            let mut pending: Vec<usize> = (0..units.len())
+                .filter(|&i| needed[i] && units[i].0 == engine)
+                .collect();
+            for attempt in 0..SEED_ATTEMPTS {
+                if pending.is_empty() {
+                    break;
+                }
+                let tts = PocketTts {
+                    seed: base.seed.wrapping_add(attempt),
+                    ..base.clone()
+                };
+                let lines: Vec<String> = pending.iter().map(|&i| units[i].1.clone()).collect();
+                let (utts, stats) = tts.synthesize(&lines)?;
+                tts_wall_s += stats.wall_s;
+                if tts_load_ms.is_nan() {
+                    tts_load_ms = stats.load_ms;
+                }
+                if passes.len() <= attempt as usize {
+                    passes.push(0);
+                }
+                passes[attempt as usize] += pending.len();
+                for (&i, u) in pending.iter().zip(utts) {
+                    let (_, t, n) = &units[i];
+                    if u.chunk_tokens != [*n] {
+                        return Err(Error::Clip {
+                            id: t.clone(),
+                            message: format!(
+                                "pockettts.cpp read {:?} tokens, the Rust port counts {n}: {t}",
+                                u.chunk_tokens
+                            ),
+                        });
+                    }
+                    let onset =
+                        speech_onset_ms(&u.samples, SAMPLE_RATE, &cfg.shape).unwrap_or(-1.0);
+                    if !u.missing_eos && onset >= MIN_ONSET_MS {
+                        done[i] = true;
+                    }
+                    let better = best[i].as_ref().is_none_or(|(_, b, o)| {
+                        (b.missing_eos && !u.missing_eos)
+                            || (b.missing_eos == u.missing_eos && onset > *o)
                     });
+                    if better {
+                        best[i] = Some((tts.seed, u, onset));
+                    }
                 }
-                let onset = speech_onset_ms(&u.samples, SAMPLE_RATE, &cfg.shape).unwrap_or(-1.0);
-                if !u.missing_eos && onset >= MIN_ONSET_MS {
-                    done[i] = true;
-                }
-                let better = best[i].as_ref().is_none_or(|(_, b, o)| {
-                    (b.missing_eos && !u.missing_eos)
-                        || (b.missing_eos == u.missing_eos && onset > *o)
+                pending.retain(|&i| !done[i]);
+            }
+        }
+
+        // Samples, shaping, seed kept, onset maybe cut.
+        type ShapedUnit = (Vec<i16>, crate::audio::Shaped, u32, bool);
+        let mut shaped_units: Vec<Option<ShapedUnit>> = Vec::with_capacity(units.len());
+        for (((_, t, _), b), clean) in units.iter().zip(best).zip(&done) {
+            let Some((seed, u, _)) = b else {
+                shaped_units.push(None);
+                continue;
+            };
+            if u.missing_eos {
+                return Err(Error::Clip {
+                    id: t.clone(),
+                    message: format!("no end of speech with {SEED_ATTEMPTS} seeds: {t}"),
                 });
-                if better {
-                    best[i] = Some((tts.seed, u, onset));
+            }
+            let Some((samples, s)) = shape(&u.samples, SAMPLE_RATE, &cfg.shape) else {
+                return Err(Error::Clip {
+                    id: t.clone(),
+                    message: format!("silent clip: {t}"),
+                });
+            };
+            shaped_units.push(Some((samples, s, seed, !*clean)));
+        }
+        let unit = |p: usize| {
+            shaped_units[p]
+                .as_ref()
+                .expect("needed units are synthesised")
+        };
+        let gap = (crate::bank::Pause::Short.ms() * SAMPLE_RATE / 1000) as usize;
+        let mut made = Vec::new();
+        for (i, (_, _, _, parts)) in clips.iter().enumerate() {
+            if cached[i].is_some() {
+                continue;
+            }
+            let mut samples: Vec<i16> = Vec::new();
+            for (k, &p) in parts.iter().enumerate() {
+                if k > 0 {
+                    samples.extend(std::iter::repeat_n(0i16, gap));
                 }
+                samples.extend_from_slice(&unit(p).0);
             }
-            pending.retain(|&i| !done[i]);
+            let first = unit(parts[0]);
+            let last = unit(parts[parts.len() - 1]);
+            let s = CachedClip {
+                duration_ms: (samples.len() as u64 * 1000 / u64::from(SAMPLE_RATE)) as u32,
+                bytes: 0,
+                tokens: parts.iter().map(|&p| units[p].2).sum(),
+                lead_trim_ms: first.1.lead_ms.round() as u32,
+                tail_trim_ms: last.1.tail_ms.round() as u32,
+                gain_db: (first.1.gain_db * 10.0).round() / 10.0,
+                end_burst: parts.iter().any(|&p| unit(p).1.end_burst),
+                seed: first.2,
+                onset_clipped: parts.iter().any(|&p| unit(p).3),
+            };
+            made.push((i, samples, s));
+        }
+
+        let t_enc = Instant::now();
+        let made: Vec<(usize, CachedClip)> = made
+            .into_par_iter()
+            .map(|(i, samples, s)| {
+                let c = cache.put(&keys[i], &samples, s, &cfg.ffmpeg)?;
+                Ok((i, c))
+            })
+            .collect::<Result<_>>()?;
+        encode_wall_s = t_enc.elapsed().as_secs_f64();
+        made_clips = made.len();
+        for (i, c) in made {
+            cached[i] = Some(c);
         }
     }
 
-    let mut shaped_units: Vec<(Vec<i16>, crate::audio::Shaped, u32, bool)> =
-        Vec::with_capacity(units.len());
-    for (((_, t, _), b), clean) in units.iter().zip(best).zip(&done) {
-        let (seed, u, _) = b.expect("every unit was synthesised");
-        if u.missing_eos {
-            return Err(Error::Clip {
-                id: t.clone(),
-                message: format!("no end of speech with {SEED_ATTEMPTS} seeds: {t}"),
-            });
-        }
-        let Some((samples, s)) = shape(&u.samples, SAMPLE_RATE, &cfg.shape) else {
-            return Err(Error::Clip {
-                id: t.clone(),
-                message: format!("silent clip: {t}"),
-            });
-        };
-        shaped_units.push((samples, s, seed, !*clean));
-    }
-    let gap = (crate::bank::Pause::Short.ms() * SAMPLE_RATE / 1000) as usize;
-    let mut shaped = Vec::with_capacity(clips.len());
-    for (id, kind, t, parts) in clips {
-        let mut samples: Vec<i16> = Vec::new();
-        for (k, &p) in parts.iter().enumerate() {
-            if k > 0 {
-                samples.extend(std::iter::repeat_n(0i16, gap));
-            }
-            samples.extend_from_slice(&shaped_units[p].0);
-        }
-        let first = &shaped_units[parts[0]];
-        let last = &shaped_units[parts[parts.len() - 1]];
-        let s = crate::audio::Shaped {
-            lead_ms: first.1.lead_ms,
-            tail_ms: last.1.tail_ms,
-            gain_db: first.1.gain_db,
-            end_burst: parts.iter().any(|&p| shaped_units[p].1.end_burst),
-        };
-        let n: usize = parts.iter().map(|&p| units[p].2).sum();
-        let clipped = parts.iter().any(|&p| shaped_units[p].3);
-        shaped.push((id, kind, t, n, samples, s, first.2, clipped));
-    }
-
-    let t_enc = Instant::now();
-    let entries: Vec<ClipEntry> = shaped
+    // The layer: every clip of the manifest from the cache, and nothing else.
+    let entries: Vec<ClipEntry> = clips
         .par_iter()
-        .map(|(id, kind, t, n, samples, s, seed, clipped)| {
+        .zip(&keys)
+        .zip(&cached)
+        .map(|(((id, kind, t, _), key), c)| {
+            let c = c.as_ref().expect("every clip is cached or made");
             let file = format!("clips/{id}.opus");
-            let path = dir.join(&file);
-            cfg.ffmpeg.encode_opus(samples, SAMPLE_RATE, &path)?;
-            let bytes = std::fs::metadata(&path)
-                .map_err(|e| Error::io(&path, e))?
-                .len();
+            cache.copy_to(key, c, &dir.join(&file))?;
             Ok(ClipEntry {
                 id: id.clone(),
                 kind: *kind,
                 text: t.clone(),
                 file,
-                duration_ms: (samples.len() as u64 * 1000 / u64::from(SAMPLE_RATE)) as u32,
-                bytes,
-                tokens: *n,
-                lead_trim_ms: s.lead_ms.round() as u32,
-                tail_trim_ms: s.tail_ms.round() as u32,
-                gain_db: (s.gain_db * 10.0).round() / 10.0,
-                end_burst: s.end_burst,
-                seed: *seed,
-                onset_clipped: *clipped,
+                duration_ms: c.duration_ms,
+                bytes: c.bytes,
+                tokens: c.tokens,
+                lead_trim_ms: c.lead_trim_ms,
+                tail_trim_ms: c.tail_trim_ms,
+                gain_db: c.gain_db,
+                end_burst: c.end_burst,
+                seed: c.seed,
+                onset_clipped: c.onset_clipped,
             })
         })
         .collect::<Result<_>>()?;
-    let encode_wall_s = t_enc.elapsed().as_secs_f64();
+    let wanted: std::collections::HashSet<String> =
+        clips.iter().map(|(id, ..)| format!("{id}.opus")).collect();
+    let rd = std::fs::read_dir(&clips_dir).map_err(|e| Error::io(&clips_dir, e))?;
+    for e in rd.flatten() {
+        if !wanted.contains(e.file_name().to_string_lossy().as_ref()) {
+            let p = e.path();
+            std::fs::remove_file(&p).map_err(|e| Error::io(&p, e))?;
+        }
+    }
 
     let vm = VoiceManifest {
         format: 1,
@@ -622,6 +915,8 @@ pub fn build_site(
         ),
         end_bursts: vm.clips.iter().filter(|c| c.end_burst).count(),
         passes,
+        made_clips,
+        reused_clips: vm.clips.len() - made_clips,
         onset_clipped: vm.clips.iter().filter(|c| c.onset_clipped).count(),
         personal: (
             vm.clips.iter().filter(|c| m.is_personal(&c.id)).count(),
@@ -749,6 +1044,8 @@ fn write_meta(
         "lead_trim_ms_min_median_max": [b.lead_trim_ms.0, b.lead_trim_ms.1, b.lead_trim_ms.2],
         "end_bursts": b.end_bursts,
         "passes": b.passes,
+        "made_clips": b.made_clips,
+        "reused_clips": b.reused_clips,
         "onset_clipped": b.onset_clipped,
         "tts_wall_s": (b.tts_wall_s * 100.0).round() / 100.0,
         "encode_wall_s": (b.encode_wall_s * 100.0).round() / 100.0,
@@ -875,6 +1172,8 @@ mod tests {
             lead_trim_ms: (90, 90, 90),
             end_bursts: 0,
             passes: vec![2],
+            made_clips: 2,
+            reused_clips: 0,
             onset_clipped: 0,
             personal: (1, 2000),
             tts_wall_s: 1.0,
