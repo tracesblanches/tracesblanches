@@ -1,0 +1,38 @@
+name: Idée
+description: Une fonction, un réglage, une amélioration.
+title: "Idée : "
+labels: ["idée"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Partez de ce que vit le skieur. La solution vient ensuite.
+  - type: textarea
+    id: probleme
+    attributes:
+      label: Le problème sur le terrain
+      description: Dans quelle situation êtes-vous, et qu'est-ce qui vous manque ?
+      placeholder: "En SRN dans le brouillard, je ne sais plus de quel côté passe l'itinéraire…"
+    validations:
+      required: true
+  - type: textarea
+    id: proposition
+    attributes:
+      label: Ce que vous proposez
+    validations:
+      required: true
+  - type: textarea
+    id: donnees
+    attributes:
+      label: Données nécessaires
+      description: Quelle source fournirait l'information, et sous quelle licence, si vous le savez.
+  - type: dropdown
+    id: pratique
+    attributes:
+      label: Pratique
+      multiple: true
+      options:
+        - Ski de fond, classique
+        - Ski de fond, skating
+        - Ski de randonnée nordique (hors piste)
+        - Raquettes ou piétons sur les domaines

@@ -1,10 +1,10 @@
-# skimap
+# Traces Blanches
 
-Carte et assistant de ski de fond et de ski de randonnée nordique (SRN) pour Android, utilisables hors ligne. Un pipeline Rust construit, pour chaque site de France, un pack hors ligne : fonds de carte, pistes, relief et pentes, exposition aux avalanches (modèle), enneigement estimé, refuges, zones réglementées, couverture mobile, graphe de routage. L'app lit ces packs avec le même noyau Rust (routage, temps estimé, demi-tour avant la nuit, hors piste, plan de journée), compilé pour le téléphone.
+Traces Blanches (nom de code et nom des binaires : `skimap`) est une carte et un assistant de ski de fond et de ski de randonnée nordique (SRN) pour Android, utilisables hors ligne. Un pipeline Rust construit, pour chaque site de France, un pack hors ligne : fonds de carte, pistes, relief et pentes, exposition aux avalanches (modèle), enneigement estimé, refuges, zones réglementées, couverture mobile, graphe de routage. L'app lit ces packs avec le même noyau Rust (routage, temps estimé, demi-tour avant la nuit, hors piste, plan de journée), compilé pour le téléphone.
 
 Le registre compte 272 sites, dont 268 construits par `build-all` (domaines nordiques du recensement, zones et traversées SRN ; `skimap sites`), tous par le même code : ce qui est propre à un site vient d'une table de données, jamais du code (`crates/common/tests/no_site_names.rs`). Deux sites servent de jeux de test, appelés « jeu de test alpin » et « jeu de test jurassien » ([définition](docs/architecture/donnees.md#jeux-de-test)) ; les mesures de ce dépôt valent pour ces deux sites, pas pour toute la France.
 
-Statut : en développement, usage personnel ; dépôt privé.
+Statut : en développement. Ce dépôt ne publie encore ni version ni APK.
 
 ## Sommaire
 
@@ -13,7 +13,8 @@ Statut : en développement, usage personnel ; dépôt privé.
 3. [Preuves chiffrées](docs/preuves.md) : tests, couverture, mutation, temps de construction
 4. [Sources et licences des données](#sources-et-licences-des-données)
 5. [Licence](#licence)
-6. [Contribuer](CONTRIBUTING.md), [guide des données](docs/guide-donnees.md)
+6. [Contribuer](CONTRIBUTING.md), [guide des données](docs/guide-donnees.md), [code de conduite](CODE_OF_CONDUCT.md)
+7. [Signaler une faille](SECURITY.md)
 
 ## Démarrage
 
@@ -93,6 +94,8 @@ Sources, textes lus et décisions : [docs/licences-donnees.md](docs/licences-don
 
 Le code de skimap est sous licence GPL-3.0-or-later ([LICENSE](LICENSE)), avec une permission additionnelle (section 7 de la GPLv3) qui autorise la diffusion par les boutiques d'applications ([LICENSE-EXCEPTION](LICENSE-EXCEPTION)). Exception : `crates/avalanche`, portage Rust de com4FlowPy (AvaFrame), reste sous EUPL-1.2 ([LICENSES/EUPL-1.2.txt](LICENSES/EUPL-1.2.txt)) ; seul le pipeline la lie (`skimap-cli`, et `skimap-srndiff` avec sa fonction `pipeline`), jamais l'app, ce que vérifie `deny-phone.toml`. Licences des composants tiers : [THIRD-PARTY.md](THIRD-PARTY.md), généré par `docs/licences/third-party.sh`. Choix et raisons : [docs/licences/f2-licence-code.md](docs/licences/f2-licence-code.md).
 
-## Contribuer : CI locale
+## Contribuer
 
-La CI tourne sur le poste, jamais sur GitHub Actions : `scripts/ci` (tout), `scripts/ci --quick` (le hook pre-push, à activer par `git config core.hooksPath .githooks`). Détails : [docs/ci-locale.md](docs/ci-locale.md).
+Les contributions sont bienvenues, y compris celles écrites avec un outil d'IA, relues par un humain et accompagnées de leurs preuves : [CONTRIBUTING.md](CONTRIBUTING.md). Une faille de sécurité se signale en privé : [SECURITY.md](SECURITY.md).
+
+La CI tourne sur le poste de chaque contributeur, pas sur GitHub Actions : `scripts/ci` (tout), `scripts/ci --quick` (fmt, clippy, tests ; le hook pre-push, à activer par `git config core.hooksPath .githooks`). Détails : [docs/ci-locale.md](docs/ci-locale.md).

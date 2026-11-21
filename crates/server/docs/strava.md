@@ -13,6 +13,6 @@ Parcours, appels et erreurs : [api.md](api.md#strava-s1). Le serveur transmet le
 ## Ce que l'utilisateur doit créer
 
 1. Une application API Strava sur https://www.strava.com/settings/api (compte Strava ; d'après le rapport 06, un abonnement peut être exigé pour créer une app) : nom « skimap », site https://skimap.warnier.net, **Authorization Callback Domain : `skimap.warnier.net`**, icône.
-2. Noter le Client ID et le Client Secret, puis créer le secret sur le serveur (commande dans `deploy/README.md`).
+2. Noter le Client ID et le Client Secret, puis les fournir au serveur par `STRAVA_CLIENT_ID` et `STRAVA_CLIENT_SECRET` (secret Kubernetes `skimap-strava`, jamais dans git).
 3. Une nouvelle app Strava est limitée à 1 athlète (puis 10) ; au-delà, demander la revue de Strava.
 4. Le critère du ticket (« connexion Strava depuis l'app de test ») attend l'app (K0, K2) : le schéma `skimap://` doit y être déclaré (filtre d'intention de `skimap://strava/callback`).

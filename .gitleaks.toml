@@ -1,0 +1,11 @@
+# gitleaks: default rules, plus the known false positives of this repository.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Dated PMTiles file names in tests and the fake key of a config test"
+regexTarget = "match"
+regexes = [
+  '''key"?\s*[:,]\s*"\d{8}\.pmtiles"''',
+  '''"abc-SECRET-123"''',
+]

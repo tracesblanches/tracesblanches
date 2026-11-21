@@ -1,0 +1,50 @@
+name: Bogue
+description: Quelque chose ne marche pas comme prévu.
+title: "Bogue : "
+labels: ["bogue"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Merci de signaler le problème. Une faille de sécurité ne va pas ici : suivez SECURITY.md.
+  - type: textarea
+    id: ce-qui-se-passe
+    attributes:
+      label: Ce qui se passe
+      description: Ce que vous avez fait, ce que vous avez obtenu.
+    validations:
+      required: true
+  - type: textarea
+    id: attendu
+    attributes:
+      label: Ce que vous attendiez
+    validations:
+      required: true
+  - type: textarea
+    id: reproduire
+    attributes:
+      label: Comment le reproduire
+      description: Étapes, commande lancée, identifiant du site (`skimap sites`), date.
+      placeholder: |
+        1. target/release/skimap build-all <site>
+        2. …
+    validations:
+      required: true
+  - type: textarea
+    id: sortie
+    attributes:
+      label: Sortie ou journal
+      description: Collez la sortie complète. Elle sera mise en forme comme du code.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Version ou commit
+      placeholder: "git rev-parse --short HEAD"
+    validations:
+      required: true
+  - type: input
+    id: environnement
+    attributes:
+      label: Système
+      description: Système, version de Rust, ou modèle de téléphone et version d'Android.

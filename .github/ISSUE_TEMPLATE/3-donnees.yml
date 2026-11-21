@@ -1,0 +1,51 @@
+name: Données ou site
+description: Une donnée fausse ou absente, ou un domaine nordique à ajouter.
+title: "Données : "
+labels: ["données"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Une piste absente ou mal tracée vient souvent d'OpenStreetMap : le mieux est de la corriger là-bas, nous la reprenons au prochain extrait.
+        Ne joignez pas le plan des pistes de la station : un lien suffit. Nous ne le redistribuons jamais.
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type
+      options:
+        - Piste (tracé, nom, difficulté, sens, damage)
+        - État des pistes (ouvert, fermé)
+        - Pente ou exposition aux avalanches
+        - Zone protégée, règle de bivouac ou d'accès
+        - Refuge ou abri
+        - Zone sans réseau
+        - Neige estimée
+        - Domaine nordique à ajouter
+        - Autre
+    validations:
+      required: true
+  - type: input
+    id: lieu
+    attributes:
+      label: Domaine ou commune
+      placeholder: "Nom du domaine (département)"
+    validations:
+      required: true
+  - type: input
+    id: position
+    attributes:
+      label: Position
+      description: Latitude et longitude, ou lien OpenStreetMap vers l'objet.
+      placeholder: "latitude, longitude"
+  - type: textarea
+    id: constat
+    attributes:
+      label: Ce qui est faux ou absent
+      description: Ce que l'app ou le pack affiche, et ce qui est vrai sur le terrain. Date du constat.
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Source
+      description: D'où vient l'information exacte (exploitant, arrêté, observation sur place), avec un lien si possible.

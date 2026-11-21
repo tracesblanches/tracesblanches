@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Faille de sécurité
+    url: https://github.com/tracesblanches/tracesblanches/security/advisories/new
+    about: Signalez-la en privé, jamais dans une issue publique.
+  - name: Questions fréquentes
+    url: https://tracesblanches.github.io/fr/faq.html
+    about: Hors ligne, batterie, avalanches, données, prix.

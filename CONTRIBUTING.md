@@ -1,14 +1,39 @@
-# Contribuer à skimap
+# Contribuer à Traces Blanches
 
 [← README](README.md)
 
+Les contributions sont bienvenues : correction, test, donnée, traduction, idée. Celles écrites avec un outil d'IA aussi, aux conditions de la section [Contributions écrites avec un outil d'IA](#contributions-écrites-avec-un-outil-dia).
+
+- Un bogue, une idée, une donnée fausse ou un domaine à ajouter : ouvrez une issue avec le modèle qui correspond.
+- Une faille de sécurité : ne l'ouvrez pas en public, suivez [SECURITY.md](SECURITY.md).
+- Le [code de conduite](CODE_OF_CONDUCT.md) s'applique partout dans le projet.
+
+Pour un changement important, ouvrez d'abord une issue, pour vérifier qu'il entre dans le projet avant d'y passer du temps.
+
 ## Licence des contributions
 
-Le code de skimap est sous GPL-3.0-or-later avec une permission additionnelle pour les boutiques d'applications ([LICENSE-EXCEPTION](LICENSE-EXCEPTION)) ; `crates/avalanche` est sous EUPL-1.2. Cette permission ne couvre une contribution extérieure que si son auteur l'accorde expressément. Une demande de fusion n'est acceptée que si sa description contient la phrase :
+Le code de skimap est sous GPL-3.0-or-later avec une permission additionnelle pour les boutiques d'applications ([LICENSE-EXCEPTION](LICENSE-EXCEPTION)) ; `crates/avalanche` est sous EUPL-1.2. Cette permission ne couvre une contribution extérieure que si son auteur l'accorde expressément. Une demande de fusion n'est acceptée que si chaque commit porte une ligne `Signed-off-by` (`git commit -s`, [Developer Certificate of Origin 1.1](https://developercertificate.org/)) et si sa description contient la phrase :
 
 > J'accepte que ma contribution soit diffusée sous GPL-3.0-or-later avec la permission additionnelle de LICENSE-EXCEPTION (sous EUPL-1.2 pour `crates/avalanche`), et j'en détiens les droits.
 
 Une dépendance nouvelle doit passer `cargo deny --locked check` (licences permissives seulement, liste dans `deny.toml`) ; ensuite `docs/licences/third-party.sh` régénère [THIRD-PARTY.md](THIRD-PARTY.md).
+
+## Contributions écrites avec un outil d'IA
+
+Elles sont acceptées au même niveau d'exigence que les autres.
+
+- **Relecture humaine.** Vous avez lu chaque ligne, vous la comprenez et vous savez l'expliquer en revue.
+- **Preuves.** Tests, sorties de commandes collées et chiffres, comme pour toute contribution. « Ça devrait marcher » n'est pas une preuve.
+- **Responsabilité.** Vous signez la contribution (`Signed-off-by`) et vous en répondez : exactitude, sécurité, droits sur le code. Vérifiez que l'outil n'a pas recopié du code sous une licence incompatible.
+- **Taille raisonnable.** Une demande de fusion traite un sujet. Les lots générés et non relus sont refusés.
+
+## Règles des données
+
+- **Jamais de source à usage personnel dans un pack publié**, ni dans `fixtures/`, `benches/data/` ou `fuzz/`. Ces sources ne tournent qu'avec `SKIMAP_PERSONAL_SOURCES=1` ; `skimap_common::licence` décide, et l'étape `data-check` de `scripts/ci` vérifie les fichiers de données versionnés.
+- **Jamais de plan des pistes de station redistribué** : ni image, ni couche raster, ni plan déformé, dans un pack ou dans le dépôt. Le plan peut être lu en local pour reporter ses informations sur nos propres tracés. Dans une issue, un lien vers le plan suffit.
+- **OpenStreetMap (ODbL) et CC BY-SA (refuges.info, Camptocamp) ne se mélangent jamais** dans un même fichier ([docs/licences/l3-combinaison.md](docs/licences/l3-combinaison.md)).
+- **Une nouvelle source arrive avec sa licence lue** : adresse, passage exact et date de lecture dans `docs/licences/`, attribution dans les métadonnées de la couche.
+- **Corrections d'OpenStreetMap** : dans OpenStreetMap, selon ses règles. Aucun envoi automatique.
 
 ## Règles du code
 
@@ -22,6 +47,8 @@ Une dépendance nouvelle doit passer `cargo deny --locked check` (licences permi
 - **Mesures** : mesurer le cas qui domine le temps total, donner la commande et sa sortie, et la date ; une mesure sur les jeux de test vaut pour eux seuls.
 
 ## Tests
+
+La CI tourne sur votre poste, pas sur GitHub Actions ([docs/ci-locale.md](docs/ci-locale.md)). Avant d'ouvrir une demande de fusion, lancez au moins `scripts/ci --quick` (fmt, clippy, tests) et collez sa sortie ; `scripts/ci` lance toutes les étapes. Les mêmes commandes, une à une :
 
 ```sh
 cargo fmt --all --check
@@ -41,6 +68,8 @@ SKIMAP_DATA_DIR=<data complet> cargo test --release --workspace --locked --all-f
 - Une sortie qui change exprès : `SKIMAP_BLESS=1 cargo test -p <crate> --test <test>`, puis relire le diff de `fixtures/golden/` et l'expliquer dans le commit.
 - Régénérer le jeu réduit depuis les données complètes : `cargo run --release -p skimap-cli -- fixtures`.
 
-## Commits
+## Commits et demandes de fusion
 
-Messages en français, qui citent le ticket (`Refs #<n>`) ; un commit par changement cohérent. Les tickets sont décrits dans `docs/tickets.yaml`.
+- Messages en français, qui citent l'issue (`Refs #<n>`) ; un commit par changement cohérent, avec sa ligne `Signed-off-by`.
+- Un sujet par demande de fusion. Remplissez le modèle : ce qui change, les preuves, la phrase d'accord.
+- Textes publics et documentation : voix active, phrases courtes, faits vérifiés avec leur date, aucun superlatif.
