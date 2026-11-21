@@ -35,10 +35,11 @@
 //!   with a forgetting of [`DAY_TAU_S`] (the pace drifts: tired children); stops of the
 //!   day update the group's gamma and duration priors, capped at [`DAY_PRIOR_H`] hours and
 //!   [`DAY_PRIOR_STOPS`] stops of weight so that the day can move them. A group nobody
-//!   described (X14) takes as stop priors the mixture of the profiles it may be, weighted
-//!   by how well each explains the day so far ([`stop_mixture`],
-//!   [`DayPace::set_stop_prior`]): a slow group with children is not predicted with the
-//!   stops of a lone adult, nor a lone adult with those of a family.
+//!   described (X14) is followed as each of the profiles it may be, one [`DayPace`] each
+//!   in parallel; the rest of the day is predicted as their [`mixture`], weighted by how
+//!   well each explains the day so far (Bayesian posterior weights, equal priors): a slow
+//!   group with children is not predicted with the pace by terrain and the stops of a lone
+//!   adult, nor a lone adult with those of a family.
 //!
 //! # Prediction and range
 //!
@@ -46,6 +47,9 @@
 //! stopped time a compound Poisson sum with the uncertainty of `λ` (plus a day-to-day
 //! spread of [`STOP_RATE_DAY_CV`]) and of `μ_D`; the total is moment-matched to a
 //! log-normal and given with its 80 % interval ([`Prediction::lo_s`], [`Prediction::hi_s`]).
+//! The range is calibrated on the group's own outings ([`Spread`]): in the morning on the
+//! outing predicted before it was learned, during the outing on the same outing replayed
+//! from its [`Checkpoint`]s (a quarter, half, three quarters of the route).
 //!
 //! # Priors
 //!
@@ -448,6 +452,15 @@ pub struct PaceParams {
 /// `exp(± Z80 k σ)` with `k² = (CAL_PRIOR + Σ z²) / (CAL_PRIOR + n)`: wider when the group
 /// is less regular than its model says, narrower when more. Without such outings, `k` = 1
 /// (the prior's range).
+///
+/// During the outing ([`DayPace`]), the same with the outing replayed from its
+/// [`Checkpoint`]s through the day's pace of the posterior before it: `z` of the time left
+/// at each checkpoint, a factor per checkpoint from their mean absolute value (robust: a
+/// few days far off do not widen the range of all the others), `k = (CAL_PRIOR · m + Σ |z|)
+/// / (m · (CAL_PRIOR + n))`, `m` = [`MEAN_ABS_Z`], interpolated along the route
+/// ([`Spread::day_factor`]). The day's pace already absorbs most of a day's departure from
+/// the group, so the morning's factor does not say how wide the rest of the day is, and
+/// how wide the model's range is for what is left changes along the route.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct Spread {
     /// Outings learned.
@@ -456,6 +469,13 @@ pub struct Spread {
     pub n: f64,
     /// Sum of their squares.
     pub z2: f64,
+    /// During the outing: outings with a standardised error kept at each of
+    /// [`CHECKPOINTS`].
+    #[serde(default)]
+    pub day_n: [f64; CHECKPOINTS.len()],
+    /// Sum of their absolute values.
+    #[serde(default)]
+    pub day_abs: [f64; CHECKPOINTS.len()],
 }
 
 /// The range is calibrated on the outings from this one on (the first ones are predicted
@@ -476,18 +496,51 @@ impl Spread {
         ((CAL_PRIOR + self.z2) / (CAL_PRIOR + self.n)).sqrt()
     }
 
+    /// Factor of the log standard deviation of the range during the outing at
+    /// checkpoint `i` of [`CHECKPOINTS`].
+    pub fn day_factor_at(&self, i: usize) -> f64 {
+        let n = self.day_n[i];
+        if n <= 0.0 {
+            return 1.0;
+        }
+        (CAL_PRIOR * MEAN_ABS_Z + self.day_abs[i]) / (MEAN_ABS_Z * (CAL_PRIOR + n))
+    }
+
+    /// Factor of the log standard deviation of the range during the outing with the share
+    /// `done` of the route done: linear between the checkpoints, the nearest one outside.
+    pub fn day_factor(&self, done: f64) -> f64 {
+        let last = CHECKPOINTS.len() - 1;
+        if done <= CHECKPOINTS[0] {
+            return self.day_factor_at(0);
+        }
+        if done >= CHECKPOINTS[last] {
+            return self.day_factor_at(last);
+        }
+        let i = CHECKPOINTS
+            .iter()
+            .rposition(|c| *c <= done)
+            .unwrap_or(0)
+            .min(last - 1);
+        let u = (done - CHECKPOINTS[i]) / (CHECKPOINTS[i + 1] - CHECKPOINTS[i]);
+        (1.0 - u) * self.day_factor_at(i) + u * self.day_factor_at(i + 1)
+    }
+
     /// The prediction with its range calibrated (the median kept).
     pub fn apply(&self, p: Prediction) -> Prediction {
-        let k = self.factor();
-        if k == 1.0 || p.median_s <= 0.0 || p.hi_s <= p.median_s {
-            return p;
-        }
-        let st = (p.hi_s / p.median_s).ln() / Z80;
-        Prediction {
-            lo_s: p.median_s * (-Z80 * k * st).exp(),
-            hi_s: p.median_s * (Z80 * k * st).exp(),
-            ..p
-        }
+        scale_range(p, self.factor())
+    }
+}
+
+/// The prediction with the log standard deviation of its range times `k` (the median kept).
+fn scale_range(p: Prediction, k: f64) -> Prediction {
+    if k == 1.0 || p.median_s <= 0.0 || p.hi_s <= p.median_s {
+        return p;
+    }
+    let st = (p.hi_s / p.median_s).ln() / Z80;
+    Prediction {
+        lo_s: p.median_s * (-Z80 * k * st).exp(),
+        hi_s: p.median_s * (Z80 * k * st).exp(),
+        ..p
     }
 }
 
@@ -777,6 +830,9 @@ impl PaceParams {
                 self.spread.z2 += z * z;
             }
         }
+        if self.spread.seen >= CAL_DAY_FROM && o.elapsed_s >= CAL_MIN_S {
+            self.calibrate_day(o);
+        }
         self.spread.seen += 1;
         let mut w = [None; TERRAINS];
         for (c, wc) in w.iter_mut().enumerate() {
@@ -807,6 +863,77 @@ impl PaceParams {
     }
 }
 
+impl PaceParams {
+    /// The outing replayed from its checkpoints through the day's pace of these parameters
+    /// (before learning it): the standardised errors of the time left at each checkpoint
+    /// calibrate the range during the outing ([`Spread::day_factor`]).
+    fn calibrate_day(&mut self, o: &OutingObs) {
+        let mut day = DayPace::new(self, o.model_s);
+        let mut prev = Checkpoint::default();
+        for (i, cp) in o.checkpoints.iter().take(CHECKPOINTS.len()).enumerate() {
+            let dm = cp.moving_s - prev.moving_s;
+            let dmod: [f64; TERRAINS] = std::array::from_fn(|c| cp.model_s[c] - prev.model_s[c]);
+            if dm < 0.0 || dmod.iter().any(|x| *x < 0.0) || cp.stops < prev.stops {
+                break;
+            }
+            // In steps of a minute: the forgetting of the day's pace as online.
+            let k = (dm / 60.0).ceil().max(1.0);
+            for _ in 0..k as u32 {
+                day.moving(dm / k, dmod.map(|x| x / k));
+            }
+            for &d in o
+                .stops_s
+                .get(prev.stops as usize..cp.stops as usize)
+                .unwrap_or(&[])
+            {
+                day.stop(d);
+            }
+            prev = *cp;
+            let rest: [f64; TERRAINS] =
+                std::array::from_fn(|c| (o.model_s[c] - cp.model_s[c]).max(0.0));
+            let real = o.elapsed_s - cp.elapsed_s;
+            if real < CAL_DAY_MIN_S || rest.iter().sum::<f64>() <= 0.0 {
+                continue;
+            }
+            let p = day.predict_raw(day.day_effect(), rest, None);
+            if p.median_s > 0.0 && p.hi_s > p.median_s {
+                let st = (p.hi_s / p.median_s).ln() / Z80;
+                let z = (real / p.median_s).ln() / st;
+                self.spread.day_n[i] += 1.0;
+                self.spread.day_abs[i] += z.abs();
+            }
+        }
+    }
+}
+
+/// The range during the outing is calibrated on the outings from this one on: the day's
+/// pace absorbs most of what the prior gets wrong of a group, so from its second outing.
+pub const CAL_DAY_FROM: u32 = 1;
+
+/// Mean absolute value of a standard normal, `√(2/π)`.
+pub const MEAN_ABS_Z: f64 = 0.797_884_560_802_865_4;
+
+/// A checkpoint counts in the calibration of the range during the outing with this much
+/// time left, seconds.
+pub const CAL_DAY_MIN_S: f64 = 600.0;
+
+/// The shares of the route (model time) at which the tracker keeps a [`Checkpoint`].
+pub const CHECKPOINTS: [f64; 3] = [0.25, 0.5, 0.75];
+
+/// Where an outing stood at a share of its route ([`CHECKPOINTS`]): what the day's pace had
+/// seen then, to replay the outing for the calibration of the range during the outing.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+pub struct Checkpoint {
+    /// Model time (C5) progressed while moving, per terrain, seconds.
+    pub model_s: [f64; TERRAINS],
+    /// Moving time, seconds.
+    pub moving_s: f64,
+    /// Stops ended (the first ones of [`OutingObs::stops_s`]).
+    pub stops: u32,
+    /// From the start, seconds.
+    pub elapsed_s: f64,
+}
+
 /// What an outing tells about its group (from the tracker's segmentation: moving, and
 /// stops of 90 s or more).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -823,6 +950,10 @@ pub struct OutingObs {
     pub stops_s: Vec<f64>,
     /// From the start to the end, seconds.
     pub elapsed_s: f64,
+    /// Where it stood at a quarter, half and three quarters of its route (none for a
+    /// track imported without a route).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub checkpoints: Vec<Checkpoint>,
 }
 
 impl OutingObs {
@@ -896,37 +1027,78 @@ pub fn fit(profile: GroupProfile, outings: &[OutingObs]) -> ProfileModel {
     m
 }
 
-/// Stop priors of a mixture of groups (`(weight, parameters)`, weights normalised here):
-/// the rate and the log duration of a stop with the mixture's mean and variance (moments
-/// matched). `None` without a positive weight.
-pub fn stop_mixture<'a>(
-    parts: impl IntoIterator<Item = (f64, &'a PaceParams)>,
-) -> Option<(GammaRate, Nig)> {
-    let (mut w, mut r1, mut r2, mut l1, mut l2) = (0.0, 0.0, 0.0, 0.0, 0.0);
-    for (wi, p) in parts {
-        if !(wi.is_finite() && wi > 0.0) {
+/// Components a [`mixture`] keeps at most (the heaviest).
+pub const MIX_MAX: usize = 8;
+
+/// The mixture of predictions (`(weight, prediction)`, weights normalised here; each a
+/// log-normal through its median and its 90 % quantile): its means, and its median and 80 %
+/// interval from the mixture's distribution (bisection, no allocation). The [`MIX_MAX`]
+/// heaviest components are kept. `None` without a positive weight.
+pub fn mixture(parts: impl IntoIterator<Item = (f64, Prediction)>) -> Option<Prediction> {
+    let mut c = [(0.0, Prediction::default()); MIX_MAX];
+    let mut n = 0;
+    for (w, p) in parts {
+        if !(w.is_finite() && w > 0.0 && p.median_s > 0.0) {
             continue;
         }
-        let (m, l) = (p.stops.mean(), p.stop_len.m);
-        w += wi;
-        r1 += wi * m;
-        r2 += wi * (p.stops.var() + m * m);
-        l1 += wi * l;
-        l2 += wi * (p.stop_len.pred_var() + l * l);
+        if n < MIX_MAX {
+            c[n] = (w, p);
+            n += 1;
+        } else if let Some(min) = c.iter_mut().min_by(|a, b| a.0.total_cmp(&b.0))
+            && w > min.0
+        {
+            *min = (w, p);
+        }
     }
-    if w <= 0.0 {
+    let c = &c[..n];
+    let tot: f64 = c.iter().map(|x| x.0).sum();
+    if n == 0 || tot <= 0.0 {
         return None;
     }
-    let (rm, lm) = (r1 / w, l1 / w);
-    let rv = (r2 / w - rm * rm).max(1e-9);
-    let lv = (l2 / w - lm * lm).max(1e-9);
-    Some((
-        GammaRate {
-            a: rm * rm / rv,
-            b: rm / rv,
-        },
-        Nig::prior(lm, lv.sqrt()),
-    ))
+    let comp = |(w, p): &(f64, Prediction)| {
+        let mu = p.median_s.ln();
+        let s = if p.hi_s > p.median_s {
+            (p.hi_s / p.median_s).ln() / Z80
+        } else {
+            0.0
+        };
+        (w / tot, mu, s.max(1e-6))
+    };
+    let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+    for x in c {
+        let (_, mu, s) = comp(x);
+        lo = lo.min(mu - 8.0 * s);
+        hi = hi.max(mu + 8.0 * s);
+    }
+    let cdf = |x: f64| -> f64 {
+        c.iter()
+            .map(|y| {
+                let (w, mu, s) = comp(y);
+                w * phi((x - mu) / s)
+            })
+            .sum()
+    };
+    let quantile = |q: f64| {
+        let (mut a, mut b) = (lo, hi);
+        for _ in 0..50 {
+            let m = 0.5 * (a + b);
+            if cdf(m) < q {
+                a = m;
+            } else {
+                b = m;
+            }
+        }
+        (0.5 * (a + b)).exp()
+    };
+    let mean = |f: fn(&Prediction) -> f64| c.iter().map(|(w, p)| w / tot * f(p)).sum::<f64>();
+    Some(Prediction {
+        moving_s: mean(|p| p.moving_s),
+        stop_s: mean(|p| p.stop_s),
+        mean_s: mean(|p| p.mean_s),
+        median_s: quantile(0.5),
+        lo_s: quantile(0.1),
+        hi_s: quantile(0.9),
+    })
 }
 
 /// The pace of the day, updated during the outing: fixed size, no allocation.
@@ -935,6 +1107,8 @@ pub struct DayPace {
     base: PaceParams,
     /// Prior variance of the day effect.
     v0: f64,
+    /// Model time of the route, seconds.
+    route_s: f64,
     /// Forgotten sums: real moving time and time predicted at the group's pace, seconds.
     a_r: f64,
     a_t: f64,
@@ -963,6 +1137,7 @@ impl DayPace {
         Self {
             base: *base,
             v0,
+            route_s: tot,
             a_r: 0.0,
             a_t: 0.0,
             model_s: [0.0; TERRAINS],
@@ -977,13 +1152,6 @@ impl DayPace {
     /// The group's parameters.
     pub fn base(&self) -> &PaceParams {
         &self.base
-    }
-
-    /// Replaces the group's stop priors (a group nobody described: [`stop_mixture`] of the
-    /// profiles it may be, X14); the day's stops still update them.
-    pub fn set_stop_prior(&mut self, rate: GammaRate, len: Nig) {
-        self.base.stops = rate;
-        self.base.stop_len = len;
     }
 
     /// `dt` seconds moving, progressing `d_model` model seconds per terrain.
@@ -1049,6 +1217,15 @@ impl DayPace {
         (info * y / p, 1.0 / p)
     }
 
+    /// Share of the route done (model time progressed over the route's).
+    pub fn done_share(&self) -> f64 {
+        if self.route_s > 0.0 {
+            self.model_total_s() / self.route_s
+        } else {
+            0.0
+        }
+    }
+
     /// Moving time so far, seconds.
     pub fn moving_total_s(&self) -> f64 {
         self.moving_s.iter().sum()
@@ -1086,7 +1263,8 @@ impl DayPace {
     /// Remaining duration for `rem_model_s` model seconds per terrain; `paused_for`: the
     /// group is stopped since that many seconds.
     pub fn predict(&self, rem_model_s: [f64; TERRAINS], paused_for: Option<f64>) -> Prediction {
-        self.predict_with(self.day_effect(), rem_model_s, paused_for)
+        let p = self.predict_raw(self.day_effect(), rem_model_s, paused_for);
+        scale_range(p, self.base.spread.day_factor(self.done_share()))
     }
 
     /// As [`DayPace::predict`] at the group's own pace (the day effect at its prior: what
@@ -1096,10 +1274,13 @@ impl DayPace {
         rem_model_s: [f64; TERRAINS],
         paused_for: Option<f64>,
     ) -> Prediction {
-        self.predict_with((0.0, self.v0), rem_model_s, paused_for)
+        let p = self.predict_raw((0.0, self.v0), rem_model_s, paused_for);
+        scale_range(p, self.base.spread.day_factor(self.done_share()))
     }
 
-    fn predict_with(
+    /// As [`DayPace::predict`] with the day effect `(mean, variance)`, before the
+    /// calibration of the range on the group's outings.
+    fn predict_raw(
         &self,
         (d, vd): (f64, f64),
         rem_model_s: [f64; TERRAINS],
@@ -1122,6 +1303,7 @@ impl DayPace {
         travelled_m: f64,
         stops_s: &[f64],
         elapsed_s: f64,
+        checkpoints: &[Checkpoint],
     ) -> OutingObs {
         OutingObs {
             model_s: self.model_s,
@@ -1130,6 +1312,7 @@ impl DayPace {
             travelled_m,
             stops_s: stops_s.to_vec(),
             elapsed_s,
+            checkpoints: checkpoints.to_vec(),
         }
     }
 }
@@ -1168,34 +1351,97 @@ mod tests {
     }
 
     #[test]
-    fn stop_mixture_matches_the_moments() {
+    fn mixture_of_predictions() {
+        let route = [600.0, 3600.0, 600.0];
         let adult = PaceParams::prior(&GroupProfile::solo(Style::Classic, Level::Intermediate));
         let fam = PaceParams::prior(&GroupProfile::app_default());
-        // One component: itself (mean and spread).
-        let (r, l) = stop_mixture([(2.0, &fam)]).expect("weight");
-        assert!((r.mean() - fam.stops.mean()).abs() < 1e-9);
-        assert!((r.var() - fam.stops.var()).abs() < 1e-9);
-        assert!((l.m - fam.stop_len.m).abs() < 1e-9);
-        assert!((l.pred_var() - fam.stop_len.pred_var()).abs() < 1e-9);
-        // Half and half: the mean rate between, the variance of the mixture (within plus
-        // between).
-        let (r, l) = stop_mixture([(1.0, &adult), (1.0, &fam)]).expect("weight");
-        let (ma, mf) = (adult.stops.mean(), fam.stops.mean());
-        let mid = 0.5 * (ma + mf);
-        assert!((r.mean() - mid).abs() < 1e-9, "{}", r.mean());
-        let var = 0.5 * (adult.stops.var() + fam.stops.var()) + 0.25 * (mf - ma).powi(2);
-        assert!((r.var() - var).abs() < 1e-9, "{} {var}", r.var());
-        assert!(l.m > adult.stop_len.m && l.m < fam.stop_len.m);
-        // No weight: none.
-        assert!(stop_mixture([(0.0, &adult), (f64::NAN, &fam)]).is_none());
-        // Set on the day: the family's stops expected for the rest, not an adult's.
-        let route = [600.0, 3600.0, 600.0];
-        let mut day = DayPace::new(&PaceParams::unknown(Style::Classic), route);
-        let before = day.predict(route, None).stop_s;
-        let (r, l) = stop_mixture([(1.0, &fam)]).expect("weight");
-        day.set_stop_prior(r, l);
-        let after = day.predict(route, None).stop_s;
-        assert!(after > 3.0 * before, "{before} → {after}");
+        let (pa, pf) = (adult.predict_model(route), fam.predict_model(route));
+        // One component: itself.
+        let m = mixture([(2.0, pf)]).expect("weight");
+        for (x, y) in [
+            (m.median_s, pf.median_s),
+            (m.lo_s, pf.lo_s),
+            (m.hi_s, pf.hi_s),
+            (m.mean_s, pf.mean_s),
+        ] {
+            assert!((x / y - 1.0).abs() < 1e-6, "{x} {y}");
+        }
+        // Half and half: the median between, the range from the adult's low end to the
+        // family's high end (at most), the mean the mean of the means.
+        let m = mixture([(1.0, pa), (1.0, pf)]).expect("weight");
+        assert!(
+            m.median_s > pa.median_s && m.median_s < pf.median_s,
+            "{m:?}"
+        );
+        assert!(
+            m.lo_s >= pa.lo_s && m.hi_s <= pf.hi_s && m.lo_s < pf.lo_s,
+            "{m:?}"
+        );
+        assert!((m.mean_s - 0.5 * (pa.mean_s + pf.mean_s)).abs() < 1e-6);
+        // Its 10 and 90 % quantiles are those of the mixture.
+        let cdf = |x: f64| {
+            [pa, pf]
+                .iter()
+                .map(|p| {
+                    let s = (p.hi_s / p.median_s).ln() / Z80;
+                    0.5 * phi((x / p.median_s).ln() / s)
+                })
+                .sum::<f64>()
+        };
+        assert!((cdf(m.lo_s) - 0.1).abs() < 1e-6 && (cdf(m.hi_s) - 0.9).abs() < 1e-6);
+        // No weight: none; nearly all the weight: that component.
+        assert!(mixture([(0.0, pa), (f64::NAN, pf)]).is_none());
+        let m = mixture([(1e-12, pa), (1.0, pf)]).expect("weight");
+        assert!((m.median_s / pf.median_s - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn the_range_during_the_outing_is_calibrated_on_checkpoints() {
+        // A group exactly at its pace, no stop: the time left at each checkpoint is the
+        // median, z = 0, the range during the outing narrows (k² = 2 / (2 + n)).
+        let mut p = PaceParams::prior(&GroupProfile::solo(Style::Classic, Level::Intermediate));
+        p.stops = GammaRate::prior(1e-3, 1.0);
+        let model = [1800.0, 3600.0, 1800.0];
+        let real: [f64; TERRAINS] = std::array::from_fn(|c| model[c] * (-p.pace[c].m).exp());
+        let tot: f64 = real.iter().sum();
+        let checkpoints = CHECKPOINTS
+            .map(|f| Checkpoint {
+                model_s: model.map(|m| m * f),
+                moving_s: tot * f,
+                stops: 0,
+                elapsed_s: tot * f,
+            })
+            .to_vec();
+        let o = OutingObs {
+            model_s: model,
+            moving_s: real,
+            elapsed_s: tot,
+            checkpoints,
+            ..OutingObs::default()
+        };
+        let route = model;
+        let before = DayPace::new(&p, route).predict(route, None).spread();
+        for _ in 0..CAL_FROM + 6 {
+            let mut q = p;
+            q.learn(&o);
+            p.spread = q.spread;
+        }
+        // Every checkpoint counted on every outing learned after the first.
+        assert_eq!(p.spread.day_n, [9.0, 9.0, 9.0], "{:?}", p.spread);
+        for f in [0.0, 0.3, 0.5, 0.9] {
+            assert!(p.spread.day_factor(f) < 0.6, "{f}: {:?}", p.spread);
+        }
+        let after = DayPace::new(&p, route).predict(route, None).spread();
+        assert!(after < 0.7 * before, "{before} → {after}");
+        // The morning's range is its own.
+        assert_eq!(p.spread.n, 6.0);
+        // Without checkpoints (a track imported): unchanged.
+        let mut q = p;
+        q.learn(&OutingObs {
+            checkpoints: Vec::new(),
+            ..o
+        });
+        assert_eq!(q.spread.day_n, p.spread.day_n);
     }
 
     #[test]
@@ -1316,6 +1562,7 @@ mod tests {
                 travelled_m: 8000.0 * 1.12,
                 stops_s: stops,
                 elapsed_s: total,
+                checkpoints: Vec::new(),
             },
             total,
         )

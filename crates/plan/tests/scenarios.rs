@@ -2152,9 +2152,10 @@ fn q9_36_chapelle_family_without_profile_offered_its_profile() {
         errs.push(err);
     }
     // The first half hour of this day points to a slow lone adult (no stop in 25 min, then
-    // 20 min of stops). The stops still to come are those of the profiles the day fits
-    // (X14, `calibration::stop_mixture`): 18/11/2026 −20, −20, −25 min (15/11/2026, an
-    // adult's stops: −22, −22, −25). Over many days: example `pace_eval`, « Sans profil ».
+    // 20 min of stops). The rest is predicted from the profiles the day fits
+    // (X14): 21/11/2026, the mixture of the profiles' days (`calibration::mixture`) −22,
+    // −22, −26 min (18/11/2026, their stops only: −20, −20, −25; 15/11/2026, an adult's
+    // stops: −22, −22, −25). Over many days: example `pace_eval`, « Sans profil ».
     println!("erreurs sans réponse / refusé / accepté : {errs:?} min");
     assert!(errs.iter().all(|e| e.abs() <= 40), "{errs:?}");
 }

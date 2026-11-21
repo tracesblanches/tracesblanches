@@ -343,3 +343,45 @@ fn a_group_without_profile_is_predicted_at_its_own_stops() {
         }
     }
 }
+
+/// X14 (#148): the range during the outing of a group learned on its outings is
+/// calibrated on them (`calibration::Spread::day_factor`, each outing replayed from its
+/// checkpoints at a quarter, half and three quarters of the route): it covers the arrival
+/// about 8 times in 10, not every time (21/11/2026, 24 days, 252 checkpoints: 97 % before,
+/// 90 % after; with 40 days `pace_eval` gives 79 to 93 %, the range of the first outings
+/// still drawn to the model's own).
+#[test]
+fn the_range_during_the_outing_is_calibrated_on_the_groups_outings() {
+    let (mut inside, mut n) = (0.0, 0usize);
+    for site in [&CERVIERES, &CHAPELLE_DES_BOIS] {
+        let req = presets::requests(site, presets::past_day(site))[0].clone();
+        let style = req.style;
+        for bh in [Behaviour::normal_adult(), Behaviour::fast_adult()] {
+            let res = evaluate(
+                site,
+                req.clone(),
+                bh,
+                GroupProfile::solo(style, Level::Intermediate),
+                24,
+            );
+            for f in [0.25, 0.5, 0.75] {
+                let q = at(&pace_eval::score(&res, 3), f);
+                println!(
+                    "{} {f} : couverture {:.0} % ({} jours)",
+                    site.id,
+                    q.cover[1] * 100.0,
+                    q.n
+                );
+                inside += q.cover[1] * q.n as f64;
+                n += q.n;
+            }
+        }
+    }
+    let cover = inside / n as f64;
+    println!(
+        "adultes, pendant la sortie : couverture {:.0} % sur {n}",
+        cover * 100.0
+    );
+    assert!(n >= 200, "{n}");
+    assert!((0.72..=0.92).contains(&cover), "couverture {cover:.2}");
+}
