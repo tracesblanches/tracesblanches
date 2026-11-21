@@ -110,8 +110,12 @@ object PrepWork {
         val outing = store.outing
         val days = mutableListOf<String>()
         val skipped = mutableListOf<String>()
-        for (p in Outings.packDirs(context)) {
-            runCatching { prepRun(p.path, Outings.workDir(context).path, out.path, group, outing, today, DAYS, appLang()) }
+        val packs = Outings.packDirs(context)
+        // Every installed pack: the core joins those of the neighbouring areas to each
+        // pack, as the morning does, so that the evening prepares the same loops (H2 #133).
+        val installed = packs.map { it.path }
+        for (p in packs) {
+            runCatching { prepRun(p.path, installed, Outings.workDir(context).path, out.path, group, outing, today, DAYS, appLang()) }
                 .onSuccess { r ->
                     days += r.days.map { "${it.siteId} ${it.date}" }
                     skipped += r.skipped.map { context.getString(R.string.label_value, p.name, it) }

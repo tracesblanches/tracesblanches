@@ -169,6 +169,7 @@ fn stay(pack: &Path) {
     let t0 = Instant::now();
     let r = prep_run(
         pack_s.clone(),
+        Vec::new(),
         phone.path().join("prep-view").display().to_string(),
         prep_out.display().to_string(),
         Some(group.clone()),

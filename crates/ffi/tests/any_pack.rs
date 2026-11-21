@@ -143,6 +143,7 @@ fn the_morning_opens_on_packs_of_several_massifs() {
             let out = tempfile::tempdir().unwrap();
             let r = skimap_ffi::prep::prep_run(
                 e.dir.clone(),
+                Vec::new(),
                 work.path().join("prep-view").display().to_string(),
                 out.path().display().to_string(),
                 None,
