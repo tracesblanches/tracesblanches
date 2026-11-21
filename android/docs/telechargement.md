@@ -13,15 +13,18 @@ Formats et API : [`crates/pack/docs/mise-a-jour.md`](../../crates/pack/docs/mise
 ## Une synchro (`PackSyncer`)
 
 1. Index du site avec l'`ETag` noté : 304 → fini, une requête, corps vide.
-2. Plan du noyau (`sync_plan`) : rien, le delta depuis la version installée, ou la base puis le delta. Un pack copié à la main sans état est reconnu par sa version.
+2. Plan du noyau (`sync_plan`) : rien, le delta depuis la version installée, ou la base puis le delta. Un pack copié à la main sans état est reconnu par sa version. Sur réseau mesuré, seuls les octets encore à télécharger comptent pour la limite de 10 Mo : un paquet déjà entier dans `.<site>.download` (SHA-256 vérifié) ne compte pour rien, un paquet partiel pour ce qui lui manque (#176 : une base téléchargée en Wi-Fi puis interrompue avant l'installation s'installe ensuite sur n'importe quel réseau).
 3. Chaque paquet : téléchargé dans `.<site>.download/<sha256>.part` (repris après coupure), contrôlé entier (`verify_bundle` : longueur et SHA-256, son nom ; faux → retéléchargé une fois depuis zéro), installé par le noyau (`install_bundle` : chaque blob revérifié avant toute écriture, nouvelle version construite à côté puis échangée).
 4. Fichier reconstruit d'un correctif de tuiles différent de celui du serveur (`PatchFailed`, #160 : le paquet de format 3 envoie les PMTiles changés tuile par tuile) → le même plan, fichiers entiers (`sync_plan_whole_files`) ; contenus manquants sur le téléphone (`MissingContents`) → plan complet (`sync_plan_full`).
 5. État noté (`record_sync`) ; dossier de téléchargement supprimé. Le pack en place reste complet et lisible à chaque étape ; serveur injoignable → exception, rien ne change.
+6. Une synchro d'un pack à la fois dans le processus (verrou par dossier) : la mise à jour quotidienne et le téléchargement du même pack partagent le dossier de téléchargement.
 
 ## WorkManager (`PackSync`, `PackSyncWorker`)
 
 - Téléchargement demandé : réseau requis ; **réseau non mesuré au-delà de 10 Mo**, sauf « Utiliser les données mobiles » ; stockage non bas ; reprise exponentielle (30 s) après une coupure.
 - Mise à jour quotidienne des packs installés (et de leur voix) : réseau et batterie non faible, désactivable dans le menu ; sur réseau mesuré, un plan de plus de 10 Mo n'est pas commencé et attend le Wi-Fi. Rien d'autre ne tourne en arrière-plan (E1) ; ni service de premier plan ni notification : un téléchargement interrompu par la limite de 10 min de WorkManager reprend où il en était.
+- Mise à jour quotidienne (`DailyUpdate`, #176) : chaque pack est essayé ; un pack en échec (index ou paquet injoignable, paquet qui ne s'installe pas) garde sa version et sa date « Mis à jour le… », et laisse les suivants se mettre à jour ; coupure réseau ou serveur → tout est repris plus tard (les packs déjà à jour répondent 304). Un plan laissé pour le Wi-Fi ne remplace pas un téléchargement déjà demandé (`KEEP`).
+- Journal des synchros : une ligne datée par pack et par synchro (mise à jour, à jour, en attente du Wi-Fi avec la taille, échec avec sa raison), dans logcat et dans `sync-journal.txt` (stockage externe de l'app, à côté de `packs/`, 400 dernières lignes) : ce qui s'est passé la nuit y reste.
 - Mode avion : les travaux attendent leur réseau, la carte et les fiches marchent (tout vient des packs).
 - Une installation terminée rouvre la carte avec les nouveaux packs (suivi des travaux par Flow, seulement quand l'écran vit).
 

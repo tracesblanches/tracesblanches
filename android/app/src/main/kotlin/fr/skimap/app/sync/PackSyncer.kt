@@ -13,6 +13,7 @@ import fr.skimap.core.verifyBundle
 import fr.skimap.sync.Fetched
 import fr.skimap.sync.HttpSource
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 /** A pack to keep in sync: a site pack, or a voice language pack of a site (VO6). */
 data class SyncTarget(
@@ -71,12 +72,22 @@ class PackSyncer(
 
     /**
      * Syncs [target]. [maxBytes]: largest download allowed now (metered network); a
-     * larger plan is not started and the report says how much it needs.
+     * larger plan is not started and the report says how much it needs. The bytes of a
+     * bundle already downloaded (whole, or in part) are not counted: a base downloaded on
+     * Wi-Fi and not installed yet is installed on any network (#176). One sync of a pack
+     * at a time in the process: the daily update and the download of the same pack may
+     * run together, and share the download directory.
      */
     fun sync(
         target: SyncTarget,
         maxBytes: Long = Long.MAX_VALUE,
         onProgress: (done: Long, total: Long) -> Unit = { _, _ -> },
+    ): SyncReport = synchronized(lockOf(target.dir)) { syncAlone(target, maxBytes, onProgress) }
+
+    private fun syncAlone(
+        target: SyncTarget,
+        maxBytes: Long,
+        onProgress: (done: Long, total: Long) -> Unit,
     ): SyncReport {
         val t0 = nanoTime()
         val requests0 = http.requests
@@ -112,7 +123,8 @@ class PackSyncer(
     ): Outcome {
         val dir = target.dir.absolutePath
         var plan = syncPlan(index, dir)
-        val size = plan.downloadBytes.toLong()
+        val work = File(target.dir.parentFile, ".${target.dir.name}.download")
+        val size = toDownload(plan, work)
         val outcome =
             when {
                 plan.bundles.isEmpty() -> {
@@ -124,7 +136,6 @@ class PackSyncer(
                 }
 
                 else -> {
-                    val work = File(target.dir.parentFile, ".${target.dir.name}.download")
                     val fellBack =
                         try {
                             try {
@@ -149,6 +160,36 @@ class PackSyncer(
         if (outcome.deferred == 0L) recordSync(dir, index, etag)
         return outcome
     }
+
+    /**
+     * Bytes of [plan] still to download: a bundle whole in [work] and right (SHA-256) counts
+     * for nothing, a partial one for what it lacks; a whole one that is wrong is deleted.
+     */
+    private fun toDownload(
+        plan: SyncPlan,
+        work: File,
+    ): Long =
+        plan.bundles.sumOf { b ->
+            val bytes = b.bytes.toLong()
+            val part = File(work, "${b.sha256}.part")
+            val have = part.length()
+            when {
+                have == bytes && isRight(part, b) -> 0L
+                have in 1 until bytes -> bytes - have
+                else -> bytes.also { part.delete() }
+            }
+        }
+
+    private fun isRight(
+        part: File,
+        b: BundleInfo,
+    ): Boolean =
+        try {
+            verifyBundle(part.absolutePath, b.sha256, b.bytes)
+            true
+        } catch (_: SyncException.Corrupt) {
+            false
+        }
 
     private fun installAll(
         plan: SyncPlan,
@@ -189,5 +230,10 @@ class PackSyncer(
     private companion object {
         const val NANOS_PER_MILLI = 1_000_000L
         const val ATTEMPTS = 2
+
+        /** One lock per pack directory, for the whole process. */
+        val LOCKS = ConcurrentHashMap<String, Any>()
+
+        fun lockOf(dir: File): Any = LOCKS.computeIfAbsent(dir.absoluteFile.normalize().path) { Any() }
     }
 }

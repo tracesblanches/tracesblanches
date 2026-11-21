@@ -2,7 +2,6 @@ package fr.skimap.app.sync
 
 import android.content.Context
 import android.net.ConnectivityManager
-import android.util.Log
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
@@ -41,7 +40,6 @@ object PackSync {
     const val DEFAULT_SERVER = "https://skimap.warnier.net"
 
     private const val PREFS = "skimap"
-    private const val LOG_TAG = "skimap"
     private const val KEY_SERVER = "server_url"
     private const val PERIODIC = "pack-updates"
 
@@ -77,6 +75,8 @@ object PackSync {
     /**
      * Downloads or updates the pack of [site] ([bytes]: size of the download, to choose the
      * network). [mobileData]: the user accepts a large download on a metered network.
+     * [keep]: a download of the pack already queued or running is left as it is (the daily
+     * update leaving a large plan for Wi-Fi must not cancel the one the user asked for).
      */
     fun download(
         context: Context,
@@ -85,6 +85,7 @@ object PackSync {
         bytes: Long,
         mobileData: Boolean = false,
         voiceLang: String? = null,
+        keep: Boolean = false,
     ) {
         val big = bytes > BIG_BYTES && !mobileData
         val request =
@@ -107,8 +108,9 @@ object PackSync {
                 ).addTag(TAG)
                 .addTag(workName(site, voiceLang))
                 .build()
-        WorkManager.getInstance(context).enqueueUniqueWork(workName(site, voiceLang), ExistingWorkPolicy.REPLACE, request)
-        Log.i(LOG_TAG, "sync queued: ${workName(site, voiceLang)}, $bytes bytes, ${if (big) "unmetered" else "any"} network")
+        val policy = if (keep) ExistingWorkPolicy.KEEP else ExistingWorkPolicy.REPLACE
+        WorkManager.getInstance(context).enqueueUniqueWork(workName(site, voiceLang), policy, request)
+        SyncJournal.note(context, "sync queued: ${workName(site, voiceLang)}, $bytes bytes, ${if (big) "unmetered" else "any"} network")
     }
 
     fun cancel(
@@ -192,13 +194,21 @@ class PackSyncWorker(
             }
         } catch (e: IOException) {
             // Network lost, server unreachable, cut download: kept for a later attempt.
-            Log.w(TAG, "sync interrupted, retried later: $e")
+            SyncJournal.note(ctx, "sync ${what()} interrupted, retried later: $e")
             Result.retry()
         } catch (e: SyncException) {
-            Log.e(TAG, "sync failed: $e")
+            SyncJournal.note(ctx, "sync ${what()} failed, pack kept: $e")
             Result.failure(workDataOf(ERROR to e.toString()))
         }
     }
+
+    /** What this work syncs, for the journal. */
+    private fun what(): String =
+        when {
+            inputData.getBoolean(FRANCE, false) -> "France basemap"
+            inputData.getBoolean(ALL, false) -> "daily update"
+            else -> inputData.getString(SITE) + (inputData.getString(VOICE)?.let { " voice $it" } ?: "")
+        }
 
     private suspend fun one(
         syncer: PackSyncer,
@@ -237,7 +247,10 @@ class PackSyncWorker(
     /** The France basemap (X20): fetched, or revalidated (one request when unchanged). */
     private fun france(http: HttpSource): Result {
         val r = FranceSyncer(http).sync(FranceBasemap.dir(applicationContext))
-        Log.i(TAG, "France basemap: build ${r.build ?: "unchanged"}, ${r.files} files, ${r.bytes} bytes, ${r.millis} ms")
+        SyncJournal.note(
+            applicationContext,
+            "France basemap: build ${r.build ?: "unchanged"}, ${r.files} files, ${r.bytes} bytes, ${r.millis} ms",
+        )
         return Result.success(workDataOf(CHANGED to !r.upToDate))
     }
 
@@ -251,39 +264,40 @@ class PackSyncWorker(
         try {
             FranceSyncer(PackSync.http(ctx)).sync(FranceBasemap.dir(ctx))
         } catch (e: IOException) {
-            Log.w(TAG, "France basemap not revalidated: $e")
+            SyncJournal.note(ctx, "France basemap not revalidated: $e")
         } catch (e: SyncException) {
-            Log.w(TAG, "France basemap not installed: $e")
+            SyncJournal.note(ctx, "France basemap not installed: $e")
         }
         val catalog = PackSync.catalog(ctx)
         val sites = (catalog.refresh() ?: catalog.cached()).associateBy { it.siteId }
-        var changed = false
-        for (p in listPacks(PackSync.packsDir(ctx).absolutePath)) {
-            val site = sites[p.siteId] ?: continue
-            val r = syncer.sync(SyncTarget(site.siteId, site.indexUrl, File(p.dir)), maxBytes)
-            log(r)
-            changed = changed || (!r.upToDate && r.deferredBytes == 0L)
-            if (r.deferredBytes > 0) PackSync.download(ctx, site.siteId, site.indexUrl, r.deferredBytes)
-            for (v in site.voice) {
-                val dir = File(PackSync.voiceDir(ctx), "${site.siteId}/${v.lang}")
-                if (!dir.isDirectory) continue
-                val vr = syncer.sync(SyncTarget(site.siteId, v.indexUrl, dir, v.lang), maxBytes)
-                log(vr)
+        val targets =
+            listPacks(PackSync.packsDir(ctx).absolutePath).flatMap { p ->
+                val site = sites[p.siteId]
+                if (site == null) {
+                    SyncJournal.note(ctx, "sync ${p.siteId}: not in the server catalog, pack kept")
+                    return@flatMap emptyList()
+                }
+                listOf(SyncTarget(site.siteId, site.indexUrl, File(p.dir))) +
+                    site.voice
+                        .map { v -> SyncTarget(site.siteId, v.indexUrl, File(PackSync.voiceDir(ctx), "${site.siteId}/${v.lang}"), v.lang) }
+                        .filter { it.dir.isDirectory }
             }
+        // Every pack is tried: one that fails keeps its version and leaves the others be (#176).
+        val updates = DailyUpdate(syncer) { SyncJournal.note(ctx, it) }.run(targets, maxBytes)
+        val synced = updates.filterIsInstance<PackUpdate.Synced>().map { it.report }
+        for (r in synced.filter { it.deferredBytes > 0 }) {
+            // Large and on a metered network: its own work waits for Wi-Fi.
+            PackSync.download(ctx, r.target.site, r.target.indexUrl, r.deferredBytes, voiceLang = r.target.voiceLang, keep = true)
         }
+        val changed = synced.any { it.target.voiceLang == null && !it.upToDate && it.deferredBytes == 0L }
         // A voice in the phone's language not installed yet (language changed): queued.
         PackSync.followLanguage(ctx, sites.values.toList())
-        return Result.success(workDataOf(CHANGED to changed))
+        // A pack cut by the network or the server: the whole update again later (the packs
+        // already synced answer 304); a pack that does not install waits for tomorrow.
+        return if (updates.any { it is PackUpdate.Failed && it.retry }) Result.retry() else Result.success(workDataOf(CHANGED to changed))
     }
 
-    private fun log(r: SyncReport) {
-        Log.i(
-            TAG,
-            "sync ${r.target.site}${r.target.voiceLang?.let { " voice $it" } ?: ""}: ${r.from} -> ${r.to}, " +
-                "${r.requests} requests, ${r.bytes} bytes, ${r.bundles} bundles, ${r.millis} ms" +
-                (if (r.upToDate) ", up to date" else "") + (if (r.deferredBytes > 0) ", deferred ${r.deferredBytes} bytes" else ""),
-        )
-    }
+    private fun log(r: SyncReport) = SyncJournal.note(applicationContext, DailyUpdate.describe(r))
 
     private fun output(r: SyncReport): Data =
         workDataOf(
@@ -299,7 +313,6 @@ class PackSyncWorker(
         )
 
     companion object {
-        private const val TAG = "skimap"
         const val SITE = "site"
         const val INDEX = "index"
         const val VOICE = "voice"

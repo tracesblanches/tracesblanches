@@ -1,8 +1,11 @@
 package fr.skimap.app
 
+import fr.skimap.app.sync.DailyUpdate
 import fr.skimap.app.sync.FranceSyncer
 import fr.skimap.app.sync.PackSyncer
+import fr.skimap.app.sync.PackUpdate
 import fr.skimap.app.sync.ServerCatalog
+import fr.skimap.app.sync.SyncJournal
 import fr.skimap.app.sync.SyncTarget
 import fr.skimap.core.Lang
 import fr.skimap.core.listPacks
@@ -327,6 +330,92 @@ class PackSyncTest {
         val r = PackSyncer(http()).sync(target(), maxBytes = 1_000)
         assertTrue(r.deferredBytes > 1_000)
         assertFalse(pack("test").exists())
+    }
+
+    /**
+     * #176: the base downloaded whole on Wi-Fi and not installed (the work stopped), then
+     * only a metered network: the daily update installs it, only what is missing counts
+     * against the limit of a metered network and is downloaded.
+     */
+    @Test
+    fun aDownloadedBaseIsInstalledOnAMeteredNetwork() {
+        val index = JSONObject((http().fetch(target().indexUrl, null) as fr.skimap.sync.Fetched.Body).bytes.decodeToString())
+        val b = index.getJSONObject("base")
+        val sha = b.getString("sha256")
+        val bytes = b.getLong("bytes")
+        val work = File(pack("test").parentFile, ".test.download").apply { mkdirs() }
+        File(store, "public/bundles/$sha.skb").copyTo(File(work, "$sha.part"))
+        val r = PackSyncer(http()).sync(target(), maxBytes = bytes - 1)
+        println("base already downloaded, metered limit ${bytes - 1}: $r")
+        assertEquals(0L, r.deferredBytes)
+        assertEquals("20261116T060000Z", r.to)
+        assertTrue("received ${r.bytes}, base $bytes", r.bytes < bytes)
+        assertEquals(tree(testPack(2)), tree(pack("test")))
+        assertFalse(work.exists())
+
+        // A whole file that is wrong is not counted as downloaded: the plan waits.
+        pack("test").deleteRecursively()
+        File(pack("test").parentFile, ".test.sync.json").delete()
+        File(work.apply { mkdirs() }, "$sha.part").writeBytes(ByteArray(bytes.toInt()) { 7 })
+        val wrong = PackSyncer(http()).sync(target(), maxBytes = bytes - 1)
+        println("wrong whole file, metered: $wrong")
+        assertTrue(wrong.deferredBytes >= bytes)
+        assertFalse(pack("test").exists())
+    }
+
+    /**
+     * #176: one pack that cannot be synced (its index answers 404) leaves the next ones be;
+     * every pack gets one line in the journal, with the reason of a failure.
+     */
+    @Test
+    fun aFailingPackDoesNotStopTheDailyUpdate() {
+        val journal = mutableListOf<String>()
+        val absent = SyncTarget("absent", "/v1/sites/absent/index.json", pack("absent"))
+        val out = DailyUpdate(PackSyncer(http()), journal::add).run(listOf(absent, target()), Long.MAX_VALUE)
+        println("daily update: $out\njournal:\n${journal.joinToString("\n")}")
+        val failed = out[0] as PackUpdate.Failed
+        assertTrue(failed.retry)
+        assertTrue(failed.error.toString(), failed.error.toString().contains("404"))
+        assertEquals("20261116T060000Z", (out[1] as PackUpdate.Synced).report.to)
+        assertEquals(tree(testPack(2)), tree(pack("test")))
+        assertEquals(2, journal.size)
+        assertTrue(journal[0], journal[0].startsWith("sync absent failed") && journal[0].contains("404"))
+        assertTrue(journal[1], journal[1].startsWith("sync test: null -> 20261116T060000Z"))
+    }
+
+    /** Two syncs of the same pack at once (daily update and its download): one at a time, both succeed. */
+    @Test
+    fun twoSyncsOfOnePackAtOnce() {
+        val errors = java.util.Collections.synchronizedList(mutableListOf<Throwable>())
+        val threads =
+            List(2) {
+                Thread {
+                    try {
+                        PackSyncer(http()).sync(target())
+                    } catch (e: Throwable) {
+                        errors += e
+                    }
+                }.apply { start() }
+            }
+        threads.forEach { it.join() }
+        assertEquals(emptyList<Throwable>(), errors.toList())
+        assertEquals(tree(testPack(2)), tree(pack("test")))
+    }
+
+    /** The journal keeps the last lines, dated, and survives a new process (a new instance). */
+    @Test
+    fun theJournalKeepsTheLastLines() {
+        val f = File(tmp.root, "phone/sync-journal.txt")
+        var t = java.time.Instant.parse("2026-11-20T02:00:00Z")
+        val j = SyncJournal(f, { t }, maxLines = 3)
+        for (i in 1..5) {
+            j.add("line $i")
+            t = t.plusSeconds(60)
+        }
+        assertEquals(
+            listOf("2026-11-20T02:02:00Z line 3", "2026-11-20T02:03:00Z line 4", "2026-11-20T02:04:00Z line 5"),
+            SyncJournal(f).lines(),
+        )
     }
 
     private companion object {
