@@ -48,8 +48,8 @@ use skimap_assist::layers::WeatherPoint;
 use skimap_assist::suggest::{loop_voice, node_snap};
 use skimap_common::geom::LonLat;
 use skimap_core::calibration::{
-    self as calibration, DayPace, GroupProfile, OutingObs, PaceParams, Prediction, ProfileModel,
-    TERRAINS, Terrain, terrain_ratio,
+    self as calibration, CHECKPOINTS, Checkpoint, DayPace, GroupProfile, OutingObs, PaceParams,
+    Prediction, ProfileModel, TERRAINS, Terrain, terrain_ratio,
 };
 use skimap_core::graph::{LocalPlane, PisteGraph, Snap};
 use skimap_core::matching::{AlertEvent, DeviationDetector, Hysteresis, ROUTE_HYSTERESIS};
@@ -636,6 +636,13 @@ pub struct Tracker<'a> {
     /// compared with, the proposal waiting (time, index), asked once, the profile chosen.
     model_done: [f64; TERRAINS],
     profiles: Vec<ProfileModel>,
+    /// X14: the pace of the day as each of [`Tracker::profiles`] (followed in parallel on
+    /// the same inputs as `day`), and their posterior weights (once a minute).
+    mix: Vec<DayPace>,
+    mix_w: Vec<f64>,
+    /// Where the outing stood at the shares of the route of [`CHECKPOINTS`] (for the
+    /// calibration of the range during the outing).
+    checkpoints: Vec<Checkpoint>,
     /// A lone adult of the plan's technique: the profile a plan without one is compared to.
     adult: PaceParams,
     profile_pending: Option<(f64, usize)>,
@@ -746,7 +753,10 @@ impl<'a> Tracker<'a> {
             loop_zones: None,
             climb_t: f64::NEG_INFINITY,
             model_done: [0.0; TERRAINS],
-            profiles: pace::profile_presets(plan.request.style),
+            mix: Vec::new(),
+            mix_w: Vec::new(),
+            checkpoints: Vec::with_capacity(CHECKPOINTS.len()),
+            profiles: Vec::new(),
             adult: PaceParams::prior(&GroupProfile::solo(
                 plan.request.style,
                 skimap_core::calibration::Level::Intermediate,
@@ -755,7 +765,8 @@ impl<'a> Tracker<'a> {
             profile_asked: false,
             profile_chosen: None,
             p,
-        })
+        }
+        .with_profiles(pace::profile_presets(plan.request.style)))
     }
 
     /// The layers of the day (the pack's: zones without network, historic avalanche paths,
@@ -770,6 +781,12 @@ impl<'a> Tracker<'a> {
     /// The group profiles the pace of the day is compared with (X14): the app's (its saved
     /// groups), instead of [`pace::profile_presets`].
     pub fn with_profiles(mut self, models: Vec<ProfileModel>) -> Self {
+        let route = self.pace_route.total();
+        self.mix = models
+            .iter()
+            .map(|m| DayPace::new(&m.params, route))
+            .collect();
+        self.mix_w = vec![1.0; models.len()];
         self.profiles = models;
         self
     }
@@ -979,6 +996,9 @@ impl<'a> Tracker<'a> {
                     self.speech.set_paused(true);
                     // Its beginning was counted as moving.
                     self.day.unmove(t - tp);
+                    for d in &mut self.mix {
+                        d.unmove(t - tp);
+                    }
                     self.pace_last = None;
                 }
                 SessionEvent::Refuge { name, .. } => {
@@ -989,6 +1009,9 @@ impl<'a> Tracker<'a> {
                 SessionEvent::Resumed { paused_s, .. } => {
                     self.speech.set_paused(false);
                     self.day.stop(paused_s);
+                    for d in &mut self.mix {
+                        d.stop(paused_s);
+                    }
                     self.stops_s.push(paused_s);
                     self.pace_last = None;
                 }
@@ -1275,7 +1298,7 @@ impl<'a> Tracker<'a> {
             for a in found {
                 self.a8(t, a, out);
             }
-            self.unknown_stops();
+            self.unknown_mix();
             self.return_time(t, out);
             self.pace_check(t, out);
             self.profile_check(t, out);
@@ -2173,13 +2196,68 @@ impl<'a> Tracker<'a> {
             if dt > 0.0 && ds >= 0.0 && !(dt > 60.0 && ds < 30.0) {
                 let d = self.pace_route.between(s0, c);
                 self.day.moving(dt, d);
+                for m in &mut self.mix {
+                    m.moving(dt, d);
+                }
                 for (m, x) in self.model_done.iter_mut().zip(d) {
                     *m += x.max(0.0);
                 }
                 self.progress_total += ds;
+                self.checkpoint(t);
             }
         }
         self.pace_last = Some((t, c));
+    }
+
+    /// At a share of the route of [`CHECKPOINTS`] (model time progressed over the route's),
+    /// where the outing stands (no allocation: capacity reserved).
+    fn checkpoint(&mut self, t: f64) {
+        let k = self.checkpoints.len();
+        let route: f64 = self.pace_route.total().iter().sum();
+        let done: f64 = self.model_done.iter().sum();
+        if k >= CHECKPOINTS.len() || route <= 0.0 || done < CHECKPOINTS[k] * route {
+            return;
+        }
+        let Some(started) = self.session.totals().started else {
+            return;
+        };
+        self.checkpoints.push(Checkpoint {
+            model_s: self.model_done,
+            moving_s: self.day.moving_total_s(),
+            stops: u32::try_from(self.stops_s.len()).unwrap_or(u32::MAX),
+            elapsed_s: (t - started).max(0.0),
+        });
+    }
+
+    /// The day followed as a mixture of profiles (X14): a plan without a group, no profile
+    /// chosen.
+    fn mixed(&self) -> bool {
+        self.plan.pace.is_none() && self.profile_chosen.is_none() && !self.mix.is_empty()
+    }
+
+    /// Remaining time for `rest` model seconds per terrain at the pace of the day (`prior`:
+    /// the day effect at its prior, [`DayPace::predict_prior`]); on a plan without a group,
+    /// the mixture of the profiles' days weighted by how well each explains the day (X14).
+    fn day_predict(
+        &self,
+        rest: [f64; TERRAINS],
+        paused_for: Option<f64>,
+        prior: bool,
+    ) -> Prediction {
+        let one = |d: &DayPace| {
+            if prior {
+                d.predict_prior(rest, paused_for)
+            } else {
+                d.predict(rest, paused_for)
+            }
+        };
+        if self.mixed()
+            && let Some(p) =
+                calibration::mixture(self.mix.iter().zip(&self.mix_w).map(|(d, w)| (*w, one(d))))
+        {
+            return p;
+        }
+        one(&self.day)
     }
 
     /// Model time per terrain left on plan B `i` from the cursor (allocates: an event).
@@ -2202,7 +2280,7 @@ impl<'a> Tracker<'a> {
     /// Remaining time on plan B `i` from the cursor at the pace of the day (allocates: an
     /// event).
     fn exit_prediction(&self, i: usize, paused_for: Option<f64>) -> Option<Prediction> {
-        Some(self.day.predict(self.exit_rest(i)?, paused_for))
+        Some(self.day_predict(self.exit_rest(i)?, paused_for, false))
     }
 
     /// The remaining time a limit is checked on (a change of route for the return time or
@@ -2214,9 +2292,9 @@ impl<'a> Tracker<'a> {
     /// on a shorter loop at once. A late start still counts (the rest from now).
     fn limit_prediction(&self, rest: [f64; TERRAINS], paused_for: Option<f64>) -> Prediction {
         if self.group_s_here() >= 1200.0 {
-            self.day.predict(rest, paused_for)
+            self.day_predict(rest, paused_for, false)
         } else {
-            self.day.predict_prior(rest, paused_for)
+            self.day_predict(rest, paused_for, true)
         }
     }
 
@@ -2233,8 +2311,13 @@ impl<'a> Tracker<'a> {
             .or(self.last_fix.map(|(t, _)| t))
             .unwrap_or(0.0);
         let elapsed = tot.started.map_or(0.0, |s| (end - s).max(0.0));
-        self.day
-            .observation(self.progress_total, tot.distance_m, &self.stops_s, elapsed)
+        self.day.observation(
+            self.progress_total,
+            tot.distance_m,
+            &self.stops_s,
+            elapsed,
+            &self.checkpoints,
+        )
     }
 
     /// Remaining time at the pace of the day from the last fix (no allocation).
@@ -2244,7 +2327,7 @@ impl<'a> Tracker<'a> {
             _ => None,
         };
         let rem = self.pace_route.rest(self.cursor);
-        (self.day.predict(rem, paused_for), paused_for)
+        (self.day_predict(rem, paused_for, false), paused_for)
     }
 
     /// The estimated arrival at the pace of the day (C11), once the outing started.
@@ -2458,29 +2541,22 @@ impl<'a> Tracker<'a> {
         });
     }
 
-    /// Once a minute (X14): on a plan without a group (and no profile chosen), the stops
-    /// still to come are those of the profiles compared ([`Tracker::profiles`]) weighted by
-    /// how well each explains the day so far ([`pace::day_fit`]; equal weights before any
-    /// moving), not those of a lone adult: a family nobody described is not predicted with
-    /// an adult's stops, nor an adult with a family's.
-    fn unknown_stops(&mut self) {
-        if self.plan.pace.is_some() || self.profile_chosen.is_some() || self.profiles.is_empty() {
-            return;
-        }
+    /// Once a minute (X14): the posterior weights of the profiles' days
+    /// ([`Tracker::profiles`], equal priors): how well each explains the day so far
+    /// ([`pace::day_fit`]; equal before any moving). On a plan without a group (and no
+    /// profile chosen), the rest of the day is their mixture: a family nobody described is
+    /// not predicted with an adult's pace by terrain and stops, nor an adult with a
+    /// family's.
+    fn unknown_mix(&mut self) {
         let moving = self.day.moving_total_s();
         let (stops, _) = self.day.stops();
-        let fit = |m: &ProfileModel| pace::day_fit(&m.params, self.model_done, moving, stops);
-        let best = self
-            .profiles
-            .iter()
-            .map(fit)
-            .fold(f64::NEG_INFINITY, f64::max);
-        if let Some((rate, len)) = calibration::stop_mixture(
-            self.profiles
-                .iter()
-                .map(|m| ((fit(m) - best).exp(), &m.params)),
-        ) {
-            self.day.set_stop_prior(rate, len);
+        let mut best = f64::NEG_INFINITY;
+        for (w, m) in self.mix_w.iter_mut().zip(&self.profiles) {
+            *w = pace::day_fit(&m.params, self.model_done, moving, stops);
+            best = best.max(*w);
+        }
+        for w in &mut self.mix_w {
+            *w = (*w - best).exp();
         }
     }
 
@@ -2579,13 +2655,8 @@ impl<'a> Tracker<'a> {
         let mut chosen = None;
         if accept {
             let m = self.profiles[i].clone();
-            let moving = self.day.moving_total_s();
-            let mut day = DayPace::new(&m.params, self.pace_route.total());
-            day.moving(moving, self.model_done);
-            for s in &self.stops_s {
-                day.stop(*s);
-            }
-            self.day = day;
+            // Its day, followed since the start on the same inputs.
+            self.day = self.mix[i];
             self.pace_base = m.params;
             self.plan_q = m.plan_quantile();
             if m.profile.has_children() {
