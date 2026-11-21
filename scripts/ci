@@ -366,7 +366,9 @@ stage_weekly() {
 
 declare -A status duration detail
 start_all=$SECONDS
-echo "skimap local CI ($mode) at $(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo ' + working tree'), logs in $logs"
+started=$(date '+%Y-%m-%d %H:%M')
+revision="$(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo ' + working tree')"
+echo "skimap local CI ($mode) at $revision, logs in $logs"
 [[ -n $data_dir ]] && echo "complete local data: $data_dir" || echo "complete local data: none"
 failed_any=0
 for s in "${selected[@]}"; do
@@ -386,7 +388,13 @@ for s in "${selected[@]}"; do
   detail[$s]=$(test_totals "$stage_log")
   case $s in
     fuzz) detail[$s]="$(grep -c '^ok ' "$stage_log" || true) targets ok, $(grep -c '^FAIL ' "$stage_log" || true) failed; ${detail[$s]}" ;;
-    bench) detail[$s]=$(grep -E '^Gungraun result:|regressed by|measuring the head only' "$stage_log" | tail -3 | paste -sd ';' -) ;;
+    bench)
+      # The head's results (the last two runs: dominant, exposure) and any regression.
+      detail[$s]="$(grep -m1 -oE '^base [^ ]+' "$stage_log"); $(grep -E '^Gungraun result:' "$stage_log" | tail -2 | sed -E 's/^Gungraun result: ([A-Za-z]+)\. ([0-9]+) without regressions; ([0-9]+) regressed.*/\1 (\2 ok, \3 regressed)/' | paste -sd ',' -)"
+      if grep -q 'regressed by' "$stage_log"; then
+        detail[$s]+="; $(grep -oE 'Instructions \([0-9]+ -> [0-9]+\) regressed by [^ ]+' "$stage_log" | paste -sd ',' -)"
+      fi
+      ;;
     scenarios) detail[$s]="$(grep -E '^scenarios passed:' "$stage_log" | tail -1); ${detail[$s]}" ;;
     deny) detail[$s]=$(grep -oE '(advisories|bans|licenses|sources) (ok|FAILED)' "$stage_log" | paste -sd ',' -) ;;
     data-check) detail[$s]=$(tail -1 "$stage_log") ;;
@@ -403,7 +411,7 @@ done
 total=$((SECONDS - start_all))
 
 {
-  echo "skimap local CI ($mode), $(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo ' + working tree'), $(date '+%Y-%m-%d %H:%M')"
+  echo "skimap local CI ($mode), $revision, started $started"
   printf '%-13s %-8s %8s  %s\n' stage status time detail
   for s in "${selected[@]}"; do
     [[ -n ${status[$s]:-} ]] || continue
