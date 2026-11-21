@@ -281,6 +281,18 @@ pub trait Texts: Sync {
     fn s_too_late(&self, n: usize, limit: Option<DateTime>) -> String;
     /// No loop fits.
     fn s_none_fits(&self) -> &'static str;
+    /// A real loop shorter than the time asked (`budget`).
+    fn s_shorter(&self, budget: &str) -> String;
+    /// No real loop fits the time: `shorter` real loops shorter than it proposed, then
+    /// `out_and_backs` partly out and back.
+    fn s_shorter_loops(
+        &self,
+        lo: &str,
+        hi: &str,
+        start: &str,
+        shorter: usize,
+        out_and_backs: usize,
+    ) -> String;
     /// No real loop: the loops proposed are partly out and back.
     fn s_no_real_loop(
         &self,

@@ -13,13 +13,16 @@
 //! the one the morning and the evening preparation ask, #170) at [`START_TIME`], the
 //! first day of the pack's forecast, and the starts of the record are reordered:
 //!
-//! 1. most real loops (#150: a start from which the morning proposes three out-and-backs
-//!    goes after one from which it proposes one real loop);
-//! 2. most loops proposed (out-and-backs included: the morning proposes them only when no
+//! 1. most real loops of the time asked (#150: a start from which the morning proposes
+//!    three out-and-backs goes after one from which it proposes one real loop, and one
+//!    from which it proposes only real loops shorter than the time, when no real loop
+//!    fits it, goes after one with a real loop of the time);
+//! 2. most real loops, the shorter ones included;
+//! 3. most loops proposed (out-and-backs included: the morning proposes them only when no
 //!    real loop fits, so between starts without real loop, the one with an out-and-back
 //!    goes before the one with none);
-//! 3. best loop score (`skimap_assist::suggest`: fit to the time, status, snow, weather);
-//! 4. the registry order.
+//! 4. best loop score (`skimap_assist::suggest`: fit to the time, status, snow, weather);
+//! 5. the registry order.
 //!
 //! What was found for each start is written beside the record
 //! ([`crate::manifest::StartRanking`]); the registry keeps its starts and its order.
@@ -117,12 +120,14 @@ pub fn rank(
     Some(ranking)
 }
 
-/// Order of two starts, best first (module documentation): most real loops, most loops,
-/// best loop score, registry order.
+/// Order of two starts, best first (module documentation): most real loops of the time
+/// asked, most real loops, most loops, best loop score, registry order.
 pub fn order(a: &StartScore, b: &StartScore) -> Ordering {
     let best = |s: &StartScore| s.best_score.unwrap_or(f64::NEG_INFINITY);
-    b.real_loops
-        .cmp(&a.real_loops)
+    let of_the_time = |s: &StartScore| s.real_loops - s.shorter_loops.min(s.real_loops);
+    of_the_time(b)
+        .cmp(&of_the_time(a))
+        .then(b.real_loops.cmp(&a.real_loops))
         .then(b.loops.cmp(&a.loops))
         .then(best(b).total_cmp(&best(a)))
         .then(a.registry_rank.cmp(&b.registry_rank))
@@ -150,6 +155,7 @@ fn score(
         registry_rank,
         loops: loops.len(),
         real_loops: loops.iter().filter(|l| l.real_loop).count(),
+        shorter_loops: loops.iter().filter(|l| l.shorter).count(),
         best_score: loops.iter().map(|l| l.score).reduce(f64::max),
         lengths_km: loops.iter().map(|l| round2(l.length_km)).collect(),
         network_km: loops
@@ -174,6 +180,7 @@ mod tests {
             registry_rank: rank,
             loops,
             real_loops: real,
+            shorter_loops: 0,
             best_score: best,
             lengths_km: Vec::new(),
             network_km: Vec::new(),
@@ -221,6 +228,15 @@ mod tests {
             ]),
             ["b", "a"]
         );
+    }
+
+    #[test]
+    fn a_real_loop_of_the_time_goes_before_shorter_ones() {
+        // The registry's main start gives two real loops shorter than the time asked and
+        // an out-and-back, the third one real loop of the time (#150): the third first.
+        let mut a = s("a", 0, 3, 2, Some(-1.52));
+        a.shorter_loops = 2;
+        assert_eq!(ranked(vec![a, s("c", 2, 1, 1, Some(-1.71))]), ["c", "a"]);
     }
 
     #[test]

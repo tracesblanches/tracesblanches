@@ -19,7 +19,8 @@
 //!    whenever the network has one); when no simple real loop fits, figures of eight: two
 //!    real loops from the start (petals, turning points at 15 to 55 % of the budget, at
 //!    most 20) whose stretches are distinct and whose times add up to 60 to 125 % of the
-//!    budget, the 20 closest to it;
+//!    budget, the 20 closest to it; a petal of 60 % of the budget or more on its own is
+//!    evaluated as a simple loop too (#150);
 //! 4. trails harder than the level cost 4 times more (`difficulty`: the easiest colour of
 //!    the relations of a way, so a shared section of a green loop counts as green);
 //! 5. loops whose model time is outside 75 to 110 % of the budget are dropped, then those
@@ -28,9 +29,14 @@
 //! 6. the real loops (less than a quarter of their length travelled twice: a stem from the
 //!    start to the loop is allowed) are proposed, best score first: the simple ones, the
 //!    figures of eight (said as such, with the distance at which they pass the start again)
-//!    only when no simple loop fits; out-and-backs only when no real loop fits, and then it
-//!    is said, with the longest real loop found if any; near-duplicates (more than 60 % of
-//!    their edges in common) keep the best.
+//!    only when no simple loop fits; when no real loop fits, the real loops shorter than
+//!    the time (60 to 75 % of it, [`SHORTER_LOOP_MIN`], said as such) with the
+//!    out-and-backs, best score first, the shorter loops in the places the out-and-backs
+//!    leave (one at least, beyond the number asked when they leave none: no out-and-back
+//!    is dropped for them), and it is said (#150); without a shorter real loop, the
+//!    out-and-backs alone, said with the longest real loop found if any; near-duplicates
+//!    (more than 60 % of their edges in common) keep the best, the out-and-backs compared
+//!    among themselves.
 //!
 //! # Score
 //!
@@ -168,6 +174,10 @@ pub struct Suggestion {
     /// loops proposed, never first).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub if_all_goes_well: bool,
+    /// A real loop shorter than the time asked (60 to 75 % of it), proposed only when no
+    /// real loop fits the time, with the out-and-backs (#150).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub shorter: bool,
 }
 
 /// Time of a loop for a group (C11): the median of its prediction and the 80 % range.
@@ -316,6 +326,10 @@ pub struct Suggestions {
 /// Share of its length a loop may travel twice and still be a real loop: a stem from the
 /// start to the loop, travelled out and back, of up to an eighth of the length.
 pub const REAL_LOOP_MAX_SHARE: f64 = 0.25;
+
+/// Share of the budget a real loop shorter than the time asked takes at least to be
+/// proposed when no real loop fits the time (#150), the low end of the figures of eight.
+pub const SHORTER_LOOP_MIN: f64 = 0.6;
 
 /// Cost factor on the ways of the way out for the way back of the cycle search: another
 /// trail is taken whenever the network has one that is not 30 times longer.
@@ -852,6 +866,8 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
     let mut real: Vec<Suggestion> = Vec::new();
     let mut eights: Vec<Suggestion> = Vec::new();
     let mut out_and_back: Vec<Suggestion> = Vec::new();
+    // Real loops shorter than the time asked (60 to 75 % of it).
+    let mut short_real: Vec<Suggestion> = Vec::new();
     // Loops that fit at the median of a group with children but not on its slow side.
     let mut hopeful: Vec<Suggestion> = Vec::new();
     // The longest real loop too short for the budget: its time and length.
@@ -869,6 +885,7 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
             // the budget (the 20 closest to it).
             let mut petals: Vec<(Vec<Route>, usize, f64)> = Vec::new();
             let mut petal_edges: Vec<BTreeSet<usize>> = Vec::new();
+            let mut single: Vec<Candidate> = Vec::new();
             for &v in &petal_points {
                 let Some(parts) = loop_from(v, AVOID_CYCLE) else {
                     continue;
@@ -883,6 +900,15 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
                 let t = plan_time(&pieces);
                 if t < 0.75 * budget_s && longest_real.is_none_or(|(x, _)| t > x) {
                     longest_real = Some((t, legs.iter().map(Leg::length_m).sum::<f64>() / 1000.0));
+                }
+                // A petal that fits the time on its own, or is shorter than it but not
+                // by much, is a simple loop of its own (#150): evaluated as such.
+                if t >= SHORTER_LOOP_MIN * budget_s {
+                    single.push(Candidate {
+                        parts: parts.clone(),
+                        turn: v,
+                        eight: false,
+                    });
                 }
                 petals.push((parts, v, t));
                 petal_edges.push(edges);
@@ -920,6 +946,7 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
                 }
             }
             pairs.sort_by(|a, b| a.0.total_cmp(&b.0));
+            cands.extend(single);
             cands.extend(pairs.into_iter().take(20).map(|(_, c)| c));
             continue;
         }
@@ -941,12 +968,17 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
         let share_twice = twice_share(&legs);
         let real_loop = share_twice < REAL_LOOP_MAX_SHARE;
         let total: f64 = legs.iter().map(Leg::length_m).sum();
-        if time_s < 0.75 * budget_s {
+        // A real loop shorter than the time asked, but not by much: proposed only when no
+        // real loop fits the time (#150).
+        let shorter = time_s < 0.75 * budget_s;
+        if shorter {
             too_short += 1;
             if real_loop && longest_real.is_none_or(|(t, _)| time_s > t) {
                 longest_real = Some((time_s, total / 1000.0));
             }
-            continue;
+            if !real_loop || time_s < SHORTER_LOOP_MIN * budget_s {
+                continue;
+            }
         }
         // Too long on the slow side, in the time at the median: « si tout va bien ».
         let if_all_goes_well = time_s > 1.1 * budget_s
@@ -1056,6 +1088,14 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
             let first: f64 = c.parts[..2].iter().map(Route::length_m).sum();
             briefing::reason(&mut reasons, Factor::Data, 0.0, t.s_eight(first / 1000.0));
         }
+        if shorter {
+            briefing::reason(
+                &mut reasons,
+                Factor::Data,
+                0.0,
+                t.s_shorter(&t.hm(budget_s)),
+            );
+        }
         let len_km = total / 1000.0;
         if closed_km > 0.05 {
             briefing::reason(
@@ -1158,6 +1198,8 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
         };
         let target = if if_all_goes_well {
             &mut hopeful
+        } else if shorter {
+            &mut short_real
         } else if real_loop && c.eight {
             &mut eights
         } else if real_loop {
@@ -1190,6 +1232,7 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
             eta,
             group: group_time,
             if_all_goes_well,
+            shorter,
         });
     }
     let evaluated = cands.len();
@@ -1202,22 +1245,44 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
     if too_late > 0 {
         notes.push(t.s_too_late(too_late, limit));
     }
-    // Simple real loops, best score first; figures of eight only when no simple loop fits,
-    // out-and-backs only when no real loop does.
+    // Simple real loops, best score first; figures of eight only when no simple loop fits;
+    // when no real loop fits the time, the real loops shorter than it with the
+    // out-and-backs (#150).
     let by_score = |a: &Suggestion, b: &Suggestion| b.score.total_cmp(&a.score);
     let mut kept: Vec<Suggestion> = Vec::new();
-    for mut tier in [real, eights, out_and_back] {
+    for mut tier in [real, eights] {
         if kept.is_empty() {
             tier.sort_by(by_score);
             keep_distinct(&mut kept, tier, req.max_results);
         }
     }
+    if kept.is_empty() {
+        // The shorter real loops take the places the out-and-backs leave, one at least,
+        // beyond the number asked when they leave none (like the loop « si tout va
+        // bien »): every out-and-back that takes the time asked stays proposed. The
+        // out-and-backs are compared among themselves only: one that takes the whole time
+        // on the trails of a shorter real loop is another option, not a duplicate.
+        out_and_back.sort_by(by_score);
+        keep_distinct(&mut kept, out_and_back, req.max_results);
+        let mut shorter: Vec<Suggestion> = Vec::new();
+        short_real.sort_by(by_score);
+        keep_distinct(
+            &mut shorter,
+            short_real,
+            req.max_results.saturating_sub(kept.len()).max(1),
+        );
+        kept.extend(shorter);
+        // Then, as everywhere, the best score first: the fit to the time asked against
+        // the share travelled twice.
+        kept.sort_by(by_score);
+    }
     // With children, after the loops proposed: the best loop that needs all to go well,
-    // if any (a real loop first).
+    // if any (a real loop first); a shorter real loop on the same trails is another option
+    // (#150), not a duplicate.
     hopeful.sort_by(|a, b| b.real_loop.cmp(&a.real_loop).then(by_score(a, b)));
     if let Some(h) = hopeful
         .into_iter()
-        .find(|l| !kept.iter().any(|k| similar(k, l)))
+        .find(|l| !kept.iter().any(|k| !k.shorter && similar(k, l)))
     {
         kept.push(h);
     }
@@ -1225,7 +1290,16 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
     if kept.is_empty() {
         notes.push(t.s_none_fits().into());
     } else {
-        if kept.iter().all(|k| !k.real_loop) {
+        let shorter = kept.iter().filter(|k| k.shorter).count();
+        if shorter > 0 && kept.iter().all(|k| k.shorter || !k.real_loop) {
+            notes.push(t.s_shorter_loops(
+                &t.hm(0.75 * budget_s),
+                &t.hm(1.1 * budget_s),
+                &req.start_name,
+                shorter,
+                kept.len() - shorter,
+            ));
+        } else if kept.iter().all(|k| !k.real_loop) {
             let longest = longest_real.map(|(time, km)| (km, t.hm(time)));
             notes.push(t.s_no_real_loop(
                 &t.hm(0.75 * budget_s),
@@ -2079,5 +2153,51 @@ mod tests {
             format!("{} ({} km)", one.label, t.num(one.length_km + 1.0, 1))
         );
         assert_eq!(labels[3], format!("{} (boucle n° 4)", one.label));
+    }
+
+    /// #150: a real loop shorter than the time asked (60 to 75 % of it) joins the
+    /// out-and-backs when no real loop fits the time, without taking the place of one: a
+    /// square loop of about two thirds of the time and three dead-end trails of half the
+    /// time each way give the shorter loop and the three out-and-backs.
+    #[test]
+    fn a_shorter_real_loop_takes_no_out_and_back_s_place() {
+        let d = site(
+            &[
+                (6.10, 46.60),
+                (6.12, 46.60),
+                (6.12, 46.615),
+                (6.10, 46.615),
+                (6.044, 46.60),
+                (6.10, 46.5615),
+                (6.062, 46.572),
+            ],
+            &[
+                (0, 1, "Sud", 1, Difficulty::Easy),
+                (1, 2, "Est", 2, Difficulty::Easy),
+                (2, 3, "Nord", 3, Difficulty::Easy),
+                (3, 0, "Ouest", 4, Difficulty::Easy),
+                (0, 4, "Antenne ouest", 5, Difficulty::Easy),
+                (0, 5, "Antenne sud", 6, Difficulty::Easy),
+                (0, 6, "Antenne sud-ouest", 7, Difficulty::Easy),
+            ],
+        );
+        let g = d.graph.as_ref().unwrap();
+        let perimeter: f64 = (0..4).map(|e| g.length_m(e)).sum::<f64>() / 1000.0;
+        // The loop at about 10.6 km/h (see above) takes 67 % of the time asked.
+        let s = suggest(&d, &req(perimeter / 10.6 * 60.0 / 0.67, None));
+        println!("{}", s.text.join("\n"));
+        let short: Vec<_> = s.suggestions.iter().filter(|x| x.shorter).collect();
+        assert_eq!(short.len(), 1, "{}", s.text.join("\n"));
+        assert!(short[0].real_loop && (short[0].length_km - perimeter).abs() < 0.2);
+        let oab = s.suggestions.iter().filter(|x| !x.real_loop).count();
+        assert_eq!(oab, 3, "{}", s.text.join("\n"));
+        assert!(s.suggestions.windows(2).all(|w| w[0].score >= w[1].score));
+        assert!(
+            s.notes
+                .iter()
+                .any(|n| n.contains("une vraie boucle plus courte est proposée")),
+            "{:?}",
+            s.notes
+        );
     }
 }

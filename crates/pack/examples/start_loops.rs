@@ -5,7 +5,8 @@
 //! record of the registry of the data directory (`skimap departs` for its starts). For
 //! each pack: the start ranked first and what the morning
 //! proposes from it, then every start; at the end, the share of out-and-backs among the
-//! loops proposed, from the first start and from all the starts.
+//! loops proposed, and of the real loops shorter than the time asked (#150), from the
+//! first start and from all the starts.
 //!
 //! ```sh
 //! SKIMAP_DATA_DIR=<data directory> \
@@ -68,6 +69,7 @@ fn main() {
     // (loops, out-and-backs, packs) from the first start, from all the starts; packs
     // whose first start gives only out-and-backs while another gives a real loop.
     let (mut first, mut all) = ((0, 0), (0, 0));
+    let (mut first_shorter, mut all_shorter) = (0, 0);
     let (mut packs, mut with_loops, mut oab_first_real_elsewhere) = (0, 0, Vec::new());
     for dir in dirs {
         let pack_dir = dir.join("pack");
@@ -113,6 +115,7 @@ fn main() {
             if i == 0 {
                 first.0 += n;
                 first.1 += oab;
+                first_shorter += s.shorter_loops;
                 if n > 0 {
                     with_loops += 1;
                 }
@@ -122,18 +125,20 @@ fn main() {
             }
             all.0 += n;
             all.1 += oab;
+            all_shorter += s.shorter_loops;
             let sh: Vec<String> = shares(s)
                 .iter()
                 .zip(&s.lengths_km)
                 .map(|(x, l)| format!("{l:.1} km {:.0} %", x * 100.0))
                 .collect();
             println!(
-                "  {}{} [registre {}] {} boucles, {} vraies, score {:?} : {}{}",
+                "  {}{} [registre {}] {} boucles, {} vraies ({} plus courtes), score {:?} : {}{}",
                 if i == 0 { "* " } else { "  " },
                 s.id,
                 s.registry_rank,
                 n,
                 s.real_loops,
+                s.shorter_loops,
                 s.best_score.map(|x| (x * 100.0).round() / 100.0),
                 sh.join(", "),
                 s.note
@@ -159,6 +164,14 @@ fn main() {
         all.1,
         all.0,
         pct(all)
+    );
+    println!(
+        "real loops shorter than the time: first start {first_shorter}/{} ({:.1} %), all \
+         starts {all_shorter}/{} ({:.1} %)",
+        first.0,
+        pct((first.0, first_shorter)),
+        all.0,
+        pct((all.0, all_shorter))
     );
     println!(
         "first start out-and-backs only while another start has a real loop: {} {:?}",

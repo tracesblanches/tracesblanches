@@ -633,6 +633,33 @@ impl Texts for Fr {
         "aucune boucle ne tient dans le temps et l'heure de retour demandés"
     }
 
+    fn s_shorter(&self, budget: &str) -> String {
+        format!("plus courte que le temps demandé ({budget}) : aucune vraie boucle de ce temps ici")
+    }
+
+    fn s_shorter_loops(
+        &self,
+        lo: &str,
+        hi: &str,
+        start: &str,
+        shorter: usize,
+        out_and_backs: usize,
+    ) -> String {
+        format!(
+            "aucune vraie boucle trouvée de {lo} à {hi} depuis {start} : {}{}",
+            if shorter == 1 {
+                "une vraie boucle plus courte est proposée"
+            } else {
+                "des vraies boucles plus courtes sont proposées"
+            },
+            match out_and_backs {
+                0 => "",
+                1 => ", avec une boucle en partie en aller-retour sur le même chemin",
+                _ => ", avec des boucles en partie en aller-retour sur le même chemin",
+            }
+        )
+    }
+
     fn s_no_real_loop(
         &self,
         lo: &str,
