@@ -14,7 +14,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.util.Locale
 
 /** [Downloads] with WorkManager ([PackSync]) and the server catalog copy ([ServerCatalog]). */
 class WorkManagerDownloads(
@@ -76,9 +75,6 @@ class WorkManagerDownloads(
         mobileData: Boolean,
     ) {
         PackSync.download(context, site.siteId, site.indexUrl, site.firstDownloadBytes.toLong(), mobileData)
-        voiceOf(site)?.let { v ->
-            PackSync.download(context, site.siteId, v.indexUrl, v.firstDownloadBytes.toLong(), mobileData, voiceLang = v.lang)
-        }
     }
 
     override fun cancel(site: String) = PackSync.cancel(context, site)
@@ -87,7 +83,6 @@ class WorkManagerDownloads(
         PackSync.cancel(context, site)
         withContext(io) {
             removePack(File(PackSync.packsDir(context), site).absolutePath)
-            File(PackSync.voiceDir(context), site).deleteRecursively()
         }
     }
 
@@ -101,11 +96,5 @@ class WorkManagerDownloads(
                 WorkInfo.State.ENQUEUED,
                 WorkInfo.State.RUNNING,
             )
-
-        /** Voice language of the app: French on a French phone, else English (VO6). */
-        fun voiceLang(locale: Locale = Locale.getDefault()): String = if (locale.language == "fr") "fr" else "en"
-
-        /** The voice pack of [site] in the app language, when the server publishes it apart. */
-        fun voiceOf(site: ServerSite) = site.voice.firstOrNull { it.lang == voiceLang() }
     }
 }

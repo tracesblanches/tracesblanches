@@ -16,20 +16,20 @@ data class GpsRequest(
     val significantMotion: Boolean,
 )
 
-/** One clip of an announcement: Ogg/Opus file of the pack (null: not in the pack). */
-data class Clip(
-    val text: String,
-    val file: String?,
-    val pauseMs: Int,
-)
-
-/** Something to say: the pack's clips assembled, else the Android voice reads [text]. */
+/** Something to say: the phone's speech synthesis reads [text]; [safety]: vibrated too. */
 data class Utterance(
     val text: String,
-    val clips: List<Clip>,
-    val allClips: Boolean,
     val safety: Boolean,
     val kinds: List<String>,
+    /** The last fix known when the core made it (null: asked by a button or an extension), #183. */
+    val at: SpokenAt? = null,
+)
+
+/** Where the skier was when an announcement was made: fix time (epoch ms) and position. */
+data class SpokenAt(
+    val tMs: Long,
+    val lon: Double,
+    val lat: Double,
 )
 
 /** Alerts with their own vibration (K6). */
@@ -236,9 +236,6 @@ interface TrackingCore : AutoCloseable {
     /** Writes the trace as GPX; its path. */
     fun writeGpx(): String
 
-    /**
-     * Language of the announcements (`fr`, `en`, VO6): that of the voice pack in use, else
-     * the phone's. The Android voice reads the texts the pack has no clip for in it.
-     */
+    /** Language of the announcements (`fr`, `en`, VO6): the app's; the speech synthesis reads them in it. */
     fun speechLang(): String = Announcer.phoneLang()
 }

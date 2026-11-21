@@ -40,8 +40,8 @@ import java.util.concurrent.TimeUnit
  * bench (`crates/ffi/examples/q9_export.rs`, pushed to `/data/local/tmp/skimap-q9/`) are
  * given to the service in the batches the location provider would deliver for the GPS
  * request the service applies; the service must say, switch and set the GPS exactly as
- * the core run on the workstation, and every announcement must be played (pack clips or
- * Android voice). Needs the Cervières pack in `/data/local/tmp/skimap-packs/cervieres/`.
+ * the core run on the workstation, and every announcement must be said by the phone's
+ * speech synthesis. Needs the Cervières pack in `/data/local/tmp/skimap-packs/cervieres/`.
  */
 @RunWith(AndroidJUnit4::class)
 class TrackingReplayTest {
@@ -286,16 +286,12 @@ class TrackingReplayTest {
         )
         assertEquals("GPS requests differ: ${gpsMismatch.take(5)}", 0, gpsMismatch.size)
 
-        // Said as the core said, in order; the pack's clips where the core has them.
+        // Said as the core said, in order.
         val spokenWant = expected.getJSONArray("spoken")
         val said = s.stats.said.toList()
         assertEquals(
             (0 until spokenWant.length()).map { spokenWant.getJSONObject(it).getString("text") },
             said.map { it.text },
-        )
-        assertEquals(
-            (0 until spokenWant.length()).map { spokenWant.getJSONObject(it).getBoolean("all_clips") },
-            said.map { it.allClips },
         )
         // Switches and their refusals.
         val sw = expected.getJSONArray("switches")
@@ -317,16 +313,15 @@ class TrackingReplayTest {
         assertEquals(events, s.stats.session)
         assertEquals(alerts(expected.getJSONArray("alerts")), s.stats.alerts.map { it.name.lowercase() })
 
-        // Every announcement played: the pack's clips decoded and assembled, else the Android voice.
+        // Every announcement said by the phone's speech synthesis.
         val until = System.currentTimeMillis() + 240_000
         while (s.stats.voiced < said.size && System.currentTimeMillis() < until) Thread.sleep(200)
         Log.i(
             "skimap",
-            "Q9 $name: ${said.size} said, ${s.stats.voicedClips} with the pack's clips, ${s.stats.voicedTts} with the Android voice",
+            "Q9 $name: ${said.size} said, ${s.stats.voicedTts} to their end by the speech synthesis",
         )
         assertEquals(said.size, s.stats.voiced)
-        assertEquals(said.count { it.allClips }, s.stats.voicedClips)
-        assertEquals(said.count { !it.allClips }, s.stats.voicedTts)
+        assertEquals(said.size, s.stats.voicedTts)
 
         // The end: the recap, the GPX of the outing, what the group learns.
         val ended = Tracking.state.value

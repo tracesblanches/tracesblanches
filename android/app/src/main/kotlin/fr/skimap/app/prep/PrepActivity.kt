@@ -358,9 +358,6 @@ private fun DayCard(
             d.bestTime?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
             d.loops.forEach { Text("· ${it.label} — ${it.timeText}", style = MaterialTheme.typography.bodyMedium) }
             d.expectedBack?.let { Text(stringResource(R.string.prep_back, it), style = MaterialTheme.typography.bodyMedium) }
-            if (d.missingClips.isNotEmpty()) {
-                Text(stringResource(R.string.prep_voice_missing, d.missingClips.size), style = MaterialTheme.typography.bodySmall)
-            }
             Text(d.neverSafe, style = MaterialTheme.typography.bodySmall)
             if (d.planDir != null) {
                 OutlinedButton(onClick = onTake, modifier = Modifier.fillMaxWidth().heightIn(min = GloveTarget).testTag(PrepTags.TAKE)) {

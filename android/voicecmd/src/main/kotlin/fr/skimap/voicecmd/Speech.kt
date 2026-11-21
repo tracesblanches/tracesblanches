@@ -81,7 +81,7 @@ class SileroVad(
  * Parakeet-TDT-0.6B-v3 int8 through sherpa-onnx's OfflineRecognizer. With [hotwords] (the
  * questions of the closed list in the phone's language, as measured with the greeting:
  * 63.6 % of French commands without them, 71.4 % with them) and the BPE vocabulary of the store: modified beam search biased
- * towards them (contextual biasing, score 2 as speak; 4 lost 6 points), else greedy
+ * towards them (contextual biasing, score 2; 4 lost 6 points), else greedy
  * search. [greeting]: the phone's language said before the question ([GreetingContext]),
  * the question at its [Level].
  */
@@ -145,7 +145,7 @@ class ParakeetTranscriber(
     }
 }
 
-/** Loads the engines of the model in [store] (2 to 4 s for Parakeet on the Pixel, speak). */
+/** Loads the engines of the model in [store] (2 to 4 s for Parakeet on a Pixel). */
 fun interface EngineLoader {
     fun load(): Engines
 

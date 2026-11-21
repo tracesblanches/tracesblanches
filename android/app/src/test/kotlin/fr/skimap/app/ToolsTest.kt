@@ -428,7 +428,6 @@ class ToolsTest {
                 "/x",
                 "14 h 40",
                 emptyList(),
-                listOf("clip"),
                 "Famille",
                 0L,
                 "mis à jour le 15/11 à 14 h 05",

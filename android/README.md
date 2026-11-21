@@ -18,7 +18,7 @@ cargo install cargo-ndk --version 4.1.2 --locked
 echo "sdk.dir=$HOME/Android/Sdk" > android/local.properties
 ```
 
-Gradle construit la bibliothèque Rust lui-même (tâches `cargoNdk`, `cargoHost`, `uniffiBindings`), copie les styles validés dans les assets (`styleAssets`), et pour les tests écrit le pack de test en deux versions et le paquet de voix anglais (`testPack`, `testPackV2`, `testVoicePack`), construit `skimap-server` (`cargoServer`) et y publie ces packs (`testStore`).
+Gradle construit la bibliothèque Rust lui-même (tâches `cargoNdk`, `cargoHost`, `uniffiBindings`), copie les styles validés dans les assets (`styleAssets`), et pour les tests écrit le pack de test en deux versions (`testPack`, `testPackV2`), construit `skimap-server` (`cargoServer`) et y publie ces packs (`testStore`).
 
 ## Sur le Pixel 8 / 8 Pro
 
@@ -57,4 +57,4 @@ adb logcat -s skimap        # « packs … opened in N ms », « map … fully r
 - Téléphone non branché : vérifié sur émulateur Pixel 8 (Android 17, x86_64, pages de 16 Ko).
 - Packs par domaine seulement : le serveur ne publie pas encore de pack par zone (cadre, massif). Deux packs qui se recouvrent dessinent deux fois les couches translucides (pentes, exposition) dans le recouvrement.
 - Les styles validés dessinent le fond Plan IGN : un pack sans Plan IGN n'affiche que ses couches (les sources absentes sont retirées et listées dans `MapStyle.missing`).
-- Paquets de voix à part et zones de redevance : côté app prêts et testés sur données de test ; attendent le serveur (catalogue `voice`), les données (crate `stations`) et une couche de style.
+- Zones de redevance : côté app prêtes et testées sur données de test ; attendent les données (crate `stations`) et une couche de style.

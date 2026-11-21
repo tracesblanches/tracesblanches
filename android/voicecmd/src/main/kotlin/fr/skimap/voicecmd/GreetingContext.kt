@@ -34,7 +34,7 @@ object Level {
  * greeting, 43.8 → 60.7 % clean. A quarter of a second of silence lost 5 points.
  *
  * [greeting] null (English): half a second of silence then the question as heard (Parakeet
- * drops or garbles speech that starts abruptly, measured in speak), nothing dropped: the
+ * drops or garbles speech that starts abruptly), nothing dropped: the
  * path measured on 15/11.
  */
 class GreetingContext(
@@ -77,7 +77,7 @@ class GreetingContext(
                 .trim()
 
         /**
-         * The greeting shipped for [lang] (`command_audio --prefix`, Pocket TTS): French only.
+         * The greeting shipped for [lang] (`greeting-fr.wav`, a synthesised « Bonjour. »): French only.
          * In English « Hello. » first lost 7 points on the clean questions (96.5 → 90.1 %)
          * without gaining in the wind: English questions keep no greeting.
          */

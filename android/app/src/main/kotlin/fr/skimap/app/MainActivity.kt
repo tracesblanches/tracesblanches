@@ -27,6 +27,7 @@ import fr.skimap.app.data.RustDomainCatalog
 import fr.skimap.app.data.RustPackRepository
 import fr.skimap.app.data.UiChoices
 import fr.skimap.app.day.DayActivity
+import fr.skimap.app.sync.LegacyVoice
 import fr.skimap.app.sync.PackSync
 import fr.skimap.app.sync.WorkManagerDownloads
 import fr.skimap.app.ui.MapUiState
@@ -36,7 +37,6 @@ import fr.skimap.app.ui.domains.DomainsViewModel
 import fr.skimap.app.ui.map.MapEngine
 import fr.skimap.app.ui.theme.SkimapTheme
 import fr.skimap.community.Community
-import fr.skimap.tracking.StreamBoost
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -70,8 +70,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         MapEngine.start(this, lifecycleScope)
-        // A guidance volume still raised when the app was killed during an announcement (#179).
-        lifecycleScope.launch(Dispatchers.IO) { StreamBoost.recover(applicationContext) }
+        // The voice packs and the volume restore of earlier versions: removed (the phone's own voice speaks).
+        lifecycleScope.launch(Dispatchers.IO) { LegacyVoice.cleanUp(applicationContext) }
         Community.core = Community.core ?: RustCommunityCore(applicationContext) { packsDir(applicationContext) }
         val settings = PreferencesSettingsStore { getSharedPreferences("skimap", Context.MODE_PRIVATE) }
         var autoUpdate by mutableStateOf(true)
@@ -89,10 +89,6 @@ class MainActivity : ComponentActivity() {
             // The France basemap (X20): the map of the whole country, before any pack.
             fr.skimap.app.sync.FranceBasemap
                 .download(applicationContext)
-            // The voice follows the phone's language (VO6): one download when it changed.
-            withContext(Dispatchers.IO) {
-                PackSync.followLanguage(applicationContext, PackSync.catalog(applicationContext).cached())
-            }
             // Preparation of the next days on charge and Wi-Fi (E2), the less exposed terrain layer (V7).
             fr.skimap.app.prep.PrepWork
                 .schedule(applicationContext)

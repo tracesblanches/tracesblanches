@@ -360,20 +360,7 @@ val testPackV2 =
         outputDir.set(layout.buildDirectory.dir("generated/testPackV2"))
     }
 
-val testVoicePack =
-    tasks.register<CargoTask>("testVoicePack") {
-        description = "Writes the English voice pack of the test site (VO6)."
-        sources.from(rustSources)
-        workspace.set(repoRoot)
-        arguments.set(
-            listOf("run", "--release", "--locked", "-p", "skimap-ffi", "--example", "test_pack", "--", "@OUT@/voice-en", "voice-en"),
-        )
-        environment.set(emptyMap())
-        products.set(emptyList())
-        outputDir.set(layout.buildDirectory.dir("generated/testVoicePack"))
-    }
-
-/** The store of the download tests: test pack v1 then v2, and the English voice pack. */
+/** The store of the download tests: test pack v1 then v2. */
 val testStore =
     tasks.register<PublishTask>("testStore") {
         description = "Publishes the test packs into a skimap-server store (build/generated/testStore)."
@@ -381,7 +368,6 @@ val testStore =
         packs.from(
             testPack.map { it.outputDir.dir("testpack") },
             testPackV2.map { it.outputDir.dir("testpack") },
-            testVoicePack.map { it.outputDir.dir("voice-en") },
         )
         outputDir.set(layout.buildDirectory.dir("generated/testStore"))
     }

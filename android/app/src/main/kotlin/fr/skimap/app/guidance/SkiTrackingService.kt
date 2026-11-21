@@ -10,6 +10,7 @@ import fr.skimap.app.day.DayStore
 import fr.skimap.app.group.RustGroupBackend
 import fr.skimap.group.GroupLink
 import fr.skimap.group.GroupStore
+import fr.skimap.tracking.Announcer
 import fr.skimap.tracking.GuidanceNotifier
 import fr.skimap.tracking.OutingExtension
 import fr.skimap.tracking.Recap
@@ -25,15 +26,7 @@ import fr.skimap.tracking.TrackingState
  * the contact (K10, pre-filled, sent by the user).
  */
 class SkiTrackingService : TrackingService() {
-    override fun openCore(planDir: String): TrackingCore =
-        RustTrackingCore.open(
-            planDir,
-            fr.skimap.app.sync.PackSync
-                .voiceDir(this)
-                .absolutePath,
-            fr.skimap.app.sync.WorkManagerDownloads
-                .voiceLang(),
-        )
+    override fun openCore(planDir: String): TrackingCore = RustTrackingCore.open(planDir, Announcer.phoneLang())
 
     /** The group mode (N2): BLE advertising and batched scan during the outing, if this phone has a group. */
     override fun extensions(planDir: String): List<OutingExtension> = listOf(GroupLink(RustGroupBackend(), GroupStore(this), planDir))

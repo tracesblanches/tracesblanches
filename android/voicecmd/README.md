@@ -7,10 +7,10 @@ Une question à la fois, après un geste (bouton du casque maintenu, voir « Lim
 | Étape | Où | Comment |
 |---|---|---|
 | Micro | `MicSource` | `AudioRecord` 16 kHz mono, source `VOICE_RECOGNITION`, ouvert au geste, fermé à la fin de la question ; les trames sont gardées pendant le chargement des moteurs (`VoiceCommands.Capture`) |
-| Fin de la question | `Endpointer` + `SileroVad` | Silero VAD v6.2.3 (sherpa-onnx `Vad.compute`, 64 échantillons de contexte comme speak), trames de 32 ms : parole après 3 trames ≥ 0,5 ; fin après 700 ms < 0,35 ; coupure à 8 s ; rien en 5 s : abandon ; 300 ms gardées avant la parole |
-| Transcription | `ParakeetTranscriber` | Parakeet-TDT-0.6B-v3 int8, sherpa-onnx 1.13.8 `OfflineRecognizer`, recherche en faisceau biaisée vers les questions de la liste (hotwords, score 2 comme speak), 500 ms de silence devant (speak : sinon Parakeet perd ou déforme le début) |
+| Fin de la question | `Endpointer` + `SileroVad` | Silero VAD v6.2.3 (sherpa-onnx `Vad.compute`, 64 échantillons de contexte), trames de 32 ms : parole après 3 trames ≥ 0,5 ; fin après 700 ms < 0,35 ; coupure à 8 s ; rien en 5 s : abandon ; 300 ms gardées avant la parole |
+| Transcription | `ParakeetTranscriber` | Parakeet-TDT-0.6B-v3 int8, sherpa-onnx 1.13.8 `OfflineRecognizer`, recherche en faisceau biaisée vers les questions de la liste (hotwords, score 2), 500 ms de silence devant (sinon Parakeet perd ou déforme le début) |
 | Classification | le noyau (`crates/intent`, via `crates/ffi/src/voicecmd.rs`) | sans LLM : normalisation, lexique FR/EN de synonymes, distance d'édition, mots-clés ; liste fermée ; sinon « je n'ai pas compris » et la liste des questions |
-| Réponse | l'app (`app/.../voicecmd/CommandAnswers`, retiré de l'app le 15/11/2026, dans l'historique : commit 95537a2) | toujours un appel du noyau ou une phrase de la banque vocale, dite par le service de la sortie (clips du pack, voix Android pour ce qui n'a pas de clip) |
+| Réponse | l'app (`app/.../voicecmd/CommandAnswers`, retiré de l'app le 15/11/2026, dans l'historique : commit 95537a2) | toujours un appel du noyau ou une phrase de la banque vocale, dite par le service de la sortie (synthèse vocale du téléphone, comme toutes les annonces) |
 | Libération | `VoiceCommands.listen` | les deux moteurs sont libérés après chaque question (batterie) : rien ne reste chargé entre deux commandes |
 
 Le module ne connaît pas les liaisons UniFFI : l'app adapte le classifieur du noyau à `CommandClassifier` (`RustCommandClassifier`) ; les tests JVM du module tournent avec des moteurs factices, et ceux de l'app avec les vrais (sherpa-onnx JNI pour Linux x86_64, même version) et le vrai classifieur (bibliothèque Rust de l'hôte).
@@ -24,12 +24,12 @@ Le module ne connaît pas les liaisons UniFFI : l'app adapte le classifieur du n
 | `encoder.int8.onnx` | Hugging Face `csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8@ed5d745` | 652 282 294 |
 | `decoder.int8.onnx` | idem | 11 845 274 |
 | `joiner.int8.onnx` | idem | 6 355 277 |
-| `tokens.txt` | idem (identique à celui de speak) | 93 939 |
-| `tokenizer.json` | `nvidia/parakeet-tdt-0.6b-v3@541d1f9` (comme speak) ; `bpe.vocab` en est tiré sur le téléphone (`BpeVocab`, identique octet pour octet à celui de speak) | 1 159 960 |
+| `tokens.txt` | idem | 93 939 |
+| `tokenizer.json` | `nvidia/parakeet-tdt-0.6b-v3@541d1f9` ; `bpe.vocab` en est tiré sur le téléphone (`BpeVocab`) | 1 159 960 |
 | `silero_vad.onnx` | `snakers4/silero-vad` v6.2.3 | 2 327 524 |
 | **Total** | | **674 064 268 (643 Mio)** |
 
-Les fichiers ONNX du miroir Hugging Face ne sont pas ceux de l'archive `asr-models` de sherpa-onnx que speak a validée (tailles différentes, même tokens.txt) : l'archive est en `.tar.bz2`, que le téléphone ne sait pas ouvrir sans bibliothèque de plus ; le test de bout en bout ci-dessous valide les fichiers que le téléphone télécharge.
+Les fichiers ONNX du miroir Hugging Face ne sont pas ceux de l'archive `asr-models` de sherpa-onnx (tailles différentes, même tokens.txt) : l'archive est en `.tar.bz2`, que le téléphone ne sait pas ouvrir sans bibliothèque de plus ; le test de bout en bout ci-dessous valide les fichiers que le téléphone télécharge.
 
 **Dans l'APK** : seulement `libsherpa-onnx-jni.so` et `libonnxruntime.so` de l'AAR sherpa-onnx 1.13.8 (sha256 publié par GitHub, vérifié par la tâche `sherpaAar`), pour arm64-v8a et x86_64 ; les bibliothèques `c-api` et `cxx-api` de l'AAR ne sont pas embarquées (`readelf` : le JNI n'en dépend pas). Mesure de l'APK : voir « Mesures ».
 
@@ -49,8 +49,7 @@ L'exception des boutiques ne porte que sur le code de skimap ; aucune de ces lic
 ```sh
 cd android
 ./gradlew :voicecmd:testDebugUnitTest :voicecmd:lintDebug :voicecmd:detekt :voicecmd:ktlintCheck
-# Bout en bout sur le poste (modèle et audio dans ~/.cache/skimap/voicecmd) :
-cargo run --release -p skimap-intent --example command_audio -- ~/.cache/skimap/voicecmd/audio
+# Bout en bout sur le poste (modèle et questions synthétisées le 15/11/2026, gardés dans ~/.cache/skimap/voicecmd) :
 ./gradlew :app:testDebugUnitTest --tests 'fr.skimap.app.voicecmd.*'      # SKIMAP_VOICECMD_SNR=clean : une seule colonne
 ```
 

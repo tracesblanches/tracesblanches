@@ -12,7 +12,7 @@ cargo run -p skimap-ffi --example catalog                 # régénère assets/c
 ```
 
 - `RustPackRepositoryTest` : le vrai noyau (bibliothèque hôte, JNA), le pack de test et les six styles de `styles/`.
-- `PackSyncTest` : le vrai `skimap-server` (tâche `cargoServer`) sert un dépôt où le pack de test a été publié en version 1 puis 2 et le paquet de voix anglais (tâche `testStore`) : premier téléchargement, synchro sans changement (304), delta, reprise après coupure, fichier partiel corrompu, contenus perdus (repli sur la base), serveur injoignable, catalogue gardé hors ligne, paquet de voix à part, plan trop gros sur réseau mesuré.
+- `PackSyncTest` : le vrai `skimap-server` (tâche `cargoServer`) sert un dépôt où le pack de test a été publié en version 1 puis 2 (tâche `testStore`) : premier téléchargement, synchro sans changement (304), delta, reprise après coupure, fichier partiel corrompu, contenus perdus (repli sur la base), serveur injoignable, catalogue gardé hors ligne (sans champ `voice`), plan trop gros sur réseau mesuré.
 - `HttpSourceTest` (module `:sync`) : 304, reprise, réponse 200 à une reprise, coupure en cours de corps.
 - `MapViewModelTest`, `DomainsTest`, `MapScreenTest` (français), `MapScreenEnglishTest`, `ThemeAndTextsTest`, `CardTest` ; captures Roborazzi en français (clair, sombre, police ×2) et en anglais (`src/test/screenshots/`).
 - Côté Rust : `cargo test -p skimap-ffi` (styles instanciés sur le pack de test, mode libre, synchro depuis des paquets faits comme le serveur, catalogue du serveur, fiches FR/EN) et `cargo test --release -p skimap-ffi --test api -- --ignored --nocapture` (les six styles sur les packs réels, seuls et ensemble).

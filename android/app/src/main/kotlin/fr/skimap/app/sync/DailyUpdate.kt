@@ -27,7 +27,7 @@ sealed interface PackUpdate {
 }
 
 /**
- * The daily update of the installed packs (site packs and their voice), #176: every pack
+ * The daily update of the installed packs, #176: every pack
  * is tried, one that fails (its index or a bundle unreachable, a bundle that does not
  * install) keeps its version and leaves the next ones be; each pack gets one line in
  * [journal], with the reason of a failure or of a wait.
@@ -65,7 +65,7 @@ class DailyUpdate(
                 (if (r.upToDate) ", up to date" else "") +
                 (if (r.deferredBytes > 0) ", deferred ${r.deferredBytes} bytes: metered network, waits for Wi-Fi" else "")
 
-        private fun name(t: SyncTarget) = t.site + (t.voiceLang?.let { " voice $it" } ?: "")
+        private fun name(t: SyncTarget) = t.site
     }
 }
 

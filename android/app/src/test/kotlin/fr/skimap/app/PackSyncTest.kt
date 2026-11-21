@@ -37,7 +37,7 @@ import java.security.MessageDigest
  * version 1 then 2 (task `testStore`), with the real Rust core installing the bundles:
  * first download, sync without change (304), delta, resume after a cut, a corrupt partial
  * file, a phone that lost contents, a basemap that does not rebuild from its patch of
- * tiles (#160), the server unreachable, and a voice pack apart (VO6).
+ * tiles (#160) and the server unreachable.
  */
 class PackSyncTest {
     @get:Rule
@@ -219,19 +219,12 @@ class PackSyncTest {
     }
 
     @Test
-    fun serverCatalogAndAVoicePackApart() {
-        // The catalog as the server publishes it (VO6): the English voice of the test site,
-        // a pack of its own, listed in the `voice` field of the site, not as a site.
+    fun serverCatalog() {
+        // The catalog as the server publishes it: the test site, no voice pack (the phone's
+        // own speech synthesis says the announcements).
         val sites = JSONObject(File(store, "public/catalog.json").readText()).getJSONArray("sites")
         assertEquals(listOf("test"), (0 until sites.length()).map { sites.getJSONObject(it).getJSONObject("site").getString("id") })
-        assertEquals(
-            "/v1/sites/test/voice/en/index.json",
-            sites
-                .getJSONObject(0)
-                .getJSONArray("voice")
-                .getJSONObject(0)
-                .getString("index_url"),
-        )
+        assertFalse(sites.getJSONObject(0).has("voice"))
 
         val cache = File(tmp.root, "phone/server")
         val sc = ServerCatalog({ http() }, cache)
@@ -239,7 +232,6 @@ class PackSyncTest {
         val fresh = checkNotNull(sc.refresh())
         val site = fresh.first { it.siteId == "test" }
         assertEquals("20261116T060000Z", site.latestVersion)
-        assertEquals("en", site.voice.single().lang)
         // Again: 304, the copy is used.
         assertEquals(fresh, sc.refresh())
         // Offline: the copy.
@@ -247,15 +239,6 @@ class PackSyncTest {
         assertNull(sc.refresh())
         assertEquals(fresh, sc.cached())
         startServer()
-
-        val voiceDir = File(tmp.root, "phone/voice/test/en")
-        val r = PackSyncer(http()).sync(SyncTarget("test", site.voice.single().indexUrl, voiceDir, "en"))
-        println("voice pack en: $r")
-        assertTrue(File(voiceDir, "voice/manifest.json").isFile)
-        assertEquals(2, File(voiceDir, "voice/clips").list()!!.size)
-        // The site pack has no voice files of its own in this test: the two are apart.
-        PackSyncer(http()).sync(target())
-        assertFalse(File(pack("test"), "voice/clips").exists())
     }
 
     /** Publishes the France basemap in [dir] into the store of the running server. */

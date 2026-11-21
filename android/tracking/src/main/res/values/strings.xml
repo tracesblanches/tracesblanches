@@ -30,4 +30,6 @@
     <string name="guidance_refuge">At the hut</string>
     <string name="guidance_detail">%1$s left · arrival %2$s%3$s</string>
     <string name="guidance_short">%1$s · arrival %2$s</string>
+    <string name="speech_low_volume">Low volume: the announcements may not be heard</string>
+    <string name="speech_no_offline_voice">No offline voice for the announcements: install one in the phone settings (Text-to-speech output). Safety announcements will vibrate.</string>
 </resources>

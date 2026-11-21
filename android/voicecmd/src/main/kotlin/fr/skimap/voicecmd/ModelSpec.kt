@@ -68,7 +68,7 @@ data class ModelSpec(
                         93_939,
                         "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d",
                     ),
-                    // NVIDIA's tokenizer of the same model (revision pinned as in speak): the
+                    // NVIDIA's tokenizer of the same model (revision pinned): the
                     // hotwords are encoded with Parakeet's own BPE.
                     ModelFile(
                         TOKENIZER,

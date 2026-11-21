@@ -30,4 +30,6 @@
     <string name="guidance_refuge">Au refuge</string>
     <string name="guidance_detail">%1$s restantes · arrivée %2$s%3$s</string>
     <string name="guidance_short">%1$s · arrivée %2$s</string>
+    <string name="speech_low_volume">Volume bas : les annonces risquent de ne pas s\'entendre</string>
+    <string name="speech_no_offline_voice">Aucune voix hors ligne pour les annonces : installez-en une dans les réglages du téléphone (Synthèse vocale). Les annonces de sécurité vibreront.</string>
 </resources>

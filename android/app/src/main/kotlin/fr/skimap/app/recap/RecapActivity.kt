@@ -3,7 +3,6 @@ package fr.skimap.app.recap
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.speech.tts.TextToSpeech
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -55,8 +54,10 @@ import fr.skimap.core.outingRecap
 import fr.skimap.sport.ShareFlow
 import fr.skimap.sport.ShareFormat
 import fr.skimap.sport.ShareOuting
+import fr.skimap.tracking.Announcer
 import fr.skimap.tracking.Tracking
 import fr.skimap.tracking.TrackingState
+import fr.skimap.tracking.Utterance
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -95,7 +96,9 @@ data class RecapActions(
  */
 class RecapActivity : ComponentActivity() {
     private var ui by mutableStateOf(RecapUi())
-    private var tts: TextToSpeech? = null
+
+    /** The recap said as the announcements are: the phone's speech synthesis, guidance stream, ducking focus. */
+    private var announcer: Announcer? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -175,24 +178,13 @@ class RecapActivity : ComponentActivity() {
     }
 
     private fun say(text: String) {
-        val t = tts
-        if (t != null) {
-            t.speak(text, TextToSpeech.QUEUE_FLUSH, null, "recap")
-            return
-        }
-        var created: TextToSpeech? = null
-        created =
-            TextToSpeech(applicationContext) { status ->
-                if (status == TextToSpeech.SUCCESS) {
-                    created?.language = voiceLocale()
-                    created?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "recap")
-                }
-            }
-        tts = created
+        val a = announcer ?: Announcer(applicationContext, voiceLocale()).also { announcer = it }
+        a.say(Utterance(text, safety = false, kinds = listOf("recap")))
     }
 
     override fun onDestroy() {
-        tts?.shutdown()
+        announcer?.close()
+        announcer = null
         super.onDestroy()
     }
 

@@ -8,6 +8,7 @@ import android.hardware.Sensor
 import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationManager
+import android.media.AudioManager
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -19,6 +20,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowSensor
+import org.robolectric.shadows.ShadowToast
 
 /** A core that answers what the test scripts: one batch per call, recorded. */
 class FakeCore : TrackingCore {
@@ -381,10 +383,61 @@ class ServiceTest {
         assertEquals(3, s.stats.stepReports)
     }
 
+    /** Every safety announcement is felt as well as heard; once when its alert already vibrated. */
+    @Test
+    fun safetyAnnouncementsVibrate() {
+        val s = start()
+        val fog = Utterance("Brouillard annoncé.", safety = true, kinds = listOf("fog"))
+        val off = Utterance("Vous avez quitté l'itinéraire.", safety = true, kinds = listOf("off_route"))
+        val comfort = Utterance("Il reste trois kilomètres.", safety = false, kinds = listOf("remain"))
+        var calls = 0
+        FakeService.core.next = { g ->
+            calls++
+            when (calls) {
+                1 -> Batch(listOf(fog, comfort), emptyList(), emptyList(), emptyList(), emptyList(), null, null, g)
+                else -> Batch(listOf(off), listOf(AlertKind.OFF_ROUTE), emptyList(), emptyList(), emptyList(), null, null, g)
+            }
+        }
+        val lm = app.getSystemService(LocationManager::class.java)
+        shadowOf(lm).simulateLocation(s.providerName, loc(1_000, 6.72, 44.85))
+        shadowOf(s.looper).idle()
+        assertEquals(1, s.stats.safetyVibrations)
+        shadowOf(lm).simulateLocation(s.providerName, loc(2_000, 6.72, 44.85))
+        shadowOf(s.looper).idle()
+        // The off-route alert already vibrated its safety pattern: not twice.
+        assertEquals(1, s.stats.safetyVibrations)
+        assertEquals(listOf(AlertKind.OFF_ROUTE), s.stats.alerts)
+    }
+
+    /** A low volume is told on the screen when the outing starts, and never changed. */
+    @Test
+    fun aLowVolumeIsToldNotChanged() {
+        val am = app.getSystemService(AudioManager::class.java)
+        val stream = Announcer(app).use { it.attributes.volumeControlStream }
+        val max = am.getStreamMaxVolume(stream)
+        am.setStreamVolume(stream, max / 4, 0)
+        val s = start()
+        assertEquals(listOf(SpeechWarning.LOW_VOLUME), s.stats.warnings)
+        shadowOf(android.os.Looper.getMainLooper()).idle()
+        assertEquals("Volume bas : les annonces risquent de ne pas s'entendre", ShadowToast.getTextOfLatestToast())
+        assertEquals(max / 4, am.getStreamVolume(stream))
+    }
+
+    @Test
+    fun aVolumeAboveTheThirdIsNotLow() {
+        val am = app.getSystemService(AudioManager::class.java)
+        val stream = Announcer(app).use { it.attributes.volumeControlStream }
+        val max = am.getStreamMaxVolume(stream)
+        am.setStreamVolume(stream, max / 2, 0)
+        val s = start()
+        assertTrue(SpeechWarning.LOW_VOLUME !in s.stats.warnings)
+        assertEquals(max / 2, am.getStreamVolume(stream))
+    }
+
     @Test
     fun turnsAndAlertsHaveTheirShortSounds() {
         val s = start()
-        val turn = Utterance("Dans deux cents mètres, tournez à gauche.", emptyList(), false, false, listOf("turn"))
+        val turn = Utterance("Dans deux cents mètres, tournez à gauche.", safety = false, kinds = listOf("turn"))
         FakeService.core.next = { g ->
             Batch(listOf(turn), listOf(AlertKind.OFF_ROUTE, AlertKind.BACK_ON_ROUTE), emptyList(), emptyList(), emptyList(), null, null, g)
         }

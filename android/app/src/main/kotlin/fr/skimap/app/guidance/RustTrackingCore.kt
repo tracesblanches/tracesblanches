@@ -17,7 +17,6 @@ import fr.skimap.tracking.Activity
 import fr.skimap.tracking.AlertKind
 import fr.skimap.tracking.BackGuide
 import fr.skimap.tracking.Batch
-import fr.skimap.tracking.Clip
 import fr.skimap.tracking.GpsMode
 import fr.skimap.tracking.GpsRequest
 import fr.skimap.tracking.Guidance
@@ -111,14 +110,12 @@ class RustTrackingCore(
     companion object {
         /**
          * Opens the tracking of the plan in [planDir] (replays the inputs already recorded
-         * there), with the voice pack of the site under [voiceRoot] in the phone's language
-         * [lang] (VO6; the installed one of another language until it is downloaded).
+         * there), its announcements said in the app's language [lang] (`fr`, `en`, VO6).
          */
         fun open(
             planDir: String,
-            voiceRoot: String?,
             lang: String,
-        ): RustTrackingCore = RustTrackingCore(openTracking(planDir, voiceRoot, lang))
+        ): RustTrackingCore = RustTrackingCore(openTracking(planDir, lang))
 
         fun map(b: BatchOut): Batch =
             Batch(
@@ -137,8 +134,6 @@ class RustTrackingCore(
         fun utterance(s: SpokenView): Utterance =
             Utterance(
                 text = s.text,
-                clips = s.segments.map { Clip(it.text, it.file, it.pauseMs.toInt()) },
-                allClips = s.allClips,
                 safety = s.priority == SpeechPriority.SAFETY,
                 kinds = s.kinds,
             )

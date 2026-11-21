@@ -36,7 +36,7 @@ interface Downloads {
     /** Sites the server publishes, asked again (one request, 304 when unchanged); `null` offline. */
     suspend fun refreshSites(): List<ServerSite>?
 
-    /** Downloads (or updates) the pack of [site] and its voice in the app language. */
+    /** Downloads (or updates) the pack of [site]. */
     fun download(
         site: ServerSite,
         mobileData: Boolean,
@@ -44,6 +44,6 @@ interface Downloads {
 
     fun cancel(site: String)
 
-    /** Deletes the pack of [site] and its voice packs from the phone. */
+    /** Deletes the pack of [site] from the phone. */
     suspend fun remove(site: String)
 }

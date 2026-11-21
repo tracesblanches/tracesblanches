@@ -95,6 +95,9 @@ abstract class TrackingService : Service() {
     private var recapAt = 0L
     private var lastFixT = 0L
 
+    /** The last fix pushed to the core: where its announcements are made (#183). */
+    @Volatile private var here: SpokenAt? = null
+
     /** Replay: the inputs come from the test, not from the platform (its fixes would carry today's time). */
     private var replaying = false
 
@@ -116,12 +119,19 @@ abstract class TrackingService : Service() {
 
         @Volatile var motionArmed = 0
 
-        /** Announcements finished (said or failed), said with the pack's clips, with the Android voice. */
+        /** Announcements finished (said or failed), and said to their end by the speech synthesis. */
         @Volatile var voiced = 0
 
-        @Volatile var voicedClips = 0
-
         @Volatile var voicedTts = 0
+
+        /** Announcements not said: past their position, or the same text a moment ago (#183). */
+        @Volatile var voiceStale = 0
+
+        /** Vibrations of the safety announcements (each one is felt as well as heard). */
+        @Volatile var safetyVibrations = 0
+
+        /** Warnings shown at the start of the outing (low volume, no offline voice). */
+        val warnings: MutableList<SpeechWarning> = java.util.Collections.synchronizedList(ArrayList())
 
         /** Notifications posted (only when their text changes). */
         @Volatile var notified = 0
@@ -233,13 +243,16 @@ abstract class TrackingService : Service() {
         thread = HandlerThread("skimap-tracking", Process.THREAD_PRIORITY_BACKGROUND).also { it.start() }
         handler = HandlerCompat.createAsync(thread.looper)
         executor = java.util.concurrent.Executor { handler.post(it) }
-        // The guidance stream raised while an announcement plays, during the outing only (#179).
-        announcer = Announcer(this, outing = { core != null })
+        announcer = Announcer(this)
+        // An announcement that waited past its position, or said a moment ago, is not said (#183).
+        announcer.freshness = Freshness({ here })
         announcer.onDone = { _, _ ->
             stats.voiced++
-            stats.voicedClips = announcer.played
             stats.voicedTts = announcer.spokenByTts
+            stats.voiceStale = announcer.stale
         }
+        // No voice of the language speaks offline: said on the screen when the outing starts.
+        announcer.onVoiceStatus = { s -> if (s == VoiceStatus.NONE) handler.post { warn(SpeechWarning.NO_OFFLINE_VOICE) } }
         haptics = Haptics(this)
         notifier = GuidanceNotifier(this, javaClass)
     }
@@ -320,6 +333,10 @@ abstract class TrackingService : Service() {
             }
         Log.i(TAG, "tracking: $dir, provider $provider")
         announcer.warmUp()
+        // A low volume is told, never changed (the app does not touch the user's volume).
+        if (!replay && SpeechChecks.lowVolume(getSystemService(android.media.AudioManager::class.java), announcer.attributes)) {
+            warn(SpeechWarning.LOW_VOLUME)
+        }
         controls = PhysicalControls(this, handler, ::act)
         val interactive = getSystemService(PowerManager::class.java)?.isInteractive ?: true
         screenOn = interactive
@@ -388,6 +405,7 @@ abstract class TrackingService : Service() {
         stats.stepReports += reports.size
         val packed = FixPacker.pack(locations)
         batchFix = locations.last()
+        here = spokenAt(locations.last())
         handle(if (reports.isEmpty()) c.pushFixes(packed) else c.pushBatch(packed, reports))
         batchFix = null
     }
@@ -404,6 +422,7 @@ abstract class TrackingService : Service() {
         stats.fixes += locations.size
         stats.stepReports += reports.size
         batchFix = locations.last()
+        here = spokenAt(locations.last())
         handle(c.pushBatch(FixPacker.pack(locations), reports))
         batchFix = null
     }
@@ -411,8 +430,15 @@ abstract class TrackingService : Service() {
     /** An extension's safety alert: said and vibrated as the core's. */
     private fun extensionAlert(text: String) {
         if (ended) return
-        say(Utterance(text, emptyList(), allClips = false, safety = true, kinds = listOf("group")))
-        haptics.play(HapticPatterns.SAFETY)
+        say(Utterance(text, safety = true, kinds = listOf("group")))
+    }
+
+    /** A warning of the start of the outing, once each: on the screen (fr/en), nothing changed. */
+    private fun warn(w: SpeechWarning) {
+        if (ended || w in stats.warnings) return
+        stats.warnings += w
+        Log.i(TAG, "tracking: warning $w")
+        SpeechChecks.show(this, w)
     }
 
     /** Test hook: an event of the step counter ([total] steps since boot at [tMs]). */
@@ -456,22 +482,7 @@ abstract class TrackingService : Service() {
 
     private fun handle(b: Batch) {
         if (ended) return
-        // Off the route or back on it: its sound before the words (K6).
-        for (a in b.alerts) {
-            stats.alerts += a
-            haptics.play(HapticPatterns.alert(a))
-            earcon(EarconSynth.alert(a))
-        }
-        for (u in b.utterances) {
-            stats.said += u
-            lastSaid = u.text
-            if ("turn" in u.kinds) {
-                // Left in the left ear, right in the right one, just before the words.
-                earcon(EarconSynth.turn(b.guidance.nextTurn))
-                HapticPatterns.turn(b.guidance.nextTurn)?.let(haptics::play)
-            }
-            announcer.say(u)
-        }
+        sayAll(b)
         proposals(b)
         stats.proposals += b.proposals
         stats.switches += b.switches
@@ -492,6 +503,33 @@ abstract class TrackingService : Service() {
             end(r, stopped = false)
         }
         running.forEach { it.onBatch(b, batchFix) }
+    }
+
+    /** The alerts and announcements of a batch: felt, their short sounds, then said. */
+    private fun sayAll(b: Batch) {
+        // Off the route or back on it: its sound before the words (K6).
+        var safetyFelt = false
+        for (a in b.alerts) {
+            stats.alerts += a
+            val pattern = HapticPatterns.alert(a)
+            haptics.play(pattern)
+            safetyFelt = safetyFelt || pattern === HapticPatterns.SAFETY
+            earcon(EarconSynth.alert(a))
+        }
+        for (u in b.utterances) {
+            stats.said += u
+            lastSaid = u.text
+            if ("turn" in u.kinds) {
+                // Left in the left ear, right in the right one, just before the words.
+                earcon(EarconSynth.turn(b.guidance.nextTurn))
+                HapticPatterns.turn(b.guidance.nextTurn)?.let(haptics::play)
+            }
+            // Every safety announcement is felt too (the alert's own pattern when it has one).
+            if (u.safety && !safetyFelt) vibrateSafety()
+            safetyFelt = false
+            // Made at the last fix known: checked against the position when its turn comes (#183).
+            announcer.say(u.copy(at = here))
+        }
     }
 
     /** Proposals of a shorter way (C11) or of another profile (X14): felt; a profile chosen goes to the app. */
@@ -564,12 +602,20 @@ abstract class TrackingService : Service() {
         }
     }
 
-    /** Says what a button asked for. */
+    /** Says what a button or an extension asked for; a safety announcement is felt too. */
     private fun say(u: Utterance?) {
         if (u == null) return
         stats.said += u
         lastSaid = u.text
+        if (u.safety) vibrateSafety()
         announcer.say(u)
+    }
+
+    private fun spokenAt(l: Location): SpokenAt = SpokenAt(l.time, l.longitude, l.latitude)
+
+    private fun vibrateSafety() {
+        stats.safetyVibrations++
+        haptics.play(HapticPatterns.SAFETY)
     }
 
     /** « La voiture est ici » (K4). */

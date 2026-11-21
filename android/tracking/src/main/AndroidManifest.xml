@@ -12,7 +12,7 @@
     <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
-    <!-- The Android voice reads what the pack has no clip for (package visibility, API 30+). -->
+    <!-- The phone's speech synthesis says the announcements (package visibility, API 30+). -->
     <queries>
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />

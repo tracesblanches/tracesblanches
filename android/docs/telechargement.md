@@ -35,11 +35,10 @@ Formats et API : [`crates/pack/docs/mise-a-jour.md`](../../crates/pack/docs/mise
 - Catalogue du serveur gardé sur le téléphone (`files/server/catalog.json`) : hors ligne, la dernière liste, signalée.
 - Packs par domaine : le serveur ne publie pas de pack par zone (cadre, massif). Le mode libre les montre ensemble.
 
-## Voix par langue (VO6)
+## Voix (VO6)
 
-- Un paquet de voix est un pack à part (`files/voice/<site>/<langue>/voice/…`), synchronisé exactement comme un pack de site (index, paquets, état).
-- Téléchargé avec le pack, pour la langue de l'app (français sur un téléphone en français, sinon anglais), quand le catalogue du serveur le liste : champ `voice` d'un site, `[{lang, index_url, latest, first_download_bytes}]` (à publier par le serveur ; testé sur un catalogue de test).
-- Une nouvelle langue remplace l'ancienne seulement une fois installée : hors ligne, l'ancienne voix reste.
+- Rien à télécharger pour la voix : les annonces sont dites par la synthèse vocale du téléphone, dans la langue de l'app (21/11/2026).
+- À la mise à jour, les paquets de voix d'une version précédente (`files/voice/`) et un téléchargement de voix encore en file sont supprimés (`LegacyVoice`, `LegacyVoiceTest`).
 
 ## Données à venir (schémas)
 

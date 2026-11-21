@@ -15,7 +15,7 @@ import fr.skimap.sync.HttpSource
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
-/** A pack to keep in sync: a site pack, or a voice language pack of a site (VO6). */
+/** A pack to keep in sync. */
 data class SyncTarget(
     /** Site identifier. */
     val site: String,
@@ -23,8 +23,6 @@ data class SyncTarget(
     val indexUrl: String,
     /** Where the pack is installed (created by the first download). */
     val dir: File,
-    /** Voice language (`fr`, `en`) for a voice pack; `null` for the site pack. */
-    val voiceLang: String? = null,
 )
 
 /** What a sync did. */

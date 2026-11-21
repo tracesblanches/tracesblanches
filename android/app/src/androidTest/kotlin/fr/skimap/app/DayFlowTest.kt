@@ -367,7 +367,7 @@ class DayFlowTest {
         val points = gpx.split("<trkpt").size - 1
         Log.i(
             "skimap",
-            "day flow: GPX $points points, voiced ${s.stats.voiced} (${s.stats.voicedClips} clips, ${s.stats.voicedTts} Android voice)",
+            "day flow: GPX $points points, voiced ${s.stats.voiced} (${s.stats.voicedTts} to their end)",
         )
         assertTrue(points >= 100)
         assertTrue(File(planDir, TrackingService.OBSERVATION_FILE).isFile)

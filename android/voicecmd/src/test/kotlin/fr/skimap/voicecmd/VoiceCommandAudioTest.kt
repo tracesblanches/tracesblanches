@@ -6,7 +6,7 @@ import java.io.File
 
 /**
  * End to end on this machine, the phone's path (VO5 #87): the spoken questions of the
- * held-out set (`crates/intent/examples/command_audio.rs`, Pocket TTS, synthetic wind) in
+ * held-out set (synthesised speech and synthetic wind, in `~/.cache/skimap/voicecmd/audio`) in
  * frames of 32 ms, Silero VAD and the end of the question, Parakeet v3 (the files the
  * phone downloads, sherpa-onnx 1.13.8 JNI for Linux). What was heard goes to
  * `build/voicecmd-heard-<config>.tsv`, rated by the core's classifier with

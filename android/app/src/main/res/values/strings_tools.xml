@@ -96,7 +96,6 @@
     <string name="prep_last_run">%1$s, %2$d ms, battery %3$s %%, %4$s °C</string>
     <string name="prep_take">Ski this plan</string>
     <string name="prep_back">Back around %1$s</string>
-    <string name="prep_voice_missing">Said by the phone\'s voice (clip missing from the pack): %1$d</string>
     <string name="prep_infos">Age of the information</string>
     <string name="prep_last">Last preparation: %1$s</string>
 

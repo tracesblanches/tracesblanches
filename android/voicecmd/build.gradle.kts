@@ -22,7 +22,7 @@ plugins {
     alias(libs.plugins.ktlint)
 }
 
-/** sherpa-onnx release used by speak (app/DEPENDENCIES.md): AAR and host JNI, sha256-pinned. */
+/** sherpa-onnx release: AAR and host JNI, sha256-pinned. */
 val sherpaVersion = "1.13.8"
 val sherpaRelease = "https://github.com/k2-fsa/sherpa-onnx/releases/download/v$sherpaVersion"
 val sherpaAarSha = "633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96"

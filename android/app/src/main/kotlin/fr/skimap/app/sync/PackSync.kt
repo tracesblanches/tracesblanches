@@ -62,15 +62,10 @@ object PackSync {
 
     fun packsDir(context: Context): File = File(context.getExternalFilesDir(null), "packs")
 
-    fun voiceDir(context: Context): File = File(context.getExternalFilesDir(null), "voice")
-
     fun catalog(context: Context): ServerCatalog = ServerCatalog({ http(context) }, File(context.filesDir, "server"))
 
-    /** Unique work name of a pack (site or voice language). */
-    fun workName(
-        site: String,
-        voiceLang: String? = null,
-    ): String = if (voiceLang == null) "pack-$site" else "voice-$site-$voiceLang"
+    /** Unique work name of a pack. */
+    fun workName(site: String): String = "pack-$site"
 
     /**
      * Downloads or updates the pack of [site] ([bytes]: size of the download, to choose the
@@ -84,7 +79,6 @@ object PackSync {
         indexUrl: String,
         bytes: Long,
         mobileData: Boolean = false,
-        voiceLang: String? = null,
         keep: Boolean = false,
     ) {
         val big = bytes > BIG_BYTES && !mobileData
@@ -101,47 +95,22 @@ object PackSync {
                     workDataOf(
                         PackSyncWorker.SITE to site,
                         PackSyncWorker.INDEX to indexUrl,
-                        PackSyncWorker.VOICE to voiceLang,
                         PackSyncWorker.METERED_OK to mobileData,
                         PackSyncWorker.BYTES to bytes,
                     ),
                 ).addTag(TAG)
-                .addTag(workName(site, voiceLang))
+                .addTag(workName(site))
                 .build()
         val policy = if (keep) ExistingWorkPolicy.KEEP else ExistingWorkPolicy.REPLACE
-        WorkManager.getInstance(context).enqueueUniqueWork(workName(site, voiceLang), policy, request)
-        SyncJournal.note(context, "sync queued: ${workName(site, voiceLang)}, $bytes bytes, ${if (big) "unmetered" else "any"} network")
+        WorkManager.getInstance(context).enqueueUniqueWork(workName(site), policy, request)
+        SyncJournal.note(context, "sync queued: ${workName(site)}, $bytes bytes, ${if (big) "unmetered" else "any"} network")
     }
 
     fun cancel(
         context: Context,
         site: String,
-        voiceLang: String? = null,
     ) {
-        WorkManager.getInstance(context).cancelUniqueWork(workName(site, voiceLang))
-    }
-
-    /**
-     * The voice follows the phone's language (VO6): for every installed site whose voice in
-     * that language is published ([sites], the server catalog) and not installed, one
-     * download is queued (one bundle). Offline it waits for a network; the voice installed
-     * in the other language stays and speaks until the new one is installed, then it is
-     * removed. Returns the sites queued.
-     */
-    fun followLanguage(
-        context: Context,
-        sites: List<fr.skimap.core.ServerSite>,
-        lang: String = WorkManagerDownloads.voiceLang(),
-    ): List<String> {
-        val installed = listPacks(packsDir(context).absolutePath).map { it.siteId }.toSet()
-        return sites
-            .filter { it.siteId in installed }
-            .mapNotNull { site -> site.voice.firstOrNull { it.lang == lang }?.let { site.siteId to it } }
-            .filterNot { (id, _) -> File(voiceDir(context), "$id/$lang/voice/manifest.json").isFile }
-            .map { (id, v) ->
-                download(context, id, v.indexUrl, v.firstDownloadBytes.toLong(), voiceLang = v.lang)
-                id
-            }
+        WorkManager.getInstance(context).cancelUniqueWork(workName(site))
     }
 
     /** Daily update of the installed packs, with its constraints; [on] = false removes it. */
@@ -207,7 +176,7 @@ class PackSyncWorker(
         when {
             inputData.getBoolean(FRANCE, false) -> "France basemap"
             inputData.getBoolean(ALL, false) -> "daily update"
-            else -> inputData.getString(SITE) + (inputData.getString(VOICE)?.let { " voice $it" } ?: "")
+            else -> inputData.getString(SITE).orEmpty()
         }
 
     private suspend fun one(
@@ -216,30 +185,22 @@ class PackSyncWorker(
     ): Result {
         val site = inputData.getString(SITE)
         val index = inputData.getString(INDEX)
-        if (site == null || index == null) return Result.failure()
-        val voice = inputData.getString(VOICE)
-        val dir =
-            if (voice ==
-                null
-            ) {
-                File(PackSync.packsDir(applicationContext), site)
-            } else {
-                File(PackSync.voiceDir(applicationContext), "$site/$voice")
-            }
+        // A voice pack download queued by an earlier version: nothing to install now.
+        val legacy = inputData.getString(LegacyVoice.WORK_KEY) != null
+        if (site == null || index == null || legacy) {
+            if (legacy) SyncJournal.note(applicationContext, "sync $site: voice pack of an earlier version dropped")
+            return if (legacy) Result.success() else Result.failure()
+        }
+        val dir = File(PackSync.packsDir(applicationContext), site)
         setProgress(workDataOf(DONE to 0L, TOTAL to inputData.getLong(BYTES, 0)))
         val r =
-            syncer.sync(SyncTarget(site, index, dir, voice), maxBytes) { done, total ->
+            syncer.sync(SyncTarget(site, index, dir), maxBytes) { done, total ->
                 setProgressAsync(workDataOf(DONE to done, TOTAL to total))
             }
         log(r)
         if (r.deferredBytes > 0) {
             // Large and on a metered network: wait for an unmetered one.
-            PackSync.download(applicationContext, site, index, r.deferredBytes, mobileData = false, voiceLang = voice)
-        } else if (voice != null) {
-            // One voice language per site: the new one replaces the others (VO6).
-            dir.parentFile?.listFiles()?.filter { it.isDirectory && it.name != voice && !it.name.startsWith(".") }?.forEach {
-                it.deleteRecursively()
-            }
+            PackSync.download(applicationContext, site, index, r.deferredBytes, mobileData = false)
         }
         return Result.success(output(r))
     }
@@ -271,27 +232,19 @@ class PackSyncWorker(
         val catalog = PackSync.catalog(ctx)
         val sites = (catalog.refresh() ?: catalog.cached()).associateBy { it.siteId }
         val targets =
-            listPacks(PackSync.packsDir(ctx).absolutePath).flatMap { p ->
+            listPacks(PackSync.packsDir(ctx).absolutePath).mapNotNull { p ->
                 val site = sites[p.siteId]
-                if (site == null) {
-                    SyncJournal.note(ctx, "sync ${p.siteId}: not in the server catalog, pack kept")
-                    return@flatMap emptyList()
-                }
-                listOf(SyncTarget(site.siteId, site.indexUrl, File(p.dir))) +
-                    site.voice
-                        .map { v -> SyncTarget(site.siteId, v.indexUrl, File(PackSync.voiceDir(ctx), "${site.siteId}/${v.lang}"), v.lang) }
-                        .filter { it.dir.isDirectory }
+                if (site == null) SyncJournal.note(ctx, "sync ${p.siteId}: not in the server catalog, pack kept")
+                site?.let { SyncTarget(it.siteId, it.indexUrl, File(p.dir)) }
             }
         // Every pack is tried: one that fails keeps its version and leaves the others be (#176).
         val updates = DailyUpdate(syncer) { SyncJournal.note(ctx, it) }.run(targets, maxBytes)
         val synced = updates.filterIsInstance<PackUpdate.Synced>().map { it.report }
         for (r in synced.filter { it.deferredBytes > 0 }) {
             // Large and on a metered network: its own work waits for Wi-Fi.
-            PackSync.download(ctx, r.target.site, r.target.indexUrl, r.deferredBytes, voiceLang = r.target.voiceLang, keep = true)
+            PackSync.download(ctx, r.target.site, r.target.indexUrl, r.deferredBytes, keep = true)
         }
-        val changed = synced.any { it.target.voiceLang == null && !it.upToDate && it.deferredBytes == 0L }
-        // A voice in the phone's language not installed yet (language changed): queued.
-        PackSync.followLanguage(ctx, sites.values.toList())
+        val changed = synced.any { !it.upToDate && it.deferredBytes == 0L }
         // A pack cut by the network or the server: the whole update again later (the packs
         // already synced answer 304); a pack that does not install waits for tomorrow.
         return if (updates.any { it is PackUpdate.Failed && it.retry }) Result.retry() else Result.success(workDataOf(CHANGED to changed))
@@ -302,7 +255,6 @@ class PackSyncWorker(
     private fun output(r: SyncReport): Data =
         workDataOf(
             SITE to r.target.site,
-            VOICE to r.target.voiceLang,
             FROM to r.from,
             TO to r.to,
             CHANGED to (!r.upToDate && r.deferredBytes == 0L),
@@ -315,7 +267,6 @@ class PackSyncWorker(
     companion object {
         const val SITE = "site"
         const val INDEX = "index"
-        const val VOICE = "voice"
         const val METERED_OK = "metered_ok"
         const val BYTES = "bytes"
         const val ALL = "all"

@@ -170,20 +170,6 @@ class LogicTest {
     }
 
     @Test
-    fun clipsAreAssembledWithTheirPauses() {
-        val a = Pcm(ShortArray(4) { 1 }, 48_000, 1)
-        val b = Pcm(ShortArray(2) { 2 }, 48_000, 1)
-        val out = PcmAssembler.assemble(listOf(a, b), listOf(150, 0))!!
-        // 4 samples, 150 ms of silence (7 200 samples), 2 samples.
-        assertEquals(4 + 7_200 + 2, out.samples.size)
-        assertEquals(1.toShort(), out.samples[3])
-        assertEquals(0.toShort(), out.samples[4])
-        assertEquals(0.toShort(), out.samples[7_203])
-        assertEquals(2.toShort(), out.samples[7_204])
-        assertNull(PcmAssembler.assemble(emptyList(), emptyList()))
-    }
-
-    @Test
     fun vibrationsAreToldApart() {
         assertArrayEquals(HapticPatterns.SAFETY, HapticPatterns.alert(AlertKind.OFF_ROUTE))
         assertArrayEquals(HapticPatterns.SAFETY, HapticPatterns.alert(AlertKind.TURNAROUND_NOW))

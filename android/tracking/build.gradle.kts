@@ -14,6 +14,7 @@ android {
 
     defaultConfig {
         minSdk = 29
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     compileOptions {
@@ -38,7 +39,7 @@ detekt {
     buildUponDefaultConfig = true
     allRules = false
     config.setFrom(files("$rootDir/config/detekt/detekt.yml"))
-    source.setFrom(files("src/main/kotlin", "src/test/kotlin"))
+    source.setFrom(files("src/main/kotlin", "src/test/kotlin", "src/androidTest/kotlin"))
 }
 
 ktlint {
@@ -56,6 +57,9 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
 
     detektPlugins(libs.detekt.compose.rules)
 }
