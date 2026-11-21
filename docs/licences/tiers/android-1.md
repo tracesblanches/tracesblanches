@@ -1,0 +1,91 @@
+# Bibliothèques Android (1)
+
+[← Composants tiers](../../../THIRD-PARTY.md). Généré par `docs/licences/third-party.sh` : ne pas éditer.
+
+| Bibliothèque | Version | Licence (POM) |
+|---|---|---|
+| androidx.activity:activity | 1.13.0 | The Apache Software License, Version 2.0 |
+| androidx.activity:activity-compose | 1.13.0 | The Apache Software License, Version 2.0 |
+| androidx.activity:activity-ktx | 1.13.0 | The Apache Software License, Version 2.0 |
+| androidx.annotation:annotation | 1.10.0 | The Apache Software License, Version 2.0 |
+| androidx.annotation:annotation-experimental | 1.4.1 | The Apache Software License, Version 2.0 |
+| androidx.annotation:annotation-jvm | 1.10.0 | The Apache Software License, Version 2.0 |
+| androidx.appcompat:appcompat | 1.1.0 | The Apache Software License, Version 2.0 |
+| androidx.appcompat:appcompat-resources | 1.1.0 | The Apache Software License, Version 2.0 |
+| androidx.arch.core:core-common | 2.2.0 | The Apache Software License, Version 2.0 |
+| androidx.arch.core:core-runtime | 2.2.0 | The Apache Software License, Version 2.0 |
+| androidx.autofill:autofill | 1.0.0 | The Apache Software License, Version 2.0 |
+| androidx.camera:camera-camera2 | 1.6.2 | The Apache Software License, Version 2.0 |
+| androidx.camera:camera-camera2-pipe | 1.6.2 | The Apache Software License, Version 2.0 |
+| androidx.camera:camera-core | 1.6.2 | The Apache Software License, Version 2.0 ; BSD-3-Clause |
+| androidx.camera:camera-lifecycle | 1.6.2 | The Apache Software License, Version 2.0 |
+| androidx.camera:camera-video | 1.6.2 | The Apache Software License, Version 2.0 |
+| androidx.camera:camera-view | 1.6.2 | The Apache Software License, Version 2.0 |
+| androidx.camera.featurecombinationquery:featurecombinationquery | 1.6.2 | The Apache Software License, Version 2.0 |
+| androidx.camera.viewfinder:viewfinder-core | 1.5.1 | The Apache Software License, Version 2.0 |
+| androidx.collection:collection | 1.5.0 | The Apache Software License, Version 2.0 |
+| androidx.collection:collection-jvm | 1.5.0 | The Apache Software License, Version 2.0 |
+| androidx.collection:collection-ktx | 1.5.0 | The Apache Software License, Version 2.0 |
+| androidx.compose.animation:animation | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.animation:animation-android | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.animation:animation-core | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.animation:animation-core-android | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose:compose-bom | 2026.09.00 | The Apache Software License, Version 2.0 |
+| androidx.compose.foundation:foundation | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.foundation:foundation-android | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.foundation:foundation-layout | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.foundation:foundation-layout-android | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.material3:material3 | 1.4.0 | The Apache Software License, Version 2.0 |
+| androidx.compose.material3:material3-android | 1.4.0 | The Apache Software License, Version 2.0 |
+| androidx.compose.material:material-ripple | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.material:material-ripple-android | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.runtime:runtime | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.runtime:runtime-android | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.runtime:runtime-annotation | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.runtime:runtime-annotation-android | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.runtime:runtime-retain | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.runtime:runtime-retain-android | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.runtime:runtime-saveable | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.runtime:runtime-saveable-android | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.ui:ui | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.ui:ui-android | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.ui:ui-geometry | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.ui:ui-geometry-android | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.ui:ui-graphics | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.ui:ui-graphics-android | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.ui:ui-text | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.ui:ui-text-android | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.ui:ui-tooling-preview | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.ui:ui-tooling-preview-android | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.ui:ui-unit | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.ui:ui-unit-android | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.ui:ui-util | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.compose.ui:ui-util-android | 1.12.1 | The Apache Software License, Version 2.0 |
+| androidx.concurrent:concurrent-futures | 1.1.0 | The Apache Software License, Version 2.0 |
+| androidx.concurrent:concurrent-futures-ktx | 1.1.0 | The Apache Software License, Version 2.0 |
+| androidx.core:core | 1.19.1 | The Apache Software License, Version 2.0 |
+| androidx.core:core-backported-fixes | 1.0.0 | The Apache Software License, Version 2.0 |
+| androidx.core:core-ktx | 1.19.1 | The Apache Software License, Version 2.0 |
+| androidx.core:core-viewtree | 1.0.0 | The Apache Software License, Version 2.0 |
+| androidx.cursoradapter:cursoradapter | 1.0.0 | The Apache Software License, Version 2.0 |
+| androidx.customview:customview | 1.0.0 | The Apache Software License, Version 2.0 |
+| androidx.customview:customview-poolingcontainer | 1.0.0 | The Apache Software License, Version 2.0 |
+| androidx.drawerlayout:drawerlayout | 1.0.0 | The Apache Software License, Version 2.0 |
+| androidx.emoji2:emoji2 | 1.4.0 | The Apache Software License, Version 2.0 |
+| androidx.exifinterface:exifinterface | 1.4.2 | The Apache Software License, Version 2.0 |
+| androidx.fragment:fragment | 1.8.9 | The Apache Software License, Version 2.0 |
+| androidx.graphics:graphics-path | 1.0.1 | The Apache Software License, Version 2.0 |
+| androidx.health.connect:connect-client | 1.1.0 | The Apache Software License, Version 2.0 |
+| androidx.health.connect:connect-client-external-protobuf | 1.1.0 | BSD-3-Clause |
+| androidx.health.connect:connect-client-proto | 1.1.0 | The Apache Software License, Version 2.0 |
+| androidx.interpolator:interpolator | 1.0.0 | The Apache Software License, Version 2.0 |
+| androidx.lifecycle:lifecycle-common | 2.11.0 | The Apache Software License, Version 2.0 |
+| androidx.lifecycle:lifecycle-common-java8 | 2.11.0 | The Apache Software License, Version 2.0 |
+| androidx.lifecycle:lifecycle-common-jvm | 2.11.0 | The Apache Software License, Version 2.0 |
+| androidx.lifecycle:lifecycle-livedata | 2.11.0 | The Apache Software License, Version 2.0 |
+| androidx.lifecycle:lifecycle-livedata-core | 2.11.0 | The Apache Software License, Version 2.0 |
+| androidx.lifecycle:lifecycle-livedata-core-ktx | 2.11.0 | The Apache Software License, Version 2.0 |
+| androidx.lifecycle:lifecycle-process | 2.11.0 | The Apache Software License, Version 2.0 |
+| androidx.lifecycle:lifecycle-runtime | 2.11.0 | The Apache Software License, Version 2.0 |
+| androidx.lifecycle:lifecycle-runtime-android | 2.11.0 | The Apache Software License, Version 2.0 |
+| androidx.lifecycle:lifecycle-runtime-compose | 2.11.0 | The Apache Software License, Version 2.0 |

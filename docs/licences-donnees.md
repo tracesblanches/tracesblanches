@@ -22,7 +22,7 @@ Recherche documentaire du 15/11/2026 (tickets L1 #6, L2 #7, L3 #8, L4 #9, L5 #10
 - **À confirmer** : droit de la DDT 05 de republier la CLPA en Licence Ouverte (courrier 3).
 - **L2** : le Plan IGN v2 est en Licence Ouverte (fiche IGNF_PLAN-IGN), qui permet de « redistribuer » et d'inclure les données « dans son propre produit ou application » ; les CGU de cartes.gouv.fr (15/10/2024) ne disent rien du cache et limitent la TMS à 400 requêtes/s. Le pack hors ligne est donc permis ; la mention doit porter la date de mise à jour.
 - **L5** : la documentation Strava ne mentionne pas PKCE ; l'échange du code et le rafraîchissement exigent `client_secret` (« required »), y compris pour l'OAuth mobile.
-- **F2** : recommandation **EUPL-1.2** pour tout le code (le portage Rust de com4FlowPy en hérite de toute façon) ; données produites : chaque couche sous la licence de sa source, nos couches propres sous Licence Ouverte 2.0.
+- **F2** : décision du 15/11/2026 : code sous **GPL-3.0-or-later** avec une permission additionnelle pour les boutiques d'applications (`LICENSE`, `LICENSE-EXCEPTION`), `crates/avalanche` (portage de com4FlowPy) sous **EUPL-1.2**, jamais liée par l'app ; données produites : chaque couche sous la licence de sa source, nos couches propres sous Licence Ouverte 2.0.
 
 ## Décision L3 (note de décision du ticket #8)
 

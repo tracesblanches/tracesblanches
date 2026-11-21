@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Writes THIRD-PARTY.md at the root of the repository (F2, #2): the licence of every
-# third-party component, generated from the lock files, never typed by hand.
+# Writes THIRD-PARTY.md at the root of the repository and its tables in
+# docs/licences/tiers/ (F2, #2): the licence of every third-party component, generated
+# from the lock files, never typed by hand. Tables are cut in parts of at most `rows`
+# rows, so that every Markdown file stays under 100 lines.
 #
-#   docs/licences/third-party.sh            # rewrites THIRD-PARTY.md
-#   docs/licences/third-party.sh --check    # exits 1 if THIRD-PARTY.md is out of date
+#   docs/licences/third-party.sh            # rewrites THIRD-PARTY.md and docs/licences/tiers/
+#   docs/licences/third-party.sh --check    # exits 1 if one of them is out of date
 #
-# Sources, all local (no network):
+# Sources:
 # - Rust: `cargo metadata --locked` (licence expression of each crate of Cargo.lock, every
 #   feature, Linux and Android targets) and `cargo tree -p skimap-ffi` for the crates
 #   linked into the Android library (normal edges, Android target, no proc-macro);
@@ -17,7 +19,7 @@
 #   `~/.cache/skimap/poms` (public metadata only, nothing about the user is sent);
 # - components that are not a dependency (ported code, vendored crate, models): the fixed
 #   table below, from docs/licences/f2-licence-code.md.
-# Needs: cargo, jq, xmllint, a JDK and the Android SDK (`ANDROID_HOME` or
+# Needs: cargo, jq, xmllint, curl, a JDK and the Android SDK (`ANDROID_HOME` or
 # android/local.properties) with the Gradle cache already filled by a build.
 set -euo pipefail
 
@@ -25,9 +27,11 @@ root=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$root"
 check=0
 [[ ${1:-} == --check ]] && check=1
-out=$(mktemp)
+rows=85
+out=$(mktemp -d)
 tmp=$(mktemp -d)
 trap 'rm -rf "$out" "$tmp"' EXIT
+mkdir -p "$out/docs/licences/tiers"
 
 # ---------- Rust ----------
 cargo metadata --format-version 1 --locked --all-features \
@@ -76,7 +80,7 @@ pom() { # group artifact version -> path of its POM (Gradle cache, else fetched 
   [[ -s $f ]] && echo "$f"
 }
 xp() { xmllint --xpath "$2" "$1" 2>/dev/null || true; }
-licences() { # group artifact version -> "licence; licence"
+licences() { # group artifact version -> "licence ; licence"
   local g=$1 a=$2 v=$3 p depth=0
   while ((depth < 6)); do
     p=$(pom "$g" "$a" "$v")
@@ -105,13 +109,38 @@ n_unknown=$(awk -F'\t' '$3 == "?"' "$tmp/aar.tsv" | wc -l)
 n_unknown_rust=$(awk -F'\t' '$3 == "?"' "$tmp/crates.tsv" | wc -l)
 
 # ---------- Document ----------
+# part <kind> <title> <header> <separator> <rows file>: writes the parts of one table and
+# prints their links for the index.
+part() {
+  local kind=$1 title=$2 header=$3 sep=$4 src=$5 n i=1 first last
+  n=$(wc -l <"$src")
+  while (((i - 1) * rows < n)); do
+    first=$(((i - 1) * rows + 1))
+    last=$((i * rows < n ? i * rows : n))
+    {
+      echo "# $title ($i)"
+      echo
+      echo "[← Composants tiers](../../../THIRD-PARTY.md). Généré par \`docs/licences/third-party.sh\` : ne pas éditer."
+      echo
+      echo "$header"
+      echo "$sep"
+      sed -n "${first},${last}p" "$src"
+    } >"$out/docs/licences/tiers/$kind-$i.md"
+    echo "- [$title ($i)](docs/licences/tiers/$kind-$i.md) : lignes $first à $last"
+    i=$((i + 1))
+  done
+}
+awk -F'\t' 'NR==FNR { app[$1 " " $2] = 1; next }
+  { printf "| %s | %s | %s | %s | %s |\n", $1, $2, $3, (($1 " " $2) in app) ? "oui" : "", $4 }' \
+  "$tmp/app.txt" "$tmp/crates.tsv" >"$tmp/crates.md"
+awk -F'\t' '{ printf "| %s | %s | %s |\n", $1, $2, $3 }' "$tmp/aar.tsv" >"$tmp/aar.md"
 {
-  cat <<'EOF'
+  cat <<'END_OF_HEADER'
 # Composants tiers et leurs licences
 
-Fichier généré par `docs/licences/third-party.sh` à partir de `Cargo.lock` et de la
-résolution Gradle de l'app ; ne pas l'éditer à la main. `docs/licences/third-party.sh
---check` échoue s'il n'est plus à jour.
+Généré par `docs/licences/third-party.sh` à partir de `Cargo.lock` et de la résolution
+Gradle de l'app, avec les tables de `docs/licences/tiers/` ; ne pas l'éditer à la main.
+`docs/licences/third-party.sh --check` échoue si l'un de ces fichiers n'est plus à jour.
 
 La licence du code de skimap est décrite dans le [README](README.md#licence) ; la licence
 des données produites (packs, couches), par source, dans
@@ -130,32 +159,31 @@ des données produites (packs, couches), par source, dans
 | pockettts.cpp, ggml | MIT | outil du poste pour la voix ; non livré dans l'app |
 
 ## Crates Rust
-EOF
+END_OF_HEADER
   echo
-  echo "$n_crates crates tierces dans \`Cargo.lock\` (toutes fonctions, cibles Linux et Android), dont $n_app liées dans la bibliothèque de l'app (\`skimap-ffi\`, colonne « App ») ; licence inconnue : $n_unknown_rust. Une licence « A OR B » laisse le choix ; skimap n'en retire aucune option."
+  echo "$n_crates crates tierces dans \`Cargo.lock\` (toutes fonctions, cibles Linux et Android), dont $n_app liées dans la bibliothèque de l'app (\`skimap-ffi\`, colonne « App ») ; licence inconnue : $n_unknown_rust. Une licence « A OR B » laisse le choix."
   echo
-  echo '| Crate | Version | Licence | App | Dépôt |'
-  echo '|---|---|---|---|---|'
-  awk -F'\t' 'NR==FNR { app[$1 " " $2] = 1; next }
-    { printf "| %s | %s | %s | %s | %s |\n", $1, $2, $3, (($1 " " $2) in app) ? "oui" : "", $4 }' \
-    "$tmp/app.txt" "$tmp/crates.tsv"
+  part crates "Crates Rust" '| Crate | Version | Licence | App | Dépôt |' '|---|---|---|---|---|' "$tmp/crates.md"
   echo
   echo '## Bibliothèques Android'
   echo
   echo "$n_aar bibliothèques dans le classpath d'exécution de la version release de l'app (\`:app\`, \`releaseRuntimeClasspath\`), licence lue dans leur POM (plusieurs licences séparées par « ; » : toutes celles que le POM déclare) ; licence absente du POM : $n_unknown."
   echo
-  echo '| Bibliothèque | Version | Licence (POM) |'
-  echo '|---|---|---|'
-  awk -F'\t' '{ printf "| %s | %s | %s |\n", $1, $2, $3 }' "$tmp/aar.tsv"
-} >"$out"
+  part android "Bibliothèques Android" '| Bibliothèque | Version | Licence (POM) |' '|---|---|---|' "$tmp/aar.md"
+} >"$out/THIRD-PARTY.md"
 
 if ((check)); then
-  if ! diff -u THIRD-PARTY.md "$out"; then
-    echo "THIRD-PARTY.md is out of date: run docs/licences/third-party.sh" >&2
+  status=0
+  diff -u THIRD-PARTY.md "$out/THIRD-PARTY.md" || status=1
+  diff -ru docs/licences/tiers "$out/docs/licences/tiers" || status=1
+  if ((status)); then
+    echo "THIRD-PARTY.md or docs/licences/tiers/ is out of date: run docs/licences/third-party.sh" >&2
     exit 1
   fi
   echo "THIRD-PARTY.md is up to date ($n_crates crates, $n_aar Android libraries)"
 else
-  cp "$out" THIRD-PARTY.md
-  echo "THIRD-PARTY.md: $n_crates crates ($n_app in the app), $n_aar Android libraries, unknown licences: Rust $n_unknown_rust, Android $n_unknown"
+  cp "$out/THIRD-PARTY.md" THIRD-PARTY.md
+  rm -rf docs/licences/tiers
+  cp -r "$out/docs/licences/tiers" docs/licences/tiers
+  echo "THIRD-PARTY.md: $n_crates crates ($n_app in the app), $n_aar Android libraries, unknown licences: Rust $n_unknown_rust, Android $n_unknown; $(find docs/licences/tiers -name '*.md' | wc -l) table parts"
 fi
