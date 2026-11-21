@@ -398,6 +398,8 @@ pub enum AlertKind {
     ClosedNoDetour,
     /// Steep terrain (30° or more) ahead, off the route and the trails (K6 #56).
     Slope,
+    /// A protected zone entered off the route and the trails (K6 #56).
+    ProtectedZone,
 }
 
 /// An alert raised.
@@ -422,6 +424,7 @@ fn alert_kind(a: &Alert) -> AlertKind {
         Alert::Closed => AlertKind::Closed,
         Alert::ClosedNoDetour => AlertKind::ClosedNoDetour,
         Alert::Slope { .. } => AlertKind::Slope,
+        Alert::ProtectedZone { .. } => AlertKind::ProtectedZone,
     }
 }
 

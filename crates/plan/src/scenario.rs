@@ -1018,6 +1018,108 @@ pub fn steep_excursion(
     Ok(None)
 }
 
+/// A way off the loop into a protected zone ([`zone_excursion`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ZoneExcursion {
+    /// Where it leaves the loop, metres along it.
+    pub at_s: f64,
+    /// Farthest point.
+    pub to: LonLat,
+    /// Its distance from the loop, metres.
+    pub far_m: f64,
+    /// The zone's identifier.
+    pub zone: String,
+    /// The loop is already inside the zone where the skier leaves it.
+    pub from_inside: bool,
+}
+
+/// Where a skier can leave the loop of a plan into a protected zone away from every trail
+/// (K6 #56, [`Step::Excursion`]): a protected zone of the layers
+/// ([`crate::plan::is_protected`]) with rules for a day outing at the departure
+/// ([`crate::plan::zone_rules`]). Straight from the loop (between 20 and 80 % of it),
+/// square to it, up to 1 km: every point beyond the first 40 m at `clear_m` or more from
+/// any trail, 100 to 300 m inside the zone (one entry out and back), the deepest such way
+/// in. `None`: no such zone near the loop.
+pub fn zone_excursion(
+    plan: &DayPlan,
+    g: &PisteGraph,
+    data: &SiteData,
+    clear_m: f64,
+) -> Result<Option<ZoneExcursion>> {
+    let Some((layer, rules)) = &data.zones else {
+        return Ok(None);
+    };
+    let at_t = departure_utc(plan);
+    let c = Course::new(g, &plan.route.legs, &plan.eta)?;
+    // Depth inside the zone: at least, at most, metres.
+    const MIN_IN_M: f64 = 100.0;
+    const MAX_IN_M: f64 = 300.0;
+    let len = c.length_m();
+    let mut best: Option<(f64, ZoneExcursion)> = None;
+    let mut s = 0.2 * len;
+    while s < 0.8 * len {
+        let plane = LocalPlane::new(c.line().point_at(s));
+        let a = plane.xy(c.line().point_at(s - 10.0));
+        let z = plane.xy(c.line().point_at(s + 10.0));
+        let (dx, dy) = (z[0] - a[0], z[1] - a[1]);
+        let n = dx.hypot(dy).max(1e-9);
+        for side in [1.0, -1.0] {
+            let (ux, uy) = (-dy / n * side, dx / n * side);
+            let at = |d: f64| plane.lonlat([ux * d, uy * d]);
+            let mut zone: Option<(usize, f64)> = None;
+            let mut far: Option<f64> = None;
+            let mut d = 0.0;
+            while d <= 1000.0 {
+                let q = at(d);
+                if d >= 40.0 && g.snap(q, clear_m).is_some() {
+                    break;
+                }
+                match zone {
+                    Some((k, from)) => {
+                        if !layer.zones[k].contains(q) || d - from > MAX_IN_M {
+                            break;
+                        }
+                        if d - from >= MIN_IN_M {
+                            far = Some(d);
+                        }
+                    }
+                    None if d >= 40.0 => {
+                        let ev = skimap_core::zone_eval::evaluate(layer, rules, q, at_t);
+                        zone = layer
+                            .zones
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, z)| crate::plan::is_protected(z) && z.contains(q))
+                            .find(|(_, z)| {
+                                !crate::plan::zone_rules(&ev, rules, z.id()).0.is_empty()
+                            })
+                            .map(|(k, _)| (k, d));
+                    }
+                    None => {}
+                }
+                d += 10.0;
+            }
+            if let (Some((k, from)), Some(d)) = (zone, far)
+                && best.as_ref().is_none_or(|b| d - from > b.0)
+            {
+                let start = layer.zones[k].contains(at(0.0));
+                best = Some((
+                    d - from,
+                    ZoneExcursion {
+                        at_s: s,
+                        to: at(d),
+                        far_m: d,
+                        zone: layer.zones[k].id().to_owned(),
+                        from_inside: start,
+                    },
+                ));
+            }
+        }
+        s += 50.0;
+    }
+    Ok(best.map(|b| b.1))
+}
+
 /// Seconds from the start of a run.
 pub fn rel(run: &Run, t: Timestamp) -> f64 {
     (t - run.t0).as_millis() as i64 as f64 / 1000.0

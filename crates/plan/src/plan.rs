@@ -708,6 +708,56 @@ pub struct ZoneCrossing {
     pub runs: Vec<(f64, f64)>,
 }
 
+/// Whether a zone of the layer is a protected zone whose rules are said (A7, K6 #56): not
+/// a country, department, canton or commune.
+pub fn is_protected(z: &skimap_zones::layer::Zone) -> bool {
+    use skimap_zones::layer::ZoneKind;
+    !matches!(
+        z.kind(),
+        ZoneKind::Country | ZoneKind::Department | ZoneKind::Canton | ZoneKind::Commune
+    )
+}
+
+/// The rules of a zone said for a day outing (A7, and on entering it off the trails, K6
+/// #56): of the rules active in an evaluation (C8) that match the zone, access, leaving the
+/// routes and fire, each once; and the end of the period of the first seasonal one.
+pub fn zone_rules(
+    ev: &skimap_core::zone_eval::Evaluation,
+    rules: &skimap_zones::RuleSet,
+    zone: &str,
+) -> (Vec<ZoneRule>, Option<DayMonth>) {
+    use skimap_core::zone_eval::Verdict;
+    use skimap_zones::rules::{Period, Topic};
+    let mut said = Vec::new();
+    let mut until = None;
+    for r in ev
+        .active_rules()
+        .filter(|r| r.zones.iter().any(|id| id == zone))
+    {
+        let zr = match (r.topic, r.verdict) {
+            (Topic::Access, Verdict::Forbidden) => ZoneRule::NoEntry,
+            (Topic::Access, Verdict::AvoidRecommended) => ZoneRule::Quiet,
+            (Topic::LeaveRoutes, Verdict::Forbidden | Verdict::ForbiddenInPlaces) => {
+                ZoneRule::StayOnRoutes
+            }
+            (Topic::Fire, Verdict::Forbidden) => ZoneRule::NoFire,
+            _ => continue,
+        };
+        if !said.contains(&zr) {
+            said.push(zr);
+        }
+        if until.is_none()
+            && let Some(Period::Yearly { to, .. }) = rules.get(&r.rule).map(|x| &x.period)
+        {
+            until = Some(DayMonth {
+                day: to.day as u8,
+                month: to.month as u8,
+            });
+        }
+    }
+    (said, until)
+}
+
 /// Protected zones crossed by a line (sampled every 10 m) between the distances `range`
 /// on a day; nothing without the zones layer. The zones of the layer that are not a country, department, canton or
 /// commune are tested along the line; the rules of each zone crossed are those of C8 at
@@ -719,22 +769,11 @@ pub fn protected_zones(
     data: &SiteData,
     date: Date,
 ) -> Vec<ZoneCrossing> {
-    use skimap_core::zone_eval::Verdict;
-    use skimap_zones::layer::ZoneKind;
-    use skimap_zones::rules::{Period, Topic};
     let Some((layer, rules)) = &data.zones else {
         return Vec::new();
     };
-    let protected: Vec<&skimap_zones::layer::Zone> = layer
-        .zones
-        .iter()
-        .filter(|z| {
-            !matches!(
-                z.kind(),
-                ZoneKind::Country | ZoneKind::Department | ZoneKind::Canton | ZoneKind::Commune
-            )
-        })
-        .collect();
+    let protected: Vec<&skimap_zones::layer::Zone> =
+        layer.zones.iter().filter(|z| is_protected(z)).collect();
     // Stretches of the line inside each zone (closer than NO_NETWORK_MERGE_M merged),
     // and the first point inside: tested every ZONE_STEP samples of 10 m, and at every
     // sample between two tests that disagree (the boundaries to 10 m; a zone crossed on
@@ -800,33 +839,7 @@ pub fn protected_zones(
         };
         // Its rules of a day outing, as A7 says them: access, leaving the routes, fire.
         let ev = skimap_core::zone_eval::evaluate(layer, rules, p, noon);
-        let mut said = Vec::new();
-        let mut until = None;
-        for r in ev
-            .active_rules()
-            .filter(|r| r.zones.iter().any(|id| id == z.id()))
-        {
-            let zr = match (r.topic, r.verdict) {
-                (Topic::Access, Verdict::Forbidden) => ZoneRule::NoEntry,
-                (Topic::Access, Verdict::AvoidRecommended) => ZoneRule::Quiet,
-                (Topic::LeaveRoutes, Verdict::Forbidden | Verdict::ForbiddenInPlaces) => {
-                    ZoneRule::StayOnRoutes
-                }
-                (Topic::Fire, Verdict::Forbidden) => ZoneRule::NoFire,
-                _ => continue,
-            };
-            if !said.contains(&zr) {
-                said.push(zr);
-            }
-            if until.is_none()
-                && let Some(Period::Yearly { to, .. }) = rules.get(&r.rule).map(|x| &x.period)
-            {
-                until = Some(DayMonth {
-                    day: to.day as u8,
-                    month: to.month as u8,
-                });
-            }
-        }
+        let (said, until) = zone_rules(&ev, rules, z.id());
         if said.is_empty() {
             continue;
         }

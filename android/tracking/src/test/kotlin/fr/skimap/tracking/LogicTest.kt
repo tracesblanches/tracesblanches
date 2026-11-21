@@ -189,6 +189,8 @@ class LogicTest {
         assertArrayEquals(HapticPatterns.SAFETY, HapticPatterns.alert(AlertKind.TURNAROUND_NOW))
         // Steep terrain off the trails (#56): felt as safety.
         assertArrayEquals(HapticPatterns.SAFETY, HapticPatterns.alert(AlertKind.SLOPE))
+        // A protected zone entered off the trails (#56): a rule to know, felt as a proposal.
+        assertArrayEquals(HapticPatterns.PROPOSAL, HapticPatterns.alert(AlertKind.PROTECTED_ZONE))
         assertArrayEquals(HapticPatterns.BACK_ON, HapticPatterns.alert(AlertKind.BACK_ON_ROUTE))
         assertArrayEquals(HapticPatterns.LEFT, HapticPatterns.turn(Turn.KEEP_LEFT))
         assertArrayEquals(HapticPatterns.RIGHT, HapticPatterns.turn(Turn.SLIGHT_RIGHT))
