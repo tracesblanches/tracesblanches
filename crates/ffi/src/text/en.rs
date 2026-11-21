@@ -103,6 +103,7 @@ impl Texts for En {
             KeyKind::NoNetworkEnd => "end of a zone without network",
             KeyKind::AvalancheStart => "start of a known avalanche path",
             KeyKind::AvalancheEnd => "end of a known avalanche path",
+            KeyKind::DomainEntered => "another nordic area: its trail pass",
             KeyKind::Finish => "finish",
         }
     }

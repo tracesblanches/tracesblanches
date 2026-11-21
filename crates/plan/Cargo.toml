@@ -26,6 +26,7 @@ thiserror.workspace = true
 # Not in [workspace.dependencies]: property tests of the speech policy (J4) and of the
 # tracker. Only the `std` feature (no fork, no timeout, no regex).
 proptest = { version = "1.12.0", default-features = false, features = ["std"] }
+geo.workspace = true
 
 [lints]
 workspace = true

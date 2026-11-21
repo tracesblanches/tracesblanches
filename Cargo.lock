@@ -3341,6 +3341,7 @@ name = "skimap-plan"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "geo",
  "proptest",
  "serde",
  "serde_json",

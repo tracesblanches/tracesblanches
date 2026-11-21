@@ -565,6 +565,8 @@ struct Loaded {
 #[derive(uniffi::Object)]
 pub struct DayPlanner {
     pack_dir: PathBuf,
+    /// Neighbouring packs joined to the pack of the start (H2 #133).
+    neighbours: Vec<Pack>,
     site: &'static Site,
     loaded: Mutex<Loaded>,
     load_ms: u32,
@@ -592,10 +594,25 @@ pub fn open_day_planner(
     work_dir: String,
     lang: Lang,
 ) -> Result<Arc<DayPlanner>, TrackingError> {
+    open_day_planner_with(pack_dir, Vec::new(), work_dir, lang)
+}
+
+/// Opens the morning of the pack in `pack_dir` joined with the installed packs among
+/// `installed` whose box meets its box (H2 #133, [`crate::neighbours`]): a loop may cross
+/// into the neighbouring areas. `installed` may hold every installed pack (the start's
+/// included): the neighbours are chosen here.
+#[uniffi::export]
+pub fn open_day_planner_with(
+    pack_dir: String,
+    installed: Vec<String>,
+    work_dir: String,
+    lang: Lang,
+) -> Result<Arc<DayPlanner>, TrackingError> {
     let t0 = Instant::now();
     let pack = Pack::open(PathBuf::from(&pack_dir))?;
     let site = pack_site(&pack)?;
-    let view = PackView::build(&pack, Path::new(&work_dir))?;
+    let others = crate::neighbours::neighbours(&pack, &installed);
+    let view = crate::neighbours::build_view(&pack, &others, Path::new(&work_dir))?;
     let data = SiteData::load(&view.layout, site, &Paths::default()).map_err(|e| {
         TrackingError::Invalid {
             detail: e.to_string(),
@@ -606,6 +623,7 @@ pub fn open_day_planner(
     }
     let ctx = Context::load(&view.layout, site)?;
     Ok(Arc::new(DayPlanner {
+        neighbours: others,
         pack_dir: PathBuf::from(pack_dir),
         site,
         loaded: Mutex::new(Loaded {
@@ -682,6 +700,14 @@ impl DayPlanner {
     /// Site of the pack.
     pub fn site_id(&self) -> String {
         self.site.id.to_owned()
+    }
+
+    /// Sites of the neighbouring packs joined to the pack of the start (H2 #133).
+    pub fn neighbour_sites(&self) -> Vec<String> {
+        self.neighbours
+            .iter()
+            .map(|p| p.manifest().site.id.clone())
+            .collect()
     }
 
     /// Time to load the layers, milliseconds.
@@ -835,6 +861,7 @@ impl DayPlanner {
         write(PLAN_FILE, p.to_json()?.as_bytes())?;
         write(TRACK_FILE, &track.to_bytes())?;
         write(PACK_FILE, self.pack_dir.display().to_string().as_bytes())?;
+        crate::neighbours::write_neighbours(&dir, &self.neighbours)?;
         Ok(plan_view(&p, &plan_dir, g, self.lang))
     }
 }

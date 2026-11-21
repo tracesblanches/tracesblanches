@@ -57,7 +57,7 @@ use crate::tracking_back::{
     Backtrack, Car, CarSpotter, Network, Parking, Target, TargetKind, WayKind, choose_target,
     pack_parkings, way_back,
 };
-use crate::tracking_day::{PACK_FILE, PLAN_FILE, PackView, TRACK_FILE};
+use crate::tracking_day::{PACK_FILE, PLAN_FILE, TRACK_FILE};
 
 /// Inputs recorded next to the plan (JSON lines of `skimap_plan::tracker::Input`).
 pub const INPUTS_FILE: &str = "inputs.jsonl";
@@ -66,7 +66,7 @@ pub const CAR_FILE: &str = "car.json";
 /// Number of the proposal of « ramène-moi » (the tracker numbers its own from 1).
 pub const BACK_PROPOSAL_ID: u32 = u32::MAX;
 /// Directory under the plan's where the pack's layers are linked in the pipeline layout
-/// ([`PackView`]) for the tracker ([`Tracker::with_layers`]).
+/// ([`PackView`](crate::tracking_day::PackView)) for the tracker ([`Tracker::with_layers`]).
 pub const LAYERS_DIR: &str = "layers";
 /// Bytes of one packed fix: epoch milliseconds (i64), longitude, latitude (f64), little
 /// endian.
@@ -864,8 +864,11 @@ pub fn open_tracking(
     let plan = DayPlan::from_json(&String::from_utf8_lossy(&read(PLAN_FILE)?)).map_err(invalid)?;
     let trk = read(TRACK_FILE)?;
     let pack_dir = PathBuf::from(String::from_utf8_lossy(&read(PACK_FILE)?).trim());
-    let graph = load_graph(&pack_dir)?;
-    let layers = load_layers(&pack_dir, &dir.join(LAYERS_DIR));
+    // The packs joined to the pack of the start in the morning (H2 #133): the plan's
+    // legs are edges of their merged graph.
+    let neighbours = crate::neighbours::read_neighbours(&dir);
+    let graph = crate::neighbours::load_graph_set(&pack_dir, &neighbours)?;
+    let layers = load_layers_with(&pack_dir, &neighbours, &dir.join(LAYERS_DIR));
     let slope = crate::offpiste::load_slope(&pack_dir, &dir.join(LAYERS_DIR));
     let site = Pack::open(pack_dir.clone())
         .map(|p| p.manifest().site.id.clone())
@@ -978,13 +981,24 @@ pub fn voice_choice(voice_root: String, site: String, phone_lang: String) -> Voi
 }
 
 /// The layers of the pack in `pack_dir` for the tracker (X11), loaded by the morning's
-/// loaders on the pack's files linked under `work` ([`PackView`]). An error (a pack without
+/// loaders on the pack's files linked under `work` ([`PackView`](crate::tracking_day::PackView)). An error (a pack without
 /// the layers, or of a site without them) leaves the outing followed without them: the
 /// reason is the error's text.
 pub fn load_layers(pack_dir: &Path, work: &Path) -> Result<SiteData, String> {
+    load_layers_with(pack_dir, &[], work)
+}
+
+/// [`load_layers`] of the pack in `pack_dir` joined with its neighbours among `others`
+/// (H2 #133, [`crate::neighbours::build_view`]).
+pub fn load_layers_with(
+    pack_dir: &Path,
+    others: &[String],
+    work: &Path,
+) -> Result<SiteData, String> {
     let pack = Pack::open(pack_dir.to_path_buf()).map_err(|e| e.to_string())?;
     let site = crate::tracking_day::pack_site(&pack).map_err(|e| e.to_string())?;
-    let view = PackView::build(&pack, work).map_err(|e| e.to_string())?;
+    let ns = crate::neighbours::neighbours(&pack, others);
+    let view = crate::neighbours::build_view(&pack, &ns, work).map_err(|e| e.to_string())?;
     SiteData::load(&view.layout, site, &Paths::default()).map_err(|e| e.to_string())
 }
 

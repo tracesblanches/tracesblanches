@@ -137,6 +137,12 @@ fn copy_plan(from: &Path, to: &Path) -> Result<(), TrackingError> {
         skimap_common::output::copy_file(&from.join(f), &to.join(f))
             .map_err(|e| invalid(format!("{f}: {e}")))?;
     }
+    // The neighbouring packs of the plan (H2 #133), when it has some.
+    let n = crate::neighbours::NEIGHBOURS_FILE;
+    if from.join(n).is_file() {
+        skimap_common::output::copy_file(&from.join(n), &to.join(n))
+            .map_err(|e| invalid(format!("{n}: {e}")))?;
+    }
     Ok(())
 }
 
