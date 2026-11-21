@@ -353,6 +353,10 @@ private fun CreditsDialog(
                 Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
+                val texts = PackTexts(LocalResources.current)
+                // Each kind of information with its dates and sources (K3 #53).
+                state.opened.info.infos
+                    .forEach { Text(texts.infoText(it), style = MaterialTheme.typography.bodyMedium) }
                 state.opened.style.attributions
                     .forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
                 if (state.opened.info.personalSources) {

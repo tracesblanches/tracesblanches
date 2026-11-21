@@ -131,7 +131,7 @@ fn add_fee_zones(pack: &Path, m: &mut Manifest) -> Res<()> {
     layer["meta"] = Value::Null;
     layer["origin"] = json!("crates/ffi/examples/test_pack.rs");
     layer["personal_use_only"] = json!(false);
-    layer["sources"] = json!([]);
+    layer["sources"] = meta(false, "Redevances de test")["sources"].clone();
     layer["bytes"] = json!(std::fs::metadata(pack.join(file))?.len());
     layer["features"] = json!(2);
     layer["geometry_types"] = json!(["Polygon"]);

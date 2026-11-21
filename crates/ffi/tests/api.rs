@@ -966,3 +966,278 @@ fn fog_targets_offer_the_refuges_of_every_pack() {
     refuges.sort_unstable();
     assert_eq!(refuges, ["Abri OSM", "Cabane du test", "Refuge du test"]);
 }
+
+/// Pack layers drawn by the instantiated style `v` of the pack in `dir`: the layers whose
+/// file is the source of a style layer.
+fn drawn_layers(v: &Value, pack: &Pack, dir: &Path, out: &mut std::collections::HashSet<String>) {
+    let used: std::collections::HashSet<&str> = v["layers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|l| l["source"].as_str())
+        .collect();
+    for (id, src) in v["sources"].as_object().unwrap() {
+        if !used.contains(id.as_str()) {
+            continue;
+        }
+        let Some(url) = src["url"].as_str().or_else(|| src["data"].as_str()) else {
+            continue;
+        };
+        let Some(rest) = url.strip_prefix("pmtiles://").or(Some(url)) else {
+            continue;
+        };
+        if !rest.starts_with("file://") {
+            continue;
+        }
+        let path = file_path(rest);
+        for l in &pack.manifest().layers {
+            if path == dir.join(&l.file) {
+                out.insert(l.id.clone());
+            }
+        }
+    }
+}
+
+/// Checks of K3 (#53) on one pack: every layer is in exactly one kind of information,
+/// every kind has its date and its sources; every kind with a map layer is drawn by one of
+/// the six styles (the piste state colours the pistes and is counted, with its time, in
+/// the header: `PackInfo::status`). Returns the kinds, the number of layers drawn and the
+/// kinds none of whose map layers is drawn, with those layers.
+fn check_infos(
+    site: &str,
+    dir: &Path,
+    pack: &Pack,
+) -> (Vec<String>, usize, Vec<(String, Vec<String>)>) {
+    let mut drawn = std::collections::HashSet::new();
+    let mut info = None;
+    for name in STYLES {
+        let view = open_packs(
+            vec![dir.display().to_string()],
+            style_json(name),
+            false,
+            Lang::Fr,
+        )
+        .unwrap();
+        let v: Value = serde_json::from_str(&view.style.json).unwrap();
+        drawn_layers(&v, pack, dir, &mut drawn);
+        info = Some(view.info);
+    }
+    let info = info.unwrap();
+    let infos = &info.infos;
+    let mut undrawn = Vec::new();
+    for l in &pack.manifest().layers {
+        let n = infos.iter().filter(|i| i.layers.contains(&l.id)).count();
+        assert_eq!(n, 1, "{site}: layer {} in {n} kinds", l.id);
+    }
+    for i in infos {
+        assert!(
+            skimap_ffi::INFO_KINDS.contains(&i.id.as_str()),
+            "{site}: layer of no known kind: {} ({})",
+            i.id,
+            i.title
+        );
+        assert!(!i.sources.is_empty(), "{site} {}: no source", i.id);
+        assert!(
+            i.sources.iter().all(|s| !s.trim().is_empty()),
+            "{site} {}: {:?}",
+            i.id,
+            i.sources
+        );
+        assert!(
+            chrono::DateTime::parse_from_rfc3339(&i.updated_at).is_ok(),
+            "{site} {}: update date {:?}",
+            i.id,
+            i.updated_at
+        );
+        if i.id == "status" {
+            let s = info.status.as_ref().expect("the piste state in the header");
+            assert!(s.polled_at.is_some(), "{site}: state without its time");
+            continue;
+        }
+        if i.id == "bera" || i.id == "weather" {
+            // Not map layers: the morning and the plan say them (checked on the sites).
+            continue;
+        }
+        let map_layers: Vec<String> = i
+            .layers
+            .iter()
+            .filter(|l| {
+                pack.manifest()
+                    .layer(l)
+                    .is_some_and(|m| m.kind != skimap_pack::manifest::LayerKind::Data)
+            })
+            .cloned()
+            .collect();
+        if !map_layers.is_empty() && !map_layers.iter().any(|l| drawn.contains(l)) {
+            undrawn.push((i.id.clone(), map_layers));
+        }
+    }
+    (
+        infos.iter().map(|i| i.id.clone()).collect(),
+        drawn.len(),
+        undrawn,
+    )
+}
+
+/// K3 (#53) on the test pack: each kind of information with its date and sources.
+#[test]
+fn every_info_of_the_test_pack_is_dated_and_sourced() {
+    let tmp = tempfile::tempdir().unwrap();
+    test_pack(tmp.path(), 1);
+    let pack = Pack::open(tmp.path()).unwrap();
+    let dir = std::fs::canonicalize(tmp.path()).unwrap();
+    let (kinds, drawn, undrawn) = check_infos("test", &dir, &pack);
+    println!("test pack: {kinds:?}, {drawn} layers drawn");
+    assert!(undrawn.is_empty(), "{undrawn:?}");
+    assert!(kinds.contains(&"pistes".to_owned()), "{kinds:?}");
+}
+
+/// K3 (#53), « toutes les couches visibles et datées », on every pack of the data directory
+/// (`SKIMAP_DATA_DIR`): every layer in one kind of information, each with its update date
+/// and its sources, each kind with a map layer drawn by the styles; both evaluation sites
+/// together (free mode) keep the oldest dates. A kind not drawn is allowed only for layers
+/// in the raster format of packs built before the snow became vector tiles (the builder
+/// writes no raster layer any more, `raster::catalog` is empty; the styles draw the vector
+/// tiles): those packs are listed, to rebuild.
+#[test]
+#[ignore = "needs the real packs in $SKIMAP_DATA_DIR/out/<site>/pack/"]
+fn real_packs_every_info_shown_dated_and_sourced() {
+    let root = std::env::var("SKIMAP_DATA_DIR").map_or_else(
+        |_| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"),
+        PathBuf::from,
+    );
+    let mut dirs: Vec<PathBuf> = std::fs::read_dir(root.join("out"))
+        .unwrap()
+        .flatten()
+        .map(|e| e.path().join("pack"))
+        .filter(|p| p.join("manifest.json").is_file())
+        .collect();
+    dirs.sort();
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    let mut stale = Vec::new();
+    for dir in &dirs {
+        let dir = &std::fs::canonicalize(dir).unwrap();
+        let pack = Pack::open(dir).unwrap();
+        let site = pack.manifest().site.id.clone();
+        let (kinds, drawn, undrawn) = check_infos(&site, dir, &pack);
+        for (kind, layers) in undrawn {
+            let raster = layers.iter().all(|l| {
+                pack.manifest()
+                    .layer(l)
+                    .is_some_and(|m| m.kind == skimap_pack::manifest::LayerKind::Raster)
+            });
+            assert!(
+                raster,
+                "{site} {kind}: none of {layers:?} drawn by the styles"
+            );
+            stale.push(format!("{site} ({kind}: {})", layers.join(", ")));
+        }
+        for k in &kinds {
+            *seen.entry(k.clone()).or_default() += 1;
+        }
+        println!(
+            "{site}: {} kinds, {drawn} layers drawn: {kinds:?}",
+            kinds.len()
+        );
+    }
+    let mut seen: Vec<_> = seen.into_iter().collect();
+    seen.sort();
+    println!("{} packs; packs per kind: {seen:?}", dirs.len());
+    println!(
+        "{} packs built before the vector snow tiles, to rebuild: {stale:?}",
+        stale.len()
+    );
+    assert!(dirs.len() >= 30, "{} packs only", dirs.len());
+    for k in [
+        "pistes", "slopes", "snow", "zones", "refuges", "network", "bera", "weather",
+    ] {
+        assert!(seen.iter().any(|(s, _)| s == k), "no pack has {k}");
+    }
+    // The BERA and the weather, not drawn: the weather in the morning's briefing, the BERA
+    // in the validated plan.
+    for s in ["cervieres", "chapelle-des-bois"] {
+        let dir = root.join("out").join(s).join("pack");
+        let has_bera = Pack::open(&dir).unwrap().manifest().layer("bera").is_some();
+        let work = tempfile::tempdir().unwrap();
+        let planner = skimap_ffi::tracking_day::open_day_planner(
+            dir.display().to_string(),
+            work.path().join("view").display().to_string(),
+            Lang::Fr,
+        )
+        .unwrap();
+        let start = skimap_ffi::tracking_day::day_starts(s.into(), Lang::Fr).remove(0);
+        let o = skimap_ffi::tracking_day::day_default_outing();
+        let m = planner
+            .morning(
+                skimap_ffi::tracking_day::DayRequest {
+                    label: "test".into(),
+                    start,
+                    date: "2026-11-16".into(),
+                    start_time: Some("10:00".into()),
+                    earliest: "08:00".into(),
+                    budget_min: o.budget_min,
+                    skating: o.skating,
+                    return_before: None,
+                    max_difficulty: None,
+                },
+                None,
+            )
+            .unwrap();
+        // The validated plan says the BERA of the day, or that it is missing.
+        let v = planner
+            .validate(0, None, work.path().join("plan").display().to_string())
+            .unwrap();
+        // Its avalanche sentence (`[synthesis]`), not the closing « lisez le BERA ».
+        let bera: Vec<&str> = v
+            .text
+            .lines()
+            .filter(|l| l.contains("[synthesis]") && (l.contains("BERA") || l.contains("bulletin")))
+            .collect();
+        println!("{s}: BERA said {bera:?}");
+        assert!(
+            m.briefing.iter().any(|b| b.contains("°C")),
+            "{s}: no weather"
+        );
+        if has_bera {
+            assert!(!bera.is_empty(), "{s}: no BERA in {}", v.text);
+        }
+    }
+    // Both evaluation sites together (free mode): the oldest dates of either.
+    let two: Vec<PathBuf> = ["cervieres", "chapelle-des-bois"]
+        .iter()
+        .map(|s| root.join("out").join(s).join("pack"))
+        .collect();
+    let one: Vec<skimap_ffi::PackInfo> = two
+        .iter()
+        .map(|d| {
+            open_packs(
+                vec![d.display().to_string()],
+                style_json("fond-clair"),
+                false,
+                Lang::Fr,
+            )
+            .unwrap()
+            .info
+        })
+        .collect();
+    let both = open_packs(
+        two.iter().map(|d| d.display().to_string()).collect(),
+        style_json("fond-clair"),
+        true,
+        Lang::Fr,
+    )
+    .unwrap()
+    .info;
+    assert_eq!(
+        both.generated_at,
+        one[0].generated_at.clone().min(one[1].generated_at.clone())
+    );
+    for i in &both.infos {
+        let dates: Vec<&String> = one
+            .iter()
+            .filter_map(|p| p.infos.iter().find(|x| x.id == i.id))
+            .map(|x| &x.updated_at)
+            .collect();
+        assert_eq!(Some(&i.updated_at), dates.iter().min().copied(), "{}", i.id);
+    }
+}
