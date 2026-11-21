@@ -10,6 +10,7 @@
 #   scripts/ci                     every stage except the weekly one
 #   scripts/ci --quick             fmt, clippy, test (the pre-push hook)
 #   scripts/ci --weekly            every stage, then the weekly real build-all
+#   scripts/ci --only full-data    full_data_ tests on the complete local data as it is
 #   scripts/ci --only fuzz,bench   these stages only (names below)
 #   scripts/ci --skip android      every stage except these
 #   scripts/ci --list              the stages and what they run
@@ -23,8 +24,9 @@
 #                         empty cache, every source downloaded again)
 #   --fail-fast           stop at the first failed stage
 #
-# Environment: SKIMAP_DATA_DIR (complete local data for the full-data tests; default
-# ./data, then the data/ of the main checkout), SKIMAP_CI_LOG_ROOT (default
+# Environment: SKIMAP_DATA_DIR (complete local data, read by the tests of skimap-plan and
+# by the full-data stage; default ./data, then the data/ of the main checkout),
+# SKIMAP_RESEARCH_RAW (research/raw, same search), SKIMAP_CI_LOG_ROOT (default
 # ~/.cache/skimap-ci), SKIMAP_CI_WEEKLY_DIR (data directory of the weekly build, default
 # ~/.cache/skimap-ci/weekly/data, never the shared data/), METEOFRANCE_API_KEY (weekly: BERA;
 # without it the `bera` step reports Unavailable), ANDROID_HOME (default ~/Android/Sdk),
@@ -39,7 +41,10 @@ set -euo pipefail
 root=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
 cd "$root"
 
-all_stages=(fmt clippy test full-data scenarios doc deny data-check scripts properties fuzz bench android-rust android)
+# The full_data_ tests compare the code with outputs of `skimap build-all`: they belong to
+# the weekly stage, which rebuilds them with this code (data/ may be older than the code);
+# `full-data` runs them on data/ as it is, on demand only.
+all_stages=(fmt clippy test scenarios doc deny data-check scripts properties fuzz bench android-rust android)
 quick_stages=(fmt clippy test)
 
 describe() {
@@ -47,7 +52,7 @@ describe() {
     fmt) echo "rustfmt --check, workspace and fuzz crate" ;;
     clippy) echo "clippy -D warnings, all targets: workspace, core and pack with pipeline, fuzz crate" ;;
     test) echo "cargo test --workspace; phone crates alone; no HTTP/SQLite on the phone; geotiff and pipeline variants" ;;
-    full-data) echo "full_data_ tests on the complete local data (SKIMAP_DATA_DIR), release; skipped without data" ;;
+    full-data) echo "on demand: full_data_ tests on the complete local data as it is (SKIMAP_DATA_DIR), release" ;;
     scenarios) echo "Q9 outing scenarios replayed in the kernel (skimap-plan --test scenarios), at least 15" ;;
     doc) echo "cargo doc -D warnings (workspace, pipeline variants) and doctests" ;;
     deny) echo "cargo deny check: licences, RustSec advisories, bans, sources (deny.toml)" ;;
@@ -87,7 +92,7 @@ while (($#)); do
     --weekly-keep-cache) keep_cache=1 ;;
     --fail-fast) fail_fast=1 ;;
     --list)
-      for s in "${all_stages[@]}" weekly; do printf '  %-13s %s\n' "$s" "$(describe "$s")"; done
+      for s in "${all_stages[@]}" weekly full-data; do printf '  %-13s %s\n' "$s" "$(describe "$s")"; done
       exit 0
       ;;
     -h | --help) usage; exit 0 ;;
@@ -126,10 +131,10 @@ ndk_version=28.2.13676358
 # Complete local data: SKIMAP_DATA_DIR, ./data, or the data/ of the main checkout (agent
 # worktrees have none of their own).
 data_dir=""
+common=$(git rev-parse --path-format=absolute --git-common-dir)
 if [[ -n ${SKIMAP_DATA_DIR:-} ]]; then
   data_dir=$SKIMAP_DATA_DIR
 else
-  common=$(git rev-parse --path-format=absolute --git-common-dir)
   for d in "$root/data" "$(dirname "$common")/data"; do
     if [[ -d $d/out ]]; then data_dir=$(cd "$d" && pwd -P); break; fi
   done
@@ -137,6 +142,12 @@ fi
 # Tests that read the complete data (skimap-plan scenarios, allocations and pace; the
 # full_data_ category) find it through SKIMAP_DATA_DIR.
 [[ -n $data_dir ]] && export SKIMAP_DATA_DIR=$data_dir
+# Raw research inputs (historic reports of the avalanche tests), same search.
+if [[ -z ${SKIMAP_RESEARCH_RAW:-} ]]; then
+  for d in "$root/research/raw" "$(dirname "$common")/research/raw"; do
+    if [[ -d $d ]]; then export SKIMAP_RESEARCH_RAW=$d; break; fi
+  done
+fi
 
 # Test sites of the reference data set (fixtures/, Q1): the weekly build rebuilds them.
 mapfile -t test_sites < <(find fixtures/data/out -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
