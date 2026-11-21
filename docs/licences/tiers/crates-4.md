@@ -4,10 +4,6 @@
 
 | Crate | Version | Licence | App | Dépôt |
 |---|---|---|---|---|
-| rten-simd | 0.28.0 | MIT OR Apache-2.0 |  | https://github.com/robertknight/rten |
-| rten-tensor | 0.28.0 | MIT OR Apache-2.0 |  | https://github.com/robertknight/rten |
-| rten-vecmath | 0.28.0 | MIT OR Apache-2.0 |  | https://github.com/robertknight/rten |
-| rusqlite | 0.42.0 | MIT |  | https://github.com/rusqlite/rusqlite |
 | rust-aec | 0.1.1 | MIT |  | https://github.com/hkwk/rust-aec |
 | rustc-hash | 2.1.3 | Apache-2.0 OR MIT |  | https://github.com/rust-lang/rustc-hash |
 | rustc_version | 0.4.1 | MIT OR Apache-2.0 |  | https://github.com/djc/rustc-version-rs |
@@ -89,3 +85,7 @@
 | typeid | 1.0.3 | MIT OR Apache-2.0 |  | https://github.com/dtolnay/typeid |
 | typenum | 1.20.1 | MIT OR Apache-2.0 | oui | https://github.com/paholg/typenum |
 | unarray | 0.1.4 | MIT OR Apache-2.0 |  | https://github.com/cameron1024/unarray |
+| unicode-ident | 1.0.27 | (MIT OR Apache-2.0) AND Unicode-3.0 |  | https://github.com/dtolnay/unicode-ident |
+| unicode-width | 0.2.3 | MIT OR Apache-2.0 |  | https://github.com/unicode-rs/unicode-width |
+| uniffi | 0.32.2 | MPL-2.0 | oui | https://github.com/mozilla/uniffi-rs |
+| uniffi_bindgen | 0.32.2 | MPL-2.0 |  | https://github.com/mozilla/uniffi-rs |

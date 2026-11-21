@@ -14,7 +14,7 @@ data class ModelFile(
  * The speech model, an optional download (never in the APK): Parakeet-TDT-0.6B-v3 int8
  * (sherpa-onnx export, Hugging Face mirror of the sherpa-onnx author, revision pinned)
  * and Silero VAD v6.2.3. Sizes and digests checked on 2026-11-15 (the Hugging Face LFS
- * oids; tokens.txt identical to the one speak validated on the Pixel 8 Pro).
+ * oids).
  */
 data class ModelSpec(
     val id: String,

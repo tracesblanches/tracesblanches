@@ -11,7 +11,7 @@ import java.security.MessageDigest
 import java.util.zip.ZipFile
 import javax.inject.Inject
 
-// Offline voice commands (V3 #66, VO5 #87, A11 #98): the speech stack of the speak project
+// Offline voice commands (V3 #66, VO5 #87, A11 #98): a speech-to-text stack
 // (sherpa-onnx 1.13.8, Silero VAD v6.2.3, Parakeet-TDT-0.6B-v3 int8), loaded on demand and
 // released after each command. The model is an optional download (ModelSpec), never in
 // the APK; only the two native libraries the JNI needs are. No UniFFI type here: the app

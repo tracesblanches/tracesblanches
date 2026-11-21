@@ -4,10 +4,6 @@
 
 | Crate | Version | Licence | App | Dépôt |
 |---|---|---|---|---|
-| unicode-ident | 1.0.27 | (MIT OR Apache-2.0) AND Unicode-3.0 |  | https://github.com/dtolnay/unicode-ident |
-| unicode-width | 0.2.3 | MIT OR Apache-2.0 |  | https://github.com/unicode-rs/unicode-width |
-| uniffi | 0.32.2 | MPL-2.0 | oui | https://github.com/mozilla/uniffi-rs |
-| uniffi_bindgen | 0.32.2 | MPL-2.0 |  | https://github.com/mozilla/uniffi-rs |
 | uniffi_core | 0.32.2 | MPL-2.0 | oui | https://github.com/mozilla/uniffi-rs |
 | uniffi_internal_macros | 0.32.2 | MPL-2.0 |  | https://github.com/mozilla/uniffi-rs |
 | uniffi_macros | 0.32.2 | MPL-2.0 |  | https://github.com/mozilla/uniffi-rs |

@@ -34,7 +34,7 @@ class Engines(
 
 /**
  * Silero VAD v6.2.3 through sherpa-onnx's `Vad.compute` (the raw probability; the end of
- * the command is [Endpointer]'s), as speak does: Silero v5/v6 take 64 samples of context
+ * the command is [Endpointer]'s): Silero v5/v6 take 64 samples of context
  * before each 512-sample window.
  */
 class SileroVad(

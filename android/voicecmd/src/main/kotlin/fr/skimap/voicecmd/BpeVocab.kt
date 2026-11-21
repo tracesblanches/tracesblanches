@@ -6,9 +6,9 @@ import java.io.IOException
 
 /**
  * The BPE vocabulary sherpa-onnx needs to encode hotwords with Parakeet's own pieces
- * (`modeling_unit=bpe`), made from the model's `tokenizer.json` as speak does
- * (`app/scripts/fetch_models.sh`): the pieces in id order, which must be the order of
- * `tokens.txt` (checked), score minus the merge rank, special pieces 0.
+ * (`modeling_unit=bpe`), made from the model's `tokenizer.json`: the pieces in id order,
+ * which must be the order of `tokens.txt` (checked), score minus the merge rank, special
+ * pieces 0.
  */
 object BpeVocab {
     fun write(

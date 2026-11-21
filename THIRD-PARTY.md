@@ -20,13 +20,13 @@ des données produites (packs, couches), par source, dans
 
 ## Crates Rust
 
-383 crates tierces dans `Cargo.lock` (toutes fonctions, cibles Linux et Android), dont 124 liées dans la bibliothèque de l'app (`skimap-ffi`, colonne « App ») ; licence inconnue : 0. Une licence « A OR B » laisse le choix.
+379 crates tierces dans `Cargo.lock` (toutes fonctions, cibles Linux et Android), dont 120 liées dans la bibliothèque de l'app (`skimap-ffi`, colonne « App ») ; licence inconnue : 0. Une licence « A OR B » laisse le choix.
 
 - [Crates Rust (1)](docs/licences/tiers/crates-1.md) : lignes 1 à 85
 - [Crates Rust (2)](docs/licences/tiers/crates-2.md) : lignes 86 à 170
 - [Crates Rust (3)](docs/licences/tiers/crates-3.md) : lignes 171 à 255
 - [Crates Rust (4)](docs/licences/tiers/crates-4.md) : lignes 256 à 340
-- [Crates Rust (5)](docs/licences/tiers/crates-5.md) : lignes 341 à 383
+- [Crates Rust (5)](docs/licences/tiers/crates-5.md) : lignes 341 à 379
 
 ## Bibliothèques Android
 

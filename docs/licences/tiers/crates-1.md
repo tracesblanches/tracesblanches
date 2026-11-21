@@ -26,7 +26,6 @@
 | base64 | 0.23.1 | MIT OR Apache-2.0 |  | https://github.com/marshallpierce/rust-base64 |
 | basic-toml | 0.1.10 | MIT OR Apache-2.0 |  | https://github.com/dtolnay/basic-toml |
 | bincode-next | 3.1.2 | MIT or Apache-2.0 |  | https://github.com/Apich-Organization/bincode |
-| bitflags | 1.3.2 | MIT/Apache-2.0 | oui | https://github.com/bitflags/bitflags |
 | bitflags | 2.13.2 | MIT OR Apache-2.0 | oui | https://github.com/bitflags/bitflags |
 | block-buffer | 0.12.1 | MIT OR Apache-2.0 | oui | https://github.com/RustCrypto/utils |
 | block-padding | 0.4.2 | MIT OR Apache-2.0 |  | https://github.com/RustCrypto/utils |
@@ -66,14 +65,11 @@
 | csv-core | 0.1.13 | Unlicense/MIT | oui | https://github.com/BurntSushi/rust-csv |
 | ctr | 0.10.1 | MIT OR Apache-2.0 | oui | https://github.com/RustCrypto/block-modes |
 | ctutils | 0.4.8 | Apache-2.0 OR MIT | oui | https://github.com/RustCrypto/utils |
-| dasp_frame | 0.11.0 | MIT OR Apache-2.0 | oui | https://github.com/rustaudio/dasp.git |
-| dasp_sample | 0.11.0 | MIT OR Apache-2.0 | oui | https://github.com/rustaudio/sample.git |
 | derive_more | 2.1.1 | MIT |  | https://github.com/JelteF/derive_more |
 | derive_more-impl | 2.1.1 | MIT |  | https://github.com/JelteF/derive_more |
 | digest | 0.11.3 | MIT OR Apache-2.0 | oui | https://github.com/RustCrypto/traits |
 | displaydoc | 0.2.7 | MIT OR Apache-2.0 |  | https://github.com/yaahc/displaydoc |
 | earcut | 0.4.5 | ISC | oui | https://github.com/ciscorn/earcut-rs |
-| ebur128 | 0.1.11 | MIT | oui | https://github.com/sdroege/ebur128 |
 | either | 1.19.0 | MIT OR Apache-2.0 | oui | https://github.com/rayon-rs/either |
 | either-or-both | 0.3.1 | Apache-2.0 OR MIT |  | https://github.com/gamma0987/either-or-both |
 | embedded-io | 0.7.1 | MIT OR Apache-2.0 |  | https://github.com/rust-embedded/embedded-hal |
@@ -89,3 +85,7 @@
 | find-msvc-tools | 0.1.15 | MIT OR Apache-2.0 |  | https://github.com/rust-lang/cc-rs |
 | fixedbitset | 0.5.9 | MIT OR Apache-2.0 |  | https://github.com/petgraph/fixedbitset |
 | flate2 | 1.1.11 | MIT OR Apache-2.0 | oui | https://github.com/rust-lang/flate2-rs |
+| float_next_after | 2.0.0 | MIT | oui | https://gitlab.com/bronsonbdevost/next_afterf |
+| fnv | 1.0.7 | Apache-2.0 / MIT |  | https://github.com/servo/rust-fnv |
+| foldhash | 0.1.5 | Zlib |  | https://github.com/orlp/foldhash |
+| foldhash | 0.2.0 | Zlib | oui | https://github.com/orlp/foldhash |

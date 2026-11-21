@@ -4,10 +4,6 @@
 
 | Crate | Version | Licence | App | Dépôt |
 |---|---|---|---|---|
-| libm | 0.2.16 | MIT | oui | https://github.com/rust-lang/compiler-builtins |
-| libsqlite3-sys | 0.40.0 | MIT |  | https://github.com/rusqlite/rusqlite |
-| linux-raw-sys | 0.4.15 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |  | https://github.com/sunfishcode/linux-raw-sys |
-| linux-raw-sys | 0.12.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | oui | https://github.com/sunfishcode/linux-raw-sys |
 | litemap | 0.8.3 | Unicode-3.0 |  | https://github.com/unicode-org/icu4x |
 | lock_api | 0.4.14 | MIT OR Apache-2.0 |  | https://github.com/Amanieu/parking_lot |
 | log | 0.4.35 | MIT OR Apache-2.0 | oui | https://github.com/rust-lang/log |
@@ -89,3 +85,7 @@
 | rten-parallel | 0.28.0 | MIT OR Apache-2.0 |  | https://github.com/robertknight/rten |
 | rten-sequence | 0.28.0 | MIT OR Apache-2.0 |  | https://github.com/robertknight/rten |
 | rten-shape-inference | 0.28.0 | MIT OR Apache-2.0 |  | https://github.com/robertknight/rten |
+| rten-simd | 0.28.0 | MIT OR Apache-2.0 |  | https://github.com/robertknight/rten |
+| rten-tensor | 0.28.0 | MIT OR Apache-2.0 |  | https://github.com/robertknight/rten |
+| rten-vecmath | 0.28.0 | MIT OR Apache-2.0 |  | https://github.com/robertknight/rten |
+| rusqlite | 0.42.0 | MIT |  | https://github.com/rusqlite/rusqlite |

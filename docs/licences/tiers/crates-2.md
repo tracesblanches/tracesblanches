@@ -4,10 +4,6 @@
 
 | Crate | Version | Licence | App | Dépôt |
 |---|---|---|---|---|
-| float_next_after | 2.0.0 | MIT | oui | https://gitlab.com/bronsonbdevost/next_afterf |
-| fnv | 1.0.7 | Apache-2.0 / MIT |  | https://github.com/servo/rust-fnv |
-| foldhash | 0.1.5 | Zlib |  | https://github.com/orlp/foldhash |
-| foldhash | 0.2.0 | Zlib | oui | https://github.com/orlp/foldhash |
 | form_urlencoded | 1.2.2 | MIT OR Apache-2.0 |  | https://github.com/servo/rust-url |
 | fs-err | 3.3.2 | MIT OR Apache-2.0 |  | https://github.com/andrewhickman/fs-err |
 | futures-channel | 0.3.34 | MIT OR Apache-2.0 |  | https://github.com/rust-lang/futures-rs |
@@ -89,3 +85,7 @@
 | lazy_static | 1.5.1 | MIT OR Apache-2.0 |  | https://github.com/rust-lang-nursery/lazy-static.rs |
 | libbz2-rs-sys | 0.2.6 | bzip2-1.0.6 |  | https://github.com/trifectatechfoundation/libbzip2-rs |
 | libc | 0.2.191 | MIT OR Apache-2.0 | oui | https://github.com/rust-lang/libc |
+| libm | 0.2.16 | MIT | oui | https://github.com/rust-lang/compiler-builtins |
+| libsqlite3-sys | 0.40.0 | MIT |  | https://github.com/rusqlite/rusqlite |
+| linux-raw-sys | 0.4.15 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |  | https://github.com/sunfishcode/linux-raw-sys |
+| linux-raw-sys | 0.12.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | oui | https://github.com/sunfishcode/linux-raw-sys |
