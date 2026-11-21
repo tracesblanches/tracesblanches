@@ -25,6 +25,7 @@ use chrono::{DateTime, Duration, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use skimap_assist::inputs::SiteData;
 use skimap_common::geom::LonLat;
+use skimap_common::grid::Grid;
 use skimap_core::graph::{HalfEdge, LocalPlane, PisteGraph};
 use skimap_core::matching::synth::{Noise, Rng, Truth, add_noise};
 
@@ -93,6 +94,16 @@ pub enum Step {
     TurnBack {
         /// Distance, metres.
         at_s: f64,
+    },
+    /// Leaves the course at this distance, straight to a point and straight back at a
+    /// walking speed, then skis on (off the trails: K6 #56).
+    Excursion {
+        /// Distance, metres.
+        at_s: f64,
+        /// Farthest point.
+        to: LonLat,
+        /// Speed, m/s.
+        speed_mps: f64,
     },
     /// No fix for a while from this distance.
     Gap {
@@ -459,9 +470,26 @@ pub fn run_with_layers(
     params: TrackerParams,
     layers: Option<&SiteData>,
 ) -> Result<Run> {
+    run_with(sc, plan, track, g, params, layers, None)
+}
+
+/// [`run_with_layers`] with the terrain slope given to the tracker as well
+/// ([`Tracker::with_slope`]: steep terrain off the trails, K6 #56).
+pub fn run_with(
+    sc: &Scenario,
+    plan: &DayPlan,
+    track: TrackView<'_>,
+    g: &PisteGraph,
+    params: TrackerParams,
+    layers: Option<&SiteData>,
+    slope: Option<&Grid<u8>>,
+) -> Result<Run> {
     let mut tr = Tracker::new(plan, track, g, None, params)?;
     if let Some(d) = layers {
         tr = tr.with_layers(d);
+    }
+    if let Some(s) = slope {
+        tr = tr.with_slope(s);
     }
     let mut legs = plan.route.legs.clone();
     for st in &sc.steps {
@@ -546,6 +574,8 @@ pub fn run_with_layers(
         }
     }
     let mut stop_until: Option<f64> = None;
+    // An excursion off the course: from, to, speed, metres done.
+    let mut excursion: Option<([f64; 2], [f64; 2], f64, f64)> = None;
     let mut gap_until: Option<f64> = None;
     let mut vehicle = false;
     let mut fired = false;
@@ -598,6 +628,14 @@ pub fn run_with_layers(
                 }
                 Step::Gap { at_s, secs } if sk.s >= *at_s => {
                     gap_until = Some(t + secs);
+                    true
+                }
+                Step::Excursion {
+                    at_s,
+                    to,
+                    speed_mps,
+                } if sk.s >= *at_s && excursion.is_none() => {
+                    excursion = Some((plane.xy(sk.pos()), plane.xy(*to), *speed_mps, 0.0));
                     true
                 }
                 Step::RefuseNext { after_s } => {
@@ -669,6 +707,21 @@ pub fn run_with_layers(
         } else if let Some(u) = stop_until {
             if t >= u {
                 stop_until = None;
+            }
+        } else if let Some((a, b, v, done)) = &mut excursion {
+            // Straight out and straight back.
+            let len = (b[0] - a[0]).hypot(b[1] - a[1]).max(1e-9);
+            *done += *v;
+            let f = if *done <= len {
+                *done / len
+            } else {
+                (2.0 - *done / len).max(0.0)
+            };
+            pos = plane.lonlat([a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]);
+            moving = true;
+            striding = 0.5;
+            if *done >= 2.0 * len {
+                excursion = None;
             }
         } else if !sk.done() {
             let (_, v) = sk.here();
@@ -883,9 +936,25 @@ pub fn replay_with_layers(
     params: TrackerParams,
     layers: Option<&SiteData>,
 ) -> Result<Vec<Output>> {
+    replay_with(inputs, plan, track, g, params, layers, None)
+}
+
+/// [`replay_with_layers`] with the terrain slope as well ([`run_with`]).
+pub fn replay_with(
+    inputs: &[Input],
+    plan: &DayPlan,
+    track: TrackView<'_>,
+    g: &PisteGraph,
+    params: TrackerParams,
+    layers: Option<&SiteData>,
+    slope: Option<&Grid<u8>>,
+) -> Result<Vec<Output>> {
     let mut tr = Tracker::new(plan, track, g, None, params)?;
     if let Some(d) = layers {
         tr = tr.with_layers(d);
+    }
+    if let Some(s) = slope {
+        tr = tr.with_slope(s);
     }
     let mut out = Vec::new();
     for i in inputs {

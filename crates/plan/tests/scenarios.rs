@@ -2186,3 +2186,244 @@ fn q9_37_adults_at_the_model_pace_offered_no_profile() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------------------
+// K6 (#56): steep terrain off the trails.
+
+/// The terrain slope of a site (`offpiste/slope_5m.skr`, the pack's `offpiste-slope`).
+fn slope_grid(site: &'static Site) -> Arc<skimap_common::grid::Grid<u8>> {
+    type Grids = HashMap<&'static str, Arc<skimap_common::grid::Grid<u8>>>;
+    static CACHE: OnceLock<Mutex<Grids>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(g) = cache.lock().unwrap().get(site.id) {
+        return g.clone();
+    }
+    let path = layout()
+        .out_dir(site)
+        .join("offpiste")
+        .join(skimap_core::offpiste::FILE_SLOPE);
+    let g = Arc::new(skimap_core::offpiste::read_raster(&path).expect("slope raster"));
+    cache.lock().unwrap().insert(site.id, g.clone());
+    g
+}
+
+fn slope_deg(g: &skimap_common::grid::Grid<u8>, p: skimap_common::geom::LonLat) -> f64 {
+    let (x, y) = skimap_common::crs::to_lambert93(p).unwrap();
+    g.value_at(x, y)
+        .filter(|v| **v != skimap_core::offpiste::SLOPE_NODATA)
+        .map_or(0.0, |v| f64::from(*v) / 2.0)
+}
+
+/// Where a skier can leave the loop for steep terrain away from every trail: the distance
+/// along the loop, the farthest point (in a stretch of at least 60 m at 32° or more,
+/// straight from the loop, every point of the way 25 m or more from any trail beyond the
+/// first 40 m), its distance from the loop.
+fn steep_excursion(
+    b: &Built,
+    grid: &skimap_common::grid::Grid<u8>,
+) -> (f64, skimap_common::geom::LonLat, f64) {
+    let c = skimap_plan::course::Course::new(&b.graph, &b.plan.route.legs, &b.plan.eta).unwrap();
+    let len = c.length_m();
+    let mut s = 0.2 * len;
+    while s < 0.8 * len {
+        let p = c.line().point_at(s);
+        let plane = skimap_core::graph::LocalPlane::new(p);
+        let a = plane.xy(c.line().point_at(s - 10.0));
+        let z = plane.xy(c.line().point_at(s + 10.0));
+        let (dx, dy) = (z[0] - a[0], z[1] - a[1]);
+        let n = dx.hypot(dy).max(1e-9);
+        for side in [1.0, -1.0] {
+            let (ux, uy) = (-dy / n * side, dx / n * side);
+            let at = |d: f64| plane.lonlat([ux * d, uy * d]);
+            // Gentle (under 27°) from the loop to the steep stretch: one passage out and
+            // back.
+            let mut run = 0.0;
+            let mut d = 0.0;
+            while d <= 1000.0 {
+                let q = at(d);
+                if d >= 40.0 && b.graph.snap(q, 25.0).is_some() {
+                    break;
+                }
+                let v = slope_deg(grid, q);
+                if v >= 31.0 {
+                    run += 5.0;
+                    if run >= 60.0 {
+                        return (s, at(d), d);
+                    }
+                } else if run > 0.0 || v >= 27.0 {
+                    break;
+                }
+                d += 5.0;
+            }
+        }
+        s += 25.0;
+    }
+    panic!("no steep terrain off the trails along the loop")
+}
+
+fn is_slope(o: &Output) -> Option<u32> {
+    match o {
+        Output::Alert {
+            alert: Alert::Slope { degrees },
+            ..
+        } => Some(*degrees),
+        _ => None,
+    }
+}
+
+fn slope_outing(b: &Built, site: &'static Site, name: &str, with_slope: bool) -> Run {
+    let grid = slope_grid(site);
+    let (s, to, d) = steep_excursion(b, &grid);
+    {
+        let c =
+            skimap_plan::course::Course::new(&b.graph, &b.plan.route.legs, &b.plan.eta).unwrap();
+        let from = c.line().point_at(s);
+        let plane = skimap_core::graph::LocalPlane::new(from);
+        let z = plane.xy(to);
+        let profile: Vec<String> = (0..=(d / 10.0) as usize)
+            .map(|k| {
+                let f = 10.0 * k as f64 / d;
+                format!(
+                    "{:.0}",
+                    slope_deg(&grid, plane.lonlat([z[0] * f, z[1] * f]))
+                )
+            })
+            .collect();
+        println!(
+            "{name} : pente tous les 10 m de la boucle au point le plus loin : {}",
+            profile.join(" ")
+        );
+    }
+    println!(
+        "{name} : sortie de la boucle à {s:.0} m vers {to:?}, à {d:.0} m de la boucle, pente {:.1}°",
+        slope_deg(&grid, to)
+    );
+    let sc = scen(
+        b,
+        name,
+        vec![
+            Step::WaitAtStart { secs: 60.0 },
+            Step::Excursion {
+                at_s: s,
+                to,
+                speed_mps: 0.8,
+            },
+        ],
+    );
+    let params = TrackerParams {
+        // The skier's own way back (no new route in the meantime).
+        reroute_after_s: 3600.0,
+        ..TrackerParams::default()
+    };
+    let view = TrackView::new(&b.track).expect("track");
+    let slope = with_slope.then_some(&*grid);
+    let run =
+        scenario::run_with(&sc, &b.plan, view, &b.graph, params.clone(), None, slope).expect("run");
+    println!("== {} ({} fixes, {} lots)", sc.name, run.fixes, run.batches);
+    for l in scenario::timeline(&run) {
+        println!("{l}");
+    }
+    let again =
+        scenario::replay_with(&run.inputs, &b.plan, view, &b.graph, params, None, slope).unwrap();
+    assert_eq!(again, run.outputs, "{}: not deterministic", run.scenario);
+    run
+}
+
+fn check_slope_outing(run: &Run) {
+    no_manipulation(run);
+    let t = expect(
+        run,
+        &[
+            (M::Alert(Alert::OffRoute), 0.0, 1e6),
+            (M::Said("slope"), 0.0, 1e6),
+            (M::Alert(Alert::BackOnRoute), 0.0, 1e6),
+            (M::Finished(End::Arrived), 0.0, 1e6),
+        ],
+    );
+    let slopes: Vec<(f64, u32)> = run
+        .outputs
+        .iter()
+        .filter_map(|o| is_slope(o).map(|d| (scenario::rel(run, o.t()), d)))
+        .collect();
+    println!("{} : alertes de pente {slopes:?}", run.scenario);
+    // One passage (out and back across the same steep stretch): one alert, one
+    // announcement, said as safety, never « sans danger ».
+    assert_eq!(slopes.len(), 1, "{slopes:?}");
+    assert!(slopes[0].1 >= 30, "{slopes:?}");
+    assert!(t[0] < slopes[0].0 && slopes[0].0 < t[2], "{t:?} {slopes:?}");
+    let said: Vec<(f64, &skimap_plan::speech::Spoken)> = run
+        .outputs
+        .iter()
+        .filter_map(|o| match o {
+            Output::Spoken { spoken, .. } if spoken.items.iter().any(|c| c.kind == "slope") => {
+                Some((scenario::rel(run, o.t()), spoken))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(said.len(), 1);
+    let (ts, spoken) = said[0];
+    let item = spoken.items.iter().find(|c| c.kind == "slope").unwrap();
+    assert_eq!(item.priority, Priority::Safety);
+    let text = spoken.announcement.text();
+    println!("« {text} » à {ts:.0} s");
+    assert!(
+        text.contains("pente de") && text.contains("degrés devant"),
+        "{text}"
+    );
+    assert!(never_safe(&text));
+    // Said at once (safety): within the second of its alert.
+    assert!((ts - slopes[0].0).abs() <= 1.0, "{ts} {slopes:?}");
+}
+
+#[test]
+fn k6_cervieres_steep_terrain_off_the_trails() {
+    let b = cervieres();
+    let run = slope_outing(
+        &b,
+        &CERVIERES,
+        "Cervières, hors des pistes en forte pente",
+        true,
+    );
+    check_slope_outing(&run);
+    // Without the slope raster (the tracker before K6 #56): nothing said of it.
+    let bare = slope_outing(&b, &CERVIERES, "Cervières, sans les pentes", false);
+    assert!(bare.outputs.iter().all(|o| is_slope(o).is_none()));
+}
+
+#[test]
+fn k6_normal_outings_never_say_the_slope() {
+    // Silence when all goes well: the loops of both sites with the slope raster, normal
+    // and harsh GPS (σ 15 m, forest outliers): their trails cross hillsides steeper than
+    // 30° beside them, never said.
+    for (b, site) in [
+        (cervieres(), &*CERVIERES),
+        (chapelle(), &*CHAPELLE_DES_BOIS),
+    ] {
+        for (sigma, seed) in [(10.0, 7), (15.0, 99), (15.0, 3)] {
+            let mut sc = scen(
+                &b,
+                &format!("{} σ {sigma} graine {seed}", site.id),
+                vec![Step::WaitAtStart { secs: 60.0 }],
+            );
+            sc.sigma_m = sigma;
+            sc.seed = seed;
+            let view = TrackView::new(&b.track).expect("track");
+            let grid = slope_grid(site);
+            let run = scenario::run_with(
+                &sc,
+                &b.plan,
+                view,
+                &b.graph,
+                TrackerParams::default(),
+                None,
+                Some(&grid),
+            )
+            .expect("run");
+            let n = run.outputs.iter().filter(|o| is_slope(o).is_some()).count();
+            println!("{} : {} fixes, {n} alerte(s) de pente", sc.name, run.fixes);
+            assert_eq!(n, 0, "{}", sc.name);
+            expect(&run, &[(M::Finished(End::Arrived), 0.0, 1e6)]);
+        }
+    }
+}
