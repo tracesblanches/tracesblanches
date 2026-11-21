@@ -80,17 +80,21 @@ class DomainsTest {
             val c = catalog()
             val all = c.search("", listOf(cervieresPack), server)
             assertEquals(219, all.size)
-            // Installed first: the pack covering Cervières.
+            // Installed first, and only the area of that pack (#175): Cervières.
             assertEquals(PackStatus.INSTALLED, all.first().status)
             assertEquals("/packs/cervieres", all.first().packDir)
             val installed = all.filter { it.status == PackStatus.INSTALLED }
-            assertTrue(installed.any { it.name.contains("Cervières") })
-            assertTrue(installed.all { it.lon in 6.66..6.86 && it.lat in 44.77..44.92 })
-            // Published by the server: the areas inside the Chapelle-des-Bois site.
+            assertEquals(listOf("Cervières"), installed.map { it.name })
+            assertEquals(listOf("cervieres"), installed.map { it.serverSite })
+            // Published by the server: the Chapelle-des-Bois area itself, not its neighbours.
             val available = all.filter { it.status == PackStatus.AVAILABLE }
-            println("published by the server, not installed: ${available.map { it.name }}")
-            assertTrue(available.any { it.name.contains("Chapelle") })
+            assertEquals(listOf("Chapelle-des-Bois"), available.map { it.name })
             assertTrue(available.all { it.serverSite == "chapelle-des-bois" && it.downloadBytes == 39_980_000uL })
+            // Neighbours inside the box of the Cervières pack: said, with no pack and no action.
+            val covered = all.filter { it.coveredBy != null }
+            println("inside the Cervières pack, not its area: ${covered.map { it.name }}")
+            assertTrue(covered.isNotEmpty())
+            assertTrue(covered.all { it.coveredBy == "Cervières" && it.packDir == null && it.serverSite == null })
             val found = c.search("chapelle bois", emptyList())
             assertTrue(found.map { it.name }.toString(), found.any { it.name.contains("Chapelle") })
             val near = c.nearest(6.1118, 46.5952, emptyList())
@@ -156,7 +160,9 @@ class DomainsTest {
                 advanceUntilIdle()
                 assertEquals(DownloadState.Running(10, 100), vm.state.value.downloads["chapelle-des-bois"])
                 // No position: said, no crash. Offline: the last server list, said.
-                val vm2 = DomainsViewModel(catalog(), FakeRepository(), { null }, FakeDownloads(sites = server, online = false))
+                // Nothing installed: the published areas of the copy are to download.
+                val offline = FakeDownloads(sites = server, online = false)
+                val vm2 = DomainsViewModel(catalog(), FakeRepository(entries = emptyList()), { null }, offline)
                 vm2.open()
                 vm2.nearest()
                 advanceUntilIdle()
@@ -178,7 +184,7 @@ class DomainsTest {
             status: PackStatus,
             dir: String? = null,
             site: String? = null,
-        ) = Domain(id, name, "$name (05)", 6.7, 44.8, 40.0, status, dir, site, if (site != null) 43_500_000uL else 0uL)
+        ) = Domain(id, name, "$name (05)", 6.7, 44.8, 40.0, status, dir, site, if (site != null) 43_500_000uL else 0uL, null)
         val results =
             listOf(
                 d("a", "Cervières", PackStatus.INSTALLED, "/packs/cervieres", "cervieres"),
@@ -239,6 +245,48 @@ class DomainsTest {
             val h = with(rule.density) { it.size.height.toDp() }
             assertTrue("$h", h.value >= 72f)
         }
+    }
+
+    private fun area(
+        id: String,
+        name: String,
+        status: PackStatus,
+        dir: String?,
+        site: String,
+        coveredBy: String?,
+    ) = Domain(id, name, "$name (05)", 6.7, 44.8, 20.0, status, dir, site, 21_000_000uL, coveredBy)
+
+    /** #175: an area inside a larger installed pack says it and acts only on its own pack. */
+    @Test
+    fun coveredAreaSaysTheLargerPackWithoutItsActions() {
+        val calls = mutableListOf<String>()
+        val results =
+            listOf(
+                area("a", "Cervières", PackStatus.INSTALLED, "/packs/cervieres", "cervieres", null),
+                area("b", "Arvieux", PackStatus.AVAILABLE, null, "arvieux", "Cervières"),
+            )
+        val state = DomainsState(loading = false, results = results, all = results)
+        rule.setContent {
+            Themed {
+                Surface(Modifier.fillMaxSize()) {
+                    DomainPicker(
+                        state,
+                        DomainActions(
+                            onPick = { calls += "open $it" },
+                            onDownload = { s, _ -> calls += "download $s" },
+                            onRemove = { calls += "remove $it" },
+                        ),
+                    )
+                }
+            }
+        }
+        rule.onNodeWithText("Compris aussi dans le pack installé Cervières").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Pack prêt à télécharger").assertIsDisplayed()
+        rule.onNodeWithText("Arvieux").performClick()
+        rule.onNodeWithText("Télécharger · ", substring = true).performScrollTo().performClick()
+        assertEquals(1, rule.onAllNodes(hasText("Supprimer")).fetchSemanticsNodes().size)
+        rule.onNodeWithText("Supprimer").performClick()
+        assertEquals(listOf("download arvieux", "remove cervieres"), calls)
     }
 
     @Test

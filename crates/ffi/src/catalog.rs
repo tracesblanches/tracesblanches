@@ -2,7 +2,8 @@
 //! embedded in the app as a small JSON resource (`examples/catalog.rs` writes it): pick an
 //! area on a map of France, by name or by distance, and know whether its pack is on the
 //! phone or published by the server (K2: the server catalog, [`crate::sync::ServerSite`],
-//! read by the app when the picker opens and kept for offline use).
+//! read by the app when the picker opens and kept for offline use). Each area names its
+//! own site (#175): its pack is that site's, never a neighbour's whose box contains it.
 
 use std::sync::Arc;
 
@@ -41,14 +42,17 @@ pub struct Domain {
     pub lat: f64,
     /// Kilometres of nordic pistes (OSM).
     pub km_nordic: f64,
-    /// Pack status.
+    /// Status of the pack of the area (its own site, never a neighbour's).
     pub status: PackStatus,
-    /// Directory of the pack on the phone when installed.
+    /// Directory of the pack of the area on the phone when installed.
     pub pack_dir: Option<String>,
-    /// Server site whose pack covers the area (download or update), if any.
+    /// Site of the area when the server publishes it (download, update, delete).
     pub server_site: Option<String>,
     /// Size of a first download of that pack.
     pub download_bytes: u64,
+    /// Name of another installed pack whose box contains the area, while the pack of the
+    /// area itself is not installed: said apart, without its actions.
+    pub covered_by: Option<String>,
 }
 
 /// An area and its distance to a position.
@@ -81,6 +85,11 @@ struct RawDomain {
     lon: f64,
     lat: f64,
     km: f64,
+    /// Site identifier of the area (registry `id` of its census record): the directory of
+    /// its pack and its entry in the server catalog. Absent in resources written before it:
+    /// the area then has no pack.
+    #[serde(default)]
+    site: Option<String>,
 }
 
 /// The catalogue, parsed once.
@@ -121,10 +130,6 @@ fn inside(b: &Bounds, lon: f64, lat: f64) -> bool {
     lon >= b.west && lon <= b.east && lat >= b.south && lat <= b.north
 }
 
-fn inside_bbox(b: &[f64], lon: f64, lat: f64) -> bool {
-    matches!(b, [w, s, e, n] if lon >= *w && lon <= *e && lat >= *s && lat <= *n)
-}
-
 impl Catalog {
     /// Parses the catalogue resource.
     pub fn parse(json: &str) -> Result<Self, PackError> {
@@ -152,11 +157,17 @@ impl Catalog {
 
     fn domain(&self, i: usize, packs: &[PackEntry], server: &[ServerSite]) -> Domain {
         let d = &self.file.domains[i];
-        let pack = packs
-            .iter()
-            .filter(|p| p.error.is_none())
-            .find(|p| p.bounds.as_ref().is_some_and(|b| inside(b, d.lon, d.lat)));
-        let site = server.iter().find(|s| inside_bbox(&s.bbox, d.lon, d.lat));
+        let usable = || packs.iter().filter(|p| p.error.is_none());
+        let own = d.site.as_deref();
+        let pack = own.and_then(|id| usable().find(|p| p.site_id == id));
+        let site = own.and_then(|id| server.iter().find(|s| s.site_id == id));
+        let covered_by = if pack.is_none() {
+            usable()
+                .find(|p| p.bounds.as_ref().is_some_and(|b| inside(b, d.lon, d.lat)))
+                .map(|p| p.site_name.clone())
+        } else {
+            None
+        };
         let status = match (pack, site) {
             (Some(_), _) => PackStatus::Installed,
             (None, Some(_)) => PackStatus::Available,
@@ -173,6 +184,7 @@ impl Catalog {
             pack_dir: pack.map(|p| p.dir.clone()),
             server_site: site.map(|s| s.site_id.clone()),
             download_bytes: site.map_or(0, |s| s.first_download_bytes),
+            covered_by,
         }
     }
 }
@@ -288,20 +300,21 @@ mod tests {
       "outline": [[6.0, 45.0, 7.0, 45.0, 7.0, 46.0, 6.0, 45.0]],
       "domains": [
         {"id": "a", "name": "Chapelle-des-Bois", "commune": "Chapelle-des-Bois", "dep": "25",
-         "lon": 6.11, "lat": 46.6, "km": 120.5},
+         "lon": 6.11, "lat": 46.6, "km": 120.5, "site": "chapelle-des-bois"},
         {"id": "b", "name": "Les Rousses", "alt_names": ["Station des Rousses"], "commune": "Les Rousses",
-         "dep": "39", "lon": 6.06, "lat": 46.48, "km": 200.0},
+         "dep": "39", "lon": 6.06, "lat": 46.48, "km": 200.0, "site": "les-rousses"},
         {"id": "c", "name": "Cervières", "commune": "Cervières", "dep": "05",
-         "lon": 6.77, "lat": 44.86, "km": 40.0},
+         "lon": 6.77, "lat": 44.86, "km": 40.0, "site": "cervieres"},
         {"id": "d", "name": "Plateau de Retord", "commune": "Le Grand-Abergement", "dep": "01",
          "lon": 5.7, "lat": 46.0, "km": 80.0}
       ]}"#;
 
     fn pack(dir: &str, w: f64, s: f64, e: f64, n: f64) -> PackEntry {
+        let site = dir.rsplit('/').next().unwrap_or(dir);
         PackEntry {
             dir: dir.into(),
-            site_id: dir.into(),
-            site_name: dir.into(),
+            site_id: site.into(),
+            site_name: format!("Pack {site}"),
             pack_version: "v".into(),
             error: None,
             bounds: Some(Bounds {
@@ -395,5 +408,57 @@ mod tests {
         // An empty query lists everything, installed first.
         assert_eq!(c.search("  ".into(), vec![], vec![], 2).len(), 2);
         assert!(Catalog::parse(r#"{"format": 2, "domains": [], "outline": []}"#).is_err());
+    }
+
+    /// #175: an area inside the box of a neighbour's pack keeps its own pack: installed
+    /// only when that one is, its actions on its own site, the neighbour said apart.
+    #[test]
+    fn neighbour_pack_is_not_the_pack_of_the_area() {
+        let c = Catalog::parse(JSON).unwrap();
+        // The box of the Les Rousses pack contains Chapelle-des-Bois too.
+        let rousses = pack("/p/les-rousses", 5.9, 46.4, 6.2, 46.7);
+        let rousses_site = server_site("les-rousses", [5.9, 46.4, 6.2, 46.7], 40_000_000);
+        let chapelle_site =
+            server_site("chapelle-des-bois", [6.03, 46.53, 6.19, 46.66], 39_000_000);
+        let server = vec![rousses_site.clone(), chapelle_site];
+        let by_id = |v: &[Domain], id: &str| v.iter().find(|d| d.id == id).cloned().unwrap();
+
+        let all = c.domains(vec![rousses.clone()], server.clone());
+        let r = by_id(&all, "b");
+        assert_eq!(r.status, PackStatus::Installed);
+        assert_eq!(r.pack_dir.as_deref(), Some("/p/les-rousses"));
+        assert_eq!(r.server_site.as_deref(), Some("les-rousses"));
+        assert_eq!(r.covered_by, None);
+        let ch = by_id(&all, "a");
+        assert_eq!(ch.status, PackStatus::Available);
+        assert_eq!(ch.pack_dir, None);
+        assert_eq!(ch.server_site.as_deref(), Some("chapelle-des-bois"));
+        assert_eq!(ch.download_bytes, 39_000_000);
+        assert_eq!(ch.covered_by.as_deref(), Some("Pack les-rousses"));
+        // Its own pack not published: not built, still said covered, no action.
+        let only_rousses = c.domains(vec![rousses.clone()], vec![rousses_site]);
+        let ch = by_id(&only_rousses, "a");
+        assert_eq!(ch.status, PackStatus::NotBuilt);
+        assert_eq!((ch.pack_dir, ch.server_site), (None, None));
+        assert_eq!(ch.covered_by.as_deref(), Some("Pack les-rousses"));
+        // Both installed: each its own, nothing said apart.
+        let chapelle = pack("/p/chapelle-des-bois", 6.03, 46.53, 6.19, 46.66);
+        let both = c.domains(vec![rousses.clone(), chapelle], server.clone());
+        let ch = by_id(&both, "a");
+        assert_eq!(ch.status, PackStatus::Installed);
+        assert_eq!(ch.pack_dir.as_deref(), Some("/p/chapelle-des-bois"));
+        assert_eq!(ch.covered_by, None);
+        // A pack in error opens nothing and covers nothing.
+        let mut broken = rousses;
+        broken.error = Some("manifest".into());
+        let v = c.domains(vec![broken], server);
+        assert_eq!(by_id(&v, "b").status, PackStatus::Available);
+        assert_eq!(by_id(&v, "a").covered_by, None);
+        // An area without a site in the resource has no pack.
+        let retord = by_id(&v, "d");
+        assert_eq!(
+            (retord.status, retord.server_site),
+            (PackStatus::NotBuilt, None)
+        );
     }
 }

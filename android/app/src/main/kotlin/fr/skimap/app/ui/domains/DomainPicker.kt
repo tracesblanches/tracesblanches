@@ -65,7 +65,9 @@ import kotlin.math.min
  * Area picker: the nordic areas of France on a map (squares: installed; discs: published
  * by the server; dots: others), search by name or commune, nearest areas, and the
  * download of each published pack (K2): size, waiting for a network or Wi-Fi, progress,
- * update, delete. Touching the map lists the areas nearest to the touch.
+ * update, delete. Touching the map lists the areas nearest to the touch. Each area acts
+ * on its own pack only (`Domain.serverSite`, `Domain.packDir`); a larger installed pack
+ * that holds it is only said (`Domain.coveredBy`).
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -171,6 +173,8 @@ private fun DomainRow(
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (dir != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // Another installed pack whose box holds the area: said, never its actions (#175).
+                d.coveredBy?.let { Text(stringResource(R.string.domain_covered_by, it), style = MaterialTheme.typography.bodyMedium) }
             }
         }
         if (site != null) DownloadControls(d, site, download, site in state.updates, actions)
