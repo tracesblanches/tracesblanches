@@ -998,16 +998,15 @@ fn drawn_layers(v: &Value, pack: &Pack, dir: &Path, out: &mut std::collections::
     }
 }
 
+/// A kind of information none of whose map layers is drawn, with those layers.
+type Undrawn = (String, Vec<String>);
+
 /// Checks of K3 (#53) on one pack: every layer is in exactly one kind of information,
 /// every kind has its date and its sources; every kind with a map layer is drawn by one of
 /// the six styles (the piste state colours the pistes and is counted, with its time, in
 /// the header: `PackInfo::status`). Returns the kinds, the number of layers drawn and the
 /// kinds none of whose map layers is drawn, with those layers.
-fn check_infos(
-    site: &str,
-    dir: &Path,
-    pack: &Pack,
-) -> (Vec<String>, usize, Vec<(String, Vec<String>)>) {
+fn check_infos(site: &str, dir: &Path, pack: &Pack) -> (Vec<String>, usize, Vec<Undrawn>) {
     let mut drawn = std::collections::HashSet::new();
     let mut info = None;
     for name in STYLES {
