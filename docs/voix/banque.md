@@ -1,0 +1,16 @@
+# Voix : banque de phrases
+
+[Index de la voix](../voix.md)
+
+## Banque de phrases (VO2)
+
+`skimap_voice::bank::Event::announce` donne une annonce par événement du noyau (direction, bifurcation, arrivée, distance et temps restants, demi-tour, pente, zone protégée et règles, zone sans réseau, écart et retour, rassurance, briefing, équipement, fartage, tronçon avalancheux, changement de conditions, batterie, résumé de boucle suggérée). Une annonce est une suite de clips ; chaque clip est une unité parlée complète finie par un point (la synthèse donne une intonation finale à chaque phrase), avec une pause après (150 ms dans un message, 400 ms entre deux). Exceptions : les propositions de C11 (« Je vous propose la boucle courte, » puis « retour vers quinze heures quinze. », `Fixed::continued`) et le résumé de boucle (A5) : une phrase en trois clips, « Boucle de treize kilomètres, » / « environ deux heures, » / « retour vers midi quinze. » (longueur 1 à 60 km, durées de la grille jusqu'à 12 h, retour au quart d'heure dit comme on le dit : « midi quinze », « treize heures et demie », « seize heures moins le quart » ; « et quart » remplacé par « quinze » le 15/11/2026, ci-dessous).
+
+- Nombres en toutes lettres (`numbers`), arrondis sur des grilles finies (`quantity`) : distances (20 m à 100 km), durées (1 min à 24 h), heures au quart, pentes 30 à 45°, températures −35 à 30 °C, vent par 10 km/h. Comptes à rebours et batterie arrondis vers le bas.
+- Clips : phrases fixes (91 depuis le 15/11/2026, dont les quinze du plan de journée `fix.plan-*` : huit de J1 à J3, sept des propositions de C11, et « Bulletin d'avalanche non disponible hors ligne. Consultez-le avant de partir. », « Des avalanches restent possibles sur les fortes pentes. », « Votre itinéraire traverse des zones d'avalanche connues. », « Votre itinéraire traverse une zone protégée. », « Une partie de l'itinéraire est sans aucun réseau, même pour les appels d'urgence. », « Feu interdit sur la commune, réchauds compris. », « Neige froide et sèche. » et trois éléments d'équipement), valeurs (757 à 836 selon le nombre de pistes, dont 170 pour les résumés de boucle), noms du site (`piste.<nom>.<couleur>` : « Greffier, piste noire. », `name.<nom>`), dates de fin des périodes de protection. `vocabulary(&SiteNames)` donne l'ensemble fini id → texte (tests des deux langues).
+- Une valeur hors grille a un texte correct : le téléphone lit tout texte.
+- L'id d'une phrase (`turn.left.200`, `fix.arrive`) nomme la phrase et ses valeurs : il sert à la dire dans l'autre langue (`phrase::localise`, [anglais](anglais.md)).
+
+## Lecture par le téléphone (21/11/2026)
+
+Décision du 21/11/2026 : les annonces sont dites par la synthèse vocale du téléphone (Android `TextToSpeech`, voix hors ligne du moteur installé), dans la langue de l'app ; la voix pré-générée sur le poste (clips Ogg/Opus, paquets de voix) est retirée. Le texte lu est `Announcement::text` (phrases jointes par une espace : chaque phrase finit par un point, la synthèse y marque la pause). Nombres, distances, heures et températures restent écrits en toutes lettres : la synthèse les lit tels quels, sans dépendre de ses propres règles pour les chiffres et les unités. Les noms (pistes, lieux) viennent des couches du pack installé.
