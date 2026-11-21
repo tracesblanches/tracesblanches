@@ -41,8 +41,8 @@ import fr.skimap.app.prep.PlanExtras
 import fr.skimap.app.ui.theme.GloveTarget
 import fr.skimap.core.DayPlanView
 import fr.skimap.core.KeyPointView
-import fr.skimap.sport.Queued
-import fr.skimap.sport.SendOuting
+import fr.skimap.sport.ShareFormat
+import fr.skimap.sport.ShareOuting
 import fr.skimap.tracking.TrackingState
 import java.util.Locale
 
@@ -65,8 +65,8 @@ data class PlanActions(
     val newDay: () -> Unit = {},
     val answer: (Boolean) -> Unit = {},
     val refuseSwitch: () -> Unit = {},
-    /** « Envoyer » of the recap (K11): Health Connect, Strava. */
-    val sendOuting: () -> Unit = {},
+    /** The finished outing's file in the share menu, and Health Connect (#63). */
+    val shareOuting: (ShareFormat) -> Unit = {},
 )
 
 /**
@@ -81,8 +81,6 @@ fun PlanScreen(
     tracking: TrackingState,
     actions: PlanActions,
     modifier: Modifier = Modifier,
-    /** The outing ended and sent: where it is (K11). */
-    sent: Queued? = null,
 ) {
     var confirmStop by rememberSaveable { mutableStateOf(false) }
     if (confirmStop) {
@@ -123,7 +121,7 @@ fun PlanScreen(
         item { PlanSummary(plan) }
         item {
             Column {
-                PlanButtons(tracking, actions, sent, onStop = { confirmStop = true })
+                PlanButtons(tracking, actions, onStop = { confirmStop = true })
                 // Only when it matters (nothing drawn otherwise): the battery when it is a problem (C9,
                 // K8), the server alert when the plan went to it (S2).
                 fr.skimap.app.prep
@@ -178,7 +176,6 @@ private fun PlanSummary(plan: DayPlanView) {
 private fun PlanButtons(
     tracking: TrackingState,
     actions: PlanActions,
-    sent: Queued?,
     onStop: () -> Unit,
 ) {
     val emergency = stringResource(R.string.plan_emergency_description)
@@ -210,9 +207,9 @@ private fun PlanButtons(
             }
 
             is TrackingState.Ended -> {
-                // The recap, and « Envoyer » (Health Connect, Strava) when there is a trace.
+                // The recap, and its share (file, Health Connect) when there is a trace.
                 tracking.recap?.let { Text(it.text, style = MaterialTheme.typography.bodyLarge) }
-                if (tracking.gpx != null) SendOuting(sent, onSend = actions.sendOuting)
+                if (tracking.gpx != null) ShareOuting(onShare = actions.shareOuting)
                 OutlinedButton(onClick = actions.newDay, modifier = big.fillMaxWidth()) { Text(stringResource(R.string.plan_new_day)) }
             }
 

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The files the core exports for the share menu (OutingShare.dir). -->
+<paths>
+    <cache-path
+        name="share"
+        path="sport-share/" />
+</paths>

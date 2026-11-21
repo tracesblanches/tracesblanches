@@ -30,16 +30,13 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import fr.skimap.app.MainActivity
 import fr.skimap.app.R
-import fr.skimap.app.guidance.AppSportActivity
-import fr.skimap.app.guidance.OutingExport
 import fr.skimap.app.guidance.SkiTrackingService
+import fr.skimap.app.recap.OutingFiles
 import fr.skimap.app.ui.CoreErrors
 import fr.skimap.app.ui.theme.SkimapTheme
 import fr.skimap.core.DayPlanView
-import fr.skimap.sport.Queued
-import fr.skimap.sport.Sport
-import fr.skimap.sport.SportActivity
-import fr.skimap.sport.SportStore
+import fr.skimap.sport.ShareFlow
+import fr.skimap.sport.ShareFormat
 import fr.skimap.tracking.ReturnReminder
 import fr.skimap.tracking.Tracking
 import fr.skimap.tracking.TrackingState
@@ -77,7 +74,21 @@ class DayActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val active = (Tracking.state.value as? TrackingState.Running)?.planDir ?: Tracking.activePlan(this)
         active?.let(vm::showPlan)
-        setContent { SkimapTheme { Surface { DayRoot(vm) } } }
+        val sharing = ShareFlow(this)
+        setContent { SkimapTheme { Surface { DayRoot(vm) { tracking, format -> shareOuting(tracking, format, sharing) } } } }
+    }
+
+    /** The finished outing's file in the share menu, and Health Connect (#63). */
+    private fun shareOuting(
+        tracking: TrackingState,
+        format: ShareFormat,
+        sharing: ShareFlow,
+    ) {
+        val ended = tracking as? TrackingState.Ended ?: return
+        sharing.share(
+            format,
+            { heart -> OutingFiles.export(applicationContext, ended.planDir, heart, ended.recap?.text) },
+        ) { OutingFiles.tell(this, it) }
     }
 
     companion object {
@@ -136,27 +147,15 @@ class DayActivity : ComponentActivity() {
             }
         }
 
-        /**
-         * « Envoyer » of the recap (K11): the outing queued for Health Connect and Strava.
-         * Nothing set up yet (Health Connect not allowed, Strava not connected): the screen
-         * to do it opens, and the outing goes once it is.
-         */
-        suspend fun sendOuting(
-            context: Context,
-            tracking: TrackingState,
-        ): Queued? {
-            val ended = tracking as? TrackingState.Ended ?: return null
-            val q = withContext(Dispatchers.IO) { OutingExport.of(context, ended)?.let { Sport.send(context, it) } }
-            if (q != null && !q.waiting) SportActivity.open(context, AppSportActivity::class.java)
-            return q
-        }
-
         private const val REMINDER_BEFORE_MS = 15 * 60_000L
     }
 }
 
 @Composable
-private fun DayRoot(vm: DayViewModel) {
+private fun DayRoot(
+    vm: DayViewModel,
+    shareOuting: (TrackingState, ShareFormat) -> Unit,
+) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val resources = androidx.compose.ui.platform.LocalResources.current
     val state by vm.state.collectAsStateWithLifecycle()
@@ -198,19 +197,11 @@ private fun DayRoot(vm: DayViewModel) {
                 }?.let { DayStore(context).learnFrom(it) }
         }
     }
-    // The outing sent from the recap, followed as the queue moves (K11).
-    var sentId by remember { mutableStateOf<String?>(null) }
-    var sent by remember { mutableStateOf<Queued?>(null) }
-    val sportRevision by SportStore.revision.collectAsStateWithLifecycle()
-    LaunchedEffect(sentId, sportRevision) {
-        sent = sentId?.let { id -> withContext(Dispatchers.IO) { SportStore(context).get(id) } }
-    }
     val p = plan
     if (p != null && !morning) {
         PlanScreen(
             plan = p,
             tracking = tracking,
-            sent = sent,
             actions =
                 PlanActions(
                     send = { DayActivity.sendPlan(context, p, contact) },
@@ -227,7 +218,7 @@ private fun DayRoot(vm: DayViewModel) {
                         )
                     },
                     refuseSwitch = { Tracking.command(context, SkiTrackingService::class.java, Tracking.ACTION_REFUSE_SWITCH) },
-                    sendOuting = { scope.launch { sentId = DayActivity.sendOuting(context, tracking)?.outing?.id } },
+                    shareOuting = { shareOuting(tracking, it) },
                 ),
         )
         return

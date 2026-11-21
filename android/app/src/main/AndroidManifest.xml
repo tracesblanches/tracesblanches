@@ -3,8 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Offline first: a pack is displayed without any network request. INTERNET comes
-         from the module :sync (pack download and update, K2) and from the module :sport
-         (Strava, K11, on the user's request); their manifests say why. MapLibre is kept
+         from the modules that need it (:sync for the pack download and update, K2,
+         :community, :voicecmd); their manifests say why. MapLibre is kept
          offline (MapLibre.setConnected(false), file:// styles). -->
 
     <!-- One coarse position, on request, for "Domaines les plus proches". No tracking. -->
@@ -35,23 +35,11 @@
         <activity
             android:name=".day.DayActivity"
             android:exported="false" />
-        <!-- « Envoyer mes sorties » (K11), module :sport. singleTask: the Strava sign-in
-             comes back here (skimap-server redirects to skimap://strava/callback) and the
-             browser tab above it is closed. Health Connect opens it for the rationale
-             (what is written, never read). -->
+        <!-- Health Connect's page on what the app writes and reads (#63), module :sport:
+             opened by Health Connect only; the share itself is on the recap. -->
         <activity
-            android:name=".guidance.AppSportActivity"
-            android:exported="true"
-            android:launchMode="singleTask">
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:host="strava"
-                    android:path="/callback"
-                    android:scheme="skimap" />
-            </intent-filter>
+            android:name=".recap.AppHealthRationaleActivity"
+            android:exported="true">
             <intent-filter>
                 <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
             </intent-filter>
@@ -61,7 +49,7 @@
             android:name="ViewPermissionUsageActivity"
             android:exported="true"
             android:permission="android.permission.START_VIEW_PERMISSION_USAGE"
-            android:targetActivity=".guidance.AppSportActivity">
+            android:targetActivity=".recap.AppHealthRationaleActivity">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
                 <category android:name="android.intent.category.HEALTH_PERMISSIONS" />

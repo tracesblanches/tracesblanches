@@ -22,8 +22,6 @@
     <string name="sheet_layers">Couches</string>
     <string name="layers_always">Toujours affichés, pour la sécurité : pistes et leur état, dangers d\'avalanche, zones réglementées, position.</string>
     <string name="sheet_legend">Légende</string>
-    <string name="sheet_sport">Sorties</string>
-    <string name="sheet_sport_open">Envoyer mes sorties (Health Connect, Strava)</string>
     <string name="sheet_updates">Mises à jour</string>
     <string name="auto_update">Mettre à jour les packs automatiquement (Wi-Fi pour les gros, jamais batterie faible)</string>
     <string name="sheet_sources">Licences des données</string>

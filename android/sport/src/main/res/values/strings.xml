@@ -1,45 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="sport_title">Send my outings</string>
-    <string name="sport_intro">At the end of an outing, its trace can go to Health Connect and to Strava. Nothing is sent without you.</string>
-    <string name="sport_auto">Send automatically at the end of the outing</string>
+    <string name="sport_share">Share the outing (FIT)</string>
+    <string name="sport_share_gpx">Share as GPX</string>
+    <string name="sport_share_hint">Strava, Komoot, Garmin Connect and most apps import the file: choose one in the share menu. With Health Connect, the outing is also written there.</string>
+    <string name="sport_share_chooser">Share the outing</string>
+    <string name="sport_share_health">Outing written to Health Connect</string>
+    <string name="sport_share_failed">No trace to share for this outing</string>
     <string name="sport_close">Close</string>
 
-    <string name="sport_health">Health Connect</string>
-    <string name="sport_health_ready">Allowed: each outing sent is written as a skiing session with its route.</string>
-    <string name="sport_health_ask">Allow skimap to write your outings (skiing session and route).</string>
-    <string name="sport_health_allow">Allow</string>
-    <string name="sport_health_update">Health Connect must be installed or updated.</string>
-    <string name="sport_health_install">Open Play Store</string>
-    <string name="sport_health_unavailable">Health Connect is not available on this phone.</string>
-
-    <string name="sport_strava">Strava</string>
-    <string name="sport_strava_checking">Checking the Strava service…</string>
-    <string name="sport_strava_not_configured">Connecting to Strava will be possible once the skimap service is set up for Strava.</string>
-    <string name="sport_strava_unreachable">The skimap service cannot be reached. Try again with a network.</string>
-    <string name="sport_strava_connect">Connect to Strava</string>
-    <string name="sport_strava_connecting">Connecting to Strava…</string>
-    <string name="sport_strava_connected">Connected: %1$s</string>
-    <string name="sport_strava_connected_anonymous">Connected to Strava</string>
-    <string name="sport_strava_disconnect">Disconnect Strava</string>
-    <string name="sport_strava_hint">Outings are uploaded as Nordic ski (or backcountry ski in nordic backcountry practice), with the conditions of the day in the description. Without a network they wait and go as soon as it is back.</string>
-    <string name="sport_strava_error">Strava: %1$s</string>
-    <string name="sport_strava_denied">Strava did not give the permission to upload activities.</string>
-    <string name="sport_strava_state">The Strava answer does not match the request: connect again.</string>
-
-    <string name="sport_queue">Outings sent</string>
-    <string name="sport_queue_empty">No outing sent yet.</string>
-    <string name="sport_step_pending">waiting</string>
-    <string name="sport_step_uploading">being processed</string>
-    <string name="sport_step_done">sent</string>
-    <string name="sport_step_failed">failed: %1$s</string>
-    <string name="sport_step_not_allowed">not allowed</string>
-    <string name="sport_step_not_connected">not connected</string>
-    <string name="sport_line">%1$s · Health Connect %2$s · Strava %3$s</string>
-    <string name="sport_line_off">—</string>
-
     <string name="sport_rationale_title">skimap and Health Connect</string>
-    <string name="sport_rationale_text">When you send an outing, skimap writes it to Health Connect: a skiing session with its start and end time, its route (the positions recorded during the outing), its name and the recap. skimap reads nothing from Health Connect and sends this data nowhere else. You can remove the permission at any time in the Health Connect settings.</string>
-
-    <string name="sport_send">Send</string>
+    <string name="sport_rationale_text">When you share an outing, skimap writes it to Health Connect: a skiing session with its start and end time, its route (the positions recorded during the outing), its name, the recap, the distance and the climb. skimap reads only the heart rate of the hours of that outing (from a watch, if you have one), to put it into the file you share. Nothing else is read, and the app sends this data nowhere by itself: the file goes only to the app you choose. You can remove the permissions at any time in the Health Connect settings.</string>
 </resources>

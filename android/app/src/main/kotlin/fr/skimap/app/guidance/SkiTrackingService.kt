@@ -10,7 +10,6 @@ import fr.skimap.app.day.DayStore
 import fr.skimap.app.group.RustGroupBackend
 import fr.skimap.group.GroupLink
 import fr.skimap.group.GroupStore
-import fr.skimap.sport.Sport
 import fr.skimap.tracking.GuidanceNotifier
 import fr.skimap.tracking.OutingExtension
 import fr.skimap.tracking.Recap
@@ -86,8 +85,6 @@ class SkiTrackingService : TrackingService() {
             .onSuccess { g -> g?.let { Log.i(TAG, "group ${it.spec.name}: ${it.learned}") } }
             .onFailure { Log.w(TAG, "group learning", it) }
         ReturnReminder.cancel(this)
-        // « Envoyer automatiquement » (K11): queued now, sent when the network allows.
-        OutingExport.of(this, TrackingState.Ended(planDir, recap, gpx))?.let { Sport.sendIfAuto(this, it) }
         baro?.stop()
         baro = null
         // The recap (A10) and the return confirmed to the server (S2) when it had the plan.

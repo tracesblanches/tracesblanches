@@ -50,7 +50,7 @@ adb logcat -s skimap        # « packs … opened in N ms », « map … fully r
 - Sobriété (E1) : rien en arrière-plan hors WorkManager sous contraintes ; aucune minuterie ; StrictMode sans accès disque au démarrage ; R8 et profil de référence en release.
 - La journée (J5, K4 à K13) : `day/` (matin, « Valider la journée », plan du jour, groupes, contact), `guidance/` (bandeau fin inclus une fois dans l'écran carte, service de l'app) et le module `tracking` (un seul service de premier plan `location` lancé par le geste, positions par lots au noyau, voix, vibrations, boutons, notification ; voir [tracking/README.md](tracking/README.md)).
 
-- Envoi de la sortie (K11) : module `sport` (Health Connect, Strava par skimap-server, file hors ligne WorkManager ; voir [sport/README.md](sport/README.md)) ; « Envoyer » dans le bilan, « Envoyer mes sorties » dans le menu de la carte.
+- Partage de la sortie terminée (#63) : module `sport` (GPX et FIT écrits par le cœur, menu de partage d’Android, Health Connect accordé au partage ; voir [sport/README.md](sport/README.md)) ; « Partager la sortie » dans le bilan.
 
 ## Limites
 

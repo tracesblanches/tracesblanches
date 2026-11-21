@@ -1,24 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Strava (K11): the OAuth exchange through skimap-server and the upload of the trace,
-         on a user gesture (« Envoyer », « Connecter Strava ») or in a WorkManager job that
-         waits for the network. Nothing else. -->
-    <uses-permission android:name="android.permission.INTERNET" />
-
-    <!-- Health Connect (K11): the outing written as a skiing session with its route. Never
-         read: the app keeps no health data of its own. -->
+    <!-- Health Connect (#63): the outing written as a skiing session with its route, its
+         distance and its climb, asked at the first share only. -->
     <uses-permission android:name="android.permission.health.WRITE_EXERCISE" />
     <uses-permission android:name="android.permission.health.WRITE_EXERCISE_ROUTE" />
+    <uses-permission android:name="android.permission.health.WRITE_DISTANCE" />
+    <uses-permission android:name="android.permission.health.WRITE_ELEVATION_GAINED" />
+    <!-- Read only to put the heart rate of the outing's hours into the shared file. -->
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
 
     <queries>
         <!-- Health Connect as an app (Android 13 and older). -->
         <package android:name="com.google.android.apps.healthdata" />
-        <!-- A browser for the Strava sign-in. -->
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <category android:name="android.intent.category.BROWSABLE" />
-            <data android:scheme="https" />
-        </intent>
     </queries>
+
+    <application>
+        <!-- The GPX and FIT files of the share menu (cache/sport-share), read by the app
+             chosen through a temporary read grant. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.sport.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/sport_share_paths" />
+        </provider>
+    </application>
 </manifest>

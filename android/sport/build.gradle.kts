@@ -1,8 +1,8 @@
-// Sending the outing (K11): the session with its route to Health Connect (on the phone,
-// no network) and the GPX to Strava (OAuth through skimap-server, which keeps the secret;
-// upload queued offline, sent by WorkManager when the network is back). The app gives the
-// outing (fr.skimap.sport.Outing) and hosts the screen (SportActivity, subclassed for its
-// theme).
+// Sharing a finished outing (#63): the GPX and FIT files the core exported, given to the
+// share menu (ACTION_SEND, FileProvider), and the session with its route, distance and
+// climb written to Health Connect when the user allows it at the share. No account, no
+// key, no network. The app gives the outing (fr.skimap.sport.SharedOuting, from the core)
+// and hosts the Health Connect rationale (HealthRationaleActivity, subclassed for its theme).
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.compose)
@@ -27,7 +27,7 @@ android {
 
     buildFeatures { compose = true }
 
-    // The fake Strava (and fake skimap-server) of the JVM and of the instrumented tests.
+    // The outing of the JVM and of the instrumented tests.
     sourceSets {
         getByName("test").kotlin.srcDir("src/sharedTest/kotlin")
         getByName("androidTest").kotlin.srcDir("src/sharedTest/kotlin")
@@ -66,7 +66,6 @@ roborazzi {
 }
 
 dependencies {
-    implementation(project(":tracking"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
@@ -75,7 +74,6 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.kotlinx.coroutines.android)
-    implementation(libs.androidx.work.runtime)
     implementation(libs.androidx.health.connect.client)
     debugImplementation(libs.compose.ui.tooling)
     debugImplementation(libs.compose.ui.test.manifest)
@@ -87,7 +85,6 @@ dependencies {
     testImplementation(libs.roborazzi.compose)
     testImplementation(libs.roborazzi.junit.rule)
     testImplementation(libs.androidx.test.core)
-    testImplementation(libs.androidx.work.testing)
     testImplementation(platform(libs.compose.bom))
     testImplementation(libs.compose.ui.test.junit4)
 
@@ -95,7 +92,6 @@ dependencies {
     androidTestImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.ext.junit)
-    androidTestImplementation(libs.androidx.work.testing)
     androidTestImplementation(libs.kotlinx.coroutines.test)
 
     detektPlugins(libs.detekt.compose.rules)

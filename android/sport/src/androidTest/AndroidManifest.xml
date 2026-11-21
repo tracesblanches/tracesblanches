@@ -1,25 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- The test reads back the session it wrote (the module itself never reads). -->
+    <!-- The test reads back what it wrote and writes a watch's heart rate (the module
+         itself only writes the outing and reads the heart rate). -->
     <uses-permission android:name="android.permission.health.READ_EXERCISE" />
     <uses-permission android:name="android.permission.health.READ_EXERCISE_ROUTES" />
+    <uses-permission android:name="android.permission.health.READ_DISTANCE" />
+    <uses-permission android:name="android.permission.health.READ_ELEVATION_GAINED" />
+    <uses-permission android:name="android.permission.health.WRITE_HEART_RATE" />
 
-    <!-- The fake Strava listens on http://127.0.0.1 inside the test process. -->
-    <application android:usesCleartextTraffic="true">
+    <application>
         <activity
-            android:name="fr.skimap.sport.SportActivity"
-            android:exported="true"
-            android:launchMode="singleTask">
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:host="strava"
-                    android:path="/callback"
-                    android:scheme="skimap" />
-            </intent-filter>
+            android:name="fr.skimap.sport.HealthRationaleActivity"
+            android:exported="true">
             <intent-filter>
                 <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
             </intent-filter>
@@ -28,7 +21,7 @@
             android:name="ViewPermissionUsageActivity"
             android:exported="true"
             android:permission="android.permission.START_VIEW_PERMISSION_USAGE"
-            android:targetActivity="fr.skimap.sport.SportActivity">
+            android:targetActivity="fr.skimap.sport.HealthRationaleActivity">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
                 <category android:name="android.intent.category.HEALTH_PERMISSIONS" />

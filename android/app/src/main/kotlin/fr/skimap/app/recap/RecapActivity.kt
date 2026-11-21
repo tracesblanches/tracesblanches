@@ -52,6 +52,9 @@ import fr.skimap.core.outingDelete
 import fr.skimap.core.outingDeleteAll
 import fr.skimap.core.outingHistory
 import fr.skimap.core.outingRecap
+import fr.skimap.sport.ShareFlow
+import fr.skimap.sport.ShareFormat
+import fr.skimap.sport.ShareOuting
 import fr.skimap.tracking.Tracking
 import fr.skimap.tracking.TrackingState
 import kotlinx.coroutines.Dispatchers
@@ -80,12 +83,15 @@ data class RecapActions(
     val listen: (OutingRecap) -> Unit = {},
     val delete: (OutingSummary) -> Unit = {},
     val deleteAll: () -> Unit = {},
+    /** The outing's file in the share menu, and Health Connect (#63). */
+    val share: (OutingRecap, ShareFormat) -> Unit = { _, _ -> },
 )
 
 /**
  * The outings (A10): the history, the recap of each written and read aloud (distance,
  * time, estimated against actual, comparison with the previous outings, conditions,
- * climb by the barometer), and deleting one outing or all of them, with confirmation.
+ * climb by the barometer), its share (GPX or FIT in the share menu, Health Connect, #63),
+ * and deleting one outing or all of them, with confirmation.
  */
 class RecapActivity : ComponentActivity() {
     private var ui by mutableStateOf(RecapUi())
@@ -94,6 +100,7 @@ class RecapActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        val sharing = ShareFlow(this)
         val dir = intent.getStringExtra(EXTRA_DIR)
         val speak = intent.getBooleanExtra(EXTRA_SPEAK, false)
         lifecycleScope.launch {
@@ -109,6 +116,12 @@ class RecapActivity : ComponentActivity() {
                             open = { lifecycleScope.launch { open(it.dir, false) } },
                             back = { ui = ui.copy(open = null) },
                             listen = { say(it.spoken) },
+                            share = { r, format ->
+                                sharing.share(
+                                    format,
+                                    { heart -> OutingFiles.export(applicationContext, r.summary.dir, heart, r.text) },
+                                ) { OutingFiles.tell(this, it) }
+                            },
                             delete = { s ->
                                 lifecycleScope.launch {
                                     withContext(
@@ -241,6 +254,8 @@ fun RecapScreen(
                     Text(stringResource(R.string.recap_listen))
                 }
             }
+            // An outing recorded by the app (not one imported from Strava): its file to share.
+            if (r.summary.kind != IMPORTED) item { ShareOuting(onShare = { actions.share(r, it) }) }
             item {
                 OutlinedButton(onClick = actions.back, modifier = Modifier.fillMaxWidth().heightIn(min = GloveTarget)) {
                     Text(stringResource(R.string.recap_back))
@@ -312,3 +327,6 @@ private fun OutingRow(
 
 private const val ONE = "one"
 private const val ALL = "all"
+
+/** Kind of an outing imported from the Strava export (no recorded trace to share). */
+private const val IMPORTED = "strava"
