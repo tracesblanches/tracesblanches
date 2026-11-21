@@ -164,6 +164,7 @@ impl Texts for Fr {
             KeyKind::NoNetworkEnd => "fin de zone sans réseau",
             KeyKind::AvalancheStart => "début de zone d'avalanche connue (CLPA)",
             KeyKind::AvalancheEnd => "fin de zone d'avalanche connue",
+            KeyKind::DomainEntered => "entrée sur un autre domaine nordique (sa redevance)",
             KeyKind::Finish => "arrivée",
         }
     }
@@ -249,6 +250,12 @@ impl Texts for Fr {
             } else {
                 format!(" ({})", missing.join(", "))
             }
+        )
+    }
+
+    fn p_clips_fallback(&self, missing: usize, required: usize) -> String {
+        format!(
+            "{missing} clips sur {required} absents du pack : ces annonces passent par la voix de secours du téléphone"
         )
     }
 

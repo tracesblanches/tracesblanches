@@ -18,7 +18,8 @@ import fr.skimap.core.dayOutingLabel
 import fr.skimap.core.dayPacks
 import fr.skimap.core.dayStarts
 import fr.skimap.core.groupNew
-import fr.skimap.core.openDayPlanner
+import fr.skimap.core.listPacks
+import fr.skimap.core.openDayPlannerWith
 import fr.skimap.core.readDayPlan
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -170,7 +171,10 @@ object RustDayBackend : DayBackend {
         packDir: String,
         workDir: String,
     ): DayBackend.Planner {
-        val p: DayPlanner = openDayPlanner(packDir, workDir, appLang())
+        // Every installed pack beside it: the core joins those of the neighbouring areas,
+        // so that one outing may cross from one area into the next (H2 #133).
+        val installed = File(packDir).parentFile?.let { r -> listPacks(r.absolutePath).map { it.dir } }.orEmpty()
+        val p: DayPlanner = openDayPlannerWith(packDir, installed, workDir, appLang())
         return object : DayBackend.Planner {
             override fun morning(
                 request: DayRequest,

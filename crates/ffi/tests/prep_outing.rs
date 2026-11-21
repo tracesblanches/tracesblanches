@@ -87,6 +87,7 @@ fn same(
     let today = (first - jiff::SignedDuration::from_hours(24)).to_string();
     let r = skimap_ffi::prep::prep_run(
         dir_s,
+        Vec::new(),
         work.path().join("prep-view").display().to_string(),
         out.path().display().to_string(),
         None,

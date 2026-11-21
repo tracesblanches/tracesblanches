@@ -121,6 +121,9 @@ pub trait Texts: Sync {
     fn p_unnamed_shelter(&self, kind: &str) -> String;
     /// Clips needed and missing from the pack.
     fn p_clips(&self, required: usize, missing: &[String]) -> String;
+    /// Note of the plan: `missing` of its `required` clips are not in the pack, said by the
+    /// phone's fallback voice.
+    fn p_clips_fallback(&self, missing: usize, required: usize) -> String;
     /// A limit of the plan.
     fn p_limit(&self, note: &str) -> String;
 

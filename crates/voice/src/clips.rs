@@ -360,6 +360,10 @@ fixed_phrases! {
     ZoneAhead = "zone-ahead" => "Attention, zone protégée devant.", "Caution, protected area ahead.",
     /// Protected zone entered.
     ZoneEntered = "zone-entered" => "Vous entrez dans une zone protégée.", "You are entering a protected area.",
+    /// Another nordic area entered (H2 #133): its name follows.
+    DomainEntered = "domain-entered" => "Vous entrez sur un autre domaine nordique.", "You are entering another nordic area.",
+    /// Its own trail pass applies (H2 #133).
+    DomainFee = "domain-fee" => "Sa redevance s'applique, sauf titre valable sur les deux domaines.", "Its own trail pass applies, unless your pass covers both areas.",
     /// Rule: stay on marked routes.
     RuleStayOnRoutes = "rule-stay" => "Restez sur les itinéraires balisés.", "Stay on the marked routes.",
     /// Rule: no entry.

@@ -166,6 +166,7 @@ impl Texts for En {
             KeyKind::NoNetworkEnd => "end of the zone without network",
             KeyKind::AvalancheStart => "start of a known avalanche path (CLPA)",
             KeyKind::AvalancheEnd => "end of the known avalanche path",
+            KeyKind::DomainEntered => "another nordic area entered (its trail pass)",
             KeyKind::Finish => "finish",
         }
     }
@@ -251,6 +252,12 @@ impl Texts for En {
             } else {
                 format!(" ({})", missing.join(", "))
             }
+        )
+    }
+
+    fn p_clips_fallback(&self, missing: usize, required: usize) -> String {
+        format!(
+            "{missing} of {required} clips missing from the pack: these announcements use the phone's fallback voice"
         )
     }
 

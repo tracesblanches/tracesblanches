@@ -32,6 +32,7 @@ pub mod fog;
 pub mod france_sync;
 pub mod group;
 pub mod info;
+pub mod neighbours;
 pub mod offpiste;
 pub mod prep;
 pub mod recap;

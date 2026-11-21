@@ -103,6 +103,7 @@ impl Texts for Fr {
             KeyKind::NoNetworkEnd => "fin de zone sans réseau",
             KeyKind::AvalancheStart => "début de zone d'avalanche connue",
             KeyKind::AvalancheEnd => "fin de zone d'avalanche connue",
+            KeyKind::DomainEntered => "autre domaine nordique : sa redevance",
             KeyKind::Finish => "arrivée",
         }
     }
