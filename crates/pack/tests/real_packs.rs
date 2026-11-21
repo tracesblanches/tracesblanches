@@ -215,11 +215,22 @@ fn sources(layout: &DataLayout, site: &Site) {
                 assert!(got.is_subset(&names), "{:?}", got.difference(&names));
                 continue;
             }
+            let packed = pack.read_geojson(&l.id).unwrap();
+            assert_eq!(
+                packed.features.len() as u64,
+                l.features.unwrap(),
+                "{}",
+                l.id
+            );
+            if l.origin.starts_with("france/") {
+                // A France-wide layer (`out/france/`, skimap-stations): the pack keeps the
+                // features of the site, each one as in its source.
+                national_selection(layout, &pack, l);
+                continue;
+            }
             let src = json(&out.join(&l.origin));
             let n = src["features"].as_array().unwrap().len() as u64;
             assert_eq!(l.features, Some(n), "{}", l.id);
-            let packed = pack.read_geojson(&l.id).unwrap();
-            assert_eq!(packed.features.len() as u64, n, "{}", l.id);
         }
         // Zone rules: the pack's join equals the zones crate's own list (zones.meta.json).
         let meta = json(&out.join("zones/zones.meta.json"));
@@ -249,6 +260,45 @@ fn sources(layout: &DataLayout, site: &Site) {
         );
         assert_eq!(got, want);
     }
+}
+
+/// A pack layer taken from a France-wide output (`out/france/<layer>/`, not
+/// `out/<site>/`): every feature of the pack is a feature of that source, unchanged; the
+/// fee zones (personal packs only) are built from two files and only counted.
+fn national_selection(layout: &DataLayout, pack: &Pack, l: &skimap_pack::manifest::Layer) {
+    if l.origin.contains(" + ") {
+        println!(
+            "{}: {} features from {}",
+            l.id,
+            l.features.unwrap(),
+            l.origin
+        );
+        return;
+    }
+    let src = json(&layout.out_root().join(&l.origin));
+    let all: BTreeSet<String> = src["features"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(Value::to_string)
+        .collect();
+    let packed = json(&pack.path(&l.file).unwrap());
+    let packed = packed["features"].as_array().unwrap();
+    for f in packed {
+        assert!(
+            all.contains(&f.to_string()),
+            "{}: {f} not in {}",
+            l.id,
+            l.origin
+        );
+    }
+    println!(
+        "{}: {} of the {} features of {}",
+        l.id,
+        packed.len(),
+        all.len(),
+        l.origin
+    );
 }
 
 /// Checks the rasters of the pack of `site`; returns the sampled class counts by raster.
