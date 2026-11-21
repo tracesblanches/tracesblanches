@@ -537,8 +537,9 @@ impl ClipCache {
     }
 
     /// Brings `samples` to the loudness target of `cfg` and encodes them as the clip `id`
-    /// of `key` ([`encode_levelled`]), described by `c`: its size, loudness and the
-    /// loudness gain (added to `c.gain_db`, the level of the parts) are set here.
+    /// of `key` (levelled, encoded, checked once decoded, levelled again when off the
+    /// target), described by `c`: its size, loudness and the loudness gain (added to
+    /// `c.gain_db`, the level of the parts) are set here.
     pub fn put(
         &self,
         id: &str,
