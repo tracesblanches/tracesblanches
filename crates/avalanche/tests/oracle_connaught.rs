@@ -32,7 +32,7 @@ fn connaught_matches_reference() {
     // coincide.)
     let canopy = dem.with_data(read("autoATES_v3_FOREST_CANOPY_00.tif").data);
     let inputs = Inputs { dem, canopy };
-    let m = exposure::model(&inputs);
+    let m = exposure::model_autoates(&inputs);
     let run = oracle::OracleRun::open(&dir).unwrap();
     let rep = oracle::compare(&m, &exposure::terrain(&inputs.dem), &run, false).unwrap();
     for l in &rep.layers {

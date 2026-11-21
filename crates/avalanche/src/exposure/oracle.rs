@@ -320,7 +320,7 @@ pub fn compare(
             let p = if name == "frequent" {
                 flowpy::FREQUENT
             } else {
-                flowpy::EXTREME
+                flowpy::AUTOATES_EXTREME
             };
             let r = flowpy::run(&dem, &release, &fsi, &p);
             for (k, v) in ours_flow(&r) {

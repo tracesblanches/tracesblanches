@@ -51,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         rayon::current_num_threads()
     );
     let t = Instant::now();
-    let m = exposure::model(&inputs);
+    let m = exposure::model_autoates(&inputs);
     println!("model {:.1} s: {:?}", t.elapsed().as_secs_f64(), m.timings);
     println!(
         "paths: frequent {} ({} visits), extreme {} ({} visits)",
