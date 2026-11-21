@@ -739,6 +739,10 @@ pub fn include(spec: &Spec, out: &Path, root: &Path, personal_sources: bool) -> 
     };
     // The sources of this file only: those of its licence group (#169).
     let group = file_group(spec, meta.as_ref());
+    // The metadata of the layer names a personal source (an earlier run of the
+    // assistant, #151) while this file is of a published group: the pack gets the
+    // metadata of the group only.
+    let personal_meta = meta.as_ref().is_some_and(|m| restricted(&m.meta.sources));
     if let (Some(m), Some(g)) = (meta.as_mut(), group) {
         m.meta.sources = sources_of_group(&m.meta.sources, g);
     }
@@ -833,8 +837,12 @@ pub fn include(spec: &Spec, out: &Path, root: &Path, personal_sources: bool) -> 
         // The metadata of a licence group: its own sources, no figures (they name the
         // itineraries of every source).
         (Some(m), Transform::Licence(g), Some(read)) => {
-            Some(write_group_meta(&dir, m, g, &read.meta, root)?)
+            Some(write_group_meta(&dir, m, g, &read.meta, root, false)?)
         }
+        (Some(m), _, Some(read)) if personal_meta && !personal_sources => match group {
+            Some(g) => Some(write_group_meta(&dir, m, g, &read.meta, root, true)?),
+            None => copy_meta(&dir, m, root)?,
+        },
         (Some(m), _, _) => copy_meta(&dir, m, root)?,
         (None, _, _) => None,
     };
@@ -928,13 +936,16 @@ pub fn sources_of_group(sources: &[Source], g: Group) -> Vec<Source> {
 /// Writes the metadata of a licence group of a pipeline layer
 /// (`layers/meta/<origin>/<stem><suffix>.meta.json`): the metadata with the sources of the
 /// group only and without the figures and parameters (which name the itineraries of
-/// every source). Returns its pack path.
+/// every source). With `own_files`, the files of the layer carry their own licence
+/// (the assistant, one per run, #151): only those of the group are listed. Returns its
+/// pack path.
 fn write_group_meta(
     dir: &Path,
     name: &str,
     g: Group,
     meta: &LayerMeta,
     root: &Path,
+    own_files: bool,
 ) -> Result<String> {
     let origin = dir
         .file_name()
@@ -945,6 +956,14 @@ fn write_group_meta(
     let mut m = meta.clone();
     m.stats = Value::Null;
     m.parameters = Value::Null;
+    if own_files {
+        m.files.retain(|f| {
+            f.licence
+                .as_deref()
+                .map(licence::classify)
+                .is_some_and(|fam| fam.public() && fam.fits(g))
+        });
+    }
     m.notes.push(format!(
         "Groupe de licences du fichier (#169) : {} ; sources du groupe seulement.",
         g.licence_fr()
@@ -1019,26 +1038,15 @@ pub fn estimated_pistes(v: &Value) -> Value {
     json!({"type": "FeatureCollection", "features": features})
 }
 
-/// Sources whose terms do not allow a published pack until their owner agrees in
-/// writing (docs/licences-donnees.md, « Usage personnel seulement, tant qu'il n'y a pas
-/// d'accord écrit »), recognised by name (lower case) even when an older metadata file
-/// does not mark them `personal_use_only`.
-pub const UNAUTHORISED_SOURCES: [&str; 7] = [
-    "biodiv'sports",
-    "clpa",
-    "enquête permanente sur les avalanches",
-    "enj snowmap",
-    "nordic france",
-    "page info damage",
-    "open-meteo",
-];
+/// Sources refused by name in a published pack ([`licence::UNAUTHORISED_SOURCES`]).
+pub use skimap_common::licence::UNAUTHORISED_SOURCES;
 
-/// Whether a source may not go into a published pack: its licence family is personal
-/// (`skimap_common::licence::of_source`: marked `personal_use_only`, no reuse licence
-/// known, a licence still to confirm, #171), or it is one of [`UNAUTHORISED_SOURCES`].
+/// Whether a source may not go into a published pack: the negation of
+/// [`licence::publishable`] (its licence family is personal: marked `personal_use_only`,
+/// no reuse licence known, a licence still to confirm, #171; or it is one of
+/// [`UNAUTHORISED_SOURCES`]).
 pub fn unauthorised(s: &Source) -> bool {
-    let name = s.name.to_lowercase();
-    !licence::of_source(s).public() || UNAUTHORISED_SOURCES.iter().any(|u| name.contains(u))
+    !licence::publishable(s)
 }
 
 /// The OSM stations an SRN area cites (`stations[]`), in a file that may not hold OSM

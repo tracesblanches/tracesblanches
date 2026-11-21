@@ -37,6 +37,26 @@ pub struct Paths {
     pub status_dir: Option<PathBuf>,
     /// Planned route (GeoJSON with a LineString).
     pub route: Option<PathBuf>,
+    /// Public build (`personal_sources` off, #151): a layer whose metadata cites a source
+    /// that may not go into a published pack (`skimap_common::licence::publishable`) is
+    /// not read and is listed as missing, so that the outputs are made of publishable
+    /// sources only and enter the public pack. Off: every layer found is read (personal
+    /// build, or a pack on the phone, which holds only what its build let in).
+    pub publishable_only: bool,
+}
+
+/// Whether the layer in `d` is left out of a public build ([`Paths::publishable_only`]).
+fn left_out(paths: &Paths, d: &Path, layer: &str) -> bool {
+    paths.publishable_only
+        && !layer_sources(d, layer)
+            .iter()
+            .all(skimap_common::licence::publishable)
+}
+
+/// Notes a layer left out of a public build.
+fn note_left_out(what: LayerName, missing: &mut Vec<String>) {
+    let fr = crate::text::of(Lang::Fr);
+    missing.push(fr.layer_missing(what, fr.layer_personal()));
 }
 
 /// The layers of a site.
@@ -171,6 +191,9 @@ impl SiteData {
                         return to.layer_name(l).to_owned();
                     }
                     if let Some(rest) = m.strip_prefix(name).and_then(|r| r.strip_prefix(" : ")) {
+                        if rest == fr.layer_personal() {
+                            return to.layer_missing(l, to.layer_personal());
+                        }
                         return to.layer_missing(l, rest);
                     }
                 }
@@ -210,18 +233,27 @@ impl SiteData {
         } else {
             paths.meteo.clone()
         };
-        add_sources(&dir("meteo-hourly")?, "meteo-hourly");
-        for f in &meteo_files {
-            if let Some(parent) = f.parent() {
-                add_sources(parent, "meteo-hourly");
+        let meteo_dir = dir("meteo-hourly")?;
+        let meteo_dirs: Vec<&Path> = std::iter::once(meteo_dir.as_path())
+            .chain(meteo_files.iter().filter_map(|f| f.parent()))
+            .collect();
+        let weather = if meteo_dirs
+            .iter()
+            .any(|d| left_out(paths, d, "meteo-hourly"))
+        {
+            note_left_out(LayerName::Weather, &mut missing);
+            None
+        } else {
+            for d in &meteo_dirs {
+                add_sources(d, "meteo-hourly");
             }
-            files.push(f.display().to_string());
-        }
-        let weather = keep(
-            Weather::load(&meteo_files),
-            LayerName::Weather,
-            &mut missing,
-        );
+            files.extend(meteo_files.iter().map(|f| f.display().to_string()));
+            keep(
+                Weather::load(&meteo_files),
+                LayerName::Weather,
+                &mut missing,
+            )
+        };
 
         let snow_dirs = if paths.snow_dirs.is_empty() {
             vec![dir("snow")?]
@@ -230,6 +262,10 @@ impl SiteData {
         };
         let mut snows = Vec::new();
         for d in &snow_dirs {
+            if left_out(paths, d, "snow") {
+                note_left_out(LayerName::Snow, &mut missing);
+                continue;
+            }
             add_sources(d, "snow");
             files.push(d.display().to_string());
             snows.extend(keep(SnowMap::load(d), LayerName::Snow, &mut missing));
@@ -244,42 +280,74 @@ impl SiteData {
         let mut beras = Vec::new();
         for p in &bera_paths {
             if let Some(parent) = p.parent() {
+                if left_out(paths, parent, "bera") {
+                    note_left_out(LayerName::Bera, &mut missing);
+                    continue;
+                }
                 add_sources(parent, "bera");
             }
             files.push(p.display().to_string());
             beras.extend(keep(Bera::load(p), LayerName::Bera, &mut missing));
         }
 
+        // A layer of its own directory: read unless left out of a public build.
+        let mut readable = |d: &Path, layer: &str, what: LayerName, missing: &mut Vec<String>| {
+            if left_out(paths, d, layer) {
+                note_left_out(what, missing);
+                false
+            } else {
+                add_sources(d, layer);
+                true
+            }
+        };
+
         let status_dir = paths.status_dir.clone().unwrap_or(dir("status")?);
-        add_sources(&status_dir, "status");
-        files.push(status_dir.display().to_string());
-        let status = keep(Status::load(&status_dir), LayerName::Status, &mut missing);
+        let status = if readable(&status_dir, "status", LayerName::Status, &mut missing) {
+            files.push(status_dir.display().to_string());
+            keep(Status::load(&status_dir), LayerName::Status, &mut missing)
+        } else {
+            None
+        };
 
         let ddir = dir("domaines")?;
-        add_sources(&ddir, "domaines");
-        let domains =
-            keep(load_domains(&ddir), LayerName::Domains, &mut missing).unwrap_or_default();
+        let domains = if readable(&ddir, "domaines", LayerName::Domains, &mut missing) {
+            keep(load_domains(&ddir), LayerName::Domains, &mut missing).unwrap_or_default()
+        } else {
+            Vec::new()
+        };
         let pdir = dir("pistes")?;
-        add_sources(&pdir, "pistes");
-        let pistes = keep(
-            load_pistes(&pdir.join("pistes.geojson")),
-            LayerName::Pistes,
-            &mut missing,
-        )
-        .unwrap_or_default();
+        let pistes = if readable(&pdir, "pistes", LayerName::Pistes, &mut missing) {
+            keep(
+                load_pistes(&pdir.join("pistes.geojson")),
+                LayerName::Pistes,
+                &mut missing,
+            )
+            .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
         let adir = dir("avalanche-historic")?;
-        add_sources(&adir, "avalanche-historic");
-        let clpa = keep(Clpa::load(&adir), LayerName::Clpa, &mut missing);
+        let clpa = if readable(&adir, "avalanche-historic", LayerName::Clpa, &mut missing) {
+            keep(Clpa::load(&adir), LayerName::Clpa, &mut missing)
+        } else {
+            None
+        };
         let cdir = dir("coverage")?;
-        add_sources(&cdir, "coverage");
-        let no_network = keep(
-            Areas::load(&cdir.join("no_network.geojson")),
-            LayerName::NoNetwork,
-            &mut missing,
-        );
+        let no_network = if readable(&cdir, "coverage", LayerName::NoNetwork, &mut missing) {
+            keep(
+                Areas::load(&cdir.join("no_network.geojson")),
+                LayerName::NoNetwork,
+                &mut missing,
+            )
+        } else {
+            None
+        };
         let zdir = dir("zones")?;
-        add_sources(&zdir, "zones");
-        let zones = keep(load_zones(&zdir), LayerName::Zones, &mut missing);
+        let zones = if readable(&zdir, "zones", LayerName::Zones, &mut missing) {
+            keep(load_zones(&zdir), LayerName::Zones, &mut missing)
+        } else {
+            None
+        };
         let route = match &paths.route {
             Some(p) => {
                 files.push(p.display().to_string());
@@ -289,29 +357,41 @@ impl SiteData {
         };
 
         let rdir = dir("routes")?;
-        add_sources(&rdir, "routes");
-        let graph = keep(
-            std::fs::read_to_string(rdir.join(skimap_core::routing::GRAPH_FILE))
-                .map_err(|source| crate::error::Error::Io {
-                    path: rdir.join(skimap_core::routing::GRAPH_FILE),
-                    source,
-                })
-                .and_then(|t| {
-                    skimap_core::graph::PisteGraph::from_json(&t)
-                        .map_err(|e| crate::error::Error::format(rdir.join("piste_graph.json"), e))
-                }),
-            LayerName::Graph,
-            &mut missing,
-        );
+        let graph = if readable(&rdir, "routes", LayerName::Graph, &mut missing) {
+            keep(
+                std::fs::read_to_string(rdir.join(skimap_core::routing::GRAPH_FILE))
+                    .map_err(|source| crate::error::Error::Io {
+                        path: rdir.join(skimap_core::routing::GRAPH_FILE),
+                        source,
+                    })
+                    .and_then(|t| {
+                        skimap_core::graph::PisteGraph::from_json(&t).map_err(|e| {
+                            crate::error::Error::format(rdir.join("piste_graph.json"), e)
+                        })
+                    }),
+                LayerName::Graph,
+                &mut missing,
+            )
+        } else {
+            None
+        };
         let edir = dir("avalanche-exposure")?;
-        add_sources(&edir, "avalanche-exposure");
-        let exposure = keep(
-            // UInt8 classes, Lambert-93, no data 255 (`avalanche-exposure`).
-            skimap_common::geotiff::read_u8(&edir.join("exposure_5m.tif"))
-                .map_err(crate::error::Error::from),
+        let exposure = if readable(
+            &edir,
+            "avalanche-exposure",
             LayerName::Exposure,
             &mut missing,
-        );
+        ) {
+            keep(
+                // UInt8 classes, Lambert-93, no data 255 (`avalanche-exposure`).
+                skimap_common::geotiff::read_u8(&edir.join("exposure_5m.tif"))
+                    .map_err(crate::error::Error::from),
+                LayerName::Exposure,
+                &mut missing,
+            )
+        } else {
+            None
+        };
 
         Ok(SiteData {
             site: *site,

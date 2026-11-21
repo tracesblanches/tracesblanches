@@ -529,4 +529,7 @@ pub trait Texts: Sync {
     fn layer_name(&self, l: LayerName) -> &'static str;
     /// A layer that could not be read, and why (reader error, local path).
     fn layer_missing(&self, l: LayerName, why: &str) -> String;
+    /// Why a layer is left out of a public build: one of its sources may not go into a
+    /// published pack (`skimap_common::licence::publishable`, #151).
+    fn layer_personal(&self) -> &'static str;
 }

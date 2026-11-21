@@ -109,6 +109,28 @@ pub fn of_source(s: &SourceRef) -> Family {
     }
 }
 
+/// Sources whose terms do not allow a published pack until their owner agrees in
+/// writing (docs/licences-donnees.md, « Usage personnel seulement, tant qu'il n'y a pas
+/// d'accord écrit »), recognised by name (lower case) even when an older metadata file
+/// does not mark them `personal_use_only`.
+pub const UNAUTHORISED_SOURCES: [&str; 7] = [
+    "biodiv'sports",
+    "clpa",
+    "enquête permanente sur les avalanches",
+    "enj snowmap",
+    "nordic france",
+    "page info damage",
+    "open-meteo",
+];
+
+/// Whether a source may go into a published pack: its licence family is public
+/// ([`of_source`]) and it is none of [`UNAUTHORISED_SOURCES`]. The one decision of the
+/// pack (its layers) and of the assistant (the layers it reads in a public build, #151).
+pub fn publishable(s: &SourceRef) -> bool {
+    let name = s.name.to_lowercase();
+    of_source(s).public() && !UNAUTHORISED_SOURCES.iter().any(|u| name.contains(u))
+}
+
 /// Group of files of a pack a piece of data goes into.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Group {
