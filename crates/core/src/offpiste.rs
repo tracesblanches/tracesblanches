@@ -463,7 +463,8 @@ pub fn write_raster_with<T: RasterValue>(
 /// each read from the file at its offset and decoded ([`Encoding::Raw`] or
 /// [`Encoding::RowDelta`]); the last [`ROWS_KEPT`] rows decoded are kept. For lookups at
 /// a few positions (the altitude of a trace): the raster is never copied into memory
-/// (23 MB of 5 m elevation at Cervières); the same file as [`read_raster`] reads.
+/// (23 MB of 5 m elevation on the alpine test set); the same file as [`read_raster`]
+/// reads.
 #[derive(Debug)]
 pub struct RasterRows<T> {
     file: std::fs::File,
