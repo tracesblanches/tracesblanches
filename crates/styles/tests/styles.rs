@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
-use skimap_styles::generate::{Kind, file_name, style, style_text};
+use skimap_styles::generate::{FRANCE_DETAIL_UNTIL, Kind, file_name, style, style_text};
 use skimap_styles::inventory::Inventory;
 use skimap_styles::orphan;
 use skimap_styles::palette::Theme;
@@ -163,6 +163,31 @@ fn osm_layers_start_at_the_pack_archive() {
         }
     }
     assert!(seen > 0, "no osm layer: the test checks nothing");
+}
+
+/// #178: a tile of the Plan IGN of a pack covers 360 / 2^z degrees of longitude, so below
+/// the handoff zoom it reaches far beyond the pack (the zoom 4 tile of every Alpine pack
+/// spans longitudes 0 to 22.5) and its roads and built-up areas stopped at its edge, the
+/// Greenwich meridian, over the France basemap. No `ign` layer may be visible before the
+/// France basemap gives way to the packs (`FRANCE_DETAIL_UNTIL`).
+#[test]
+fn ign_layers_start_where_the_france_basemap_stops() {
+    let mut seen = 0;
+    for (name, s) in all() {
+        for l in s["layers"].as_array().unwrap() {
+            if l["source"] != "ign" {
+                continue;
+            }
+            seen += 1;
+            let minzoom = l["minzoom"].as_f64().unwrap_or(0.0);
+            assert!(
+                minzoom >= FRANCE_DETAIL_UNTIL,
+                "{name}: layer {} visible from z{minzoom}, the France basemap draws the map up to z{FRANCE_DETAIL_UNTIL}",
+                l["id"],
+            );
+        }
+    }
+    assert!(seen > 0, "no ign layer: the test checks nothing");
 }
 
 #[test]
