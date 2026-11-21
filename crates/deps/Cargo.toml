@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+license.workspace = true
 
 # Every external entry of [workspace.dependencies] is listed here, so that:
 # - Cargo.lock already pins all of them: an agent adding `geo.workspace = true` to its crate

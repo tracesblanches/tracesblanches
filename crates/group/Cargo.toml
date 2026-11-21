@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+license.workspace = true
 
 # Runs on the phone: no networking, no I/O. The radio (BLE advertising and batched scan)
 # is the app's; this crate builds and checks the frames and decides the alerts.

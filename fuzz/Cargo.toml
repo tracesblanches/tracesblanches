@@ -10,6 +10,7 @@ name = "skimap-fuzz"
 version = "0.0.0"
 edition = "2024"
 publish = false
+license = "GPL-3.0-or-later"
 
 [package.metadata]
 cargo-fuzz = true

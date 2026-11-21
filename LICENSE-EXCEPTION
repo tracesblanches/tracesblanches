@@ -1,0 +1,42 @@
+skimap: additional permission for application stores
+(GNU General Public License, version 3, section 7)
+
+Copyright (C) 2026 Pierre Warnier
+
+skimap is free software: you can redistribute it and/or modify it under the terms of the
+GNU General Public License as published by the Free Software Foundation, either version
+3 of the License, or (at your option) any later version (the file LICENSE), with the
+following additional permission.
+
+Additional permission under GNU GPL version 3 section 7
+
+  If you convey the Program, or a work based on the Program, in object code form
+  through an application distribution service (an "app store", such as the Apple App
+  Store or Google Play) whose terms of service, usage rules or technical measures
+  impose on recipients restrictions that the GNU GPL would otherwise forbid, the
+  copyright holder grants you permission to do so, and the imposition of those terms,
+  rules and measures by the distribution service does not count as a further
+  restriction under section 10 of the GNU GPL, provided that:
+
+  a) the Corresponding Source of the conveyed object code is offered to every
+     recipient, at no charge, under the terms of the GNU GPL with this additional
+     permission, by one of the means of section 6 of the GNU GPL, and the location of
+     that source is stated in the description of the application on the distribution
+     service or in the application itself; and
+
+  b) you impose no further restriction of your own on the exercise of the rights
+     granted by the GNU GPL.
+
+Scope
+
+  This permission covers only the parts of skimap whose copyright is held by the
+  copyright holder named above, and the contributions whose authors have expressly
+  granted it (see CONTRIBUTING.md). It does not cover:
+
+  - crates/avalanche, a port of com4FlowPy (AvaFrame) licensed under the European
+    Union Public Licence v. 1.2 (LICENSES/EUPL-1.2.txt), which is never linked into the
+    Android application;
+  - third-party components, each under its own licence (THIRD-PARTY.md).
+
+  As section 7 of the GNU GPL allows, you may remove this additional permission from
+  your copy, or from a work based on it; if you do, delete this file from your version.

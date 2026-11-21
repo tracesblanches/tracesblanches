@@ -9,7 +9,9 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.99"
 publish = false
-# License still to be decided (F2, #2).
+# Decided on 15/11/2026 (F2, #2): GPL-3.0-or-later plus the app store permission of
+# LICENSE-EXCEPTION; crates/avalanche (port of com4FlowPy) stays under EUPL-1.2.
+license = "GPL-3.0-or-later"
 
 [workspace.lints.rust]
 unsafe_code = "deny"
