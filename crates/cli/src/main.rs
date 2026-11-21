@@ -209,6 +209,9 @@ enum Command {
     },
     /// One poll of the trail status sources of a site (P13, #26); personal use only.
     StatusPoll(SiteArg),
+    /// Pistes known but absent from OSM (operator's bulletin, official plan) traced from
+    /// Geotrek or routed on the IGN sections (G1, #117), `pistes_estimees/`.
+    PistesEstimees(SiteArg),
     /// Historic avalanche footprints (CLPA) and the piste sections crossing them (P20, #99);
     /// needs the `pistes` layer of the site.
     AvalancheHistoric {
@@ -961,6 +964,25 @@ fn run(cli: Cli) -> Result<()> {
                 &format!("{} sources", r.sources.len()),
             );
             print_json(&r)
+        }
+        Command::PistesEstimees(a) => {
+            let s = site(&a.site)?;
+            let c = ctx()?;
+            match c.pistes_estimees(s)? {
+                Some(r) => {
+                    record(
+                        &c,
+                        s,
+                        "pistes-estimees",
+                        &format!("{} Geotrek, {} liaisons", r.geotrek, r.routed),
+                    );
+                    print_json(&r)
+                }
+                None => {
+                    println!("aucune piste connue absente d'OSM");
+                    Ok(())
+                }
+            }
         }
         Command::AvalancheHistoric { site: s, dump } => {
             let s = site(&s)?;

@@ -103,6 +103,19 @@ const EN: &[(&str, &str)] = &[
         "Plan officiel de la station",
         "Official trail map of the resort",
     ),
+    (
+        "Tracé incertain, d'après un itinéraire publié du même nom",
+        "Uncertain line, from a published route of the same name",
+    ),
+    (
+        "Tracé incertain, routé sur les routes et chemins IGN",
+        "Uncertain line, routed on the IGN roads and paths",
+    ),
+    ("Longueur annoncée", "Announced length"),
+    ("Piste piétonne", "Walking trail"),
+    ("Liaison", "Link"),
+    ("Voir l'itinéraire repris", "See the route used"),
+    ("Bulletin de l'exploitant", "Operator's bulletin"),
 ];
 
 /// `fr` in `lang`.
@@ -345,22 +358,34 @@ fn piste(
     }
 }
 
-/// Card of a piste of the official plan absent from OSM (pack layer `pistes-estimees`,
-/// G1): its line is estimated, never shown as sure.
+/// Card of a piste known but absent from OSM (pack layer `pistes-estimees`, G1): its
+/// line is estimated (official plan, published route of the same name, or IGN roads and
+/// paths), never shown as sure.
 fn estimated_piste(props: &Map<String, Value>, lang: Lang) -> Card {
-    let kind = match props.get("difficulty").and_then(Value::as_str) {
-        Some("novice") => "Piste verte",
-        Some("easy") => "Piste bleue",
-        Some("intermediate") => "Piste rouge",
-        Some("advanced" | "expert") => "Piste noire",
+    let method = props.get("method").and_then(Value::as_str).unwrap_or("");
+    let kind = match (
+        props.get("difficulty").and_then(Value::as_str),
+        props.get("kind").and_then(Value::as_str),
+    ) {
+        (Some("novice"), _) => "Piste verte",
+        (Some("easy"), _) => "Piste bleue",
+        (Some("intermediate"), _) => "Piste rouge",
+        (Some("advanced" | "expert"), _) => "Piste noire",
+        (_, Some("pedestrian")) => "Piste piétonne",
+        (_, Some("liaison")) => "Liaison",
         _ => "Piste",
     };
+    let line = match method {
+        "geotrek" => "Tracé incertain, d'après un itinéraire publié du même nom",
+        "estimated_route" => "Tracé incertain, routé sur les routes et chemins IGN",
+        _ => "Tracé incertain, d'après le plan de la station",
+    };
     let mut facts = Vec::new();
-    word(
+    word(&mut facts, lang, "Tracé", Some(line));
+    fact(
         &mut facts,
-        lang,
-        "Tracé",
-        Some("Tracé incertain, d'après le plan de la station"),
+        t(lang, "Longueur annoncée"),
+        num(props.get("length_km_announced")).map(|k| length_text(k * 1000.0, lang)),
     );
     let km: Vec<String> = list(props, "lengths_km_plan")
         .iter()
@@ -387,9 +412,29 @@ fn estimated_piste(props: &Map<String, Value>, lang: Lang) -> Card {
         t(lang, "Voir le plan officiel"),
         text(props.get("plan_url")),
     );
-    let mut source = t(lang, "Plan officiel de la station").to_owned();
-    if props.get("method").and_then(Value::as_str) == Some("estimated_paths") {
-        source.push_str(" ; IGN BD TOPO");
+    link(
+        &mut links,
+        t(lang, "Voir l'itinéraire repris"),
+        text(props.get("source_url")),
+    );
+    let named_by_plan = props
+        .get("named_by")
+        .and_then(Value::as_str)
+        .is_none_or(|n| n == "plan");
+    let mut source = if named_by_plan {
+        t(lang, "Plan officiel de la station").to_owned()
+    } else {
+        t(lang, "Bulletin de l'exploitant").to_owned()
+    };
+    match method {
+        "estimated_paths" | "estimated_route" => source.push_str(" ; IGN BD TOPO"),
+        "geotrek" => {
+            source.push_str(" ; Geotrek");
+            if let Some(n) = text(props.get("source_name")) {
+                source.push_str(&format!(" (« {n} »)"));
+            }
+        }
+        _ => {}
     }
     Card {
         kind: t(lang, kind).to_owned(),
@@ -617,6 +662,37 @@ mod tests {
             Some("Uncertain line, from the resort's trail map")
         );
         assert_eq!(e.links[0].label, "See the official trail map");
+        // A piste of the operator's bulletin traced from a published route of its name.
+        let g: Map<String, Value> = serde_json::from_str(
+            r#"{"name": "Piéton le Val", "kind": "pedestrian", "certainty": "incertain",
+                "method": "geotrek", "named_by": "nordicfrance", "length_km_announced": 6.0,
+                "source_name": "Le Val en raquettes", "source_url": "https://geotrek.example/trek/1/"}"#,
+        )
+        .unwrap();
+        let c = area_card("pistes-estimees", &g, Lang::Fr).unwrap();
+        assert_eq!(c.kind, "Piste piétonne");
+        assert_eq!(
+            value(&c, "Tracé"),
+            Some("Tracé incertain, d'après un itinéraire publié du même nom")
+        );
+        assert_eq!(value(&c, "Longueur annoncée"), Some("6,0 km"));
+        assert_eq!(c.links[0].label, "Voir l'itinéraire repris");
+        assert_eq!(
+            c.source,
+            "Bulletin de l'exploitant ; Geotrek (« Le Val en raquettes »)"
+        );
+        let r: Map<String, Value> = serde_json::from_str(
+            r#"{"name": "Liaison le Bas", "kind": "liaison", "certainty": "incertain",
+                "method": "estimated_route", "named_by": "nordicfrance"}"#,
+        )
+        .unwrap();
+        let e = area_card("pistes-estimees", &r, Lang::En).unwrap();
+        assert_eq!(e.kind, "Link");
+        assert_eq!(
+            value(&e, "Line"),
+            Some("Uncertain line, routed on the IGN roads and paths")
+        );
+        assert_eq!(e.source, "Operator's bulletin ; IGN BD TOPO");
         // A piste of OSM in a domain with a plan links it too.
         let mut q = p.clone();
         q.remove("certainty");

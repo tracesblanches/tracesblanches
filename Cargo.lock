@@ -3015,6 +3015,7 @@ dependencies = [
  "skimap-meteo",
  "skimap-osm",
  "skimap-pack",
+ "skimap-pisteplan",
  "skimap-plan",
  "skimap-refuges",
  "skimap-snow",

@@ -27,6 +27,8 @@ skimap-voice.workspace = true
 skimap-assist.workspace = true
 skimap-plan.workspace = true
 skimap-srn.workspace = true
+# Pistes known but absent from OSM (G1): Geotrek, IGN sections and toponyms.
+skimap-pisteplan = { path = "../pisteplan", features = ["pipeline"] }
 skimap-stations.workspace = true
 skimap-pack = { workspace = true, features = ["pipeline"] }
 anyhow.workspace = true

@@ -32,9 +32,10 @@ pub enum Transform {
     /// GeoJSON pistes enriched with the trail state and the piste plan
     /// ([`crate::build::pistes`]).
     Pistes,
-    /// Estimated traces of the pistes of the plan absent from OSM (G1,
-    /// [`estimated_pistes`]): the features of `plan_pistes.geojson` whose certainty is
-    /// `incertain`.
+    /// Estimated traces of the pistes known but absent from OSM (G1,
+    /// [`estimated_pistes`]): the features of `pistes_estimees.geojson` (plan, Geotrek,
+    /// IGN sections), all of them in a personal pack, in a published one only those whose
+    /// every licence (`licences`) allows it.
     EstimatedPistes,
     /// GeoJSON, only the features of a licence group ([`skimap_common::licence::Group`],
     /// #169): each feature goes to the file of the group of its `licence` (an itinerary)
@@ -279,21 +280,21 @@ fn catalog_without_srn() -> Vec<Spec> {
                 true,
             )
         },
-        // Pistes of the official plan absent from OSM (G1, #117): estimated traces, always
-        // uncertain (dotted on the map). Their geometry derives from the plan (its line,
-        // or the IGN paths it selects): the plan's source is personal use only, so the
-        // layer is in personal packs only, never in a published one.
+        // Pistes known but absent from OSM (G1, #117): estimated traces, always uncertain
+        // (dotted on the map), from the plan, Geotrek or the IGN sections. Each feature
+        // carries its licences: a published pack keeps those whose every licence allows
+        // it (none derived from the plan, whose source is personal use only).
         Spec {
             notes: &[
-                "Pistes du plan officiel absentes d'OSM : tracé estimé (`certainty` = `incertain`, jamais présenté comme sûr), sur les chemins IGN du couloir de la ligne du plan (`method` = `estimated_paths`) ou ligne du plan reportée (`estimated_drawing`). Propriétés : `name`, `colour`, `difficulty` (de la couleur), `kind`, `certainty`, `method`, `score`, `length_m`, `lengths_km_plan`, `departures`, `plan_url` (adresse du plan officiel, lien seulement). Géométrie dérivée du plan : usage personnel.",
+                "Pistes connues absentes d'OSM : tracé estimé (`certainty` = `incertain`, jamais présenté comme sûr). D'après le plan officiel : chemins IGN du couloir de la ligne du plan (`method` = `estimated_paths`) ou ligne du plan reportée (`estimated_drawing`) ; pistes du bulletin de l'exploitant ou du plan : itinéraire Geotrek du même nom et de longueur proche (`geotrek`) ou liaison routée sur les tronçons IGN entre les lieux qu'elle nomme (`estimated_route`). Propriétés : `name`, `colour`, `difficulty` (de la couleur), `kind`, `certainty`, `method`, `score`, `length_m`, `length_km_announced`, `lengths_km_plan`, `departures`, `named_by`, `source_name`, `source_url`, `route_ends`, `plan_url` (adresse du plan officiel, lien seulement), `licences`. Pack publié : seulement les entités dont toutes les licences le permettent.",
             ],
             transform: Transform::EstimatedPistes,
             ..vector(
                 ESTIMATED_LAYER,
-                "Pistes estimées d'après le plan (tracé incertain)",
-                "plan_pistes",
-                "plan_pistes.geojson",
-                "plan_pistes.meta.json",
+                "Pistes absentes d'OSM (tracé incertain)",
+                "pistes_estimees",
+                "pistes_estimees.geojson",
+                "pistes_estimees.meta.json",
                 true,
             )
         },
@@ -738,7 +739,17 @@ pub fn include(spec: &Spec, out: &Path, root: &Path, personal_sources: bool) -> 
         None => None,
     };
     // The sources of this file only: those of its licence group (#169).
-    let group = file_group(spec, meta.as_ref());
+    // Estimated pistes: the whole file in a personal pack, the features of public
+    // licences in a published one.
+    let group = if spec.transform == Transform::EstimatedPistes {
+        Some(if personal_sources {
+            Group::Personal
+        } else {
+            Group::Odbl
+        })
+    } else {
+        file_group(spec, meta.as_ref())
+    };
     // The metadata of the layer names a personal source (an earlier run of the
     // assistant, #151) while this file is of a published group: the pack gets the
     // metadata of the group only.
@@ -800,11 +811,24 @@ pub fn include(spec: &Spec, out: &Path, root: &Path, personal_sources: bool) -> 
                 joined = Some(crate::build::pistes::enrich(&mut v, out, personal_sources)?);
             }
             if spec.transform == Transform::EstimatedPistes {
+                let all = v["features"].as_array().map_or(0, Vec::len);
+                if let (Some(fs), false) = (
+                    v.get_mut("features").and_then(Value::as_array_mut),
+                    personal_sources,
+                ) {
+                    fs.retain(|f| feature_group(&f["properties"]) == Group::Odbl);
+                }
                 v = estimated_pistes(&v);
                 if v["features"].as_array().is_none_or(Vec::is_empty) {
                     return Ok(Outcome::Missing(Missing {
                         id: spec.id.to_string(),
-                        reason: "aucune piste du plan estimée hors d'OSM sur ce site".to_owned(),
+                        reason: if all > 0 {
+                            format!(
+                                "{all} pistes estimées, toutes d'une source à usage personnel seulement : option personal_sources désactivée"
+                            )
+                        } else {
+                            "aucune piste estimée hors d'OSM sur ce site".to_owned()
+                        },
                     }));
                 }
             }
@@ -991,7 +1015,7 @@ fn difficulty_of_colour(c: &str) -> Option<&'static str> {
     }
 }
 
-/// The estimated traces of `plan_pistes.geojson` (certainty `incertain`, or an
+/// The estimated traces of `pistes_estimees.geojson` (certainty `incertain`, or an
 /// `estimated_*` method in a file written without certainty), with the properties the
 /// styles and the cards read; `source_plan_url` becomes `plan_url`.
 pub fn estimated_pistes(v: &Value) -> Value {
@@ -1003,8 +1027,15 @@ pub fn estimated_pistes(v: &Value) -> Value {
         "method",
         "score",
         "length_m",
+        "length_km_announced",
         "lengths_km_plan",
         "departures",
+        "named_by",
+        "source_name",
+        "source_url",
+        "route_ends",
+        "plan_url",
+        "licences",
     ];
     let features: Vec<Value> = v["features"]
         .as_array()
@@ -1498,29 +1529,42 @@ mod tests {
         assert_eq!(fs[1]["properties"]["difficulty"], "advanced");
     }
 
-    /// The estimated traces derive from the plan (personal use only): never in a public
+    /// Writes `pistes_estimees/` with `features` and a personal source.
+    fn estimated_out(features: Value) -> tempfile::TempDir {
+        let out = tempfile::tempdir().unwrap();
+        let dir = out.path().join("pistes_estimees");
+        std::fs::create_dir_all(&dir).unwrap();
+        let fc = json!({"type": "FeatureCollection", "features": features});
+        std::fs::write(dir.join("pistes_estimees.geojson"), fc.to_string()).unwrap();
+        let meta = json!({"layer": "pistes_estimees", "site": "s", "generated_at": "2026-11-17T00:00:00Z",
+            "sources": [{"name": "plan.pdf", "url": "https://example.org/plan.pdf", "licence": "aucune",
+                         "attribution": "Station", "personal_use_only": true},
+                        {"name": "BD TOPO", "url": "https://data.geopf.fr", "licence": "Licence Ouverte Etalab 2.0",
+                         "attribution": "IGN", "personal_use_only": false}]});
+        std::fs::write(dir.join("pistes_estimees.meta.json"), meta.to_string()).unwrap();
+        out
+    }
+
+    fn estimated_spec() -> Spec {
+        catalog()
+            .into_iter()
+            .find(|s| s.id == ESTIMATED_LAYER)
+            .unwrap()
+    }
+
+    /// The estimated traces derived from the plan (personal use only): never in a public
     /// pack, in a personal one with only the uncertain features.
     #[test]
     fn estimated_pistes_stay_out_of_public_packs() {
-        let out = tempfile::tempdir().unwrap();
         let root = tempfile::tempdir().unwrap();
-        let dir = out.path().join("plan_pistes");
-        std::fs::create_dir_all(&dir).unwrap();
-        let fc = json!({"type": "FeatureCollection", "features": [
+        let out = estimated_out(json!([
             {"type": "Feature", "geometry": {"type": "MultiLineString", "coordinates": [[[6.0, 46.0], [6.01, 46.01]]]},
              "properties": {"name": "Sûre", "method": "exact", "certainty": "exact", "colour": "blue"}},
             {"type": "Feature", "geometry": {"type": "MultiLineString", "coordinates": [[[6.0, 46.0], [6.01, 46.01]]]},
-             "properties": {"name": "Le Gy", "method": "estimated_drawing", "certainty": "incertain", "colour": "green"}}
-        ]});
-        std::fs::write(dir.join("plan_pistes.geojson"), fc.to_string()).unwrap();
-        let meta = json!({"layer": "plan_pistes", "site": "s", "generated_at": "2026-11-17T00:00:00Z",
-            "sources": [{"name": "plan.pdf", "url": "https://example.org/plan.pdf", "licence": "aucune",
-                         "attribution": "Station", "personal_use_only": true}]});
-        std::fs::write(dir.join("plan_pistes.meta.json"), meta.to_string()).unwrap();
-        let spec = catalog()
-            .into_iter()
-            .find(|s| s.id == ESTIMATED_LAYER)
-            .unwrap();
+             "properties": {"name": "Le Gy", "method": "estimated_drawing", "certainty": "incertain", "colour": "green",
+                            "licences": ["aucune licence de réutilisation (usage personnel) : aucune", "Licence Ouverte Etalab 2.0"]}}
+        ]));
+        let spec = estimated_spec();
         match include(&spec, out.path(), root.path(), false).unwrap() {
             Outcome::Missing(m) => assert!(m.reason.contains("usage personnel"), "{}", m.reason),
             Outcome::Included(_) => panic!("estimated traces in a public pack"),
@@ -1534,6 +1578,60 @@ mod tests {
                 )
                 .unwrap();
                 assert_eq!(v["features"][0]["properties"]["name"], "Le Gy");
+            }
+            Outcome::Missing(m) => panic!("{}", m.reason),
+        }
+    }
+
+    /// #117: the pistes the operator announces and OSM lacks, traced from Geotrek or
+    /// routed on the IGN sections, are in the personal pack (dotted, uncertain); a
+    /// published pack keeps the one whose every licence allows it.
+    #[test]
+    fn announced_pistes_absent_from_osm_reach_the_pack() {
+        let root = tempfile::tempdir().unwrap();
+        let out = estimated_out(json!([
+            {"type": "Feature", "geometry": {"type": "MultiLineString", "coordinates": [[[6.0, 46.0], [6.01, 46.01]]]},
+             "properties": {"name": "Piéton le Val", "method": "geotrek", "certainty": "incertain", "kind": "pedestrian",
+                            "named_by": "nordicfrance", "length_km_announced": 6.0, "source_name": "Le Val en raquettes",
+                            "source_url": "https://geotrek.example/api/v2/trek/1/",
+                            "licences": ["aucune licence, HTML seulement", "aucune licence affichée par l'instance (non vérifiée)"]}},
+            {"type": "Feature", "geometry": {"type": "MultiLineString", "coordinates": [[[6.0, 46.0], [6.02, 46.0]]]},
+             "properties": {"name": "Liaison le Bas", "method": "estimated_route", "certainty": "incertain", "kind": "liaison",
+                            "named_by": "opendata", "route_ends": ["village", "le bas"],
+                            "licences": ["Licence Ouverte Etalab 2.0", "Licence Ouverte Etalab 2.0"]}}
+        ]));
+        let spec = estimated_spec();
+        match include(&spec, out.path(), root.path(), true).unwrap() {
+            Outcome::Included(l) => {
+                assert_eq!(l.features, Some(2));
+                let v: Value = serde_json::from_str(
+                    &std::fs::read_to_string(root.path().join(&l.file)).unwrap(),
+                )
+                .unwrap();
+                let p = &v["features"][0]["properties"];
+                assert_eq!(p["name"], "Piéton le Val");
+                assert_eq!(p["method"], "geotrek");
+                assert_eq!(p["certainty"], "incertain");
+                assert_eq!(p["source_url"], "https://geotrek.example/api/v2/trek/1/");
+                assert_eq!(v["features"][1]["properties"]["route_ends"][1], "le bas");
+            }
+            Outcome::Missing(m) => panic!("{}", m.reason),
+        }
+        let public = tempfile::tempdir().unwrap();
+        match include(&spec, out.path(), public.path(), false).unwrap() {
+            Outcome::Included(l) => {
+                assert!(!l.personal_use_only);
+                assert_eq!(l.features, Some(1));
+                assert!(
+                    l.sources.iter().all(|s| !s.personal_use_only),
+                    "{:?}",
+                    l.sources
+                );
+                let v: Value = serde_json::from_str(
+                    &std::fs::read_to_string(public.path().join(&l.file)).unwrap(),
+                )
+                .unwrap();
+                assert_eq!(v["features"][0]["properties"]["name"], "Liaison le Bas");
             }
             Outcome::Missing(m) => panic!("{}", m.reason),
         }

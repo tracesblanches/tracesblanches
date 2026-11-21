@@ -190,6 +190,94 @@ impl Ctx {
         )?)
     }
 
+    /// G1 (#117): pistes known but absent from OSM (operator's bulletin, official plan),
+    /// traced from Geotrek or routed on the IGN sections, with the plan's estimated
+    /// traces (`pistes_estimees/`). `None` when no source names such a piste.
+    pub fn pistes_estimees(&self, site: &Site) -> Result<Option<skimap_pisteplan::known::Report>> {
+        use skimap_common::meta::SourceRef;
+        use skimap_pisteplan::known;
+        let out = self.layout.out_dir(site);
+        let (pistes, copied, mut sources) = known::known_of(&out)?;
+        if pistes.is_empty() && copied.is_empty() {
+            return Ok(None);
+        }
+        let b = site.bbox;
+        let mut errors = Vec::new();
+        let mut treks = Vec::new();
+        if !pistes.is_empty() {
+            match skimap_srn::geotrek::apis_near(&self.dl, &b, 0.0) {
+                Ok(apis) => {
+                    let (t, fetched, e) = known::fetch_treks(&self.dl, &apis, &b);
+                    treks = t;
+                    errors.extend(e);
+                    for (publisher, f) in fetched {
+                        let licence = apis
+                            .iter()
+                            .find(|a| a.1 == publisher)
+                            .map_or_else(String::new, |a| a.2.clone());
+                        let mut s = SourceRef::from_fetched(
+                            format!("Geotrek, itinéraires ({publisher})"),
+                            &licence,
+                            format!("© {publisher} (Geotrek)"),
+                            &f,
+                        );
+                        if !skimap_common::licence::classify(&licence).public() {
+                            s = s.personal_use_only();
+                        }
+                        sources.push(s);
+                    }
+                }
+                Err(e) => errors.push(format!("Geotrek : {e}")),
+            }
+        }
+        let (mut paths, mut places) = (Vec::new(), Vec::new());
+        if pistes.iter().any(|k| k.liaison) {
+            match skimap_pisteplan::estimate::paths_ign(&self.dl, &b) {
+                Ok((p, f)) => {
+                    paths = p;
+                    sources.push(SourceRef::from_fetched(
+                        "IGN BD TOPO, tronçons de route (Géoplateforme, WFS)",
+                        known::BDTOPO_LICENCE,
+                        "IGN – BD TOPO",
+                        &f,
+                    ));
+                }
+                Err(e) => errors.push(format!("IGN tronçons : {e}")),
+            }
+            match skimap_pisteplan::osmref::landmarks_ign(&self.dl, &b) {
+                Ok((p, f)) => {
+                    places = p;
+                    sources.push(SourceRef::from_fetched(
+                        skimap_pisteplan::osmref::IGN_LANDMARKS,
+                        known::BDTOPO_LICENCE,
+                        "IGN – BD TOPO",
+                        &f,
+                    ));
+                }
+                Err(e) => errors.push(format!("IGN toponymes : {e}")),
+            }
+        }
+        let rep = known::write(
+            &out,
+            site.id,
+            known::Inputs {
+                known: pistes,
+                copied,
+                sources,
+                errors,
+            },
+            &known::Ground {
+                treks: &treks,
+                paths: &paths,
+                places: &places,
+            },
+            &b,
+            site.name,
+            site.commune_center,
+        )?;
+        Ok(Some(rep))
+    }
+
     /// P20: historic avalanches, from the `pistes` layer or a saved Overpass extract.
     pub fn avalanche_historic(
         &self,
@@ -692,6 +780,27 @@ impl Ctx {
                 "personal_sources désactivé (SKIMAP_PERSONAL_SOURCES)",
             );
         }
+        // Pistes known but absent from OSM (G1): after the status and before the pack.
+        run.step("pistes-estimees", &[], |site| {
+            let Some(r) = self.pistes_estimees(site)? else {
+                return not_applicable(
+                    "aucune piste connue absente d'OSM (bulletin de l'exploitant, plan officiel)",
+                );
+            };
+            let named: usize = r.known.values().sum();
+            Ok(format!(
+                "{} pistes nommées absentes d'OSM : {} tracées par Geotrek, {} liaisons routées sur les tronçons IGN ; {} tracés estimés du plan repris{}",
+                named,
+                r.geotrek,
+                r.routed,
+                r.from_plan_estimate,
+                if r.errors.is_empty() {
+                    String::new()
+                } else {
+                    format!(" ; sources illisibles : {}", r.errors.join(" ; "))
+                }
+            ))
+        });
         run.step("avalanche-historic", &["pistes"], |site| {
             if site.department != skimap_avalanche::historic::DDT05_DEPARTMENT {
                 return not_applicable(&format!(
@@ -1135,6 +1244,7 @@ pub const READS: &[(&str, &[Field])] = &[
             Field::Status,
         ],
     ),
+    ("pistes-estimees", PLACE),
     ("avalanche-historic", PLACE),
     ("assist", PLACE_STARTS),
     ("voice", PLACE),
@@ -1353,6 +1463,7 @@ pub fn step_dir(step: &str) -> Option<&'static str> {
         "avalanche-historic" => "avalanche-historic",
         "voice" => "voice",
         "voice-en" => "voice-en",
+        "pistes-estimees" => "pistes_estimees",
         "build-pack" => "pack",
         "export" => "export",
         _ => return None,

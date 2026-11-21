@@ -37,6 +37,8 @@ pub mod image;
 #[cfg(feature = "pipeline")]
 pub mod input;
 #[cfg(feature = "pipeline")]
+pub mod known;
+#[cfg(feature = "pipeline")]
 pub mod labels;
 #[cfg(feature = "pipeline")]
 pub mod learn;
