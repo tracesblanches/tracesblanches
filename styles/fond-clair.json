@@ -192,6 +192,7 @@
       "metadata": {
         "skimap:group": "fond"
       },
+      "minzoom": 10.0,
       "paint": {
         "fill-color": "#f1eeea"
       },
@@ -220,6 +221,7 @@
       "metadata": {
         "skimap:group": "fond"
       },
+      "minzoom": 10.0,
       "paint": {
         "fill-color": "#e4efdc"
       },
@@ -240,6 +242,7 @@
       "metadata": {
         "skimap:group": "fond"
       },
+      "minzoom": 10.0,
       "paint": {
         "fill-color": "#e3f1fb"
       },
@@ -341,6 +344,7 @@
       "metadata": {
         "skimap:group": "fond"
       },
+      "minzoom": 10.0,
       "paint": {
         "fill-color": "#9fd0f2"
       },
@@ -541,6 +545,7 @@
       "metadata": {
         "skimap:group": "fond"
       },
+      "minzoom": 10.0,
       "paint": {
         "line-color": "#a39887",
         "line-width": [
@@ -638,6 +643,7 @@
       "metadata": {
         "skimap:group": "fond"
       },
+      "minzoom": 10.0,
       "paint": {
         "line-color": "#a39887",
         "line-width": [

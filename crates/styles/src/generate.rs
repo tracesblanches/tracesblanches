@@ -73,6 +73,12 @@ pub const FRANCE_SOURCE: &str = "france";
 /// and borders (zoom 6 tiles enlarged 16 times) no longer match the Plan IGN drawn over
 /// them (seen on the emulator at zoom 11 over three packs: blocky forests, doubled roads).
 pub const FRANCE_DETAIL_UNTIL: f64 = 10.0;
+/// Zoom from which the Plan IGN of the packs draws its ground (built-up areas, forest,
+/// rock, glacier, water, main roads), where the France basemap stops: below it a pack tile
+/// reaches far beyond the pack (the zoom 4 tile of an Alpine pack spans longitudes 0 to
+/// 22.5) and its roads stopped at its edge, the Greenwich meridian, over the France
+/// basemap (#178). Every other Plan IGN layer starts higher.
+const PACKS_FROM: f64 = FRANCE_DETAIL_UNTIL;
 /// Zoom from which the Plan IGN names the communes ([`localities`]): the France names stop.
 pub const FRANCE_NAMES_UNTIL: f64 = 10.0;
 
@@ -434,7 +440,7 @@ fn ground_cover(p: &Palette, marked: bool) -> Vec<Value> {
         "ign-built",
         "fill",
         "bati_zone_surf",
-        json!({"maxzoom": 15, "filter": eq("symbo", json!("ZONE_BATI")),
+        json!({"minzoom": PACKS_FROM, "maxzoom": 15, "filter": eq("symbo", json!("ZONE_BATI")),
                "paint": {"fill-color": p.built}}),
     )];
     if marked {
@@ -442,20 +448,20 @@ fn ground_cover(p: &Palette, marked: bool) -> Vec<Value> {
             "ign-forest",
             "fill",
             "ocs_vegetation_surf",
-            json!({"filter": one_of("symbo", &FOREST), "paint": {"fill-color": p.forest}}),
+            json!({"minzoom": PACKS_FROM, "filter": one_of("symbo", &FOREST), "paint": {"fill-color": p.forest}}),
         ));
         v.push(ign(
             "ign-forest-open",
             "fill",
             "ocs_vegetation_surf",
-            json!({"filter": one_of("symbo", &["ZONE_FORET_OUVERTE", "ZONE_LANDE_LIGNEUSE"]),
+            json!({"minzoom": PACKS_FROM, "filter": one_of("symbo", &["ZONE_FORET_OUVERTE", "ZONE_LANDE_LIGNEUSE"]),
                    "paint": {"fill-color": p.forest_open}}),
         ));
         v.push(ign(
             "ign-rock",
             "fill",
             "ocs_nature_sol_surf",
-            json!({"filter": one_of("symbo", &["ZONE_ROCHEUSE", "ZONE_EBOULIS", "ZONE_RAVINEE"]),
+            json!({"minzoom": PACKS_FROM, "filter": one_of("symbo", &["ZONE_ROCHEUSE", "ZONE_EBOULIS", "ZONE_RAVINEE"]),
                    "paint": {"fill-color": p.rock}}),
         ));
     } else {
@@ -465,14 +471,14 @@ fn ground_cover(p: &Palette, marked: bool) -> Vec<Value> {
             "ign-forest",
             "fill",
             "ocs_vegetation_surf",
-            json!({"filter": one_of("symbo", &all), "paint": {"fill-color": p.forest_faint}}),
+            json!({"minzoom": PACKS_FROM, "filter": one_of("symbo", &all), "paint": {"fill-color": p.forest_faint}}),
         ));
     }
     v.push(ign(
         "ign-glacier",
         "fill",
         "ocs_nature_sol_surf",
-        json!({"filter": eq("symbo", json!("ZONE_GLACIER")), "paint": {"fill-color": p.glacier}}),
+        json!({"minzoom": PACKS_FROM, "filter": eq("symbo", json!("ZONE_GLACIER")), "paint": {"fill-color": p.glacier}}),
     ));
     v
 }
@@ -483,7 +489,7 @@ fn water(p: &Palette, streams_from: f64) -> Vec<Value> {
             "ign-water",
             "fill",
             "hydro_surf",
-            json!({"filter": one_of("symbo", &["SURFACE_D_EAU", "BASSIN", "SURFACE_D_EAU_TEMP"]),
+            json!({"minzoom": PACKS_FROM, "filter": one_of("symbo", &["SURFACE_D_EAU", "BASSIN", "SURFACE_D_EAU_TEMP"]),
                    "paint": {"fill-color": p.water}}),
         ),
         ign(
@@ -628,7 +634,7 @@ fn roads(p: &Palette, tracks: bool, minor_from: f64) -> Vec<Value> {
             &format!("ign-road-major{suffix}"),
             "line",
             src,
-            json!({"filter": ["match", ["get", "symbo"], sup(&ROAD_MAJOR), true, false],
+            json!({"minzoom": PACKS_FROM, "filter": ["match", ["get", "symbo"], sup(&ROAD_MAJOR), true, false],
                    "layout": {"line-cap": "round", "line-join": "round"},
                    "paint": {"line-color": p.road_major, "line-width": zl(&[(9.0, 0.8), (13.0, 1.8), (16.0, 4.0)])}}),
         ));
@@ -1763,13 +1769,13 @@ fn guidage(theme: Theme) -> Vec<Value> {
         "ign-water",
         "fill",
         "hydro_surf",
-        json!({"filter": one_of("symbo", &["SURFACE_D_EAU", "BASSIN"]), "paint": {"fill-color": p.water}}),
+        json!({"minzoom": PACKS_FROM, "filter": one_of("symbo", &["SURFACE_D_EAU", "BASSIN"]), "paint": {"fill-color": p.water}}),
     ));
     v.push(ign(
         "ign-road-major",
         "line",
         "routier_route",
-        json!({"filter": one_of("symbo", &ROAD_MAJOR),
+        json!({"minzoom": PACKS_FROM, "filter": one_of("symbo", &ROAD_MAJOR),
                "paint": {"line-color": p.road_minor, "line-width": zl(&[(10.0, 1.0), (16.0, 3.0)])}}),
     ));
     v.push(layer(
