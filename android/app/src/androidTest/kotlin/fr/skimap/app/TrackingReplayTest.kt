@@ -453,26 +453,8 @@ class TrackingReplayTest {
             val kinds = s.stats.said.flatMap { it.kinds }
             assertEquals(kinds.toString(), 1, kinds.count { it == "arrive" })
             assertTrue(kinds.toString(), "back" in kinds)
-            // Arrived (#180): the banner stays on the arrival while the outing is not stopped,
-            // never the plan of the day again, a minute of fixes around the car later too.
-            repeat(ARRIVED_BATCHES) {
-                val g = (Tracking.state.value as TrackingState.Running).guidance
-                assertEquals("back", g.route)
-                assertEquals(Phase.FINISHED, g.phase)
-                assertEquals(null, g.nextTurn)
-                val batch =
-                    (1..BATCH).map {
-                        t += 2000
-                        loc(t, here.longitude, here.latitude)
-                    }
-                onService(s) { s.fixes(batch, emptyList()) }
-            }
-            // Every announcement played to its end before the test stops the outing (Android
-            // cuts the voice when the test ends).
-            val said = s.stats.said.size
-            val until = System.currentTimeMillis() + 120_000
-            while (s.stats.voiced < said && System.currentTimeMillis() < until) Thread.sleep(200)
-            assertEquals(said, s.stats.voiced)
+            staysArrived(s, t, here)
+            awaitVoices(s)
             onService(s) { s.inject { it.backStop() } }
             Tracking.command(target, SkiTrackingService::class.java, Tracking.ACTION_STOP)
             target.unbindService(conn)
@@ -481,8 +463,42 @@ class TrackingReplayTest {
         }
     }
 
+    /**
+     * Arrived by « ramène-moi » (#180): the banner stays on the arrival while the outing is
+     * not stopped, never the plan of the day again, a minute of fixes around the car later
+     * too.
+     */
+    private fun staysArrived(
+        s: TrackingService,
+        from: Long,
+        here: Location,
+    ) {
+        var t = from
+        repeat(ARRIVED_BATCHES) {
+            val g = (Tracking.state.value as TrackingState.Running).guidance
+            assertEquals("back", g.route)
+            assertEquals(Phase.FINISHED, g.phase)
+            assertEquals(null, g.nextTurn)
+            val batch =
+                (1..BATCH).map {
+                    t += 2000
+                    loc(t, here.longitude, here.latitude)
+                }
+            onService(s) { s.fixes(batch, emptyList()) }
+        }
+    }
+
+    /** Every announcement played to its end (Android cuts the voice when the test ends). */
+    private fun awaitVoices(s: TrackingService) {
+        val said = s.stats.said.size
+        val until = System.currentTimeMillis() + VOICES_MS
+        while (s.stats.voiced < said && System.currentTimeMillis() < until) Thread.sleep(200)
+        assertEquals(said, s.stats.voiced)
+    }
+
     private companion object {
         const val BATCH = 5
+        const val VOICES_MS = 120_000L
         const val MAX_STEPS = 600
         const val STEP_M = 8.0
         const val ARRIVED_BATCHES = 6
