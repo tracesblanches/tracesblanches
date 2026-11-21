@@ -19,7 +19,7 @@ pipeline = [
     "dep:skimap-core",
     "dep:skimap-assist",
     "dep:skimap-plan",
-    "dep:chrono",
+    "dep:jiff",
     "dep:rayon",
     "dep:rusqlite",
     "dep:tracing",
@@ -43,7 +43,7 @@ skimap-core = { workspace = true, optional = true }
 # The starts of the site ranked by the planner on the pack (#166): the phone's morning.
 skimap-assist = { workspace = true, optional = true }
 skimap-plan = { workspace = true, optional = true }
-chrono = { workspace = true, optional = true }
+jiff = { workspace = true, optional = true }
 rayon = { workspace = true, optional = true }
 rusqlite = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }

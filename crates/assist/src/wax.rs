@@ -41,7 +41,7 @@
 //!    estimated snow temperature: 0 °C when the surface is wet, otherwise
 //!    `min(0, air) − 2 × (1 − cloud fraction)` (a clear sky cools the snow below the air).
 
-use chrono::{NaiveDate, Timelike};
+use jiff::civil::Date;
 use serde::Serialize;
 use skimap_voice::bank::{Glide, Kick};
 
@@ -482,7 +482,7 @@ pub fn conditions(
     let flat = &quality.classes[0].hours;
     let in_window: Vec<Quality> = flat
         .iter()
-        .filter(|h| (h0..h1).contains(&h.time.hour()))
+        .filter(|h| (h0..h1).contains(&(h.time.hour() as u32)))
         .map(|h| h.quality)
         .collect();
     let (first, last) = (*in_window.first()?, *in_window.last()?);
@@ -749,7 +749,7 @@ pub fn advise_in(c: &WaxConditions, lang: Lang) -> WaxAdvice {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DayWax {
     /// Date.
-    pub date: NaiveDate,
+    pub date: Date,
     /// Forecast point.
     pub point: String,
     /// 09–12 h.

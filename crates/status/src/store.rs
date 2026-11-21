@@ -8,7 +8,7 @@
 
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use skimap_common::Error as CommonError;
@@ -41,8 +41,8 @@ fn io(path: &Path, e: std::io::Error) -> CommonError {
 }
 
 /// File name of a snapshot taken at `t`.
-pub fn snapshot_name(t: DateTime<Utc>) -> String {
-    format!("snapshots/{}.json", t.format("%Y%m%dT%H%M%SZ"))
+pub fn snapshot_name(t: Timestamp) -> String {
+    format!("snapshots/{}.json", t.strftime("%Y%m%dT%H%M%SZ"))
 }
 
 impl Store {
@@ -96,7 +96,7 @@ impl Store {
     /// Records a poll of `content` at `polled_at`; writes a snapshot if it changed.
     pub fn record(
         &self,
-        polled_at: DateTime<Utc>,
+        polled_at: Timestamp,
         origin: &str,
         content: &Value,
     ) -> Result<PollRecord> {
@@ -120,7 +120,7 @@ impl Store {
             }
         };
         let rec = PollRecord {
-            polled_at: polled_at.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            polled_at: polled_at.strftime("%Y-%m-%dT%H:%M:%SZ").to_string(),
             origin: origin.to_owned(),
             changed: !unchanged,
             snapshot,
@@ -165,10 +165,8 @@ pub struct Frequency {
     pub stamps: Vec<StampSeen>,
 }
 
-fn parse_t(s: &str) -> Option<DateTime<Utc>> {
-    DateTime::parse_from_rfc3339(s)
-        .ok()
-        .map(|d| d.with_timezone(&Utc))
+fn parse_t(s: &str) -> Option<Timestamp> {
+    s.parse::<Timestamp>().ok()
 }
 
 /// Computes the observed frequency; `stamps_of` extracts the published stamps of one
@@ -182,13 +180,13 @@ pub fn frequency(store: &Store, stamps_of: impl Fn(&Value) -> Vec<String>) -> Re
         first.as_deref().and_then(parse_t),
         last.as_deref().and_then(parse_t),
     ) {
-        (Some(a), Some(b)) => (b - a).num_seconds() as f64 / 3600.0,
+        (Some(a), Some(b)) => (b - a).as_secs() as f64 / 3600.0,
         _ => 0.0,
     };
     let changes: Vec<String> = snaps.iter().skip(1).map(|(t, _, _)| t.clone()).collect();
-    let times: Vec<DateTime<Utc>> = changes.iter().filter_map(|t| parse_t(t)).collect();
+    let times: Vec<Timestamp> = changes.iter().filter_map(|t| parse_t(t)).collect();
     let mean = (times.len() >= 2).then(|| {
-        (times[times.len() - 1] - times[0]).num_seconds() as f64 / 3600.0 / (times.len() - 1) as f64
+        (times[times.len() - 1] - times[0]).as_secs() as f64 / 3600.0 / (times.len() - 1) as f64
     });
     let mut stamps: Vec<StampSeen> = Vec::new();
     for (t, _, v) in &snaps {
@@ -222,24 +220,22 @@ mod tests {
     fn snapshots_only_on_change() {
         let dir = tempfile::tempdir().unwrap();
         let s = Store::new(dir.path().join("enj"));
-        let t0 = DateTime::parse_from_rfc3339("2027-01-10T08:00:00Z")
-            .unwrap()
-            .to_utc();
+        let t0 = "2027-01-10T08:00:00Z".parse::<Timestamp>().unwrap();
         let a = json!({"updated": "A", "open": 1});
         let b = json!({"updated": "B", "open": 2});
         assert!(s.record(t0, "downloaded", &a).unwrap().changed);
         let r = s
-            .record(t0 + chrono::Duration::minutes(15), "not_modified", &a)
+            .record(t0 + jiff::SignedDuration::from_mins(15), "not_modified", &a)
             .unwrap();
         assert!(!r.changed);
         assert_eq!(r.snapshot, "snapshots/20270110T080000Z.json");
         assert!(
-            s.record(t0 + chrono::Duration::hours(2), "downloaded", &b)
+            s.record(t0 + jiff::SignedDuration::from_hours(2), "downloaded", &b)
                 .unwrap()
                 .changed
         );
         assert!(
-            s.record(t0 + chrono::Duration::hours(6), "downloaded", &a)
+            s.record(t0 + jiff::SignedDuration::from_hours(6), "downloaded", &a)
                 .unwrap()
                 .changed
         );

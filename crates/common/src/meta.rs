@@ -12,6 +12,7 @@ use serde_json::Value;
 
 use crate::error::{Error, Result};
 use crate::output::write_json;
+use jiff::Timestamp;
 
 /// Provenance of one source used by a layer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -316,13 +317,16 @@ impl LayerMeta {
 
 /// Current time, RFC 3339 UTC, second precision.
 pub fn now_rfc3339() -> String {
-    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+    jiff::Timestamp::now()
+        .strftime("%Y-%m-%dT%H:%M:%SZ")
+        .to_string()
 }
 
 /// Seconds since the epoch as RFC 3339 UTC, second precision.
 pub fn unix_to_rfc3339(secs: i64) -> Option<String> {
-    chrono::DateTime::from_timestamp(secs, 0)
-        .map(|d| d.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
+    Timestamp::new(secs, 0)
+        .ok()
+        .map(|d| d.strftime("%Y-%m-%dT%H:%M:%SZ").to_string())
 }
 
 #[cfg(test)]

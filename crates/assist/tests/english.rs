@@ -10,8 +10,11 @@
 #[path = "../../../fixtures/support/mod.rs"]
 mod fixtures;
 
-use chrono::NaiveDate;
 use fixtures::golden::Golden;
+use jiff::civil;
+use jiff::civil::DateTime;
+use jiff::civil::date;
+use jiff::civil::time;
 use skimap_assist::briefing;
 use skimap_assist::crowd::{self, Date};
 use skimap_assist::equipment::Kind as EqKind;
@@ -65,10 +68,10 @@ fn request(start: LonLat, name: &str, at: &str, min: f64, style: Style, lang: La
         label: format!("{min} min"),
         start,
         start_name: name.into(),
-        start_time: chrono::NaiveDateTime::parse_from_str(at, "%Y-%m-%dT%H:%M").unwrap(),
+        start_time: DateTime::strptime("%Y-%m-%dT%H:%M", at).unwrap(),
         budget_min: min,
         style,
-        return_before: Some(chrono::NaiveTime::from_hms_opt(16, 0, 0).unwrap()),
+        return_before: Some(time(16, 0, 0, 0)),
         max_difficulty: Some(skimap_core::graph::Difficulty::Novice),
         max_results: 3,
         lang,
@@ -76,7 +79,7 @@ fn request(start: LonLat, name: &str, at: &str, min: f64, style: Style, lang: La
 }
 
 /// Every line of the briefing and the loops of a day in `lang`.
-fn texts(d: &SiteData, date: NaiveDate, start: (LonLat, &str), lang: Lang) -> Vec<String> {
+fn texts(d: &SiteData, date: civil::Date, start: (LonLat, &str), lang: Lang) -> Vec<String> {
     let b = briefing::day(
         d,
         date,
@@ -119,7 +122,7 @@ fn every_text_of_the_assistant_has_its_english() {
         let mut names = names(&d);
         names.push((*start).to_owned());
         for day in DAYS {
-            let date = NaiveDate::parse_from_str(day, "%Y-%m-%d").unwrap();
+            let date = civil::Date::strptime("%Y-%m-%d", day).unwrap();
             let fr = texts(&d, date, (LonLat::new(*lon, *lat), start), Lang::Fr);
             let en = texts(&d, date, (LonLat::new(*lon, *lat), start), Lang::En);
             assert_eq!(
@@ -172,8 +175,8 @@ fn every_text_of_the_assistant_has_its_english() {
     for d in 0..7 {
         all.push(t.weekday(d).into());
     }
-    let day = NaiveDate::from_ymd_opt(2027, 2, 20).unwrap();
-    let at = day.and_hms_opt(14, 5, 0).unwrap();
+    let day = date(2027, 2, 20);
+    let at = day.at(14, 5, 0, 0);
     let flat = skimap_assist::snow_quality::SlopeClass {
         slope_deg: 0.0,
         aspect_deg: None,
@@ -463,7 +466,7 @@ fn english_goldens() {
     for (id, lon, lat, start) in STARTS {
         let d = data(site(id));
         let mut k = Golden::new(&format!("assist/{id}.en"));
-        let date = NaiveDate::from_ymd_opt(2027, 2, 20).unwrap();
+        let date = date(2027, 2, 20);
         let b = briefing::day(
             &d,
             date,

@@ -1,6 +1,6 @@
 //! Texts in English.
 
-use chrono::{Datelike, NaiveDate, NaiveDateTime};
+use jiff::civil::{Date, DateTime};
 
 use super::Texts;
 
@@ -37,11 +37,11 @@ impl Texts for En {
         skimap_plan::text::of(skimap_plan::text::Lang::En).duration5(s)
     }
 
-    fn clock5(&self, t: NaiveDateTime) -> String {
+    fn clock5(&self, t: DateTime) -> String {
         skimap_plan::text::of(skimap_plan::text::Lang::En).clock5(t)
     }
 
-    fn clock_day(&self, t: NaiveDateTime, day: NaiveDate) -> String {
+    fn clock_day(&self, t: DateTime, day: Date) -> String {
         if t.date() > day {
             format!("{} the next day", self.clock5(t))
         } else {
@@ -77,7 +77,7 @@ impl Texts for En {
         format!("back around {at} with the margin")
     }
 
-    fn after_limit(&self, limit: NaiveDateTime, for_group: bool) -> String {
+    fn after_limit(&self, limit: DateTime, for_group: bool) -> String {
         format!(
             "Expected back after the limit of {}: a long loop for {}",
             self.assist().clock(limit),
@@ -110,20 +110,20 @@ impl Texts for En {
     fn sms(
         &self,
         site: &str,
-        date: NaiveDate,
+        date: Date,
         start: &str,
-        departure: NaiveDateTime,
+        departure: DateTime,
         label: &str,
         km: f64,
         trails: &[String],
-        back: NaiveDateTime,
-        limit: Option<NaiveDateTime>,
-        alert: NaiveDateTime,
+        back: DateTime,
+        limit: Option<DateTime>,
+        alert: DateTime,
     ) -> String {
         let a = self.assist();
         format!(
             "Cross-country ski outing {site} on {}: start {start} at {}, loop {label} ({} km, trails {}). Back around {}{}. No news from me at {}: call 112 and give them this plan.",
-            date.format("%d/%m"),
+            date.strftime("%d/%m"),
             a.clock(departure),
             a.num(km, 1),
             trails.join(", "),
@@ -143,7 +143,7 @@ impl Texts for En {
         "Solo"
     }
 
-    fn when(&self, t: NaiveDateTime) -> String {
+    fn when(&self, t: DateTime) -> String {
         format!("{:02}/{:02} at {}", t.day(), t.month(), self.clock5(t))
     }
 
@@ -343,7 +343,7 @@ impl Texts for En {
         }
     }
 
-    fn rules_at(&self, t: NaiveDateTime) -> String {
+    fn rules_at(&self, t: DateTime) -> String {
         format!("on {:02}/{:02} at {}", t.day(), t.month(), self.clock5(t))
     }
 
@@ -389,17 +389,17 @@ impl Texts for En {
         format!("Local rules not verified: {}.", items.join("; "))
     }
 
-    fn day(&self, d: NaiveDate) -> String {
+    fn day(&self, d: Date) -> String {
         format!(
             "{} {:02}/{:02}",
             self.assist()
-                .weekday(d.weekday().num_days_from_monday() as usize),
+                .weekday(d.weekday().to_monday_zero_offset() as usize),
             d.day(),
             d.month()
         )
     }
 
-    fn updated(&self, t: NaiveDateTime) -> String {
+    fn updated(&self, t: DateTime) -> String {
         format!(
             "updated {:02}/{:02} at {}",
             t.day(),
@@ -500,7 +500,7 @@ impl Texts for En {
         "no route under 30° outside the zones closed at this date"
     }
 
-    fn arrival_range(&self, lo: NaiveDateTime, hi: NaiveDateTime) -> String {
+    fn arrival_range(&self, lo: DateTime, hi: DateTime) -> String {
         format!("{} to {}", self.clock5(lo), self.clock5(hi))
     }
 

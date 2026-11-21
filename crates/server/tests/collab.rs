@@ -6,8 +6,9 @@ mod common;
 
 use std::sync::Arc;
 
-use chrono::{Duration, TimeZone, Utc};
 use common::request;
+use jiff::civil::date;
+use jiff::{SignedDuration, Timestamp};
 use serde_json::{Value, json};
 use skimap_server::app::App;
 use skimap_server::clock::{Clock, ManualClock};
@@ -25,7 +26,7 @@ struct Env {
 fn env() -> Env {
     let dir = tempfile::tempdir().unwrap();
     let clock = Arc::new(ManualClock::new(
-        Utc.with_ymd_and_hms(2026, 1, 10, 8, 0, 0).unwrap(),
+        skimap_common::dates::utc(date(2026, 1, 10).at(8, 0, 0, 0)).unwrap(),
     ));
     let collab = Arc::new(Collab::new(
         skimap_collab::store::Store::in_memory().unwrap(),
@@ -63,7 +64,7 @@ fn post(e: &Env, path: &str, device: &str, body: &[u8], ctype: &str) -> common::
     )
 }
 
-fn report(e: &Env, kind: &str, device: &str, seen: chrono::DateTime<Utc>) -> common::Resp {
+fn report(e: &Env, kind: &str, device: &str, seen: jiff::Timestamp) -> common::Resp {
     let body =
         json!({"kind": kind, "lon": 6.7712, "lat": 44.8456, "seen_at": seen, "device": device});
     post(
@@ -101,12 +102,12 @@ fn offline_report_confirmed_expires_and_is_purged() {
     let e = env();
     let now = e.clock.now();
     // Seen two hours ago without network, sent now: the time of the observation is kept.
-    let r = report(&e, "ice", A, now - Duration::hours(2));
+    let r = report(&e, "ice", A, now - SignedDuration::from_hours(2));
     assert_eq!(r.status, 201, "{}", String::from_utf8_lossy(&r.body));
     let v = r.json();
     let id = v["id"].as_str().unwrap().to_owned();
-    assert_eq!(v["seen_at"], json!(now - Duration::hours(2)));
-    assert_eq!(v["expires_at"], json!(now + Duration::hours(22)));
+    assert_eq!(v["seen_at"], json!(now - SignedDuration::from_hours(2)));
+    assert_eq!(v["expires_at"], json!(now + SignedDuration::from_hours(22)));
     assert_eq!(v["state"], "active");
     assert_eq!(list(&e).len(), 1);
     // Outside the box: nothing.
@@ -126,7 +127,7 @@ fn offline_report_confirmed_expires_and_is_purged() {
         common::get(e.addr, &format!("/v1/collab/photos/{id}.jpg")).status,
         404
     );
-    e.clock.advance(Duration::hours(20));
+    e.clock.advance(SignedDuration::from_hours(20));
     let r = post(
         &e,
         &format!("/v1/collab/reports/{id}/confirm"),
@@ -146,9 +147,9 @@ fn offline_report_confirmed_expires_and_is_purged() {
     assert_eq!(p.body.len(), photo().len() - 41);
 
     // Without the confirmation it would have expired at +22 h; now at +44 h.
-    e.clock.advance(Duration::hours(10));
+    e.clock.advance(SignedDuration::from_hours(10));
     assert_eq!(list(&e).len(), 1);
-    e.clock.advance(Duration::hours(14));
+    e.clock.advance(SignedDuration::from_hours(14));
     assert!(list(&e).is_empty());
     e.collab.purge(e.clock.as_ref());
     assert_eq!(
@@ -163,7 +164,10 @@ fn refusals_and_limits() {
     let e = env();
     let now = e.clock.now();
     // Ice seen 25 h ago: the queue drops it (410).
-    assert_eq!(report(&e, "ice", A, now - Duration::hours(25)).status, 410);
+    assert_eq!(
+        report(&e, "ice", A, now - SignedDuration::from_hours(25)).status,
+        410
+    );
     assert_eq!(report(&e, "avalanche", A, now).status, 400);
     assert_eq!(report(&e, "ice", "x", now).status, 400);
     let r = post(
@@ -242,7 +246,7 @@ fn without_the_service_503() {
         None,
         "https://skimap.test",
         "contact@example.org",
-        Arc::new(ManualClock::new(Utc::now())),
+        Arc::new(ManualClock::new(Timestamp::now())),
     );
     let server = skimap_server::http::serve("127.0.0.1:0", 1, Arc::new(app)).unwrap();
     assert_eq!(common::get(server.addr, BOX).status, 503);

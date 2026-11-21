@@ -12,8 +12,8 @@
 //! tolerated, consent required, avoid recommended, allowed; `unknown` without any rule
 //! (outside the jurisdictions of the layer, Italy).
 
-use chrono::NaiveDate;
 use geo::{Area, Centroid};
+use jiff::civil::Date;
 use serde::Serialize;
 use skimap_common::geom::LonLat;
 
@@ -280,7 +280,7 @@ pub fn governing<'a>(layer: &'a ZoneLayer, z: &'a Zone) -> Vec<&'a Zone> {
 }
 
 /// Fields of the zone `z` of `layer`, rules in force on `date` or later.
-pub fn zone_fields(layer: &ZoneLayer, rules: &RuleSet, z: &Zone, date: NaiveDate) -> ZoneFields {
+pub fn zone_fields(layer: &ZoneLayer, rules: &RuleSet, z: &Zone, date: Date) -> ZoneFields {
     let zones = governing(layer, z);
     let applicable: Vec<(&Rule, &Zone)> = rules
         .rules
@@ -334,6 +334,7 @@ mod tests {
     use crate::geom::bbox_polygon;
     use crate::layer::{Months, ZoneProps};
     use geo::MultiPolygon;
+    use jiff::civil::date;
     use skimap_common::geom::BBox;
 
     fn zone(id: &str, kind: ZoneKind, b: BBox) -> Zone {
@@ -355,8 +356,8 @@ mod tests {
         )
     }
 
-    fn d() -> NaiveDate {
-        NaiveDate::from_ymd_opt(2026, 11, 15).unwrap()
+    fn d() -> Date {
+        date(2026, 11, 15)
     }
 
     /// The real rules (rules.json) on zones named as in the two sites.

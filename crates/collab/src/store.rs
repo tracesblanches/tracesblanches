@@ -16,7 +16,7 @@
 use std::path::Path;
 use std::sync::Mutex;
 
-use chrono::{DateTime, Duration, TimeZone, Utc};
+use jiff::{SignedDuration, Timestamp};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -83,7 +83,7 @@ pub struct NewReport {
     /// Latitude, WGS84.
     pub lat: f64,
     /// When it was seen (the gesture, not the sending).
-    pub seen_at: DateTime<Utc>,
+    pub seen_at: Timestamp,
     /// Anonymous device identifier.
     pub device: String,
 }
@@ -100,9 +100,9 @@ pub struct ReportView {
     /// Latitude.
     pub lat: f64,
     /// When it was seen.
-    pub seen_at: DateTime<Utc>,
+    pub seen_at: Timestamp,
     /// When it expires (after the confirmations).
-    pub expires_at: DateTime<Utc>,
+    pub expires_at: Timestamp,
     /// State now.
     pub state: State,
     /// Confirmations by others.
@@ -178,12 +178,12 @@ CREATE TABLE IF NOT EXISTS photos (
     height INTEGER NOT NULL, created INTEGER NOT NULL, author TEXT NOT NULL);
 ";
 
-fn ts(t: DateTime<Utc>) -> i64 {
-    t.timestamp()
+fn ts(t: Timestamp) -> i64 {
+    t.as_second()
 }
 
-fn at(s: i64) -> DateTime<Utc> {
-    Utc.timestamp_opt(s, 0).single().unwrap_or_default()
+fn at(s: i64) -> Timestamp {
+    Timestamp::new(s, 0).ok().unwrap_or_default()
 }
 
 /// Random bytes from the operating system (the server runs on Linux), else a hash of the
@@ -285,7 +285,7 @@ impl Store {
     }
 
     /// Reputation of a device (known or not: [`rules::START_REPUTATION`]), marking it seen.
-    fn touch(c: &Connection, hash: &str, now: DateTime<Utc>) -> rusqlite::Result<f64> {
+    fn touch(c: &Connection, hash: &str, now: Timestamp) -> rusqlite::Result<f64> {
         c.execute(
             "INSERT INTO devices (hash, reputation, first_seen, last_seen) VALUES (?1, ?2, ?3, ?3)
              ON CONFLICT (hash) DO UPDATE SET last_seen = ?3",
@@ -322,7 +322,7 @@ impl Store {
     }
 
     /// Creates a report. `Gone`: already expired when received (dropped by the queue).
-    pub fn create(&self, r: &NewReport, now: DateTime<Utc>) -> Res<ReportView> {
+    pub fn create(&self, r: &NewReport, now: Timestamp) -> Res<ReportView> {
         let Some(kind) = Kind::parse(&r.kind) else {
             return Ok(Err(Refusal::Invalid(format!("unknown kind {:?}", r.kind))));
         };
@@ -354,12 +354,12 @@ impl Store {
         let hour = Self::count(
             &tx,
             "SELECT COUNT(*) FROM reports WHERE author = ?1 AND received > ?2",
-            params![author, ts(now - Duration::hours(1))],
+            params![author, ts(now - SignedDuration::from_hours(1))],
         )?;
         let day = Self::count(
             &tx,
             "SELECT COUNT(*) FROM reports WHERE author = ?1 AND received > ?2",
-            params![author, ts(now - Duration::days(1))],
+            params![author, ts(now - SignedDuration::from_hours(24))],
         )?;
         if hour >= l.reports_per_hour || day >= l.reports_per_day {
             return Ok(Err(Refusal::RateLimited("reports of this device".into())));
@@ -367,7 +367,7 @@ impl Store {
         let total = Self::count(
             &tx,
             "SELECT COUNT(*) FROM reports WHERE received > ?1",
-            params![ts(now - Duration::days(1))],
+            params![ts(now - SignedDuration::from_hours(24))],
         )?;
         if total >= l.reports_per_day_total {
             return Ok(Err(Refusal::RateLimited(
@@ -420,7 +420,7 @@ impl Store {
     fn row(
         c: &Connection,
         id: &str,
-    ) -> rusqlite::Result<Option<(Kind, f64, f64, DateTime<Utc>, f64, String, bool)>> {
+    ) -> rusqlite::Result<Option<(Kind, f64, f64, Timestamp, f64, String, bool)>> {
         c.query_row(
             "SELECT kind, lon, lat, seen, author_rep, author, refuted FROM reports WHERE id = ?1",
             params![id],
@@ -440,11 +440,7 @@ impl Store {
         .optional()
     }
 
-    fn view_in(
-        c: &Connection,
-        id: &str,
-        now: DateTime<Utc>,
-    ) -> rusqlite::Result<Option<ReportView>> {
+    fn view_in(c: &Connection, id: &str, now: Timestamp) -> rusqlite::Result<Option<ReportView>> {
         let Some((kind, lon, lat, seen, rep, _, _)) = Self::row(c, id)? else {
             return Ok(None);
         };
@@ -473,12 +469,12 @@ impl Store {
     }
 
     /// A report, whatever its state (`None`: unknown or purged).
-    pub fn view(&self, id: &str, now: DateTime<Utc>) -> rusqlite::Result<Option<ReportView>> {
+    pub fn view(&self, id: &str, now: Timestamp) -> rusqlite::Result<Option<ReportView>> {
         Self::view_in(&self.conn(), id, now)
     }
 
     /// Confirms or denies a report.
-    pub fn vote(&self, id: &str, device: &str, vote: Vote, now: DateTime<Utc>) -> Res<ReportView> {
+    pub fn vote(&self, id: &str, device: &str, vote: Vote, now: Timestamp) -> Res<ReportView> {
         if !valid_device(device) {
             return Ok(Err(Refusal::Invalid("device identifier".into())));
         }
@@ -500,7 +496,7 @@ impl Store {
         let n = Self::count(
             &tx,
             "SELECT COUNT(*) FROM votes WHERE device = ?1 AND at > ?2",
-            params![hash, ts(now - Duration::hours(1))],
+            params![hash, ts(now - SignedDuration::from_hours(1))],
         )?;
         if n >= self.limits.votes_per_hour {
             return Ok(Err(Refusal::RateLimited("votes of this device".into())));
@@ -550,7 +546,7 @@ impl Store {
     }
 
     /// Adds the photo of a report (its author only, once), cleaned of its metadata.
-    pub fn put_photo(&self, id: &str, device: &str, jpeg: &[u8], now: DateTime<Utc>) -> Res<()> {
+    pub fn put_photo(&self, id: &str, device: &str, jpeg: &[u8], now: Timestamp) -> Res<()> {
         if !valid_device(device) {
             return Ok(Err(Refusal::Invalid("device identifier".into())));
         }
@@ -571,7 +567,7 @@ impl Store {
         let n = Self::count(
             &c,
             "SELECT COUNT(*) FROM photos WHERE author = ?1 AND created > ?2",
-            params![hash, ts(now - Duration::days(1))],
+            params![hash, ts(now - SignedDuration::from_hours(24))],
         )?;
         if n >= self.limits.photos_per_day {
             return Ok(Err(Refusal::RateLimited("photos of this device".into())));
@@ -589,7 +585,7 @@ impl Store {
     }
 
     /// The photo of a report, if shown ([`ReportView::photo`]).
-    pub fn photo(&self, id: &str, now: DateTime<Utc>) -> rusqlite::Result<Option<Vec<u8>>> {
+    pub fn photo(&self, id: &str, now: Timestamp) -> rusqlite::Result<Option<Vec<u8>>> {
         let c = self.conn();
         if !Self::view_in(&c, id, now)?.is_some_and(|v| v.photo) {
             return Ok(None);
@@ -603,7 +599,7 @@ impl Store {
     }
 
     /// Flags the photo of a report: deleted at once (no moderator to review it).
-    pub fn flag_photo(&self, id: &str, device: &str, now: DateTime<Utc>) -> Res<()> {
+    pub fn flag_photo(&self, id: &str, device: &str, now: Timestamp) -> Res<()> {
         if !valid_device(device) {
             return Ok(Err(Refusal::Invalid("device identifier".into())));
         }
@@ -636,7 +632,7 @@ impl Store {
     }
 
     /// Reports shown in a box (`[min_lon, min_lat, max_lon, max_lat]`), newest first.
-    pub fn list(&self, bbox: [f64; 4], now: DateTime<Utc>) -> rusqlite::Result<Vec<ReportView>> {
+    pub fn list(&self, bbox: [f64; 4], now: Timestamp) -> rusqlite::Result<Vec<ReportView>> {
         let c = self.conn();
         let ids: Vec<String> = {
             let mut st = c.prepare_cached(
@@ -673,7 +669,7 @@ impl Store {
 
     /// Deletes expired and refuted reports with their votes and photos, and forgets
     /// devices unseen for [`DEVICE_FORGET_DAYS`] days.
-    pub fn purge(&self, now: DateTime<Utc>) -> rusqlite::Result<Purged> {
+    pub fn purge(&self, now: Timestamp) -> rusqlite::Result<Purged> {
         let mut c = self.conn();
         let tx = c.transaction()?;
         let gone = "SELECT id FROM reports WHERE expires <= ?1 OR refuted = 1";
@@ -691,7 +687,7 @@ impl Store {
         )?;
         let devices = tx.execute(
             "DELETE FROM devices WHERE last_seen < ?1",
-            params![ts(now - Duration::days(DEVICE_FORGET_DAYS))],
+            params![ts(now - SignedDuration::from_hours(24 * DEVICE_FORGET_DAYS))],
         )?;
         tx.commit()?;
         let n = |x: usize| u32::try_from(x).unwrap_or(u32::MAX);

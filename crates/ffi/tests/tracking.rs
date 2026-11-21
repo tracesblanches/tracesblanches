@@ -13,7 +13,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use chrono::NaiveTime;
+use jiff::civil::Time;
 use skimap_common::layout::DataLayout;
 use skimap_common::site::Site;
 /// Evaluation site of `data/sites.json`, test data.
@@ -59,7 +59,7 @@ fn pack(site: &Site) -> PathBuf {
 }
 
 fn event(i: &Input) -> Option<TrackEvent> {
-    let t = |x: &chrono::DateTime<chrono::Utc>| x.timestamp_millis();
+    let t = |x: &jiff::Timestamp| x.as_millisecond();
     Some(match i {
         Input::Fix { .. } => return None,
         Input::Activity { t: x, activity } => TrackEvent::Activity {
@@ -173,16 +173,16 @@ fn follow(
                 session.push_event(e).unwrap()
             }
             None => {
-                let first = inputs[i].t().timestamp_millis();
+                let first = inputs[i].t().as_millisecond();
                 let mut fixes = Vec::new();
                 while i < inputs.len() {
                     let Input::Fix { t, pos } = &inputs[i] else {
                         break;
                     };
-                    if t.timestamp_millis() - first > delay_ms && !fixes.is_empty() {
+                    if t.as_millisecond() - first > delay_ms && !fixes.is_empty() {
                         break;
                     }
-                    fixes.push((t.timestamp_millis(), pos.lon, pos.lat));
+                    fixes.push((t.as_millisecond(), pos.lon, pos.lat));
                     direct.push(&inputs[i], &mut outs);
                     i += 1;
                 }
@@ -397,7 +397,7 @@ fn full_data_q9_through_the_session() {
     let layout = DataLayout::new(data());
     let (mut d, ctx) = presets::load(&layout, &CERVIERES).unwrap();
     let mut req = presets::requests(&CERVIERES, presets::past_day(&CERVIERES)).remove(0);
-    req.start_time = NaiveTime::from_hms_opt(10, 0, 0);
+    req.start_time = Time::new(10, 0, 0, 0).ok();
     let m = skimap_plan::plan::morning(&d, &req);
     let plan = skimap_plan::plan::build(&mut d, &m, 0, &ctx).unwrap();
     let g = d.graph.take().unwrap();
@@ -502,10 +502,10 @@ fn follow_batched(
         let mut outs = Vec::new();
         let b = match (&inputs[i], event(&inputs[i])) {
             (Input::Steps { .. } | Input::Fix { .. }, _) => {
-                let first = inputs[i].t().timestamp_millis();
+                let first = inputs[i].t().as_millisecond();
                 let (mut fixes, mut steps) = (Vec::new(), Vec::new());
                 while i < inputs.len() {
-                    let t = inputs[i].t().timestamp_millis();
+                    let t = inputs[i].t().as_millisecond();
                     if t - first > delay_ms && !(fixes.is_empty() && steps.is_empty()) {
                         break;
                     }
@@ -716,8 +716,8 @@ fn full_data_bring_me_back() {
         .inputs
         .iter()
         .filter_map(|i| match i {
-            Input::Fix { t, pos } if (*t - t_start).num_seconds() < 2400 => {
-                Some((t.timestamp_millis(), pos.lon, pos.lat))
+            Input::Fix { t, pos } if (*t - t_start).as_secs() < 2400 => {
+                Some((t.as_millisecond(), pos.lon, pos.lat))
             }
             _ => None,
         })
@@ -888,8 +888,8 @@ fn bring_me_back_on(pack_dir: &Path) -> Result<String, String> {
         .inputs
         .iter()
         .filter_map(|i| match i {
-            Input::Fix { t, pos } if (*t - t_start).num_seconds() < 2400 => {
-                Some((t.timestamp_millis(), pos.lon, pos.lat))
+            Input::Fix { t, pos } if (*t - t_start).as_secs() < 2400 => {
+                Some((t.as_millisecond(), pos.lon, pos.lat))
             }
             _ => None,
         })

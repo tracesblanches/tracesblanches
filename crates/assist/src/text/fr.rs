@@ -1,6 +1,6 @@
 //! Texts of the assistant in French.
 
-use chrono::{Datelike, NaiveDate, NaiveDateTime, Timelike};
+use jiff::civil::{Date, DateTime};
 
 use super::Texts;
 use crate::crowd::{CrowdLevel, Population};
@@ -45,12 +45,12 @@ impl Texts for Fr {
         format!("{x:.decimals$}").replace('.', ",")
     }
 
-    fn date(&self, d: NaiveDate) -> String {
+    fn date(&self, d: Date) -> String {
         format!(
             "{} {} {} {}",
-            WEEKDAYS[d.weekday().num_days_from_monday() as usize],
+            WEEKDAYS[d.weekday().to_monday_zero_offset() as usize],
             d.day(),
-            MONTHS[d.month0() as usize],
+            MONTHS[(d.month() - 1) as usize],
             d.year()
         )
     }
@@ -59,11 +59,11 @@ impl Texts for Fr {
         WEEKDAYS[monday0 % 7]
     }
 
-    fn clock(&self, t: NaiveDateTime) -> String {
+    fn clock(&self, t: DateTime) -> String {
         format!("{} h {:02}", t.hour(), t.minute())
     }
 
-    fn hour(&self, t: NaiveDateTime) -> String {
+    fn hour(&self, t: DateTime) -> String {
         format!("{} h", t.hour())
     }
 
@@ -107,7 +107,7 @@ impl Texts for Fr {
         "ensoleillé"
     }
 
-    fn snow_estimate(&self, depth: f64, map: NaiveDate, added: f64, share_pct: f64) -> String {
+    fn snow_estimate(&self, depth: f64, map: Date, added: f64, share_pct: f64) -> String {
         let added = if added >= 0.5 {
             format!(" dont {} cm tombés depuis", self.num(added, 0))
         } else {
@@ -116,7 +116,7 @@ impl Texts for Fr {
         format!(
             "{} cm de neige estimée (médiane, carte du {}{added}, {} % des points ≥ 20 cm)",
             self.num(depth, 0),
-            map.format("%d/%m"),
+            map.strftime("%d/%m"),
             share_pct
         )
     }
@@ -273,7 +273,7 @@ impl Texts for Fr {
         format!("{text} [{points:+.2}]").replace('.', ",")
     }
 
-    fn briefing_title(&self, site: &str, date: NaiveDate) -> String {
+    fn briefing_title(&self, site: &str, date: Date) -> String {
         format!("{site} — {}", self.date(date))
     }
 
@@ -300,7 +300,7 @@ impl Texts for Fr {
         format!("Qualité de neige ({point}) : {}", summary.join(" "))
     }
 
-    fn briefing_sunset(&self, at: NaiveDateTime) -> String {
+    fn briefing_sunset(&self, at: DateTime) -> String {
         format!("Coucher du soleil {} h {:02}.", at.hour(), at.minute())
     }
 
@@ -398,11 +398,11 @@ impl Texts for Fr {
         format!("Meilleur créneau : {class} {slot} ({}).", self.quality(q))
     }
 
-    fn sq_aspect_at(&self, aspect: &str, at: NaiveDateTime) -> String {
+    fn sq_aspect_at(&self, aspect: &str, at: DateTime) -> String {
         format!("{aspect} {}", self.hour(at))
     }
 
-    fn sq_aspect_slope_from(&self, aspect: &str, slope: f64, at: NaiveDateTime) -> String {
+    fn sq_aspect_slope_from(&self, aspect: &str, slope: f64, at: DateTime) -> String {
         format!("{aspect} {slope}° dès {}", self.hour(at))
     }
 
@@ -527,7 +527,7 @@ impl Texts for Fr {
         format!("{label} (boucle n° {rank})")
     }
 
-    fn s_loop(&self, km: f64, gain: f64, time: &str, back: NaiveDateTime) -> String {
+    fn s_loop(&self, km: f64, gain: f64, time: &str, back: DateTime) -> String {
         format!(
             "{} km, D+ {gain} m, {time}, retour prévu vers {}",
             self.num(km, 1),
@@ -622,7 +622,7 @@ impl Texts for Fr {
         )
     }
 
-    fn s_too_late(&self, n: usize, limit: Option<NaiveDateTime>) -> String {
+    fn s_too_late(&self, n: usize, limit: Option<DateTime>) -> String {
         format!(
             "{n} boucles écartées : retour après {}",
             limit.map(|l| self.clock(l)).unwrap_or_default()
@@ -670,9 +670,9 @@ impl Texts for Fr {
         &self,
         label: &str,
         start: &str,
-        date: NaiveDate,
-        at: NaiveDateTime,
-        deadline: Option<NaiveDateTime>,
+        date: Date,
+        at: DateTime,
+        deadline: Option<DateTime>,
         group: Option<&str>,
     ) -> String {
         format!(
@@ -755,21 +755,21 @@ impl Texts for Fr {
         )
     }
 
-    fn bt_near_deadline(&self, deadline: NaiveDateTime) -> String {
+    fn bt_near_deadline(&self, deadline: DateTime) -> String {
         format!(
             "retour à moins de 30 min de l'heure limite ({})",
             self.clock(deadline)
         )
     }
 
-    fn bt_other_start(&self, start: NaiveDateTime, lost: &[String]) -> String {
+    fn bt_other_start(&self, start: DateTime, lost: &[String]) -> String {
         format!("départ à {} : {}", self.clock(start), lost.join(", "))
     }
 
     fn bt_best(
         &self,
-        start: NaiveDateTime,
-        back: NaiveDateTime,
+        start: DateTime,
+        back: DateTime,
         minutes: f64,
         why: &[String],
         others: &[String],
@@ -796,7 +796,7 @@ impl Texts for Fr {
         "Pas de meilleur moment : aucune prévision météo horaire pour ce jour dans le pack."
     }
 
-    fn bt_none(&self, minutes: f64, deadline: Option<NaiveDateTime>) -> String {
+    fn bt_none(&self, minutes: f64, deadline: Option<DateTime>) -> String {
         format!(
             "Pas de créneau : une sortie de {} min ne finit pas avant l'heure limite{}.",
             minutes.round(),
@@ -964,7 +964,7 @@ impl Texts for Fr {
         format!("hors piste avec un BERA à {level} sur 5")
     }
 
-    fn eq_back_after_sunset(&self, back: NaiveDateTime, sunset: NaiveDateTime) -> String {
+    fn eq_back_after_sunset(&self, back: DateTime, sunset: DateTime) -> String {
         format!(
             "retour prévu vers {}, coucher du soleil à {}",
             self.clock(back),
@@ -972,7 +972,7 @@ impl Texts for Fr {
         )
     }
 
-    fn eq_start_before_sunrise(&self, start: NaiveDateTime, sunrise: NaiveDateTime) -> String {
+    fn eq_start_before_sunrise(&self, start: DateTime, sunrise: DateTime) -> String {
         format!(
             "départ à {}, avant le lever du soleil ({})",
             self.clock(start),
@@ -1238,7 +1238,7 @@ impl Texts for Fr {
         format!("la température baisse : {temperature} °C, ressenti {chill} °C d'ici 3 h")
     }
 
-    fn al_turn_now(&self, late_min: f64, pace: f64, deadline: Option<NaiveDateTime>) -> String {
+    fn al_turn_now(&self, late_min: f64, pace: f64, deadline: Option<DateTime>) -> String {
         format!(
             "en retard de {late_min} min (allure × {pace:.2}) : faites demi-tour maintenant pour rentrer avant {}",
             deadline.map(|d| self.clock(d)).unwrap_or_default()
@@ -1250,8 +1250,8 @@ impl Texts for Fr {
         &self,
         late_min: f64,
         pace: f64,
-        deadline: Option<NaiveDateTime>,
-        turn: NaiveDateTime,
+        deadline: Option<DateTime>,
+        turn: DateTime,
     ) -> String {
         format!(
             "en retard de {late_min} min (allure × {pace:.2}) : la boucle ne finit plus avant {} ; demi-tour au plus tard à {}",

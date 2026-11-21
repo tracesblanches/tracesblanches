@@ -25,7 +25,7 @@
 //! Output (`data/out/<site>/bera/`): `bera.json` ([`BeraFile`]), `bera.xml` (raw bulletin
 //! when one was obtained) and `bera.meta.json`.
 
-use chrono::NaiveDate;
+use jiff::civil::Date;
 use serde::{Deserialize, Serialize};
 use skimap_common::config::Secret;
 use skimap_common::download::{Downloader, Request};
@@ -703,8 +703,8 @@ pub fn api_request(massif_id: u16, key: &Secret) -> Request {
 }
 
 /// URL of the archive index of a day.
-pub fn archive_index_url(date: NaiveDate) -> String {
-    format!("{ARCHIVE_BASE}/bra.{}.json", date.format("%Y%m%d"))
+pub fn archive_index_url(date: Date) -> String {
+    format!("{ARCHIVE_BASE}/bra.{}.json", date.strftime("%Y%m%d"))
 }
 
 /// URL of an archived bulletin (`ext` = `xml` or `pdf`).
@@ -808,7 +808,7 @@ struct Archived {
 }
 
 /// Looks the bulletin of `date` up in the public archive.
-fn from_archive(dl: &Downloader, massif: &BeraMassif, date: NaiveDate) -> Result<Option<Archived>> {
+fn from_archive(dl: &Downloader, massif: &BeraMassif, date: Date) -> Result<Option<Archived>> {
     let idx = dl.fetch(&Request::get(SOURCE_ARCHIVE, &archive_index_url(date)))?;
     let body = idx.bytes()?;
     let stamps = match stamps_in_index(&body, massif) {
@@ -848,7 +848,7 @@ pub fn build(
     layout: &DataLayout,
     dl: &Downloader,
     key: Option<&Secret>,
-    date: NaiveDate,
+    date: Date,
 ) -> Result<BeraFile> {
     let dir = layout.layer_dir(site, LAYER)?;
     DataLayout::ensure(&dir)?;
@@ -1026,6 +1026,7 @@ pub fn build(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jiff::civil::date;
 
     /// Belledonne example of the specification (26/10/2023), pages 9 to 12, transcribed
     /// element by element (the `[…]` ellipses of the specification are not part of it).
@@ -1063,7 +1064,7 @@ mod tests {
             "https://donneespubliques.meteofrance.fr/donnees_libres/Pdf/BRA/BRA.QUEYRAS.20250115153228.pdf"
         );
         assert_eq!(
-            archive_index_url(NaiveDate::from_ymd_opt(2025, 1, 15).unwrap()),
+            archive_index_url(date(2025, 1, 15)),
             "https://donneespubliques.meteofrance.fr/donnees_libres/Pdf/BRA/bra.20250115.json"
         );
         assert!(stamps_in_index(b"<html>302</html>", q).is_err());

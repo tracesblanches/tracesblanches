@@ -32,6 +32,8 @@ use crate::build::{assets, dir_size, source, write_json};
 use crate::error::{Error, Result};
 use crate::manifest::Basemap;
 use crate::tiles::{TileData, tiles_covering};
+use jiff::Timestamp;
+use jiff::civil::Date;
 
 /// Downloader source.
 pub const SOURCE: &str = "ign";
@@ -162,7 +164,7 @@ pub fn revision_date(xml: &str) -> Option<String> {
         let value = ["<gco:Date>", "<gco:DateTime>"].iter().find_map(|tag| {
             let v = &block[block.find(tag)? + tag.len()..];
             let v = v.get(..10)?;
-            chrono::NaiveDate::parse_from_str(v, "%Y-%m-%d").ok()?;
+            Date::strptime("%Y-%m-%d", v).ok()?;
             Some(v.to_owned())
         });
         let kind = ["revision", "publication", "creation"]
@@ -187,20 +189,22 @@ pub fn revision_date(xml: &str) -> Option<String> {
 /// from then on belongs to that edition (one downloaded on the day of the revision may
 /// predate it, and is downloaded again once).
 pub fn current_since(revision: &str) -> Result<u64> {
-    let day = chrono::NaiveDate::parse_from_str(revision, "%Y-%m-%d")
+    let day = Date::strptime("%Y-%m-%d", revision)
         .map_err(|e| Error::Pack(format!("IGN revision date {revision:?}: {e}")))?;
     let next = day
-        .succ_opt()
-        .and_then(|d| d.and_hms_opt(0, 0, 0))
+        .tomorrow()
+        .ok()
+        .and_then(|d| skimap_common::dates::utc(d.at(0, 0, 0, 0)))
         .ok_or_else(|| Error::Pack(format!("IGN revision date {revision:?} out of range")))?;
-    u64::try_from(next.and_utc().timestamp())
+    u64::try_from(next.as_second())
         .map_err(|_| Error::Pack(format!("IGN revision date {revision:?} before 1970")))
 }
 
 /// `YYYY-MM-DD` (UTC) of a Unix time.
 fn day(unix: u64) -> String {
-    chrono::DateTime::from_timestamp(i64::try_from(unix).unwrap_or(i64::MAX), 0)
-        .map(|t| t.format("%Y-%m-%d").to_string())
+    Timestamp::new(i64::try_from(unix).unwrap_or(i64::MAX), 0)
+        .ok()
+        .map(|t| t.strftime("%Y-%m-%d").to_string())
         .unwrap_or_default()
 }
 

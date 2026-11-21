@@ -37,7 +37,10 @@
 //! Status is « of the day » when polled on that local date; a later day uses the last
 //! known state (said so); an earlier day has no status.
 
-use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, Timelike};
+use jiff::{
+    SignedDuration,
+    civil::{Date, DateTime},
+};
 use serde::Serialize;
 use skimap_common::geom::LonLat;
 use skimap_voice::Event;
@@ -122,7 +125,7 @@ pub struct SnowStats {
     /// Snowfall added since the date of the map, cm.
     pub added_cm: f64,
     /// Date of the snow map.
-    pub map_date: NaiveDate,
+    pub map_date: Date,
 }
 
 impl SnowStats {
@@ -216,7 +219,7 @@ impl From<crowd::DayForecast> for CrowdInfo {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DayBriefing {
     /// Date.
-    pub date: NaiveDate,
+    pub date: Date,
     /// Whether the weather covers the skiing window (09–16 h).
     pub weather_available: bool,
     /// Status of the pistes for this day: `day`, `last_known`, `none`.
@@ -232,7 +235,7 @@ pub struct DayBriefing {
     /// Snow quality per forecast point (A3).
     pub snow_quality: Vec<DayQuality>,
     /// Sunset (local).
-    pub sunset: Option<NaiveDateTime>,
+    pub sunset: Option<DateTime>,
     /// Notes on the data.
     pub notes: Vec<String>,
     /// Text, French.
@@ -251,7 +254,7 @@ pub struct SiteBriefing {
 }
 
 /// « mardi 5 janvier 2026 ».
-pub fn date_fr(d: NaiveDate) -> String {
+pub fn date_fr(d: Date) -> String {
     text::of(Lang::Fr).date(d)
 }
 
@@ -403,7 +406,7 @@ pub(crate) fn surface_reason(out: &mut Vec<Reason>, q: Option<Quality>, t: &dyn 
 }
 
 struct DayContext<'a> {
-    date: NaiveDate,
+    date: Date,
     crowd: Option<CrowdInfo>,
     bera_level: Option<u8>,
     quality: Vec<DayQuality>,
@@ -429,13 +432,14 @@ fn common_reasons(
 ) -> Common {
     let mut out = Vec::new();
     let t = ctx.t;
-    let nine = ctx.date.and_hms_opt(9, 0, 0).expect("09 h");
+    let nine = ctx.date.at(9, 0, 0, 0);
     let wp: Option<(&WeatherPoint, f64)> = data.weather.as_ref().and_then(|w| w.nearest(at));
     // Snow: map plus snowfall since the map (06 h UTC = 07 h local) until 09 h.
     let map = data.snow_for(ctx.date);
     let added = match (map, wp) {
         (Some(m), Some((p, _))) => {
-            let from = m.valid_at.naive_utc() + Duration::hours(1);
+            let from =
+                skimap_common::dates::utc_datetime(m.valid_at) + SignedDuration::from_hours(1);
             p.snowfall_between(from, nine)
         }
         _ => 0.0,
@@ -444,7 +448,7 @@ fn common_reasons(
     if map.is_none() && !data.snows.is_empty() {
         reason(&mut out, Factor::Data, 0.0, t.no_snow_map().into());
     }
-    let fresh24 = wp.map(|(p, _)| p.snowfall_between(nine - Duration::hours(24), nine));
+    let fresh24 = wp.map(|(p, _)| p.snowfall_between(nine - SignedDuration::from_hours(24), nine));
     snow_reasons(&mut out, &snow, fresh24, t);
     let mut weather = None;
     let mut wp_id = None;
@@ -511,13 +515,13 @@ fn common_reasons(
     }
 }
 
-pub(crate) fn status_for(data: &SiteData, date: NaiveDate) -> &'static str {
+pub(crate) fn status_for(data: &SiteData, date: Date) -> &'static str {
     match &data.status {
         Some(s) => {
             let polled = skimap_core::ephemeris::local_time(s.polled_at).date();
             if polled == date {
                 "day"
-            } else if polled < date && (date - polled).num_days() <= 3 {
+            } else if polled < date && (date - polled).get_days() <= 3 {
                 "last_known"
             } else {
                 "none"
@@ -536,16 +540,16 @@ fn state_for(it: &Itinerary, status: &str) -> OpenState {
 }
 
 /// Briefing of one day.
-pub fn day(data: &SiteData, date: NaiveDate, opts: &Options) -> DayBriefing {
+pub fn day(data: &SiteData, date: Date, opts: &Options) -> DayBriefing {
     let t = text::of(opts.lang);
     let status = status_for(data, date);
-    let crowd_date = crowd::Date::new(date.year(), date.month() as u8, date.day() as u8);
+    let crowd_date = crowd::Date::new(i32::from(date.year()), date.month() as u8, date.day() as u8);
     // Crowd conditions from the weather: fresh snow of the two previous days, sun.
     let main_point = data.weather.as_ref().and_then(|w| w.points.first());
     let conditions = main_point.and_then(|p| {
-        let d0 = date.and_hms_opt(0, 0, 0)?;
+        let d0 = date.at(0, 0, 0, 0);
         p.covers(date, 9, 16).then(|| crowd::Conditions {
-            fresh_snow_cm: p.snowfall_between(d0 - Duration::days(2), d0),
+            fresh_snow_cm: p.snowfall_between(d0 - SignedDuration::from_hours(24 * 2), d0),
             sunny: p
                 .summary(date, 9, 16)
                 .cloud_mean_pct
@@ -560,8 +564,8 @@ pub fn day(data: &SiteData, date: NaiveDate, opts: &Options) -> DayBriefing {
     )));
     // The calendars and the opening dates of A4 are those of 2026-27: outside, only the
     // weekends and the conditions count, and the opening dates say nothing.
-    let calendar_known = (NaiveDate::from_ymd_opt(2026, 9, 1).expect("date")
-        ..=NaiveDate::from_ymd_opt(2027, 8, 31).expect("date"))
+    let calendar_known = (Date::new(2026, 9, 1).expect("date")
+        ..=Date::new(2027, 8, 31).expect("date"))
         .contains(&date);
     if let Some(c) = crowd.as_mut() {
         c.reasons.retain(|r| r != t.crowd_area_closed());
@@ -577,8 +581,9 @@ pub fn day(data: &SiteData, date: NaiveDate, opts: &Options) -> DayBriefing {
         .flat_map(|w| &w.points)
         .filter_map(|p| {
             let snow_cm = data.snow_for(date).and_then(|m| {
-                let nine = date.and_hms_opt(9, 0, 0)?;
-                let from = m.valid_at.naive_utc() + Duration::hours(1);
+                let nine = date.at(9, 0, 0, 0);
+                let from =
+                    skimap_common::dates::utc_datetime(m.valid_at) + SignedDuration::from_hours(1);
                 Some(m.sample(p.position)?.depth_cm + p.snowfall_between(from, nine))
             });
             let mut q =
@@ -610,7 +615,7 @@ pub fn day(data: &SiteData, date: NaiveDate, opts: &Options) -> DayBriefing {
                     .as_ref()
                     .map(|s| {
                         skimap_core::ephemeris::local_time(s.polled_at)
-                            .format("%d/%m %H:%M")
+                            .strftime("%d/%m %H:%M")
                             .to_string()
                     })
                     .unwrap_or_default(),
@@ -977,11 +982,11 @@ fn voice(data: &SiteData, b: &DayBriefing) -> Vec<Event> {
 }
 
 /// Briefing of `date` and the `extra_days` following days.
-pub fn brief(data: &SiteData, date: NaiveDate, extra_days: u32, opts: &Options) -> SiteBriefing {
+pub fn brief(data: &SiteData, date: Date, extra_days: u32, opts: &Options) -> SiteBriefing {
     SiteBriefing {
         site: data.site.id.to_owned(),
         days: (0..=i64::from(extra_days))
-            .map(|i| day(data, date + Duration::days(i), opts))
+            .map(|i| day(data, date + SignedDuration::from_hours(24 * i), opts))
             .collect(),
     }
 }
@@ -1002,17 +1007,18 @@ mod tests {
     use crate::layers::{Area, Domain, Status, Weather, WeatherHour};
     use crate::snow_quality::Quality;
     /// Evaluation site of `data/sites.json`, test data.
+    use jiff::civil::date;
     static CHAPELLE_DES_BOIS: std::sync::LazyLock<skimap_common::site::Site> =
         std::sync::LazyLock::new(|| {
             *skimap_common::site::site("chapelle-des-bois").expect("evaluation site")
         });
 
-    fn hours(date: NaiveDate, f: impl Fn(u32) -> (f64, f64, f64, f64)) -> Vec<WeatherHour> {
+    fn hours(date: Date, f: impl Fn(u32) -> (f64, f64, f64, f64)) -> Vec<WeatherHour> {
         (0..24 * 3)
             .map(|i| {
-                let time =
-                    date.and_hms_opt(0, 0, 0).unwrap() - Duration::days(1) + Duration::hours(i);
-                let (t, gust, cloud, snow) = f(time.hour());
+                let time = date.at(0, 0, 0, 0) - SignedDuration::from_hours(24)
+                    + SignedDuration::from_hours(i);
+                let (t, gust, cloud, snow) = f(time.hour() as u32);
                 WeatherHour {
                     time,
                     temperature_c: Some(t),
@@ -1038,7 +1044,7 @@ mod tests {
         Area::new("d", crate::layers::multipolygon(&g))
     }
 
-    fn data(date: NaiveDate, gust_b: f64) -> SiteData {
+    fn data(date: Date, gust_b: f64) -> SiteData {
         let a = LonLat::new(6.10, 46.60);
         let b = LonLat::new(6.20, 46.60);
         let point = |id: &str, p: LonLat, gust: f64| WeatherPoint {
@@ -1070,7 +1076,7 @@ mod tests {
             snows: vec![],
             beras: vec![],
             status: Some(Status {
-                polled_at: crate::sun::local_to_utc(date.and_hms_opt(8, 0, 0).unwrap()),
+                polled_at: crate::sun::local_to_utc(date.at(8, 0, 0, 0)),
                 itineraries: vec![
                     it("1", "Alpha", a, OpenState::Open),
                     it("2", "Beta", b, OpenState::Open),
@@ -1112,7 +1118,7 @@ mod tests {
 
     #[test]
     fn wind_and_closures_rank_with_reasons() {
-        let date = NaiveDate::from_ymd_opt(2027, 1, 12).unwrap(); // a Tuesday, no holidays
+        let date = date(2027, 1, 12); // a Tuesday, no holidays
         let d = data(date, 70.0);
         let b = day(&d, date, &Options::default());
         assert_eq!(b.status, "day");
@@ -1154,9 +1160,17 @@ mod tests {
                 .any(|r| r.factor == Factor::Distance && r.points < -0.2)
         );
         // Day after: last known status; two days before: no status.
-        let later = day(&d, date + Duration::days(1), &Options::default());
+        let later = day(
+            &d,
+            date + SignedDuration::from_hours(24),
+            &Options::default(),
+        );
         assert_eq!(later.status, "last_known");
-        let before = day(&d, date - Duration::days(2), &Options::default());
+        let before = day(
+            &d,
+            date - SignedDuration::from_hours(24 * 2),
+            &Options::default(),
+        );
         assert_eq!(before.status, "none");
         assert!(
             before
@@ -1168,21 +1182,18 @@ mod tests {
 
     #[test]
     fn french_dates() {
-        assert_eq!(
-            date_fr(NaiveDate::from_ymd_opt(2026, 1, 5).unwrap()),
-            "lundi 5 janvier 2026"
-        );
+        assert_eq!(date_fr(date(2026, 1, 5)), "lundi 5 janvier 2026");
     }
 
     /// A uniform snow map of `cm` over the test area, valid at 06 h UTC of `date`.
-    fn snow(date: NaiveDate, cm: f32) -> crate::layers::SnowMap {
+    fn snow(date: Date, cm: f32) -> crate::layers::SnowMap {
         use skimap_common::grid::{GeoTransform, Grid};
         let (x0, y0) = skimap_common::crs::to_lambert93(LonLat::new(6.0, 46.7)).unwrap();
         let (x1, y1) = skimap_common::crs::to_lambert93(LonLat::new(6.3, 46.5)).unwrap();
         let w = ((x1 - x0) / 100.0).ceil() as usize;
         let h = ((y0 - y1) / 100.0).ceil() as usize;
         crate::layers::SnowMap {
-            valid_at: date.and_hms_opt(6, 0, 0).unwrap().and_utc(),
+            valid_at: skimap_common::dates::utc(date.at(6, 0, 0, 0)).unwrap(),
             depth: Grid::filled(
                 w,
                 h,
@@ -1292,7 +1303,7 @@ mod tests {
             p10_cm: median,
             share_20cm: 1.0,
             added_cm: added,
-            map_date: NaiveDate::from_ymd_opt(2027, 1, 12).unwrap(),
+            map_date: date(2027, 1, 12),
         };
         let first = |s: Option<SnowStats>, fresh: Option<f64>| {
             let mut out = Vec::new();
@@ -1348,7 +1359,7 @@ mod tests {
 
     #[test]
     fn snow_maps_domains_and_avalanche_paths() {
-        let date = NaiveDate::from_ymd_opt(2027, 1, 12).unwrap();
+        let date = date(2027, 1, 12);
         let mut d = data(date, 20.0);
         // 15 cm on the map, 5 cm since: 20 cm, all points at 20 cm or more.
         d.snows = vec![snow(date, 15.0)];
@@ -1392,7 +1403,11 @@ mod tests {
         assert_eq!(alpha.reasons[0].text, "ouvert");
         assert!(!b.domains[0].reasons[0].text.contains("insuffisante"));
         // A map too old for the day: said.
-        let b = day(&d, date + Duration::days(5), &Options::default());
+        let b = day(
+            &d,
+            date + SignedDuration::from_hours(24 * 5),
+            &Options::default(),
+        );
         assert!(
             b.domains[0]
                 .reasons
@@ -1495,7 +1510,7 @@ mod tests {
 
     #[test]
     fn domain_status_from_its_itineraries() {
-        let date = NaiveDate::from_ymd_opt(2027, 1, 12).unwrap();
+        let date = date(2027, 1, 12);
         let mut d = data(date, 20.0);
         let its = &mut d.status.as_mut().unwrap().itineraries;
         // Alpha open (10 km), Gamma closed (4 km) in domain A.
@@ -1535,7 +1550,7 @@ mod tests {
         assert_eq!(a.reasons[0].points, 0.0);
         // Two days before the poll: no status, said, and the best domain not closed with
         // snow is recommended.
-        d.snows = vec![snow(date - Duration::days(2), 30.0)];
+        d.snows = vec![snow(date - SignedDuration::from_hours(24 * 2), 30.0)];
         d.pistes = vec![crate::layers::Piste {
             way_id: 7,
             name: Some("Alpha".into()),
@@ -1544,7 +1559,11 @@ mod tests {
             line: vec![LonLat::new(6.10, 46.60), LonLat::new(6.101, 46.60)],
         }];
         d.domains[0].ways = vec![7];
-        let b = day(&d, date - Duration::days(2), &Options::default());
+        let b = day(
+            &d,
+            date - SignedDuration::from_hours(24 * 2),
+            &Options::default(),
+        );
         assert_eq!(b.status, "none");
         assert!(
             b.notes

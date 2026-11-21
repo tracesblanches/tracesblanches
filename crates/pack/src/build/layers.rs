@@ -805,7 +805,12 @@ pub fn include(spec: &Spec, out: &Path, root: &Path, personal_sources: bool) -> 
                 let rules_path = dir.join("rules.json");
                 let rules_text =
                     std::fs::read_to_string(&rules_path).map_err(|e| Error::io(&rules_path, e))?;
-                annotate_zones(&mut v, &text, &rules_text, chrono::Utc::now().date_naive())?;
+                annotate_zones(
+                    &mut v,
+                    &text,
+                    &rules_text,
+                    skimap_common::dates::utc_date(jiff::Timestamp::now()),
+                )?;
             }
             if spec.transform == Transform::Pistes {
                 joined = Some(crate::build::pistes::enrich(&mut v, out, personal_sources)?);
@@ -1231,7 +1236,7 @@ pub fn annotate_zones(
     v: &mut Value,
     zones_text: &str,
     rules_text: &str,
-    date: chrono::NaiveDate,
+    date: jiff::civil::Date,
 ) -> Result<()> {
     let layer = ZoneLayer::from_geojson_str(zones_text)?;
     let rules = RuleSet::from_json_str(rules_text)?;
@@ -1313,6 +1318,7 @@ pub fn annotate_zones(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jiff::civil::date;
     use std::collections::BTreeMap;
 
     #[test]
@@ -1676,7 +1682,7 @@ mod tests {
         ]});
         let text = zones.to_string();
         let mut v = zones.clone();
-        let date = chrono::NaiveDate::from_ymd_opt(2026, 11, 15).unwrap();
+        let date = date(2026, 11, 15);
         annotate_zones(&mut v, &text, skimap_zones::rules::RULES_JSON, date).unwrap();
         let p = |i: usize, k: &str| {
             v.pointer(&format!("/features/{i}/properties/{k}"))
@@ -1702,7 +1708,7 @@ mod tests {
         }]});
         let text = zones.to_string();
         let mut v = zones.clone();
-        let date = chrono::NaiveDate::from_ymd_opt(2026, 11, 15).unwrap();
+        let date = date(2026, 11, 15);
         annotate_zones(&mut v, &text, skimap_zones::rules::RULES_JSON, date).unwrap();
         assert_eq!(
             v.pointer("/features/0/properties/bivouac").unwrap(),

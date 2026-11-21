@@ -39,7 +39,7 @@ pub mod mairie;
 pub mod nordicfrance;
 pub mod store;
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde::Serialize;
 use serde_json::{Value, json};
 use skimap_common::download::{Downloader, Origin, Request};
@@ -95,7 +95,7 @@ fn origin_name(o: Origin) -> &'static str {
 
 fn record(
     store: &Store,
-    now: DateTime<Utc>,
+    now: Timestamp,
     origin: Origin,
     content: &Value,
 ) -> Result<(bool, Option<String>)> {
@@ -109,8 +109,8 @@ fn record(
     Ok((r.changed, Some(r.snapshot)))
 }
 
-fn rfc3339(t: DateTime<Utc>) -> String {
-    t.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+fn rfc3339(t: Timestamp) -> String {
+    t.strftime("%Y-%m-%dT%H:%M:%SZ").to_string()
 }
 
 fn source_ref(name: &str, url: &str, licence: &str, attribution: &str) -> SourceRef {
@@ -128,7 +128,7 @@ fn poll_enj(
     dir: &std::path::Path,
     dl: &Downloader,
     area: enj::EnjArea,
-    now: DateTime<Utc>,
+    now: Timestamp,
     latest: &mut serde_json::Map<String, Value>,
     pistes: Option<&EnjPistes>,
     stats: &mut serde_json::Map<String, Value>,
@@ -311,7 +311,7 @@ fn poll_page<T: Serialize>(
     dir: &std::path::Path,
     dl: &Downloader,
     page: &PageSource<'_>,
-    now: DateTime<Utc>,
+    now: Timestamp,
     parse: impl Fn(&str) -> T,
     latest: &mut serde_json::Map<String, Value>,
 ) -> Result<(SourcePoll, Value)> {
@@ -359,7 +359,7 @@ pub fn poll(
     }
     let dir = layout.layer_dir(site, LAYER)?;
     DataLayout::ensure(&dir)?;
-    let now = Utc::now();
+    let now = Timestamp::now();
     let mut latest = serde_json::Map::new();
     let mut sources = Vec::new();
     let mut refs = Vec::new();

@@ -10,7 +10,7 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde::Serialize;
 use skimap_common::layout::DataLayout;
 use skimap_common::site::Site;
@@ -87,7 +87,7 @@ pub fn default_sites(layout: &DataLayout, sites: &[&'static Site]) -> Vec<&'stat
         .collect()
 }
 
-fn stations_state(ctx: &Ctx, now: DateTime<Utc>) -> StationsState {
+fn stations_state(ctx: &Ctx, now: Timestamp) -> StationsState {
     match skimap_stations::refresh(&ctx.layout, &ctx.dl, ctx.cfg.personal_sources, now, false) {
         Ok(r) => {
             let state = skimap_stations::refresh::State::read(&r.dir.join("refresh_state.json"));
@@ -117,7 +117,7 @@ fn stations_state(ctx: &Ctx, now: DateTime<Utc>) -> StationsState {
     }
 }
 
-fn refuges_state(ctx: &Ctx, site: &Site, now: DateTime<Utc>) -> RefugesState {
+fn refuges_state(ctx: &Ctx, site: &Site, now: Timestamp) -> RefugesState {
     match skimap_refuges::refresh(site, &ctx.layout, &ctx.dl, now, false) {
         Ok(r) => {
             // Rewritten: recorded, so that the catch-up does not fetch it again (#164).
@@ -172,14 +172,14 @@ fn failures(st: &StationsState, refuges: &[RefugesState]) -> Vec<String> {
 
 /// Refreshes the stations layer, then the hut layer of `sites` one after the other (the
 /// downloader serialises the requests to each source anyway), and writes the summary.
-pub fn refresh(ctx: &Ctx, sites: &[&Site], now: DateTime<Utc>) -> Result<Summary> {
+pub fn refresh(ctx: &Ctx, sites: &[&Site], now: Timestamp) -> Result<Summary> {
     let stations = stations_state(ctx, now);
     let refuges: Vec<RefugesState> = sites.iter().map(|s| refuges_state(ctx, s, now)).collect();
     let failures = failures(&stations, &refuges);
     let dir = ctx.layout.france_layer_dir(LAYER)?;
     let path = dir.join("status.json");
     let summary = Summary {
-        checked_at: now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        checked_at: now.strftime("%Y-%m-%dT%H:%M:%SZ").to_string(),
         ok: failures.is_empty(),
         personal_sources: ctx.cfg.personal_sources,
         stations,

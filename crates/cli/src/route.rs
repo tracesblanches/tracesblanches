@@ -5,7 +5,10 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};
-use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
+use jiff::{
+    Timestamp,
+    civil::{Date, Time},
+};
 use serde_json::{Map, Value, json};
 use skimap_common::geom::LonLat;
 use skimap_common::layout::DataLayout;
@@ -33,10 +36,10 @@ pub fn parse_lat_lon(s: &str) -> Result<LonLat> {
 
 /// Start instant: `HH:MM` in French legal time on `date` (default: today), or anything
 /// [`crate::build::parse_instant`] reads.
-pub fn parse_start(s: &str, date: Option<NaiveDate>) -> Result<DateTime<Utc>> {
-    if let Ok(t) = NaiveTime::parse_from_str(s, "%H:%M") {
-        let d = date.unwrap_or_else(|| local_time(Utc::now()).date());
-        return crate::build::parse_instant(&format!("{}T{}", d, t.format("%H:%M")));
+pub fn parse_start(s: &str, date: Option<Date>) -> Result<Timestamp> {
+    if let Ok(t) = Time::strptime("%H:%M", s) {
+        let d = date.unwrap_or_else(|| local_time(Timestamp::now()).date());
+        return crate::build::parse_instant(&format!("{}T{}", d, t.strftime("%H:%M")));
     }
     crate::build::parse_instant(s)
         .with_context(|| format!("départ `{s}` (HH:MM, ou date et heure)"))
@@ -52,7 +55,7 @@ pub struct RouteRequest {
     /// Technique (cost and time model).
     pub style: Style,
     /// Start time, for the turnaround (C7).
-    pub start: Option<DateTime<Utc>>,
+    pub start: Option<Timestamp>,
     /// Largest distance from a point to the trails, metres.
     pub max_snap_m: f64,
     /// GeoJSON written.
@@ -66,8 +69,8 @@ fn style_fr(s: Style) -> &'static str {
     }
 }
 
-fn hm(t: DateTime<Utc>) -> String {
-    local_time(t).format("%H:%M").to_string()
+fn hm(t: Timestamp) -> String {
+    local_time(t).strftime("%H:%M").to_string()
 }
 
 fn duration(s: f64) -> String {
@@ -143,8 +146,8 @@ pub fn route(g: &PisteGraph, site: &Site, req: &RouteRequest) -> Result<Vec<Stri
         let date = local_time(start).date();
         let dl = deadline(date, r.start.pos, &tp)
             .ok_or_else(|| anyhow!("pas de coucher de soleil le {date}"))?;
-        let arrival = start + chrono::Duration::seconds((b.total_s * tp.eta_factor) as i64);
-        let margin = (dl.deadline - arrival).num_seconds() as f64;
+        let arrival = start + jiff::SignedDuration::from_secs((b.total_s * tp.eta_factor) as i64);
+        let margin = (dl.deadline - arrival).as_secs() as f64;
         lines.push(format!(
             "C7, départ {} le {date} : coucher du soleil {}, fin du crépuscule civil {}, retour au plus tard {} (crépuscule − {:.0} min) ; arrivée prévue {} (temps × {}), {} {}",
             hm(start),
@@ -158,7 +161,7 @@ pub fn route(g: &PisteGraph, site: &Site, req: &RouteRequest) -> Result<Vec<Stri
             duration(margin.abs()),
         ));
         let mut turn = json!({
-            "start_local": local_time(start).format("%Y-%m-%dT%H:%M").to_string(),
+            "start_local": local_time(start).strftime("%Y-%m-%dT%H:%M").to_string(),
             "sunset_local": hm(dl.sunset),
             "civil_dusk_local": hm(dl.civil_dusk),
             "deadline_local": hm(dl.deadline),
@@ -243,6 +246,7 @@ pub fn parse_style(s: &str) -> Result<Style> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jiff::tz::Offset;
 
     #[test]
     fn positions_and_starts() {
@@ -250,10 +254,13 @@ mod tests {
         assert_eq!((p.lat, p.lon), (44.8589, 6.725));
         assert!(parse_lat_lon("6.7250").is_err());
         assert!(parse_lat_lon("144.0,6.7").is_err());
-        let d = NaiveDate::from_ymd_opt(2027, 1, 15);
+        let d = skimap_common::dates::ymd(2027, 1, 15);
         // Winter: 13:00 legal time is 12:00 UTC.
         assert_eq!(
-            parse_start("13:00", d).unwrap().to_rfc3339(),
+            parse_start("13:00", d)
+                .unwrap()
+                .display_with_offset(Offset::UTC)
+                .to_string(),
             "2027-01-15T12:00:00+00:00"
         );
         assert_eq!(

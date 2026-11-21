@@ -10,20 +10,21 @@
 
 use std::io::Write;
 
-use chrono::{DateTime, Duration, Utc};
+use jiff::tz::Offset;
+use jiff::{SignedDuration, Timestamp};
 use skimap_collab::strava_export::{ImportError, import};
 use skimap_collab::track::{OBSERVATION_FILE, OUTING_FILE, Outing, Point};
 use skimap_core::calibration::OutingObs;
 use skimap_core::routing::Style;
 
 fn points(start: &str, n: i64, lat0: f64) -> Vec<Point> {
-    let t0: DateTime<Utc> = start.parse().unwrap();
+    let t0: Timestamp = start.parse().unwrap();
     (0..n)
         .map(|i| Point {
             lon: 6.1,
             lat: lat0 + i as f64 * 3.0 / 111_195.0,
             ele: Some(1100.0 + i as f64 * 0.03),
-            t: Some(t0 + Duration::seconds(i)),
+            t: Some(t0 + SignedDuration::from_secs(i)),
         })
         .collect()
 }
@@ -38,7 +39,7 @@ fn gpx(p: &[Point]) -> String {
             q.lat,
             q.lon,
             q.ele.unwrap(),
-            q.t.unwrap().format("%Y-%m-%dT%H:%M:%SZ")
+            q.t.unwrap().strftime("%Y-%m-%dT%H:%M:%SZ")
         ));
     }
     s.push_str("</trkseg></trk></gpx>");
@@ -52,7 +53,7 @@ fn tcx(p: &[Point]) -> String {
     for q in p {
         s.push_str(&format!(
             "<Trackpoint><Time>{}</Time><Position><LatitudeDegrees>{}</LatitudeDegrees><LongitudeDegrees>{}</LongitudeDegrees></Position><AltitudeMeters>{}</AltitudeMeters></Trackpoint>",
-            q.t.unwrap().to_rfc3339(),
+            q.t.unwrap().display_with_offset(Offset::UTC),
             q.lat,
             q.lon,
             q.ele.unwrap()

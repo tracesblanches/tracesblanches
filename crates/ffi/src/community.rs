@@ -10,7 +10,7 @@
 
 use std::path::Path;
 
-use chrono::{DateTime, Datelike, TimeZone, Utc};
+use jiff::Timestamp;
 use skimap_collab::challenges::{self, Progress};
 use skimap_collab::osm_note::{self, Correction, Piste};
 use skimap_collab::strava_export;
@@ -166,20 +166,21 @@ fn view(
         total_km: p.total_m / 1000.0,
         share: p.share,
         outings: p.outings,
-        done_on: p.done_on.map(|t| t.format("%Y-%m-%d").to_string()),
+        done_on: p.done_on.map(|t| t.strftime("%Y-%m-%d").to_string()),
         attribution,
     }
 }
 
 /// Start of the season of `now` (1 October).
-fn season_start(now: DateTime<Utc>) -> DateTime<Utc> {
-    let y = if now.month() >= 10 {
-        now.year()
+fn season_start(now: Timestamp) -> Timestamp {
+    let d = skimap_common::dates::utc_date(now);
+    let y = if d.month() >= 10 {
+        d.year()
     } else {
-        now.year() - 1
+        d.year() - 1
     };
-    Utc.with_ymd_and_hms(y, 10, 1, 0, 0, 0)
-        .single()
+    skimap_common::dates::ymd(i32::from(y), 10, 1)
+        .and_then(|d| skimap_common::dates::utc(d.at(0, 0, 0, 0)))
         .unwrap_or(now)
 }
 
@@ -230,10 +231,7 @@ pub fn challenges_compute(
             "© OpenStreetMap (ODbL)".to_owned(),
         ));
     }
-    let now = Utc
-        .timestamp_millis_opt(now_ms)
-        .single()
-        .unwrap_or_else(Utc::now);
+    let now = Timestamp::from_millisecond(now_ms).unwrap_or_else(|_| Timestamp::now());
     let since = Some(season_start(now));
     let done = challenges::distance(&all, since, 0.0).done_m / 1000.0;
     let target = DISTANCE_TARGETS_KM
@@ -305,7 +303,7 @@ mod tests {
 
     #[test]
     fn season_starts_in_october() {
-        let t = |s: &str| s.parse::<DateTime<Utc>>().unwrap();
+        let t = |s: &str| s.parse::<Timestamp>().unwrap();
         assert_eq!(
             season_start(t("2026-01-10T00:00:00Z")),
             t("2025-10-01T00:00:00Z")
@@ -353,9 +351,9 @@ mod tests {
             list[0].distance_m
         );
         let now = "2026-01-20T00:00:00Z"
-            .parse::<DateTime<Utc>>()
+            .parse::<Timestamp>()
             .unwrap()
-            .timestamp_millis();
+            .as_millisecond();
         let c = challenges_compute(
             roots,
             routes.into(),

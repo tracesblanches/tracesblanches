@@ -79,7 +79,7 @@ fn public_packs_carry_the_assistant_and_the_app_shows_it() {
         let wax: serde_json::Value =
             serde_json::from_slice(&std::fs::read(pack.path(&wax_layer.file).unwrap()).unwrap())
                 .unwrap();
-        let first: chrono::NaiveDate = wax["date"].as_str().unwrap().parse().unwrap();
+        let first: jiff::civil::Date = wax["date"].as_str().unwrap().parse().unwrap();
         let days = skimap_ffi::prep::forecast_days(&pack);
         let date = days
             .iter()

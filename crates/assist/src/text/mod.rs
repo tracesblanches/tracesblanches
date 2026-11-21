@@ -4,7 +4,7 @@
 //!
 //! Short, concrete sentences; never « sans danger » / « safe ».
 
-use chrono::{NaiveDate, NaiveDateTime};
+use jiff::civil::{Date, DateTime};
 pub use skimap_common::Lang;
 
 use crate::crowd::{CrowdLevel, Population};
@@ -31,13 +31,13 @@ pub trait Texts: Sync {
     /// A number with `decimals` decimals: `1,5` in French, `1.5` in English.
     fn num(&self, x: f64, decimals: usize) -> String;
     /// « mardi 5 janvier 2026 », « Tuesday 5 January 2026 ».
-    fn date(&self, d: NaiveDate) -> String;
+    fn date(&self, d: Date) -> String;
     /// Name of a weekday, Monday = 0 (« dimanche », « Sunday »).
     fn weekday(&self, monday0: usize) -> &'static str;
     /// A clock time to the minute: « 9 h 05 », « 9:05 ».
-    fn clock(&self, t: NaiveDateTime) -> String;
+    fn clock(&self, t: DateTime) -> String;
     /// A whole hour: « 13 h », « 13:00 ».
-    fn hour(&self, t: NaiveDateTime) -> String;
+    fn hour(&self, t: DateTime) -> String;
 
     // ---- Briefing (A1): reasons of the scores.
 
@@ -63,7 +63,7 @@ pub trait Texts: Sync {
     fn sunny(&self) -> &'static str;
     /// Estimated snow along the trails: median, date of the map, snowfall since, share of
     /// the points with 20 cm or more.
-    fn snow_estimate(&self, depth: f64, map: NaiveDate, added: f64, share_pct: f64) -> String;
+    fn snow_estimate(&self, depth: f64, map: Date, added: f64, share_pct: f64) -> String;
     /// Verdict of the estimated snow: 0 not enough to groom, 1 borderline, 2 enough.
     fn snow_verdict(&self, base: &str, verdict: u8) -> String;
     /// No estimated snow here.
@@ -129,7 +129,7 @@ pub trait Texts: Sync {
     /// A reason with its points: « ouvert [+3,00] ».
     fn reason_points(&self, text: &str, points: f64) -> String;
     /// First line: site and date.
-    fn briefing_title(&self, site: &str, date: NaiveDate) -> String;
+    fn briefing_title(&self, site: &str, date: Date) -> String;
     /// BERA level.
     fn briefing_bera(&self, level: u8) -> String;
     /// Header of the areas.
@@ -141,7 +141,7 @@ pub trait Texts: Sync {
     /// Snow quality at a forecast point.
     fn briefing_snow_quality(&self, point: &str, summary: &[String]) -> String;
     /// Sunset.
-    fn briefing_sunset(&self, at: NaiveDateTime) -> String;
+    fn briefing_sunset(&self, at: DateTime) -> String;
     /// Notes on the data.
     fn briefing_data(&self, notes: &[String]) -> String;
 
@@ -181,9 +181,9 @@ pub trait Texts: Sync {
     /// Best slot.
     fn sq_best(&self, class: &str, slot: &str, q: Quality) -> String;
     /// « sud 13 h ».
-    fn sq_aspect_at(&self, aspect: &str, at: NaiveDateTime) -> String;
+    fn sq_aspect_at(&self, aspect: &str, at: DateTime) -> String;
     /// « sud 30° dès 14 h ».
-    fn sq_aspect_slope_from(&self, aspect: &str, slope: f64, at: NaiveDateTime) -> String;
+    fn sq_aspect_slope_from(&self, aspect: &str, slope: f64, at: DateTime) -> String;
     /// 20° slopes soften around.
     fn sq_softens(&self, list: &[String]) -> String;
     /// Heavy snow.
@@ -240,7 +240,7 @@ pub trait Texts: Sync {
     /// Label of a loop told apart from another of the same trails and length by its rank.
     fn s_label_rank(&self, label: &str, rank: usize) -> String;
     /// Length, climb, time and return of a loop.
-    fn s_loop(&self, km: f64, gain: f64, time: &str, back: NaiveDateTime) -> String;
+    fn s_loop(&self, km: f64, gain: f64, time: &str, back: DateTime) -> String;
     /// Share of the loop out and back on the same way.
     fn s_out_and_back(&self, pct: f64) -> String;
     /// A figure of eight.
@@ -278,7 +278,7 @@ pub trait Texts: Sync {
         group: Option<&str>,
     ) -> String;
     /// Loops set aside: back too late.
-    fn s_too_late(&self, n: usize, limit: Option<NaiveDateTime>) -> String;
+    fn s_too_late(&self, n: usize, limit: Option<DateTime>) -> String;
     /// No loop fits.
     fn s_none_fits(&self) -> &'static str;
     /// No real loop: the loops proposed are partly out and back.
@@ -299,9 +299,9 @@ pub trait Texts: Sync {
         &self,
         label: &str,
         start: &str,
-        date: NaiveDate,
-        at: NaiveDateTime,
-        deadline: Option<NaiveDateTime>,
+        date: Date,
+        at: DateTime,
+        deadline: Option<DateTime>,
         group: Option<&str>,
     ) -> String;
     /// A ranked loop with its reasons.
@@ -333,20 +333,20 @@ pub trait Texts: Sync {
     /// Busy day: assumed peak from 10 h 30 to 14 h.
     fn bt_crowd(&self, level: CrowdLevel) -> String;
     /// Return less than 30 min before the deadline.
-    fn bt_near_deadline(&self, deadline: NaiveDateTime) -> String;
+    fn bt_near_deadline(&self, deadline: DateTime) -> String;
     /// What a start two hours or more away would lose.
-    fn bt_other_start(&self, start: NaiveDateTime, lost: &[String]) -> String;
+    fn bt_other_start(&self, start: DateTime, lost: &[String]) -> String;
     /// The best start, its return, the outing and why; `others` the other starts.
     fn bt_best(
         &self,
-        start: NaiveDateTime,
-        back: NaiveDateTime,
+        start: DateTime,
+        back: DateTime,
         minutes: f64,
         why: &[String],
         others: &[String],
     ) -> String;
     /// No start ends before the deadline.
-    fn bt_none(&self, minutes: f64, deadline: Option<NaiveDateTime>) -> String;
+    fn bt_none(&self, minutes: f64, deadline: Option<DateTime>) -> String;
     /// No best time: the starts that end before the deadline have no hourly forecast.
     fn bt_no_forecast(&self) -> &'static str;
 
@@ -413,9 +413,9 @@ pub trait Texts: Sync {
     /// Off-piste with a BERA of 3 or more.
     fn eq_offpiste_bera(&self, level: u8) -> String;
     /// Back after sunset (or less than an hour before).
-    fn eq_back_after_sunset(&self, back: NaiveDateTime, sunset: NaiveDateTime) -> String;
+    fn eq_back_after_sunset(&self, back: DateTime, sunset: DateTime) -> String;
     /// Start before sunrise.
-    fn eq_start_before_sunrise(&self, start: NaiveDateTime, sunrise: NaiveDateTime) -> String;
+    fn eq_start_before_sunrise(&self, start: DateTime, sunrise: DateTime) -> String;
     /// Wind chill down to.
     fn eq_chill(&self, chill: &str) -> String;
     /// Km without any mobile network.
@@ -519,14 +519,14 @@ pub trait Texts: Sync {
     /// The temperature drops.
     fn al_cold(&self, temperature: &str, chill: &str) -> String;
     /// Late: turn back now to be back before the deadline.
-    fn al_turn_now(&self, late_min: f64, pace: f64, deadline: Option<NaiveDateTime>) -> String;
+    fn al_turn_now(&self, late_min: f64, pace: f64, deadline: Option<DateTime>) -> String;
     /// Late: the loop no longer ends before the deadline; latest turnaround.
     fn al_turn_advanced(
         &self,
         late_min: f64,
         pace: f64,
-        deadline: Option<NaiveDateTime>,
-        turn: NaiveDateTime,
+        deadline: Option<DateTime>,
+        turn: DateTime,
     ) -> String;
 
     // ---- Missing layers.

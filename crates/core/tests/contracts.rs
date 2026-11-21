@@ -3,10 +3,11 @@
 //! test failing (style factors, route properties, graph reading, time breakdown,
 //! Munter / Tobler boundaries, turnaround arithmetic, deviation hysteresis).
 
+use jiff::civil::date;
 #[path = "../../../fixtures/support/mod.rs"]
 mod fixtures;
 
-use chrono::{DateTime, NaiveDate, Utc};
+use jiff::Timestamp;
 use serde_json::{Map, json};
 use skimap_common::geom::LonLat;
 use skimap_core::eta::{Breakdown, EtaModel, FLAT_GRADE, SnowClass, friction, munter_s, tobler_s};
@@ -327,8 +328,8 @@ fn classic_speed_balances_the_power() {
     assert_eq!(m.classic_speed_ms(-0.3, 1200.0, false), k.max_speed_ms);
 }
 
-fn instant(s: &str) -> DateTime<Utc> {
-    DateTime::parse_from_rfc3339(s).unwrap().to_utc()
+fn instant(s: &str) -> Timestamp {
+    s.parse::<Timestamp>().unwrap()
 }
 
 #[test]
@@ -340,7 +341,7 @@ fn turnaround_uses_the_whole_budget_and_turns_on_the_route() {
     let r = Router::new(&g, model)
         .route(village, LonLat::new(6.12167, 46.56318), 500.0)
         .unwrap();
-    let date = NaiveDate::from_ymd_opt(2027, 1, 15).unwrap();
+    let date = date(2027, 1, 15);
     let params = TurnaroundParams {
         eta_factor: 1.3,
         ..TurnaroundParams::default()
@@ -351,7 +352,7 @@ fn turnaround_uses_the_whole_budget_and_turns_on_the_route() {
     assert!(!ob.whole_route && ob.turn_at_m > 0.0 && ob.turn_at_m < r.length_m());
     // The arrival is the deadline (the budget is used up), within a second.
     assert!(
-        (ob.arrival - dl.deadline).num_seconds().abs() <= 1,
+        (ob.arrival - dl.deadline).as_secs().abs() <= 1,
         "{ob:?} {dl:?}"
     );
     assert!(start < ob.turn_time && ob.turn_time < ob.arrival);
@@ -369,7 +370,7 @@ fn turnaround_uses_the_whole_budget_and_turns_on_the_route() {
         out += t;
         d += pc.dist_m;
     }
-    let got = (ob.turn_time - start).num_milliseconds() as f64 / 1000.0;
+    let got = (ob.turn_time - start).as_millis() as i64 as f64 / 1000.0;
     assert!(
         (got - out * params.eta_factor).abs() < 2.0,
         "{got} vs {}",
@@ -399,7 +400,7 @@ fn turnaround_uses_the_whole_budget_and_turns_on_the_route() {
             &g,
             &r,
             &model,
-            dl.deadline + chrono::Duration::minutes(1),
+            dl.deadline + jiff::SignedDuration::from_mins(1),
             &dl,
             &params
         )
@@ -411,9 +412,11 @@ fn turnaround_uses_the_whole_budget_and_turns_on_the_route() {
 fn turnaround_status_thresholds() {
     let village = LonLat::new(6.1118, 46.5952);
     let p = TurnaroundParams::default();
-    let dl = deadline(NaiveDate::from_ymd_opt(2027, 1, 15).unwrap(), village, &p).unwrap();
+    let dl = deadline(date(2027, 1, 15), village, &p).unwrap();
     let at = |margin_s: i64| {
-        dl.deadline - chrono::Duration::seconds(margin_s) - chrono::Duration::seconds(600)
+        dl.deadline
+            - jiff::SignedDuration::from_secs(margin_s)
+            - jiff::SignedDuration::from_secs(600)
     };
     let s = status(at(1800), 600.0 / p.eta_factor, &dl, &p);
     assert!((s.margin_s - 1800.0).abs() < 1e-3, "{s:?}");
@@ -429,7 +432,7 @@ fn turnaround_status_thresholds() {
     assert!((s.time_back_s - 600.0).abs() < 1e-9);
     assert_eq!(
         s.latest_turnaround,
-        dl.deadline - chrono::Duration::seconds(600)
+        dl.deadline - jiff::SignedDuration::from_secs(600)
     );
 }
 

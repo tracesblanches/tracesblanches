@@ -24,7 +24,7 @@ use skimap_common::grid::{GeoTransform, Grid};
 use skimap_common::layout::DataLayout;
 use skimap_common::site::Site;
 use skimap_terrain::dem::{self, Extent, TileId};
-use skimap_zones::chrono::{DateTime, Utc};
+use skimap_zones::jiff::Timestamp;
 use skimap_zones::layer::ZoneLayer;
 use skimap_zones::rules::RuleSet;
 use tracing::{debug, warn};
@@ -220,7 +220,7 @@ pub fn build_profile(
     track: &[LonLat],
     dl: &Downloader,
     sites: &[SiteLayers],
-    at: DateTime<Utc>,
+    at: Timestamp,
     roads: Option<&[(f64, f64)]>,
     c: &Corridor,
 ) -> Result<(Profile, CorridorStats)> {

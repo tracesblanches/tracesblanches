@@ -4,6 +4,7 @@
 //! The pack is written to a temporary directory next to the final one, then swapped in:
 //! a reader never sees a half-written pack.
 
+use jiff::civil::Date;
 pub mod assets;
 pub mod class_tiles;
 pub mod extract;
@@ -152,8 +153,8 @@ pub fn build(
     dl: &Downloader,
     opts: &BuildOptions,
 ) -> Result<BuildReport> {
-    let now = chrono::Utc::now();
-    let pack_version = now.format("%Y%m%dT%H%M%SZ").to_string();
+    let now = jiff::Timestamp::now();
+    let pack_version = now.strftime("%Y%m%dT%H%M%SZ").to_string();
     let final_dir = pack_dir(site, layout)?;
     let parent = final_dir
         .parent()
@@ -198,7 +199,7 @@ fn build_into(
     opts: &BuildOptions,
     root: &Path,
     pack_version: &str,
-    now: chrono::DateTime<chrono::Utc>,
+    now: jiff::Timestamp,
     parts: &mut parts::Parts,
 ) -> Result<BuildReport> {
     let mut timings = Vec::new();
@@ -364,7 +365,7 @@ fn build_into(
         format_version: FORMAT_VERSION,
         pack_version: pack_version.to_owned(),
         generator: format!("{} {}", crate::CRATE, env!("CARGO_PKG_VERSION")),
-        generated_at: now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        generated_at: now.strftime("%Y-%m-%dT%H:%M:%SZ").to_string(),
         site: site_info(site, layout, opts.personal_sources),
         valid_for,
         personal_sources: opts.personal_sources,
@@ -386,7 +387,13 @@ fn build_into(
             .parent()
             .unwrap_or(root)
             .join(format!(".pack-rank-{pack_version}"));
-        manifest.site.start_ranking = rank::rank(site, record, root, &work, now.date_naive());
+        manifest.site.start_ranking = rank::rank(
+            site,
+            record,
+            root,
+            &work,
+            skimap_common::dates::utc_date(now),
+        );
         if manifest.site.start_ranking.is_some() {
             write_json(&root.join(MANIFEST_FILE), &manifest)?;
         }
@@ -511,7 +518,7 @@ fn pack_validity(layers: &[Layer]) -> PackValidity {
 /// `AAAA-MM-JJ` at the start of a string.
 fn leading_date(s: &str) -> Option<String> {
     let d = s.get(..10)?;
-    chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok()?;
+    Date::strptime("%Y-%m-%d", d).ok()?;
     Some(d.to_owned())
 }
 
@@ -552,8 +559,8 @@ pub fn build_voice_pack(
     lang: &str,
     personal_sources: bool,
 ) -> Result<BuildReport> {
-    let now = chrono::Utc::now();
-    let pack_version = now.format("%Y%m%dT%H%M%SZ").to_string();
+    let now = jiff::Timestamp::now();
+    let pack_version = now.strftime("%Y%m%dT%H%M%SZ").to_string();
     let final_dir = voice_pack_dir(site, layout, lang)?;
     let parent = final_dir
         .parent()
@@ -590,7 +597,7 @@ pub fn build_voice_pack(
             format_version: FORMAT_VERSION,
             pack_version: pack_version.clone(),
             generator: format!("{} {}", crate::CRATE, env!("CARGO_PKG_VERSION")),
-            generated_at: now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            generated_at: now.strftime("%Y-%m-%dT%H:%M:%SZ").to_string(),
             site: site_info(site, layout, personal_sources),
             valid_for: PackValidity {
                 until: None,
@@ -988,7 +995,7 @@ pub(crate) fn source(name: &str, url: &str, licence: &str, attribution: &str) ->
 /// `pack.meta.json`: the pack described in the shared layer schema.
 fn pack_meta(
     site: &Site,
-    now: &chrono::DateTime<chrono::Utc>,
+    now: &jiff::Timestamp,
     validity: &PackValidity,
     basemaps: &[Basemap],
     layers: &[Layer],
@@ -996,7 +1003,7 @@ fn pack_meta(
 ) -> LayerMeta {
     let mut m = LayerMeta::new(PACK_LAYER, site.id);
     m.tickets = vec!["P4 (#17)".to_owned(), "P14 (#27)".to_owned()];
-    m.generated_at = now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    m.generated_at = now.strftime("%Y-%m-%dT%H:%M:%SZ").to_string();
     m.valid_until = validity.until.clone();
     m.validity = Some(validity.note.clone());
     m.crs =

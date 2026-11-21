@@ -33,7 +33,7 @@ skimap-group = { path = "../group" }
 skimap-zones.workspace = true
 skimap-srndiff = { path = "../srndiff" }
 flate2.workspace = true
-chrono.workspace = true
+jiff.workspace = true
 geojson.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -48,7 +48,7 @@ skimap-pack = { workspace = true, features = ["pipeline"] }
 skimap-common = { workspace = true, features = ["download"] }
 pmtiles.workspace = true
 geo.workspace = true
-chrono.workspace = true
+jiff.workspace = true
 flate2.workspace = true
 tempfile.workspace = true
 

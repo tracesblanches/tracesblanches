@@ -22,7 +22,7 @@
 )]
 use std::path::PathBuf;
 
-use chrono::NaiveTime;
+use jiff::civil::Time;
 use serde_json::{Value, json};
 use skimap_common::layout::DataLayout;
 use skimap_plan::plan::{self, KeyKind};
@@ -53,7 +53,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let date = presets::past_day(site);
     let base = presets::requests(site, date).remove(0);
     let mut family = base.clone();
-    family.start_time = NaiveTime::from_hms_opt(10, 0, 0);
+    family.start_time = Time::new(10, 0, 0, 0).ok();
     for (req, scenarios) in [
         (base, vec!["refuge", "closure_refused", "wrong_turn"]),
         (family, vec!["family"]),
@@ -175,8 +175,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn ms(t: chrono::DateTime<chrono::Utc>) -> i64 {
-    t.timestamp_millis()
+fn ms(t: jiff::Timestamp) -> i64 {
+    t.as_millisecond()
 }
 
 fn expected(outs: &[Output], m: &VoiceManifest) -> Value {

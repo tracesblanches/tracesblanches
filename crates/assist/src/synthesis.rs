@@ -26,7 +26,7 @@
 //! a route: the protected zones with their rules); « fire forbidden in the commune,
 //! stoves included »; « part of the route has no network at all ».
 
-use chrono::{Duration, NaiveDate};
+use jiff::{SignedDuration, civil::Date};
 use serde::Serialize;
 use skimap_common::geom::LonLat;
 use skimap_core::zone_eval::{self, Verdict};
@@ -98,7 +98,7 @@ pub struct Facts {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Synthesis {
     /// Date.
-    pub date: NaiveDate,
+    pub date: Date,
     /// At most three sentences, French.
     pub sentences: Vec<String>,
     /// Voice events.
@@ -123,7 +123,7 @@ fn clip_text(c: &clips::Clip, lang: Lang) -> String {
     skimap_voice::phrase::localise(c, Lang::Fr, lang).text
 }
 
-fn avalanche_sentence(data: &SiteData, date: NaiveDate, facts: &mut Facts, lang: Lang) -> String {
+fn avalanche_sentence(data: &SiteData, date: Date, facts: &mut Facts, lang: Lang) -> String {
     let tx = crate::text::of(lang);
     let bera = data.bera_for(date);
     let massif = data.site.main_massif().map(|m| m.name);
@@ -184,7 +184,7 @@ fn avalanche_sentence(data: &SiteData, date: NaiveDate, facts: &mut Facts, lang:
     s
 }
 
-fn weather_sentence(data: &SiteData, date: NaiveDate, lang: Lang) -> (String, Option<Event>) {
+fn weather_sentence(data: &SiteData, date: Date, lang: Lang) -> (String, Option<Event>) {
     let tx = crate::text::of(lang);
     let start = data
         .route
@@ -282,7 +282,7 @@ fn rule_points(data: &SiteData) -> Vec<LonLat> {
 
 fn rules_sentence(
     data: &SiteData,
-    date: NaiveDate,
+    date: Date,
     facts: &mut Facts,
     lang: Lang,
 ) -> (String, Vec<Event>) {
@@ -293,8 +293,8 @@ fn rules_sentence(
     if let Some((layer, rules)) = &data.zones {
         let pts = rule_points(data);
         facts.points_evaluated = pts.len();
-        let noon = crate::sun::local_to_utc(date.and_hms_opt(12, 0, 0).expect("noon"));
-        let night = noon + Duration::hours(9);
+        let noon = crate::sun::local_to_utc(date.at(12, 0, 0, 0));
+        let night = noon + SignedDuration::from_hours(9);
         let mut found: Vec<ActiveRule> = Vec::new();
         for p in &pts {
             for (at, is_night) in [(noon, false), (night, true)] {
@@ -455,12 +455,12 @@ fn rules_sentence(
 
 /// Summary of `date` for the site (and its planned route, if loaded), in French
 /// ([`synthesise_in`]).
-pub fn synthesise(data: &SiteData, date: NaiveDate) -> Synthesis {
+pub fn synthesise(data: &SiteData, date: Date) -> Synthesis {
     synthesise_in(data, date, Lang::Fr)
 }
 
 /// [`synthesise`] with the sentences in `lang` (the phone's language, VO6).
-pub fn synthesise_in(data: &SiteData, date: NaiveDate, lang: Lang) -> Synthesis {
+pub fn synthesise_in(data: &SiteData, date: Date, lang: Lang) -> Synthesis {
     let mut facts = Facts {
         bera_status: None,
         bera_level: None,
@@ -531,6 +531,7 @@ mod tests {
     use super::*;
     use crate::layers::{Bera, BeraAspects, BeraBulletin, BeraRisk};
     /// Evaluation site of `data/sites.json`, test data.
+    use jiff::civil::date;
     static CERVIERES: std::sync::LazyLock<skimap_common::site::Site> =
         std::sync::LazyLock::new(|| {
             *skimap_common::site::site("cervieres").expect("evaluation site")
@@ -601,7 +602,7 @@ mod tests {
             notice: String::new(),
             links: vec![],
         }];
-        let s = synthesise(&d, NaiveDate::from_ymd_opt(2023, 4, 15).unwrap());
+        let s = synthesise(&d, date(2023, 4, 15));
         assert!(s.sentences[0].starts_with("Risque d'avalanche deux sur cinq, limité au-dessus de 2400 m (1 sur 5 plus bas), pentes nord, nord-est, est, nord-ouest les plus exposées"), "{}", s.sentences[0]);
         assert_eq!(s.sentences.len(), 3);
         assert_eq!(sentences(&s), 3, "{}", s.text());
@@ -610,7 +611,7 @@ mod tests {
             Event::Briefing(Line::Avalanche { level: Some(2) })
         ));
         // Another date: the bulletin does not apply.
-        let s = synthesise(&d, NaiveDate::from_ymd_opt(2023, 4, 16).unwrap());
+        let s = synthesise(&d, date(2023, 4, 16));
         assert!(s.sentences[0].contains("pas chargé"), "{}", s.sentences[0]);
     }
 
@@ -638,7 +639,7 @@ mod tests {
     #[test]
     fn jura_without_bera_is_never_safe() {
         let d = empty(*CHAPELLE_DES_BOIS);
-        let s = synthesise(&d, NaiveDate::from_ymd_opt(2026, 2, 25).unwrap());
+        let s = synthesise(&d, date(2026, 2, 25));
         assert!(s.sentences[0].starts_with("Pas de bulletin d'avalanche pour ce massif"));
         assert!(s.sentences[0].contains("restent possibles"));
         let all = s.text().to_lowercase();

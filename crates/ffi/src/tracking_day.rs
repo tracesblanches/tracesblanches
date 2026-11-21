@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use jiff::civil::{Date, DateTime, Time};
 use skimap_assist::inputs::{Paths, SiteData};
 use skimap_assist::suggest::GroupTime;
 use skimap_common::geom::LonLat;
@@ -143,7 +143,7 @@ impl DayOuting {
         Self {
             budget_min: o.budget_min,
             skating: o.style == Style::Skating,
-            return_before: o.return_before.map(|t| t.format("%H:%M").to_string()),
+            return_before: o.return_before.map(|t| t.strftime("%H:%M").to_string()),
             easy_only: o.easy_only,
         }
     }
@@ -316,8 +316,8 @@ pub struct DayPlanView {
     pub line: Vec<f64>,
 }
 
-fn parse_time(s: &str) -> Result<NaiveTime, TrackingError> {
-    NaiveTime::parse_from_str(s, "%H:%M").map_err(|e| TrackingError::Invalid {
+fn parse_time(s: &str) -> Result<Time, TrackingError> {
+    Time::strptime("%H:%M", s).map_err(|e| TrackingError::Invalid {
         detail: format!("heure {s:?} : {e}"),
     })
 }
@@ -350,10 +350,8 @@ impl DayRequest {
             label: self.label.clone(),
             start: LonLat::new(self.start.lon, self.start.lat),
             start_name: self.start.name.clone(),
-            date: NaiveDate::parse_from_str(&self.date, "%Y-%m-%d").map_err(|e| {
-                TrackingError::Invalid {
-                    detail: format!("date {:?} : {e}", self.date),
-                }
+            date: Date::strptime("%Y-%m-%d", &self.date).map_err(|e| TrackingError::Invalid {
+                detail: format!("date {:?} : {e}", self.date),
             })?,
             start_time: self.start_time.as_deref().map(parse_time).transpose()?,
             earliest: parse_time(&self.earliest)?,
@@ -627,11 +625,11 @@ fn flat(line: &[LonLat]) -> Vec<f64> {
 /// side of the range: the median is said too.
 fn group_time(
     t: &GroupTime,
-    departure: NaiveDateTime,
+    departure: DateTime,
     tx: &dyn Texts,
-) -> (String, String, bool, NaiveDateTime) {
+) -> (String, String, bool, DateTime) {
     let m = |min: f64| min * 60.0;
-    let at = |min: f64| departure + chrono::Duration::milliseconds((min * 60_000.0) as i64);
+    let at = |min: f64| departure + jiff::SignedDuration::from_millis((min * 60_000.0) as i64);
     let day = departure.date();
     let spread = if t.median_min > 0.0 {
         (t.hi_min - t.lo_min) / (2.0 * t.median_min)
@@ -666,11 +664,11 @@ fn group_time(
 }
 
 /// The limit of a day (J1): the return asked, or light minus 30 min (C7), the earlier.
-fn day_limit(req: &PlanRequest) -> Option<NaiveDateTime> {
+fn day_limit(req: &PlanRequest) -> Option<DateTime> {
     let tp = skimap_core::turnaround::TurnaroundParams::default();
     let dl = skimap_core::turnaround::deadline(req.date, req.start, &tp)
         .map(|d| skimap_core::ephemeris::local_time(d.deadline));
-    let asked = req.return_before.map(|t| req.date.and_time(t));
+    let asked = req.return_before.map(|t| req.date.to_datetime(t));
     match (dl, asked) {
         (Some(a), Some(b)) => Some(a.min(b)),
         (a, b) => a.or(b),
@@ -778,7 +776,7 @@ impl DayPlanner {
             .collect();
         let briefing_short = briefing_short(&m, tx);
         let view = MorningView {
-            date: req.date.format("%Y-%m-%d").to_string(),
+            date: req.date.strftime("%Y-%m-%d").to_string(),
             start_time: tx.assist().clock(m.start_time),
             briefing: m.briefing.text.clone(),
             briefing_short,
@@ -864,11 +862,11 @@ pub fn read_day_plan(plan_dir: String, lang: Lang) -> Result<DayPlanView, Tracki
 }
 
 /// The SMS of the plan (K10): the contact is the timer, nothing is sent by the app.
-pub fn sms_text(p: &DayPlan, back: NaiveDateTime, lang: Lang) -> String {
+pub fn sms_text(p: &DayPlan, back: DateTime, lang: Lang) -> String {
     let alert = p
         .turnaround
         .limit
-        .unwrap_or(back + chrono::Duration::hours(1));
+        .unwrap_or(back + jiff::SignedDuration::from_hours(1));
     text::of(lang).sms(
         &p.site,
         p.date,
@@ -885,7 +883,7 @@ pub fn sms_text(p: &DayPlan, back: NaiveDateTime, lang: Lang) -> String {
 
 fn plan_view(p: &DayPlan, plan_dir: &str, g: &PisteGraph, lang: Lang) -> DayPlanView {
     let tx = text::of(lang);
-    let hhmm = |t: NaiveDateTime| tx.assist().clock(t);
+    let hhmm = |t: DateTime| tx.assist().clock(t);
     let back = p
         .pace
         .as_ref()

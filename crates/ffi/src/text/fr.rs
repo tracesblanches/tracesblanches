@@ -1,6 +1,6 @@
 //! Texts in French.
 
-use chrono::{Datelike, NaiveDate, NaiveDateTime};
+use jiff::civil::{Date, DateTime};
 
 use super::Texts;
 
@@ -37,11 +37,11 @@ impl Texts for Fr {
         skimap_plan::pace::duration_fr(s)
     }
 
-    fn clock5(&self, t: NaiveDateTime) -> String {
+    fn clock5(&self, t: DateTime) -> String {
         skimap_plan::pace::clock_fr(t)
     }
 
-    fn clock_day(&self, t: NaiveDateTime, day: NaiveDate) -> String {
+    fn clock_day(&self, t: DateTime, day: Date) -> String {
         if t.date() > day {
             format!("{} le lendemain", self.clock5(t))
         } else {
@@ -77,7 +77,7 @@ impl Texts for Fr {
         format!("retour vers {at} avec la marge")
     }
 
-    fn after_limit(&self, limit: NaiveDateTime, for_group: bool) -> String {
+    fn after_limit(&self, limit: DateTime, for_group: bool) -> String {
         format!(
             "Retour prévu après la limite de {} : boucle longue pour {}",
             self.assist().clock(limit),
@@ -110,20 +110,20 @@ impl Texts for Fr {
     fn sms(
         &self,
         site: &str,
-        date: NaiveDate,
+        date: Date,
         start: &str,
-        departure: NaiveDateTime,
+        departure: DateTime,
         label: &str,
         km: f64,
         trails: &[String],
-        back: NaiveDateTime,
-        limit: Option<NaiveDateTime>,
-        alert: NaiveDateTime,
+        back: DateTime,
+        limit: Option<DateTime>,
+        alert: DateTime,
     ) -> String {
         let a = self.assist();
         format!(
             "Sortie ski de fond {site} le {} : départ {start} à {}, boucle {label} ({} km, pistes {}). Retour prévu vers {}{}. Sans nouvelles de moi à {}, appelle le 112 et donne ce plan.",
-            date.format("%d/%m"),
+            date.strftime("%d/%m"),
             a.clock(departure),
             a.num(km, 1),
             trails.join(", "),
@@ -143,7 +143,7 @@ impl Texts for Fr {
         "Seul"
     }
 
-    fn when(&self, t: NaiveDateTime) -> String {
+    fn when(&self, t: DateTime) -> String {
         format!("{:02}/{:02} à {}", t.day(), t.month(), self.clock5(t))
     }
 
@@ -328,7 +328,7 @@ impl Texts for Fr {
         }
     }
 
-    fn rules_at(&self, t: NaiveDateTime) -> String {
+    fn rules_at(&self, t: DateTime) -> String {
         format!("le {:02}/{:02} à {}", t.day(), t.month(), self.clock5(t))
     }
 
@@ -374,19 +374,19 @@ impl Texts for Fr {
         format!("Règles locales non vérifiées : {}.", items.join(" ; "))
     }
 
-    fn day(&self, d: NaiveDate) -> String {
+    fn day(&self, d: Date) -> String {
         const DAYS: [&str; 7] = [
             "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche",
         ];
         format!(
             "{} {:02}/{:02}",
-            DAYS[d.weekday().num_days_from_monday() as usize],
+            DAYS[d.weekday().to_monday_zero_offset() as usize],
             d.day(),
             d.month()
         )
     }
 
-    fn updated(&self, t: NaiveDateTime) -> String {
+    fn updated(&self, t: DateTime) -> String {
         format!(
             "mis à jour le {:02}/{:02} à {}",
             t.day(),
@@ -487,7 +487,7 @@ impl Texts for Fr {
         "aucun itinéraire sous 30° hors des zones interdites à cette date"
     }
 
-    fn arrival_range(&self, lo: NaiveDateTime, hi: NaiveDateTime) -> String {
+    fn arrival_range(&self, lo: DateTime, hi: DateTime) -> String {
         format!("{} à {}", self.clock5(lo), self.clock5(hi))
     }
 

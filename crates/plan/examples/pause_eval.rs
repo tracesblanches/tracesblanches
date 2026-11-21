@@ -22,7 +22,7 @@ use skimap_plan::tracker::{Output, TrackerParams};
 
 /// (false pauses, real stops ≥ 90 s, detected, pauses).
 fn score(run: &Run) -> (usize, usize, usize, usize) {
-    let t0 = run.t0.timestamp() as f64;
+    let t0 = run.t0.as_second() as f64;
     let mut pauses: Vec<(f64, f64)> = Vec::new();
     let mut fin = f64::INFINITY;
     for o in &run.outputs {
@@ -114,7 +114,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         let run = scenario::run(&sc, &p, view, g, params)?;
                         let (f, r, d, n) = score(&run);
-                        let hours = (run.t1 - run.t0).num_seconds() as f64 / 3600.0;
+                        let hours = (run.t1 - run.t0).as_secs() as f64 / 3600.0;
                         let e = tot
                             .entry((who, mode))
                             .or_insert((0usize, 0usize, 0usize, 0usize, 0.0f64));

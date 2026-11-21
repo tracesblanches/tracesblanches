@@ -2,7 +2,7 @@
 //! the two evaluation sites), shared by the example, the real-data tests and the scenario
 //! bench (Q9).
 
-use chrono::{NaiveDate, NaiveTime};
+use jiff::civil::{Date, Time};
 use skimap_assist::inputs::SiteData;
 use skimap_common::Lang;
 use skimap_common::layout::DataLayout;
@@ -15,12 +15,12 @@ use crate::plan::{Context, PlanRequest};
 
 /// Day archived in `assist/history/` used for the plans of a site: the `archived_day` of
 /// the site table (`skimap_common::site::local`), or today (UTC) for a site without one.
-pub fn past_day(site: &Site) -> NaiveDate {
-    archived_day(site).unwrap_or_else(|| chrono::Utc::now().date_naive())
+pub fn past_day(site: &Site) -> Date {
+    archived_day(site).unwrap_or_else(|| skimap_common::dates::utc_date(jiff::Timestamp::now()))
 }
 
 /// Archived day of a site in the site table, if any.
-pub fn archived_day(site: &Site) -> Option<NaiveDate> {
+pub fn archived_day(site: &Site) -> Option<Date> {
     skimap_common::site::local(site.id).and_then(|l| l.archived_day)
 }
 
@@ -30,14 +30,14 @@ pub fn archived_day(site: &Site) -> Option<NaiveDate> {
 /// its main start
 /// (`skimap_common::site::starts`). Without a fixed time, the start time is the best time
 /// of A9 from 8 h.
-pub fn requests(site: &Site, date: NaiveDate) -> Vec<PlanRequest> {
+pub fn requests(site: &Site, date: Date) -> Vec<PlanRequest> {
     requests_in(site, date, Lang::Fr)
 }
 
 /// [`requests`] with the start names in `lang` (VO6).
-pub fn requests_in(site: &Site, date: NaiveDate, lang: Lang) -> Vec<PlanRequest> {
+pub fn requests_in(site: &Site, date: Date, lang: Lang) -> Vec<PlanRequest> {
     let tx = crate::text::of(lang);
-    let t = |h, m| NaiveTime::from_hms_opt(h, m, 0).expect("time");
+    let t = |h, m| Time::new(h, m, 0, 0).expect("time");
     let hhmm = |s: &Option<String>| {
         s.as_deref()
             .map(|x| skimap_common::site::parse_hhmm(x).expect("site table time"))
@@ -95,11 +95,11 @@ pub fn requests_in(site: &Site, date: NaiveDate, lang: Lang) -> Vec<PlanRequest>
 
 /// A short loop for a family (C11): the start of the site's first request, 75 min of model
 /// time from 9 h, classic, green and blue pistes, no return time.
-pub fn family_request(site: &Site, date: NaiveDate) -> PlanRequest {
+pub fn family_request(site: &Site, date: Date) -> PlanRequest {
     let base = requests(site, date).remove(0);
     PlanRequest {
         label: "famille, 1 h 15 au modèle, classique, vertes et bleues, départ 9 h".into(),
-        start_time: Some(NaiveTime::from_hms_opt(9, 0, 0).expect("time")),
+        start_time: Some(Time::new(9, 0, 0, 0).expect("time")),
         budget_min: 75.0,
         style: Style::Classic,
         return_before: None,

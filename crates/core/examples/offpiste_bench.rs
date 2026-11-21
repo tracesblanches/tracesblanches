@@ -110,7 +110,7 @@ use skimap_core::offpiste::{
     Router, SnowGrid, Window, ZonePolicy,
 };
 use skimap_core::zone_eval::{self, Verdict};
-use skimap_zones::chrono::{DateTime, Utc};
+use skimap_zones::jiff::Timestamp;
 use skimap_zones::layer::ZoneLayer;
 use skimap_zones::rules::{RuleSet, Topic};
 
@@ -167,7 +167,7 @@ fn parse_lonlat(s: &str) -> Res<LonLat> {
 }
 
 fn now_rfc3339() -> String {
-    Utc::now().to_rfc3339_opts(skimap_zones::chrono::SecondsFormat::Secs, true)
+    Timestamp::now().strftime("%Y-%m-%dT%H:%M:%SZ").to_string()
 }
 
 // ---------------------------------------------------------------------------------------
@@ -245,7 +245,7 @@ struct Request {
     name: String,
     from: LonLat,
     to: LonLat,
-    at: DateTime<Utc>,
+    at: Timestamp,
     snow: PathBuf,
 }
 
@@ -387,7 +387,7 @@ fn run_request(layout: &DataLayout, ctx: &SiteCtx, req: &Request) -> Res<Request
     let summary = json!({
         "name": req.name,
         "site": ctx.id,
-        "at": req.at.to_rfc3339(),
+        "at": skimap_common::dates::rfc3339(req.at),
         "snow_date": snow_date,
         "from": [req.from.lon, req.from.lat], "to": [req.to.lon, req.to.lat],
         "from_snap_m": route.from_snap_m, "to_snap_m": route.to_snap_m,
@@ -489,8 +489,8 @@ fn proofs(layout: &DataLayout) -> Res<()> {
             .layer_dir(site(id)?, LAYER)?
             .join(format!("snow_{date}.skr")))
     };
-    let feb: DateTime<Utc> = "2026-02-15T09:00:00Z".parse()?;
-    let aug: DateTime<Utc> = "2026-08-15T09:00:00Z".parse()?;
+    let feb: Timestamp = "2026-02-15T09:00:00Z".parse()?;
+    let aug: Timestamp = "2026-08-15T09:00:00Z".parse()?;
     // Places (OpenStreetMap, Overpass): Le Laus (hamlet), Col d'Izoard (saddle, 2361 m),
     // Plaine du Bourget (1897 m), Col de Bousson (2160 m, French-Italian border).
     let cervieres = [
@@ -668,7 +668,7 @@ fn bench(layout: &DataLayout, args: &[String]) -> Res<()> {
     let snow_path = PathBuf::from(args.get(1).ok_or(usage)?);
     let mut window_km = 10.0f64;
     let mut iters = 3usize;
-    let mut at: DateTime<Utc> = "2026-02-15T09:00:00Z".parse()?;
+    let mut at: Timestamp = "2026-02-15T09:00:00Z".parse()?;
     let mut power = false;
     let mut k = 2;
     while k < args.len() {
@@ -855,7 +855,7 @@ fn bench(layout: &DataLayout, args: &[String]) -> Res<()> {
     let out = json!({
         "site": s.id,
         "target": std::env::consts::ARCH, "os": std::env::consts::OS,
-        "at": at.to_rfc3339(), "snow": snow_path.display().to_string(),
+        "at": skimap_common::dates::rfc3339(at), "snow": snow_path.display().to_string(),
         "grid_cells": [grid.width(), grid.height()],
         "window": {"col0": win.col0, "row0": win.row0, "cells": [win.width, win.height], "km": window_km, "total_cells": win.cells()},
         "start": {"cell": [start.0, start.1], "distance_to_corner_m": d_start}, "goal": {"cell": [goal.0, goal.1], "distance_to_corner_m": d_goal},

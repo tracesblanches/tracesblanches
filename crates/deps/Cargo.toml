@@ -33,7 +33,6 @@ geojson.workspace = true
 rstar.workspace = true
 proj4rs.workspace = true
 petgraph.workspace = true
-chrono.workspace = true
 jiff.workspace = true
 httpdate.workspace = true
 rayon.workspace = true

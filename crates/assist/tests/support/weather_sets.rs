@@ -21,7 +21,10 @@
 
 #![allow(dead_code)]
 
-use chrono::{Duration, NaiveDate, NaiveDateTime, Timelike};
+use jiff::{
+    SignedDuration,
+    civil::{Date, DateTime},
+};
 use serde_json::{Value, json};
 
 /// A forecast point of a set.
@@ -81,15 +84,13 @@ pub struct Set {
 
 impl Set {
     /// The day studied.
-    pub fn date(&self) -> NaiveDate {
-        NaiveDate::from_ymd_opt(self.day.0, self.day.1, self.day.2).expect("date")
+    pub fn date(&self) -> Date {
+        skimap_common::dates::ymd(self.day.0, self.day.1, self.day.2).expect("date")
     }
 
     /// First hour of the set: 00 h two days before.
-    pub fn start(&self) -> NaiveDateTime {
-        (self.date() - Duration::days(2))
-            .and_hms_opt(0, 0, 0)
-            .expect("midnight")
+    pub fn start(&self) -> DateTime {
+        (self.date() - SignedDuration::from_hours(24 * 2)).at(0, 0, 0, 0)
     }
 }
 
@@ -325,15 +326,15 @@ pub fn file(s: &Set) -> Value {
         .map(|p| {
             let hours: Vec<Value> = (0..96)
                 .map(|i| {
-                    let time = s.start() + Duration::hours(i);
-                    let d = (time.date() - s.date()).num_days();
-                    let w = weather(s.name, d, time.hour());
+                    let time = s.start() + SignedDuration::from_hours(i);
+                    let d = (time.date() - s.date()).get_days();
+                    let w = weather(s.name, i64::from(d), time.hour() as u32);
                     let t = w.t + p.dt;
                     let wind = w.wind + p.dw;
                     let gust = w.gust + p.dw;
                     let chill = wind_chill(t, wind);
                     json!({
-                        "time": time.format("%Y-%m-%dT%H:%M").to_string(),
+                        "time": time.strftime("%Y-%m-%dT%H:%M").to_string(),
                         "temperature_c": r1(t),
                         "apparent_temperature_c": r1(chill - 1.0),
                         "wind_chill_c": r1(chill),

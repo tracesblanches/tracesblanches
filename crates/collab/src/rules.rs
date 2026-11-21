@@ -30,7 +30,7 @@
 //!    a photo is shown only once another device has confirmed the report, and one flag
 //!    deletes it.
 
-use chrono::{DateTime, Duration, Utc};
+use jiff::{SignedDuration, Timestamp};
 use serde::{Deserialize, Serialize};
 
 /// Kinds of report.
@@ -80,12 +80,12 @@ impl Kind {
     }
 
     /// How long a report lives without confirmation, from the time it was seen.
-    pub fn lifetime(self) -> Duration {
+    pub fn lifetime(self) -> SignedDuration {
         match self {
-            Kind::Groomed | Kind::Ice | Kind::WindBlown => Duration::hours(24),
-            Kind::Track => Duration::hours(48),
-            Kind::Closed => Duration::days(3),
-            Kind::Obstacle => Duration::days(7),
+            Kind::Groomed | Kind::Ice | Kind::WindBlown => SignedDuration::from_hours(24),
+            Kind::Track => SignedDuration::from_hours(48),
+            Kind::Closed => SignedDuration::from_hours(24 * 3),
+            Kind::Obstacle => SignedDuration::from_hours(24 * 7),
         }
     }
 
@@ -139,7 +139,7 @@ pub struct Cast {
     /// Confirm or deny.
     pub vote: Vote,
     /// When.
-    pub at: DateTime<Utc>,
+    pub at: Timestamp,
     /// Reputation of the voter.
     pub reputation: f64,
 }
@@ -164,7 +164,7 @@ pub struct Evaluation {
     /// State now.
     pub state: State,
     /// Expiry after the confirmations.
-    pub expires_at: DateTime<Utc>,
+    pub expires_at: Timestamp,
     /// Confirmations by others.
     pub confirmations: u32,
     /// Denials.
@@ -184,10 +184,10 @@ pub fn weight(reputation: f64) -> f64 {
 /// `author_reputation` when it was made, with these votes, at `now`.
 pub fn evaluate(
     kind: Kind,
-    seen: DateTime<Utc>,
+    seen: Timestamp,
     author_reputation: f64,
     votes: &[Cast],
-    now: DateTime<Utc>,
+    now: Timestamp,
 ) -> Evaluation {
     let life = kind.lifetime();
     let cap = seen + life * MAX_LIFETIMES;
@@ -239,14 +239,10 @@ pub enum TimeRefusal {
 }
 
 /// Whether a report of `kind` seen at `seen` and received at `now` is accepted.
-pub fn accept_observed(
-    kind: Kind,
-    seen: DateTime<Utc>,
-    now: DateTime<Utc>,
-) -> Result<(), TimeRefusal> {
-    if seen > now + Duration::seconds(MAX_CLOCK_SKEW_S) {
+pub fn accept_observed(kind: Kind, seen: Timestamp, now: Timestamp) -> Result<(), TimeRefusal> {
+    if seen > now + SignedDuration::from_secs(MAX_CLOCK_SKEW_S) {
         Err(TimeRefusal::Future)
-    } else if seen < now - Duration::hours(MAX_QUEUE_AGE_H) {
+    } else if seen < now - SignedDuration::from_hours(MAX_QUEUE_AGE_H) {
         Err(TimeRefusal::TooOld)
     } else if seen + kind.lifetime() <= now {
         Err(TimeRefusal::Expired)
@@ -277,14 +273,14 @@ pub fn in_area(lon: f64, lat: f64) -> bool {
 mod tests {
     use super::*;
 
-    fn t0() -> DateTime<Utc> {
+    fn t0() -> Timestamp {
         "2026-01-10T09:00:00Z".parse().unwrap()
     }
 
     fn cast(vote: Vote, h: i64) -> Cast {
         Cast {
             vote,
-            at: t0() + Duration::hours(h),
+            at: t0() + SignedDuration::from_hours(h),
             reputation: 1.0,
         }
     }
@@ -292,32 +288,68 @@ mod tests {
     #[test]
     fn snow_report_expires_after_its_lifetime_unless_confirmed() {
         // Ticket V10: a snow report expires after its lifetime unless confirmed.
-        let e = evaluate(Kind::Ice, t0(), 1.0, &[], t0() + Duration::hours(23));
+        let e = evaluate(
+            Kind::Ice,
+            t0(),
+            1.0,
+            &[],
+            t0() + SignedDuration::from_hours(23),
+        );
         assert_eq!(e.state, State::Active);
-        let e = evaluate(Kind::Ice, t0(), 1.0, &[], t0() + Duration::hours(24));
+        let e = evaluate(
+            Kind::Ice,
+            t0(),
+            1.0,
+            &[],
+            t0() + SignedDuration::from_hours(24),
+        );
         assert_eq!(e.state, State::Expired);
         // Confirmed at 20 h: lives until 44 h.
         let votes = [cast(Vote::Confirm, 20)];
-        let e = evaluate(Kind::Ice, t0(), 1.0, &votes, t0() + Duration::hours(30));
+        let e = evaluate(
+            Kind::Ice,
+            t0(),
+            1.0,
+            &votes,
+            t0() + SignedDuration::from_hours(30),
+        );
         assert_eq!((e.state, e.confirmations), (State::Active, 1));
-        assert_eq!(e.expires_at, t0() + Duration::hours(44));
-        let e = evaluate(Kind::Ice, t0(), 1.0, &votes, t0() + Duration::hours(44));
+        assert_eq!(e.expires_at, t0() + SignedDuration::from_hours(44));
+        let e = evaluate(
+            Kind::Ice,
+            t0(),
+            1.0,
+            &votes,
+            t0() + SignedDuration::from_hours(44),
+        );
         assert_eq!(e.state, State::Expired);
     }
 
     #[test]
     fn confirmations_never_beyond_four_lifetimes() {
         let votes: Vec<Cast> = (0..10).map(|i| cast(Vote::Confirm, 20 * i)).collect();
-        let e = evaluate(Kind::Groomed, t0(), 1.0, &votes, t0() + Duration::hours(95));
-        assert_eq!(e.expires_at, t0() + Duration::hours(96));
+        let e = evaluate(
+            Kind::Groomed,
+            t0(),
+            1.0,
+            &votes,
+            t0() + SignedDuration::from_hours(95),
+        );
+        assert_eq!(e.expires_at, t0() + SignedDuration::from_hours(96));
         assert_eq!(e.state, State::Active);
-        let e = evaluate(Kind::Groomed, t0(), 1.0, &votes, t0() + Duration::hours(96));
+        let e = evaluate(
+            Kind::Groomed,
+            t0(),
+            1.0,
+            &votes,
+            t0() + SignedDuration::from_hours(96),
+        );
         assert_eq!(e.state, State::Expired);
     }
 
     #[test]
     fn lifetimes_by_kind() {
-        let h = |k: Kind| k.lifetime().num_hours();
+        let h = |k: Kind| k.lifetime().as_hours();
         assert_eq!(
             Kind::ALL.map(h),
             [48, 24, 24, 24, 24 * 7, 24 * 3],
@@ -332,10 +364,22 @@ mod tests {
     #[test]
     fn two_denials_refute_a_lone_report_one_does_not() {
         let one = [cast(Vote::Deny, 1)];
-        let e = evaluate(Kind::Obstacle, t0(), 1.0, &one, t0() + Duration::hours(2));
+        let e = evaluate(
+            Kind::Obstacle,
+            t0(),
+            1.0,
+            &one,
+            t0() + SignedDuration::from_hours(2),
+        );
         assert_eq!(e.state, State::Active);
         let two = [cast(Vote::Deny, 1), cast(Vote::Deny, 2)];
-        let e = evaluate(Kind::Obstacle, t0(), 1.0, &two, t0() + Duration::hours(3));
+        let e = evaluate(
+            Kind::Obstacle,
+            t0(),
+            1.0,
+            &two,
+            t0() + SignedDuration::from_hours(3),
+        );
         assert_eq!(e.state, State::Refuted);
         // Confirmed once: three denials needed.
         let mixed = [
@@ -343,7 +387,13 @@ mod tests {
             cast(Vote::Deny, 1),
             cast(Vote::Deny, 2),
         ];
-        let e = evaluate(Kind::Obstacle, t0(), 1.0, &mixed, t0() + Duration::hours(3));
+        let e = evaluate(
+            Kind::Obstacle,
+            t0(),
+            1.0,
+            &mixed,
+            t0() + SignedDuration::from_hours(3),
+        );
         assert_eq!((e.state, e.confirmations, e.denials), (State::Active, 1, 2));
         // A trusted denier (reputation 2) refutes a lone report alone... but a lone
         // report of a trusted author resists.
@@ -351,22 +401,40 @@ mod tests {
             reputation: 2.0,
             ..cast(Vote::Deny, 1)
         }];
-        let e = evaluate(Kind::Ice, t0(), 1.0, &trusted, t0() + Duration::hours(2));
+        let e = evaluate(
+            Kind::Ice,
+            t0(),
+            1.0,
+            &trusted,
+            t0() + SignedDuration::from_hours(2),
+        );
         assert_eq!(e.state, State::Refuted);
-        let e = evaluate(Kind::Ice, t0(), 2.0, &trusted, t0() + Duration::hours(2));
+        let e = evaluate(
+            Kind::Ice,
+            t0(),
+            2.0,
+            &trusted,
+            t0() + SignedDuration::from_hours(2),
+        );
         assert_eq!(e.state, State::Active);
     }
 
     #[test]
     fn poor_reputation_is_held_until_confirmed() {
-        let e = evaluate(Kind::Ice, t0(), 0.4, &[], t0() + Duration::hours(1));
+        let e = evaluate(
+            Kind::Ice,
+            t0(),
+            0.4,
+            &[],
+            t0() + SignedDuration::from_hours(1),
+        );
         assert_eq!(e.state, State::Held);
         let e = evaluate(
             Kind::Ice,
             t0(),
             0.4,
             &[cast(Vote::Confirm, 1)],
-            t0() + Duration::hours(2),
+            t0() + SignedDuration::from_hours(2),
         );
         assert_eq!(e.state, State::Active);
         // Reputation: 1 → two refutations → 0.4 (held), confirmations bring it back.
@@ -385,7 +453,7 @@ mod tests {
             t0(),
             1.0,
             &[cast(Vote::Confirm, 30)],
-            t0() + Duration::hours(25),
+            t0() + SignedDuration::from_hours(25),
         );
         assert_eq!(e.state, State::Expired);
     }
@@ -394,23 +462,23 @@ mod tests {
     fn observation_times_of_the_offline_queue() {
         let now = t0();
         assert_eq!(
-            accept_observed(Kind::Track, now - Duration::hours(20), now),
+            accept_observed(Kind::Track, now - SignedDuration::from_hours(20), now),
             Ok(())
         );
         assert_eq!(
-            accept_observed(Kind::Ice, now - Duration::hours(25), now),
+            accept_observed(Kind::Ice, now - SignedDuration::from_hours(25), now),
             Err(TimeRefusal::Expired)
         );
         assert_eq!(
-            accept_observed(Kind::Obstacle, now - Duration::hours(73), now),
+            accept_observed(Kind::Obstacle, now - SignedDuration::from_hours(73), now),
             Err(TimeRefusal::TooOld)
         );
         assert_eq!(
-            accept_observed(Kind::Obstacle, now + Duration::minutes(4), now),
+            accept_observed(Kind::Obstacle, now + SignedDuration::from_mins(4), now),
             Ok(())
         );
         assert_eq!(
-            accept_observed(Kind::Obstacle, now + Duration::minutes(6), now),
+            accept_observed(Kind::Obstacle, now + SignedDuration::from_mins(6), now),
             Err(TimeRefusal::Future)
         );
     }

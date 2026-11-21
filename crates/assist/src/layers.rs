@@ -21,8 +21,11 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use geo::{BoundingRect, Contains, Coord, LineString, MultiPolygon, Point, Polygon, Rect};
+use jiff::{
+    Timestamp,
+    civil::{Date, DateTime},
+};
 use serde::Deserialize;
 use serde_json::Value;
 use skimap_common::geom::LonLat;
@@ -97,7 +100,7 @@ struct RawHour {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, Deserialize)]
 pub struct WeatherHour {
     /// Local time at the start of the hour.
-    pub time: NaiveDateTime,
+    pub time: DateTime,
     /// Air temperature at 2 m, °C.
     pub temperature_c: Option<f64>,
     /// Apparent temperature (Open-Meteo), °C.
@@ -150,7 +153,7 @@ pub struct WeatherFile {
     /// Generation time written in the file.
     pub generated_at: String,
     /// First and last hour of the file.
-    pub span: Option<(NaiveDateTime, NaiveDateTime)>,
+    pub span: Option<(DateTime, DateTime)>,
 }
 
 /// Weather of a site: one or more `hourly.json` files merged (later files win on the
@@ -163,9 +166,9 @@ pub struct Weather {
     pub files: Vec<WeatherFile>,
 }
 
-fn parse_local(s: &str) -> Option<NaiveDateTime> {
-    NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M")
-        .or_else(|_| NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S"))
+fn parse_local(s: &str) -> Option<DateTime> {
+    DateTime::strptime("%Y-%m-%dT%H:%M", s)
+        .or_else(|_| DateTime::strptime("%Y-%m-%dT%H:%M:%S", s))
         .ok()
 }
 
@@ -206,27 +209,25 @@ fn mean(v: &[f64]) -> Option<f64> {
 
 impl WeatherPoint {
     /// Hours from `from` (included) to `to` (excluded).
-    pub fn between(&self, from: NaiveDateTime, to: NaiveDateTime) -> &[WeatherHour] {
+    pub fn between(&self, from: DateTime, to: DateTime) -> &[WeatherHour] {
         let a = self.hours.partition_point(|h| h.time < from);
         let b = self.hours.partition_point(|h| h.time < to);
         &self.hours[a..b.max(a)]
     }
 
     /// Hours of `date` from `h0` h (included) to `h1` h (excluded).
-    pub fn window(&self, date: NaiveDate, h0: u32, h1: u32) -> &[WeatherHour] {
-        let at = |h: u32| {
-            date.and_hms_opt(0, 0, 0).expect("midnight") + chrono::Duration::hours(i64::from(h))
-        };
+    pub fn window(&self, date: Date, h0: u32, h1: u32) -> &[WeatherHour] {
+        let at = |h: u32| date.at(0, 0, 0, 0) + jiff::SignedDuration::from_hours(i64::from(h));
         self.between(at(h0), at(h1))
     }
 
     /// Whether every hour of the window `date` `h0`..`h1` is present.
-    pub fn covers(&self, date: NaiveDate, h0: u32, h1: u32) -> bool {
+    pub fn covers(&self, date: Date, h0: u32, h1: u32) -> bool {
         self.window(date, h0, h1).len() == (h1 - h0) as usize
     }
 
     /// Snowfall between two instants, cm (missing hours count as 0).
-    pub fn snowfall_between(&self, from: NaiveDateTime, to: NaiveDateTime) -> f64 {
+    pub fn snowfall_between(&self, from: DateTime, to: DateTime) -> f64 {
         self.between(from, to)
             .iter()
             .filter_map(|h| h.snowfall_cm)
@@ -234,12 +235,12 @@ impl WeatherPoint {
     }
 
     /// Summary of the skiing window of a day (`h0`..`h1`, local hours).
-    pub fn summary(&self, date: NaiveDate, h0: u32, h1: u32) -> DayWeather {
+    pub fn summary(&self, date: Date, h0: u32, h1: u32) -> DayWeather {
         summarise(self.window(date, h0, h1))
     }
 
     /// Summary of the hours from `from` (included) to `to` (excluded).
-    pub fn summary_between(&self, from: NaiveDateTime, to: NaiveDateTime) -> DayWeather {
+    pub fn summary_between(&self, from: DateTime, to: DateTime) -> DayWeather {
         summarise(self.between(from, to))
     }
 }
@@ -276,14 +277,14 @@ fn summarise(hs: &[WeatherHour]) -> DayWeather {
 impl Weather {
     /// Reads and merges `hourly.json` files; later files win on the same hour.
     pub fn load(paths: &[PathBuf]) -> Result<Self> {
-        let mut points: BTreeMap<String, (WeatherPoint, BTreeMap<NaiveDateTime, WeatherHour>)> =
+        let mut points: BTreeMap<String, (WeatherPoint, BTreeMap<DateTime, WeatherHour>)> =
             BTreeMap::new();
         let mut order: Vec<String> = Vec::new();
         let mut files = Vec::new();
         for path in paths {
             let raw: RawHourlyFile = read_json(path)?;
             let _ = raw.site;
-            let mut span: Option<(NaiveDateTime, NaiveDateTime)> = None;
+            let mut span: Option<(DateTime, DateTime)> = None;
             for p in raw.points {
                 let entry = points.entry(p.id.clone()).or_insert_with(|| {
                     order.push(p.id.clone());
@@ -358,7 +359,7 @@ impl Weather {
     }
 
     /// Last hour available over all points.
-    pub fn last_hour(&self) -> Option<NaiveDateTime> {
+    pub fn last_hour(&self) -> Option<DateTime> {
         self.points
             .iter()
             .filter_map(|p| p.hours.last().map(|h| h.time))
@@ -512,8 +513,8 @@ impl Bera {
     }
 
     /// Date of the bulletin.
-    pub fn date(&self) -> Option<NaiveDate> {
-        NaiveDate::parse_from_str(&self.date, "%Y-%m-%d").ok()
+    pub fn date(&self) -> Option<Date> {
+        Date::strptime("%Y-%m-%d", &self.date).ok()
     }
 
     /// Maximum level of the day, when a bulletin was read.
@@ -583,7 +584,7 @@ pub struct Itinerary {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Status {
     /// Poll time.
-    pub polled_at: DateTime<Utc>,
+    pub polled_at: Timestamp,
     /// Itineraries.
     pub itineraries: Vec<Itinerary>,
     /// Messages of the sources (mairie banner, Nordic France summary).
@@ -693,9 +694,10 @@ impl Status {
     pub fn load(dir: &Path) -> Result<Self> {
         let path = dir.join("status.json");
         let raw: RawStatus = read_json(&path)?;
-        let polled_at = DateTime::parse_from_rfc3339(&raw.polled_at)
-            .map_err(|e| Error::format(&path, e))?
-            .with_timezone(&Utc);
+        let polled_at = raw
+            .polled_at
+            .parse::<Timestamp>()
+            .map_err(|e| Error::format(&path, e))?;
         let mut itineraries = Vec::new();
         let mut messages = Vec::new();
         let mut conflicts = Vec::new();
@@ -1094,7 +1096,7 @@ pub fn load_pistes(path: &Path) -> Result<Vec<Piste>> {
 #[derive(Debug, Clone)]
 pub struct SnowMap {
     /// State described (06 h UTC of the simulation date).
-    pub valid_at: DateTime<Utc>,
+    pub valid_at: Timestamp,
     /// Central value, cm.
     pub depth: Grid<f32>,
     /// Lower bound, cm.
@@ -1121,8 +1123,7 @@ impl SnowMap {
         let valid_at = meta
             .valid_from
             .as_deref()
-            .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
-            .map(|d| d.with_timezone(&Utc))
+            .and_then(|s| s.parse::<Timestamp>().ok())
             .ok_or_else(|| Error::format(dir.join("snow.meta.json"), "no valid_from"))?;
         let read = |n: &str| skimap_common::geotiff::read_f32(&dir.join(n));
         Ok(SnowMap {
@@ -1150,8 +1151,8 @@ impl SnowMap {
     }
 
     /// Simulation date (UTC date of the 06 h state).
-    pub fn date(&self) -> NaiveDate {
-        self.valid_at.date_naive()
+    pub fn date(&self) -> Date {
+        skimap_common::dates::utc_date(self.valid_at)
     }
 }
 
@@ -1260,6 +1261,8 @@ impl Route {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jiff::civil::date;
+    use jiff::tz::Offset;
 
     #[test]
     fn status_geometries_by_itinerary() {
@@ -1418,16 +1421,16 @@ mod tests {
             st.conflicts,
             ["Le Gibera : Nordic France Open, mairie Closed"]
         );
-        assert_eq!(st.polled_at.to_rfc3339(), "2027-01-12T07:00:00+00:00");
+        assert_eq!(
+            st.polled_at.display_with_offset(Offset::UTC).to_string(),
+            "2027-01-12T07:00:00+00:00"
+        );
     }
 
     #[test]
     fn rain_practices_and_last_hour() {
         let hour = |t: f64, snow: f64, rain: f64| WeatherHour {
-            time: NaiveDate::from_ymd_opt(2027, 1, 12)
-                .unwrap()
-                .and_hms_opt(10, 0, 0)
-                .unwrap(),
+            time: date(2027, 1, 12).at(10, 0, 0, 0),
             temperature_c: Some(t),
             apparent_temperature_c: None,
             wind_chill_c: None,
@@ -1466,10 +1469,7 @@ mod tests {
             position: LonLat::new(6.0, 46.0),
             elevation_m: 1000.0,
             hours: vec![WeatherHour {
-                time: NaiveDate::from_ymd_opt(2027, 1, 12)
-                    .unwrap()
-                    .and_hms_opt(h, 0, 0)
-                    .unwrap(),
+                time: date(2027, 1, 12).to_datetime(skimap_common::dates::hms(h, 0, 0).unwrap()),
                 ..hour(0.0, 0.0, 0.0)
             }],
         };
@@ -1477,7 +1477,7 @@ mod tests {
             points: vec![p("a", 10), p("b", 14)],
             files: vec![],
         };
-        assert_eq!(chrono::Timelike::hour(&w.last_hour().unwrap()), 14);
+        assert_eq!(w.last_hour().unwrap().hour(), 14);
         assert_eq!(Weather::default().last_hour(), None);
         assert_eq!(w.nearest(LonLat::new(6.0, 46.0)).unwrap().1, 0.0);
     }
@@ -1511,7 +1511,7 @@ mod tests {
         let p = w.point("p").unwrap();
         assert_eq!(p.hours.len(), 3);
         assert_eq!(p.hours[1].temperature_c, Some(5.0), "later file wins");
-        let d = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap();
+        let d = date(2026, 1, 1);
         let s = p.summary(d, 9, 12);
         assert_eq!(s.hours, 3);
         assert_eq!(s.temperature_max_c, Some(6.0));

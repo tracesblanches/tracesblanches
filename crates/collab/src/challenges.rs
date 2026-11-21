@@ -10,7 +10,7 @@
 
 use std::collections::HashMap;
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde::Serialize;
 
 use crate::track::Outing;
@@ -36,7 +36,7 @@ pub struct Progress {
     /// Outings that count.
     pub outings: u32,
     /// The day it was done, if done.
-    pub done_on: Option<DateTime<Utc>>,
+    pub done_on: Option<Timestamp>,
 }
 
 /// Local plane (equirectangular around a latitude): metres.
@@ -126,8 +126,8 @@ pub fn coverage(lines: &[Vec<[f64; 2]>], outings: &[Outing]) -> Progress {
         }
     }
     // For each piece, the earliest outing covering it.
-    let start = |oi: usize| outings[oi].start.unwrap_or(DateTime::<Utc>::MIN_UTC);
-    let mut covered: Vec<(DateTime<Utc>, f64, usize)> = Vec::new();
+    let start = |oi: usize| outings[oi].start.unwrap_or(Timestamp::MIN);
+    let mut covered: Vec<(Timestamp, f64, usize)> = Vec::new();
     for &(m, len) in &pieces {
         let c = cell(m.0, m.1);
         let mut best: Option<usize> = None;
@@ -170,7 +170,7 @@ pub fn coverage(lines: &[Vec<[f64; 2]>], outings: &[Outing]) -> Progress {
 }
 
 /// Kilometres skied since `since` (all outings if `None`), towards `target_km`.
-pub fn distance(outings: &[Outing], since: Option<DateTime<Utc>>, target_km: f64) -> Progress {
+pub fn distance(outings: &[Outing], since: Option<Timestamp>, target_km: f64) -> Progress {
     let mut sorted: Vec<&Outing> = outings
         .iter()
         .filter(|o| since.is_none_or(|s| o.start.is_some_and(|t| t >= s)))

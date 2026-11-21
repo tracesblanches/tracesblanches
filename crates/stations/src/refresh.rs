@@ -17,7 +17,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use chrono::{DateTime, NaiveDate, Utc};
+use jiff::{Timestamp, civil::Date};
 use serde::{Deserialize, Serialize};
 pub use skimap_refuges::journal::{Change, VOLATILE, append_journal, carry_changed_at, diff};
 pub use skimap_refuges::refresh::in_season;
@@ -30,7 +30,7 @@ pub const TITRES_EVERY_DAYS: (i64, i64) = (1, 7);
 pub const STALE_MAX_DAYS: i64 = 14;
 
 /// Days between two refreshes of a part on `d`.
-pub fn every_days(part: &str, d: NaiveDate) -> i64 {
+pub fn every_days(part: &str, d: Date) -> i64 {
     match part {
         "titres" => {
             if in_season(d) {
@@ -88,34 +88,35 @@ impl State {
     }
 
     /// Whether `part` is due at `now` (never run, or older than its period).
-    pub fn due(&self, part: &str, now: DateTime<Utc>) -> bool {
+    pub fn due(&self, part: &str, now: Timestamp) -> bool {
         let Some(last) = self
             .parts
             .get(part)
             .and_then(|p| p.last_ok.as_deref())
-            .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+            .and_then(|s| s.parse::<Timestamp>().ok())
         else {
             return true;
         };
         // A day is « due » from the same hour: a CronJob a few minutes early still runs.
-        let age = now.signed_duration_since(last.with_timezone(&Utc));
-        age.num_hours() + 1 >= every_days(part, now.date_naive()) * 24
+        let age = now.duration_since(last);
+        age.as_hours() + 1 >= every_days(part, skimap_common::dates::utc_date(now)) * 24
     }
 }
 
 /// Age in days of an RFC 3339 date at `now`.
-pub fn age_days(at: &str, now: DateTime<Utc>) -> Option<i64> {
-    DateTime::parse_from_rfc3339(at)
+pub fn age_days(at: &str, now: Timestamp) -> Option<i64> {
+    at.parse::<Timestamp>()
         .ok()
-        .map(|d| now.signed_duration_since(d.with_timezone(&Utc)).num_days())
+        .map(|d| now.duration_since(d).as_hours() / 24)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jiff::civil::date;
 
-    fn at(s: &str) -> DateTime<Utc> {
-        DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
+    fn at(s: &str) -> Timestamp {
+        s.parse::<Timestamp>().unwrap()
     }
 
     #[test]
@@ -145,7 +146,7 @@ mod tests {
         s.parts.get_mut("titres").unwrap().last_ok = Some("2026-06-01T03:00:00Z".into());
         assert!(!s.due("titres", at("2026-06-03T03:00:00Z")));
         assert!(s.due("titres", at("2026-06-08T03:00:00Z")));
-        assert!(in_season(NaiveDate::from_ymd_opt(2027, 1, 10).unwrap()));
-        assert!(!in_season(NaiveDate::from_ymd_opt(2027, 5, 1).unwrap()));
+        assert!(in_season(date(2027, 1, 10)));
+        assert!(!in_season(date(2027, 5, 1)));
     }
 }

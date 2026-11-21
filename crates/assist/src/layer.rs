@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::PathBuf;
 
-use chrono::NaiveDate;
+use jiff::civil::Date;
 use serde::Serialize;
 use serde_json::{Value, json};
 use skimap_common::geom::LonLat;
@@ -41,7 +41,7 @@ pub const LAYER: &str = "assist";
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Options {
     /// First day.
-    pub date: Option<NaiveDate>,
+    pub date: Option<Date>,
     /// Days after the first one (the briefing covers `date` and the next `extra_days`).
     pub extra_days: u32,
     /// Home point, for the distances of the briefing.
@@ -63,13 +63,13 @@ pub struct Replay {
     /// Loop.
     pub route: String,
     /// Start, local.
-    pub start: chrono::NaiveDateTime,
+    pub start: jiff::civil::DateTime,
     /// Slowdown of the trace (1: on time).
     pub slowdown: f64,
     /// C7 deadline.
-    pub deadline: Option<chrono::NaiveDateTime>,
+    pub deadline: Option<jiff::civil::DateTime>,
     /// Turnaround at the planned pace (`None`: the loop ends before the deadline).
-    pub planned_turnaround: Option<chrono::NaiveDateTime>,
+    pub planned_turnaround: Option<jiff::civil::DateTime>,
     /// Positions replayed.
     pub fixes: usize,
     /// Alerts.
@@ -82,7 +82,7 @@ pub struct Output {
     /// Site.
     pub site: String,
     /// First day.
-    pub date: NaiveDate,
+    pub date: Date,
     /// Briefing.
     pub briefing: SiteBriefing,
     /// Wax per day and point.
@@ -101,7 +101,7 @@ pub struct Output {
     pub files: Vec<PathBuf>,
 }
 
-fn header(data: &SiteData, date: NaiveDate) -> Value {
+fn header(data: &SiteData, date: Date) -> Value {
     json!({
         "site": data.site.id,
         "date": date.to_string(),
@@ -147,7 +147,11 @@ pub fn quality_table(q: &DayQuality) -> String {
     let _ = writeln!(s);
     let n = q.classes[0].hours.len();
     for i in 0..n {
-        let _ = write!(s, "{:>4} h", q.classes[0].hours[i].time.format("%H"));
+        let _ = write!(
+            s,
+            "{:>4} h",
+            q.classes[0].hours[i].time.strftime("%H").to_string()
+        );
         for c in &q.classes {
             let _ = write!(s, "{:>5}", letter(c.hours[i].quality));
         }
@@ -161,8 +165,8 @@ pub fn quality_table(q: &DayQuality) -> String {
 
 fn turnaround_deadline(
     point: &crate::layers::WeatherPoint,
-    date: NaiveDate,
-) -> Option<chrono::NaiveDateTime> {
+    date: Date,
+) -> Option<jiff::civil::DateTime> {
     skimap_core::turnaround::deadline(
         date,
         point.position,
@@ -176,7 +180,7 @@ pub fn build(site: &Site, layout: &DataLayout, opts: &Options) -> Result<Output>
     let data = SiteData::load(layout, site, &opts.paths)?;
     let date = opts
         .date
-        .unwrap_or_else(|| skimap_core::ephemeris::local_time(chrono::Utc::now()).date());
+        .unwrap_or_else(|| skimap_core::ephemeris::local_time(jiff::Timestamp::now()).date());
     let bopts = briefing::Options {
         home: opts.home,
         lang: crate::text::Lang::Fr,
@@ -209,7 +213,7 @@ pub fn build(site: &Site, layout: &DataLayout, opts: &Options) -> Result<Output>
             let req = best_time::Request {
                 date: day.date,
                 duration_min: 120.0,
-                earliest: chrono::NaiveTime::from_hms_opt(8, 0, 0).expect("time"),
+                earliest: jiff::civil::time(8, 0, 0, 0),
                 classes: Vec::new(),
             };
             let bt = best_time::best_time(p, Some(q), day.crowd.as_ref().map(|c| c.level), &req);
@@ -246,7 +250,7 @@ pub fn build(site: &Site, layout: &DataLayout, opts: &Options) -> Result<Output>
         .iter()
         .map(|r| crate::suggest::suggest(&data, r))
         .collect();
-    let kick_unreliable = |d: NaiveDate| {
+    let kick_unreliable = |d: Date| {
         waxes
             .iter()
             .any(|w| w.date == d && (!w.morning.kick_reliable || !w.afternoon.kick_reliable))
@@ -285,11 +289,11 @@ pub fn build(site: &Site, layout: &DataLayout, opts: &Options) -> Result<Output>
         // At the requested start at three paces, then a late start (planned return 30 min
         // before the C7 deadline) at 1.5 times the model time.
         let late = turnaround_deadline(point, s.request.start_time.date()).map(|d| {
-            d - chrono::Duration::seconds(
+            d - jiff::SignedDuration::from_secs(
                 (best.profile.total_s()
                     * skimap_core::turnaround::TurnaroundParams::default().eta_factor)
                     as i64,
-            ) - chrono::Duration::minutes(30)
+            ) - jiff::SignedDuration::from_mins(30)
         });
         let mut cases = vec![
             (s.request.start_time, 1.0),
@@ -307,7 +311,7 @@ pub fn build(site: &Site, layout: &DataLayout, opts: &Options) -> Result<Output>
             let deadline = m.deadline();
             let found: Vec<alerts::Alert> = trace
                 .iter()
-                .flat_map(|(t, d)| m.update(start + chrono::Duration::seconds(*t as i64), *d))
+                .flat_map(|(t, d)| m.update(start + jiff::SignedDuration::from_secs(*t as i64), *d))
                 .collect();
             replays.push(Replay {
                 request: s.request.label.clone(),
@@ -456,7 +460,7 @@ pub fn build(site: &Site, layout: &DataLayout, opts: &Options) -> Result<Output>
         )?;
     }
     // A8.
-    let day_alerts: Vec<(NaiveDate, String, Vec<alerts::Alert>)> = brief
+    let day_alerts: Vec<(Date, String, Vec<alerts::Alert>)> = brief
         .days
         .iter()
         .flat_map(|d| {
@@ -485,7 +489,7 @@ pub fn build(site: &Site, layout: &DataLayout, opts: &Options) -> Result<Output>
                     "aucune alerte".to_owned()
                 } else {
                     a.iter()
-                        .map(|x| format!("{} {} ({})", x.at.format("%H:%M"), x.text, x.spoken))
+                        .map(|x| format!("{} {} ({})", x.at.strftime("%H:%M"), x.text, x.spoken))
                         .collect::<Vec<_>>()
                         .join(" ; ")
                 }
@@ -497,14 +501,14 @@ pub fn build(site: &Site, layout: &DataLayout, opts: &Options) -> Result<Output>
                 "{} ({}), départ {}, allure × {} ({} positions), heure limite {}, demi-tour prévu {} :",
                 r.request,
                 r.route,
-                r.start.format("%d/%m %H:%M"),
+                r.start.strftime("%d/%m %H:%M"),
                 r.slowdown,
                 r.fixes,
                 r.deadline
-                    .map(|d| d.format("%H:%M").to_string())
+                    .map(|d| d.strftime("%H:%M").to_string())
                     .unwrap_or_default(),
                 r.planned_turnaround
-                    .map(|d| d.format("%H:%M").to_string())
+                    .map(|d| d.strftime("%H:%M").to_string())
                     .unwrap_or_else(|| "aucun (boucle finie avant)".into())
             );
             if r.alerts.is_empty() {
@@ -514,7 +518,7 @@ pub fn build(site: &Site, layout: &DataLayout, opts: &Options) -> Result<Output>
                 let _ = writeln!(
                     t,
                     "  {} {:?} : {} — voix : {}",
-                    a.at.format("%H:%M"),
+                    a.at.strftime("%H:%M"),
                     a.kind,
                     a.text,
                     a.spoken
@@ -582,7 +586,7 @@ fn merge_sources<'a>(sources: &mut Vec<SourceRef>, run: impl IntoIterator<Item =
 fn write_meta(
     dir: &std::path::Path,
     site: &Site,
-    date: NaiveDate,
+    date: Date,
     data: &SiteData,
     files: &[PathBuf],
 ) -> Result<()> {

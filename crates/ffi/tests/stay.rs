@@ -21,7 +21,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use chrono::NaiveDate;
+use jiff::civil::Date;
 use skimap_ffi::card::Lang;
 use skimap_ffi::prep::{forecast_days, prep_read, prep_run, prep_take};
 use skimap_ffi::tracking::{BatchOut, RecapView, load_graph, open_tracking, pack_fixes};
@@ -130,7 +130,7 @@ fn ski(pack: &Path, plan_dir: &Path, seed: u64) -> (RecapView, usize, String) {
     };
     for i in &run.inputs {
         let Input::Fix { t, pos } = i else { continue };
-        let t = t.timestamp_millis();
+        let t = t.as_millisecond();
         if fixes.first().is_some_and(|&(f, _, _)| t - f > delay_ms) {
             recap = recap.or(flush(&mut fixes, &mut delay_ms).recap);
         }
@@ -159,7 +159,7 @@ fn stay(pack: &Path) {
     let p = Pack::open(pack.to_path_buf()).unwrap();
     let site = pack_site(&p).unwrap();
     let covered = forecast_days(&p);
-    let eve: NaiveDate = covered[0];
+    let eve: Date = covered[0];
     let pack_s = pack.display().to_string();
     let phone = tempfile::tempdir().unwrap();
     let prep_out = phone.path().join("prep");
@@ -200,7 +200,7 @@ fn stay(pack: &Path) {
     )
     .infos;
     for k in 1..=3 {
-        let date = eve + chrono::Duration::days(k);
+        let date = eve + jiff::SignedDuration::from_hours(24 * k);
         let t = Instant::now();
         let st = prep_read(
             prep_out.display().to_string(),

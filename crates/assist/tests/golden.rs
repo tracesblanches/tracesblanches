@@ -15,6 +15,8 @@
 mod fixtures;
 
 use fixtures::golden::{Golden, Tol};
+use jiff::civil::DateTime;
+use jiff::civil::date;
 use skimap_assist::equipment;
 use skimap_assist::inputs::{Paths, SiteData};
 use skimap_assist::suggest::{self, Request};
@@ -48,10 +50,10 @@ fn request(
         label: format!("{min} min"),
         start,
         start_name: name.into(),
-        start_time: chrono::NaiveDateTime::parse_from_str(at, "%Y-%m-%dT%H:%M").unwrap(),
+        start_time: DateTime::strptime("%Y-%m-%dT%H:%M", at).unwrap(),
         budget_min: min,
         style,
-        return_before: back.map(|h| chrono::NaiveTime::from_hms_opt(h, 0, 0).unwrap()),
+        return_before: back.map(|h| skimap_common::dates::hms(h, 0, 0).unwrap()),
         max_difficulty: None,
         max_results: 3,
         lang: skimap_assist::text::Lang::Fr,
@@ -142,10 +144,7 @@ fn cervieres() {
         .polyline(g);
     let o = equipment::Outing {
         label: "Le Laus → Les Fonts".into(),
-        start: chrono::NaiveDate::from_ymd_opt(2026, 1, 5)
-            .unwrap()
-            .and_hms_opt(10, 0, 0)
-            .unwrap(),
+        start: date(2026, 1, 5).at(10, 0, 0, 0),
         duration_min: 135.0,
         route,
         offpiste: false,

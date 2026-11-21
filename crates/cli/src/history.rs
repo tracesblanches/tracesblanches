@@ -14,7 +14,7 @@
 use std::path::Path;
 
 use anyhow::{Result, bail};
-use chrono::NaiveDate;
+use jiff::civil::Date;
 use skimap_common::layout::DataLayout;
 use skimap_common::site::Site;
 
@@ -38,8 +38,8 @@ fn copy_dir(from: &Path, to: &Path) -> Result<()> {
 pub fn history(
     ctx: &Ctx,
     site: &Site,
-    first: NaiveDate,
-    last: NaiveDate,
+    first: Date,
+    last: Date,
     snow: bool,
     bera: bool,
 ) -> Result<Vec<String>> {
@@ -110,7 +110,7 @@ pub fn history(
                 b.bulletin.as_ref().and_then(|x| x.risk.max)
             ));
         }
-        d += chrono::Duration::days(1);
+        d += jiff::SignedDuration::from_hours(24);
     }
     Ok(lines)
 }

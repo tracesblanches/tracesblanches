@@ -2,7 +2,11 @@
 
 use std::io::Read;
 
-use chrono::{DateTime, Datelike, Duration, NaiveDate, TimeZone, Utc, Weekday};
+use jiff::{
+    SignedDuration, Timestamp,
+    civil::{Date, Weekday},
+    tz::Offset,
+};
 
 /// `n` random bytes from the kernel (`/dev/urandom`), lowercase hex.
 pub fn random_hex(n: usize) -> std::io::Result<String> {
@@ -108,45 +112,50 @@ pub fn parse_query(q: &str) -> Vec<(String, String)> {
         .collect()
 }
 
-fn last_sunday(year: i32, month: u32) -> NaiveDate {
+fn last_sunday(year: i32, month: u32) -> Date {
     let next = if month == 12 {
-        NaiveDate::from_ymd_opt(year + 1, 1, 1)
+        skimap_common::dates::ymd(year + 1, 1, 1)
     } else {
-        NaiveDate::from_ymd_opt(year, month + 1, 1)
+        skimap_common::dates::ymd(year, month + 1, 1)
     }
     .expect("valid date");
-    let mut d = next - Duration::days(1);
-    while d.weekday() != Weekday::Sun {
-        d -= Duration::days(1);
+    let mut d = next - SignedDuration::from_hours(24);
+    while d.weekday() != Weekday::Sunday {
+        d -= SignedDuration::from_hours(24);
     }
     d
 }
 
 /// UTC offset of France (Europe/Paris) at `t`: +2 h from the last Sunday of March 01:00
 /// UTC to the last Sunday of October 01:00 UTC (EU rule since 1996), else +1 h.
-pub fn paris_offset_hours(t: DateTime<Utc>) -> i64 {
-    let y = t.year();
-    let start = Utc.from_utc_datetime(&last_sunday(y, 3).and_hms_opt(1, 0, 0).expect("time"));
-    let end = Utc.from_utc_datetime(&last_sunday(y, 10).and_hms_opt(1, 0, 0).expect("time"));
+pub fn paris_offset_hours(t: Timestamp) -> i64 {
+    let y = i32::from(skimap_common::dates::utc_date(t).year());
+    let start = Offset::UTC
+        .to_timestamp(last_sunday(y, 3).at(1, 0, 0, 0))
+        .unwrap();
+    let end = Offset::UTC
+        .to_timestamp(last_sunday(y, 10).at(1, 0, 0, 0))
+        .unwrap();
     if t >= start && t < end { 2 } else { 1 }
 }
 
 /// `t` in French local time, e.g. `dimanche 15/11/2026 à 17:30 (heure de Paris)`.
-pub fn paris_time(t: DateTime<Utc>) -> String {
-    let local = t + Duration::hours(paris_offset_hours(t));
+pub fn paris_time(t: Timestamp) -> String {
+    let local =
+        skimap_common::dates::utc_datetime(t) + SignedDuration::from_hours(paris_offset_hours(t));
     let day = match local.weekday() {
-        Weekday::Mon => "lundi",
-        Weekday::Tue => "mardi",
-        Weekday::Wed => "mercredi",
-        Weekday::Thu => "jeudi",
-        Weekday::Fri => "vendredi",
-        Weekday::Sat => "samedi",
-        Weekday::Sun => "dimanche",
+        Weekday::Monday => "lundi",
+        Weekday::Tuesday => "mardi",
+        Weekday::Wednesday => "mercredi",
+        Weekday::Thursday => "jeudi",
+        Weekday::Friday => "vendredi",
+        Weekday::Saturday => "samedi",
+        Weekday::Sunday => "dimanche",
     };
     format!(
         "{day} {} à {} (heure de Paris)",
-        local.format("%d/%m/%Y"),
-        local.format("%H:%M")
+        local.strftime("%d/%m/%Y"),
+        local.strftime("%H:%M")
     )
 }
 
@@ -213,7 +222,7 @@ mod tests {
 
     #[test]
     fn paris_time_follows_dst() {
-        let t = |s: &str| DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc);
+        let t = |s: &str| s.parse::<Timestamp>().unwrap();
         // 2026: summer time from 29/03 01:00 UTC to 25/10 01:00 UTC.
         assert_eq!(paris_offset_hours(t("2026-03-29T00:59:59Z")), 1);
         assert_eq!(paris_offset_hours(t("2026-03-29T01:00:00Z")), 2);

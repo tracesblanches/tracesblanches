@@ -35,6 +35,7 @@ use skimap_core::matching::{Fix, MatchParams, MatchState, Matcher};
 use crate::error::{Error, Result};
 use crate::mairie::{self, MairiePage, MairieRow};
 use crate::nordicfrance::{self, NfStation};
+use jiff::Timestamp;
 
 /// One OSM way of the `pistes` layer.
 #[derive(Debug, Clone, PartialEq)]
@@ -610,15 +611,15 @@ fn samples_lonlat(line: &[LonLat]) -> Vec<LonLat> {
 pub fn day_month_date(dm: &str, polled_at: &str) -> Option<String> {
     let (d, m) = dm.trim().split_once('/')?;
     let (d, m): (u32, u32) = (d.trim().parse().ok()?, m.trim().parse().ok()?);
-    let poll = chrono::DateTime::parse_from_rfc3339(polled_at)
-        .ok()?
-        .date_naive();
-    let y = chrono::Datelike::year(&poll);
-    let this = chrono::NaiveDate::from_ymd_opt(y, m, d)?;
+    // The date as written, in the offset of `polled_at` (not converted to UTC).
+    polled_at.parse::<Timestamp>().ok()?;
+    let poll = jiff::fmt::temporal::Pieces::parse(polled_at).ok()?.date();
+    let y = i32::from(poll.year());
+    let this = skimap_common::dates::ymd(y, m, d)?;
     let date = if this <= poll {
         this
     } else {
-        chrono::NaiveDate::from_ymd_opt(y - 1, m, d)?
+        skimap_common::dates::ymd(y - 1, m, d)?
     };
     Some(date.to_string())
 }

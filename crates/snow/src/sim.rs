@@ -16,7 +16,7 @@
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader};
 
-use chrono::NaiveDate;
+use jiff::civil::Date;
 use skimap_common::download::{CachePolicy, Downloader, Request};
 
 use crate::error::{Error, Result};
@@ -173,7 +173,7 @@ impl MassifDay {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Simulation {
     /// Tables by (massif, date).
-    pub days: BTreeMap<(u16, NaiveDate), MassifDay>,
+    pub days: BTreeMap<(u16, Date), MassifDay>,
 }
 
 fn field<'a>(it: &mut impl Iterator<Item = &'a str>, name: &str) -> Result<&'a str> {
@@ -192,11 +192,7 @@ where
 
 impl Simulation {
     /// Parses a gzipped yearly file, keeping `massifs` and the dates accepted by `keep`.
-    pub fn parse_gz(
-        gz: &[u8],
-        massifs: &[u16],
-        keep: impl Fn(NaiveDate) -> bool,
-    ) -> Result<Simulation> {
+    pub fn parse_gz(gz: &[u8], massifs: &[u16], keep: impl Fn(Date) -> bool) -> Result<Simulation> {
         let reader = BufReader::with_capacity(1 << 20, flate2::read::GzDecoder::new(gz));
         Self::parse_reader(reader, massifs, keep)
     }
@@ -205,11 +201,11 @@ impl Simulation {
     pub fn parse_reader(
         reader: impl BufRead,
         massifs: &[u16],
-        keep: impl Fn(NaiveDate) -> bool,
+        keep: impl Fn(Date) -> bool,
     ) -> Result<Simulation> {
         // (massif, date) -> altitude -> combos
-        let mut acc: BTreeMap<(u16, NaiveDate), BTreeMap<i32, [f32; N_COMBOS]>> = BTreeMap::new();
-        let mut date_cache: Option<(u32, NaiveDate, bool)> = None;
+        let mut acc: BTreeMap<(u16, Date), BTreeMap<i32, [f32; N_COMBOS]>> = BTreeMap::new();
+        let mut date_cache: Option<(u32, Date, bool)> = None;
         for (i, line) in reader.lines().enumerate() {
             let line = line.map_err(|e| Error::parse("simulation CSV", e))?;
             if i == 0 {
@@ -233,11 +229,12 @@ impl Simulation {
             let (date, kept) = match date_cache {
                 Some((d, nd, k)) if d == dat => (nd, k),
                 _ => {
-                    let nd =
-                        NaiveDate::from_ymd_opt((dat / 10_000) as i32, dat / 100 % 100, dat % 100)
-                            .ok_or_else(|| {
-                                Error::parse("simulation CSV", format!("bad date {dat}"))
-                            })?;
+                    let nd = skimap_common::dates::ymd(
+                        (dat / 10_000) as i32,
+                        dat / 100 % 100,
+                        dat % 100,
+                    )
+                    .ok_or_else(|| Error::parse("simulation CSV", format!("bad date {dat}")))?;
                     let k = keep(nd);
                     date_cache = Some((dat, nd, k));
                     (nd, k)
@@ -283,12 +280,12 @@ impl Simulation {
     }
 
     /// Table of a massif on a date.
-    pub fn get(&self, massif: u16, date: NaiveDate) -> Option<&MassifDay> {
+    pub fn get(&self, massif: u16, date: Date) -> Option<&MassifDay> {
         self.days.get(&(massif, date))
     }
 
     /// Last date available for every massif of `massifs`.
-    pub fn latest_common_date(&self, massifs: &[u16]) -> Option<NaiveDate> {
+    pub fn latest_common_date(&self, massifs: &[u16]) -> Option<Date> {
         massifs
             .iter()
             .map(|m| {
@@ -308,6 +305,7 @@ impl Simulation {
 mod tests {
     use super::*;
     use approx::assert_abs_diff_eq;
+    use jiff::civil::date;
 
     /// Band table where depth = base + 10·k for octant k at 20°, + 100 more at 40°.
     fn table(base: f32) -> [f32; N_COMBOS] {
@@ -412,10 +410,10 @@ mod tests {
                 }
             }
         }
-        let d16 = NaiveDate::from_ymd_opt(2026, 1, 16).unwrap();
+        let d16 = date(2026, 1, 16);
         let sim = Simulation::parse_reader(csv.as_bytes(), &[17, 55], |d| d != d16).unwrap();
         assert_eq!(sim.days.len(), 2);
-        let d15 = NaiveDate::from_ymd_opt(2026, 1, 15).unwrap();
+        let d15 = date(2026, 1, 15);
         let t = sim.get(17, d15).unwrap();
         assert_eq!(t.bands, vec![1200.0, 1500.0]);
         assert_eq!(t.depth[1][0], 15.0);

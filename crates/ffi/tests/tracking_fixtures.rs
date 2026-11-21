@@ -7,7 +7,8 @@
 #[path = "../../../fixtures/support/mod.rs"]
 mod fixtures;
 
-use chrono::NaiveDate;
+use jiff::civil::Time;
+use jiff::civil::date;
 use skimap_assist::inputs::{Paths, SiteData};
 use skimap_common::geom::LonLat;
 use skimap_common::layout::DataLayout;
@@ -29,9 +30,9 @@ fn session_follows_the_core_on_the_fixtures() {
     let layout = DataLayout::new(fixtures::data());
     let mut data = SiteData::load(&layout, &CERVIERES, &Paths::default()).unwrap();
     let ctx = Context::load(&layout, &CERVIERES).unwrap();
-    let date = NaiveDate::from_ymd_opt(2027, 1, 15).unwrap();
+    let date = date(2027, 1, 15);
     let req: PlanRequest = PlanRequest {
-        start_time: chrono::NaiveTime::from_hms_opt(10, 0, 0),
+        start_time: Time::new(10, 0, 0, 0).ok(),
         ..presets::requests(&CERVIERES, date).remove(0)
     };
     let m = plan::morning(&data, &req);
@@ -121,13 +122,13 @@ fn session_follows_the_core_on_the_fixtures() {
         let mut outs: Vec<Output> = Vec::new();
         let b = match &run.inputs[i] {
             Input::Fix { t, .. } => {
-                let first = t.timestamp_millis();
+                let first = t.as_millisecond();
                 let mut fixes = Vec::new();
                 while let Some(Input::Fix { t, pos }) = run.inputs.get(i) {
-                    if t.timestamp_millis() - first > delay && !fixes.is_empty() {
+                    if t.as_millisecond() - first > delay && !fixes.is_empty() {
                         break;
                     }
-                    fixes.push((t.timestamp_millis(), pos.lon, pos.lat));
+                    fixes.push((t.as_millisecond(), pos.lon, pos.lat));
                     direct.push(&run.inputs[i], &mut outs);
                     i += 1;
                 }
@@ -136,7 +137,7 @@ fn session_follows_the_core_on_the_fixtures() {
             other => {
                 direct.push(other, &mut outs);
                 i += 1;
-                let t_ms = other.t().timestamp_millis();
+                let t_ms = other.t().as_millisecond();
                 let e = match other {
                     Input::Activity { activity, .. } => TrackEvent::Activity {
                         t_ms,
@@ -245,7 +246,7 @@ fn bring_me_back_on_the_fixtures() {
     let layout = DataLayout::new(fixtures::data());
     let mut data = SiteData::load(&layout, &CERVIERES, &Paths::default()).unwrap();
     let ctx = Context::load(&layout, &CERVIERES).unwrap();
-    let date = NaiveDate::from_ymd_opt(2027, 1, 15).unwrap();
+    let date = date(2027, 1, 15);
     let req = presets::requests(&CERVIERES, date).remove(0);
     let m = plan::morning(&data, &req);
     let p = plan::build(&mut data, &m, 0, &ctx).unwrap();
@@ -278,8 +279,8 @@ fn bring_me_back_on_the_fixtures() {
         .inputs
         .iter()
         .filter_map(|i| match i {
-            Input::Fix { t, pos } if (*t - t0).num_seconds() < 1800 => {
-                Some((t.timestamp_millis(), pos.lon, pos.lat))
+            Input::Fix { t, pos } if (*t - t0).as_secs() < 1800 => {
+                Some((t.as_millisecond(), pos.lon, pos.lat))
             }
             _ => None,
         })
@@ -358,7 +359,7 @@ fn the_car_set_on_the_map_is_where_bring_me_back_goes() {
     let layout = DataLayout::new(fixtures::data());
     let mut data = SiteData::load(&layout, &CERVIERES, &Paths::default()).unwrap();
     let ctx = Context::load(&layout, &CERVIERES).unwrap();
-    let date = NaiveDate::from_ymd_opt(2027, 1, 15).unwrap();
+    let date = date(2027, 1, 15);
     let req = presets::requests(&CERVIERES, date).remove(0);
     let m = plan::morning(&data, &req);
     let p = plan::build(&mut data, &m, 0, &ctx).unwrap();
@@ -401,8 +402,8 @@ fn the_car_set_on_the_map_is_where_bring_me_back_goes() {
         .inputs
         .iter()
         .filter_map(|i| match i {
-            Input::Fix { t, pos } if (*t - t0).num_seconds() < 900 => {
-                Some((t.timestamp_millis(), pos.lon, pos.lat))
+            Input::Fix { t, pos } if (*t - t0).as_secs() < 900 => {
+                Some((t.as_millisecond(), pos.lon, pos.lat))
             }
             _ => None,
         })

@@ -10,10 +10,10 @@
 //! cargo test -p skimap-core --test real_sites -- --ignored full_data_
 //! ```
 
+use jiff::civil::date;
 #[path = "../../../fixtures/support/mod.rs"]
 mod fixtures;
 
-use chrono::NaiveDate;
 use skimap_common::geom::LonLat;
 use skimap_core::eta::{EtaModel, munter_s, tobler_s};
 use skimap_core::graph::{PisteGraph, Snap};
@@ -160,10 +160,10 @@ fn village_chalet_gaillard(g: &PisteGraph) {
     assert!(s < c && c < t && t < m, "{c} {s} {m} {t}");
     // C7: out and back from the village, 15 January 2027 at 13:00 local: the whole route
     // fits before the deadline (30 min before civil dusk).
-    let date = NaiveDate::from_ymd_opt(2027, 1, 15).unwrap();
+    let date = date(2027, 1, 15);
     let p = TurnaroundParams::default();
     let dl = deadline(date, village, &p).unwrap();
-    let start = date.and_hms_opt(12, 0, 0).unwrap().and_utc();
+    let start = skimap_common::dates::utc(date.at(12, 0, 0, 0)).unwrap();
     let ob = out_and_back(g, &rt, &EtaModel::new(Style::Classic), start, &dl, &p).unwrap();
     assert!(ob.whole_route && ob.arrival <= dl.deadline);
     // Starting at 14:00 it does not: turn around before the chalet.
@@ -171,7 +171,7 @@ fn village_chalet_gaillard(g: &PisteGraph) {
         g,
         &rt,
         &EtaModel::new(Style::Classic),
-        start + chrono::Duration::hours(1),
+        start + jiff::SignedDuration::from_hours(1),
         &dl,
         &p,
     )

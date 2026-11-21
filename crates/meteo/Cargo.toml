@@ -10,7 +10,7 @@ license.workspace = true
 [dependencies]
 skimap-common = { workspace = true, features = ["download"] }
 skimap-core.workspace = true
-chrono.workspace = true
+jiff.workspace = true
 # GRIB2 reader of the open Météo-France AROME packages (CCSDS packing, template 5.42), in
 # pure Rust: not a workspace dependency yet (X17, #151).
 grib = { version = "0.20.3", default-features = false, features = ["ccsds-unpack-with-rust-aec"] }

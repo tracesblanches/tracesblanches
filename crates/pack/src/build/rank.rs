@@ -28,7 +28,7 @@ use std::cmp::Ordering;
 use std::path::Path;
 use std::time::Instant;
 
-use chrono::{NaiveDate, NaiveTime};
+use jiff::civil::{Date, Time};
 use rayon::prelude::*;
 use skimap_assist::inputs::{Paths, SiteData};
 use skimap_common::Lang;
@@ -47,8 +47,8 @@ pub const OUTING: Outing = Outing::DEFAULT;
 /// the day do not decide between starts.
 pub const START_TIME: &str = "10:00";
 
-fn hm(s: &str) -> NaiveTime {
-    NaiveTime::parse_from_str(s, "%H:%M").expect("constant time")
+fn hm(s: &str) -> Time {
+    Time::strptime("%H:%M", s).expect("constant time")
 }
 
 /// Ranks the starts of `record` on the pack in `pack_dir` (module documentation), the
@@ -58,7 +58,7 @@ pub fn rank(
     record: &mut SiteRecord,
     pack_dir: &Path,
     work: &Path,
-    today: NaiveDate,
+    today: Date,
 ) -> Option<StartRanking> {
     if record.starts.is_empty() {
         return None;
@@ -69,7 +69,7 @@ pub fn rank(
         .as_ref()
         .ok()
         .and_then(|p| p.forecast_days().first().cloned())
-        .and_then(|d| NaiveDate::parse_from_str(&d, "%Y-%m-%d").ok())
+        .and_then(|d| Date::strptime("%Y-%m-%d", &d).ok())
         .unwrap_or(today);
     let data = pack
         .map_err(|e| e.to_string())
@@ -133,7 +133,7 @@ fn score(
     data: &SiteData,
     start: &skimap_common::site::Start,
     registry_rank: usize,
-    date: NaiveDate,
+    date: Date,
 ) -> StartScore {
     let req = OUTING.request(
         start.position(),

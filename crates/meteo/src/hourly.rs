@@ -27,7 +27,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use chrono::NaiveDate;
+use jiff::civil::Date;
 use serde::{Deserialize, Serialize};
 use skimap_common::download::{Downloader, Request};
 use skimap_common::layout::DataLayout;
@@ -494,11 +494,11 @@ pub fn history_request(
     p: &ForecastPoint,
     model: &str,
     variables: &[&str],
-    start: NaiveDate,
-    last: NaiveDate,
-    today: NaiveDate,
+    start: Date,
+    last: Date,
+    today: Date,
 ) -> Request {
-    let max_age = if (today - last).num_days() > 2 {
+    let max_age = if (today - last).get_days() > 2 {
         Duration::from_secs(365 * 86_400)
     } else {
         MAX_AGE
@@ -525,8 +525,8 @@ pub fn history(
     site: &Site,
     dl: &Downloader,
     personal_sources: bool,
-    first: NaiveDate,
-    last: NaiveDate,
+    first: Date,
+    last: Date,
     dir: &Path,
 ) -> Result<(PathBuf, HourlyFile)> {
     if !personal_sources {
@@ -542,8 +542,8 @@ pub fn history(
             format!("no forecast point for {}", site.id),
         ));
     }
-    let start = first - chrono::Duration::days(HISTORY_LEAD_DAYS);
-    let today = chrono::Utc::now().date_naive();
+    let start = first - jiff::SignedDuration::from_hours(24 * HISTORY_LEAD_DAYS);
+    let today = skimap_common::dates::utc_date(jiff::Timestamp::now());
     let mut points = Vec::new();
     for p in &pts {
         let fetch = |model: &str, vars: &[&str]| -> Result<Series> {
@@ -700,7 +700,7 @@ mod tests {
         assert!(r.url().contains("latitude=46.6032&longitude=6.1125"));
         assert!(r.url().contains("hourly=visibility&models=best_match"));
         assert!(r.url().contains("wind_speed_unit=kmh"));
-        let d = |s: &str| NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap();
+        let d = |s: &str| Date::strptime("%Y-%m-%d", s).unwrap();
         let p = &forecast_points("cervieres")[0];
         let h = history_request(
             p,

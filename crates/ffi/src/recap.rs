@@ -20,7 +20,7 @@
 
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, NaiveDateTime, Utc};
+use jiff::{Timestamp, civil::DateTime};
 use skimap_common::geom::LonLat;
 use skimap_plan::plan::DayPlan;
 use skimap_plan::tracker::Input;
@@ -48,8 +48,8 @@ fn invalid(detail: impl std::fmt::Display) -> TrackingError {
     }
 }
 
-fn utc(ms: i64) -> DateTime<Utc> {
-    DateTime::<Utc>::from_timestamp_millis(ms).unwrap_or_default()
+fn utc(ms: i64) -> Timestamp {
+    Timestamp::from_millisecond(ms).ok().unwrap_or_default()
 }
 
 /// The inputs recorded in `path` (a line cut by the end of the process is dropped).
@@ -97,7 +97,7 @@ pub fn write_gpx(log: &Path, name: &str) -> Result<String, TrackingError> {
             "<trkpt lat=\"{:.7}\" lon=\"{:.7}\">{ele}<time>{}</time></trkpt>\n",
             p.lat,
             p.lon,
-            utc(*t).format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            utc(*t).strftime("%Y-%m-%dT%H:%M:%S%.3fZ")
         ));
     }
     s.push_str("</trkseg></trk>\n</gpx>\n");
@@ -111,7 +111,7 @@ pub fn fixes(inputs: &[Input]) -> Vec<(i64, LonLat)> {
     inputs
         .iter()
         .filter_map(|i| match i {
-            Input::Fix { t, pos } => Some((t.timestamp_millis(), *pos)),
+            Input::Fix { t, pos } => Some((t.as_millisecond(), *pos)),
             _ => None,
         })
         .collect()
@@ -397,7 +397,7 @@ fn load_imported(dir: &Path, lang: Lang) -> Option<Loaded> {
     if o.source != STRAVA || o.track.len() < 2 {
         return None;
     }
-    let start_ms = o.start.map_or(0, |t| t.timestamp_millis());
+    let start_ms = o.start.map_or(0, |t| t.as_millisecond());
     Some(Loaded {
         summary: OutingSummary {
             dir: dir.display().to_string(),
@@ -644,13 +644,13 @@ fn conditions(l: &Loaded, alt: Option<&Altitude>, t: &dyn text::Texts) -> Vec<St
     let (Some(a), Some(b)) = (l.fixes.first(), l.fixes.last()) else {
         return out;
     };
-    let from: NaiveDateTime = skimap_core::ephemeris::local_time(utc(a.0));
-    let to: NaiveDateTime = skimap_core::ephemeris::local_time(utc(b.0));
+    let from: DateTime = skimap_core::ephemeris::local_time(utc(a.0));
+    let to: DateTime = skimap_core::ephemeris::local_time(utc(b.0));
     if let Some(w) = l.plan.as_ref().and_then(|p| p.weather.as_ref()) {
         let hours: Vec<_> = w
             .hours
             .iter()
-            .filter(|h| h.time + chrono::Duration::hours(1) > from && h.time <= to)
+            .filter(|h| h.time + jiff::SignedDuration::from_hours(1) > from && h.time <= to)
             .collect();
         let temps: Vec<f64> = hours.iter().filter_map(|h| h.temperature_c).collect();
         if let (Some(lo), Some(hi)) = (
@@ -875,7 +875,7 @@ mod tests {
             source: source.into(),
             name: "Risoux".into(),
             activity: "Nordic Ski".into(),
-            start: DateTime::<Utc>::from_timestamp_millis(start_ms),
+            start: Timestamp::from_millisecond(start_ms).ok(),
             elapsed_s: 8400.0,
             moving_s: 7920.0,
             distance_m: 21_400.0,

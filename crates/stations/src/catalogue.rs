@@ -454,7 +454,7 @@ mod tests {
     /// and move its expiry date, or delete it.
     #[test]
     fn complements_not_expired() {
-        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        let today = jiff::Timestamp::now().strftime("%Y-%m-%d").to_string();
         for p in PDF_PRICES {
             assert!(
                 usable(p.expires, &today),

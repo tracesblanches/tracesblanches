@@ -22,6 +22,7 @@
 // `skimap_common::output` (clippy.toml, #164).
 #![cfg_attr(test, allow(clippy::disallowed_methods))]
 
+use jiff::Timestamp;
 pub mod camptocamp;
 pub mod error;
 pub mod fiche;
@@ -331,8 +332,8 @@ pub fn build(site: &Site, layout: &DataLayout, dl: &Downloader) -> Result<Refuge
     let osm_at = osm_read
         .valid_at
         .as_deref()
-        .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
-        .map_or(0, |t| t.timestamp().max(0) as u64);
+        .and_then(|t| t.parse::<Timestamp>().ok())
+        .map_or(0, |t| t.as_second().max(0) as u64);
     let valid_at = ri.full.meta.fetched_at_unix.max(osm_at);
     let meta = LayerMeta {
         tickets: vec!["P11 (#24)".to_owned(), "H1 (#132)".to_owned()],

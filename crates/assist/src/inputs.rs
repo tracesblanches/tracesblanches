@@ -8,7 +8,7 @@
 
 use std::path::{Path, PathBuf};
 
-use chrono::NaiveDate;
+use jiff::civil::Date;
 use skimap_common::grid::Grid;
 use skimap_common::layout::DataLayout;
 use skimap_common::meta::SourceRef;
@@ -157,15 +157,14 @@ fn keep<T>(r: Result<T>, what: LayerName, missing: &mut Vec<String>) -> Option<T
 
 impl SiteData {
     /// Snow map for a day: the latest one of that day or before, at most 4 days old.
-    pub fn snow_for(&self, date: NaiveDate) -> Option<&SnowMap> {
-        self.snows
-            .iter()
-            .rev()
-            .find(|m| m.date() <= date && (date - m.date()).num_days() <= MAX_SNOW_AGE_DAYS)
+    pub fn snow_for(&self, date: Date) -> Option<&SnowMap> {
+        self.snows.iter().rev().find(|m| {
+            m.date() <= date && i64::from((date - m.date()).get_days()) <= MAX_SNOW_AGE_DAYS
+        })
     }
 
     /// BERA of a day (the bulletin date must match).
-    pub fn bera_for(&self, date: NaiveDate) -> Option<&Bera> {
+    pub fn bera_for(&self, date: Date) -> Option<&Bera> {
         self.beras.iter().find(|b| b.date() == Some(date))
     }
 

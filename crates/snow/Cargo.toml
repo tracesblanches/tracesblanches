@@ -10,7 +10,7 @@ license.workspace = true
 [dependencies]
 skimap-common = { workspace = true, features = ["download", "geotiff"] }
 skimap-terrain.workspace = true
-chrono.workspace = true
+jiff.workspace = true
 flate2.workspace = true
 rayon.workspace = true
 serde.workspace = true

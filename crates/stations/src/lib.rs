@@ -35,7 +35,7 @@ pub mod titres;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde_json::{Value, json};
 use skimap_common::download::Downloader;
 use skimap_common::layout::{DataLayout, FRANCE};
@@ -145,7 +145,7 @@ pub fn build(
     dl: &Downloader,
     personal_sources: bool,
 ) -> Result<StationsOutput> {
-    let r = refresh(layout, dl, personal_sources, Utc::now(), true)?;
+    let r = refresh(layout, dl, personal_sources, Timestamp::now(), true)?;
     Ok(StationsOutput {
         dir: r.dir,
         stats: r.stats,
@@ -222,14 +222,14 @@ pub fn refresh(
     layout: &DataLayout,
     dl: &Downloader,
     personal_sources: bool,
-    now: DateTime<Utc>,
+    now: Timestamp,
     force: bool,
 ) -> Result<RefreshReport> {
     let census_dir = layout.france_layer_dir(CENSUS_LAYER)?;
     let (ds, ways) = domains::load(&census_dir)?;
     let dir = layout.france_layer_dir(LAYER)?;
-    let at = now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
-    let today = now.format("%Y-%m-%d").to_string();
+    let at = now.strftime("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let today = now.strftime("%Y-%m-%d").to_string();
     let state_path = dir.join("refresh_state.json");
     let mut state = refresh::State::read(&state_path);
     let prev_meta = LayerMeta::read(&dir.join(format!("{LAYER}.meta.json"))).ok();
@@ -423,7 +423,7 @@ fn titres_files(
     state: &mut refresh::State,
     at: &str,
     today: &str,
-    now: DateTime<Utc>,
+    now: Timestamp,
 ) -> Result<(Vec<refresh::Change>, Vec<String>)> {
     let mut changes = Vec::new();
     // Source states and their transitions.

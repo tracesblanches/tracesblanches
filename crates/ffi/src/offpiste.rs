@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use skimap_common::geom::LonLat;
 use skimap_common::grid::Grid;
 use skimap_core::calibration::{ProfileModel, TERRAINS, Terrain};
@@ -392,7 +392,9 @@ impl OffpistePlanner {
         let t0 = Instant::now();
         let tx = text::of(self.lang);
         let i = &self.inputs;
-        let at: DateTime<Utc> = DateTime::from_timestamp_millis(at_ms).unwrap_or_else(Utc::now);
+        let at: Timestamp = Timestamp::from_millisecond(at_ms)
+            .ok()
+            .unwrap_or_else(Timestamp::now);
         let policy = match &i.zones {
             Some((layer, rules)) => offpiste::zone_policy(&i.grid.classes, layer, rules, at),
             None => ZonePolicy::open(i.grid.classes.len(), at),
@@ -539,7 +541,7 @@ impl OffpistePlanner {
             },
             site_id: Some(self.site_id.clone()),
             pack_dir: Some(self.pack_dir.display().to_string()),
-            created_at: Utc::now().to_rfc3339(),
+            created_at: skimap_common::dates::rfc3339(Timestamp::now()),
         }
         .write(Path::new(&dir))
     }
@@ -680,7 +682,7 @@ mod tests {
             // zone: every point of the line on an allowed cell.
             let g = &p.inputs.grid;
             let (layer, rules) = p.inputs.zones.as_ref().unwrap();
-            let at = DateTime::from_timestamp_millis(1_771_146_000_000).unwrap();
+            let at = Timestamp::from_millisecond(1_771_146_000_000).ok().unwrap();
             let policy = offpiste::zone_policy(&g.classes, layer, rules, at);
             let mut off_in_appb = 0;
             for c in r.line.as_chunks::<2>().0.iter() {

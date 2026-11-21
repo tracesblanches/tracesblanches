@@ -3,18 +3,18 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
 
-use chrono::{DateTime, Duration, Utc};
+use jiff::{SignedDuration, Timestamp};
 
 /// Counts events per key over a window.
 #[derive(Debug, Default)]
 pub struct Limiter {
-    hits: Mutex<HashMap<String, VecDeque<DateTime<Utc>>>>,
+    hits: Mutex<HashMap<String, VecDeque<Timestamp>>>,
 }
 
 impl Limiter {
     /// Records an event for `key` at `now` if fewer than `max` happened in the last
     /// `window`; returns whether it was allowed.
-    pub fn allow(&self, key: &str, max: usize, window: Duration, now: DateTime<Utc>) -> bool {
+    pub fn allow(&self, key: &str, max: usize, window: SignedDuration, now: Timestamp) -> bool {
         let mut hits = self.hits.lock().unwrap_or_else(|p| p.into_inner());
         if hits.len() > 10_000 {
             hits.retain(|_, q| q.back().is_some_and(|t| now - *t < window));
@@ -38,11 +38,11 @@ mod tests {
     #[test]
     fn window_slides() {
         let l = Limiter::default();
-        let t0 = Utc::now();
-        let h = Duration::hours(1);
+        let t0 = Timestamp::now();
+        let h = SignedDuration::from_hours(1);
         assert!(l.allow("a", 2, h, t0));
         assert!(l.allow("a", 2, h, t0));
-        assert!(!l.allow("a", 2, h, t0 + Duration::minutes(59)));
+        assert!(!l.allow("a", 2, h, t0 + SignedDuration::from_mins(59)));
         assert!(l.allow("b", 2, h, t0));
         assert!(l.allow("a", 2, h, t0 + h));
     }

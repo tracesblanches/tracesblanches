@@ -17,7 +17,7 @@ phone = ["dep:zip", "dep:flate2", "dep:quick-xml", "dep:csv", "dep:skimap-core",
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
-chrono.workspace = true
+jiff.workspace = true
 thiserror.workspace = true
 rusqlite = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }

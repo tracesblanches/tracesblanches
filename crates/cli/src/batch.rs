@@ -17,7 +17,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde::Serialize;
 use skimap_common::layout::DataLayout;
 use skimap_common::meta::now_rfc3339;
@@ -248,14 +248,14 @@ impl Attempt {
 
     /// Whether the site is set aside: killed [`SET_ASIDE_AFTER`] times in a row with the
     /// inputs `inputs`, the last time less than [`RETRY_SET_ASIDE_HOURS`] ago.
-    pub fn set_aside(&self, inputs: &str, now: DateTime<Utc>) -> bool {
+    pub fn set_aside(&self, inputs: &str, now: Timestamp) -> bool {
         self.killed >= SET_ASIDE_AFTER
             && self.inputs == inputs
             && self
                 .last_killed_at
                 .as_deref()
-                .and_then(|t| DateTime::parse_from_rfc3339(t).ok())
-                .is_some_and(|t| (now - t.to_utc()).num_hours() < RETRY_SET_ASIDE_HOURS)
+                .and_then(|t| t.parse::<Timestamp>().ok())
+                .is_some_and(|t| (now - t).as_hours() < RETRY_SET_ASIDE_HOURS)
     }
 }
 
@@ -458,10 +458,12 @@ pub fn up_to_date(
     inputs: &BuildInputs,
     site: &Site,
     max_age: Duration,
-    now: DateTime<Utc>,
+    now: Timestamp,
 ) -> bool {
-    let recent = DateTime::parse_from_rfc3339(&rec.finished_at)
-        .is_ok_and(|t| (now - t.to_utc()).to_std().is_ok_and(|age| age < max_age));
+    let recent = rec
+        .finished_at
+        .parse::<Timestamp>()
+        .is_ok_and(|t| std::time::Duration::try_from(now - t).is_ok_and(|age| age < max_age));
     rec.ok && rec.inputs == *inputs && recent && steps_current(rec, site)
 }
 
@@ -640,7 +642,7 @@ pub fn build_many_with(
         .map(|s| Ok(registry.get(s.id)?))
         .collect::<Result<Vec<&'static Site>>>()?;
     let sites = &sites[..];
-    let now = Utc::now();
+    let now = Timestamp::now();
     let mut results = Vec::new();
     let mut todo = VecDeque::new();
     let mut suspects = Vec::new();
@@ -963,7 +965,7 @@ pub fn build_many_with(
     };
     let dir = ctx.layout.france_dir().join("build-all");
     DataLayout::ensure(&dir)?;
-    let stamp = Utc::now().format("%Y%m%dT%H%M%SZ");
+    let stamp = Timestamp::now().strftime("%Y%m%dT%H%M%SZ");
     skimap_common::output::write_json(&dir.join(format!("summary_{stamp}.json")), &summary)?;
     skimap_common::output::write_json(&dir.join("summary.json"), &summary)?;
     // Every site of the registry, not only those of this batch.
@@ -1054,7 +1056,7 @@ pub fn write_status(layout: &DataLayout, sites: &[&'static Site]) -> Result<Path
             }
         }
     }
-    let now = Utc::now();
+    let now = Timestamp::now();
     let mut alerts = Vec::new();
     let mut out = Vec::new();
     for s in sites {
@@ -1098,14 +1100,14 @@ pub fn write_status(layout: &DataLayout, sites: &[&'static Site]) -> Result<Path
                 });
                 if let Some(t) = failing_since
                     .as_deref()
-                    .and_then(|t| DateTime::parse_from_rfc3339(t).ok())
-                    && (now - t.to_utc()).num_days() >= ALERT_AFTER_DAYS
+                    .and_then(|t| t.parse::<Timestamp>().ok())
+                    && ((now - t).as_hours() / 24) >= ALERT_AFTER_DAYS
                 {
                     alerts.push(format!(
                         "{} : {} en échec depuis le {}",
                         s.id,
                         st.name,
-                        t.format("%d/%m/%Y")
+                        t.strftime("%d/%m/%Y")
                     ));
                 }
                 let empty = (st.state == StepState::Ok)
@@ -1202,7 +1204,7 @@ pub fn meteo_step(ctx: &Ctx, sites: &[&Site]) -> StepRecord {
 
 /// [`meteo_step`] at a given AROME run (`None`: the run of `SKIMAP_AROME_RUN`, else the
 /// latest complete one).
-pub fn meteo_step_at(ctx: &Ctx, sites: &[&Site], run: Option<DateTime<Utc>>) -> StepRecord {
+pub fn meteo_step_at(ctx: &Ctx, sites: &[&Site], run: Option<Timestamp>) -> StepRecord {
     meteo_refresh_at(ctx, sites, run).0
 }
 
@@ -1212,7 +1214,7 @@ pub fn meteo_step_at(ctx: &Ctx, sites: &[&Site], run: Option<DateTime<Utc>>) -> 
 pub fn meteo_refresh_at(
     ctx: &Ctx,
     sites: &[&Site],
-    run: Option<DateTime<Utc>>,
+    run: Option<Timestamp>,
 ) -> (StepRecord, Option<skimap_meteo::arome::RefreshReport>) {
     let t = Instant::now();
     let run = match run.map_or_else(|| ctx.arome_run(), |r| Ok(Some(r))) {
@@ -2366,9 +2368,7 @@ mod tests {
                 export_bytes: None,
             },
         };
-        let now = DateTime::parse_from_rfc3339("2026-11-15T12:00:00Z")
-            .unwrap()
-            .to_utc();
+        let now = "2026-11-15T12:00:00Z".parse::<Timestamp>().unwrap();
         let day = Duration::from_secs(86_400);
         assert!(up_to_date(&rec, &rec.inputs, site, day, now));
         assert!(!up_to_date(
@@ -2730,8 +2730,9 @@ mod tests {
             .join(ATTEMPT_FILE);
         let mut a: Attempt = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         a.last_killed_at = Some(
-            (Utc::now() - chrono::Duration::hours(25))
-                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            (Timestamp::now() - jiff::SignedDuration::from_hours(25))
+                .strftime("%Y-%m-%dT%H:%M:%SZ")
+                .to_string(),
         );
         skimap_common::output::write_json(&path, &a).unwrap();
         assert!(!pass(), "tried again a day later");

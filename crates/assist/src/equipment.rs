@@ -16,7 +16,10 @@
 //! The voice says the items of the phrase bank (`Event::Equipment`); sunglasses and skis
 //! have no phrase yet (requested).
 
-use chrono::{Duration, NaiveDate, NaiveDateTime, Timelike};
+use jiff::{
+    SignedDuration,
+    civil::{Date, DateTime},
+};
 use serde::Serialize;
 use skimap_common::geom::LonLat;
 use skimap_voice::Event;
@@ -32,7 +35,7 @@ pub struct Outing {
     /// Label.
     pub label: String,
     /// Start, local.
-    pub start: NaiveDateTime,
+    pub start: DateTime,
     /// Estimated time (C5 model), minutes.
     pub duration_min: f64,
     /// Route.
@@ -120,9 +123,9 @@ pub struct Facts {
     /// BERA level of the day.
     pub bera_level: Option<u8>,
     /// Planned return, local.
-    pub back: NaiveDateTime,
+    pub back: DateTime,
     /// Sunset, local.
-    pub sunset: Option<NaiveDateTime>,
+    pub sunset: Option<DateTime>,
     /// Lowest wind chill of the outing, °C.
     pub wind_chill_min_c: Option<f64>,
     /// Fog hours during the outing.
@@ -161,9 +164,9 @@ pub fn equipment(data: &SiteData, o: &Outing) -> Equipment {
 /// [`equipment`] with the texts in `lang` (the phone's language, VO6).
 pub fn equipment_in(data: &SiteData, o: &Outing, lang: Lang) -> Equipment {
     let tx = crate::text::of(lang);
-    let date: NaiveDate = o.start.date();
+    let date: Date = o.start.date();
     let back = o.start
-        + Duration::seconds(
+        + SignedDuration::from_secs(
             (o.duration_min
                 * 60.0
                 * skimap_core::turnaround::TurnaroundParams::default().eta_factor)
@@ -210,7 +213,7 @@ pub fn equipment_in(data: &SiteData, o: &Outing, lang: Lang) -> Equipment {
         .and_then(|w| w.nearest(place))
         .map(|(p, _)| {
             p.summary_between(
-                o.start - Duration::minutes(i64::from(o.start.minute())),
+                o.start - SignedDuration::from_mins(i64::from(o.start.minute())),
                 back,
             )
         });
@@ -236,7 +239,7 @@ pub fn equipment_in(data: &SiteData, o: &Outing, lang: Lang) -> Equipment {
         add(Kind::AvalancheKit, why.join(", "));
     }
     if let Some((rise, set)) = suns {
-        if back + Duration::hours(1) > set {
+        if back + SignedDuration::from_hours(1) > set {
             add(Kind::Headlamp, tx.eq_back_after_sunset(back, set));
         } else if o.start < rise {
             add(Kind::Headlamp, tx.eq_start_before_sunrise(o.start, rise));
@@ -311,19 +314,17 @@ mod tests {
     use super::*;
     use crate::layers::{Area, Areas, Weather, WeatherHour, WeatherPoint};
     /// Evaluation site of `data/sites.json`, test data.
+    use jiff::civil::date;
     static CERVIERES: std::sync::LazyLock<skimap_common::site::Site> =
         std::sync::LazyLock::new(|| {
             *skimap_common::site::site("cervieres").expect("evaluation site")
         });
 
     fn data(chill: f64, fog: bool) -> SiteData {
-        let d0 = NaiveDate::from_ymd_opt(2027, 1, 12)
-            .unwrap()
-            .and_hms_opt(0, 0, 0)
-            .unwrap();
+        let d0 = date(2027, 1, 12).at(0, 0, 0, 0);
         let hours = (0..24)
             .map(|i| WeatherHour {
-                time: d0 + Duration::hours(i),
+                time: d0 + SignedDuration::from_hours(i),
                 temperature_c: Some(-5.0),
                 apparent_temperature_c: None,
                 wind_chill_c: Some(chill),
@@ -376,10 +377,7 @@ mod tests {
         let route = vec![LonLat::new(6.72, 44.85), LonLat::new(6.76, 44.85)];
         let o = Outing {
             label: "test".into(),
-            start: NaiveDate::from_ymd_opt(2027, 1, 12)
-                .unwrap()
-                .and_hms_opt(14, 0, 0)
-                .unwrap(),
+            start: date(2027, 1, 12).at(14, 0, 0, 0),
             duration_min: 120.0,
             route,
             offpiste: false,
@@ -410,7 +408,7 @@ mod tests {
         assert!(items.contains(&Item::FaceProtection) && items.contains(&Item::Waxless));
         // Morning, mild, no fog: no headlamp, no layer, no compass.
         let o2 = Outing {
-            start: o.start - Duration::hours(4),
+            start: o.start - SignedDuration::from_hours(4),
             kick_unreliable: false,
             ..o
         };

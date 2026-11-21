@@ -10,7 +10,9 @@
 )]
 use std::path::Path;
 
-use chrono::{NaiveDate, NaiveDateTime};
+use jiff::Timestamp;
+use jiff::civil::DateTime;
+use jiff::civil::date;
 use skimap_common::geom::LonLat;
 use skimap_core::zone_eval::{Inactive, Verdict};
 use skimap_ffi::fog::{FogTarget, guided_bearing};
@@ -160,7 +162,9 @@ fn outing(root: &Path, name: &str, start: i64, n: usize) -> String {
     .unwrap();
     let mut s = String::new();
     for i in 0..n {
-        let t = chrono::DateTime::from_timestamp_millis(start + i as i64 * 5000).unwrap();
+        let t = Timestamp::from_millisecond(start + i as i64 * 5000)
+            .ok()
+            .unwrap();
         let pos = LonLat::new(6.0, 45.0 + i as f64 * 10.0 / 111_195.0);
         s.push_str(&serde_json::to_string(&Input::Fix { t, pos }).unwrap());
         s.push('\n');
@@ -270,8 +274,8 @@ fn the_test_pack_in_english() {
 #[test]
 fn every_text_of_the_ffi_has_its_english() {
     let t = text::of(Lang::En);
-    let day = NaiveDate::from_ymd_opt(2027, 2, 20).unwrap();
-    let at: NaiveDateTime = day.and_hms_opt(14, 5, 0).unwrap();
+    let day = date(2027, 2, 20);
+    let at: DateTime = day.at(14, 5, 0, 0);
     let mut all: Vec<String> = vec![
         t.group_learned(0),
         t.group_learned(1),
@@ -280,7 +284,7 @@ fn every_text_of_the_ffi_has_its_english() {
         t.group_who(2, &[10, 14]),
         t.duration(5400.0),
         t.clock5(at),
-        t.clock_day(at + chrono::Duration::days(1), day),
+        t.clock_day(at + jiff::SignedDuration::from_hours(24), day),
         t.duration_range("1 h", "2 h"),
         t.duration_about("1 h", "50 min", "1 h 20"),
         t.back_slow_side("1 h", "1 h 20", "15:00"),
@@ -351,7 +355,7 @@ fn every_text_of_the_ffi_has_its_english() {
         t.outside_relief().into(),
         t.no_passable(200.0),
         t.no_offpiste_route().into(),
-        t.arrival_range(at, at + chrono::Duration::minutes(20)),
+        t.arrival_range(at, at + jiff::SignedDuration::from_mins(20)),
         t.all_domains().into(),
         t.france_only_name().into(),
         t.packs_note(&["X", "Y"]),

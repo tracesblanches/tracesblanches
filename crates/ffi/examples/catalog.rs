@@ -129,7 +129,7 @@ fn main() -> Res<()> {
 
     let catalog = json!({
         "format": 1,
-        "generated_at": chrono::Utc::now().format("%Y-%m-%d").to_string(),
+        "generated_at": jiff::Timestamp::now().strftime("%Y-%m-%d").to_string(),
         "attribution": [
             "Recensement des domaines nordiques skimap (OSM, OpenSkiMap, Nordic France)",
             "Contours : IGN Admin Express via Etalab (Licence Ouverte 2.0)"

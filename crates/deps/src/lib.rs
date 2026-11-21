@@ -6,6 +6,8 @@
 
 #[cfg(test)]
 mod tests {
+    use jiff::civil::date;
+
     #[test]
     fn dependencies_link() {
         let p = geo::Point::new(6.77, 44.86);
@@ -26,7 +28,7 @@ mod tests {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         let v: i64 = conn.query_row("select 40 + 2", [], |r| r.get(0)).unwrap();
         assert_eq!(v, 42);
-        let _ = chrono::NaiveDate::from_ymd_opt(2027, 1, 15).unwrap();
+        let _ = date(2027, 1, 15);
         let _ = httpdate::fmt_http_date(std::time::SystemTime::UNIX_EPOCH);
         let _ = quick_xml::Reader::from_str("<a/>");
         let _ = csv::ReaderBuilder::new();

@@ -40,7 +40,7 @@
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 
-use chrono::{DateTime, NaiveDateTime, Utc};
+use jiff::{Timestamp, civil::DateTime};
 use serde::{Deserialize, Serialize};
 use skimap_assist::alerts;
 use skimap_assist::inputs::SiteData;
@@ -236,40 +236,40 @@ pub enum Input {
     /// A GPS fix.
     Fix {
         /// Time.
-        t: DateTime<Utc>,
+        t: Timestamp,
         /// Position.
         pos: LonLat,
     },
     /// Activity recognised by the phone, or the significant motion sensor.
     Activity {
         /// Time.
-        t: DateTime<Utc>,
+        t: Timestamp,
         /// Activity.
         activity: Activity,
     },
     /// Screen on (interactive) or off.
     Screen {
         /// Time.
-        t: DateTime<Utc>,
+        t: Timestamp,
         /// On.
         on: bool,
     },
     /// Trails closed (OSM ways), from the status sources or a report.
     Closed {
         /// Time.
-        t: DateTime<Utc>,
+        t: Timestamp,
         /// OSM ways.
         ways: Vec<i64>,
     },
     /// The skier refuses the last switch (one gesture).
     Refuse {
         /// Time.
-        t: DateTime<Utc>,
+        t: Timestamp,
     },
     /// The skier answers the last proposal (C11): accept or refuse, one gesture.
     Answer {
         /// Time.
-        t: DateTime<Utc>,
+        t: Timestamp,
         /// Accepted.
         accept: bool,
     },
@@ -278,14 +278,14 @@ pub enum Input {
     /// stopped does not (X10).
     Steps {
         /// Time.
-        t: DateTime<Utc>,
+        t: Timestamp,
         /// Steps since the previous report.
         steps: u32,
     },
     /// The skier answers the proposal to choose another group profile (X14): one gesture.
     ProfileAnswer {
         /// Time.
-        t: DateTime<Utc>,
+        t: Timestamp,
         /// Accepted.
         accept: bool,
     },
@@ -293,7 +293,7 @@ pub enum Input {
 
 impl Input {
     /// Time of the input.
-    pub fn t(&self) -> DateTime<Utc> {
+    pub fn t(&self) -> Timestamp {
         match self {
             Input::Fix { t, .. }
             | Input::Activity { t, .. }
@@ -331,7 +331,7 @@ pub enum Cause {
     /// Late for a limit (C7 deadline or return time asked).
     Late {
         /// The limit.
-        limit: NaiveDateTime,
+        limit: DateTime,
     },
     /// Conditions turning (A8).
     Conditions(Condition),
@@ -386,9 +386,9 @@ pub struct Recap {
     /// How it ended.
     pub end: End,
     /// Start, local.
-    pub started: NaiveDateTime,
+    pub started: DateTime,
     /// End, local.
-    pub finished: NaiveDateTime,
+    pub finished: DateTime,
     /// Time moving, minutes.
     pub moving_min: f64,
     /// Time stopped, minutes.
@@ -422,28 +422,28 @@ pub enum Output {
     /// Something said.
     Spoken {
         /// Time.
-        t: DateTime<Utc>,
+        t: Timestamp,
         /// What.
         spoken: Spoken,
     },
     /// A decision on the outing.
     Session {
         /// Time of the decision (the event carries the time it refers to).
-        t: DateTime<Utc>,
+        t: Timestamp,
         /// Decision.
         event: SessionEvent,
     },
     /// An alert raised.
     Alert {
         /// Time.
-        t: DateTime<Utc>,
+        t: Timestamp,
         /// Alert.
         alert: Alert,
     },
     /// Switch to another route.
     Switched {
         /// Time.
-        t: DateTime<Utc>,
+        t: Timestamp,
         /// Previous route.
         from: RouteRef,
         /// New route.
@@ -456,7 +456,7 @@ pub enum Output {
     /// Previous route put back.
     Reverted {
         /// Time.
-        t: DateTime<Utc>,
+        t: Timestamp,
         /// Route followed again.
         to: RouteRef,
         /// Cause of the switch refused.
@@ -467,28 +467,28 @@ pub enum Output {
     /// New GPS request for the client.
     Gps {
         /// Time.
-        t: DateTime<Utc>,
+        t: Timestamp,
         /// Request.
         request: GpsRequest,
     },
     /// End of the outing.
     Recap {
         /// Time.
-        t: DateTime<Utc>,
+        t: Timestamp,
         /// Recap.
         recap: Recap,
     },
     /// A proposal (C11), to accept or refuse ([`Input::Answer`]).
     Proposal {
         /// Time.
-        t: DateTime<Utc>,
+        t: Timestamp,
         /// Proposal.
         proposal: Box<Proposal>,
     },
     /// The answer to a proposal.
     Answered {
         /// Time.
-        t: DateTime<Utc>,
+        t: Timestamp,
         /// What was proposed.
         kind: ProposalKind,
         /// Accepted.
@@ -500,7 +500,7 @@ pub enum Output {
     /// by [`Input::ProfileAnswer`].
     ProfileProposal {
         /// Time.
-        t: DateTime<Utc>,
+        t: Timestamp,
         /// Proposal.
         proposal: Box<ProfileProposal>,
     },
@@ -508,7 +508,7 @@ pub enum Output {
     /// from now on (arrival, proposals).
     ProfileAnswered {
         /// Time.
-        t: DateTime<Utc>,
+        t: Timestamp,
         /// Accepted.
         accept: bool,
         /// The profile chosen (accepted).
@@ -520,15 +520,15 @@ pub enum Output {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Eta {
     /// Time of the estimate (local).
-    pub at: NaiveDateTime,
+    pub at: DateTime,
     /// Arrival, median (local).
-    pub arrival: NaiveDateTime,
+    pub arrival: DateTime,
     /// 10 % quantile.
-    pub arrival_lo: NaiveDateTime,
+    pub arrival_lo: DateTime,
     /// 90 % quantile.
-    pub arrival_hi: NaiveDateTime,
+    pub arrival_hi: DateTime,
     /// Arrival planned for the group.
-    pub planned: NaiveDateTime,
+    pub planned: DateTime,
     /// What remains.
     pub remaining: Prediction,
     /// Progress pace of the day on the flat, relative to C5.
@@ -539,7 +539,7 @@ pub struct Eta {
 
 impl Output {
     /// Time.
-    pub fn t(&self) -> DateTime<Utc> {
+    pub fn t(&self) -> Timestamp {
         match self {
             Output::Spoken { t, .. }
             | Output::Session { t, .. }
@@ -631,15 +631,15 @@ struct Proposals {
     pending: Option<PendingProposal>,
 }
 
-fn secs_of(t: DateTime<Utc>) -> f64 {
-    t.timestamp_millis() as f64 / 1000.0
+fn secs_of(t: Timestamp) -> f64 {
+    t.as_millisecond() as f64 / 1000.0
 }
 
-fn utc_of(t: f64) -> DateTime<Utc> {
-    DateTime::<Utc>::from_timestamp_millis((t * 1000.0).round() as i64).expect("time in range")
+fn utc_of(t: f64) -> Timestamp {
+    Timestamp::from_millisecond((t * 1000.0).round() as i64).expect("time in range")
 }
 
-fn local(t: f64) -> NaiveDateTime {
+fn local(t: f64) -> DateTime {
     skimap_core::ephemeris::local_time(utc_of(t))
 }
 
@@ -1036,7 +1036,7 @@ impl<'a> Tracker<'a> {
                         }
                         None => (model, model * TurnaroundParams::default().eta_factor),
                     };
-                    let back = start + chrono::Duration::seconds(back_s as i64);
+                    let back = start + jiff::SignedDuration::from_secs(back_s as i64);
                     let ev = loop_voice(length / 1000.0, said, back);
                     self.offer(
                         t,
@@ -1766,13 +1766,7 @@ impl<'a> Tracker<'a> {
     }
 
     /// Switches to the longest exit ahead that ends before `limit` at the observed pace.
-    fn shorten(
-        &mut self,
-        t: f64,
-        limit: NaiveDateTime,
-        cause: Cause,
-        out: &mut Vec<Output>,
-    ) -> bool {
+    fn shorten(&mut self, t: f64, limit: DateTime, cause: Cause, out: &mut Vec<Output>) -> bool {
         let pace = self.pace(t).unwrap_or(1.0).max(1.0);
         let f = TurnaroundParams::default().eta_factor;
         let here = self.model_here();

@@ -4,7 +4,7 @@
 //! factor (groomed, marked, avoided zone, snow, overlay) must change the cost by exactly
 //! its value on a uniform terrain.
 
-use chrono::{TimeZone, Utc};
+use jiff::civil::date;
 use skimap_common::crs::{Crs, from_lambert93};
 use skimap_common::geom::LonLat;
 use skimap_common::grid::{GeoTransform, Grid};
@@ -119,7 +119,10 @@ fn router<'a>(g: &'a OffpisteGrid, policy: &'a ZonePolicy, params: &'a CostParam
 fn astar_finds_the_dijkstra_optimum_with_fewer_expansions() {
     let (w, h) = (90, 70);
     let g = rough(w, h);
-    let mut policy = ZonePolicy::open(2, Utc.with_ymd_and_hms(2027, 1, 10, 10, 0, 0).unwrap());
+    let mut policy = ZonePolicy::open(
+        2,
+        skimap_common::dates::utc(date(2027, 1, 10).at(10, 0, 0, 0)).unwrap(),
+    );
     policy.classes[1].avoid = true;
     let params = CostParams::default();
     let r = router(&g, &policy, &params);
@@ -218,7 +221,7 @@ fn straight_cost(
 
 #[test]
 fn each_cell_factor_scales_the_cost() {
-    let at = Utc.with_ymd_and_hms(2027, 1, 10, 10, 0, 0).unwrap();
+    let at = skimap_common::dates::utc(date(2027, 1, 10).at(10, 0, 0, 0)).unwrap();
     let params = CostParams::default();
     let open = ZonePolicy::open(1, at);
     // 100 m on the flat at 1.1 m/s, unknown snow (no snow grid): × 2.
@@ -307,7 +310,10 @@ fn windows_and_snapping() {
     let c = g.center(12, 7).unwrap();
     assert!(c.haversine_m(p) < 0.01);
     assert_eq!(g.cell_of(LonLat::new(5.0, 44.0)).unwrap(), None);
-    let policy = ZonePolicy::open(2, Utc.with_ymd_and_hms(2027, 1, 10, 10, 0, 0).unwrap());
+    let policy = ZonePolicy::open(
+        2,
+        skimap_common::dates::utc(date(2027, 1, 10).at(10, 0, 0, 0)).unwrap(),
+    );
     let params = CostParams::default();
     let r = router(&g, &policy, &params);
     let passable = r.passable(full);
@@ -444,7 +450,10 @@ fn reference_cost(
 fn router_costs_equal_the_reference_model() {
     let (w, h) = (40, 30);
     let g = rough(w, h);
-    let mut policy = ZonePolicy::open(2, Utc.with_ymd_and_hms(2027, 1, 10, 10, 0, 0).unwrap());
+    let mut policy = ZonePolicy::open(
+        2,
+        skimap_common::dates::utc(date(2027, 1, 10).at(10, 0, 0, 0)).unwrap(),
+    );
     policy.classes[1].avoid = true;
     let params = CostParams::default();
     let r = router(&g, &policy, &params);
@@ -474,7 +483,10 @@ fn router_costs_equal_the_reference_model() {
     assert!(compared >= 15, "{compared}");
     // Diagonal on the flat: 4 √2 cells.
     let flat = flat(PISTE_NONE, 0);
-    let open = ZonePolicy::open(1, Utc.with_ymd_and_hms(2027, 1, 10, 10, 0, 0).unwrap());
+    let open = ZonePolicy::open(
+        1,
+        skimap_common::dates::utc(date(2027, 1, 10).at(10, 0, 0, 0)).unwrap(),
+    );
     let rr = router(&flat, &open, &params);
     let d = rr
         .route_cells(Window::full(&flat), (0, 0), (4, 4), Heuristic::AStar)

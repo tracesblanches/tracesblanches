@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use anyhow::{Result, bail};
-use chrono::NaiveDate;
+use jiff::civil::Date;
 use skimap_common::geom::LonLat;
 use skimap_common::layout::DataLayout;
 use skimap_common::site::Site;
@@ -12,7 +12,7 @@ use skimap_common::site::Site;
 #[derive(Debug, Clone, Default)]
 pub struct AssistArgs {
     /// First day (default: today, legal time).
-    pub date: Option<NaiveDate>,
+    pub date: Option<Date>,
     /// Days after the first one.
     pub days: u32,
     /// Home point, for the distances of the briefing.
@@ -47,7 +47,7 @@ pub fn assist(
 ) -> Result<(skimap_assist::Output, Vec<String>)> {
     let date = a
         .date
-        .unwrap_or_else(|| skimap_core::ephemeris::local_time(chrono::Utc::now()).date());
+        .unwrap_or_else(|| skimap_core::ephemeris::local_time(jiff::Timestamp::now()).date());
     let mut opts = skimap_assist::Options {
         date: Some(date),
         extra_days: a.days,
@@ -107,6 +107,7 @@ mod tests {
         clippy::disallowed_methods,
         reason = "the test writes its inputs directly"
     )]
+    use jiff::civil::date;
 
     use std::path::Path;
 
@@ -157,7 +158,7 @@ mod tests {
         std::fs::write(&zones_meta, serde_json::to_vec_pretty(&zones).unwrap()).unwrap();
         assert!(skimap_pack::build::layers::restricted(&zones.sources));
 
-        let date = NaiveDate::from_ymd_opt(2026, 1, 15).unwrap();
+        let date = date(2026, 1, 15);
         let args = AssistArgs {
             date: Some(date),
             ..Default::default()
@@ -249,8 +250,8 @@ mod tests {
         zones.sources[0].licence = "non vérifiée".into();
         std::fs::write(&zones_meta, serde_json::to_vec_pretty(&zones).unwrap()).unwrap();
 
-        let earlier = NaiveDate::from_ymd_opt(2026, 1, 9).unwrap();
-        let date = NaiveDate::from_ymd_opt(2026, 1, 15).unwrap();
+        let earlier = date(2026, 1, 9);
+        let date = date(2026, 1, 15);
         for (d, personal_sources) in [(earlier, true), (date, false)] {
             let args = AssistArgs {
                 date: Some(d),

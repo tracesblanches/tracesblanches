@@ -57,7 +57,7 @@ fn refresh_is_idempotent() {
     let cfg = Config::from_env().unwrap();
     let layout = cfg.layout();
     let dl = Downloader::from_config(&cfg).unwrap();
-    let now = chrono::Utc::now();
+    let now = jiff::Timestamp::now();
     for site in SITES {
         let first = skimap_refuges::refresh(site, &layout, &dl, now, true).unwrap();
         assert!(first.ran && first.error.is_none());

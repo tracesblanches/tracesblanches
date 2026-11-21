@@ -37,7 +37,7 @@ pub mod validate;
 use std::path::PathBuf;
 use std::time::Instant;
 
-use chrono::{Datelike, NaiveDate};
+use jiff::civil::Date;
 use serde::{Deserialize, Serialize};
 use skimap_common::download::Downloader;
 use skimap_common::geotiff;
@@ -69,7 +69,7 @@ pub struct SnowBuild {
     /// Site identifier.
     pub site: String,
     /// Simulation date (state at 06 UTC).
-    pub date: NaiveDate,
+    pub date: Date,
     /// Map size, cells.
     pub size_cells: [usize; 2],
     /// Massifs of the map.
@@ -170,7 +170,7 @@ pub fn build(
     site: &Site,
     layout: &DataLayout,
     dl: &Downloader,
-    date: Option<NaiveDate>,
+    date: Option<Date>,
 ) -> Result<SnowBuild> {
     let t_all = Instant::now();
     let mut t = Timings::default();
@@ -189,8 +189,11 @@ pub fn build(
     info!(site = site.id, ?codes, s = t.terrain, "snow terrain ready");
 
     let t0 = Instant::now();
-    let year = date.map_or_else(|| chrono::Utc::now().year(), |d| d.year());
-    let current = year == chrono::Utc::now().year();
+    let year = date.map_or_else(
+        || i32::from(skimap_common::dates::utc_date(jiff::Timestamp::now()).year()),
+        |d| i32::from(d.year()),
+    );
+    let current = year == i32::from(skimap_common::dates::utc_date(jiff::Timestamp::now()).year());
     let gz = sim::fetch_year(dl, year, current)?;
     let simulation = sim::Simulation::parse_gz(&gz, &codes, |d| date.is_none_or(|x| x == d))?;
     // Massifs of the box that the simulation does not cover at all (the Spanish

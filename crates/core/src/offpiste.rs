@@ -92,7 +92,7 @@ use std::time::Instant;
 use skimap_common::crs::{self, Crs};
 use skimap_common::geom::LonLat;
 use skimap_common::grid::{GeoTransform, Grid};
-use skimap_zones::chrono::{DateTime, Utc};
+use skimap_zones::jiff::Timestamp;
 use skimap_zones::layer::ZoneLayer;
 use skimap_zones::rules::{RuleSet, Topic};
 
@@ -1082,14 +1082,14 @@ impl ClassPolicy {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ZonePolicy {
     /// Instant evaluated.
-    pub at: DateTime<Utc>,
+    pub at: Timestamp,
     /// Per class, same order as [`OffpisteGrid::classes`].
     pub classes: Vec<ClassPolicy>,
 }
 
 impl ZonePolicy {
     /// No restriction for `n` classes.
-    pub fn open(n: usize, at: DateTime<Utc>) -> Self {
+    pub fn open(n: usize, at: Timestamp) -> Self {
         Self {
             at,
             classes: vec![ClassPolicy::open(); n],
@@ -1103,7 +1103,7 @@ pub fn zone_policy(
     classes: &[ZoneClass],
     layer: &ZoneLayer,
     rules: &RuleSet,
-    at: DateTime<Utc>,
+    at: Timestamp,
 ) -> ZonePolicy {
     let classes = classes
         .iter()
@@ -1913,7 +1913,7 @@ mod tests {
         .unwrap()
     }
 
-    fn at(s: &str) -> DateTime<Utc> {
+    fn at(s: &str) -> Timestamp {
         s.parse().unwrap()
     }
 

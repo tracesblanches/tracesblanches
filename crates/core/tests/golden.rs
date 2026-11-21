@@ -13,11 +13,12 @@
 //! estimated 2 h 15 (docs/architecture/compiler.md); refuges.info altitudes of the Refuge
 //! des Fonts (2040 m) and the Chalet Gaillard (1232 m); col d'Izoard 2360 m.
 
+use jiff::civil::date;
 #[path = "../../../fixtures/support/mod.rs"]
 mod fixtures;
 
-use chrono::{DateTime, NaiveDate, Utc};
 use fixtures::golden::{Golden, Tol};
+use jiff::Timestamp;
 use skimap_common::geom::LonLat;
 use skimap_core::eta::{EtaModel, munter_s, tobler_s};
 use skimap_core::graph::{HalfEdge, PisteGraph};
@@ -48,12 +49,12 @@ fn distance() -> Distance {
     }
 }
 
-fn instant(s: &str) -> DateTime<Utc> {
-    DateTime::parse_from_rfc3339(s).unwrap().to_utc()
+fn instant(s: &str) -> Timestamp {
+    s.parse::<Timestamp>().unwrap()
 }
 
-fn seconds(t: DateTime<Utc>) -> f64 {
-    t.timestamp() as f64
+fn seconds(t: Timestamp) -> f64 {
+    t.as_second() as f64
 }
 
 fn graph_figures(g: &PisteGraph, k: &mut Golden) {
@@ -158,7 +159,7 @@ fn cervieres() {
         .unwrap();
     route_figures(&g, &izoard, "laus_brunissard", &mut k);
     // C7 on Le Laus → Les Fonts, 15 January 2027 (docs: start 13:00, back by 17:19).
-    let date = NaiveDate::from_ymd_opt(2027, 1, 15).unwrap();
+    let date = date(2027, 1, 15);
     let p = TurnaroundParams::default();
     let dl = deadline(date, laus, &p).unwrap();
     k.num(
@@ -230,7 +231,7 @@ fn chapelle_des_bois() {
         .unwrap();
     route_figures(&g, &skating, "village_gaillard.fastest_skating", &mut k);
     // C7: out and back from the village, 15 January 2027, start 13:00 and 14:00 local.
-    let date = NaiveDate::from_ymd_opt(2027, 1, 15).unwrap();
+    let date = date(2027, 1, 15);
     let p = TurnaroundParams::default();
     let dl = deadline(date, village, &p).unwrap();
     k.num(

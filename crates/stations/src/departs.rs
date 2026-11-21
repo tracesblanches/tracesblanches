@@ -1148,7 +1148,9 @@ pub fn write(
     write_json(
         &path,
         &DepartsFile {
-            generated_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            generated_at: jiff::Timestamp::now()
+                .strftime("%Y-%m-%dT%H:%M:%SZ")
+                .to_string(),
             osm_valid_at,
             notes: all_notes,
             domains,

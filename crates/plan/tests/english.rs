@@ -10,7 +10,7 @@
 #[path = "../../../fixtures/support/mod.rs"]
 mod fixtures;
 
-use chrono::NaiveDate;
+use jiff::civil::Date;
 use skimap_assist::inputs::SiteData;
 use skimap_common::Lang;
 use skimap_common::layout::DataLayout;
@@ -103,7 +103,7 @@ fn the_day_plan_in_english() {
             }
         }
         let mut built = 0;
-        for date in [day, NaiveDate::from_ymd_opt(2027, 2, 20).expect("date")] {
+        for date in [day, Date::new(2027, 2, 20).expect("date")] {
             for r in &reqs {
                 let mut r = r.clone();
                 r.date = date;
@@ -158,10 +158,7 @@ fn the_day_plan_in_english() {
 #[test]
 fn closed_lists_in_english() {
     let t = skimap_plan::text::of(Lang::En);
-    let at = NaiveDate::from_ymd_opt(2027, 2, 20)
-        .expect("date")
-        .and_hms_opt(14, 3, 0)
-        .expect("time");
+    let at = Date::new(2027, 2, 20).expect("date").at(14, 3, 0, 0);
     let mut all: Vec<String> = Vec::new();
     for r in [
         PaceReason::Slower,

@@ -14,7 +14,7 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::str::FromStr;
 
-use chrono::{Datelike, NaiveDate};
+use jiff::civil::Date;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use skimap_common::geom::LonLat;
 
@@ -108,7 +108,7 @@ impl MonthDay {
     /// Builds a month-day; 29 February is accepted.
     pub fn new(month: u32, day: u32) -> Result<Self> {
         // 2024 is a leap year: every MM-DD that exists in some year exists in it.
-        if NaiveDate::from_ymd_opt(2024, month, day).is_none() {
+        if skimap_common::dates::ymd(2024, month, day).is_none() {
             return Err(Error::Rules(format!(
                 "invalid month-day {month:02}-{day:02}"
             )));
@@ -117,10 +117,10 @@ impl MonthDay {
     }
 
     /// The month-day of a date.
-    pub fn of(date: NaiveDate) -> Self {
+    pub fn of(date: Date) -> Self {
         Self {
-            month: date.month(),
-            day: date.day(),
+            month: date.month() as u32,
+            day: date.day() as u32,
         }
     }
 }
@@ -184,7 +184,7 @@ pub enum Period {
 impl Period {
     /// Whether a calendar period contains `date`. `Night` and `ZoneMonths` depend on the
     /// time or on the zone and return `None`.
-    pub fn contains_date(&self, date: NaiveDate) -> Option<bool> {
+    pub fn contains_date(&self, date: Date) -> Option<bool> {
         match self {
             Period::AllYear => Some(true),
             Period::Yearly { from, to } => {
@@ -243,15 +243,15 @@ fn fr_day(md: MonthDay) -> String {
 pub struct InForce {
     /// First day in force.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub from: Option<NaiveDate>,
+    pub from: Option<Date>,
     /// Last day in force.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub until: Option<NaiveDate>,
+    pub until: Option<Date>,
 }
 
 impl InForce {
     /// Whether the text is in force on `date`.
-    pub fn contains(&self, date: NaiveDate) -> bool {
+    pub fn contains(&self, date: Date) -> bool {
         self.from.is_none_or(|f| date >= f) && self.until.is_none_or(|u| date <= u)
     }
 }
@@ -381,7 +381,7 @@ pub struct RuleSet {
     /// Schema version of the file.
     pub schema_version: u32,
     /// Date of the last editorial review.
-    pub reviewed: NaiveDate,
+    pub reviewed: Date,
     /// Rules.
     pub rules: Vec<Rule>,
 }
@@ -488,8 +488,8 @@ impl RuleSet {
 mod tests {
     use super::*;
 
-    fn d(y: i32, m: u32, day: u32) -> NaiveDate {
-        NaiveDate::from_ymd_opt(y, m, day).unwrap()
+    fn d(y: i32, m: u32, day: u32) -> Date {
+        skimap_common::dates::ymd(y, m, day).unwrap()
     }
 
     #[test]

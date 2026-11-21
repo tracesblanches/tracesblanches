@@ -1,7 +1,7 @@
 //! The texts shown to the skier carry no internal code (#177): no ticket or model code
 //! (« modèle C5 », « fartage A2 », « (C7) »), no point identifier (« (depart-1) »).
 
-use chrono::NaiveDate;
+use jiff::civil::date;
 use skimap_assist::text::{self, Lang};
 use skimap_assist::wax::SnowType;
 
@@ -26,10 +26,7 @@ fn plain(s: &str) {
 
 #[test]
 fn day_texts_have_no_internal_code() {
-    let at = NaiveDate::from_ymd_opt(2026, 11, 21)
-        .unwrap()
-        .and_hms_opt(9, 0, 0)
-        .unwrap();
+    let at = date(2026, 11, 21).at(9, 0, 0, 0);
     for lang in [Lang::Fr, Lang::En] {
         let t = text::of(lang);
         plain(&t.s_time_group_slow(
@@ -60,7 +57,7 @@ fn day_texts_have_no_internal_code() {
             "Parking",
             at.date(),
             at,
-            Some(at + chrono::Duration::hours(7)),
+            Some(at + jiff::SignedDuration::from_hours(7)),
             None,
         ));
         plain(&t.wax_model(SnowType::TransformedMoist, -2.0, -5.0, 1.0));

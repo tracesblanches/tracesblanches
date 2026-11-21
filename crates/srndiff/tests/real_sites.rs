@@ -4,6 +4,7 @@
 
 use std::path::PathBuf;
 
+use jiff::civil::date;
 use skimap_common::geom::LonLat;
 use skimap_common::site::Site;
 /// Evaluation site of `data/sites.json`, test data.
@@ -17,7 +18,6 @@ static CHAPELLE_DES_BOIS: std::sync::LazyLock<skimap_common::site::Site> =
 use skimap_core::offpiste::{self, OffpisteGrid};
 use skimap_srndiff::field::{Areas, Classes, ElevationDm, SiteZones, SlopeHalfDeg};
 use skimap_srndiff::{Layers, Level, Params, assess, profile};
-use skimap_zones::chrono::{TimeZone, Utc};
 use skimap_zones::layer::ZoneLayer;
 use skimap_zones::rules::RuleSet;
 
@@ -63,7 +63,7 @@ fn assess_on_site(site: &Site, file: &str) -> skimap_srndiff::Report {
     let zones = SiteZones {
         layer: &layer,
         rules: &rules,
-        at: Utc.with_ymd_and_hms(2026, 2, 15, 9, 0, 0).unwrap(),
+        at: skimap_common::dates::utc(date(2026, 2, 15).at(9, 0, 0, 0)).unwrap(),
     };
     let elev = ElevationDm(&g.elevation);
     let slope = SlopeHalfDeg(&g.slope);

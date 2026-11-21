@@ -25,7 +25,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
-use chrono::{NaiveDate, NaiveTime};
+use jiff::civil::{Date, Time};
 use serde::{Deserialize, Serialize};
 
 use crate::crs;
@@ -489,9 +489,9 @@ pub struct ProofOuting {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Season {
     /// First open day.
-    pub first: NaiveDate,
+    pub first: Date,
     /// Last open day.
-    pub last: NaiveDate,
+    pub last: Date,
     /// Where the dates were published.
     pub source: String,
     /// URL of the publication.
@@ -509,7 +509,7 @@ pub struct LocalData {
     pub season: Option<Season>,
     /// Day archived in `assist/history/` for the day plans.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub archived_day: Option<NaiveDate>,
+    pub archived_day: Option<Date>,
     /// Preset day-plan requests.
     #[serde(default)]
     pub plan_requests: Vec<PlanPreset>,
@@ -519,9 +519,8 @@ pub struct LocalData {
 }
 
 /// Parses `HH:MM`.
-pub fn parse_hhmm(s: &str) -> Result<NaiveTime> {
-    NaiveTime::parse_from_str(s, "%H:%M")
-        .map_err(|e| Error::Config(format!("time `{s}` (HH:MM): {e}")))
+pub fn parse_hhmm(s: &str) -> Result<Time> {
+    Time::strptime("%H:%M", s).map_err(|e| Error::Config(format!("time `{s}` (HH:MM): {e}")))
 }
 
 // --- Evaluation table -----------------------------------------------------------------
@@ -1093,6 +1092,7 @@ pub fn corridor(line: &[(f64, f64)], half_width: f64) -> Vec<(f64, f64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jiff::civil::time;
 
     static CERVIERES: LazyLock<Site> = LazyLock::new(|| *site("cervieres").unwrap());
     static CHAPELLE_DES_BOIS: LazyLock<Site> =
@@ -1165,16 +1165,13 @@ mod tests {
     fn local_data() {
         let c = local("cervieres").unwrap();
         assert_eq!(c.starts[0].phrase, "Le Laus");
-        assert_eq!(c.archived_day, NaiveDate::from_ymd_opt(2026, 1, 9));
+        assert_eq!(c.archived_day, crate::dates::ymd(2026, 1, 9));
         assert_eq!(c.plan_requests.len(), 2);
         assert!(c.plan_requests[1].easy_only);
         assert_eq!(c.proof_outings.len(), 2);
         let j = local("chapelle-des-bois").unwrap();
         assert_eq!(j.plan_requests[0].return_before.as_deref(), Some("16:00"));
-        assert_eq!(
-            parse_hhmm("14:30").unwrap(),
-            NaiveTime::from_hms_opt(14, 30, 0).unwrap()
-        );
+        assert_eq!(parse_hhmm("14:30").unwrap(), time(14, 30, 0, 0));
         assert!(local("mouthe").is_none());
         // A site without local data starts at its centre.
         let mut s = *CERVIERES;

@@ -13,7 +13,7 @@
 //! The ephemerides assume a sea-level horizon: in a valley the sun goes behind the ridges
 //! earlier, and under forest the light fades before civil dusk; the margin covers that.
 
-use chrono::{DateTime, Duration, NaiveDate, Utc};
+use jiff::{SignedDuration, Timestamp, civil::Date};
 use serde::{Deserialize, Serialize};
 use skimap_common::geom::LonLat;
 
@@ -59,15 +59,15 @@ impl Default for TurnaroundParams {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Deadline {
     /// Sunset (UTC).
-    pub sunset: DateTime<Utc>,
+    pub sunset: Timestamp,
     /// Civil dusk (UTC).
-    pub civil_dusk: DateTime<Utc>,
+    pub civil_dusk: Timestamp,
     /// Light limit minus the margin (UTC).
-    pub deadline: DateTime<Utc>,
+    pub deadline: Timestamp,
 }
 
 /// Deadline for a date and place; `None` without sunset (polar day or night).
-pub fn deadline(date: NaiveDate, place: LonLat, p: &TurnaroundParams) -> Option<Deadline> {
+pub fn deadline(date: Date, place: LonLat, p: &TurnaroundParams) -> Option<Deadline> {
     let (_, sunset) = sun_times(date, place)?;
     let (_, civil_dusk) = civil_twilight(date, place)?;
     let limit = match p.limit {
@@ -81,8 +81,8 @@ pub fn deadline(date: NaiveDate, place: LonLat, p: &TurnaroundParams) -> Option<
     })
 }
 
-fn secs(s: f64) -> Duration {
-    Duration::milliseconds((s * 1000.0).round() as i64)
+fn secs(s: f64) -> SignedDuration {
+    SignedDuration::from_millis((s * 1000.0).round() as i64)
 }
 
 /// Urgency of the turnaround.
@@ -103,9 +103,9 @@ pub struct Status {
     /// Estimated time back, seconds, factor included.
     pub time_back_s: f64,
     /// Estimated arrival if the skier turns around now (UTC).
-    pub arrival: DateTime<Utc>,
+    pub arrival: Timestamp,
     /// Latest time to turn around (UTC): deadline minus the time back.
-    pub latest_turnaround: DateTime<Utc>,
+    pub latest_turnaround: Timestamp,
     /// Deadline minus arrival, seconds (negative: late).
     pub margin_s: f64,
     /// Urgency.
@@ -115,14 +115,14 @@ pub struct Status {
 /// Turnaround status at `now` given the model estimate of the way back
 /// (`model_time_back_s`, without the factor).
 pub fn status(
-    now: DateTime<Utc>,
+    now: Timestamp,
     model_time_back_s: f64,
     deadline: &Deadline,
     p: &TurnaroundParams,
 ) -> Status {
     let back = model_time_back_s * p.eta_factor;
     let arrival = now + secs(back);
-    let margin_s = (deadline.deadline - arrival).num_milliseconds() as f64 / 1000.0;
+    let margin_s = (deadline.deadline - arrival).as_millis() as i64 as f64 / 1000.0;
     Status {
         time_back_s: back,
         arrival,
@@ -147,13 +147,13 @@ pub struct OutAndBack {
     /// Position of that point.
     pub turn_pos: LonLat,
     /// Time the skier reaches it (UTC), factor included.
-    pub turn_time: DateTime<Utc>,
+    pub turn_time: Timestamp,
     /// Arrival back at the start (UTC), factor included.
-    pub arrival: DateTime<Utc>,
+    pub arrival: Timestamp,
     /// Whether the whole route can be done out and back before the deadline.
     pub whole_route: bool,
     /// Arrival if the whole route is done out and back (UTC).
-    pub whole_arrival: DateTime<Utc>,
+    pub whole_arrival: Timestamp,
 }
 
 /// Furthest turnaround point on `route` (out along it, back along the same trails in
@@ -163,7 +163,7 @@ pub fn out_and_back(
     g: &PisteGraph,
     route: &Route,
     model: &EtaModel,
-    start: DateTime<Utc>,
+    start: Timestamp,
     deadline: &Deadline,
     p: &TurnaroundParams,
 ) -> Option<OutAndBack> {
@@ -183,7 +183,7 @@ pub fn out_and_back(
                 + model.piece_time_s(pc.attrs, pc.dist_m, -pc.dz_m, pc.elev_m),
         );
     }
-    let budget = (deadline.deadline - start).num_milliseconds() as f64 / 1000.0 / p.eta_factor;
+    let budget = (deadline.deadline - start).as_millis() as i64 as f64 / 1000.0 / p.eta_factor;
     let total = |i: usize| out[i] + back[i];
     if budget < 0.0 {
         return None;
@@ -237,9 +237,10 @@ mod tests {
     use crate::graph::tests::{toy, toy_plane};
     use crate::graph::{PisteGraph, Profile};
     use crate::routing::{Router, Style};
+    use jiff::civil::date;
 
-    fn utc(s: &str) -> DateTime<Utc> {
-        DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
+    fn utc(s: &str) -> Timestamp {
+        s.parse::<Timestamp>().unwrap()
     }
 
     #[test]
@@ -260,13 +261,13 @@ mod tests {
             ),
         ];
         for (place, (y, m, d), sunset, dusk) in cases {
-            let date = NaiveDate::from_ymd_opt(y, m, d).unwrap();
+            let date = date(y, m, d);
             let p = TurnaroundParams::default();
             let dl = deadline(date, place, &p).unwrap();
-            let want = utc(dusk) - Duration::minutes(30);
-            let diff = (dl.deadline - want).num_seconds().abs();
+            let want = utc(dusk) - SignedDuration::from_mins(30);
+            let diff = (dl.deadline - want).as_secs().abs();
             assert!(diff <= 90, "{date}: {} vs {want}", dl.deadline);
-            assert!((dl.sunset - utc(sunset)).num_seconds().abs() <= 90);
+            assert!((dl.sunset - utc(sunset)).as_secs().abs() <= 90);
             let sunset_limit = TurnaroundParams {
                 limit: LightLimit::Sunset,
                 margin_min: 0.0,
@@ -279,21 +280,24 @@ mod tests {
 
     #[test]
     fn status_and_urgency() {
-        let date = NaiveDate::from_ymd_opt(2027, 1, 15).unwrap();
+        let date = date(2027, 1, 15);
         let p = TurnaroundParams::default();
         let dl = deadline(date, LonLat::new(6.1118, 46.5952), &p).unwrap();
         // One hour back by the model, 1.2 × = 72 min.
-        let now = dl.deadline - Duration::minutes(120);
+        let now = dl.deadline - SignedDuration::from_mins(120);
         let s = status(now, 3600.0, &dl, &p);
         assert_eq!(s.time_back_s, 4320.0);
-        assert_eq!(s.latest_turnaround, dl.deadline - Duration::minutes(72));
+        assert_eq!(
+            s.latest_turnaround,
+            dl.deadline - SignedDuration::from_mins(72)
+        );
         assert!((s.margin_s - 48.0 * 60.0).abs() < 1e-6);
         assert_eq!(s.urgency, Urgency::Ok);
         assert_eq!(
-            status(dl.deadline - Duration::minutes(90), 3600.0, &dl, &p).urgency,
+            status(dl.deadline - SignedDuration::from_mins(90), 3600.0, &dl, &p).urgency,
             Urgency::Soon
         );
-        let late = status(dl.deadline - Duration::minutes(60), 3600.0, &dl, &p);
+        let late = status(dl.deadline - SignedDuration::from_mins(60), 3600.0, &dl, &p);
         assert_eq!(late.urgency, Urgency::Now);
         assert!((late.margin_s + 12.0 * 60.0).abs() < 1e-6);
     }
@@ -334,7 +338,7 @@ mod tests {
             eta_factor: 1.0,
             ..TurnaroundParams::default()
         };
-        let date = NaiveDate::from_ymd_opt(2027, 1, 15).unwrap();
+        let date = date(2027, 1, 15);
         let dl = deadline(date, LonLat::new(6.1, 46.6), &p).unwrap();
         // Enough time: whole route.
         let start = dl.deadline - secs(t_out + t_back + 600.0);
@@ -342,8 +346,8 @@ mod tests {
         assert!(ob.whole_route);
         assert!((ob.turn_at_m - r.length_m()).abs() < 1e-6);
         assert!(
-            (ob.arrival - (dl.deadline - Duration::seconds(600)))
-                .num_seconds()
+            (ob.arrival - (dl.deadline - SignedDuration::from_secs(600)))
+                .as_secs()
                 .abs()
                 <= 1
         );
@@ -353,7 +357,7 @@ mod tests {
         assert!(!ob.whole_route);
         assert!(ob.turn_at_m > 0.0 && ob.turn_at_m < r.length_m());
         assert!(
-            (ob.arrival - dl.deadline).num_milliseconds().abs() <= 5,
+            (ob.arrival - dl.deadline).as_millis().abs() <= 5,
             "{:?}",
             ob.arrival
         );
@@ -361,7 +365,15 @@ mod tests {
         assert!(ob.turn_pos.haversine_m(g.point_at(0, ob.turn_at_m)) < 0.5);
         // Too late to start.
         assert!(
-            out_and_back(&g, &r, &model, dl.deadline + Duration::minutes(1), &dl, &p).is_none()
+            out_and_back(
+                &g,
+                &r,
+                &model,
+                dl.deadline + SignedDuration::from_mins(1),
+                &dl,
+                &p
+            )
+            .is_none()
         );
         // Larger factor: turns earlier.
         let cautious = TurnaroundParams {

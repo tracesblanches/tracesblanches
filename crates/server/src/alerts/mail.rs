@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
-use chrono::Utc;
+use jiff::Timestamp;
 
 use crate::util::{base64, random_hex};
 
@@ -302,7 +302,10 @@ impl SmtpMailer {
             self.cfg.from,
             mail.to,
             encode_word(&mail.subject),
-            Utc::now().to_rfc2822(),
+            jiff::fmt::rfc2822::to_string(
+                &Timestamp::now().to_zoned_datetime(jiff::tz::TimeZone::UTC)
+            )
+            .expect("current year in the RFC 2822 range"),
             random_hex(16).unwrap_or_else(|_| "0".repeat(32)),
         )
     }

@@ -60,7 +60,10 @@
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use chrono::{Duration, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
+use jiff::{
+    SignedDuration,
+    civil::{Date, DateTime, Time},
+};
 use serde::Serialize;
 use skimap_common::geom::LonLat;
 use skimap_core::calibration::{PaceParams, ProfileModel, TERRAINS, Terrain, terrain_ratio};
@@ -85,13 +88,13 @@ pub struct Request {
     /// Name of the start.
     pub start_name: String,
     /// Start time, local.
-    pub start_time: NaiveDateTime,
+    pub start_time: DateTime,
     /// Time available, minutes (model time).
     pub budget_min: f64,
     /// Technique.
     pub style: Style,
     /// Back before (local), if any.
-    pub return_before: Option<NaiveTime>,
+    pub return_before: Option<Time>,
     /// Hardest difficulty wanted, if any.
     pub max_difficulty: Option<Difficulty>,
     /// Number of suggestions.
@@ -119,7 +122,7 @@ pub struct Suggestion {
     /// Model time (C5), minutes.
     pub eta_min: f64,
     /// Planned arrival (model time × 1.2), local.
-    pub arrival: NaiveDateTime,
+    pub arrival: DateTime,
     /// Turning point.
     pub turn: LonLat,
     /// Share of the length on stretches of the graph already travelled (out-and-back).
@@ -301,7 +304,7 @@ pub struct Suggestions {
     /// Best first.
     pub suggestions: Vec<Suggestion>,
     /// Deadline of C7 (local).
-    pub deadline: Option<NaiveDateTime>,
+    pub deadline: Option<DateTime>,
     /// Loops evaluated.
     pub evaluated: usize,
     /// Notes (graph limits, data).
@@ -552,7 +555,7 @@ pub fn node_snap(g: &PisteGraph, node: usize) -> Option<Snap> {
 }
 
 /// State of every edge from the status sources of the day.
-fn edge_states(data: &SiteData, g: &PisteGraph, date: NaiveDate) -> Vec<OpenState> {
+fn edge_states(data: &SiteData, g: &PisteGraph, date: Date) -> Vec<OpenState> {
     let mut states = vec![OpenState::Unknown; g.edges().len()];
     let Some(st) = data.status.as_ref() else {
         return states;
@@ -638,9 +641,12 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
         .map(|(p, _)| p);
     let temp = wp
         .and_then(|p| {
-            p.between(req.start_time, req.start_time + Duration::hours(1))
-                .first()
-                .and_then(|h| h.temperature_c)
+            p.between(
+                req.start_time,
+                req.start_time + SignedDuration::from_hours(1),
+            )
+            .first()
+            .and_then(|h| h.temperature_c)
         })
         .unwrap_or(-5.0);
     let quality =
@@ -767,7 +773,7 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
     let tp = group.map_or_else(TurnaroundParams::default, |g| g.profile.turnaround_params());
     let deadline = turnaround::deadline(date, req.start, &tp)
         .map(|d| skimap_core::ephemeris::local_time(d.deadline));
-    let limit = match (req.return_before.map(|t| date.and_time(t)), deadline) {
+    let limit = match (req.return_before.map(|t| date.to_datetime(t)), deadline) {
         (Some(a), Some(b)) => Some(a.min(b)),
         (a, b) => a.or(b),
     };
@@ -956,7 +962,7 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
         } else {
             time_s * TurnaroundParams::default().eta_factor
         };
-        let arrival = req.start_time + Duration::seconds(planned as i64);
+        let arrival = req.start_time + SignedDuration::from_secs(planned as i64);
         if limit.is_some_and(|l| arrival > l) {
             too_late += 1;
             continue;
@@ -988,9 +994,10 @@ pub fn suggest_for(data: &SiteData, req: &Request, group: Option<&ProfileModel>)
             t,
         );
         let added = match (map, wp) {
-            (Some(m), Some(p)) => {
-                p.snowfall_between(m.valid_at.naive_utc() + Duration::hours(1), req.start_time)
-            }
+            (Some(m), Some(p)) => p.snowfall_between(
+                skimap_common::dates::utc_datetime(m.valid_at) + SignedDuration::from_hours(1),
+                req.start_time,
+            ),
             _ => 0.0,
         };
         let snow = map.and_then(|m| briefing::snow_stats(m, &line, added));
@@ -1295,7 +1302,7 @@ pub fn features(s: &Suggestions) -> Vec<serde_json::Value> {
                     "length_km": x.length_km,
                     "gain_m": x.gain_m,
                     "eta_min": x.eta_min,
-                    "arrival": x.arrival.format("%H:%M").to_string(),
+                    "arrival": x.arrival.strftime("%H:%M").to_string(),
                     "out_and_back_share": x.out_and_back_share,
                     "score": (x.score * 100.0).round() / 100.0,
                     "reasons": x.reasons.iter().map(|r| r.text.clone()).collect::<Vec<_>>(),
@@ -1306,7 +1313,7 @@ pub fn features(s: &Suggestions) -> Vec<serde_json::Value> {
 }
 
 /// Spoken summary of a loop: length, model time, planned return.
-pub fn loop_voice(length_km: f64, model_s: f64, arrival: NaiveDateTime) -> skimap_voice::Event {
+pub fn loop_voice(length_km: f64, model_s: f64, arrival: DateTime) -> skimap_voice::Event {
     skimap_voice::Event::LoopSummary {
         km: length_km,
         seconds: model_s,
@@ -1320,13 +1327,11 @@ pub fn loop_voice(length_km: f64, model_s: f64, arrival: NaiveDateTime) -> skima
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jiff::civil::date;
 
     #[test]
     fn loop_summary_is_spoken() {
-        let at = NaiveDate::from_ymd_opt(2026, 1, 5)
-            .unwrap()
-            .and_hms_opt(12, 14, 0)
-            .unwrap();
+        let at = date(2026, 1, 5).at(12, 14, 0, 0);
         assert_eq!(
             loop_voice(12.8, 118.0 * 60.0, at).announce().text(),
             "Boucle de treize kilomètres, environ deux heures, retour vers midi quinze."
@@ -1444,13 +1449,10 @@ mod tests {
             label: "test".into(),
             start: LonLat::new(6.10, 46.60),
             start_name: "A".into(),
-            start_time: NaiveDate::from_ymd_opt(2027, 1, 12)
-                .unwrap()
-                .and_hms_opt(10, 0, 0)
-                .unwrap(),
+            start_time: date(2027, 1, 12).at(10, 0, 0, 0),
             budget_min: min,
             style: Style::Classic,
-            return_before: NaiveTime::from_hms_opt(16, 0, 0),
+            return_before: Time::new(16, 0, 0, 0).ok(),
             max_difficulty: max,
             max_results: 3,
             lang: crate::text::Lang::Fr,
@@ -1545,9 +1547,9 @@ mod tests {
         assert!((gt.median_min - fam_s / 60.0).abs() <= 1.0, "{gt:?}");
         assert!(gt.stops_min > 0.0 && gt.moving_min > best.eta_min);
         // Planned arrival on the group's time with the C7 margin; spoken the same way.
-        let planned = best.arrival - req(0.0, None).start_time;
+        let planned = best.arrival.duration_since(req(0.0, None).start_time);
         assert!(
-            (planned.num_seconds() as f64 - fam_s * 1.2).abs() < 2.0,
+            (planned.as_secs() as f64 - fam_s * 1.2).abs() < 2.0,
             "{planned}"
         );
         let skimap_voice::Event::LoopSummary { seconds, .. } = best.voice else {
@@ -1581,11 +1583,8 @@ mod tests {
         let gt = b4.group.as_ref().unwrap();
         assert!((gt.plan_min - slow / 60.0).abs() <= 1.0, "{gt:?}");
         assert!((gt.median_min - fam_s / 60.0).abs() <= 1.0, "{gt:?}");
-        let planned = b4.arrival - req(0.0, None).start_time;
-        assert!(
-            (planned.num_seconds() as f64 - slow).abs() < 2.0,
-            "{planned}"
-        );
+        let planned = b4.arrival.duration_since(req(0.0, None).start_time);
+        assert!((planned.as_secs() as f64 - slow).abs() < 2.0, "{planned}");
         assert!(
             b4.reasons[0].text.contains("le côté lent"),
             "{}",
@@ -1953,12 +1952,7 @@ mod tests {
         // within 30 m, its ends 900 m away); a one-point line on « Ouest », ignored.
         let at = |f: f64| LonLat::new(6.12 - 0.02 * f, 46.62);
         d.status = Some(Status {
-            polled_at: crate::sun::local_to_utc(
-                NaiveDate::from_ymd_opt(2027, 1, 12)
-                    .unwrap()
-                    .and_hms_opt(7, 30, 0)
-                    .unwrap(),
-            ),
+            polled_at: crate::sun::local_to_utc(date(2027, 1, 12).at(7, 30, 0, 0)),
             itineraries: vec![
                 it("nordicfrance", OpenState::Open, vec![], vec![1]),
                 it("nordicfrance", OpenState::Closed, vec![], vec![2]),
@@ -1988,7 +1982,7 @@ mod tests {
         assert!(says("km sans état connu"), "{:?}", best.reasons);
         // Four days after the poll: the states are not used, everything unknown.
         let mut late = req(budget, None);
-        late.start_time += Duration::days(4);
+        late.start_time += SignedDuration::from_hours(24 * 4);
         let s = suggest(&d, &late);
         let best = s.suggestions.first().expect("a loop");
         assert_eq!((best.status_km.0, best.status_km.1), (0.0, 0.0));

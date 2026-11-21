@@ -3,7 +3,7 @@
 //! position (0, 1, semicircles) and altitude (2, or enhanced 78). Format: Garmin FIT SDK,
 //! « FIT Protocol » (file header, definition and data messages, compressed timestamps).
 
-use chrono::{DateTime, TimeZone, Utc};
+use jiff::Timestamp;
 
 use crate::track::{Point, TrackError};
 
@@ -39,8 +39,8 @@ fn uint(b: &[u8], big: bool) -> u64 {
     v
 }
 
-fn time(fit_s: u32) -> Option<DateTime<Utc>> {
-    Utc.timestamp_opt(FIT_EPOCH + i64::from(fit_s), 0).single()
+fn time(fit_s: u32) -> Option<Timestamp> {
+    Timestamp::new(FIT_EPOCH + i64::from(fit_s), 0).ok()
 }
 
 /// Points of a FIT file.
@@ -171,7 +171,7 @@ pub fn write_for_tests(points: &[Point]) -> Vec<u8> {
     let semi = 2_147_483_648.0 / 180.0;
     let mut last = 0u32;
     for (k, p) in points.iter().enumerate() {
-        let t = p.t.map_or(0, |t| (t.timestamp() - FIT_EPOCH) as u32);
+        let t = p.t.map_or(0, |t| (t.as_second() - FIT_EPOCH) as u32);
         let ele = p
             .ele
             .map_or(0xFFFF_FFFF, |e| ((e + 500.0) * 5.0).round() as u32);
@@ -212,13 +212,13 @@ mod tests {
 
     #[test]
     fn records_with_full_and_compressed_timestamps() {
-        let t0: DateTime<Utc> = "2026-01-10T09:00:00Z".parse().unwrap();
+        let t0: Timestamp = "2026-01-10T09:00:00Z".parse().unwrap();
         let pts: Vec<Point> = (0..50)
             .map(|i| Point {
                 lon: 6.123 + f64::from(i) * 1e-4,
                 lat: 46.6 - f64::from(i) * 1e-4,
                 ele: Some(1090.0 + f64::from(i)),
-                t: Some(t0 + chrono::Duration::seconds(i64::from(i) * 3)),
+                t: Some(t0 + jiff::SignedDuration::from_secs(i64::from(i) * 3)),
             })
             .collect();
         let fit = write_for_tests(&pts);

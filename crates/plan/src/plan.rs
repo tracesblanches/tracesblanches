@@ -32,7 +32,10 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use chrono::{Duration, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
+use jiff::{
+    SignedDuration,
+    civil::{Date, DateTime, Time},
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use skimap_assist::alerts;
@@ -107,17 +110,17 @@ pub struct PlanRequest {
     /// Name of the start.
     pub start_name: String,
     /// Day.
-    pub date: NaiveDate,
+    pub date: Date,
     /// Start time; `None`: the best time of A9.
-    pub start_time: Option<NaiveTime>,
+    pub start_time: Option<Time>,
     /// Earliest start tried by A9.
-    pub earliest: NaiveTime,
+    pub earliest: Time,
     /// Time available, minutes (model time).
     pub budget_min: f64,
     /// Technique.
     pub style: Style,
     /// Back before (local), if any.
-    pub return_before: Option<NaiveTime>,
+    pub return_before: Option<Time>,
     /// Hardest difficulty wanted.
     pub max_difficulty: Option<Difficulty>,
     /// Loops proposed.
@@ -130,7 +133,7 @@ pub struct Morning {
     /// Request.
     pub request: PlanRequest,
     /// Start time used for the loops.
-    pub start_time: NaiveDateTime,
+    pub start_time: DateTime,
     /// Briefing of the day (A1).
     pub briefing: DayBriefing,
     /// Forecast point used (nearest to the start).
@@ -202,9 +205,9 @@ pub fn morning_in(
     });
     let start_time = req
         .start_time
-        .map(|t| date.and_time(t))
+        .map(|t| date.to_datetime(t))
         .or_else(|| best.as_ref().and_then(|b| b.best.as_ref()).map(|s| s.start))
-        .unwrap_or_else(|| date.and_time(req.earliest));
+        .unwrap_or_else(|| date.to_datetime(req.earliest));
     let suggestions = suggest::suggest_for(
         data,
         &suggest::Request {
@@ -435,7 +438,7 @@ pub struct KeyPoint {
     /// Model time from the start, seconds.
     pub model_s: f64,
     /// Planned passage, local (start + model time).
-    pub at: NaiveDateTime,
+    pub at: DateTime,
 }
 
 /// When a planned announcement is said.
@@ -516,25 +519,25 @@ pub struct PlanRoute {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Turnaround {
     /// Sunset, local.
-    pub sunset: Option<NaiveDateTime>,
+    pub sunset: Option<DateTime>,
     /// C7 deadline (light limit minus 30 min), local.
-    pub deadline: Option<NaiveDateTime>,
+    pub deadline: Option<DateTime>,
     /// Return time asked, local.
-    pub return_before: Option<NaiveDateTime>,
+    pub return_before: Option<DateTime>,
     /// The earlier of the two.
-    pub limit: Option<NaiveDateTime>,
+    pub limit: Option<DateTime>,
     /// Planned arrival at the model pace.
-    pub arrival: NaiveDateTime,
+    pub arrival: DateTime,
     /// Planned arrival with the C7 margin (model time × 1.2).
-    pub arrival_with_margin: NaiveDateTime,
+    pub arrival_with_margin: DateTime,
     /// Limit minus the arrival with margin, minutes.
     pub margin_min: Option<f64>,
     /// Latest turnaround at the planned pace (A8), the group's when the plan has one (C11,
     /// [`crate::pace::with_pace`]): `None` when the loop ends before the deadline.
-    pub latest_turnaround: Option<NaiveDateTime>,
+    pub latest_turnaround: Option<DateTime>,
     /// Latest passage at each junction with an exit so that the exit still ends before
     /// the limit (model time × 1.2 from there): (junction index, time).
-    pub latest_exit: Vec<(usize, NaiveDateTime)>,
+    pub latest_exit: Vec<(usize, DateTime)>,
 }
 
 /// A plan B with its announcements.
@@ -576,7 +579,7 @@ pub struct DayPlan {
     /// Site identifier.
     pub site: String,
     /// Day.
-    pub date: NaiveDate,
+    pub date: Date,
     /// Generation time (UTC, RFC 3339).
     pub generated_at: String,
     /// Graph of the legs.
@@ -584,7 +587,7 @@ pub struct DayPlan {
     /// Request.
     pub request: PlanRequest,
     /// Planned start, local.
-    pub departure: NaiveDateTime,
+    pub departure: DateTime,
     /// The loop.
     pub route: PlanRoute,
     /// The other loops proposed: label, km, model minutes, score.
@@ -632,8 +635,8 @@ fn is_fr(l: &Lang) -> bool {
     *l == Lang::Fr
 }
 
-fn secs(s: f64) -> Duration {
-    Duration::milliseconds((s * 1000.0).round() as i64)
+fn secs(s: f64) -> SignedDuration {
+    SignedDuration::from_millis((s * 1000.0).round() as i64)
 }
 
 /// Runs of a predicate along a line, sampled every 10 m: (start, end) in metres; runs
@@ -677,7 +680,7 @@ pub struct Hazards<'a> {
     /// rules).
     pub data: &'a SiteData,
     /// Day.
-    pub date: NaiveDate,
+    pub date: Date,
     /// Protected zones already told for the plan: the morning says them for the loop (A7,
     /// « Votre itinéraire traverse une zone protégée. »). `None`: no protected zone said
     /// along the route (the loop); `Some(zones)`: the route's protected zones that are not
@@ -714,7 +717,7 @@ pub fn protected_zones(
     line: &[LonLat],
     range: (f64, f64),
     data: &SiteData,
-    date: NaiveDate,
+    date: Date,
 ) -> Vec<ZoneCrossing> {
     use skimap_core::zone_eval::Verdict;
     use skimap_zones::layer::ZoneKind;
@@ -788,7 +791,7 @@ pub fn protected_zones(
             }
         }
     }
-    let noon = skimap_assist::sun::local_to_utc(date.and_hms_opt(12, 0, 0).expect("noon"));
+    let noon = skimap_assist::sun::local_to_utc(date.at(12, 0, 0, 0));
     let mut out = Vec::new();
     for (z, (mut runs, first)) in protected.into_iter().zip(inside) {
         runs.retain(|(a, b)| b - a >= 30.0);
@@ -869,7 +872,7 @@ pub fn announcements(
     junctions: &[Junction],
     voice: Option<&Voice>,
     hazards: Option<&Hazards<'_>>,
-    departure: NaiveDateTime,
+    departure: DateTime,
 ) -> Vec<PlannedAnnouncement> {
     let mut out = Vec::new();
     let model = c.model_s();
@@ -1143,7 +1146,7 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
     let local = skimap_core::ephemeris::local_time;
     let deadline = dl.map(|d| local(d.deadline));
     let sunset = dl.map(|d| local(d.sunset));
-    let return_before = m.request.return_before.map(|t| date.and_time(t));
+    let return_before = m.request.return_before.map(|t| date.to_datetime(t));
     let limit = match (deadline, return_before) {
         (Some(a), Some(b)) => Some(a.min(b)),
         (a, b) => a.or(b),
@@ -1168,7 +1171,7 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
         eta,
         max_difficulty: m.request.max_difficulty,
         min_exit_saving_s: MIN_EXIT_SAVING_S,
-        budget_s: limit.map(|l| (l - departure).num_seconds() as f64 / tp.eta_factor),
+        budget_s: limit.map(|l| l.duration_since(departure).as_secs() as f64 / tp.eta_factor),
         lang: m.lang,
     };
     let mut plans_b = Vec::new();
@@ -1321,7 +1324,7 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
             check(&a.announcement);
         }
     }
-    let clock = |t: NaiveDateTime| Clock::floor_quarter(t.hour() as u8, t.minute() as u8);
+    let clock = |t: DateTime| Clock::floor_quarter(t.hour() as u8, t.minute() as u8);
     let mut runtime: Vec<Announcement> = [
         Change::WindRising,
         Change::Fog,
@@ -1345,7 +1348,7 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
     if let Some(d) = deadline {
         runtime.push(
             Event::TurnaroundAdvanced {
-                deadline: clock(d - Duration::hours(1)),
+                deadline: clock(d - SignedDuration::from_hours(1)),
             }
             .announce(),
         );
@@ -1444,12 +1447,8 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
         .collect();
     // Weather of the day (and the evening before, for the hour lookups of A8).
     let weather = point.map(|p| {
-        let from = (date - Duration::days(1))
-            .and_hms_opt(12, 0, 0)
-            .expect("noon");
-        let to = (date + Duration::days(1))
-            .and_hms_opt(1, 0, 0)
-            .expect("1 h");
+        let from = (date - SignedDuration::from_hours(24)).at(12, 0, 0, 0);
+        let to = (date + SignedDuration::from_hours(24)).at(1, 0, 0, 0);
         WeatherPoint {
             hours: p.between(from, to).to_vec(),
             ..p.clone()
@@ -1495,7 +1494,7 @@ pub fn build(data: &mut SiteData, m: &Morning, choice: usize, ctx: &Context) -> 
             arrival,
             arrival_with_margin,
             margin_min: limit
-                .map(|l| ((l - arrival_with_margin).num_seconds() as f64 / 60.0).round()),
+                .map(|l| (l.duration_since(arrival_with_margin).as_secs() as f64 / 60.0).round()),
             latest_turnaround,
             latest_exit,
         },

@@ -20,7 +20,10 @@
 //!
 //! The best start is the highest score, the earliest on a tie.
 
-use chrono::{Duration, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
+use jiff::{
+    SignedDuration,
+    civil::{Date, DateTime, Time},
+};
 use serde::Serialize;
 use skimap_core::turnaround::{self, TurnaroundParams};
 use skimap_voice::Event;
@@ -37,11 +40,11 @@ use crate::text::Lang;
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Request {
     /// Date.
-    pub date: NaiveDate,
+    pub date: Date,
     /// Estimated time of the outing (C5 model time), minutes.
     pub duration_min: f64,
     /// Earliest start.
-    pub earliest: NaiveTime,
+    pub earliest: Time,
     /// Slope classes of the outing (A3 codes); empty: flat (groomed trails).
     pub classes: Vec<String>,
 }
@@ -50,9 +53,9 @@ pub struct Request {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Start {
     /// Start, local.
-    pub start: NaiveDateTime,
+    pub start: DateTime,
     /// Planned return (duration × 1.2), local.
-    pub back: NaiveDateTime,
+    pub back: DateTime,
     /// Score.
     pub score: f64,
     /// Reasons.
@@ -67,7 +70,7 @@ pub struct BestTime {
     /// Forecast point.
     pub point: String,
     /// C7 deadline, local.
-    pub deadline: Option<NaiveDateTime>,
+    pub deadline: Option<DateTime>,
     /// Best start.
     pub best: Option<Start>,
     /// Every start tried.
@@ -120,12 +123,12 @@ pub fn best_time_in(
         .map(|d| skimap_core::ephemeris::local_time(d.deadline));
     let sunrise = skimap_core::ephemeris::sun_times(req.date, point.position)
         .map(|(r, _)| skimap_core::ephemeris::local_time(r));
-    let planned = Duration::seconds((req.duration_min * 60.0 * p.eta_factor) as i64);
-    let mut t = req.date.and_time(req.earliest);
+    let planned = SignedDuration::from_secs((req.duration_min * 60.0 * p.eta_factor) as i64);
+    let mut t = req.date.to_datetime(req.earliest);
     if let Some(r) = sunrise {
-        let after = r + Duration::minutes(30);
+        let after = r + SignedDuration::from_mins(30);
         while t < after {
-            t += Duration::minutes(30);
+            t += SignedDuration::from_mins(30);
         }
     }
     let classes: Vec<&crate::snow_quality::ClassDay> = match quality {
@@ -146,11 +149,11 @@ pub fn best_time_in(
     let mut unforecast = 0;
     while deadline.is_none_or(|d| t + planned <= d) && t.hour() < 18 {
         let back = t + planned;
-        let hours = point.between(t - Duration::minutes(i64::from(t.minute())), back);
+        let hours = point.between(t - SignedDuration::from_mins(i64::from(t.minute())), back);
         let mut reasons = Vec::new();
         if hours.is_empty() {
             unforecast += 1;
-            t += Duration::minutes(30);
+            t += SignedDuration::from_mins(30);
             continue;
         }
         let n = hours.len() as f64;
@@ -161,7 +164,7 @@ pub fn best_time_in(
         let mut scores = Vec::new();
         for c in &classes {
             for h in &c.hours {
-                if h.time + Duration::hours(1) > t && h.time < back {
+                if h.time + SignedDuration::from_hours(1) > t && h.time < back {
                     scores.push(h.score);
                 }
             }
@@ -174,7 +177,7 @@ pub fn best_time_in(
                     let qs: Vec<&str> = c
                         .hours
                         .iter()
-                        .filter(|h| h.time + Duration::hours(1) > t && h.time < back)
+                        .filter(|h| h.time + SignedDuration::from_hours(1) > t && h.time < back)
                         .map(|h| tx.quality(h.quality))
                         .collect();
                     let mut uniq: Vec<&str> = Vec::new();
@@ -244,10 +247,14 @@ pub fn best_time_in(
             push(&mut reasons, Factor::Sun, 0.2 * sun, tx.bt_sun().into());
         }
         if let Some(level) = crowd.filter(|l| *l >= CrowdLevel::Busy) {
-            let peak0 = req.date.and_hms_opt(10, 30, 0).expect("time");
-            let peak1 = req.date.and_hms_opt(14, 0, 0).expect("time");
-            let overlap = (back.min(peak1) - t.max(peak0)).num_minutes().max(0) as f64;
-            let frac = overlap / planned.num_minutes().max(1) as f64;
+            let peak0 = req.date.at(10, 30, 0, 0);
+            let peak1 = req.date.at(14, 0, 0, 0);
+            let overlap = back
+                .min(peak1)
+                .duration_since(t.max(peak0))
+                .as_mins()
+                .max(0) as f64;
+            let frac = overlap / planned.as_mins().max(1) as f64;
             if frac > 0.0 {
                 let w = if level == CrowdLevel::VeryBusy {
                     1.0
@@ -258,7 +265,7 @@ pub fn best_time_in(
             }
         }
         if let Some(d) = deadline
-            && (d - back).num_minutes() < 30
+            && d.duration_since(back).as_mins() < 30
         {
             push(&mut reasons, Factor::Data, -0.5, tx.bt_near_deadline(d));
         }
@@ -269,7 +276,7 @@ pub fn best_time_in(
             score,
             reasons,
         });
-        t += Duration::minutes(30);
+        t += SignedDuration::from_mins(30);
     }
     let best = starts
         .iter()
@@ -297,7 +304,7 @@ pub fn best_time_in(
                 starts
                     .iter()
                     .filter(|s| {
-                        let dm = (s.start - b.start).num_minutes();
+                        let dm = s.start.duration_since(b.start).as_mins();
                         if early { dm <= -120 } else { dm >= 120 }
                     })
                     .max_by(|a, c| a.score.total_cmp(&c.score))
@@ -323,13 +330,12 @@ pub fn best_time_in(
 mod tests {
     use super::*;
     use crate::layers::WeatherHour;
+    use jiff::civil::date;
+    use jiff::civil::time;
     use skimap_common::geom::LonLat;
 
     fn point(gust_after: u32) -> WeatherPoint {
-        let d0 = NaiveDate::from_ymd_opt(2027, 1, 12)
-            .unwrap()
-            .and_hms_opt(0, 0, 0)
-            .unwrap();
+        let d0 = date(2027, 1, 12).at(0, 0, 0, 0);
         WeatherPoint {
             id: "p".into(),
             name: "P".into(),
@@ -337,7 +343,7 @@ mod tests {
             elevation_m: 1750.0,
             hours: (0..24)
                 .map(|i| WeatherHour {
-                    time: d0 + Duration::hours(i),
+                    time: d0 + SignedDuration::from_hours(i),
                     temperature_c: Some(-5.0),
                     apparent_temperature_c: None,
                     wind_chill_c: Some(-8.0),
@@ -359,9 +365,9 @@ mod tests {
     #[test]
     fn leaves_before_the_wind_and_before_the_night() {
         let req = Request {
-            date: NaiveDate::from_ymd_opt(2027, 1, 12).unwrap(),
+            date: date(2027, 1, 12),
             duration_min: 120.0,
-            earliest: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
+            earliest: time(8, 0, 0, 0),
             classes: vec![],
         };
         // Gusts of 60 km/h from 12 h: the best start is the first one (30 min after
@@ -399,7 +405,7 @@ mod tests {
         // The point's hours are those of 12/01: on 14/01 there is no forecast, the outing
         // fits the day well; the text tells the missing forecast, not the deadline.
         let day = Request {
-            date: NaiveDate::from_ymd_opt(2027, 1, 14).unwrap(),
+            date: date(2027, 1, 14),
             ..req(120.0)
         };
         for lang in [Lang::Fr, Lang::En] {
@@ -420,9 +426,9 @@ mod tests {
 
     fn req(minutes: f64) -> Request {
         Request {
-            date: NaiveDate::from_ymd_opt(2027, 1, 12).unwrap(),
+            date: date(2027, 1, 12),
             duration_min: minutes,
-            earliest: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
+            earliest: time(8, 0, 0, 0),
             classes: vec![],
         }
     }
@@ -431,7 +437,7 @@ mod tests {
     fn point_with(f: impl Fn(u32, &mut WeatherHour)) -> WeatherPoint {
         let mut p = point(24);
         for h in &mut p.hours {
-            f(h.time.hour(), h);
+            f(h.time.hour() as u32, h);
         }
         p
     }
@@ -439,7 +445,7 @@ mod tests {
     fn start(b: &BestTime, h: u32, m: u32) -> &Start {
         b.starts
             .iter()
-            .find(|s| s.start.hour() == h && s.start.minute() == m)
+            .find(|s| s.start.hour() as u32 == h && s.start.minute() as u32 == m)
             .unwrap()
     }
 
@@ -529,15 +535,15 @@ mod tests {
         let d = b.deadline.unwrap();
         let s0 = b.starts[2].start;
         // An outing that ends 30 min 20 s before the deadline from that start.
-        let planned_s = (d - s0).num_seconds() - 30 * 60 - 20;
+        let planned_s = d.duration_since(s0).as_secs() - 30 * 60 - 20;
         let b = best_time(&p, None, None, &req(planned_s as f64 / 72.0));
         let s = b.starts.iter().find(|s| s.start == s0).unwrap();
-        assert_eq!((d - s.back).num_minutes(), 30);
+        assert_eq!(d.duration_since(s.back).as_mins(), 30);
         assert!(reason(s, Factor::Data).is_none(), "{s:?}");
         // The next one ends 20 s before the deadline: said.
         let next = b.starts.iter().find(|s| s.start > s0).unwrap();
         assert_eq!(reason(next, Factor::Data).unwrap().points, -0.5);
-        let planned_s = (d - s0).num_seconds() - 29 * 60;
+        let planned_s = d.duration_since(s0).as_secs() - 29 * 60;
         let b = best_time(&p, None, None, &req(planned_s as f64 / 72.0));
         let s = b.starts.iter().find(|s| s.start == s0).unwrap();
         assert_eq!(

@@ -120,7 +120,7 @@ fn commands_on(site: &'static Site, budget_min: f64, return_before: Option<&str>
         .inputs
         .iter()
         .filter_map(|i| match i {
-            Input::Fix { t, pos } => Some((t.timestamp_millis(), pos.lon, pos.lat)),
+            Input::Fix { t, pos } => Some((t.as_millisecond(), pos.lon, pos.lat)),
             _ => None,
         })
         .collect();
@@ -178,7 +178,7 @@ fn commands_on(site: &'static Site, budget_min: f64, return_before: Option<&str>
     let now = skimap_ffi::tracking::epoch_ms;
     let at = |min: i64| {
         let mut p = plan.clone();
-        let local = plan.departure + chrono::Duration::minutes(90);
+        let local = plan.departure + jiff::SignedDuration::from_mins(90);
         p.turnaround.latest_turnaround = Some(local);
         answers.turnaround_at(&p, now(local) - min * 60_000, skimap_intent::Lang::Fr)
     };

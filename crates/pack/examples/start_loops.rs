@@ -53,7 +53,7 @@ fn main() {
     };
     let only = args;
     let registry = Registry::load(&DataLayout::new(data())).expect("registry");
-    let today = chrono::Local::now().date_naive();
+    let today = jiff::ZonedDateTime::now().date();
     let mut dirs: Vec<PathBuf> = std::fs::read_dir(&packs_dir)
         .expect("out/ of the data directory")
         .flatten()

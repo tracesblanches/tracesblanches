@@ -33,7 +33,7 @@ skimap-pisteplan = { path = "../pisteplan", features = ["pipeline"] }
 skimap-stations.workspace = true
 skimap-pack = { workspace = true, features = ["pipeline"] }
 anyhow.workspace = true
-chrono.workspace = true
+jiff.workspace = true
 clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true

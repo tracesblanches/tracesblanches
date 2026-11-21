@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use chrono::Duration;
+use jiff::SignedDuration;
 use serde::Deserialize;
 
 use crate::alerts::{Alerts, Position, Refusal, TripPlan};
@@ -84,9 +84,12 @@ impl App {
 
     fn limited(&self, req: &Req, bucket: &str, per_hour: usize) -> Option<Reply> {
         let key = format!("{bucket}:{}", req.client);
-        (!self
-            .limiter
-            .allow(&key, per_hour, Duration::hours(1), self.clock.now()))
+        (!self.limiter.allow(
+            &key,
+            per_hour,
+            SignedDuration::from_hours(1),
+            self.clock.now(),
+        ))
         .then(|| {
             Reply::error(429, "rate_limited", "too many requests, try again later")
                 .with("Retry-After", "600")
@@ -99,7 +102,7 @@ impl App {
         // The alert timer must have turned in the last two minutes (once started).
         let timer_ok = self.alerts.as_ref().is_none_or(|a| {
             a.last_tick()
-                .is_none_or(|t| self.clock.now() - t <= Duration::seconds(120))
+                .is_none_or(|t| self.clock.now() - t <= SignedDuration::from_secs(120))
         });
         if store_ok && db_ok && timer_ok {
             Reply::text(200, "ok\n").with("Cache-Control", "no-store")
@@ -166,7 +169,7 @@ impl App {
                 if !self.limiter.allow(
                     "trips-global",
                     TRIPS_PER_DAY,
-                    Duration::days(1),
+                    SignedDuration::from_hours(24),
                     self.clock.now(),
                 ) {
                     return Reply::error(429, "rate_limited", "daily limit of the service reached")
@@ -197,7 +200,7 @@ impl App {
                     ("POST", ["extend"]) => {
                         #[derive(Deserialize)]
                         struct B {
-                            deadline: chrono::DateTime<chrono::Utc>,
+                            deadline: jiff::Timestamp,
                         }
                         match serde_json::from_slice::<B>(&req.body) {
                             Ok(b) => alerts.extend(id, token, b.deadline),

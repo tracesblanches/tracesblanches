@@ -32,10 +32,10 @@ pub use error::{Error, Result};
 pub use layer::{Months, Zone, ZoneKind, ZoneLayer, ZoneProps};
 pub use rules::{Effect, Period, Rule, RuleSet, Topic};
 
+pub use geo;
 /// Re-exported so that users of the schema (dates of [`rules::InForce`], geometries of
 /// [`layer::Zone`]) need no direct dependency.
-pub use chrono;
-pub use geo;
+pub use jiff;
 
 /// Name of this crate, checked by the crate smoke test.
 pub const CRATE: &str = env!("CARGO_PKG_NAME");

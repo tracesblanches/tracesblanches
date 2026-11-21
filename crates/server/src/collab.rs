@@ -6,7 +6,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use chrono::Duration;
+use jiff::SignedDuration;
 use serde::Deserialize;
 use skimap_collab::rules::{Kind, Vote};
 use skimap_collab::store::{NewReport, Refusal, Store};
@@ -104,7 +104,7 @@ fn bbox(req: &Req) -> Option<[f64; 4]> {
 fn rules() -> serde_json::Value {
     serde_json::json!({
         "kinds": Kind::ALL.iter().map(|k| serde_json::json!({
-            "id": k.id(), "fr": k.fr(), "lifetime_hours": k.lifetime().num_hours()
+            "id": k.id(), "fr": k.fr(), "lifetime_hours": k.lifetime().as_hours()
         })).collect::<Vec<_>>(),
         "max_lifetimes": skimap_collab::rules::MAX_LIFETIMES,
         "max_queue_age_hours": skimap_collab::rules::MAX_QUEUE_AGE_H,
@@ -125,7 +125,7 @@ pub fn route(collab: Option<&Arc<Collab>>, clock: &dyn Clock, req: &Req, rest: &
         && !c.limiter.allow(
             &format!("collab:{}", req.client),
             WRITES_PER_ADDRESS_HOUR,
-            Duration::hours(1),
+            SignedDuration::from_hours(1),
             now,
         )
     {
